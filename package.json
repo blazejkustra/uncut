@@ -1,0 +1,14 @@
+{
+  "name": "uncut",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "wireframe": "node scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "puppeteer-core": "23.11.1"
+  }
+}

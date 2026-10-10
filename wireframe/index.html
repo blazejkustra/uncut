@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uncut wireframe</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="wireframe.css" />
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="traffic"><span></span><span></span><span></span></div>
+      <div class="brand">Uncut</div>
+      <button class="project-switch" data-testid="project-switch">
+        <span id="project-name">…</span><i data-lucide="chevron-down"></i>
+      </button>
+      <div class="topbar-spacer"></div>
+      <button class="icon-btn" title="Undo (⌘Z)"><i data-lucide="undo-2"></i></button>
+      <button class="icon-btn" title="Redo (⇧⌘Z)"><i data-lucide="redo-2"></i></button>
+      <button class="icon-btn" title="History"><i data-lucide="history"></i></button>
+      <div class="provider" title="Agent provider"><span class="dot ok"></span>Claude Code</div>
+      <button class="btn primary" data-state-link="export"><i data-lucide="download"></i>Export</button>
+    </header>
+
+    <!-- Left: rail + library panel -->
+    <nav class="rail" id="rail">
+      <button data-lib="media" title="Media"><i data-lucide="film"></i><span>Media</span></button>
+      <button data-lib="capture" title="Capture"><i data-lucide="circle-dot"></i><span>Capture</span></button>
+      <button data-lib="text" title="Text"><i data-lucide="type"></i><span>Text</span></button>
+      <button data-lib="components" title="Components"><i data-lucide="shapes"></i><span>Elements</span></button>
+      <button data-lib="transitions" title="Transitions"><i data-lucide="blend"></i><span>Transitions</span></button>
+      <button data-lib="audio" title="Audio"><i data-lucide="music"></i><span>Audio</span></button>
+      <button data-lib="generate" title="Generate"><i data-lucide="sparkles"></i><span>Generate</span></button>
+      <div class="rail-spacer"></div>
+      <button data-state-link="onboarding" title="Settings"><i data-lucide="settings-2"></i></button>
+    </nav>
+    <aside class="library" id="library"></aside>
+
+    <!-- Centre: preview -->
+    <main class="stage">
+      <div class="stage-canvas" id="stage-canvas">
+        <div class="frame" id="frame" data-testid="preview-frame"></div>
+      </div>
+      <div class="transport">
+        <span class="timecode" id="timecode">00:00:00</span>
+        <div class="transport-mid">
+          <button class="icon-btn" title="Back one frame (←)"><i data-lucide="skip-back"></i></button>
+          <button class="icon-btn play" title="Play (Space)"><i data-lucide="play"></i></button>
+          <button class="icon-btn" title="Forward one frame (→)"><i data-lucide="skip-forward"></i></button>
+        </div>
+        <span class="muted small" id="canvas-info">…</span>
+        <button class="icon-btn" title="Fit"><i data-lucide="maximize-2"></i></button>
+      </div>
+    </main>
+
+    <!-- Right: Inspector / Agent -->
+    <aside class="side" id="side">
+      <div class="tabs">
+        <button data-side="inspector">Inspector</button>
+        <button data-side="agent">Agent</button>
+      </div>
+      <div class="side-body" id="side-body"></div>
+    </aside>
+
+    <!-- Bottom: Timeline / Mixer -->
+    <section class="bottom" id="bottom">
+      <div class="bottom-toolbar">
+        <div class="seg">
+          <button data-bottom="timeline">Timeline</button>
+          <button data-bottom="mixer">Mixer</button>
+        </div>
+        <div class="tools" id="timeline-tools">
+          <button class="icon-btn active" title="Select (V)"><i data-lucide="mouse-pointer-2"></i></button>
+          <button class="icon-btn" title="Blade (B)"><i data-lucide="scissors"></i></button>
+          <span class="sep"></span>
+          <button class="icon-btn active" title="Magnetic main track (N)"><i data-lucide="magnet"></i></button>
+          <button class="icon-btn active" title="Link audio and video"><i data-lucide="link"></i></button>
+          <span class="sep"></span>
+          <button class="icon-btn" title="Zoom out"><i data-lucide="zoom-out"></i></button>
+          <div class="zoom"><span></span></div>
+          <button class="icon-btn" title="Zoom in"><i data-lucide="zoom-in"></i></button>
+        </div>
+      </div>
+      <div class="bottom-body" id="bottom-body"></div>
+    </section>
+  </div>
+
+  <!-- Modal layer (onboarding, export) -->
+  <div class="modal-layer" id="modal-layer" hidden></div>
+
+  <!-- Review helper: not part of the product -->
+  <div class="review" id="review">
+    <span>Wireframe states</span>
+    <a href="#editor">Editor</a>
+    <a href="#text">Text edit</a>
+    <a href="#agent">Agent</a>
+    <a href="#mixer">Mixer</a>
+    <a href="#capture">Capture</a>
+    <a href="#onboarding">Onboarding</a>
+    <a href="#export">Export</a>
+  </div>
+
+  <script type="module" src="wireframe.js"></script>
+</body>
+</html>
