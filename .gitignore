@@ -1,6 +1,8 @@
 .DS_Store
 node_modules/
 *.uncut/.cache/
+test-output/
 
-# Private planning notes, never committed
+# Prose stays private (planning notes, specs), never committed
 planning/
+*.md
