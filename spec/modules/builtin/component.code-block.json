@@ -1,0 +1,32 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.code-block",
+  "kind": "component",
+  "name": "Code block",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "file": {
+        "type": "string"
+      },
+      "code": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code"
+    ]
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "code"
+  }
+}

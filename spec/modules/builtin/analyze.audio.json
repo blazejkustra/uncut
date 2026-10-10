@@ -1,0 +1,24 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "analyze.audio",
+  "kind": "analyzer",
+  "name": "Loudness, beats and silence",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "analyzer": {
+    "inputs": [
+      "audio"
+    ],
+    "outputs": [
+      "loudness",
+      "beats",
+      "silence"
+    ],
+    "backend": "signal"
+  }
+}

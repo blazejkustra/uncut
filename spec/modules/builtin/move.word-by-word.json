@@ -1,0 +1,13 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.word-by-word",
+  "kind": "move",
+  "name": "Word by word",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "effect.color",
+  "kind": "effect",
+  "name": "Colour",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "exposure": {
+        "type": "number"
+      },
+      "contrast": {
+        "type": "number"
+      },
+      "saturation": {
+        "type": "number"
+      },
+      "temperature": {
+        "type": "number"
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "analyze.transcript-api",
+  "kind": "analyzer",
+  "name": "Transcribe (OpenAI)",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "process"
+  },
+  "capabilities": [
+    "network",
+    "api-key",
+    "media:read"
+  ],
+  "analyzer": {
+    "inputs": [
+      "audio",
+      "video"
+    ],
+    "outputs": [
+      "transcript"
+    ],
+    "backend": "api"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.steps",
+  "kind": "component",
+  "name": "Steps",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "steps": {
+        "type": "array"
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "list-ordered"
+  }
+}

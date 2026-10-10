@@ -1,0 +1,16 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "text.title",
+  "kind": "text-style",
+  "name": "Title",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "ui": {
+    "panel": "text"
+  }
+}

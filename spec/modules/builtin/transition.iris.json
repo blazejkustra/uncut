@@ -1,0 +1,21 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "transition.iris",
+  "kind": "transition",
+  "name": "Iris",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "transition": {
+    "minFrames": 6,
+    "maxFrames": 30
+  },
+  "ui": {
+    "panel": "transitions",
+    "icon": "circle"
+  }
+}

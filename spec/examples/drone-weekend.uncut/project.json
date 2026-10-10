@@ -1,0 +1,611 @@
+{
+  "format": "uncut/0",
+  "name": "I built a drone app in a weekend",
+  "canvas": {
+    "width": 3840,
+    "height": 2160,
+    "fps": 30,
+    "background": "bg"
+  },
+  "theme": {
+    "colors": {
+      "bg": "#0B0B0C",
+      "fg": "#F4F3F0",
+      "mute": "#8E8E93",
+      "accent": "#F5C26B"
+    },
+    "fonts": {
+      "sans": "Inter",
+      "mono": "JetBrains Mono"
+    },
+    "margin": 160
+  },
+  "media": [
+    {
+      "id": "m-acam",
+      "kind": "video",
+      "name": "A-cam, talking head",
+      "path": "/Volumes/Footage/2026-10-02/A001.mov",
+      "probe": {
+        "frames": 41400,
+        "fps": 30,
+        "width": 3840,
+        "height": 2160,
+        "hasAudio": true
+      }
+    },
+    {
+      "id": "m-screen",
+      "kind": "video",
+      "name": "Building the app, screen",
+      "path": "media/screen-build.mp4",
+      "source": {
+        "module": "core.screen",
+        "target": "desktop-window"
+      },
+      "probe": {
+        "frames": 18000,
+        "fps": 30,
+        "width": 3024,
+        "height": 1964,
+        "hasAudio": false
+      }
+    },
+    {
+      "id": "m-drone-1",
+      "kind": "video",
+      "name": "Drone, lake pass",
+      "path": "/Volumes/Footage/drone/DJI_0041.MP4",
+      "probe": {
+        "frames": 1800,
+        "fps": 30,
+        "width": 3840,
+        "height": 2160,
+        "hasAudio": false
+      }
+    },
+    {
+      "id": "m-drone-2",
+      "kind": "video",
+      "name": "Drone, windy ridge",
+      "path": "/Volumes/Footage/drone/DJI_0042.MP4",
+      "probe": {
+        "frames": 1350,
+        "fps": 30,
+        "width": 3840,
+        "height": 2160,
+        "hasAudio": false
+      }
+    },
+    {
+      "id": "m-drone-3",
+      "kind": "video",
+      "name": "Drone, sunset orbit",
+      "path": "/Volumes/Footage/drone/DJI_0047.MP4",
+      "probe": {
+        "frames": 2700,
+        "fps": 30,
+        "width": 3840,
+        "height": 2160,
+        "hasAudio": false
+      }
+    },
+    {
+      "id": "m-music",
+      "kind": "audio",
+      "name": "Warm tape",
+      "path": "../shared/music/warm-tape.mp3",
+      "probe": {
+        "frames": 3150,
+        "fps": 30,
+        "hasAudio": true
+      }
+    },
+    {
+      "id": "m-logo",
+      "kind": "image",
+      "name": "Channel logo",
+      "path": "media/logo.svg",
+      "probe": {
+        "width": 512,
+        "height": 512
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "t-captions",
+      "kind": "text",
+      "name": "Captions",
+      "items": [
+        {
+          "id": "cap-acam",
+          "type": "captions",
+          "source": "m-acam",
+          "start": 0,
+          "duration": 36000,
+          "mode": "word",
+          "style": {
+            "preset": "text.captions"
+          },
+          "edits": [
+            {
+              "word": 412,
+              "text": "Argent"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-titles",
+      "kind": "text",
+      "name": "Chapter titles",
+      "items": [
+        {
+          "id": "title-1",
+          "type": "text",
+          "start": 15,
+          "duration": 105,
+          "text": "Intro",
+          "transform": {
+            "x": 160,
+            "y": 1800
+          },
+          "style": {
+            "preset": "text.lower-third",
+            "size": 120,
+            "color": "fg"
+          },
+          "animation": {
+            "in": {
+              "module": "move.fade",
+              "duration": 9
+            },
+            "out": {
+              "module": "move.fade",
+              "duration": 9
+            }
+          }
+        },
+        {
+          "id": "title-2",
+          "type": "text",
+          "start": 1815,
+          "duration": 105,
+          "text": "Why a drone app",
+          "transform": {
+            "x": 160,
+            "y": 1800
+          },
+          "style": {
+            "preset": "text.lower-third",
+            "size": 120,
+            "color": "fg"
+          },
+          "animation": {
+            "in": {
+              "module": "move.fade",
+              "duration": 9
+            },
+            "out": {
+              "module": "move.fade",
+              "duration": 9
+            }
+          }
+        },
+        {
+          "id": "title-3",
+          "type": "text",
+          "start": 7215,
+          "duration": 105,
+          "text": "Building it",
+          "transform": {
+            "x": 160,
+            "y": 1800
+          },
+          "style": {
+            "preset": "text.lower-third",
+            "size": 120,
+            "color": "fg"
+          },
+          "animation": {
+            "in": {
+              "module": "move.fade",
+              "duration": 9
+            },
+            "out": {
+              "module": "move.fade",
+              "duration": 9
+            }
+          }
+        },
+        {
+          "id": "title-4",
+          "type": "text",
+          "start": 21615,
+          "duration": 105,
+          "text": "First flight",
+          "transform": {
+            "x": 160,
+            "y": 1800
+          },
+          "style": {
+            "preset": "text.lower-third",
+            "size": 120,
+            "color": "fg"
+          },
+          "animation": {
+            "in": {
+              "module": "move.fade",
+              "duration": 9
+            },
+            "out": {
+              "module": "move.fade",
+              "duration": 9
+            }
+          }
+        },
+        {
+          "id": "title-5",
+          "type": "text",
+          "start": 30615,
+          "duration": 105,
+          "text": "What's next",
+          "transform": {
+            "x": 160,
+            "y": 1800
+          },
+          "style": {
+            "preset": "text.lower-third",
+            "size": 120,
+            "color": "fg"
+          },
+          "animation": {
+            "in": {
+              "module": "move.fade",
+              "duration": 9
+            },
+            "out": {
+              "module": "move.fade",
+              "duration": 9
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "v-graphics",
+      "kind": "video",
+      "name": "Graphics",
+      "items": [
+        {
+          "id": "gfx-cold-open",
+          "type": "graphic",
+          "src": "graphics/cold-open.html",
+          "start": 0,
+          "duration": 120,
+          "props": {
+            "line": "One weekend, one drone"
+          }
+        },
+        {
+          "id": "gfx-follow",
+          "type": "component",
+          "component": "component.follow-card",
+          "start": 35700,
+          "duration": 240,
+          "props": {
+            "handle": "@blazejkustra",
+            "logo": {
+              "media": "m-logo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "v-broll",
+      "kind": "video",
+      "name": "B-roll",
+      "items": [
+        {
+          "id": "broll-lake",
+          "type": "clip",
+          "media": "m-drone-1",
+          "in": 300,
+          "duration": 240,
+          "start": 2400,
+          "transform": {
+            "fit": "cover"
+          }
+        },
+        {
+          "id": "broll-ridge",
+          "type": "clip",
+          "media": "m-drone-2",
+          "in": 90,
+          "duration": 150,
+          "start": 22200,
+          "transform": {
+            "fit": "cover"
+          },
+          "effects": [
+            {
+              "module": "effect.stabilize",
+              "params": {
+                "smoothness": 0.6
+              }
+            }
+          ]
+        },
+        {
+          "id": "broll-orbit",
+          "type": "clip",
+          "media": "m-drone-3",
+          "in": 600,
+          "duration": 450,
+          "start": 26400,
+          "transform": {
+            "fit": "cover"
+          },
+          "effects": [
+            {
+              "module": "effect.color",
+              "params": {
+                "temperature": 0.1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "kind": "video",
+      "role": "main",
+      "name": "Main",
+      "items": [
+        {
+          "id": "main-01",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 120,
+          "duration": 1680,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-02",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 2100,
+          "duration": 2700,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-03",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 5100,
+          "duration": 2700,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-04",
+          "type": "clip",
+          "media": "m-screen",
+          "in": 600,
+          "duration": 3600,
+          "transform": {
+            "fit": "cover"
+          },
+          "transitionIn": {
+            "module": "transition.crossfade",
+            "duration": 12
+          }
+        },
+        {
+          "id": "main-05",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 8400,
+          "duration": 1800,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-06",
+          "type": "clip",
+          "media": "m-screen",
+          "in": 5400,
+          "duration": 4200,
+          "transform": {
+            "fit": "cover"
+          }
+        },
+        {
+          "id": "main-07",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 10800,
+          "duration": 2400,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-08",
+          "type": "clip",
+          "media": "m-screen",
+          "in": 11400,
+          "duration": 2400,
+          "transform": {
+            "fit": "cover"
+          }
+        },
+        {
+          "id": "main-09",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 13800,
+          "duration": 3000,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0,
+          "transitionIn": {
+            "module": "transition.crossfade",
+            "duration": 12
+          }
+        },
+        {
+          "id": "main-10",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 17400,
+          "duration": 3000,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-11",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 21000,
+          "duration": 3000,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-12",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 24600,
+          "duration": 2700,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        },
+        {
+          "id": "main-13",
+          "type": "clip",
+          "media": "m-acam",
+          "in": 27900,
+          "duration": 2820,
+          "transform": {
+            "fit": "cover"
+          },
+          "gainDb": 0
+        }
+      ]
+    },
+    {
+      "id": "a-music",
+      "kind": "audio",
+      "name": "Music",
+      "mixer": {
+        "gainDb": -6,
+        "effects": [
+          {
+            "module": "audio.duck",
+            "params": {
+              "under": [
+                "main"
+              ],
+              "amountDb": -12
+            }
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": "mus-intro",
+          "type": "audio",
+          "media": "m-music",
+          "start": 0,
+          "in": 0,
+          "duration": 900,
+          "fadeOut": 90
+        },
+        {
+          "id": "mus-outro",
+          "type": "audio",
+          "media": "m-music",
+          "start": 35100,
+          "in": 1200,
+          "duration": 900,
+          "fadeIn": 60,
+          "fadeOut": 120
+        }
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "ch-1",
+      "name": "Intro",
+      "start": 0,
+      "end": 1800
+    },
+    {
+      "id": "ch-2",
+      "name": "Why a drone app",
+      "start": 1800,
+      "end": 7200
+    },
+    {
+      "id": "ch-3",
+      "name": "Building it",
+      "start": 7200,
+      "end": 21600
+    },
+    {
+      "id": "ch-4",
+      "name": "First flight",
+      "start": 21600,
+      "end": 30600
+    },
+    {
+      "id": "ch-5",
+      "name": "What's next",
+      "start": 30600,
+      "end": 36000
+    }
+  ],
+  "markers": [
+    {
+      "frame": 22200,
+      "label": "shaky take, stabilized"
+    }
+  ],
+  "master": {
+    "loudness": {
+      "targetLufs": -14
+    },
+    "effects": [
+      {
+        "module": "audio.limiter",
+        "params": {
+          "ceilingDb": -1
+        }
+      }
+    ]
+  }
+}
