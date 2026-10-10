@@ -79,6 +79,7 @@ const broken = {
   "two main tracks": [promo, (p) => { p.tracks.push({ ...clone(p.tracks.find((t) => t.role === "main")), id: "main-2", items: [] }); }, "main-track-count"],
   "typo in an item field (schema)": [promo, (p) => { p.tracks[0].items[0].duraton = 90; }, "schema"],
   "float frame count (schema)": [promo, (p) => { p.tracks[0].items[0].duration = 90.5; }, "schema"],
+  "transition with no media handle before the cut": [promo, (p) => { p.tracks.find((t) => t.role === "main").items[2].in = 0; }, "transition-handles"],
   "captions from video without audio": [longform, (p) => { p.tracks[0].items[0].source = "m-screen"; }, "media-kind"],
   "stabilize on an audio track": [longform, (p) => { p.tracks.find((t) => t.id === "a-music").items[0].effects = [{ module: "effect.stabilize" }]; }, "module-kind"],
 };

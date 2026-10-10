@@ -1,0 +1,157 @@
+{
+  "contract": "uncut.agent-tools/0",
+  "description": "The MCP tools Uncut gives the agent (Claude Code, Codex, ACP agents). Modules add their own agentTools (e.g. argent_record) on top. Every edit goes through timeline_edit, so it is checked, undoable per turn and attributed.",
+  "tools": [
+    {
+      "name": "project_read",
+      "description": "Read the project. 'summary' gives tracks, items with start and length, scenes, media and the revision; 'full' gives project.json. Long videos: pass a range.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "detail": { "enum": ["summary", "full"] },
+          "range": { "$ref": "#/$defs/range" }
+        }
+      },
+      "returns": "revision, duration, and the project summary or full JSON"
+    },
+    {
+      "name": "timeline_edit",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["baseRevision", "ops", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "baseRevision": { "type": "integer", "minimum": 0 },
+          "ops": { "$ref": "https://uncut.dev/schema/edit-ops/0.json" },
+          "summary": { "type": "string", "minLength": 1, "description": "One line the user sees in the turn card, e.g. 'Cut the shaky parts of the ridge shot'." }
+        }
+      },
+      "returns": "the new revision, or a conflict with the user's newer edits, or validation errors"
+    },
+    {
+      "name": "render_frames",
+      "description": "Render frames of the current edit exactly as export would, and return image paths to look at.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["frames"],
+        "additionalProperties": false,
+        "properties": {
+          "frames": { "type": "array", "minItems": 1, "maxItems": 24, "items": { "type": "integer", "minimum": 0 } },
+          "scale": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+        }
+      },
+      "returns": "one image path per frame"
+    },
+    {
+      "name": "contact_sheet",
+      "description": "One image with a grid of frames from a media file or from the edit. Cheaper than many render_frames when scanning footage. 'at: shots' takes one frame per shot.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "media": { "type": "string" },
+          "range": { "$ref": "#/$defs/range" },
+          "at": { "enum": ["every", "shots"] },
+          "every": { "type": "integer", "minimum": 1, "description": "Frames between samples when at is 'every'." },
+          "columns": { "type": "integer", "minimum": 1, "maximum": 10 }
+        },
+        "oneOf": [{ "required": ["media"] }, { "required": ["range"] }]
+      },
+      "returns": "an image path and the frame number of every cell"
+    },
+    {
+      "name": "media_analyze",
+      "description": "Run analyzers on a media file and return the index. Results are cached in .cache/, so asking twice is free. Motion and stability score each stretch of footage, so you can tell a clean take from a shaky one.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["media", "analyses"],
+        "additionalProperties": false,
+        "properties": {
+          "media": { "type": "string" },
+          "analyses": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["shots", "motion", "stability", "loudness", "beats", "silence", "transcript", "description"] }
+          },
+          "range": { "$ref": "#/$defs/range" }
+        }
+      },
+      "returns": "per analysis: a list of { start, end, value, label } segments in media frames"
+    },
+    {
+      "name": "transcript_read",
+      "description": "Words with frame timings for a media file, optionally a range. Fillers and long pauses are marked.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["media"],
+        "additionalProperties": false,
+        "properties": { "media": { "type": "string" }, "range": { "$ref": "#/$defs/range" } }
+      },
+      "returns": "words: [{ i, text, start, end, filler? }], pauses: [{ start, end }]"
+    },
+    {
+      "name": "media_import",
+      "description": "Add a file from disk to the project's media. It is referenced, not copied.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": { "path": { "type": "string" }, "name": { "type": "string" } }
+      },
+      "returns": "the new media entry with its probe"
+    },
+    {
+      "name": "generate_media",
+      "description": "Make an image, video or audio clip with a generator module. The result lands in Media › Generated with its prompt.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["generator", "prompt"],
+        "additionalProperties": false,
+        "properties": {
+          "generator": { "type": "string" },
+          "prompt": { "type": "string", "minLength": 1 },
+          "options": { "type": "object" }
+        }
+      },
+      "returns": "the new media id, or a note that the user needs to add an API key"
+    },
+    {
+      "name": "modules_list",
+      "description": "Installed modules (transitions, text styles, components, effects…) with their params schema, so you know what you can use and how.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source"] }
+        }
+      },
+      "returns": "manifests"
+    },
+    {
+      "name": "ui_show",
+      "description": "Point the user at something: move the playhead, select items, open a panel. Used to show results and, later, to walk the user through doing an edit (D5).",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "frame": { "type": "integer", "minimum": 0 },
+          "select": { "type": "array", "items": { "type": "string" } },
+          "panel": { "enum": ["media", "capture", "text", "components", "transitions", "audio", "generate", "inspector", "timeline", "transcript", "mixer"] }
+        }
+      },
+      "returns": "ok"
+    }
+  ],
+  "$defs": {
+    "range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 1 } }
+    }
+  }
+}

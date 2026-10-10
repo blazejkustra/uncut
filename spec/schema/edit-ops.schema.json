@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uncut.dev/schema/edit-ops/0.json",
+  "title": "Uncut edit operations",
+  "description": "Every change to project.json, by the user or the agent, is a list of these ops. They are applied atomically, recorded in history.db with who made them, and are what the agent sees in the manual-edit log.",
+  "type": "array",
+  "minItems": 1,
+  "items": { "$ref": "#/$defs/op" },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "op": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Add an item. On the main track give an index (default: the end); on free tracks the item needs a start.",
+          "required": ["op", "track", "item"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "insert_item" }, "track": { "$ref": "#/$defs/id" }, "index": { "type": "integer", "minimum": 0 }, "item": { "type": "object" } }
+        },
+        {
+          "type": "object",
+          "description": "Change fields on an item. A null value removes the field.",
+          "required": ["op", "item", "set"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "update_item" }, "item": { "$ref": "#/$defs/id" }, "set": { "type": "object", "minProperties": 1 } }
+        },
+        {
+          "type": "object",
+          "description": "Shorten (positive) or lengthen (negative) an item from one edge. Trimming the start moves its in-point; on the main track the rest ripples.",
+          "required": ["op", "item", "edge", "frames"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "trim_item" }, "item": { "$ref": "#/$defs/id" }, "edge": { "enum": ["start", "end"] }, "frames": { "type": "integer", "not": { "const": 0 } } }
+        },
+        {
+          "type": "object",
+          "description": "Split an item at a frame counted from the item's start. The second half gets newId.",
+          "required": ["op", "item", "at", "newId"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "split_item" }, "item": { "$ref": "#/$defs/id" }, "at": { "type": "integer", "minimum": 1 }, "newId": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
+          "description": "Move an item in time or to another track. Main track: index. Free tracks: start.",
+          "required": ["op", "item"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "move_item" },
+            "item": { "$ref": "#/$defs/id" },
+            "track": { "$ref": "#/$defs/id" },
+            "index": { "type": "integer", "minimum": 0 },
+            "start": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Remove an item. On the main track the rest closes the gap.",
+          "required": ["op", "item"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "delete_item" }, "item": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
+          "description": "Set or clear the transition into a main-track item.",
+          "required": ["op", "item", "transition"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "set_transition" },
+            "item": { "$ref": "#/$defs/id" },
+            "transition": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "object", "required": ["module", "duration"], "properties": { "module": { "type": "string" }, "duration": { "type": "integer", "minimum": 1 } } }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "track"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "add_track" }, "track": { "type": "object" }, "index": { "type": "integer", "minimum": 0 } }
+        },
+        {
+          "type": "object",
+          "required": ["op", "track", "set"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "update_track" }, "track": { "$ref": "#/$defs/id" }, "set": { "type": "object", "minProperties": 1 } }
+        },
+        {
+          "type": "object",
+          "required": ["op", "track"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "delete_track" }, "track": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
+          "required": ["op", "media"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "add_media" }, "media": { "type": "object" } }
+        },
+        {
+          "type": "object",
+          "description": "Change project-level fields: name, canvas, theme, scenes, markers or master.",
+          "required": ["op", "set"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "update_project" },
+            "set": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "master"] }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
