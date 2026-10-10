@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+*.uncut/.cache/
+
+# Private planning notes, never committed
+planning/
