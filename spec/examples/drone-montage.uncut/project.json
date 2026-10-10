@@ -1,0 +1,31 @@
+{
+  "format": "uncut/0",
+  "name": "Tatra flight",
+  "canvas": { "width": 3840, "height": 2160, "fps": 30 },
+  "media": [
+    { "id": "m-lake", "kind": "video", "name": "Lake pass", "path": "/Volumes/Footage/drone/DJI_0041.MP4", "probe": { "frames": 1800, "fps": 30, "width": 3840, "height": 2160, "hasAudio": false } },
+    { "id": "m-ridge", "kind": "video", "name": "Windy ridge", "path": "/Volumes/Footage/drone/DJI_0042.MP4", "probe": { "frames": 1350, "fps": 30, "width": 3840, "height": 2160, "hasAudio": false } },
+    { "id": "m-orbit", "kind": "video", "name": "Sunset orbit", "path": "/Volumes/Footage/drone/DJI_0047.MP4", "probe": { "frames": 2700, "fps": 30, "width": 3840, "height": 2160, "hasAudio": false } },
+    { "id": "m-music", "kind": "audio", "name": "Soft guitar", "path": "../shared/music/soft-guitar.mp3", "probe": { "frames": 4200, "fps": 30, "hasAudio": true } }
+  ],
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "video",
+      "role": "main",
+      "name": "Main",
+      "items": [
+        { "id": "lake", "type": "clip", "media": "m-lake", "in": 0, "duration": 1800 },
+        { "id": "ridge", "type": "clip", "media": "m-ridge", "in": 0, "duration": 1350 },
+        { "id": "orbit", "type": "clip", "media": "m-orbit", "in": 0, "duration": 2700 }
+      ]
+    },
+    {
+      "id": "a1",
+      "kind": "audio",
+      "name": "Music",
+      "items": [{ "id": "music", "type": "audio", "media": "m-music", "start": 0, "in": 0, "duration": 4200, "fadeOut": 60 }]
+    }
+  ],
+  "master": { "loudness": { "targetLufs": -14 } }
+}
