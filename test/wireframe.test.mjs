@@ -7,7 +7,7 @@ import puppeteer from "puppeteer-core";
 import { serve } from "../scripts/serve.mjs";
 
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const STATES = ["editor", "text", "agent", "mixer", "capture", "onboarding", "export"];
+const STATES = ["editor", "text", "agent", "mixer", "transcript", "capture", "generate", "onboarding", "export"];
 let server, browser, base;
 
 before(async () => {
@@ -49,7 +49,7 @@ for (const state of STATES) {
     assert.deepEqual(r.unrenderedIcons, [], "every lucide icon name exists");
     assert.equal(r.overflowX, false, "no horizontal page scroll");
     assert.ok(r.frameChildren > 0, "preview shows something at the playhead");
-    if (r.bottom === "timeline") assert.equal(r.clips, 11, "all 11 items from the example project are on the timeline");
+    if (r.bottom === "timeline") assert.equal(r.clips, 12, "all 12 items from the example project are on the timeline");
     assert.equal(r.modal, state === "onboarding" || state === "export");
     if (state === "agent") assert.equal(r.side, "agent");
     if (state === "mixer") assert.equal(r.bottom, "mixer");
@@ -81,10 +81,11 @@ test("clicking works: rail, tabs, clips, text subtabs", async () => {
   await page.click('[data-text-tab="Animation"]');
   assert.match(await page.$eval("#side-body", (e) => e.textContent), /Per word/);
   await page.click('[data-bottom="mixer"]');
-  assert.equal((await page.$$('[data-testid="mixer-strip"]')).length, 2);
+  assert.equal((await page.$$('[data-testid="mixer-strip"]')).length, 3);
   await page.click('[data-state-link="onboarding"]');
   await page.waitForSelector('[data-testid="onboarding"]');
-  await page.click("[data-close]");
+  await page.click('.wiz-steps [data-ob-step="2"]');
+  await page.click(".wiz-foot [data-close]");
   assert.equal(await page.$eval("#modal-layer", (e) => e.hidden), true);
   assert.deepEqual(errors, []);
   await page.close();
@@ -99,4 +100,50 @@ test("no generic suggestion chips anywhere (premise 14h)", async () => {
     }
     await page.close();
   }
+});
+
+test("onboarding walks through all three steps", async () => {
+  const { page, errors } = await open("onboarding");
+  assert.match(await page.$eval(".wiz-panel h1", (e) => e.textContent), /Connect your agents/);
+  await page.click('.wiz-foot [data-ob-step="1"]');
+  assert.match(await page.$eval(".wiz-panel h1", (e) => e.textContent), /Record your apps/);
+  await page.click('.wiz-foot .btn.primary[data-ob-step="2"]');
+  assert.match(await page.$eval(".wiz-panel h1", (e) => e.textContent), /Start a video/);
+  await page.screenshot({ path: "test-output/wireframe-onboarding-3.png" });
+  await page.click(".wiz-foot [data-close]");
+  assert.equal(await page.$eval("#modal-layer", (e) => e.hidden), true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("generate covers image, video and audio, and says where results go", async () => {
+  const { page } = await open("generate");
+  for (const mode of ["video", "audio"]) {
+    await page.click(`[data-gen-mode="${mode}"]`);
+    const text = await page.$eval("#library", (e) => e.innerText);
+    assert.match(text, /After generating/);
+    assert.match(text, /lands in Media/);
+  }
+  await page.screenshot({ path: "test-output/wireframe-generate-audio.png" });
+  await page.close();
+});
+
+test("transcript lives in the bottom panel, not in the Text library", async () => {
+  const { page } = await open("text");
+  assert.doesNotMatch(await page.$eval("#library", (e) => e.innerText), /transcript/i);
+  await page.click('[data-bottom="transcript"]');
+  assert.ok(await page.$('[data-testid="transcript"]'));
+  assert.equal(await page.$$eval(".tr-word.filler", (els) => els.length), 2);
+  await page.close();
+});
+
+test("audio tab shows project tracks and a free library", async () => {
+  const { page } = await open("mixer");
+  const text = await page.$eval("#library", (e) => e.innerText);
+  assert.match(text, /In this project/);
+  assert.match(text, /Voiceover/);
+  assert.match(text, /royalty free/i);
+  await page.click('[data-audio-mode="sfx"]');
+  assert.match(await page.$eval("#library", (e) => e.innerText), /Whoosh/);
+  await page.close();
 });

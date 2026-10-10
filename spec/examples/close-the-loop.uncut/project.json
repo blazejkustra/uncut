@@ -1,10 +1,24 @@
 {
   "format": "uncut/0",
   "name": "Close the loop",
-  "canvas": { "width": 1080, "height": 1350, "fps": 30, "background": "bg" },
+  "canvas": {
+    "width": 1080,
+    "height": 1350,
+    "fps": 30,
+    "background": "bg"
+  },
   "theme": {
-    "colors": { "bg": "#0A0A0B", "fg": "#F2F1EE", "mute": "#8C8C91", "line": "#26262A", "accent": "#99DAFF" },
-    "fonts": { "sans": "DM Sans", "mono": "DM Mono" },
+    "colors": {
+      "bg": "#0A0A0B",
+      "fg": "#F2F1EE",
+      "mute": "#8C8C91",
+      "line": "#26262A",
+      "accent": "#99DAFF"
+    },
+    "fonts": {
+      "sans": "DM Sans",
+      "mono": "DM Mono"
+    },
     "margin": 72
   },
   "media": [
@@ -13,29 +27,65 @@
       "kind": "video",
       "name": "Login flow, iPhone 16 Pro",
       "path": "media/sim-login-flow.mp4",
-      "source": { "module": "argent.capture", "device": "iPhone 16 Pro (iOS 26)", "flow": "flows/login.yaml" },
-      "probe": { "frames": 450, "fps": 30, "width": 1206, "height": 2622, "hasAudio": false }
+      "source": {
+        "module": "argent.capture",
+        "device": "iPhone 16 Pro (iOS 26)",
+        "flow": "flows/login.yaml"
+      },
+      "probe": {
+        "frames": 450,
+        "fps": 30,
+        "width": 1206,
+        "height": 2622,
+        "hasAudio": false
+      }
     },
     {
       "id": "m-argent-logo",
       "kind": "image",
       "name": "Argent logo",
       "path": "media/argent-logo.svg",
-      "probe": { "width": 512, "height": 512 }
+      "probe": {
+        "width": 512,
+        "height": 512
+      }
     },
     {
       "id": "m-music",
       "kind": "audio",
       "name": "Cozy Rhodes",
       "path": "../../shared/music/cozy-rhodes.mp3",
-      "probe": { "frames": 3600, "fps": 30, "hasAudio": true }
+      "probe": {
+        "frames": 3600,
+        "fps": 30,
+        "hasAudio": true
+      }
+    },
+    {
+      "id": "m-vo",
+      "kind": "audio",
+      "name": "Voiceover",
+      "path": "media/voiceover.wav",
+      "source": {
+        "module": "core.microphone",
+        "device": "MacBook Pro Microphone"
+      },
+      "probe": {
+        "frames": 330,
+        "fps": 30,
+        "hasAudio": true
+      }
     },
     {
       "id": "m-tap",
       "kind": "audio",
       "name": "Soft tap",
       "path": "media/tap.wav",
-      "probe": { "frames": 9, "fps": 30, "hasAudio": true }
+      "probe": {
+        "frames": 9,
+        "fps": 30,
+        "hasAudio": true
+      }
     }
   ],
   "tracks": [
@@ -50,8 +100,17 @@
           "start": 0,
           "duration": 90,
           "text": "Claude Code tests\nyour app now",
-          "transform": { "x": 72, "y": 520 },
-          "style": { "preset": "text.title", "size": 96, "weight": 600, "tracking": -0.02, "color": "fg" }
+          "transform": {
+            "x": 72,
+            "y": 520
+          },
+          "style": {
+            "preset": "text.title",
+            "size": 96,
+            "weight": 600,
+            "tracking": -0.02,
+            "color": "fg"
+          }
         },
         {
           "id": "txt-taps",
@@ -59,9 +118,22 @@
           "start": 250,
           "duration": 330,
           "text": "It taps through the login itself",
-          "transform": { "x": 72, "y": 96 },
-          "style": { "preset": "text.header", "size": 56, "weight": 600, "color": "fg" },
-          "animation": { "in": { "module": "move.fade", "duration": 9 } }
+          "transform": {
+            "x": 72,
+            "y": 96
+          },
+          "style": {
+            "preset": "text.header",
+            "size": 56,
+            "weight": 600,
+            "color": "fg"
+          },
+          "animation": {
+            "in": {
+              "module": "move.fade",
+              "duration": 9
+            }
+          }
         },
         {
           "id": "txt-result",
@@ -69,8 +141,16 @@
           "start": 610,
           "duration": 140,
           "text": "Found the bug\n[[Fixed it and tested again]]",
-          "transform": { "x": 72, "y": 560 },
-          "style": { "preset": "text.title", "size": 80, "weight": 600, "color": "fg" }
+          "transform": {
+            "x": 72,
+            "y": 560
+          },
+          "style": {
+            "preset": "text.title",
+            "size": 80,
+            "weight": 600,
+            "color": "fg"
+          }
         }
       ]
     },
@@ -85,8 +165,14 @@
           "component": "component.callout",
           "start": 420,
           "duration": 60,
-          "transform": { "x": 640, "y": 900 },
-          "props": { "label": "Sign in", "arrow": "left" }
+          "transform": {
+            "x": 640,
+            "y": 900
+          },
+          "props": {
+            "label": "Sign in",
+            "arrow": "left"
+          }
         }
       ]
     },
@@ -101,15 +187,25 @@
           "type": "component",
           "component": "component.solid",
           "duration": 90,
-          "props": { "color": "bg" }
+          "props": {
+            "color": "bg"
+          }
         },
         {
           "id": "terminal",
           "type": "component",
           "component": "component.terminal",
           "duration": 150,
-          "props": { "title": "claude", "prompt": "test the login flow on iOS", "typeFrom": 10, "typeTo": 70 },
-          "transitionIn": { "module": "transition.push-left", "duration": 8 }
+          "props": {
+            "title": "claude",
+            "prompt": "test the login flow on iOS",
+            "typeFrom": 10,
+            "typeTo": 70
+          },
+          "transitionIn": {
+            "module": "transition.push-left",
+            "duration": 8
+          }
         },
         {
           "id": "sim-login",
@@ -118,23 +214,37 @@
           "media": "m-sim-login",
           "in": 30,
           "duration": 360,
-          "props": { "device": "iphone-16-pro" },
-          "transitionIn": { "module": "transition.crossfade", "duration": 6 }
+          "props": {
+            "device": "iphone-16-pro"
+          },
+          "transitionIn": {
+            "module": "transition.crossfade",
+            "duration": 6
+          }
         },
         {
           "id": "result-bg",
           "type": "component",
           "component": "component.solid",
           "duration": 150,
-          "props": { "color": "bg" }
+          "props": {
+            "color": "bg"
+          }
         },
         {
           "id": "signoff",
           "type": "component",
           "component": "component.end-card",
           "duration": 90,
-          "props": { "logo": "m-argent-logo", "line": "Argent", "url": "argent.swmansion.com" },
-          "transitionIn": { "module": "transition.crossfade", "duration": 6 }
+          "props": {
+            "logo": "m-argent-logo",
+            "line": "Argent",
+            "url": "argent.swmansion.com"
+          },
+          "transitionIn": {
+            "module": "transition.crossfade",
+            "duration": 6
+          }
         }
       ]
     },
@@ -146,8 +256,21 @@
         "gainDb": -2,
         "pan": 0,
         "effects": [
-          { "module": "audio.eq", "params": { "lowCutHz": 60 } },
-          { "module": "audio.duck", "params": { "under": ["a2"], "amountDb": -6 } }
+          {
+            "module": "audio.eq",
+            "params": {
+              "lowCutHz": 60
+            }
+          },
+          {
+            "module": "audio.duck",
+            "params": {
+              "under": [
+                "a2"
+              ],
+              "amountDb": -6
+            }
+          }
         ]
       },
       "items": [
@@ -161,9 +284,18 @@
           "fadeIn": 12,
           "fadeOut": 60,
           "gainKeys": [
-            { "frame": 0, "db": 0 },
-            { "frame": 600, "db": 0 },
-            { "frame": 640, "db": -4 }
+            {
+              "frame": 0,
+              "db": 0
+            },
+            {
+              "frame": 600,
+              "db": 0
+            },
+            {
+              "frame": 640,
+              "db": -4
+            }
           ]
         }
       ]
@@ -171,20 +303,106 @@
     {
       "id": "a2",
       "kind": "audio",
-      "name": "SFX",
-      "mixer": { "gainDb": -8, "pan": 0 },
+      "name": "Voice",
+      "mixer": {
+        "gainDb": 0,
+        "pan": 0,
+        "effects": [
+          {
+            "module": "audio.voice-enhance",
+            "params": {
+              "amount": 0.6
+            }
+          },
+          {
+            "module": "audio.compressor",
+            "params": {
+              "ratio": 3,
+              "thresholdDb": -18
+            }
+          }
+        ]
+      },
       "items": [
-        { "id": "aud-tap", "type": "audio", "media": "m-tap", "start": 432, "in": 0, "duration": 9 }
+        {
+          "id": "aud-vo",
+          "type": "audio",
+          "media": "m-vo",
+          "start": 250,
+          "in": 0,
+          "duration": 330
+        }
+      ]
+    },
+    {
+      "id": "a3",
+      "kind": "audio",
+      "name": "SFX",
+      "mixer": {
+        "gainDb": -8,
+        "pan": 0
+      },
+      "items": [
+        {
+          "id": "aud-tap",
+          "type": "audio",
+          "media": "m-tap",
+          "start": 432,
+          "in": 0,
+          "duration": 9
+        }
       ]
     }
   ],
   "scenes": [
-    { "id": "s-hook", "name": "Hook", "start": 0, "end": 90 },
-    { "id": "s-prompt", "name": "Prompt", "start": 90, "end": 240 },
-    { "id": "s-run", "name": "Test run", "start": 240, "end": 600 },
-    { "id": "s-result", "name": "Result", "start": 600, "end": 750 },
-    { "id": "s-signoff", "name": "Sign-off", "start": 750, "end": 840 }
+    {
+      "id": "s-hook",
+      "name": "Hook",
+      "start": 0,
+      "end": 90
+    },
+    {
+      "id": "s-prompt",
+      "name": "Prompt",
+      "start": 90,
+      "end": 240
+    },
+    {
+      "id": "s-run",
+      "name": "Test run",
+      "start": 240,
+      "end": 600
+    },
+    {
+      "id": "s-result",
+      "name": "Result",
+      "start": 600,
+      "end": 750
+    },
+    {
+      "id": "s-signoff",
+      "name": "Sign-off",
+      "start": 750,
+      "end": 840
+    }
   ],
-  "markers": [{ "frame": 420, "label": "tap" }],
-  "master": { "loudness": { "targetLufs": -16 }, "effects": [{ "module": "audio.limiter", "params": { "ceilingDb": -1 } }] }
+  "markers": [
+    {
+      "frame": 420,
+      "label": "tap"
+    }
+  ],
+  "master": {
+    "loudness": {
+      "targetLufs": -16
+    },
+    "effects": [
+      {
+        "module": "audio.limiter",
+        "params": {
+          "ceilingDb": -1
+        }
+      }
+    ]
+  }
 }

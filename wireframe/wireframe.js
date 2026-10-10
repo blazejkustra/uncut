@@ -7,6 +7,8 @@ const STATES = {
   text: { lib: "text", side: "inspector", bottom: "timeline", selected: "txt-hook", frame: 30, editingText: true },
   agent: { lib: "media", side: "agent", bottom: "timeline", selected: "sim-login", frame: 330 },
   mixer: { lib: "audio", side: "inspector", bottom: "mixer", selected: "aud-music", frame: 330 },
+  transcript: { lib: "media", side: "inspector", bottom: "transcript", selected: "aud-vo", frame: 330 },
+  generate: { lib: "generate", side: "inspector", bottom: "timeline", selected: "sim-login", frame: 330 },
   capture: { lib: "capture", side: "inspector", bottom: "timeline", selected: "sim-login", frame: 330 },
   onboarding: { lib: "media", side: "inspector", bottom: "timeline", selected: "sim-login", frame: 330, modal: "onboarding" },
   export: { lib: "media", side: "inspector", bottom: "timeline", selected: "sim-login", frame: 330, modal: "export" },
@@ -95,6 +97,7 @@ const LIBRARY = {
           <div class="row">${icon("tablet-smartphone")}<div class="grow">Pixel 9<div class="sub">Android emulator, off</div></div><span class="dot"></span></div>
           <div class="row">${icon("globe")}<div class="grow">Chrome<div class="sub">Web app on port 9222</div></div><span class="dot ok"></span></div>
           <div class="row">${icon("monitor")}<div class="grow">This Mac<div class="sub">Screen or one window</div></div></div>
+          <div class="row">${icon("mic")}<div class="grow">Microphone<div class="sub">Voiceover onto the Voice track</div></div></div>
         </div>
         <button class="btn primary full" style="margin-top:10px">${icon("circle-dot")}Record iPhone 16 Pro</button>
       </div>
@@ -117,9 +120,7 @@ const LIBRARY = {
     return `<div class="lib-head">Text <button class="icon-btn" title="Add text (T)"><i data-lucide="plus"></i></button></div>
       <div class="lib-section"><div class="lib-label">Styles from this project's theme</div><div class="grid2">${presets
         .map(([k, n, t]) => `<button class="tile" data-preset="${k}"><div class="tp ${k}"><div>${t}</div></div><div class="tile-name">${n}</div></button>`)
-        .join("")}</div></div>
-      <div class="lib-section"><div class="lib-label">From the transcript</div>
-        <div class="row">${icon("captions")}<div class="grow">Generate captions<div class="sub">Word-timed, editable as text</div></div></div></div>`;
+        .join("")}</div></div>`;
   },
   components() {
     const items = [
@@ -141,24 +142,62 @@ const LIBRARY = {
         .join("")}</div></div>`;
   },
   audio() {
-    const music = [["Cozy Rhodes", "84 BPM", "2:00"], ["Warm tape", "72 BPM", "1:45"], ["Soft guitar", "90 BPM", "2:20"]];
-    return `<div class="lib-head">Audio</div>
-      <div class="lib-section"><div class="lib-label">Music (CC0)</div><div class="list">${music
-        .map(([n, b, d]) => `<div class="row">${icon("play")}<div class="grow">${n}<div class="sub">${b}, ${d}</div></div><button class="icon-btn" title="Add">${icon("plus")}</button></div>`)
+    const mode = ui.audioMode ?? "music";
+    const inProject = project.media.filter((m) => m.kind === "audio");
+    const libMusic = [
+      ["Cozy Rhodes", "Calm", "84 BPM", "2:00"],
+      ["Warm tape", "Calm", "72 BPM", "1:45"],
+      ["Soft guitar", "Warm", "90 BPM", "2:20"],
+      ["Night drive", "Steady", "100 BPM", "2:40"],
+      ["Paper planes", "Light", "110 BPM", "1:58"],
+    ];
+    const libSfx = [["Soft tap", "UI", "0.3s"], ["Whoosh, short", "Motion", "0.6s"], ["Keyboard typing", "Desk", "4.0s"], ["Notification", "UI", "0.8s"]];
+    const add = `<button class="icon-btn" title="Add to project">${icon("plus")}</button>`;
+    const rows =
+      mode === "music"
+        ? libMusic.map(([n, mood, bpm, d]) => `<div class="row">${icon("play")}<div class="grow">${n}<div class="sub">${mood}, ${bpm}, ${d}</div></div>${add}</div>`)
+        : libSfx.map(([n, k, d]) => `<div class="row">${icon("play")}<div class="grow">${n}<div class="sub">${k}, ${d}</div></div>${add}</div>`);
+    return `<div class="lib-head">Audio <button class="icon-btn" title="Import audio">${icon("upload")}</button></div>
+      <div class="lib-section" style="padding-bottom:4px"><div class="lib-label">In this project</div><div class="list">${inProject
+        .map((m) => `<div class="row" data-media="${m.id}">${icon("audio-lines")}<div class="grow">${esc(m.name)}<div class="sub">${secs(m.probe.frames)}${m.source?.module === "core.microphone" ? ", recorded here" : ""}</div></div></div>`)
         .join("")}</div></div>
-      <div class="lib-section"><div class="lib-label">Voice</div>
-        <div class="row">${icon("mic")}<div class="grow">Record voiceover<div class="sub">MacBook Pro microphone</div></div></div></div>
-      <div class="lib-section"><div class="lib-label">Sound effects</div>
-        <div class="row">${icon("audio-lines")}<div class="grow">Soft tap<div class="sub">0.3s</div></div></div></div>`;
+      <div class="lib-section">
+        <div class="lib-label">Free library, royalty free (CC0)</div>
+        <div class="seg" style="margin-bottom:8px"><button data-audio-mode="music" class="${mode === "music" ? "active" : ""}">Music</button><button data-audio-mode="sfx" class="${mode === "sfx" ? "active" : ""}">Sound effects</button></div>
+        <div class="search" style="margin:0 0 6px">${icon("search")} ${mode === "music" ? "Search by name, mood or BPM" : "Search sound effects"}</div>
+        <div class="list">${rows.join("")}</div>
+      </div>`;
   },
   generate() {
+    const mode = ui.genMode ?? "image";
+    const cfg = {
+      image: { ph: "A flat illustration of a phone on a desk, soft morning light", model: "GPT Image 2", opts: "4:5, 2 variants" },
+      video: { ph: "Slow push-in on a laptop showing a terminal, 4 seconds", model: "Veo 3.1", opts: "4:5, 4s" },
+      audio: { ph: "Soft whoosh for a quick push transition", model: "ElevenLabs Sound", opts: "Sound effect, 1s" },
+    }[mode];
+    const actions = `<div class="gen-actions"><button class="link-btn">${icon("plus")}Add at playhead</button><button class="link-btn">${icon("refresh-cw")}Again</button><button class="link-btn">${icon("pencil")}Edit prompt</button></div>`;
+    const results =
+      mode === "audio"
+        ? `<div class="gen-result selected"><div class="row">${icon("play")}<div class="grow">Soft whoosh, take 1<div class="sub">0.9s, saved to Media</div></div></div></div>
+           <div class="gen-result"><div class="row">${icon("loader-circle")}<div class="grow">Soft whoosh, take 2<div class="sub">Generating</div></div></div></div>${actions}`
+        : `<div class="grid2">
+            <div class="gen-result selected"><div class="thumb tall">${icon(mode === "video" ? "film" : "image")}${mode === "video" ? '<span class="dur">4.0s</span>' : ""}</div></div>
+            <div class="gen-result"><div class="thumb tall gen-pending">${icon("loader-circle")}<span class="muted small">Generating</span></div></div>
+          </div>${actions}`;
     return `<div class="lib-head">Generate</div>
       <div class="lib-section">
-        <div class="composer" style="margin:0"><textarea placeholder="Describe an image or a short clip"></textarea>
-          <div class="composer-foot"><span class="ctx">GPT Image 2, API key, 4:5</span><button class="send">${icon("arrow-up")}</button></div></div>
+        <div class="seg" style="margin-bottom:10px"><button data-gen-mode="image" class="${mode === "image" ? "active" : ""}">Image</button><button data-gen-mode="video" class="${mode === "video" ? "active" : ""}">Video</button><button data-gen-mode="audio" class="${mode === "audio" ? "active" : ""}">Audio</button></div>
+        <div class="composer" style="margin:0"><textarea placeholder="${cfg.ph}"></textarea>
+          <div class="composer-foot"><span class="ctx">${cfg.model}, ${cfg.opts}</span><button class="send">${icon("arrow-up")}</button></div></div>
         <div class="lib-label" style="margin-top:14px">Results</div>
-        <div class="grid2"><div class="tile"><div class="thumb tall">${icon("image")}</div></div><div class="tile"><div class="thumb tall">${icon("image")}</div></div></div>
-        <p class="muted small">Generated files are saved to the project's media folder.</p>
+        ${results}
+        <div class="gen-flow">
+          <div class="lib-label" style="margin:0 0 2px">After generating</div>
+          <div>${icon("folder-down")}Every result lands in Media, Generated, with its prompt</div>
+          <div>${icon("mouse-pointer-2")}Add it at the playhead or drag it onto the timeline</div>
+          <div>${icon("refresh-cw")}Again or Edit prompt makes a new take next to it</div>
+          <div>${icon("bot")}The agent generates through the same tab, so its results show here too</div>
+        </div>
       </div>`;
   },
 };
@@ -416,38 +455,121 @@ function renderMixer() {
     </div></div>`;
 }
 
+// Words come from the transcript in the analysis cache, not from project.json.
+const TRANSCRIPT = [
+  { start: 250, words: "I asked Claude Code to test the login." },
+  { start: 330, words: "It opened the simulator, um, typed the email", filler: ["um,"] },
+  { start: 400, pause: "0.8s" },
+  { start: 424, words: "and tapped Sign in on its own." },
+  { start: 470, words: "Then it found the bug, uh, before I did.", filler: ["uh,"] },
+];
+
+function renderTranscript() {
+  const lines = TRANSCRIPT.map((l) => {
+    const time = `<span class="tr-time">${tc(l.start)}</span>`;
+    if (l.pause) return `<div class="tr-line">${time}<span class="tr-pause">${icon("pause")}${l.pause} pause</span></div>`;
+    const words = l.words
+      .split(" ")
+      .map((w, i) => {
+        const cls = l.filler?.includes(w) ? "tr-word filler" : l.start === 330 && i === 3 ? "tr-word current" : "tr-word";
+        return `<span class="${cls}">${esc(w)}</span>`;
+      })
+      .join(" ");
+    return `<div class="tr-line">${time}<span>${words}</span></div>`;
+  }).join("");
+  $("#bottom-body").innerHTML = `<div class="transcript" data-testid="transcript">
+      <div class="tr-head">
+        <div><b>Voiceover</b> <span class="muted small">transcribed, 5 lines</span></div>
+        <div class="tr-actions">
+          <button class="btn">${icon("eraser")}Remove 2 fillers</button>
+          <button class="btn">${icon("scissors")}Cut 1 long pause</button>
+          <button class="btn">${icon("captions")}Make captions</button>
+        </div>
+      </div>
+      <div class="tr-body">${lines}</div>
+      <div class="tr-hint muted small">Delete words here to cut them from the video. Select words to make captions from them, or to ask the agent about that part.</div>
+    </div>`;
+}
+
 // ---------- modals ----------
 
 function renderModal() {
   const layer = $("#modal-layer");
   if (!ui.modal) { layer.hidden = true; layer.innerHTML = ""; return; }
   layer.hidden = false;
-  if (ui.modal === "onboarding") {
-    layer.innerHTML = `<div class="modal" data-testid="onboarding">
-      <div class="modal-head"><h2>Welcome to Uncut</h2><div class="muted">Uncut uses the coding agents you already have. Nothing to pay for here.</div></div>
-      <div class="modal-section"><h3>Agents</h3>
-        <div class="check-row">${icon("circle-check")}<div class="grow">Claude Code<div class="sub">Signed in, Max plan</div></div><span class="dot ok"></span></div>
-        <div class="check-row">${icon("circle-alert")}<div class="grow">Codex<div class="sub">Not installed <code>npm i -g @openai/codex</code></div></div><button class="btn">Install</button></div>
+  layer.innerHTML = ui.modal === "onboarding" ? renderOnboarding() : renderExport();
+}
+
+const ready = `<span class="wiz-ready">${icon("check")}Ready</span>`;
+const wizRow = (ic, name, sub, right) =>
+  `<div class="wiz-row">${icon(ic)}<div class="grow"><div class="wiz-name">${name}</div><div class="wiz-sub">${sub}</div></div>${right}</div>`;
+
+function renderOnboarding() {
+  const step = ui.obStep ?? 0;
+  const steps = ["Agents", "Capture", "First video"];
+  const stepper = `<ol class="wiz-steps">${steps
+    .map((s, i) => `<li><button data-ob-step="${i}" class="${i === step ? "current" : ""}"><span class="wiz-num ${i < step ? "done" : i === step ? "now" : ""}">${i < step ? icon("check") : i + 1}</span>${s}</button></li>`)
+    .join("")}</ol>`;
+  let body;
+  if (step === 0) {
+    body = `<h1>Connect your agents</h1>
+      <p class="wiz-lead">Uncut runs on the Claude Code or Codex you already use, with your own subscription. No API keys needed.</p>
+      <div class="wiz-list">
+        ${wizRow("sparkle", "Claude Code", "Signed in, Max plan", ready)}
+        ${wizRow("terminal", "Codex", "Not installed", `<button class="btn ghost">${icon("terminal")}Install</button>`)}
+        <div class="wiz-term"><div class="wiz-term-head">Review the command, then press Enter to run it.<button class="link-btn">Close</button></div>
+          <div class="wiz-term-body mono">~ $ npm i -g @openai/codex<span class="caret"></span></div></div>
       </div>
-      <div class="modal-section"><h3>Capture</h3>
-        <div class="check-row">${icon("circle-check")}<div class="grow">Argent<div class="sub">Records simulators, emulators, web and desktop apps</div></div><span class="dot ok"></span></div>
+      <div class="wiz-foot"><p>One agent is enough. Add more any time in Settings.</p><button class="btn primary" data-ob-step="1">Continue${icon("arrow-right")}</button></div>`;
+  } else if (step === 1) {
+    body = `<h1>Record your apps</h1>
+      <p class="wiz-lead">Argent records simulators, emulators, web and desktop apps. The agent can drive the app while it records.</p>
+      <div class="wiz-list">
+        ${wizRow("circle-dot", "Argent", "Installed, version 0.9", ready)}
+        ${wizRow("smartphone", "iOS simulators", "Xcode 26, 3 simulators", ready)}
+        ${wizRow("tablet-smartphone", "Android emulators", "Android SDK not found", `<button class="btn ghost">${icon("terminal")}Set up</button>`)}
+        ${wizRow("mic", "Microphone", "For voiceovers", `<button class="btn ghost">Allow</button>`)}
       </div>
-      <div class="modal-section"><h3>Privacy</h3>
-        <div class="check-row"><div class="grow">Share anonymous usage stats<div class="sub">Never media, prompts, file names or project content. <a href="#" style="color:var(--muted)">What we collect</a></div></div><span class="toggle"></span></div>
-      </div>
-      <div class="modal-foot"><button class="btn" data-close>Skip</button><button class="btn primary" data-close>Continue</button></div>
-    </div>`;
+      <div class="wiz-foot"><p>Optional. Skip it if you only edit footage you already have.</p><div class="wiz-btns"><button class="btn ghost" data-ob-step="2">Skip</button><button class="btn primary" data-ob-step="2">Continue${icon("arrow-right")}</button></div></div>`;
   } else {
-    layer.innerHTML = `<div class="modal" data-testid="export">
-      <div class="modal-head"><h2>Export</h2><div class="muted">${esc(project.name)}, ${tc(project._duration)}</div></div>
-      <div class="modal-section"><h3>Format</h3>
-        <div class="field-row">${select(`${project.canvas.width}×${project.canvas.height}, 4:5`, "Size")}${select(`${project.canvas.fps} fps`, "Rate")}</div>
-        <div class="field-row">${select("H.264, high quality", "Codec")}${select(`${project.master.loudness.targetLufs} LUFS`, "Loudness")}</div>
-        <div class="field-row">${select("Whole video", "Range")}${select("close-the-loop.mp4", "File")}</div>
+    body = `<h1>Start a video</h1>
+      <p class="wiz-lead">Pick a shape. You can change it later, and the agent can reframe for other formats.</p>
+      <div class="wiz-cards">
+        <button class="wiz-card active"><div class="wiz-shape" style="aspect-ratio:4/5"></div>Social<span>4:5, 1080×1350</span></button>
+        <button class="wiz-card"><div class="wiz-shape" style="aspect-ratio:9/16"></div>Vertical<span>9:16, 1080×1920</span></button>
+        <button class="wiz-card"><div class="wiz-shape" style="aspect-ratio:16/9"></div>YouTube<span>16:9, 3840×2160</span></button>
       </div>
-      <div class="modal-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" data-close>${icon("download")}Export</button></div>
-    </div>`;
+      <div class="wiz-list" style="margin-top:12px">${wizRow("folder-open", "Open a project", "A .uncut folder on this Mac", `<button class="btn ghost">Choose</button>`)}</div>
+      <div class="wiz-foot"><p class="wiz-privacy"><span class="toggle"></span>Share anonymous usage stats. Never media, prompts or file names. <a href="#">What we collect</a></p><button class="btn primary" data-close>Create video${icon("arrow-right")}</button></div>`;
   }
+  return `<div class="modal wiz" data-testid="onboarding">
+    <div class="wiz-header"><div class="wiz-brand">Uncut</div>${stepper}</div>
+    <div class="wiz-panel">${body}</div>
+  </div>`;
+}
+
+function renderExport() {
+  const preset = ui.exportPreset ?? "full";
+  const W = project.canvas.width, H = project.canvas.height;
+  const presets = [
+    ["full", "Full quality", `${W}×${H}`, "About 24 MB"],
+    ["draft", "Quick draft", `${W / 2}×${H / 2}`, "About 5 MB"],
+    ["double", "2× sharper", `${W * 2}×${H * 2}`, "About 80 MB"],
+  ];
+  return `<div class="modal wiz" data-testid="export">
+    <div class="wiz-header"><div class="wiz-brand">Export</div><div class="muted">${esc(project.name)}, ${secs(project._duration)}, 4:5</div></div>
+    <div class="wiz-panel">
+      <div class="wiz-cards">${presets
+        .map(([k, n, s, size]) => `<button class="wiz-card ${k === preset ? "active" : ""}" data-preset-card="${k}">${n}<span>${s}</span><span>${size}</span></button>`)
+        .join("")}</div>
+      <div class="wiz-list" style="margin-top:14px">
+        <div class="wiz-field"><span>File</span><b>close-the-loop.mp4</b><button class="link-btn">~/Movies/Uncut${icon("chevron-down")}</button></div>
+        <div class="wiz-field"><span>Sound</span><b>${project.master.loudness.targetLufs} LUFS</b><span class="muted small">Right for X, LinkedIn and Instagram</span></div>
+      </div>
+      <p class="wiz-meta">H.264, ${project.canvas.fps} fps, takes about 20 seconds</p>
+      <div class="wiz-foot"><p>Opens in Finder when it's done.</p><div class="wiz-btns"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-close>${icon("download")}Export</button></div></div>
+    </div>
+  </div>`;
 }
 
 // ---------- render + state ----------
@@ -459,7 +581,9 @@ function render() {
   $("#side-body").innerHTML = ui.side === "agent" ? renderAgent() : renderInspector();
   $$("[data-bottom]").forEach((b) => b.classList.toggle("active", b.dataset.bottom === ui.bottom));
   $("#timeline-tools").style.visibility = ui.bottom === "timeline" ? "visible" : "hidden";
-  ui.bottom === "mixer" ? renderMixer() : renderTimeline();
+  if (ui.bottom === "mixer") renderMixer();
+  else if (ui.bottom === "transcript") renderTranscript();
+  else renderTimeline();
   renderPreview();
   renderModal();
   $$("#review a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#${ui.state}`));
@@ -475,12 +599,16 @@ function applyHash() {
 }
 
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-lib],[data-side],[data-bottom],[data-item],[data-text-tab],[data-close],[data-state-link]");
+  const t = e.target.closest("[data-lib],[data-side],[data-bottom],[data-item],[data-text-tab],[data-close],[data-state-link],[data-audio-mode],[data-gen-mode],[data-ob-step],[data-preset-card]");
   if (!t) return;
   if (t.dataset.lib) ui.lib = t.dataset.lib;
   else if (t.dataset.side) ui.side = t.dataset.side;
   else if (t.dataset.bottom) ui.bottom = t.dataset.bottom;
   else if (t.dataset.textTab) ui.textTab = t.dataset.textTab;
+  else if (t.dataset.audioMode) ui.audioMode = t.dataset.audioMode;
+  else if (t.dataset.genMode) ui.genMode = t.dataset.genMode;
+  else if (t.dataset.obStep) ui.obStep = Number(t.dataset.obStep);
+  else if (t.dataset.presetCard) ui.exportPreset = t.dataset.presetCard;
   else if (t.dataset.close !== undefined) ui.modal = null;
   else if (t.dataset.stateLink) { location.hash = t.dataset.stateLink; return; }
   else if (t.dataset.item) {
