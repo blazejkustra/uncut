@@ -1,0 +1,29 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.chart",
+  "kind": "component",
+  "name": "Chart",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "bars": {
+        "type": "array"
+      },
+      "unit": {
+        "type": "string"
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "chart-column"
+  }
+}

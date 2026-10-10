@@ -1,0 +1,41 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.terminal",
+  "kind": "component",
+  "name": "Terminal",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "prompt": {
+        "type": "string"
+      },
+      "typeFrom": {
+        "type": "integer"
+      },
+      "typeTo": {
+        "type": "integer"
+      },
+      "lines": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "terminal"
+  }
+}

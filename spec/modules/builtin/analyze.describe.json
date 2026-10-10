@@ -1,0 +1,23 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "analyze.describe",
+  "kind": "analyzer",
+  "name": "Describe shots",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "agent"
+  },
+  "analyzer": {
+    "inputs": [
+      "video",
+      "image"
+    ],
+    "outputs": [
+      "description"
+    ],
+    "backend": "subscription-agent"
+  }
+}

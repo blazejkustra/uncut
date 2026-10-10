@@ -1,0 +1,35 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.callout",
+  "kind": "component",
+  "name": "Callout",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "label": {
+        "type": "string"
+      },
+      "arrow": {
+        "enum": [
+          "left",
+          "right",
+          "up",
+          "down",
+          "none"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "mouse-pointer-click"
+  }
+}

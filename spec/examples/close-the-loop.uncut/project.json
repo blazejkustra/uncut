@@ -237,7 +237,9 @@
           "component": "component.end-card",
           "duration": 90,
           "props": {
-            "logo": "m-argent-logo",
+            "logo": {
+            "media": "m-argent-logo"
+          },
             "line": "Argent",
             "url": "argent.swmansion.com"
           },

@@ -1,0 +1,26 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.solid",
+  "kind": "component",
+  "name": "Background",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "color": {
+        "type": "string"
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "square"
+  }
+}

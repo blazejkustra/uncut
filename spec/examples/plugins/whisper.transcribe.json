@@ -1,0 +1,28 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "whisper.transcribe",
+  "kind": "analyzer",
+  "name": "Whisper (on this Mac)",
+  "version": "0.1.0",
+  "description": "Transcribes speech locally with word timings. No network, no API key.",
+  "author": "Community",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "uncut-whisper" },
+  "capabilities": ["media:read"],
+  "requires": { "platforms": ["macos-arm64", "linux-x64", "windows-x64"] },
+  "analyzer": {
+    "inputs": ["audio", "video"],
+    "outputs": ["transcript"],
+    "backend": "local-model",
+    "model": {
+      "name": "whisper-large-v3-turbo",
+      "sizeMb": 1620,
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+    }
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": { "language": { "type": "string", "description": "Auto-detect when empty." } }
+  }
+}

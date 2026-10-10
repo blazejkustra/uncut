@@ -1,0 +1,28 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "audio.eq",
+  "kind": "audio-processor",
+  "name": "EQ",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "lowCutHz": {
+        "type": "number"
+      },
+      "highCutHz": {
+        "type": "number"
+      },
+      "bands": {
+        "type": "array"
+      }
+    }
+  }
+}

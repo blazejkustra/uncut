@@ -1,0 +1,23 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "audio.limiter",
+  "kind": "audio-processor",
+  "name": "Limiter",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ceilingDb": {
+        "type": "number",
+        "maximum": 0
+      }
+    }
+  }
+}

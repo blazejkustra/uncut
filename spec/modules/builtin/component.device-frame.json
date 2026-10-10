@@ -1,0 +1,34 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.device-frame",
+  "kind": "component",
+  "name": "Device frame",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "device": {
+        "enum": [
+          "iphone-16-pro",
+          "pixel-9",
+          "browser",
+          "mac-window"
+        ]
+      }
+    },
+    "required": [
+      "device"
+    ]
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "smartphone"
+  }
+}

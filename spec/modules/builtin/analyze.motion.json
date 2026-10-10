@@ -1,0 +1,23 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "analyze.motion",
+  "kind": "analyzer",
+  "name": "Motion and shake",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "native"
+  },
+  "analyzer": {
+    "inputs": [
+      "video"
+    ],
+    "outputs": [
+      "motion",
+      "stability"
+    ],
+    "backend": "signal"
+  }
+}
