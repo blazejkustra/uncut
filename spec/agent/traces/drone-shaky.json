@@ -1,0 +1,80 @@
+{
+  "trace": "uncut.agent-trace/0",
+  "project": "spec/examples/drone-montage.uncut/project.json",
+  "request": "Cut the shaky parts of the drone footage, keep it to 60 s",
+  "notes": "Outputs are what Uncut would return. Stability is 0 (unusable) to 1 (locked off); below 0.5 counts as shaky.",
+  "calls": [
+    {
+      "tool": "project_read",
+      "input": { "detail": "summary" },
+      "output": { "revision": 0, "duration": 5850, "main": ["lake 0-1800", "ridge 1800-3150", "orbit 3150-5850"] }
+    },
+    {
+      "tool": "media_analyze",
+      "input": { "media": "m-lake", "analyses": ["stability", "motion"] },
+      "output": {
+        "stability": [
+          { "start": 0, "end": 600, "value": 0.92, "label": "smooth forward pass" },
+          { "start": 600, "end": 930, "value": 0.31, "label": "gust, horizon wobbles" },
+          { "start": 930, "end": 1800, "value": 0.88, "label": "smooth climb" }
+        ]
+      }
+    },
+    {
+      "tool": "media_analyze",
+      "input": { "media": "m-ridge", "analyses": ["stability", "motion"] },
+      "output": {
+        "stability": [
+          { "start": 0, "end": 120, "value": 0.2, "label": "take-off jolt" },
+          { "start": 120, "end": 420, "value": 0.81, "label": "steady reveal of the ridge" },
+          { "start": 420, "end": 1350, "value": 0.15, "label": "strong wind, constant shake" }
+        ]
+      }
+    },
+    {
+      "tool": "media_analyze",
+      "input": { "media": "m-orbit", "analyses": ["stability", "motion"] },
+      "output": {
+        "stability": [
+          { "start": 0, "end": 1500, "value": 0.9, "label": "clean orbit" },
+          { "start": 1500, "end": 2100, "value": 0.35, "label": "orbit corrects, jerky yaw" },
+          { "start": 2100, "end": 2700, "value": 0.86, "label": "clean, sun dips" }
+        ]
+      }
+    },
+    {
+      "tool": "contact_sheet",
+      "input": { "media": "m-ridge", "at": "every", "every": 45, "columns": 6 },
+      "output": { "image": ".cache/sheets/m-ridge-every45.jpg", "frames": [0, 45, 90, 135, 180, 225, 270, 315, 360, 405, 450, 495] }
+    },
+    {
+      "tool": "timeline_edit",
+      "input": {
+        "baseRevision": 0,
+        "summary": "Kept the three clean stretches, 60 s in total",
+        "ops": [
+          { "op": "trim_item", "item": "lake", "edge": "end", "frames": 1200 },
+          { "op": "trim_item", "item": "ridge", "edge": "start", "frames": 120 },
+          { "op": "trim_item", "item": "ridge", "edge": "end", "frames": 930 },
+          { "op": "trim_item", "item": "orbit", "edge": "start", "frames": 300 },
+          { "op": "trim_item", "item": "orbit", "edge": "end", "frames": 1500 },
+          { "op": "set_transition", "item": "ridge", "transition": { "module": "transition.crossfade", "duration": 12 } },
+          { "op": "set_transition", "item": "orbit", "transition": { "module": "transition.crossfade", "duration": 12 } },
+          { "op": "update_item", "item": "music", "set": { "duration": 1800 } }
+        ]
+      },
+      "output": { "revision": 1 }
+    },
+    {
+      "tool": "render_frames",
+      "input": { "frames": [0, 600, 900, 1799], "scale": 0.25 },
+      "output": { "images": [".cache/frames/0.jpg", ".cache/frames/600.jpg", ".cache/frames/900.jpg", ".cache/frames/1799.jpg"] }
+    },
+    {
+      "tool": "ui_show",
+      "input": { "frame": 600, "select": ["ridge"] },
+      "output": "ok"
+    }
+  ],
+  "expect": { "duration": 1800, "maxShakyStability": 0.5 }
+}

@@ -194,6 +194,16 @@ export function validateProject(project, modules) {
           if (tr.duration > Math.min(prev.duration, item.duration) / 2) {
             errors.push(err("transition-too-long", ipath, `a ${tr.duration}-frame transition needs both items to be at least ${tr.duration * 2} frames`));
           }
+          // A transition is centred on the cut, so both clips need spare media (handles) past the cut.
+          const half = Math.ceil(tr.duration / 2);
+          const prevMedia = prev.media && media.get(prev.media);
+          const curMedia = item.media && media.get(item.media);
+          if (curMedia && curMedia.kind === "video" && (item.in ?? 0) < half) {
+            errors.push(err("transition-handles", ipath, `needs ${half} frames of "${item.media}" before its in-point for the ${tr.module}`));
+          }
+          if (prevMedia && prevMedia.kind === "video" && prevMedia.probe?.frames && (prev.in ?? 0) + prev.duration + half > prevMedia.probe.frames) {
+            errors.push(err("transition-handles", ipath, `"${prev.id}" needs ${half} frames of "${prev.media}" after its out-point for the ${tr.module}`));
+          }
           const limits = m?.transition;
           if (limits && (tr.duration < (limits.minFrames ?? 1) || tr.duration > (limits.maxFrames ?? Infinity))) {
             errors.push(err("transition-length", ipath, `${tr.module} takes ${limits.minFrames} to ${limits.maxFrames} frames`));
