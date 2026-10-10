@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uncut architecture</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      --bg: #0a0a0a; --panel: #111; --raised: #1a1a1a; --fg: #ededed; --muted: #8f8f8f; --dim: #5f5f5f;
+      --line: rgb(255 255 255 / 14%); --border: rgb(255 255 255 / 9%); --accent: #6d8cff;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+      --mono: "SF Mono", ui-monospace, Menlo, monospace;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 var(--font); }
+    main { max-width: 1240px; margin: 0 auto; padding: 40px 16px 80px; }
+    h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 6px; }
+    h2 { font-size: 18px; letter-spacing: -0.01em; margin: 48px 0 12px; }
+    p.lead { color: var(--muted); margin: 0 0 28px; max-width: 760px; }
+    .diagram { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); overflow-x: auto; }
+    svg { display: block; width: 100%; min-width: 1100px; height: auto; }
+    svg text { font-family: var(--font); fill: var(--fg); }
+    .box { fill: var(--raised); stroke: var(--line); }
+    .group { fill: none; stroke: var(--line); }
+    .remote { fill: none; stroke: var(--accent); stroke-dasharray: 6 5; opacity: 0.7; }
+    .t-title { font-size: 15px; font-weight: 600; }
+    .t-sub { font-size: 12px; fill: var(--muted); }
+    .t-item { font-size: 12.5px; fill: #cfcfcf; }
+    .t-edge { font-size: 11.5px; fill: var(--muted); }
+    .t-remote { font-size: 12px; fill: var(--accent); }
+    .edge { stroke: #7a7a7a; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+    .edge.two { marker-start: url(#arrow-back); }
+    .edge.dashed { stroke-dasharray: 5 4; }
+    .flows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 860px) { .flows { grid-template-columns: 1fr; } }
+    .flow { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--panel); }
+    .flow h3 { margin: 0 0 10px; font-size: 15px; }
+    .flow ol { margin: 0; padding-left: 20px; color: #d4d4d4; }
+    .flow li { margin: 4px 0; }
+    .flow code, p code { font: 12px var(--mono); color: var(--muted); }
+    .open { border-left: 2px solid var(--accent); padding: 4px 0 4px 14px; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Uncut architecture</h1>
+  <p class="lead">Electron UI, a TypeScript server built with Effect, and a Rust media core (D11). One edit engine serves both the user and the agent, so every change is checked, attributed and undoable the same way (D6, D7, D12).</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 1200 760" role="img" aria-label="Process diagram">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7a7a7a" /></marker>
+        <marker id="arrow-back" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#7a7a7a" /></marker>
+      </defs>
+
+      <!-- Desktop app group -->
+      <rect class="group" x="20" y="20" width="360" height="560" rx="14" />
+      <text class="t-sub" x="36" y="44">Desktop app (Electron)</text>
+
+      <g class="node" data-node="main">
+        <rect class="box" x="40" y="60" width="320" height="118" rx="10" />
+        <text class="t-title" x="58" y="86">Electron main</text>
+        <text class="t-item" x="58" y="110">Windows, menus, auto-update</text>
+        <text class="t-item" x="58" y="130">Mic and screen permissions, file dialogs</text>
+        <text class="t-item" x="58" y="150">Starts the server and the media core</text>
+        <text class="t-item" x="58" y="170">Offscreen window: HTML graphics for export</text>
+      </g>
+
+      <g class="node" data-node="renderer">
+        <rect class="box" x="40" y="206" width="320" height="354" rx="10" />
+        <text class="t-title" x="58" y="232">Renderer (React UI)</text>
+        <text class="t-sub" x="58" y="252">Dumb UI: reads snapshots, sends edit ops</text>
+        <text class="t-item" x="58" y="284">Library, inspector, agent tab</text>
+        <text class="t-item" x="58" y="306">Timeline, transcript, mixer</text>
+        <text class="t-item" x="58" y="328">Onboarding and export</text>
+        <text class="t-title" x="58" y="372" style="font-size:13px">Preview</text>
+        <text class="t-item" x="58" y="394">HTML graphics layer: render(t)</text>
+        <text class="t-item" x="58" y="414">  text, components, transitions (D10)</text>
+        <text class="t-item" x="58" y="436">Footage surface (spike A decides):</text>
+        <text class="t-item" x="58" y="456">  WebCodecs + WebGPU in Chromium, or</text>
+        <text class="t-item" x="58" y="476">  frames from the media core</text>
+        <text class="t-item" x="58" y="508">Same render(t) is used for export,</text>
+        <text class="t-item" x="58" y="528">so preview and export match</text>
+      </g>
+
+      <!-- Remote-capable boundary -->
+      <rect class="remote" x="430" y="20" width="750" height="560" rx="14" />
+      <text class="t-remote" x="446" y="44">Can run on another machine later (environments, as in t3code)</text>
+
+      <g class="node" data-node="server">
+        <rect class="box" x="450" y="60" width="380" height="500" rx="10" />
+        <text class="t-title" x="468" y="86">Uncut server (Node + Effect)</text>
+        <text class="t-sub" x="468" y="106">Commands in, events out, one transaction per edit</text>
+        <text class="t-title" x="468" y="140" style="font-size:13px">Edit engine</text>
+        <text class="t-item" x="468" y="160">Edit ops, revisions, conflict check (D6)</text>
+        <text class="t-item" x="468" y="180">Validator: schema + rules, per-turn undo (D7)</text>
+        <text class="t-title" x="468" y="214" style="font-size:13px">Project store</text>
+        <text class="t-item" x="468" y="234">project.json, history.db, watches hand edits</text>
+        <text class="t-title" x="468" y="268" style="font-size:13px">Orchestrator</text>
+        <text class="t-item" x="468" y="288">Threads, turns, manual-edit note before each turn</text>
+        <text class="t-title" x="468" y="322" style="font-size:13px">Provider adapters</text>
+        <text class="t-item" x="468" y="342">Claude Agent SDK, codex app-server, ACP (D8)</text>
+        <text class="t-title" x="468" y="376" style="font-size:13px">MCP server</text>
+        <text class="t-item" x="468" y="396">Uncut tools + module tools (spec/agent/tools.json)</text>
+        <text class="t-title" x="468" y="430" style="font-size:13px">Module host</text>
+        <text class="t-item" x="468" y="450">Manifests, capabilities, process and wasm modules</text>
+        <text class="t-title" x="468" y="484" style="font-size:13px">Jobs</text>
+        <text class="t-item" x="468" y="504">Analysis, proxies, generation, export queue</text>
+        <text class="t-item" x="468" y="524">Progress events to the UI</text>
+      </g>
+
+      <g class="node" data-node="core">
+        <rect class="box" x="880" y="60" width="280" height="500" rx="10" />
+        <text class="t-title" x="898" y="86">Rust media core</text>
+        <text class="t-sub" x="898" y="106">Native module or helper process (spike A)</text>
+        <text class="t-title" x="898" y="140" style="font-size:13px">Media</text>
+        <text class="t-item" x="898" y="160">Probe, hardware decode (VideoToolbox)</text>
+        <text class="t-item" x="898" y="180">Proxies, thumbnails, waveforms</text>
+        <text class="t-title" x="898" y="214" style="font-size:13px">Signals (D1)</text>
+        <text class="t-item" x="898" y="234">Shots, motion and stability</text>
+        <text class="t-item" x="898" y="254">Loudness, beats, silence</text>
+        <text class="t-title" x="898" y="288" style="font-size:13px">Compositor</text>
+        <text class="t-item" x="898" y="308">wgpu: footage, effects, stabilize</text>
+        <text class="t-item" x="898" y="328">Layers in HTML graphics frames</text>
+        <text class="t-item" x="898" y="348">Candidate: Smelter (SWM)</text>
+        <text class="t-title" x="898" y="382" style="font-size:13px">Audio engine</text>
+        <text class="t-item" x="898" y="402">Mixer, EQ, compressor, ducking</text>
+        <text class="t-item" x="898" y="422">LUFS metering and targets (D15)</text>
+        <text class="t-title" x="898" y="456" style="font-size:13px">Export</text>
+        <text class="t-item" x="898" y="476">Encode (VideoToolbox), mux</text>
+        <text class="t-item" x="898" y="496">Same frames as preview</text>
+      </g>
+
+      <!-- Externals -->
+      <g class="node" data-node="cli">
+        <rect class="box" x="450" y="640" width="210" height="88" rx="10" />
+        <text class="t-title" x="468" y="666">Agent CLIs</text>
+        <text class="t-item" x="468" y="688">claude, codex, ACP agents</text>
+        <text class="t-sub" x="468" y="708">The user's own login (D9)</text>
+      </g>
+      <g class="node" data-node="argent">
+        <rect class="box" x="680" y="640" width="180" height="88" rx="10" />
+        <text class="t-title" x="698" y="666">Argent</text>
+        <text class="t-item" x="698" y="688">Capture module (D20)</text>
+        <text class="t-sub" x="698" y="708">Simulators, emulators, web</text>
+      </g>
+      <g class="node" data-node="apis">
+        <rect class="box" x="880" y="640" width="130" height="88" rx="10" />
+        <text class="t-title" x="898" y="666">APIs</text>
+        <text class="t-item" x="898" y="688">Generators</text>
+        <text class="t-sub" x="898" y="708">BYO key (D4)</text>
+      </g>
+      <g class="node" data-node="disk">
+        <rect class="box" x="1030" y="640" width="150" height="88" rx="10" />
+        <text class="t-title" x="1048" y="666">Name.uncut/</text>
+        <text class="t-item" x="1048" y="688">project.json, media</text>
+        <text class="t-sub" x="1048" y="708">history.db, .cache</text>
+      </g>
+      <g class="node" data-node="userwin">
+        <rect class="box" x="40" y="640" width="320" height="88" rx="10" />
+        <text class="t-title" x="58" y="666">You</text>
+        <text class="t-item" x="58" y="688">Edit by hand, or ask the agent</text>
+        <text class="t-sub" x="58" y="708">Both go through the same edit engine</text>
+      </g>
+
+      <!-- Edges -->
+      <path class="edge two" d="M360 300 H450" />
+      <text class="t-edge" x="368" y="286">WebSocket</text>
+      <text class="t-edge" x="368" y="322">RPC, ops</text>
+
+      <path class="edge two" d="M830 300 H880" />
+      <path class="edge two dashed" d="M360 520 C 420 604, 820 604, 880 520" />
+      <text class="t-edge" x="628" y="612">preview frames (spike A)</text>
+
+      <path class="edge two" d="M555 560 V640" />
+      <text class="t-edge" x="562" y="634">spawn + MCP</text>
+      <path class="edge two" d="M770 560 V640" />
+      <path class="edge" d="M945 560 V640" />
+      <path class="edge two" d="M1105 560 V640" />
+      <path class="edge two" d="M200 640 V560" />
+      <path class="edge two" d="M200 178 V206" />
+    </svg>
+  </div>
+
+  <h2>Four flows</h2>
+  <div class="flows">
+    <section class="flow" data-flow="open">
+      <h3>1. Open a project</h3>
+      <ol>
+        <li>The renderer asks the server to open <code>Launch video.uncut/</code>.</li>
+        <li>The server reads <code>project.json</code>, validates it, opens <code>history.db</code> and loads module manifests.</li>
+        <li>The media core probes media, builds missing proxies, waveforms and thumbnails into <code>.cache/</code> in the background.</li>
+        <li>The server sends a snapshot with its revision. The UI draws the timeline right away and fills in thumbnails as jobs finish.</li>
+      </ol>
+    </section>
+    <section class="flow" data-flow="scrub">
+      <h3>2. Scrub and play</h3>
+      <ol>
+        <li>The playhead lives in the renderer. Scrubbing never round-trips through the server.</li>
+        <li>The graphics layer calls <code>render(t)</code> in the page for text, components and transitions.</li>
+        <li>Footage frames come from the footage surface: decoded in Chromium or by the media core. Spike A measures both on 4K drone footage.</li>
+        <li>Audio plays from the media core's engine, so meters and ducking match export.</li>
+      </ol>
+    </section>
+    <section class="flow" data-flow="agent">
+      <h3>3. The agent edits</h3>
+      <ol>
+        <li>You send a prompt. The orchestrator starts a turn with the provider adapter (for example <code>claude</code>), adding the note about your manual edits.</li>
+        <li>The agent reads the project, analyzes media and looks at frames through Uncut's MCP tools.</li>
+        <li>It calls <code>timeline_edit</code> with the revision it saw. The edit engine checks for conflicts with your newer edits, validates and commits.</li>
+        <li>The change lands in <code>history.db</code> with the turn id, <code>project.json</code> is written, and the UI updates and fills the turn card. "Undo turn" removes the whole turn.</li>
+      </ol>
+    </section>
+    <section class="flow" data-flow="export">
+      <h3>4. Export</h3>
+      <ol>
+        <li>The export dialog starts a job on the server.</li>
+        <li>For each frame the media core decodes footage, and the offscreen window renders the same <code>render(t)</code> graphics as the preview.</li>
+        <li>The compositor layers them and the encoder writes H.264. The audio engine mixes, then normalises to the LUFS target.</li>
+        <li>Progress streams to the UI. When it's done, Finder opens on the file.</li>
+      </ol>
+    </section>
+  </div>
+
+  <h2>Decided by spike A, not by this page</h2>
+  <p class="open">Where footage is decoded for preview (Chromium WebCodecs vs. the Rust core), how the core is attached (native module vs. helper process), and whether Smelter is the compositor. The rest of the diagram holds either way.</p>
+</main>
+</body>
+</html>
