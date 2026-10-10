@@ -32,5 +32,7 @@ export function serve(port = Number(process.env.PORT ?? 4317)) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = await serve();
-  console.log(`Wireframe: http://127.0.0.1:${server.address().port}/wireframe/`);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  console.log(`Wireframe:    ${base}/wireframe/`);
+  console.log(`Architecture: ${base}/spec/architecture/`);
 }
