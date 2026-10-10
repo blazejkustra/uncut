@@ -1,0 +1,21 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "transition.crossfade",
+  "kind": "transition",
+  "name": "Crossfade",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "transition": {
+    "minFrames": 2,
+    "maxFrames": 60
+  },
+  "ui": {
+    "panel": "transitions",
+    "icon": "blend"
+  }
+}

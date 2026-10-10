@@ -1,0 +1,16 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "text.header",
+  "kind": "text-style",
+  "name": "Header",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "ui": {
+    "panel": "text"
+  }
+}

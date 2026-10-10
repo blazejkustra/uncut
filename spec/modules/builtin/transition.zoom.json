@@ -1,0 +1,21 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "transition.zoom",
+  "kind": "transition",
+  "name": "Zoom",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "transition": {
+    "minFrames": 4,
+    "maxFrames": 30
+  },
+  "ui": {
+    "panel": "transitions",
+    "icon": "zoom-in"
+  }
+}

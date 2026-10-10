@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uncut.dev/schema/module/0.json",
+  "title": "Uncut module manifest (uncut.module.json)",
+  "description": "One shape for every module. Built-in modules and community plugins use the same manifest.",
+  "type": "object",
+  "required": ["manifest", "id", "kind", "name", "version", "runtime"],
+  "unevaluatedProperties": false,
+  "properties": {
+    "manifest": { "const": "uncut.module/0" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$",
+      "description": "Namespaced id used in project.json, e.g. transition.crossfade or argent.capture."
+    },
+    "kind": {
+      "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source"]
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
+    "description": { "type": "string" },
+    "author": { "type": "string" },
+    "license": { "type": "string" },
+    "builtin": { "type": "boolean" },
+    "runtime": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "description": "How the module runs. html modules render in the graphics layer; wasm runs sandboxed; native ships with the Rust core; process is an external program Uncut talks to.",
+      "properties": {
+        "type": { "enum": ["html", "wasm", "native", "process", "agent"] },
+        "entry": { "type": "string" },
+        "command": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "JSON Schema for the module's props/params. The inspector builds its controls from it, and the agent reads it."
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "What the module may touch. The user approves these on install. Nothing is allowed by default.",
+      "items": {
+        "enum": ["network", "project:read", "project:write", "media:read", "media:write", "process:spawn", "gpu", "microphone", "screen", "api-key"]
+      }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "binary": { "type": "string", "description": "An external program that must be on PATH." },
+        "minVersion": { "type": "string" },
+        "install": { "type": "string", "description": "The command onboarding shows in its inline terminal." },
+        "platforms": { "type": "array", "items": { "enum": ["macos-arm64", "windows-x64", "linux-x64"] } }
+      }
+    },
+    "agentTools": {
+      "type": "array",
+      "description": "Actions this module exposes to the agent as MCP tools.",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "inputSchema"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "description": { "type": "string" },
+          "inputSchema": { "type": "object" }
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "panel": { "enum": ["media", "capture", "text", "components", "transitions", "audio", "generate"] },
+        "icon": { "type": "string", "description": "A lucide icon name." },
+        "thumbnail": { "type": "string" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "transition" } } },
+      "then": {
+        "properties": {
+          "transition": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "minFrames": { "type": "integer", "minimum": 1 }, "maxFrames": { "type": "integer", "minimum": 1 } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "analyzer" } } },
+      "then": {
+        "required": ["analyzer"],
+        "properties": {
+          "analyzer": {
+            "type": "object",
+            "required": ["inputs", "outputs", "backend"],
+            "additionalProperties": false,
+            "properties": {
+              "inputs": { "type": "array", "minItems": 1, "items": { "enum": ["video", "audio", "image"] } },
+              "outputs": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "enum": ["transcript", "shots", "motion", "stability", "loudness", "beats", "silence", "description"] }
+              },
+              "backend": { "enum": ["subscription-agent", "local-model", "api", "signal"] },
+              "model": {
+                "type": "object",
+                "required": ["name", "sizeMb", "url"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "sizeMb": { "type": "number", "exclusiveMinimum": 0 },
+                  "url": { "type": "string" },
+                  "sha256": { "type": "string" }
+                }
+              }
+            },
+            "if": { "properties": { "backend": { "const": "local-model" } } },
+            "then": { "required": ["model"] }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "generator" } } },
+      "then": {
+        "required": ["generator"],
+        "properties": {
+          "generator": {
+            "type": "object",
+            "required": ["media", "provider"],
+            "additionalProperties": false,
+            "properties": {
+              "media": { "enum": ["image", "video", "audio"] },
+              "provider": { "type": "string" },
+              "model": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "capture-source" } } },
+      "then": {
+        "required": ["capture"],
+        "properties": {
+          "capture": {
+            "type": "object",
+            "required": ["targets"],
+            "additionalProperties": false,
+            "properties": {
+              "targets": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "enum": ["ios-simulator", "ios-device", "android-emulator", "android-device", "chromium", "electron", "desktop-screen", "desktop-window", "microphone", "vega"] }
+              },
+              "flows": { "type": "boolean", "description": "Can save and replay recordings as flows (re-shoot)." },
+              "agentDriven": { "type": "boolean", "description": "The agent can drive the target while it records." }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

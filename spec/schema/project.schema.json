@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uncut.dev/schema/project/0.json",
+  "title": "Uncut project (project.json)",
+  "description": "Pure project state. Times are integer frames at canvas.fps. Edit attribution and history live in history.db, analysis in .cache/.",
+  "type": "object",
+  "required": ["format", "name", "canvas", "media", "tracks"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "uncut/0" },
+    "name": { "type": "string", "minLength": 1 },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height", "fps"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 16, "maximum": 8192 },
+        "height": { "type": "integer", "minimum": 16, "maximum": 8192 },
+        "fps": { "enum": [24, 25, 30, 50, 60] },
+        "background": { "$ref": "#/$defs/color" }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "colors": { "type": "object", "additionalProperties": { "type": "string" } },
+        "fonts": { "type": "object", "additionalProperties": { "type": "string" } },
+        "margin": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "media": { "type": "array", "items": { "$ref": "#/$defs/media" } },
+    "tracks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/track" } },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "start", "end"],
+        "additionalProperties": false,
+        "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "start": { "$ref": "#/$defs/frame" }, "end": { "$ref": "#/$defs/frame" } }
+      }
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["frame"],
+        "additionalProperties": false,
+        "properties": { "frame": { "$ref": "#/$defs/frame" }, "label": { "type": "string" } }
+      }
+    },
+    "master": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loudness": {
+          "type": "object",
+          "required": ["targetLufs"],
+          "additionalProperties": false,
+          "properties": { "targetLufs": { "type": "number", "minimum": -30, "maximum": -5 } }
+        },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/moduleUse" } }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "moduleId": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$" },
+    "frame": { "type": "integer", "minimum": 0 },
+    "frames": { "type": "integer", "minimum": 1 },
+    "color": { "type": "string", "minLength": 1, "description": "A theme colour token (e.g. fg) or a CSS colour." },
+    "mediaRef": {
+      "type": "object",
+      "required": ["media"],
+      "additionalProperties": false,
+      "properties": { "media": { "$ref": "#/$defs/id" } },
+      "description": "How a component prop points at a media item, so validators and relinking can find it."
+    },
+    "moduleUse": {
+      "type": "object",
+      "required": ["module"],
+      "additionalProperties": false,
+      "properties": { "module": { "$ref": "#/$defs/moduleId" }, "params": { "type": "object" }, "bypass": { "type": "boolean" } }
+    },
+    "timedModule": {
+      "type": "object",
+      "required": ["module", "duration"],
+      "additionalProperties": false,
+      "properties": { "module": { "$ref": "#/$defs/moduleId" }, "duration": { "$ref": "#/$defs/frames" }, "params": { "type": "object" } }
+    },
+    "media": {
+      "type": "object",
+      "required": ["id", "kind", "name", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["video", "image", "audio"] },
+        "name": { "type": "string" },
+        "path": { "type": "string", "description": "Relative to the project folder, or absolute. Media is referenced, not copied, unless collected into media/." },
+        "source": {
+          "type": "object",
+          "required": ["module"],
+          "description": "Where the media came from: a capture source, a generator or an import. Lets Uncut re-shoot or regenerate it.",
+          "properties": { "module": { "$ref": "#/$defs/moduleId" } }
+        },
+        "probe": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frames": { "$ref": "#/$defs/frames", "description": "Length in project frames." },
+            "fps": { "type": "number" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "hasAudio": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "required": ["id", "kind", "name", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["video", "text", "audio"] },
+        "role": { "const": "main", "description": "The magnetic track. Its items have no start; they play back to back." },
+        "name": { "type": "string" },
+        "locked": { "type": "boolean" },
+        "hidden": { "type": "boolean" },
+        "mixer": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gainDb": { "type": "number", "minimum": -60, "maximum": 12 },
+            "pan": { "type": "number", "minimum": -1, "maximum": 1 },
+            "mute": { "type": "boolean" },
+            "solo": { "type": "boolean" },
+            "effects": { "type": "array", "items": { "$ref": "#/$defs/moduleUse" } }
+          }
+        },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number" },
+        "h": { "type": "number" },
+        "scale": { "type": "number" },
+        "rotate": { "type": "number" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "fit": { "enum": ["contain", "cover", "fill"] }
+      }
+    },
+    "keyframe": {
+      "type": "object",
+      "required": ["frame"],
+      "properties": {
+        "frame": { "$ref": "#/$defs/frame", "description": "Frames from the item's start." },
+        "ease": { "enum": ["linear", "in", "out", "inOut"] }
+      }
+    },
+    "itemBase": {
+      "type": "object",
+      "required": ["id", "type", "duration"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "enum": ["clip", "component", "graphic", "text", "captions", "audio"] },
+        "name": { "type": "string" },
+        "start": { "$ref": "#/$defs/frame", "description": "Required on free tracks, forbidden on the main track." },
+        "duration": { "$ref": "#/$defs/frames" },
+        "locked": { "type": "boolean" },
+        "transform": { "$ref": "#/$defs/transform" },
+        "keys": { "type": "array", "items": { "$ref": "#/$defs/keyframe" } },
+        "transitionIn": { "$ref": "#/$defs/timedModule", "description": "Main track only: the transition from the previous item into this one." },
+        "animation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "in": { "$ref": "#/$defs/timedModule" }, "out": { "$ref": "#/$defs/timedModule" }, "loop": { "$ref": "#/$defs/timedModule" } }
+        },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/moduleUse" } }
+      }
+    },
+    "item": {
+      "allOf": [{ "$ref": "#/$defs/itemBase" }],
+      "unevaluatedProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "clip" },
+            "media": { "$ref": "#/$defs/id" },
+            "in": { "$ref": "#/$defs/frame" },
+            "speed": { "type": "number", "exclusiveMinimum": 0 },
+            "gainDb": { "type": "number" }
+          },
+          "required": ["media"]
+        },
+        {
+          "properties": {
+            "type": { "const": "component" },
+            "component": { "$ref": "#/$defs/moduleId" },
+            "media": { "$ref": "#/$defs/id", "description": "The component's main footage, e.g. the recording inside a device frame." },
+            "in": { "$ref": "#/$defs/frame" },
+            "props": { "type": "object" }
+          },
+          "required": ["component"]
+        },
+        {
+          "properties": {
+            "type": { "const": "graphic" },
+            "src": { "type": "string", "pattern": "^graphics/.+\\.html$", "description": "Agent-written HTML/CSS exposing render(t), in the project's graphics/ folder." },
+            "props": { "type": "object" }
+          },
+          "required": ["src"]
+        },
+        {
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "type": "string", "description": "Markup: **bold**, [[accent]], `mono`, \\n for a line break." },
+            "style": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "preset": { "$ref": "#/$defs/moduleId" },
+                "font": { "type": "string" },
+                "size": { "type": "number", "exclusiveMinimum": 0 },
+                "weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+                "tracking": { "type": "number" },
+                "lineHeight": { "type": "number" },
+                "color": { "$ref": "#/$defs/color" },
+                "align": { "enum": ["left", "center", "right"] },
+                "stroke": { "type": "object" },
+                "shadow": { "type": "object" },
+                "background": { "type": "object" }
+              }
+            }
+          },
+          "required": ["text"]
+        },
+        {
+          "properties": {
+            "type": { "const": "captions" },
+            "source": { "$ref": "#/$defs/id", "description": "Media whose transcript (in .cache) supplies the words and timings." },
+            "style": { "type": "object" },
+            "mode": { "enum": ["line", "word"] },
+            "edits": {
+              "type": "array",
+              "description": "Text corrections on top of the transcript, keyed by word index.",
+              "items": { "type": "object", "required": ["word", "text"], "properties": { "word": { "type": "integer", "minimum": 0 }, "text": { "type": "string" } } }
+            }
+          },
+          "required": ["source"]
+        },
+        {
+          "properties": {
+            "type": { "const": "audio" },
+            "media": { "$ref": "#/$defs/id" },
+            "in": { "$ref": "#/$defs/frame" },
+            "gainDb": { "type": "number" },
+            "fadeIn": { "$ref": "#/$defs/frame" },
+            "fadeOut": { "$ref": "#/$defs/frame" },
+            "loop": { "type": "boolean" },
+            "gainKeys": {
+              "type": "array",
+              "items": { "type": "object", "required": ["frame", "db"], "additionalProperties": false, "properties": { "frame": { "$ref": "#/$defs/frame" }, "db": { "type": "number" } } }
+            }
+          },
+          "required": ["media"]
+        }
+      ]
+    }
+  }
+}

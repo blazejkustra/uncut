@@ -1,0 +1,37 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.follow-card",
+  "kind": "component",
+  "name": "Follow card",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "handle": {
+        "type": "string"
+      },
+      "logo": {
+        "type": "object",
+        "required": [
+          "media"
+        ],
+        "properties": {
+          "media": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "user-plus"
+  }
+}

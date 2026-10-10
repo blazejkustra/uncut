@@ -1,0 +1,56 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "argent.capture",
+  "kind": "capture-source",
+  "name": "Argent",
+  "version": "0.1.0",
+  "description": "Records iOS simulators, Android emulators, web and desktop apps. Saves recordings as flows you can re-shoot when the app changes, and lets the agent drive the app while it records.",
+  "author": "Software Mansion",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "argent", "args": ["mcp"] },
+  "requires": {
+    "binary": "argent",
+    "minVersion": "0.9.0",
+    "install": "npm i -g @swmansion/argent@latest && argent init -y",
+    "platforms": ["macos-arm64", "linux-x64", "windows-x64"]
+  },
+  "capabilities": ["process:spawn", "media:write", "project:read"],
+  "capture": {
+    "targets": ["ios-simulator", "ios-device", "android-emulator", "android-device", "chromium", "electron", "vega"],
+    "flows": true,
+    "agentDriven": true
+  },
+  "agentTools": [
+    {
+      "name": "argent_list_devices",
+      "description": "List simulators, emulators and Chromium apps that can be recorded, with their state.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "argent_record",
+      "description": "Record a device. Either replay a saved flow or let the agent drive the app from a goal. Returns the new media id.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["device"],
+        "additionalProperties": false,
+        "properties": {
+          "device": { "type": "string" },
+          "flow": { "type": "string", "description": "Path of a saved flow to replay, e.g. flows/login.yaml." },
+          "goal": { "type": "string", "description": "What the agent should do in the app while recording." },
+          "saveFlow": { "type": "string", "description": "Save what happened as a flow at this path." }
+        }
+      }
+    },
+    {
+      "name": "argent_reshoot",
+      "description": "Re-record a media item from its saved flow and swap it in everywhere it is used.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["media"],
+        "additionalProperties": false,
+        "properties": { "media": { "type": "string" } }
+      }
+    }
+  ],
+  "ui": { "panel": "capture", "icon": "circle-dot" }
+}

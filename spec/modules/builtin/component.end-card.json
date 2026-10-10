@@ -1,0 +1,40 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.end-card",
+  "kind": "component",
+  "name": "End card",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "logo": {
+        "type": "object",
+        "required": [
+          "media"
+        ],
+        "properties": {
+          "media": {
+            "type": "string"
+          }
+        }
+      },
+      "line": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      }
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "badge-check"
+  }
+}
