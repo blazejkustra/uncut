@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
     "wireframe": "node scripts/serve.mjs",
-    "editor": "electron spikes/editor/main.cjs"
+    "editor": "electron spikes/editor/main.cjs",
+    "demo": "node spikes/editor/make-demo.mjs"
   },
   "devDependencies": {
     "ajv": "8.20.0",
