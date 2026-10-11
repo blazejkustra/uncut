@@ -7,7 +7,7 @@
 import { isAbsolute, join } from "node:path";
 
 import { EditRefused, ProjectError, type Problem, type ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, EditConflict, EditError } from "@uncut/core";
+import { applyEdit, EditConflict, EditError, type Op, type Project, type Session } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -21,12 +21,6 @@ import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { ProjectFormat } from "./format.ts";
 import { Recents } from "./recents.ts";
-
-interface Session {
-  readonly project: Record<string, unknown> & { readonly name: string };
-  readonly revision: number;
-  readonly log: ReadonlyArray<unknown>;
-}
 
 interface OpenProject {
   readonly dir: string;
@@ -79,7 +73,7 @@ export class Projects extends Context.Service<Projects, ProjectsShape>()("uncut/
 export const DEFAULT_CANVAS: Canvas = { width: 1920, height: 1080, fps: 30 };
 
 /** A valid project with nothing in it: a text track on top, the main video track, an audio track. */
-export const emptyProject = (name: string, canvas: Canvas = DEFAULT_CANVAS) => ({
+export const emptyProject = (name: string, canvas: Canvas = DEFAULT_CANVAS): Project => ({
   format: "uncut/0",
   name,
   canvas: { width: canvas.width, height: canvas.height, fps: canvas.fps },
@@ -241,7 +235,8 @@ export const layer = Layer.effect(
           ]);
         }
         const applied = yield* Effect.try({
-          try: () => applyEdit(p.session, { actor: "user", ops, baseRevision, summary }, format.validate) as Session,
+          // validateOps above checked every op against the edit-ops schema.
+          try: () => applyEdit(p.session, { actor: "user", ops: ops as ReadonlyArray<Op>, baseRevision, summary }, format.validate),
           catch: (error) =>
             error instanceof EditError
               ? refused(error.message, toProblems(error))

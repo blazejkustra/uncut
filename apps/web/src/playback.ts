@@ -44,7 +44,9 @@ let follower: ((frame: number) => number | undefined) | undefined;
 
 function tick(now: number) {
   if (!state.playing) return;
-  let f = clock.f0 + ((now - clock.t0) * state.fps) / 1000;
+  // A rAF timestamp is the frame's start, which can be a little before the performance.now()
+  // taken in play(); never step back before where playback started.
+  let f = clock.f0 + (Math.max(0, now - clock.t0) * state.fps) / 1000;
   const videoFrame = follower?.(f);
   if (videoFrame !== undefined && Math.abs(videoFrame - f) > 2) {
     clock = { f0: videoFrame, t0: now };

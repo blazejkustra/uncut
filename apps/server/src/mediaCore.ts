@@ -129,7 +129,8 @@ export const layer = Layer.effect(
           duration: Duration.seconds(10 + paths.length),
           orElse: () => Effect.fail(fail(`${mediaBin} didn't finish probing in time`)),
         }),
-        Effect.catchTag("PlatformError", (e) => Effect.fail(fail(`can't run ${mediaBin}: ${e.message}`))),
+        // No PlatformError reaches here: the batch loop above already turns a helper that can't
+        // run into per-file "crashed" outcomes.
       );
 
     return MediaCore.of({

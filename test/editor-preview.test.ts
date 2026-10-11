@@ -10,8 +10,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps } from "./helpers/app.mjs";
-import { demoProject, skipDemo } from "./helpers/demo.mjs";
+import { launchApp, lockApps, unlockApps } from "./helpers/app.ts";
+import { demoProject, skipDemo } from "./helpers/demo.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -99,7 +99,7 @@ test("an empty project gets a title and a lower third, plays them at their frame
   await page.click("[data-testid=new-project]");
   await waitFor(page, "[data-testid=new-project-form]");
   await page.click("[data-testid=choose-folder]");
-  await page.waitForFunction((dir) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === dir, {}, projects);
+  await page.waitForFunction((dir: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === dir, {}, projects);
   await page.click("[data-testid=create]");
   await waitFor(page, "[data-testid=editor]");
   const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);

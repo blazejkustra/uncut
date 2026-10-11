@@ -3,46 +3,13 @@
 // "add to timeline". The ops go through project.edit, so the server validates them and they undo.
 import { layout } from "@uncut/core/timeline";
 
-import type { Canvas } from "./format.ts";
+import type { Item, Media, Project, Track } from "@uncut/core/types";
 
-export interface MediaItem {
-  readonly id: string;
-  readonly kind: "video" | "audio" | "image";
-  readonly name: string;
-  readonly path: string;
-  readonly probe?: { readonly frames?: number; readonly fps?: number; readonly width?: number; readonly height?: number; readonly hasAudio?: boolean };
-}
-
-export interface Item {
-  readonly id: string;
-  readonly type: "clip" | "component" | "graphic" | "text" | "captions" | "audio";
-  readonly name?: string;
-  readonly start?: number;
-  readonly duration: number;
-  readonly media?: string;
-  readonly in?: number;
-  readonly text?: string;
-  readonly transform?: { readonly x?: number; readonly y?: number };
-  readonly style?: { readonly preset?: string; readonly size?: number; readonly weight?: number };
-  readonly transitionIn?: { readonly module: string; readonly duration: number };
-}
-
-export interface Track {
-  readonly id: string;
-  readonly kind: "video" | "text" | "audio";
-  readonly role?: "main";
-  readonly name: string;
-  readonly hidden?: boolean;
-  readonly items: ReadonlyArray<Item>;
-}
-
-export interface ProjectModel {
-  readonly name: string;
-  readonly canvas: Canvas;
-  readonly media: ReadonlyArray<MediaItem>;
-  readonly tracks: ReadonlyArray<Track>;
-  readonly scenes?: ReadonlyArray<{ readonly id: string }>;
-}
+// The format types come from @uncut/core (spec/schema). Only type imports from the package root
+// would pull node:fs into the renderer, so these use the browser-safe subpaths.
+export type { Item, Track };
+export type MediaItem = Media;
+export type ProjectModel = Project;
 
 export interface Layout {
   readonly starts: Map<string, number>;

@@ -12,7 +12,8 @@ const { createAgent } = require("./agent.cjs");
 
 const run = promisify(execFile);
 const root = path.resolve(__dirname, "../..");
-const spec = (p) => pathToFileURL(path.join(root, "spec", p)).href;
+// @uncut/core is TypeScript; Electron's Node strips the types when it imports it.
+const core = (p) => pathToFileURL(path.join(root, "packages/core/src", p)).href;
 
 if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port", process.env.UNCUT_CDP);
 
@@ -22,7 +23,7 @@ let win;
 let agent;
 
 async function loadEngine() {
-  const [ops, val, log, timeline] = await Promise.all([import(spec("lib/apply-ops.mjs")), import(spec("lib/validate.mjs")), import(spec("lib/edit-log.mjs")), import("./timeline.mjs")]);
+  const [ops, val, log, timeline] = await Promise.all([import(core("apply-ops.ts")), import(core("validate.ts")), import(core("edit-log.ts")), import("./timeline.mjs")]);
   const modules = await val.loadModules(path.join(root, "spec/modules/builtin"), path.join(root, "spec/examples/plugins"));
   engine = { ...ops, ...log, timeline, modules, validate: (p) => val.validateProject(p, modules), duration: val.projectDuration };
 }

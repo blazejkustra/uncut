@@ -17,7 +17,7 @@ extraResources:
     to: modules/builtin
     filter: ["*.json"]
 # Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
-afterSign: scripts/after-sign.cjs
+afterSign: scripts/after-sign.ts
 mac:
   category: public.app-category.video
   icon: build/icon.icns
