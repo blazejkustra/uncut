@@ -1,0 +1,17 @@
+{
+  "name": "@uncut/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./validate": "./src/validate.mjs",
+    "./apply-ops": "./src/apply-ops.mjs",
+    "./edit-log": "./src/edit-log.mjs",
+    "./timeline": "./src/timeline.mjs",
+    "./render": "./src/render.js"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  }
+}

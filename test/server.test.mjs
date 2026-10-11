@@ -2,11 +2,10 @@
 // server.hello over Effect RPC (JSON frames), asking the media core for its version.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createInterface } from "node:readline";
+import { connect, killAll, openSocket, startServer as start } from "./helpers/server.mjs";
 
 const BUNDLE = "apps/server/dist/server.mjs";
 const MEDIA = resolve("native/media/target/release/uncut-media");
@@ -14,52 +13,18 @@ const skip = existsSync(BUNDLE) && existsSync(MEDIA) ? false : "server bundle or
 const T = { skip, timeout: 20000 };
 
 let dir, server, ready;
-const running = new Set();
 
-// Starts the bundle from a temp dir with no node_modules around it, as the packaged app does.
-async function startServer(env, { args = [], bootstrap } = {}) {
-  const proc = spawn(process.execPath, [join(dir, "server.mjs"), ...args], {
-    env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", ...env },
-    stdio: ["pipe", "pipe", "inherit", "pipe"],
-  });
-  running.add(proc);
-  proc.once("exit", () => running.delete(proc));
-  proc.stdio[3].on("error", () => {});
-  if (bootstrap !== undefined) proc.stdio[3].end(bootstrap);
-  const exited = new Promise((r) => proc.once("exit", (code, signal) => r({ code, signal, at: Date.now() })));
-  const line = await new Promise((res, rej) => {
-    const timer = setTimeout(() => rej(new Error("no ready line within 10s")), 10000);
-    createInterface({ input: proc.stdout }).once("line", (l) => (clearTimeout(timer), res(l)));
-    exited.then(({ code }) => (clearTimeout(timer), rej(new Error(`server exited (${code})`))));
-  }).catch((error) => {
-    proc.kill("SIGKILL");
-    throw error;
-  });
-  return { proc, ready: JSON.parse(line), exited };
-}
-
-function openSocket(url) {
-  return new Promise((res, rej) => {
-    const ws = new WebSocket(url);
-    ws.onopen = () => res(ws);
-    ws.onerror = () => rej(new Error("socket error"));
-  });
-}
+// The bundle runs from a temp dir with no node_modules around it, as in the packaged app.
+const startServer = (env, opts = {}) => start({ entry: join(dir, "server.mjs"), env: { UNCUT_DATA_DIR: join(dir, "data"), ...env }, ...opts });
 
 async function rpc(url, request) {
-  const ws = await openSocket(url);
-  return new Promise((res, rej) => {
-    const timer = setTimeout(() => rej(new Error("no reply within 10s")), 10000);
-    ws.onmessage = (m) => {
-      const msg = JSON.parse(m.data);
-      if (msg._tag === "Exit") {
-        clearTimeout(timer);
-        ws.close();
-        res(msg.exit);
-      }
-    };
-    ws.send(JSON.stringify({ _tag: "Request", id: "1", headers: [], payload: {}, ...request }));
-  });
+  const { port, searchParams } = new URL(url);
+  const client = await connect(Number(port), searchParams.get("token"));
+  try {
+    return await client.call(request.tag, request.payload);
+  } finally {
+    client.close();
+  }
 }
 
 const fakeMedia = (name, body) => {
@@ -78,7 +43,7 @@ before(async () => {
   ({ proc: server, ready } = await startServer({ UNCUT_MEDIA_BIN: MEDIA }));
 });
 after(() => {
-  for (const proc of running) proc.kill("SIGKILL");
+  killAll();
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 

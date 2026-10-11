@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as Context from "effect/Context";
@@ -15,6 +17,12 @@ export interface ServerConfigShape {
   // True when nobody handed us a token, so the ready line has to tell the caller.
   readonly tokenGenerated: boolean;
   readonly mediaBin: string;
+  // Built-in module manifests (spec/modules/builtin). The packaged app ships a copy in Resources.
+  readonly modulesDir: string;
+  // Where app state lives (recents.json). The desktop passes Electron's userData path.
+  readonly dataDir: string;
+  // Test-only fault injection (UNCUT_TEST_FAULT), e.g. "create-after-mkdir".
+  readonly testFault: string | undefined;
 }
 
 export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()(
@@ -43,7 +51,8 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
   return { bootstrapToken, exitWithStdin: argv.includes("--exit-with-stdin") };
 };
 
-// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN and the token over the bootstrap fd.
+// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_DATA_DIR
+// and the token over the bootstrap fd. Dev fallbacks assume the bundle in apps/server/dist.
 // Run by hand, the server picks a free port and a fresh token (or takes UNCUT_TOKEN) and
 // prints the port, plus any token it generated, on its ready line.
 export const readConfig = (
@@ -61,6 +70,9 @@ export const readConfig = (
     mediaBin:
       env.UNCUT_MEDIA_BIN ||
       fileURLToPath(new URL("../../../native/media/target/release/uncut-media", import.meta.url)),
+    modulesDir: env.UNCUT_MODULES_DIR || fileURLToPath(new URL("../../../spec/modules/builtin", import.meta.url)),
+    dataDir: env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"),
+    testFault: env.UNCUT_TEST_FAULT || undefined,
   };
 };
 
