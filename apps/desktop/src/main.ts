@@ -15,10 +15,12 @@ const resources = app.isPackaged
   ? {
       serverEntry: path.join(process.resourcesPath, "server", "server.mjs"),
       mediaBin: path.join(process.resourcesPath, "bin", "uncut-media"),
+      modulesDir: path.join(process.resourcesPath, "modules", "builtin"),
     }
   : {
       serverEntry: path.join(repoRoot, "apps/server/dist/server.mjs"),
       mediaBin: path.join(repoRoot, "native/media/target/release/uncut-media"),
+      modulesDir: path.join(repoRoot, "spec/modules/builtin"),
     };
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -84,6 +86,8 @@ const fromAppWindow = (event: IpcMainInvokeEvent) => {
 app.whenReady().then(() => {
   server = startServer({
     ...resources,
+    // Tests point this at a temp dir so they never touch the real recents.
+    dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
     onExit: (reason) => win?.webContents.send(SERVER_EXIT_CHANNEL, reason),
   });
   ipcMain.handle(SERVER_CONNECTION_CHANNEL, (event) => {

@@ -8,7 +8,10 @@ import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer } from "effect/http";
 
 import * as Config from "./config.ts";
+import * as Format from "./format.ts";
 import * as MediaCore from "./mediaCore.ts";
+import * as Projects from "./projects.ts";
+import * as Recents from "./recents.ts";
 import * as Ws from "./ws.ts";
 
 // stdout is a protocol channel: exactly one JSON line once the port is bound. The desktop
@@ -50,6 +53,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
   const layerRoutes = HttpRouter.serve(Ws.layer, { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     Layer.provide(MediaCore.layer),
+    Layer.provide(Projects.layer.pipe(Layer.provide(Format.layer), Layer.provideMerge(Recents.layer))),
     Layer.provideMerge(layerHttpServer),
     Layer.provideMerge(Config.layer(config)),
     Layer.provideMerge(NodeServices.layer),

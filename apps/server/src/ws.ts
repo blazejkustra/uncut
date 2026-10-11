@@ -11,6 +11,8 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { ServerConfig } from "./config.ts";
 import { MediaCore } from "./mediaCore.ts";
+import { Projects } from "./projects.ts";
+import { Recents } from "./recents.ts";
 
 const tokensMatch = (given: string | null, expected: string) => {
   if (given === null) return false;
@@ -19,7 +21,15 @@ const tokensMatch = (given: string | null, expected: string) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
-const handlersLayer = (config: typeof ServerConfig.Service, mediaCore: typeof MediaCore.Service) =>
+interface Services {
+  readonly config: typeof ServerConfig.Service;
+  readonly mediaCore: typeof MediaCore.Service;
+  readonly projects: typeof Projects.Service;
+  readonly recents: typeof Recents.Service;
+}
+
+// Handlers stay thin: decode (done by the RPC layer), call one service method.
+const handlersLayer = ({ config, mediaCore, projects, recents }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -28,13 +38,23 @@ const handlersLayer = (config: typeof ServerConfig.Service, mediaCore: typeof Me
         pid: process.pid,
         mediaCore: { version },
       })),
+    [RPC_METHODS.projectCreate]: (input) => projects.create(input),
+    [RPC_METHODS.projectOpen]: ({ dir }) => projects.open(dir),
+    [RPC_METHODS.projectGet]: () => projects.get,
+    [RPC_METHODS.projectReload]: () => projects.reload,
+    [RPC_METHODS.projectEdit]: (input) => projects.edit(input),
+    [RPC_METHODS.projectUndo]: () => projects.undo,
+    [RPC_METHODS.projectRedo]: () => projects.redo,
+    [RPC_METHODS.recentsList]: () => recents.list,
   });
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const mediaCore = yield* MediaCore;
-    const rpcLayer = handlersLayer(config, mediaCore).pipe(
+    const projects = yield* Projects;
+    const recents = yield* Recents;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 
