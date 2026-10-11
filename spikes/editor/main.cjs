@@ -7,6 +7,7 @@ const { promisify } = require("node:util");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { exportProject } = require("./export.cjs");
 
 const run = promisify(execFile);
 const root = path.resolve(__dirname, "../..");
@@ -96,6 +97,20 @@ ipcMain.handle("project:choose", async () => {
   return r.canceled ? null : openProject(r.filePaths[0]);
 });
 ipcMain.handle("shell:reveal", (_e, p) => shell.showItemInFolder(p));
+ipcMain.handle("project:export", async (e) => {
+  const started = Date.now();
+  try {
+    const file = await exportProject({
+      project: state.session.project,
+      dir: state.dir,
+      mediaPath: (m) => mediaPath(state.dir, m),
+      onProgress: (f) => e.sender.send("export:progress", f),
+    });
+    return { file, seconds: (Date.now() - started) / 1000 };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
 
 app.whenReady().then(async () => {
   await loadEngine();

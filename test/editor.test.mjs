@@ -177,3 +177,55 @@ test("an invalid edit is refused with a message and changes nothing", { skip }, 
   await page.screenshot({ path: out("editor.png") });
   assert.deepEqual(app.errors, []);
 });
+
+/** Frame n of a video file as a PNG. */
+function videoFrame(file, n, png) {
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `select=eq(n\\,${n})`, "-frames:v", "1", "-fps_mode", "vfr", png]);
+  return png;
+}
+
+test("export: 4K file with every frame, matching the preview, crossfades really mixed", { skip, timeout: 300000 }, async (t) => {
+  await page.evaluate(() => window.__uncut.exportVideo());
+  const file = await page.evaluate(() => window.__uncut.lastExport);
+  assert.ok(file, await page.$eval("#toast", (e) => e.textContent));
+  const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-count_frames", "-show_entries", "stream=width,height,nb_read_frames,r_frame_rate", "-of", "json", file]));
+  const s = probe.streams[0];
+  const frames = await page.evaluate(() => window.__uncut.duration);
+  assert.deepEqual([s.width, s.height, s.r_frame_rate, Number(s.nb_read_frames)], [3840, 2160, "60/1", frames]);
+
+  // Same frame in the preview and in the file. Chromium's screenshots are colour-managed for
+  // the display and ffmpeg's PNGs aren't, so the export is compared with the source through
+  // ffmpeg (like for like), and with the preview relative to how close the source itself is.
+  for (const n of [150, 900, 1500]) {
+    await page.evaluate((f) => window.__uncut.setFrame(f), n);
+    await settle();
+    const shot = out(`cmp-preview-${n}.png`);
+    await (await page.$("#frame")).screenshot({ path: shot });
+    const exported = videoFrame(file, n, out(`cmp-export-${n}.png`));
+    const top = (await page.evaluate((f) => window.__uncut.visualsAt(f), n)).filter((v) => v.source).at(-1);
+    const vsSource = bestMatch(exported, top.source, `exp-${n}`);
+    const vsPreview = ssimOf(shot, exported);
+    const sourceVsPreview = bestMatch(shot, top.source, `pv-${n}`);
+    t.diagnostic(`frame ${n}: export vs source ${vsSource}, export vs preview ${vsPreview}, source vs preview ${sourceVsPreview}`);
+    assert.ok(vsSource > 0.85, `frame ${n}: export doesn't match the source at ${top.source.toFixed(2)}s (SSIM ${vsSource})`);
+    assert.ok(vsPreview > sourceVsPreview - 0.08, `frame ${n}: export is further from the preview (${vsPreview}) than the source is (${sourceVsPreview})`);
+  }
+
+  // At the middle of the reveal→city crossfade the file shows both shots, not either one.
+  const p = await page.evaluate(() => window.__uncut.project);
+  const cut = p.tracks.find((tr) => tr.role === "main").items[0].duration;
+  const mid = videoFrame(file, cut, out("mid-export.png"));
+  const reveal = bestFrame(item(p, "reveal").in + cut, "mid-reveal");
+  const city = bestFrame(item(p, "city").in, "mid-city");
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", reveal, "-i", city, "-lavfi", "[0]scale=480:270[a];[1]scale=480:270[b];[a][b]blend=all_mode=average", out("mid-blend.png")]);
+  const [toBlend, toReveal, toCity] = [ssimOf(mid, out("mid-blend.png")), ssimOf(mid, reveal), ssimOf(mid, city)];
+  t.diagnostic(`crossfade middle: blend ${toBlend}, reveal ${toReveal}, city ${toCity}`);
+  assert.ok(toBlend > toReveal && toBlend > toCity, "the crossfade middle is a mix of both shots");
+});
+
+/** A source frame at project-frame position `frames` of the demo media, as a PNG. */
+function bestFrame(frames, tag) {
+  const png = out(`${tag}.png`);
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(frames / 60), "-i", src, "-map", "0:v:0", "-frames:v", "1", png]);
+  return png;
+}
