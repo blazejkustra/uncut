@@ -3,8 +3,8 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import puppeteer from "puppeteer-core";
 
-export async function launchEditor({ project, port = 9400 + Math.floor(Math.random() * 400) } = {}) {
-  const env = { ...process.env, UNCUT_CDP: String(port) };
+export async function launchEditor({ project, port = 9400 + Math.floor(Math.random() * 400), env: extra = {} } = {}) {
+  const env = { ...process.env, ...extra, UNCUT_CDP: String(port) };
   if (project) env.UNCUT_PROJECT = resolve(project);
   const proc = spawn(resolve("node_modules/.bin/electron"), ["spikes/editor/main.cjs"], { env, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";

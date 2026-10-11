@@ -152,4 +152,43 @@ async function exportProject({ project, dir, mediaPath, onProgress = () => {} })
   return output;
 }
 
-module.exports = { exportProject, buildCommand, segments };
+/**
+ * One frame of the edit as a JPEG, built the way export builds it: the clips visible at f
+ * stacked with their transition opacity, then the text PNGs Chromium rendered.
+ */
+async function renderFrame({ project, f, mediaPath, texts, width = 1280, out }) {
+  const { layout, visualsAt } = await import("./timeline.mjs");
+  const { starts } = layout(project);
+  const W = Math.round(width / 2) * 2;
+  const H = Math.round((width * project.canvas.height) / project.canvas.width / 2) * 2;
+  const args = ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=black:s=${W}x${H}:d=1`];
+  // Every layer contributes its first frame, pinned to t=0: after a seek a clip's first
+  // frame can carry a timestamp just past zero and overlay would composite black instead.
+  const graph = ["[0:v]trim=end_frame=1,setpts=0[base]"];
+  let base = "base";
+  let n = 1;
+  for (const v of visualsAt(project, starts, f)) {
+    let file;
+    if (v.item.type === "clip") {
+      const media = project.media.find((m) => m.id === v.item.media);
+      args.push("-hwaccel", "videotoolbox", "-ss", String(v.source + 0.0001), "-i", mediaPath(media));
+    } else if (v.item.type === "text" && (file = texts.get(v.item.id))) {
+      args.push("-i", file);
+    } else continue;
+    graph.push(`[${n}:v]trim=end_frame=1,setpts=0,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba,colorchannelmixer=aa=${v.opacity.toFixed(3)}[l${n}]`);
+    graph.push(`[${base}][l${n}]overlay=format=auto[b${n}]`);
+    base = `b${n}`;
+    n++;
+  }
+  graph.push(`[${base}]format=yuvj420p[out]`);
+  args.push("-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-update", "1", "-q:v", "3", out);
+  await new Promise((resolve, reject) => {
+    const p = spawn("ffmpeg", args);
+    let err = "";
+    p.stderr.on("data", (d) => (err += d));
+    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`frame ${f}: ${err.trim().split("\n").at(-1)}`))));
+  });
+  return out;
+}
+
+module.exports = { exportProject, buildCommand, segments, renderTexts, renderFrame };

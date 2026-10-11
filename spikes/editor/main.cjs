@@ -8,6 +8,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { exportProject } = require("./export.cjs");
+const { createAgent } = require("./agent.cjs");
 
 const run = promisify(execFile);
 const root = path.resolve(__dirname, "../..");
@@ -16,12 +17,14 @@ const spec = (p) => pathToFileURL(path.join(root, "spec", p)).href;
 if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port", process.env.UNCUT_CDP);
 
 let engine; // { applyEdit, createSession, validate, EditError, EditConflict }
-let state = null; // { dir, session, past: [session], future: [session] }
+let state = null; // { dir, initial, session, past: [session], future: [session], agentSeen }
+let win;
+let agent;
 
 async function loadEngine() {
-  const [ops, val] = await Promise.all([import(spec("lib/apply-ops.mjs")), import(spec("lib/validate.mjs"))]);
+  const [ops, val, log, timeline] = await Promise.all([import(spec("lib/apply-ops.mjs")), import(spec("lib/validate.mjs")), import(spec("lib/edit-log.mjs")), import("./timeline.mjs")]);
   const modules = await val.loadModules(path.join(root, "spec/modules/builtin"), path.join(root, "spec/examples/plugins"));
-  engine = { ...ops, validate: (p) => val.validateProject(p, modules), duration: val.projectDuration };
+  engine = { ...ops, ...log, timeline, modules, validate: (p) => val.validateProject(p, modules), duration: val.projectDuration };
 }
 
 const mediaPath = (dir, m) => (path.isAbsolute(m.path) ? m.path : path.join(dir, m.path));
@@ -40,7 +43,8 @@ async function openProject(dir) {
   const project = JSON.parse(await fs.readFile(path.join(dir, "project.json"), "utf8"));
   const errors = engine.validate(project);
   if (errors.length) throw new Error(`project.json is invalid: ${errors.map((e) => `${e.path} ${e.message}`).join("; ")}`);
-  state = { dir, session: engine.createSession(project), past: [], future: [] };
+  state = { dir, initial: project, session: engine.createSession(project), past: [], future: [], agentSeen: 0 };
+  agent?.resetConversation();
   return snapshot();
 }
 
@@ -87,7 +91,49 @@ async function thumbs(mediaId) {
   return meta;
 }
 
+/** Agent edits: same engine, attributed to the agent and its turn, pushed live to the window. */
+function applyAgentEdit({ ops, baseRevision, summary, turnId }) {
+  try {
+    const next = engine.applyEdit(state.session, { actor: "agent", ops, baseRevision, summary, turnId }, engine.validate);
+    state.past.push(state.session);
+    state.future = [];
+    state.session = next;
+    state.agentSeen = next.revision;
+    save();
+    win?.webContents.send("project:changed", snapshot());
+    return { revision: next.revision };
+  } catch (e) {
+    if (e instanceof engine.EditError) return errorReply(e);
+    throw e;
+  }
+}
+
+let turnCount = 0;
+async function agentSend({ text, frame, selected }) {
+  const turnId = `turn-${++turnCount}-${Date.now().toString(36)}`;
+  const note = engine.manualEditsNote(state.session, state.agentSeen);
+  const context = [`Playhead: frame ${frame}.`, selected ? `Selected: ${selected}.` : "", note].filter(Boolean).join("\n");
+  state.agentSeen = state.session.revision;
+  const emit = (ev) => win?.webContents.send("agent:event", { turnId, ...ev });
+  emit({ type: "start", text, note: note || null });
+  const result = await agent.send({ prompt: `${text}\n\n<editor-context>\n${context}\n</editor-context>`, turnId, onEvent: emit });
+  state.agentSeen = state.session.revision;
+  return { turnId, ...result };
+}
+
+async function agentUndoTurn(turnId) {
+  state.past.push(state.session);
+  state.future = [];
+  state.session = engine.undoTurn(state.initial, state.session, turnId);
+  state.agentSeen = state.session.revision;
+  await save();
+  return snapshot();
+}
+
 ipcMain.handle("project:open", (_e, dir) => openProject(dir));
+ipcMain.handle("agent:send", (_e, req) => agentSend(req));
+ipcMain.handle("agent:undo-turn", (_e, turnId) => agentUndoTurn(turnId));
+ipcMain.handle("agent:stop", () => agent.stop());
 ipcMain.handle("project:edit", (_e, req) => edit(req));
 ipcMain.handle("project:undo", () => step(state.past, state.future));
 ipcMain.handle("project:redo", () => step(state.future, state.past));
@@ -114,7 +160,18 @@ ipcMain.handle("project:export", async (e) => {
 
 app.whenReady().then(async () => {
   await loadEngine();
-  const win = new BrowserWindow({
+  agent = createAgent({
+    session: () => state.session,
+    dir: () => state.dir,
+    mediaPath: (m) => mediaPath(state.dir, m),
+    applyAgentEdit,
+    modules: engine.modules,
+    timeline: engine.timeline,
+    uiShow: (args) => win?.webContents.send("ui:show", args),
+  });
+  await agent.start();
+  if (process.env.UNCUT_BRIDGE_INFO) await fs.writeFile(process.env.UNCUT_BRIDGE_INFO, JSON.stringify({ port: agent.port, token: agent.token }));
+  win = new BrowserWindow({
     width: 1480,
     height: 920,
     backgroundColor: "#0a0a0a",
