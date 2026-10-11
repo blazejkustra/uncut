@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
-    "wireframe": "node scripts/serve.mjs"
+    "wireframe": "node scripts/serve.mjs",
+    "editor": "electron spikes/editor/main.cjs"
   },
   "devDependencies": {
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "electron": "44.6.0",
+    "lucide": "0.460.0",
     "puppeteer-core": "23.11.1"
   }
 }
