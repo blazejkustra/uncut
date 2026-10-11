@@ -8,8 +8,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { resolve } from "node:path";
 import { launchEditor } from "./helpers/electron.mjs";
 
-const DEMO = "fixtures/drone-demo.uncut/project.json";
-const skip = !existsSync(DEMO) && "needs fixtures/drone-demo.uncut (node spikes/editor/make-demo.mjs)";
+import { demoProject, skipDemo } from "./helpers/demo.mjs";
+
+const skip = skipDemo;
+const DEMO = skip ? null : demoProject();
 const dir = resolve("test-output/editor-test.uncut");
 const out = (f) => resolve("test-output", f);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -47,7 +49,7 @@ before(async () => {
 });
 after(async () => app?.close());
 
-test("opens the project with no errors and draws every clip", { skip }, async () => {
+test("opens the project with no errors and draws every clip", { skip, timeout: 120000 }, async () => {
   assert.equal(await page.evaluate(() => document.body.dataset.ready), "true");
   const clips = await page.$$eval(".tl-lane .clip", (els) => els.map((e) => e.dataset.item));
   assert.deepEqual(clips, ["txt-title", "txt-city", "reveal", "city", "above", "quarry", "orbit", "bench"]);
@@ -55,7 +57,7 @@ test("opens the project with no errors and draws every clip", { skip }, async ()
   assert.deepEqual(app.errors, []);
 });
 
-test("the preview shows the right moment of the source file", { skip }, async (t) => {
+test("the preview shows the right moment of the source file", { skip, timeout: 120000 }, async (t) => {
   const p = onDisk();
   for (const [id, offset] of [["reveal", 100], ["above", 150], ["bench", 200]]) {
     const it = item(p, id);
@@ -73,7 +75,7 @@ test("the preview shows the right moment of the source file", { skip }, async (t
   }
 });
 
-test("scrubbing the ruler lands every seek in under 150 ms (median)", { skip }, async (t) => {
+test("scrubbing the ruler lands every seek in under 150 ms (median)", { skip, timeout: 120000 }, async (t) => {
   const ruler = await (await page.$("#ruler")).boundingBox();
   const times = [];
   for (let i = 0; i < 12; i++) {
@@ -89,7 +91,7 @@ test("scrubbing the ruler lands every seek in under 150 ms (median)", { skip }, 
   assert.ok(median < 150, `median settle ${median} ms (${times.join(", ")})`);
 });
 
-test("playback runs in real time across a crossfade, with both shots mixed mid-way", { skip }, async (t) => {
+test("playback runs in real time across a crossfade, with both shots mixed mid-way", { skip, timeout: 120000 }, async (t) => {
   await page.evaluate(() => window.__uncut.setFrame(300)); // 1 s before the city cut at 360
   await settle();
   const t0 = Date.now();
@@ -109,7 +111,7 @@ test("playback runs in real time across a crossfade, with both shots mixed mid-w
   assert.ok(visible.every((v) => !v.paused), "both clips are playing");
 });
 
-test("transition maths: half before the cut, half after", { skip }, async () => {
+test("transition maths: half before the cut, half after", { skip, timeout: 120000 }, async () => {
   const at = (f) => page.evaluate((x) => window.__uncut.visualsAt(x), f);
   assert.deepEqual((await at(344)).map((v) => v.id), ["reveal"]);
   const mid = await at(360);
@@ -119,7 +121,7 @@ test("transition maths: half before the cut, half after", { skip }, async () => 
   assert.deepEqual((await at(376)).map((v) => v.id), ["city"]);
 });
 
-test("dragging a clip's end edge trims it, saves, and undo/redo work", { skip }, async () => {
+test("dragging a clip's end edge trims it, saves, and undo/redo work", { skip, timeout: 120000 }, async () => {
   const before = item(onDisk(), "above").duration;
   await page.click('[data-side="inspector"]');
   const edge = await (await page.$('.clip[data-item="above"] .edge.r')).boundingBox();
@@ -140,7 +142,7 @@ test("dragging a clip's end edge trims it, saves, and undo/redo work", { skip },
   await page.waitForFunction((d) => window.__uncut.project.tracks.find((t) => t.role === "main").items.find((i) => i.id === "above").duration === d, {}, trimmed);
 });
 
-test("S splits at the playhead and Backspace deletes the selection", { skip }, async () => {
+test("S splits at the playhead and Backspace deletes the selection", { skip, timeout: 120000 }, async () => {
   const orbit = await page.evaluate(() => window.__uncut.project.tracks.find((t) => t.role === "main").items.find((i) => i.id === "orbit"));
   await page.evaluate((f) => window.__uncut.setFrame(f), orbit._start + 120);
   await page.click('.clip[data-item="orbit"] .nm');
@@ -156,7 +158,7 @@ test("S splits at the playhead and Backspace deletes the selection", { skip }, a
   assert.equal(item(onDisk(), "orbit-2"), undefined);
 });
 
-test("editing text in the inspector updates the preview and the file", { skip }, async () => {
+test("editing text in the inspector updates the preview and the file", { skip, timeout: 120000 }, async () => {
   await page.evaluate(() => window.__uncut.setFrame(120));
   await page.click('.clip[data-item="txt-title"] .nm');
   await page.waitForSelector("[data-text]");
@@ -165,7 +167,7 @@ test("editing text in the inspector updates the preview and the file", { skip },
   assert.equal(item(onDisk(), "txt-title").text, "Over Kraków");
 });
 
-test("an invalid edit is refused with a message and changes nothing", { skip }, async () => {
+test("an invalid edit is refused with a message and changes nothing", { skip, timeout: 120000 }, async () => {
   const before = readFileSync(`${dir}/project.json`, "utf8");
   await page.click('.trans[data-transition="city"]');
   await page.waitForSelector("[data-transition-duration]");
