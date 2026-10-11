@@ -10,5 +10,11 @@ contextBridge.exposeInMainWorld("uncut", {
   thumbs: (mediaId) => ipcRenderer.invoke("media:thumbs", mediaId),
   reveal: (p) => ipcRenderer.invoke("shell:reveal", p),
   exportVideo: () => ipcRenderer.invoke("project:export"),
+  agentSend: (req) => ipcRenderer.invoke("agent:send", req),
+  agentUndoTurn: (turnId) => ipcRenderer.invoke("agent:undo-turn", turnId),
+  agentStop: () => ipcRenderer.invoke("agent:stop"),
+  onAgentEvent: (fn) => ipcRenderer.on("agent:event", (_e, ev) => fn(ev)),
+  onProjectChanged: (fn) => ipcRenderer.on("project:changed", (_e, snap) => fn(snap)),
+  onUiShow: (fn) => ipcRenderer.on("ui:show", (_e, args) => fn(args)),
   onExportProgress: (fn) => ipcRenderer.on("export:progress", (_e, f) => fn(f)),
 });
