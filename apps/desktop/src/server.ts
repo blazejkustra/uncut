@@ -39,7 +39,7 @@ export function startServer(options: {
   onExit: (reason: string) => void;
 }): ServerProcess {
   const token = randomBytes(24).toString("base64url");
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: "1",
     UNCUT_PORT: "0",

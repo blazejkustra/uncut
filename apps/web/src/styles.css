@@ -1,4 +1,4 @@
-/* Look and tokens follow wireframe/wireframe.css: one dark greyscale theme, hairlines, no shadows. */
+/* Look and tokens from the phase-1 wireframe (its CSS lives on in spikes/editor/wireframe.css): one dark greyscale theme, hairlines, no shadows. */
 :root {
   --bg: #0a0a0a;
   --panel: #111111;

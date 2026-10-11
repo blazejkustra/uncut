@@ -6,9 +6,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { launchEditor } from "./helpers/electron.mjs";
-import { lockApps, unlockApps } from "./helpers/app.mjs";
+import { lockApps, unlockApps } from "./helpers/app.ts";
 
-import { demoProject, skipDemo } from "./helpers/demo.mjs";
+import { demoProject, skipDemo } from "./helpers/demo.ts";
 
 const skip = skipDemo;
 const DEMO = skip ? null : demoProject();
