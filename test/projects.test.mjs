@@ -405,3 +405,76 @@ test("recents dedupe by real path and drop entries whose project.json is gone", 
     await s.end();
   }
 });
+
+test("close goes back to no project, and revisions keep climbing after a close", T, async () => {
+  const s = await session();
+  try {
+    await s.ok("project.close"); // nothing open: a no-op
+    await s.ok("project.create", { parentDir: root, name: "Closing" });
+    const edited = await s.ok("project.edit", { ops: [addTitle] });
+    await s.ok("project.close");
+    assert.equal((await s.fail("project.get")).reason, "no-project");
+    assert.equal((await s.fail("project.edit", { ops: [addTitle] })).reason, "no-project");
+    const reopened = await s.ok("project.open", { dir: edited.dir });
+    assert.ok(reopened.revision > edited.revision, `${reopened.revision} after ${edited.revision}`);
+  } finally {
+    await s.end();
+  }
+});
+
+test("recents follow a rename (by edit, undo or reload)", T, async () => {
+  rmSync(data(), { recursive: true, force: true });
+  const s = await session();
+  try {
+    const { dir } = await s.ok("project.create", { parentDir: root, name: "Named" });
+    const names = async () => (await s.ok("recents.list")).map((r) => r.name);
+    await s.ok("project.edit", { ops: [{ op: "update_project", set: { name: "Renamed" } }] });
+    assert.deepEqual(await names(), ["Renamed"]);
+    await s.ok("project.undo");
+    assert.deepEqual(await names(), ["Named"]);
+    const hand = onDisk(dir);
+    hand.name = "By hand";
+    writeFileSync(join(dir, "project.json"), JSON.stringify(hand));
+    await s.ok("project.reload");
+    assert.deepEqual(await names(), ["By hand"]);
+  } finally {
+    await s.end();
+  }
+});
+
+test("project.subscribe streams the open project: now, then every change, in order", T, async () => {
+  const s = await session();
+  try {
+    const watch = s.subscribe("project.subscribe");
+    await watch.until((v) => v === null);
+    const created = await s.ok("project.create", { parentDir: root, name: "Watched" });
+    await watch.until((v) => v?.revision === created.revision);
+    const edited = await s.ok("project.edit", { ops: [{ op: "update_project", set: { name: "Watched 2" } }] });
+    await watch.until((v) => v?.revision === edited.revision && v.project.name === "Watched 2");
+    await s.ok("project.close");
+    await watch.until((v, i, all) => all.at(-1) === null);
+    const revisions = watch.values.filter(Boolean).map((v) => v.revision);
+    assert.deepEqual(revisions, [...revisions].sort((a, b) => a - b), "never goes backwards");
+    // A late subscriber gets the current state straight away.
+    const late = s.subscribe("project.subscribe");
+    await late.until((v) => v === null);
+  } finally {
+    await s.end();
+  }
+});
+
+test("names must be non-blank and at most 100 characters", T, async () => {
+  const s = await session();
+  try {
+    const { dir } = await s.ok("project.create", { parentDir: root, name: "Short" });
+    const blank = await s.fail("project.edit", { ops: [{ op: "update_project", set: { name: "   " } }] });
+    assert.equal(blank.message, "A project needs a name.");
+    const long = await s.fail("project.edit", { ops: [{ op: "update_project", set: { name: "x".repeat(101) } }] });
+    assert.equal(long.message, "A project name can be at most 100 characters.");
+    assert.equal((await s.ok("project.edit", { ops: [{ op: "update_project", set: { name: "y".repeat(100) } }] })).project.name.length, 100);
+    assert.equal(onDisk(dir).name.length, 100);
+    assert.equal((await s.fail("project.create", { parentDir: root, name: "z".repeat(101) })).reason, "invalid-name");
+  } finally {
+    await s.end();
+  }
+});

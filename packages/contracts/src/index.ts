@@ -13,6 +13,8 @@ export const RPC_METHODS = {
   projectOpen: "project.open",
   projectGet: "project.get",
   projectReload: "project.reload",
+  projectClose: "project.close",
+  projectSubscribe: "project.subscribe",
   projectEdit: "project.edit",
   projectUndo: "project.undo",
   projectRedo: "project.redo",
@@ -113,6 +115,18 @@ const ProjectGetRpc = Rpc.make(RPC_METHODS.projectGet, { payload: Empty, success
 // Re-read project.json (after a hand edit). If it doesn't validate, the current session stays.
 const ProjectReloadRpc = Rpc.make(RPC_METHODS.projectReload, { payload: Empty, success: ProjectSnapshot, error: ProjectError });
 
+// The open project as it changes: the current snapshot (or null: nothing open) right away,
+// then every change, in the order the server made them. Clients mirror this rather than
+// trusting call results, which a dropped connection can lose.
+const ProjectSubscribeRpc = Rpc.make(RPC_METHODS.projectSubscribe, {
+  payload: Empty,
+  success: Schema.NullOr(ProjectSnapshot),
+  stream: true,
+});
+
+// Back to no open project (the welcome screen). A no-op when nothing is open.
+const ProjectCloseRpc = Rpc.make(RPC_METHODS.projectClose, { payload: Empty });
+
 const ProjectEditRpc = Rpc.make(RPC_METHODS.projectEdit, {
   payload: Schema.Struct({
     // Edit ops (spec/schema/edit-ops.schema.json); the engine checks them.
@@ -135,6 +149,8 @@ export const WsRpcGroup = RpcGroup.make(
   ProjectOpenRpc,
   ProjectGetRpc,
   ProjectReloadRpc,
+  ProjectCloseRpc,
+  ProjectSubscribeRpc,
   ProjectEditRpc,
   ProjectUndoRpc,
   ProjectRedoRpc,
