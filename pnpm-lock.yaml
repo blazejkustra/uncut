@@ -14,6 +14,9 @@ devDependencies:
   electron:
     specifier: 44.6.0
     version: 44.6.0
+  lucide:
+    specifier: 0.460.0
+    version: 0.460.0
   puppeteer-core:
     specifier: 23.11.1
     version: 23.11.1
@@ -451,6 +454,10 @@ packages:
   /lru-cache@7.18.3:
     resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
     engines: {node: '>=12'}
+    dev: true
+
+  /lucide@0.460.0:
+    resolution: {integrity: sha512-kEqx3yHU+q4S0k7RH183QFaDy6xepEcN3yVjiBhxM1qX/tSMrmOSuUQJCobiIYzB1q9m8RmAN0efPiXZq79JSQ==}
     dev: true
 
   /mitt@3.0.1:
