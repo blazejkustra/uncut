@@ -19,7 +19,22 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
     : [{ label: "No recent projects", enabled: false }];
 
   const template: Array<MenuItemConstructorOptions> = [
-    { role: "appMenu" },
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        item("Settings…", "CmdOrCtrl+,", { type: "open-setup" }),
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
     {
       label: "File",
       submenu: [

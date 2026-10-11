@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { launchEditor } from "./helpers/electron.mjs";
+import { lockApps, unlockApps } from "./helpers/app.mjs";
 
 import { demoProject, skipDemo } from "./helpers/demo.mjs";
 
@@ -32,6 +33,8 @@ async function ask(text) {
 
 before(async () => {
   if (skip) return;
+  // One Electron test file at a time (see lockApps): pixel and timing checks need the CPU.
+  await lockApps();
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/project.json`, readFileSync(DEMO));
@@ -45,7 +48,10 @@ before(async () => {
   app = await launchEditor({ project: dir, env: { UNCUT_CLAUDE: resolve("test/helpers/fake-claude.mjs"), FAKE_PLAN: plan, FAKE_PROMPT_LOG: prompts } });
   page = app.page;
 });
-after(async () => app?.close());
+after(async () => {
+  await app?.close();
+  unlockApps();
+});
 
 test("an agent turn edits live, is saved, and shows its steps", { skip, timeout: 120000 }, async () => {
   const t = await ask("Make the ending shorter");

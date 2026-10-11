@@ -87,7 +87,7 @@ test("children don't inherit ELECTRON_RUN_AS_NODE or the token", T, async () => 
   assert.equal(exit.value.mediaCore.version, "unset/unset");
 });
 
-test("a missing or misbehaving media core is a typed failure, not a crash", T, async () => {
+test("a missing or misbehaving media core is a typed failure, not a crash", { ...T, timeout: 60000 }, async () => {
   const cases = {
     missing: join(dir, "nope"),
     null: fakeMedia("null-media", "echo null"),

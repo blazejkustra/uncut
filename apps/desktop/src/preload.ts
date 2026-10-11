@@ -4,6 +4,7 @@ import {
   APP_INFO_CHANNEL,
   APP_STATE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
+  COPY_TEXT_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
@@ -28,5 +29,6 @@ contextBridge.exposeInMainWorld("uncut", {
   chooseFolder: (purpose: FolderPurpose) => ipcRenderer.invoke(CHOOSE_FOLDER_CHANNEL, purpose),
   showInFolder: (path: string) => ipcRenderer.invoke(SHOW_IN_FOLDER_CHANNEL, path),
   setAppState: (state: AppState) => ipcRenderer.send(APP_STATE_CHANNEL, state),
+  copyText: (text: string) => ipcRenderer.invoke(COPY_TEXT_CHANNEL, text),
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
 });
