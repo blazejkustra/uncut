@@ -100,7 +100,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   assert.equal(await text(page, "project-title"), "First Cut");
   assert.equal(await page.title(), "First Cut");
   assert.equal(await text(page, "canvas-info"), "1920×1080, 30 fps");
-  assert.equal(await text(page, "timecode"), "00:00:00 / 00:00:00");
+  assert.equal(await text(page, "timecode"), "00:00:00:00 / 00:00:00:00");
   const tracks = await page.$$eval("[data-testid=track]", (els) => els.map((e) => [e.textContent.trim(), e.dataset.kind, e.dataset.main ?? null]));
   assert.deepEqual(tracks, [["Text", "text", null], ["Main", "video", "true"], ["Audio", "audio", null]]);
   await waitFor(page, "[data-testid=timeline-empty]");

@@ -66,6 +66,9 @@ importers:
       '@uncut/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@uncut/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       effect:
         specifier: 4.0.2
         version: 4.0.2

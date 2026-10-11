@@ -1,0 +1,185 @@
+// The project as the renderer reads it, the timeline maths it borrows from @uncut/core (D39: the
+// preview, export and agent share one implementation), and the edit ops the editor sends for
+// "add to timeline". The ops go through project.edit, so the server validates them and they undo.
+import { layout } from "@uncut/core/timeline";
+
+import type { Canvas } from "./format.ts";
+
+export interface MediaItem {
+  readonly id: string;
+  readonly kind: "video" | "audio" | "image";
+  readonly name: string;
+  readonly path: string;
+  readonly probe?: { readonly frames?: number; readonly fps?: number; readonly width?: number; readonly height?: number; readonly hasAudio?: boolean };
+}
+
+export interface Item {
+  readonly id: string;
+  readonly type: "clip" | "component" | "graphic" | "text" | "captions" | "audio";
+  readonly name?: string;
+  readonly start?: number;
+  readonly duration: number;
+  readonly media?: string;
+  readonly in?: number;
+  readonly text?: string;
+  readonly transform?: { readonly x?: number; readonly y?: number };
+  readonly style?: { readonly preset?: string; readonly size?: number; readonly weight?: number };
+  readonly transitionIn?: { readonly module: string; readonly duration: number };
+}
+
+export interface Track {
+  readonly id: string;
+  readonly kind: "video" | "text" | "audio";
+  readonly role?: "main";
+  readonly name: string;
+  readonly hidden?: boolean;
+  readonly items: ReadonlyArray<Item>;
+}
+
+export interface ProjectModel {
+  readonly name: string;
+  readonly canvas: Canvas;
+  readonly media: ReadonlyArray<MediaItem>;
+  readonly tracks: ReadonlyArray<Track>;
+  readonly scenes?: ReadonlyArray<{ readonly id: string }>;
+}
+
+export interface Layout {
+  readonly starts: Map<string, number>;
+  /** Where the last item ends, in frames; 0 for an empty project. */
+  readonly end: number;
+  /** Frames the playhead can be on: [0, frames - 1]. At least 1, so an empty project has frame 0. */
+  readonly frames: number;
+}
+
+// Snapshots are immutable, so the layout of one project object never changes.
+const layouts = new WeakMap<ProjectModel, Layout>();
+export function layoutOf(project: ProjectModel): Layout {
+  let l = layouts.get(project);
+  if (!l) {
+    const { starts, duration } = layout(project);
+    const end = project.tracks.some((t) => t.items.length) ? duration : 0;
+    l = { starts, end, frames: Math.max(1, end) };
+    layouts.set(project, l);
+  }
+  return l;
+}
+
+/**
+ * Tracks top to bottom as the timeline shows them (D28, CapCut order): the visual tracks in
+ * project order, which is also how the preview stacks them (core visualsAt draws the first track
+ * on top), then audio. New overlay and text tracks go in front of Main, so they sit above it.
+ */
+export const displayTracks = (project: ProjectModel) => [
+  ...project.tracks.filter((t) => t.kind !== "audio"),
+  ...project.tracks.filter((t) => t.kind === "audio"),
+];
+
+/** An id no media, track, item or scene uses yet: "clip-1", "clip-2", … */
+export function uniqueId(project: ProjectModel, base: string, taken = new Set<string>()) {
+  const ids = new Set([
+    ...taken,
+    ...project.media.map((m) => m.id),
+    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+    ...(project.scenes ?? []).map((s) => s.id),
+  ]);
+  for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+export type Planned = { readonly ops: ReadonlyArray<unknown>; readonly summary: string; readonly itemId: string; readonly start: number } | { readonly problem: string };
+
+const IMAGE_SECONDS = 5;
+
+/**
+ * "Add to timeline" for a library tile. Video and images are appended to the end of the magnetic
+ * main track (D17: no gaps, nothing shifts); audio goes after the last item of the first audio
+ * track (one is created if there is none).
+ */
+export function planAddMedia(project: ProjectModel, mediaId: string): Planned {
+  const media = project.media.find((m) => m.id === mediaId);
+  if (!media) return { problem: "That media isn't in the project any more." };
+  const fps = project.canvas.fps;
+  const { starts } = layoutOf(project);
+  const frames = media.probe?.frames;
+  if (media.kind !== "image" && !frames) return { problem: `${media.name} has no known length, so it can't go on the timeline.` };
+  if (media.kind === "audio") {
+    const ops: Array<unknown> = [];
+    let track = project.tracks.find((t) => t.kind === "audio" && t.role !== "main");
+    const taken = new Set<string>();
+    if (!track) {
+      const id = uniqueId(project, "audio", taken);
+      taken.add(id);
+      ops.push({ op: "add_track", track: { id, kind: "audio", name: "Audio" } });
+      track = { id, kind: "audio", name: "Audio", items: [] };
+    }
+    const start = Math.max(0, ...track.items.map((i) => (starts.get(i.id) ?? 0) + i.duration));
+    const itemId = uniqueId(project, "audio", taken);
+    ops.push({ op: "insert_item", track: track.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration: frames, start } });
+    return { ops, summary: `Add ${media.name} to the timeline`, itemId, start };
+  }
+  const main = project.tracks.find((t) => t.role === "main");
+  if (!main) return { problem: "This project has no main track." };
+  const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
+  const itemId = uniqueId(project, "clip");
+  const duration = media.kind === "image" ? IMAGE_SECONDS * fps : frames!;
+  return {
+    ops: [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, in: 0, duration } }],
+    summary: `Add ${media.name} to the timeline`,
+    itemId,
+    start: mainEnd,
+  };
+}
+
+/** The Text tab's presets: built-in text-style modules (spec/modules/builtin/text.*.json). */
+export const TEXT_PRESETS = [
+  { id: "title", module: "text.title", label: "Title", text: "Title", size: 0.12, weight: 700, x: 0.08, y: 0.38 },
+  { id: "text", module: "text.header", label: "Text", text: "Text", size: 0.06, weight: 500, x: 0.08, y: 0.46 },
+  { id: "lower-third", module: "text.lower-third", label: "Lower third", text: "Lower third", size: 0.05, weight: 600, x: 0.0625, y: 0.8 },
+] as const;
+export type TextPreset = (typeof TEXT_PRESETS)[number];
+
+const TEXT_SECONDS = 3;
+
+/**
+ * A text item at the playhead, 3 s long, on the top-most text track that is free for that whole
+ * stretch. If none is, a new text track goes on top (above every other track). One edit either
+ * way, so one undo removes it all.
+ */
+export function planAddText(project: ProjectModel, preset: TextPreset, frame: number): Planned {
+  const { width, height, fps } = project.canvas;
+  const start = Math.max(0, Math.floor(frame));
+  const duration = TEXT_SECONDS * fps;
+  const free = (t: Track) => t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
+  const ops: Array<unknown> = [];
+  const taken = new Set<string>();
+  let track = displayTracks(project).find((t) => t.kind === "text" && free(t));
+  if (!track) {
+    const id = uniqueId(project, "text", taken);
+    taken.add(id);
+    const name = `Text ${project.tracks.filter((t) => t.kind === "text").length + 1}`;
+    ops.push({ op: "add_track", index: 0, track: { id, kind: "text", name } });
+    track = { id, kind: "text", name, items: [] };
+  }
+  const itemId = uniqueId(project, preset.id, taken);
+  ops.push({
+    op: "insert_item",
+    track: track.id,
+    item: {
+      id: itemId,
+      type: "text",
+      start,
+      duration,
+      text: preset.text,
+      transform: { x: Math.round(width * preset.x), y: Math.round(height * preset.y) },
+      style: { preset: preset.module, size: Math.round(height * preset.size), weight: preset.weight },
+    },
+  });
+  return { ops, summary: `Add ${preset.label.toLowerCase()}`, itemId, start };
+}
+
+/** What a timeline item is called: its text, its media's name, or its id. */
+export function itemLabel(project: ProjectModel, item: Item) {
+  if (item.type === "text" && typeof item.text === "string") return item.text.replace(/\[\[|\]\]|\*\*|`/g, "").replace(/\n/g, " ");
+  const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
+  return item.name ?? media?.name ?? item.id;
+}
