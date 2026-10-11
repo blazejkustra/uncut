@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // page.evaluate callbacks run in the app's renderer.
+    "lib": ["es2024", "dom", "dom.iterable"]
+  },
+  "include": ["."]
+}

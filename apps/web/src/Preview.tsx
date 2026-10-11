@@ -221,7 +221,8 @@ class Compositor {
     const top = visualsAt(project, starts, f)
       .filter((v) => v.item.type === "clip" && v.opacity === 1)
       .at(-1);
-    const el = top && this.els.get(top.item.id);
+    if (!top) return undefined;
+    const el = this.els.get(top.item.id);
     if (!(el instanceof HTMLVideoElement) || el.paused || el.seeking || el.readyState < 3) return undefined;
     return starts.get(top.item.id)! + el.currentTime * project.canvas.fps - (top.item.in ?? 0);
   }

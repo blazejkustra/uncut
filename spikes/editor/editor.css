@@ -1,4 +1,4 @@
-/* Editor on top of the wireframe styles: real window chrome, real preview, interactive timeline. */
+/* Editor on top of the wireframe styles (wireframe.css, kept here when wireframe/ was deleted): real window chrome, real preview, interactive timeline. */
 .topbar { padding-left: 84px; -webkit-app-region: drag; }
 .topbar button { -webkit-app-region: no-drag; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; background: none; }
