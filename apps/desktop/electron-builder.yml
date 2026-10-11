@@ -16,9 +16,17 @@ extraResources:
   - from: ../../spec/modules/builtin
     to: modules/builtin
     filter: ["*.json"]
+# Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
+afterSign: scripts/after-sign.cjs
 mac:
   category: public.app-category.video
-  identity: null # unsigned for now
+  icon: build/icon.icns
+  # Ad-hoc signed ("-"), not Developer ID: Apple Silicon refuses to run an unsigned bundle,
+  # and a real identity + notarization comes later.
+  identity: "-"
+  # The hardened runtime is for notarized Developer ID builds; ad-hoc + hardened runtime breaks
+  # library validation for Electron's own frameworks.
+  hardenedRuntime: false
   target:
     - target: dmg
       arch: arm64

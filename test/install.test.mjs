@@ -1,0 +1,193 @@
+// Phase 3 exit check: "the app installs, onboards and opens an empty project", from the real
+// .dmg. Mount it, copy Uncut.app out like a drag to Applications (into a temp folder, never
+// the real /Applications), detach, and launch the copy with launchd's bare environment (as
+// Finder would) and real login-shell PATH resolution. Steps are logged as "# step …".
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { loadModules, validateProject } from "../packages/core/src/index.mjs";
+import { launchApp, lockApps, onInterrupt, unlockApps } from "./helpers/app.mjs";
+
+const DJI = join(homedir(), "Documents/devrel/drone/DJI_20261010132228_0005_D.MP4");
+const dmgs = existsSync("dist") ? readdirSync("dist").filter((f) => /^Uncut-.+-arm64\.dmg$/.test(f)).map((f) => resolve("dist", f)) : [];
+const DMG = dmgs[0];
+const skip = dmgs.length === 0 ? "no dmg built: run pnpm dist" : false;
+
+/** The newest modification time of any source file that ends up in the app. */
+function newestSource() {
+  let newest = 0;
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else newest = Math.max(newest, statSync(path).mtimeMs);
+    }
+  };
+  for (const parent of ["apps", "packages"]) for (const pkg of existsSync(parent) ? readdirSync(parent) : []) walk(join(parent, pkg, "src"));
+  walk("native/media/src");
+  return newest;
+}
+
+let root, mountpoint, mounted = false, app;
+const step = (text) => console.log(`# step: ${text}`);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitFor = (page, selector, timeout = 30000) => page.waitForSelector(selector, { timeout });
+const text = (page, id) => page.$eval(`[data-testid=${id}]`, (el) => el.textContent.trim());
+const row = (page, id) => page.$eval(`[data-testid=check-${id}]`, (el) => `${el.querySelector(".wiz-chip").textContent}, ${el.querySelector(".wiz-sub").textContent}`);
+const detach = () => {
+  if (!mounted) return;
+  const r = spawnSync("hdiutil", ["detach", mountpoint], { encoding: "utf8" });
+  if (r.status !== 0) spawnSync("hdiutil", ["detach", "-force", mountpoint]);
+  mounted = false;
+};
+
+// What launchd gives an app opened from Finder: no Homebrew, nvm or ~/.local/bin on PATH.
+const finderEnv = (extra) => ({
+  HOME: homedir(),
+  USER: process.env.USER,
+  LOGNAME: process.env.USER,
+  TMPDIR: process.env.TMPDIR,
+  SHELL: process.env.SHELL || "/bin/zsh",
+  PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+  ...extra,
+});
+
+before(async () => {
+  if (skip) return;
+  await lockApps();
+  root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-install-")));
+  // Interrupted (Ctrl-C, a kill): detach the image and remove the temp folder; the helper kills
+  // any app it launched and releases the lock.
+  onInterrupt(() => {
+    detach();
+    rmSync(root, { recursive: true, force: true });
+  });
+  mountpoint = join(root, "volume");
+  mkdirSync(mountpoint);
+  mkdirSync(join(root, "Applications"));
+  mkdirSync(join(root, "Projects"));
+});
+after(async () => {
+  await app?.close().catch(() => {});
+  detach();
+  unlockApps();
+  if (root) rmSync(root, { recursive: true, force: true });
+});
+
+test("installs from the dmg, onboards, opens an empty project, imports, and remembers it after a relaunch", { skip, timeout: 300000 }, async () => {
+  assert.equal(dmgs.length, 1, `expected one dmg in dist/, found ${dmgs.map((d) => d.split("/").pop()).join(", ")}`);
+  assert.ok(statSync(DMG).mtimeMs >= newestSource(), "dist is stale, run pnpm dist");
+  step(`mount ${DMG.split("/").pop()}`);
+  execFileSync("hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", mountpoint, DMG], { stdio: "ignore" });
+  mounted = true;
+  assert.ok(existsSync(join(mountpoint, "Uncut.app")), "the volume has Uncut.app");
+  assert.ok(lstatSync(join(mountpoint, "Applications")).isSymbolicLink(), "the volume has an Applications link");
+  assert.equal(readlinkSync(join(mountpoint, "Applications")), "/Applications");
+
+  step("copy Uncut.app out (ditto, like a drag to Applications), then detach");
+  const installed = join(root, "Applications", "Uncut.app");
+  execFileSync("ditto", [join(mountpoint, "Uncut.app"), installed]);
+  detach();
+  assert.equal(spawnSync("codesign", ["--verify", "--deep", "--strict", installed]).status, 0, "the copy is validly (ad-hoc) signed");
+  assert.ok(!execFileSync("xattr", [installed], { encoding: "utf8" }).includes("com.apple.quarantine"), "copied locally, so not quarantined");
+  assert.deepEqual(readFileSync(join(installed, "Contents/Resources/icon.icns")), readFileSync(resolve("apps/desktop/build/icon.icns")), "Uncut's own icon");
+
+  const data = join(root, "data");
+  const projects = join(root, "Projects");
+  const binary = join(installed, "Contents/MacOS/Uncut");
+  // A tool only the login shell knows about: a zsh profile (via ZDOTDIR) puts a temp bin first
+  // on PATH, holding an "argent" with a version nothing else has. If onboarding shows it, the
+  // app really used the login shell's PATH (the usual install folders are only a fallback).
+  const zdotdir = join(root, "zdotdir");
+  const shellBin = join(root, "shell-only-bin");
+  mkdirSync(zdotdir);
+  mkdirSync(shellBin);
+  writeFileSync(join(zdotdir, ".zprofile"), `export PATH="${shellBin}:$PATH"\n`);
+  writeFileSync(join(shellBin, "argent"), "#!/bin/sh\necho 9.9.9-shellenv\n");
+  chmodSync(join(shellBin, "argent"), 0o755);
+  const launch = (dialogs) =>
+    launchApp({
+      command: binary,
+      cleanEnv: true,
+      firstLaunch: true,
+      env: finderEnv({ SHELL: "/bin/zsh", ZDOTDIR: zdotdir, UNCUT_DATA_DIR: data, UNCUT_TEST_DIALOG: JSON.stringify(dialogs) }),
+    });
+
+  step("first launch with Finder's environment: onboarding with real statuses");
+  app = await launch([projects, [DJI]]);
+  let { page } = app;
+  await waitFor(page, "[data-testid=onboarding]");
+  await waitFor(page, "[data-testid=check-claude]");
+  const claude = await page.$eval("[data-testid=check-claude]", (el) => el.dataset.status);
+  // Machine-specific: whatever is true here is recorded; only a local claude must look sane.
+  step(`Claude Code: ${await row(page, "claude")}`);
+  if (claude === "error" || claude === "missing") step("note: Claude Code isn't usable on this machine; continuing");
+  else if (existsSync(join(homedir(), ".local/bin/claude"))) assert.ok(["ready", "needs-login", "warning"].includes(claude), claude);
+  await page.click("[data-testid=wizard-continue]");
+  await waitFor(page, "[data-testid=check-argent]");
+  step(`Argent (shell-only stub): ${await row(page, "argent")}`);
+  assert.match(await row(page, "argent"), /^Ready, v9\.9\.9-shellenv /, "the stub that only the login shell's PATH can find");
+  const ffmpeg = await page.$eval("[data-testid=check-ffmpeg]", (el) => el.dataset.status);
+  step(`ffmpeg: ${await row(page, "ffmpeg")}`);
+  const hasFfmpeg = ffmpeg === "ready";
+
+  step("First video, New project into a temp folder");
+  await page.click("[data-testid=wizard-continue]");
+  await page.click("[data-testid=wizard-new-project]");
+  await waitFor(page, "[data-testid=new-project-form]");
+  await page.click("[data-testid=project-name]", { clickCount: 3 });
+  await page.keyboard.press("Backspace");
+  await page.type("[data-testid=project-name]", "Install Check");
+  await page.click("[data-testid=choose-folder]");
+  await page.waitForFunction((dir) => document.querySelector("[data-testid=parent-dir]").title === dir, {}, projects);
+  await page.click("[data-testid=create]");
+  await waitFor(page, "[data-testid=editor]");
+  assert.equal(await text(page, "project-title"), "Install Check");
+  assert.equal(await text(page, "canvas-info"), "1920×1080, 30 fps");
+  assert.deepEqual(await page.$$eval("[data-testid=track]", (els) => els.map((e) => e.dataset.kind)), ["text", "video", "audio"]);
+
+  step("project.json on disk validates with @uncut/core");
+  const dir = join(projects, "Install Check.uncut");
+  const project = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
+  assert.deepEqual(validateProject(project, await loadModules(resolve("spec/modules/builtin"))), []);
+
+  const withMedia = existsSync(DJI) && hasFfmpeg;
+  if (!hasFfmpeg) step("skip the import: ffmpeg isn't installed here, so there'd be no thumbnail to check");
+  else if (!existsSync(DJI)) step(`skip the import: ${DJI} isn't here`);
+  if (withMedia) {
+    step("import the DJI clip");
+    await page.click("[data-testid=import]");
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 1, { timeout: 60000 });
+    await page.waitForFunction(() => [...document.querySelectorAll("[data-testid=thumb]")].some((i) => i.complete && i.naturalWidth > 0), { timeout: 60000 });
+    assert.equal(await page.$eval("[data-testid=tile-meta]", (el) => el.textContent), "3840×2160, 59.94 fps");
+  }
+  assert.deepEqual(app.errors, []);
+
+  step("quit");
+  await app.close();
+  assert.notEqual(app.proc.signalCode, "SIGKILL", "quit cleanly");
+  app = undefined;
+
+  step("relaunch the installed copy: no onboarding, the project is in Recent");
+  app = await launch([]);
+  page = app.page;
+  await waitFor(page, "[data-testid=recent]");
+  await sleep(500);
+  assert.equal(await page.$("[data-testid=onboarding]"), null);
+  assert.deepEqual(await page.$$eval("[data-testid=recent] .wiz-name", (e) => e.map((x) => x.textContent)), ["Install Check"]);
+  await page.click("[data-testid=recent]");
+  await waitFor(page, "[data-testid=editor]");
+  assert.equal(await text(page, "project-title"), "Install Check");
+  if (withMedia) {
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 1);
+    step("the media tile is there");
+  }
+  assert.deepEqual(app.errors, []);
+  await app.close();
+  app = undefined;
+  step("done");
+});

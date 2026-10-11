@@ -12,7 +12,9 @@ await build({
   platform: "node",
   format: "esm",
   target: "node22",
-  sourcemap: "linked",
+  // The map is written next to the bundle for local debugging, but the bundle doesn't point at
+  // it: the packaged app ships server.mjs alone.
+  sourcemap: "external",
   // ws reaches for these optional native speedups inside try/catch; leave them unresolved.
   external: ["bufferutil", "utf-8-validate"],
   // Bundled CommonJS deps (ws, undici) call require() for node builtins.
