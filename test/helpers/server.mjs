@@ -14,9 +14,11 @@ export const killAll = () => {
   for (const proc of running) proc.kill("SIGKILL");
 };
 
-export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstrap } = {}) {
-  const proc = spawn(process.execPath, [entry, ...args], {
-    env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", UNCUT_MEDIA_BIN: MEDIA, UNCUT_MODULES_DIR: MODULES, ...env },
+/** `command` replaces `node <entry>` entirely (e.g. to start the server through `env -i`). */
+export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstrap, command } = {}) {
+  const proc = spawn(command ?? process.execPath, command ? args : [entry, ...args], {
+    // UNCUT_SHELL_ENV=off: keep the PATH the test gives (the login-shell probe has its own tests).
+    env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", UNCUT_MEDIA_BIN: MEDIA, UNCUT_MODULES_DIR: MODULES, UNCUT_SHELL_ENV: "off", ...env },
     stdio: ["pipe", "pipe", "inherit", "pipe"],
   });
   running.add(proc);

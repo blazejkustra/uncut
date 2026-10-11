@@ -3,12 +3,13 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 
 import {
   APP_INFO_CHANNEL,
   APP_STATE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
+  COPY_TEXT_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
@@ -27,7 +28,7 @@ if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port",
 // Tests can't click native dialogs: with UNCUT_TEST_DIALOG (a JSON array of paths, used in
 // order; an exhausted queue means "cancelled") the dialogs answer from it instead. Only
 // together with UNCUT_CDP, so a stray variable can't change a release user's app. In the
-// same mode "Show in Finder" is logged instead of opening Finder.
+// same mode "Show in Finder" and Copy are logged instead of touching Finder or the clipboard.
 const testDialogs: Array<string> | undefined =
   process.env.UNCUT_CDP && process.env.UNCUT_TEST_DIALOG ? (JSON.parse(process.env.UNCUT_TEST_DIALOG) as Array<string>) : undefined;
 
@@ -149,6 +150,12 @@ app.whenReady().then(() => {
     if (typeof target !== "string" || !path.isAbsolute(target)) throw new Error("not an absolute path");
     if (testDialogs) console.log(`[test] showItemInFolder ${target}`);
     else shell.showItemInFolder(target);
+  });
+  handle(COPY_TEXT_CHANNEL, (text: string) => {
+    if (typeof text !== "string") throw new Error("not text");
+    // Tests shouldn't overwrite the clipboard of whoever runs them.
+    if (testDialogs) console.log(`[test] copied ${text}`);
+    else clipboard.writeText(text);
   });
   ipcMain.on(APP_STATE_CHANNEL, (event, state: AppState) => {
     if (fromAppWindow(event)) setAppMenu(state, sendMenuCommand);

@@ -1,11 +1,105 @@
 // Launches an Uncut desktop build with DevTools exposed and connects puppeteer to its window.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function launchApp({ command, args = [], env: extra = {}, port = 9800 + Math.floor(Math.random() * 400) }) {
-  const env = { ...process.env, ...extra, UNCUT_CDP: String(port) };
+// node --test runs test files in parallel. Several packaged apps starting at once (plus the
+// spike's Electron tests) can starve each other on a busy machine, so the Electron test files
+// take turns: each holds a lock from its before() to its after(). Hooks have no timeout, so
+// waiting doesn't eat into any test's own timeout; the wait itself gives up after 10 minutes.
+//
+// The lock is one file created atomically (open "wx") holding the owner's pid and process
+// start time. It is stale when that process is gone (EPERM counts as alive), when the pid now
+// belongs to a different process (start time differs), or when it can't be read and is older
+// than a short grace period (a writer that died mid-write). A stale lock is renamed away to a
+// unique name before deletion, and we only own the lock if our own create succeeds.
+const LOCK = "test-output/.app-lock";
+const GRACE_MS = 5000;
+
+const startTimeOf = (pid) => {
+  try {
+    return execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+};
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+};
+const myStart = startTimeOf(process.pid);
+
+/** Who holds the lock and whether that holder is gone. Exported for the lock's own tests. */
+export function inspectLock(path = LOCK) {
+  let text;
+  let mtime;
+  try {
+    text = readFileSync(path, "utf8");
+    mtime = statSync(path).mtimeMs;
+  } catch {
+    return { exists: false };
+  }
+  let holder;
+  try {
+    holder = JSON.parse(text);
+  } catch {}
+  if (!holder || !Number.isInteger(holder.pid)) return { exists: true, holder: undefined, stale: Date.now() - mtime > GRACE_MS };
+  const stale = !alive(holder.pid) || (holder.start !== undefined && startTimeOf(holder.pid) !== holder.start);
+  return { exists: true, holder, stale };
+}
+
+export async function lockApps({ path = LOCK, timeoutMs = 10 * 60 * 1000 } = {}) {
+  mkdirSync(dirname(path), { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const fd = openSync(path, "wx");
+      writeSync(fd, JSON.stringify({ pid: process.pid, start: myStart }));
+      closeSync(fd);
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    const lock = inspectLock(path);
+    if (lock.exists && lock.stale) {
+      const aside = `${path}.stale-${process.pid}-${Math.random().toString(36).slice(2)}`;
+      try {
+        renameSync(path, aside);
+        rmSync(aside, { force: true });
+      } catch {}
+      continue;
+    }
+    if (Date.now() > deadline) {
+      const who = lock.holder ? `pid ${lock.holder.pid} (started ${lock.holder.start ?? "?"})` : "an unknown process";
+      throw new Error(`Waited ${Math.round(timeoutMs / 1000)} s for the Electron test lock (${path}) held by ${who}. Remove the file if that process is not a test run.`);
+    }
+    await sleep(200);
+  }
+}
+
+export function unlockApps({ path = LOCK } = {}) {
+  const lock = inspectLock(path);
+  if (lock.holder?.pid === process.pid && lock.holder.start === myStart) rmSync(path, { force: true });
+}
+
+/**
+ * `firstLaunch`: leave onboarding to show (otherwise a fresh UNCUT_DATA_DIR is marked as
+ * onboarded, so tests about other screens aren't covered by the wizard).
+ * `cleanEnv`: start from only `env` (what launchd gives a Finder-launched app), not the test's environment.
+ */
+export async function launchApp({ command, args = [], env: extra = {}, port = 9800 + Math.floor(Math.random() * 400), firstLaunch = false, cleanEnv = false }) {
+  const env = { ...(cleanEnv ? {} : process.env), ...extra, UNCUT_CDP: String(port) };
+  if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
+    mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
+    writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));
+  }
   delete env.VITE_DEV_SERVER_URL;
   const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
   const exited = new Promise((r) => proc.once("exit", r));
@@ -36,7 +130,7 @@ export async function launchApp({ command, args = [], env: extra = {}, port = 98
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-    await page.waitForFunction(() => document.body.dataset.ready, { timeout: 20000 });
+    await page.waitForFunction(() => document.body.dataset.ready, { timeout: 45000 });
     return { page, browser, proc, errors, close: kill, exited, output: () => output };
   } catch (error) {
     await kill();

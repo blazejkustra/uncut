@@ -12,7 +12,7 @@ export interface AppState {
 }
 
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" }
+  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" }
   | { readonly type: "open-recent"; readonly dir: string };
 
 export interface UncutBridge {
@@ -24,6 +24,7 @@ export interface UncutBridge {
   readonly chooseFolder: (purpose: "parent" | "project") => Promise<string | null>;
   readonly showInFolder: (path: string) => Promise<void>;
   readonly setAppState: (state: AppState) => void;
+  readonly copyText: (text: string) => Promise<void>;
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
 }
 
@@ -43,5 +44,6 @@ export const bridge: UncutBridge = window.uncut ?? {
   chooseFolder: () => Promise.resolve(null),
   showInFolder: () => Promise.resolve(),
   setAppState: () => {},
+  copyText: (text) => navigator.clipboard.writeText(text),
   onMenuCommand: () => () => {},
 };

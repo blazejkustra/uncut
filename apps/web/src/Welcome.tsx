@@ -1,4 +1,4 @@
-import { ChevronRight, Clapperboard, FolderOpen, Plus } from "lucide-react";
+import { ChevronRight, Clapperboard, FolderOpen, Plus, Settings2 } from "lucide-react";
 
 import { shortPath } from "./format.ts";
 import { NewProject } from "./NewProject.tsx";
@@ -12,8 +12,12 @@ export function Welcome() {
     <div className="welcome" data-testid="welcome">
       <div className="welcome-drag" />
       <div className="modal wiz welcome-card">
-        <div className="wiz-header">
+        <div className="wiz-header row">
           <div className="wiz-brand">Uncut</div>
+          <button className="link-btn" data-testid="open-setup" onClick={actions.openSetup} disabled={offline} title="Check agents, Argent and ffmpeg (⌘,)">
+            <Settings2 />
+            Setup
+          </button>
         </div>
         <div className="wiz-panel">
           {newProjectOpen ? (

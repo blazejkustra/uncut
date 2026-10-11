@@ -191,4 +191,45 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 
 .saved.warn { color: var(--warn); }
 .banner-text { flex: 1; min-width: 0; }
-.modal-layer { position: fixed; inset: 0; background: rgb(0 0 0 / 60%); display: grid; place-items: center; z-index: 50; padding: 24px; overflow: auto; }
+/* A flex column whose child centres with margin:auto: when the card is taller than the window
+   the margins collapse to 0 and the layer scrolls from the card's top (grid centring would cut
+   the top off). */
+.modal-layer { position: fixed; inset: 0; background: rgb(0 0 0 / 60%); display: flex; flex-direction: column; z-index: 50; padding: 24px; overflow: auto; }
+.modal-layer > .modal { margin: auto; flex: none; }
+
+/* Onboarding wizard (wireframe .wiz-* with real checks) */
+.wiz-header.row { flex-direction: row; align-items: center; justify-content: space-between; }
+.link-btn { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: var(--radius-sm); font-size: 12px; }
+.link-btn:not(:disabled):hover { background: var(--raised); color: var(--fg); }
+.link-btn svg.lucide { width: 14px; height: 14px; }
+.wiz-steps { list-style: none; margin: 0; padding: 4px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; background: rgb(255 255 255 / 4%); border-radius: 12px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%); }
+.wiz-steps button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-weight: 500; }
+.wiz-steps button.current { background: var(--raised); color: var(--fg); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%); }
+.wiz-num { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%); flex: none; }
+.wiz-num svg.lucide { width: 13px; height: 13px; }
+.wiz-num.now { background: var(--select-soft); color: var(--select); box-shadow: inset 0 0 0 1px rgb(109 140 255 / 30%); }
+.wiz-num.done { background: var(--select); color: #fff; box-shadow: none; }
+.wiz-foot p { margin: 0; flex: 1; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.wiz-foot { justify-content: space-between; gap: 20px; }
+.wiz-btns { display: flex; gap: 8px; flex: none; }
+.wiz-check { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); overflow: hidden; }
+.wiz-check .wiz-row { border: 0; border-radius: 0; }
+.wiz-row.pending { color: var(--muted); }
+.wiz-optional { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--dim); }
+.wiz-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; }
+.wiz-chip svg.lucide { width: 14px; height: 14px; }
+.wiz-chip.ok { color: var(--ok); }
+.wiz-chip.warn { color: var(--warn); }
+.wiz-chip.dim { color: var(--muted); }
+.wiz-chip.error { color: var(--error); }
+.wiz-fix { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px 12px 46px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.wiz-cmd { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); }
+.wiz-cmd code { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wiz-note { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; }
+.wiz-note svg.lucide { width: 15px; height: 15px; margin-top: 1px; flex: none; }
+.wiz-note.warn { background: rgb(251 191 36 / 8%); border: 1px solid rgb(251 191 36 / 25%); color: #f6d77b; }
+.wiz-note.error { background: rgb(248 113 113 / 8%); border: 1px solid rgb(248 113 113 / 30%); color: var(--error); }
+.wiz-sub { overflow: hidden; text-overflow: ellipsis; }
+.modal-layer.standalone { background: var(--bg); }
+.modal-layer.standalone::before { content: ""; position: fixed; inset: 0 0 auto; height: 40px; -webkit-app-region: drag; }
+.wiz-num.visited { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 25%); color: var(--fg); }

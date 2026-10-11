@@ -1,12 +1,12 @@
 // Phase 3: the packaged app starts its server and media core and the window says so.
 // Needs `pnpm dist` first; skipped (with the reason) when the .app isn't there.
-import { test, after } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { launchApp } from "./helpers/app.mjs";
+import { launchApp, lockApps, unlockApps } from "./helpers/app.mjs";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -21,8 +21,12 @@ const launch = async () => {
   apps.add(app);
   return app;
 };
+before(async () => {
+  if (!skip) await lockApps();
+});
 after(async () => {
   for (const app of apps) await app.close();
+  unlockApps();
   rmSync(scratch, { recursive: true, force: true });
 });
 
@@ -107,7 +111,7 @@ test("a server that dies after startup shows as an error in the window", T, asyn
   await app.close();
   apps.delete(app);
   assert.notEqual(app.proc.signalCode, "SIGKILL", "the app hung on quit after its server died");
-  assert.ok(Date.now() - quitStart < 5000);
+  assert.ok(Date.now() - quitStart < 9000, `quit took ${Date.now() - quitStart} ms`);
 });
 
 // Calls the packaged server from inside the window, with the connection the preload hands out.

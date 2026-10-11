@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import type { ProjectSnapshot, RecentProject, ServerHello } from "@uncut/contracts";
+import type { ProjectSnapshot, RecentProject, ServerHello, SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -42,6 +42,12 @@ export interface AppStateShape {
   // Why the last reload failed (folder gone, file unreadable), shown in the same banner.
   readonly reloadProblem?: string;
   readonly notice?: Notice;
+  // Onboarding: open on first launch, or from Settings… / the welcome card.
+  readonly setupOpen: boolean;
+  readonly setupChecks?: ReadonlyArray<SetupCheck>;
+  readonly setupChecking: boolean;
+  // The last setup.check failed as a whole (server unreachable): shown with Check again.
+  readonly setupError?: string;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -54,6 +60,8 @@ let state: AppStateShape = {
   recents: [],
   newProjectOpen: false,
   changedOnDisk: false,
+  setupOpen: false,
+  setupChecking: false,
 };
 const listeners = new Set<() => void>();
 
@@ -157,6 +165,9 @@ export async function start() {
   if (hello.ok) set({ hello: hello.value });
   else if (!isTransportError(hello.error)) set({ connectionMessage: plainError(hello.error) });
   await Promise.race([gotFirstSnapshot, new Promise((r) => setTimeout(r, 5000))]);
+  // First launch (onboarding never finished or skipped): show it.
+  const setup = await call((c) => c["setup.state"]({}));
+  if (setup.ok && !setup.value.onboarded) actions.openSetup();
   set({ ready: true });
 }
 
@@ -248,11 +259,30 @@ export const actions = {
   importMedia: () => undefined,
 
   dismissNotice: () => set({ notice: undefined }),
+
+  openSetup() {
+    set({ setupOpen: true });
+    void actions.checkSetup();
+  },
+  async checkSetup() {
+    set({ setupChecking: true, setupError: undefined });
+    const result = await call((c) => c["setup.check"]({}));
+    if (result.ok) set({ setupChecking: false, setupChecks: result.value });
+    else set({ setupChecking: false, setupError: `Couldn't check this Mac. ${plainError(result.error)}` });
+  },
+  copy: (text: string) => bridge.copyText(text),
+  /** Finish (or skip) onboarding; it won't open on launch again. */
+  async finishSetup(next: "new-project" | "stay") {
+    set({ setupOpen: false });
+    await call((c) => c["setup.complete"]({}));
+    if (next === "new-project") actions.showNewProject();
+  },
 };
 
 function runCommand(command: MenuCommand) {
   // Everything below talks to the server; while it's away the buttons are disabled too.
   if (!online()) return;
+  if (command.type === "open-setup") return actions.openSetup();
   switch (command.type) {
     case "new-project":
       // Over the editor if one is open; the current project only closes once the new one exists.
@@ -288,7 +318,9 @@ function onKeyDown(event: KeyboardEvent) {
       ? { type: event.shiftKey ? "redo" : "undo" }
       : event.shiftKey
         ? undefined
-        : key === "n"
+        : key === ","
+          ? { type: "open-setup" }
+          : key === "n"
           ? { type: "new-project" }
           : key === "o"
             ? { type: "open-project" }
