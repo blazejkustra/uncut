@@ -1,9 +1,10 @@
 // Uncut editor renderer. Draws the project, plays real footage and turns gestures
 // into edit ops. Every change goes through the main process (window.uncut.edit),
 // which validates it, saves project.json and sends back the new project.
+import { esc, textHtml } from "./render.js";
+
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const icon = (name) => `<i data-lucide="${name}"></i>`;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -135,15 +136,9 @@ function renderPreview() {
     seek(el, (ahead.in - (ahead.transitionIn?.duration ?? 0) / 2) / fps() + 0.0001);
   }
 
-  const W = project().canvas.width;
-  const H = project().canvas.height;
   $("#text-layer").innerHTML = vis
     .filter((v) => v.item.type === "text")
-    .map(({ item, opacity }) => {
-      const text = esc(item.text).replace(/\[\[(.*?)\]\]/g, '<span class="accent">$1</span>');
-      const sel = item.id === ui.selected ? "sel-box" : "";
-      return `<div class="pv-text ${sel}" data-item="${item.id}" style="left:${(item.transform.x / W) * 100}%;top:${(item.transform.y / H) * 100}%;font-size:${(item.style.size / H) * 100}cqh;font-weight:${item.style.weight ?? 600};opacity:${opacity}">${text}</div>`;
-    })
+    .map(({ item, opacity }) => textHtml(item, project().canvas, { opacity, selected: item.id === ui.selected }))
     .join("");
   $("#timecode").textContent = `${tc(f)} / ${tc(duration)}`;
   const ph = $(".playhead");
@@ -219,7 +214,7 @@ function toast(msg, ok = false) {
   el.className = `toast ${ok ? "ok" : ""}`;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), ok ? 2500 : 6000);
+  toastTimer = setTimeout(() => (el.hidden = true), ok ? 8000 : 6000);
 }
 
 function accept(next) {
@@ -547,6 +542,28 @@ async function onLibraryClick(e) {
   }
 }
 
+// ---------- export ----------
+
+let exporting = false;
+async function exportVideo() {
+  if (exporting) return;
+  exporting = true;
+  if (ui.playing) pause();
+  const btn = $("#export-btn");
+  btn.disabled = true;
+  btn.innerHTML = `${icon("loader")}Exporting 0%`;
+  window.lucide.createIcons();
+  const r = await window.uncut.exportVideo();
+  exporting = false;
+  btn.disabled = false;
+  btn.innerHTML = `${icon("download")}Export`;
+  window.lucide.createIcons();
+  if (r.error) return toast(r.error);
+  lastExport = r.file;
+  toast(`Exported ${r.file.split("/").pop()} in ${r.seconds.toFixed(0)} s. Click to show in Finder.`, true);
+}
+let lastExport = null;
+
 // ---------- wiring ----------
 
 function renderAll() {
@@ -575,6 +592,11 @@ function bind() {
   $("#prev-frame").onclick = () => setFrame(ui.frame - 1);
   $("#next-frame").onclick = () => setFrame(ui.frame + 1);
   $("#undo").onclick = undo;
+  $("#export-btn").onclick = exportVideo;
+  window.uncut.onExportProgress((f) => {
+    if (exporting) $("#export-btn").lastChild.textContent = `Exporting ${Math.round(f * 100)}%`;
+  });
+  $("#toast").onclick = () => lastExport && window.uncut.reveal(lastExport);
   $("#redo").onclick = redo;
   $("#split").onclick = splitAtPlayhead;
   $("#delete").onclick = deleteSelected;
@@ -616,6 +638,8 @@ window.__uncut = {
   get project() { return snap.project; },
   get revision() { return snap.revision; },
   get duration() { return duration; },
+  get lastExport() { return lastExport; },
+  exportVideo,
   videos: () => [...videos.entries()].map(([id, el]) => ({ id, time: el.currentTime, paused: el.paused, seeking: el.seeking, ready: el.readyState, opacity: Number(el.style.opacity), z: Number(el.style.zIndex) })),
   setFrame,
   play,

@@ -9,4 +9,6 @@ contextBridge.exposeInMainWorld("uncut", {
   redo: () => ipcRenderer.invoke("project:redo"),
   thumbs: (mediaId) => ipcRenderer.invoke("media:thumbs", mediaId),
   reveal: (p) => ipcRenderer.invoke("shell:reveal", p),
+  exportVideo: () => ipcRenderer.invoke("project:export"),
+  onExportProgress: (fn) => ipcRenderer.on("export:progress", (_e, f) => fn(f)),
 });
