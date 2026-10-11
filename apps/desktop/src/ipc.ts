@@ -8,6 +8,7 @@ export const SHOW_IN_FOLDER_CHANNEL = "uncut:show-in-folder";
 export const APP_STATE_CHANNEL = "uncut:app-state";
 export const MENU_COMMAND_CHANNEL = "uncut:menu-command";
 export const COPY_TEXT_CHANNEL = "uncut:copy-text";
+export const CHOOSE_MEDIA_CHANNEL = "uncut:choose-media";
 
 export type FolderPurpose = "parent" | "project";
 

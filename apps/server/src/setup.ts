@@ -27,7 +27,7 @@ export interface SetupShape {
 export class Setup extends Context.Service<Setup, SetupShape>()("uncut/Setup") {}
 
 /** The first executable called `name` on PATH, like `which`. */
-const which = async (name: string, path: string) => {
+export const which = async (name: string, path: string) => {
   for (const dir of path.split(":")) {
     if (!dir) continue;
     const candidate = join(dir, name);

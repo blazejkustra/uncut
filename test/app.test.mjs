@@ -21,6 +21,12 @@ const launch = async () => {
   apps.add(app);
   return app;
 };
+// Each test closes its app when it's done with it, so no window outlives its test.
+const done = async (app) => {
+  if (!apps.has(app)) return;
+  apps.delete(app);
+  await app.close();
+};
 before(async () => {
   if (!skip) await lockApps();
 });
@@ -69,6 +75,7 @@ test("window shows the server and media core versions, from the bundle, without 
   assert.match(s.text, /^Server connected · server v0\.0\.1 · media core v0\.0\.1$/);
   assert.match(app.page.url(), /^file:\/\/.*Uncut\.app\/Contents\/Resources\/app\.asar\/dist\/renderer\/index\.html$/);
   assert.deepEqual(app.errors, []);
+  await done(app);
 });
 
 test("the window can't navigate away or open new windows", T, async () => {
@@ -79,6 +86,7 @@ test("the window can't navigate away or open new windows", T, async () => {
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(app.page.url(), url);
   assert.equal((await app.browser.pages()).length, 1);
+  await done(app);
 });
 
 test("quitting with a client still connected stops the server", T, async () => {
@@ -157,4 +165,5 @@ test("the packaged server creates, edits and reopens a project (schemas and modu
   assert.deepEqual(JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).tracks[0].items, [title]);
   assert.deepEqual(recents.value.map((r) => r.dir), [dir]);
   assert.deepEqual(app.errors, []);
+  await done(app);
 });

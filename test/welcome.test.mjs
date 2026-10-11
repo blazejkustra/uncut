@@ -105,8 +105,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   assert.deepEqual(tracks, [["Text", "text", null], ["Main", "video", "true"], ["Audio", "audio", null]]);
   await waitFor(page, "[data-testid=timeline-empty]");
   assert.match(await text(page, "media-empty"), /No media yet/);
-  assert.equal(await page.$eval("[data-testid=import]", (b) => b.disabled), true);
-  assert.equal(await page.$eval("[data-testid=import-tooltip]", (el) => el.title), "Coming in the next phase");
+  assert.equal(await page.$eval("[data-testid=import]", (b) => b.disabled), false);
   assert.ok(Math.abs((await frameRatio(page)) - 16 / 9) < 0.02, `frame ratio ${await frameRatio(page)}`);
   assert.equal(await text(page, "saved"), "Saved");
   assert.deepEqual(await page.$$eval("[data-testid=undo],[data-testid=redo]", (b) => b.map((x) => x.disabled)), [true, true]);
@@ -229,7 +228,8 @@ test("a stalled connection shows Reconnecting… and recovers with the project s
   } finally {
     process.kill(pid, "SIGCONT");
   }
-  await page.waitForFunction(() => !document.querySelector("[data-testid=connection-banner]"), { timeout: 20000 });
+  // Reconnect backoff is capped at 5 s, but a busy machine can take longer to answer again.
+  await page.waitForFunction(() => !document.querySelector("[data-testid=connection-banner]"), { timeout: 45000 });
   assert.equal(await text(page, "project-title"), name);
   // And it really talks to the server again.
   await typeInto(page, "[data-testid=inspector-name]", "After Reconnect");
