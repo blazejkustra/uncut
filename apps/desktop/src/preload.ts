@@ -1,9 +1,10 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 
 import {
   APP_INFO_CHANNEL,
   APP_STATE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
+  CHOOSE_MEDIA_CHANNEL,
   COPY_TEXT_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
@@ -30,5 +31,14 @@ contextBridge.exposeInMainWorld("uncut", {
   showInFolder: (path: string) => ipcRenderer.invoke(SHOW_IN_FOLDER_CHANNEL, path),
   setAppState: (state: AppState) => ipcRenderer.send(APP_STATE_CHANNEL, state),
   copyText: (text: string) => ipcRenderer.invoke(COPY_TEXT_CHANNEL, text),
+  chooseMedia: () => ipcRenderer.invoke(CHOOSE_MEDIA_CHANNEL),
+  // The disk path of a dropped File ("" for files that don't come from disk).
+  pathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
 });

@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import type { ProjectSnapshot, RecentProject, ServerHello, SetupCheck } from "@uncut/contracts";
+import { THUMB_PATH, TOKEN_QUERY_PARAM, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -13,10 +13,18 @@ import type { Canvas } from "./format.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
+export interface MediaItem {
+  readonly id: string;
+  readonly kind: "video" | "audio" | "image";
+  readonly name: string;
+  readonly path: string;
+  readonly probe?: { readonly frames?: number; readonly fps?: number; readonly width?: number; readonly height?: number; readonly hasAudio?: boolean };
+}
+
 export interface Project {
   readonly name: string;
   readonly canvas: Canvas;
-  readonly media: ReadonlyArray<unknown>;
+  readonly media: ReadonlyArray<MediaItem>;
   readonly tracks: ReadonlyArray<{ readonly id: string; readonly kind: "video" | "text" | "audio"; readonly role?: "main"; readonly name: string; readonly items: ReadonlyArray<unknown> }>;
 }
 
@@ -48,6 +56,11 @@ export interface AppStateShape {
   readonly setupChecking: boolean;
   // The last setup.check failed as a whole (server unreachable): shown with Check again.
   readonly setupError?: string;
+  // Import jobs on the server (running and recent); the library shows the open project's.
+  readonly jobs: ReadonlyArray<ImportJob>;
+  readonly importReport?: { readonly failed: MediaImportResult["failed"]; readonly skipped: MediaImportResult["skipped"] };
+  // Media ids that have a poster on the server; others show an icon (no request, no 404).
+  readonly thumbIds: ReadonlySet<string>;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -62,6 +75,8 @@ let state: AppStateShape = {
   changedOnDisk: false,
   setupOpen: false,
   setupChecking: false,
+  jobs: [],
+  thumbIds: new Set(),
 };
 const listeners = new Set<() => void>();
 
@@ -96,10 +111,18 @@ let newestRevision = -1;
 function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (snapshot) newestRevision = Math.max(newestRevision, snapshot.revision);
   const switched = snapshot?.dir !== state.snapshot?.dir;
+  const mediaChanged = mediaKey(snapshot) !== mediaKey(state.snapshot);
+  if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined } : {}),
+    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined } : {}),
   });
+}
+
+const mediaKey = (s: ProjectSnapshot | null) => (s ? `${s.dir}|${projectOf(s).media.map((m) => m.id).join(",")}` : "");
+async function refreshThumbs() {
+  const ids = await call((c) => c["media.thumbnails"]({}));
+  if (ids.ok) set({ thumbIds: new Set(ids.value) });
 }
 
 /** From a call result: applied only if it is newer than anything shown. */
@@ -120,7 +143,51 @@ export function plainError(error: CallError): string {
 }
 
 let connection: Connection | undefined;
+let serverConnection: ServerConnection | undefined;
+
+/** The poster for a media item, from the server's token-protected route (never file://). */
+export const thumbUrl = (id: string) => {
+  if (!serverConnection) return undefined;
+  const url = new URL(serverConnection.url.replace(/^ws/, "http"));
+  url.pathname = `${THUMB_PATH}/${encodeURIComponent(id)}`;
+  url.search = "";
+  url.searchParams.set(TOKEN_QUERY_PARAM, serverConnection.token);
+  return url.href;
+};
 let unsubscribe: (() => void) | undefined;
+let unsubscribeJobs: (() => void) | undefined;
+// Finished jobs whose result has been shown (or that finished before this window saw them).
+const reported = new Set<string>();
+let jobsSeen = false;
+
+/** Jobs as the server reports them: progress, finished results and newly made posters. */
+function onJobs(jobs: ReadonlyArray<ImportJob>) {
+  const before = new Map(state.jobs.map((j) => [j.id, j]));
+  let report = state.importReport;
+  let posters = false;
+  for (const job of jobs) {
+    const prev = before.get(job.id);
+    if (prev?.postersDone !== job.postersDone && job.postersDone > 0) posters = true;
+    const finished = job.phase === "done" || job.phase === "failed";
+    // On (re)connect, jobs that finished earlier are history, not news.
+    if (finished && !jobsSeen) reported.add(job.id);
+    if (finished && !reported.has(job.id)) {
+      reported.add(job.id);
+      posters = true;
+      if (job.projectDir === state.snapshot?.dir) {
+        const failed = job.phase === "failed" ? job.result?.failed ?? [{ path: `${job.total} file${job.total === 1 ? "" : "s"}`, message: job.error ?? "The import stopped." }] : job.result?.failed ?? [];
+        const skipped = job.result?.skipped ?? [];
+        report = failed.length || skipped.length ? { failed: [...(report?.failed ?? []), ...failed], skipped: [...(report?.skipped ?? []), ...skipped] } : report;
+      }
+    }
+  }
+  jobsSeen = true;
+  set({ jobs, importReport: report });
+  if (posters) void refreshThumbs();
+}
+
+/** The open project's import jobs that are still running or waiting. */
+export const activeJobs = (s: AppStateShape) => s.jobs.filter((j) => j.projectDir === s.snapshot?.dir && j.phase !== "done" && j.phase !== "failed");
 const call: Connection["call"] = (f) =>
   connection ? connection.call(f) : Promise.resolve({ ok: false, error: { _tag: "NotConnected", message: "Not connected to the server" } });
 
@@ -141,11 +208,14 @@ export async function start() {
   }
   let firstSnapshot: () => void = () => {};
   const gotFirstSnapshot = new Promise<void>((resolve) => (firstSnapshot = resolve));
+  serverConnection = server.c;
   const conn = connect(server.c, {
     // Every (re)connect resubscribes: the server re-sends the current project first.
     onConnect: () => {
       if (state.connection === "server-exited") return;
       set({ connection: "connected", notice: state.notice?.transport ? undefined : state.notice });
+      unsubscribeJobs?.();
+      unsubscribeJobs = conn.subscribe((c) => c["media.jobs"]({}), onJobs);
       unsubscribe?.();
       unsubscribe = conn.subscribe(
         (c) => c["project.subscribe"]({}),
@@ -254,9 +324,19 @@ export const actions = {
 
   showInFolder: (path: string) => bridge.showInFolder(path),
 
-  // Media import arrives in phase 3 chunk 5 (through the Rust media helper). The Import…
-  // buttons call this; until then they're disabled.
-  importMedia: () => undefined,
+  /**
+   * Import files (from a drop) or, with no paths, ask with the native dialog. The server runs
+   * it as a job (queued behind any running one); progress and results arrive on media.jobs.
+   */
+  async importMedia(paths?: ReadonlyArray<string>) {
+    const chosen = paths ?? (await bridge.chooseMedia());
+    const absolute = chosen.filter((p) => typeof p === "string" && p.startsWith("/"));
+    if (absolute.length === 0) return;
+    if (!activeJobs(state).length) set({ importReport: undefined });
+    const result = await call((c) => c["media.import"]({ paths: absolute }));
+    if (!result.ok) set({ importReport: { failed: absolute.map((path) => ({ path, message: plainError(result.error) })), skipped: [] } });
+  },
+  dismissImportReport: () => set({ importReport: undefined }),
 
   dismissNotice: () => set({ notice: undefined }),
 
