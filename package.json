@@ -8,7 +8,7 @@
     "editor": "electron spikes/editor/main.cjs",
     "demo": "node spikes/editor/make-demo.mjs",
     "dev": "node scripts/dev.mjs",
-    "build": "pnpm --filter @uncut/web build && pnpm --filter @uncut/server build && pnpm --filter @uncut/desktop build && cargo build --release --manifest-path native/media/Cargo.toml",
+    "build": "pnpm --filter @uncut/web build && pnpm --filter @uncut/server build && pnpm --filter @uncut/desktop build && node native/media/build-release.mjs",
     "dist": "pnpm build && pnpm --filter @uncut/desktop dist"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ const run = (cmd, args) => {
   if (r.status !== 0) process.exit(r.status ?? 1);
 };
 
-run("cargo", ["build", "--release", "--manifest-path", "native/media/Cargo.toml"]);
+run("node", ["native/media/build-release.mjs"]);
 run("node", ["apps/server/scripts/build.mjs"]);
 run("node", ["apps/desktop/scripts/build.mjs"]);
 
