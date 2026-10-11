@@ -11,3 +11,8 @@ fixtures/
 *.MP4
 *.mov
 *.MOV
+
+# Build outputs
+dist/
+apps/*/dist/
+native/media/target/

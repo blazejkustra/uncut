@@ -7,8 +7,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { resolve } from "node:path";
 import { launchEditor } from "./helpers/electron.mjs";
 
-const DEMO = "fixtures/drone-demo.uncut/project.json";
-const skip = !existsSync(DEMO) && "needs fixtures/drone-demo.uncut (node spikes/editor/make-demo.mjs)";
+import { demoProject, skipDemo } from "./helpers/demo.mjs";
+
+const skip = skipDemo;
+const DEMO = skip ? null : demoProject();
 const dir = resolve("test-output/agent-ui.uncut");
 const plan = resolve("test-output/fake-plan.json");
 const prompts = resolve("test-output/fake-prompts.jsonl");
@@ -45,7 +47,7 @@ before(async () => {
 });
 after(async () => app?.close());
 
-test("an agent turn edits live, is saved, and shows its steps", { skip }, async () => {
+test("an agent turn edits live, is saved, and shows its steps", { skip, timeout: 120000 }, async () => {
   const t = await ask("Make the ending shorter");
   assert.equal(t.status, "done", t.result);
   assert.deepEqual(t.steps.map((s) => [s.label, s.done, !!s.isError]), [
@@ -59,7 +61,7 @@ test("an agent turn edits live, is saved, and shows its steps", { skip }, async 
   assert.ok(await page.$('[data-undo-turn]'), "the turn can be undone");
 });
 
-test("D6: the agent is told about edits made by hand, and can't overwrite them", { skip }, async () => {
+test("D6: the agent is told about edits made by hand, and can't overwrite them", { skip, timeout: 120000 }, async () => {
   // The user trims the orbit shot by hand.
   await page.click('[data-side="inspector"]');
   const edge = await (await page.$('.clip[data-item="orbit"] .edge.r')).boundingBox();
@@ -84,7 +86,7 @@ test("D6: the agent is told about edits made by hand, and can't overwrite them",
   assert.equal(item(onDisk(), "orbit").duration, orbit, "the user's trim stands");
 });
 
-test("D7: undoing the agent's turn removes its edit and keeps the user's", { skip }, async () => {
+test("D7: undoing the agent's turn removes its edit and keeps the user's", { skip, timeout: 120000 }, async () => {
   const orbit = item(onDisk(), "orbit").duration;
   await page.click('[data-side="agent"]');
   const first = await page.evaluate(() => window.__uncut.turns[0].id);
