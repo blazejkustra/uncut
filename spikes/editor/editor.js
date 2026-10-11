@@ -2,6 +2,7 @@
 // into edit ops. Every change goes through the main process (window.uncut.edit),
 // which validates it, saves project.json and sends back the new project.
 import { esc, textHtml } from "./render.js";
+import { visualsAt as visualsAtShared } from "./timeline.mjs";
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -49,33 +50,9 @@ function derive() {
 
 // ---------- compositor ----------
 
-/**
- * Everything visible at frame f, bottom layer first. A transition is centred on its cut:
- * the outgoing clip runs half the transition past its end, the incoming one starts half
- * before its start, and the incoming clip fades in on top.
- */
+/** Everything visible at frame f, bottom layer first (shared with export and the agent). */
 function visualsAt(f) {
-  const out = [];
-  const tracks = [...project().tracks].reverse();
-  for (const track of tracks) {
-    if (track.hidden || track.kind === "audio") continue;
-    const items = track.items;
-    items.forEach((item, i) => {
-      const half = item.transitionIn ? item.transitionIn.duration / 2 : 0;
-      const nextHalf = track.role === "main" && items[i + 1]?.transitionIn ? items[i + 1].transitionIn.duration / 2 : 0;
-      const from = item._start - half;
-      const to = item._start + item.duration + nextHalf;
-      if (f < from || f >= to) return;
-      let opacity = 1;
-      if (half && f < item._start + half) opacity = clamp((f - from) / (2 * half), 0, 1);
-      if (item.type === "text") {
-        const fadeIn = item.animation?.in?.module === "move.fade" ? item.animation.in.duration : 0;
-        if (fadeIn) opacity = clamp((f - item._start) / fadeIn, 0, 1);
-      }
-      out.push({ item, track, opacity, source: item.media ? (item.in + (f - item._start)) / fps() : 0 });
-    });
-  }
-  return out;
+  return visualsAtShared(project(), new Map(allItems().map(({ item }) => [item.id, item._start])), f);
 }
 
 const videos = new Map(); // itemId -> <video>
@@ -141,6 +118,7 @@ function renderPreview() {
     .map(({ item, opacity }) => textHtml(item, project().canvas, { opacity, selected: item.id === ui.selected }))
     .join("");
   $("#timecode").textContent = `${tc(f)} / ${tc(duration)}`;
+  if (!ui.playing && $("#agent-ctx")) $("#agent-ctx").innerHTML = contextLine();
   const ph = $(".playhead");
   if (ph) ph.style.left = `${f * ui.ppf}px`;
 }
@@ -455,13 +433,106 @@ function renderInspector() {
       <div class="kv"><span>Frame rate</span><span>${m.probe.fps} fps</span></div></div>`;
 }
 
+// ---------- agent ----------
+
+const turns = []; // { id, prompt, note, steps: [{ label, done, isError }], texts, edits, status, result, seconds }
+let agentBusy = false;
+
+const STEP_LABEL = {
+  project_read: () => "Read the timeline",
+  timeline_edit: (i) => i.summary ?? "Edited the timeline",
+  render_frames: (i) => `Looked at frame${i.frames?.length > 1 ? "s" : ""} ${(i.frames ?? []).join(", ")}`,
+  contact_sheet: (i) => (i.media ? `Scanned ${i.media} in a contact sheet` : `Looked at a contact sheet of the edit`),
+  modules_list: (i) => `Checked the ${i.kind ?? ""} modules`.replace("  ", " "),
+  ui_show: () => "Pointed you at the result",
+};
+
+/** The little markdown agents use: paragraphs, "- " bullets, **bold** and `code`. */
+function md(text) {
+  const inline = (x) => esc(x).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  return text.split(/\n{2,}/).map((block) => {
+    const lines = block.split("\n");
+    if (lines.every((l) => /^\s*[-*] /.test(l))) return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*] /, ""))}</li>`).join("")}</ul>`;
+    return `<p>${lines.map(inline).join("<br>")}</p>`;
+  }).join("");
+}
+
+function turnHtml(t) {
+  const steps = t.steps.map((st) => `<div>${icon(st.isError ? "x" : st.done ? "check" : "loader-circle")}${esc(st.label)}</div>`).join("");
+  const texts = t.texts.map(md).join("");
+  const foot = t.status === "working"
+    ? `Working<span class="spacer"></span><button class="link-btn" data-agent-stop>${icon("square")}Stop</button>`
+    : t.status === "undone"
+      ? `Undone<span class="spacer"></span>`
+      : `Claude Code${t.seconds ? `, ${Math.round(t.seconds)}s` : ""}<span class="spacer"></span>${t.edits ? `<button class="link-btn" data-undo-turn="${t.id}">${icon("undo-2")}Undo turn</button>` : ""}`;
+  const note = t.note ? `<details class="manual-note"><summary>${icon("pencil")}Told the agent about your edits by hand</summary><pre>${esc(t.note)}</pre></details>` : "";
+  return `<div class="msg-user">${esc(t.prompt)}</div>${note}
+    <div class="turn ${t.status}" data-turn="${t.id}"><div class="turn-body">${steps ? `<div class="steps">${steps}</div>` : ""}${texts}${t.status === "error" ? `<p class="err">${esc(t.result ?? "Something went wrong.")}</p>` : ""}</div>
+    <div class="turn-foot">${foot}</div></div>`;
+}
+
+function renderThread() {
+  const el = $("#thread");
+  if (!el) return;
+  el.innerHTML = turns.length ? turns.map(turnHtml).join("") : `<div class="hint">Ask for an edit in plain words, for example "make it 20 seconds and keep the best aerial shots" or "add a title over the first shot". The agent uses your Claude Code login, sees the timeline, looks at frames, and edits live. Every turn can be undone.</div>`;
+  el.scrollTop = el.scrollHeight;
+  window.lucide.createIcons();
+}
+
+function contextLine() {
+  const sel = ui.selected && findItem(ui.selected)?.item;
+  return `${icon("mouse-pointer-2")}Playhead ${tc(ui.frame)}${sel ? `, selected ${esc(itemLabel(sel))}` : ""}`;
+}
+
 function renderAgent() {
-  return `<div class="hint">The agent arrives with spike B.</div>`;
+  return `<div class="thread" id="thread" data-testid="agent-thread"></div>
+    <div class="composer">
+      <div class="composer-ctx" id="agent-ctx">${contextLine()}</div>
+      <textarea id="agent-input" placeholder="Ask Uncut to edit, or how to do something"></textarea>
+      <div class="composer-foot"><span class="grow"></span><span class="ctx">Claude Code, your subscription</span>
+        <button class="send" id="agent-send" title="Send (Enter)">${icon("arrow-up")}</button></div>
+    </div>`;
+}
+
+async function agentSend() {
+  const input = $("#agent-input");
+  const text = input?.value.trim();
+  if (!text || agentBusy) return;
+  input.value = "";
+  agentBusy = true;
+  if (ui.playing) pause();
+  await window.uncut.agentSend({ text, frame: Math.floor(ui.frame), selected: ui.selected });
+  agentBusy = false;
+}
+
+function onAgentEvent(ev) {
+  let t = turns.find((x) => x.id === ev.turnId);
+  if (ev.type === "start") {
+    t = { id: ev.turnId, prompt: ev.text, note: ev.note, steps: [], texts: [], edits: 0, status: "working" };
+    turns.push(t);
+  } else if (!t) return;
+  else if (ev.type === "tool") t.steps.push({ name: ev.name, label: (STEP_LABEL[ev.name] ?? (() => ev.name))(ev.input ?? {}), done: false });
+  else if (ev.type === "tool_done") {
+    const st = t.steps.find((x) => x.name === ev.name && !x.done);
+    if (st) { st.done = true; st.isError = ev.isError; }
+    if (ev.name === "timeline_edit" && !ev.isError) t.edits++;
+  } else if (ev.type === "text") t.texts.push(ev.text);
+  else if (ev.type === "done") {
+    t.status = ev.ok ? "done" : "error";
+    t.result = ev.result;
+    t.seconds = ev.seconds;
+    t.steps.forEach((st) => (st.done = true));
+  }
+  renderThread();
 }
 
 function renderSide() {
   $$("[data-side]").forEach((b) => b.classList.toggle("active", b.dataset.side === ui.side));
-  $("#side-body").innerHTML = ui.side === "agent" ? renderAgent() : renderInspector();
+  if (ui.side === "agent") {
+    // Keep the composer (and what's typed in it) when only the context changed.
+    if (!$("#agent-input")) { $("#side-body").innerHTML = renderAgent(); renderThread(); }
+    $("#agent-ctx").innerHTML = contextLine();
+  } else $("#side-body").innerHTML = renderInspector();
   window.lucide.createIcons();
 }
 
@@ -605,6 +676,27 @@ function bind() {
   $("#zoom-fit").onclick = () => { fitZoom(); renderTimeline(); };
   $("#open-project").onclick = async () => { const r = await window.uncut.choose(); if (r) { thumbs.clear(); ui.ppf = null; ui.frame = 0; accept(r); loadThumbs(); } };
   $("#side-body").addEventListener("change", onSideChange);
+  $("#side-body").addEventListener("click", async (e) => {
+    if (e.target.closest("#agent-send")) agentSend();
+    else if (e.target.closest("[data-agent-stop]")) window.uncut.agentStop();
+    else if (e.target.closest("[data-undo-turn]")) {
+      const id = e.target.closest("[data-undo-turn]").dataset.undoTurn;
+      accept(await window.uncut.agentUndoTurn(id));
+      turns.find((t) => t.id === id).status = "undone";
+      renderThread();
+    }
+  });
+  $("#side-body").addEventListener("keydown", (e) => {
+    if (e.target.id === "agent-input" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); agentSend(); }
+  });
+  window.uncut.onAgentEvent(onAgentEvent);
+  window.uncut.onProjectChanged((next) => accept(next));
+  window.uncut.onUiShow((a) => {
+    if (a.select) { ui.selected = a.select[0] ?? null; ui.selectedTransition = null; }
+    if (a.frame !== undefined) setFrame(a.frame);
+    if (["media", "text", "transitions"].includes(a.panel)) ui.lib = a.panel;
+    renderAll();
+  });
   $("#library").addEventListener("click", onLibraryClick);
   $("#rail").addEventListener("click", (e) => { const b = e.target.closest("[data-lib]"); if (b) { ui.lib = b.dataset.lib; renderLibrary(); } });
   $$("[data-side]").forEach((b) => (b.onclick = () => { ui.side = b.dataset.side; renderSide(); }));
@@ -639,6 +731,7 @@ window.__uncut = {
   get revision() { return snap.revision; },
   get duration() { return duration; },
   get lastExport() { return lastExport; },
+  get turns() { return turns; },
   exportVideo,
   videos: () => [...videos.entries()].map(([id, el]) => ({ id, time: el.currentTime, paused: el.paused, seeking: el.seeking, ready: el.readyState, opacity: Number(el.style.opacity), z: Number(el.style.zIndex) })),
   setFrame,

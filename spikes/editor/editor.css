@@ -51,3 +51,19 @@ kbd { font: 10px var(--mono); border: 1px solid var(--border-strong); border-rad
 .toast.ok { background: #13241a; border-color: #24503a; color: #c8f5d8; }
 /* The transition chip sits on the top edge of the lane so clip edges stay grabbable below it. */
 .tl-lane.main .trans { top: 1px; height: 18px; }
+/* Agent thread */
+.msg-user { align-self: flex-end; max-width: 88%; background: var(--raised); border-radius: var(--radius); padding: 8px 10px; white-space: pre-wrap; }
+.turn-body p { margin: 6px 0 2px; line-height: 1.45; white-space: pre-wrap; }
+.turn-body p.err { color: #ffb4b4; }
+.turn.undone { opacity: 0.5; }
+.manual-note { font-size: 11px; color: var(--muted); padding: 0 4px; }
+.manual-note pre { white-space: pre-wrap; font: 11px/1.4 var(--font); margin: 4px 0 0; }
+.link-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.link-btn:hover { color: var(--fg); background: var(--raised); }
+.link-btn svg { width: 12px; height: 12px; }
+.send { width: 26px; height: 26px; border-radius: 50%; background: var(--fg); color: #000; display: inline-flex; align-items: center; justify-content: center; }
+.send svg { width: 14px; height: 14px; }
+.steps svg.lucide-loader-circle { animation: spin 1s linear infinite; }
+.turn-body ul { margin: 6px 0; padding-left: 18px; line-height: 1.45; }
+.turn-body li { margin: 2px 0; }
+.turn-body code { font: 11.5px var(--mono); background: var(--raised); padding: 0 4px; border-radius: 3px; }
