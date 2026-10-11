@@ -12,6 +12,10 @@ extraResources:
     to: server/server.mjs
   - from: ../../native/media/target/release/uncut-media
     to: bin/uncut-media
+  # The server validates projects against these; schemas are bundled into server.mjs.
+  - from: ../../spec/modules/builtin
+    to: modules/builtin
+    filter: ["*.json"]
 mac:
   category: public.app-category.video
   identity: null # unsigned for now
