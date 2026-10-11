@@ -78,9 +78,9 @@
         <text class="t-title" x="58" y="372" style="font-size:13px">Preview</text>
         <text class="t-item" x="58" y="394">HTML graphics layer: render(t)</text>
         <text class="t-item" x="58" y="414">  text, components, transitions (D10)</text>
-        <text class="t-item" x="58" y="436">Footage surface (spike A decides):</text>
-        <text class="t-item" x="58" y="456">  WebCodecs + WebGPU in Chromium, or</text>
-        <text class="t-item" x="58" y="476">  frames from the media core</text>
+        <text class="t-item" x="58" y="436">Footage surface (decided, spike A):</text>
+        <text class="t-item" x="58" y="456">  Chromium &lt;video&gt;, VideoToolbox,</text>
+        <text class="t-item" x="58" y="476">  originals, no proxies needed</text>
         <text class="t-item" x="58" y="508">Same render(t) is used for export,</text>
         <text class="t-item" x="58" y="528">so preview and export match</text>
       </g>
@@ -114,7 +114,7 @@
       <g class="node" data-node="core">
         <rect class="box" x="880" y="60" width="280" height="500" rx="10" />
         <text class="t-title" x="898" y="86">Rust media core</text>
-        <text class="t-sub" x="898" y="106">Native module or helper process (spike A)</text>
+        <text class="t-sub" x="898" y="106">Helper process; off the preview path</text>
         <text class="t-title" x="898" y="140" style="font-size:13px">Media</text>
         <text class="t-item" x="898" y="160">Probe, hardware decode (VideoToolbox)</text>
         <text class="t-item" x="898" y="180">Proxies, thumbnails, waveforms</text>
@@ -172,7 +172,7 @@
 
       <path class="edge two" d="M830 300 H880" />
       <path class="edge two dashed" d="M360 520 C 420 604, 820 604, 880 520" />
-      <text class="t-edge" x="628" y="612">preview frames (spike A)</text>
+      <text class="t-edge" x="628" y="612">not needed for preview</text>
 
       <path class="edge two" d="M555 560 V640" />
       <text class="t-edge" x="562" y="634">spawn + MCP</text>
@@ -200,7 +200,7 @@
       <ol>
         <li>The playhead lives in the renderer. Scrubbing never round-trips through the server.</li>
         <li>The graphics layer calls <code>render(t)</code> in the page for text, components and transitions.</li>
-        <li>Footage frames come from the footage surface: decoded in Chromium or by the media core. Spike A measures both on 4K drone footage.</li>
+        <li>Footage plays in Chromium <code>&lt;video&gt;</code> elements decoded by VideoToolbox, straight from the original files. One element per visible clip; a transition shows two.</li>
         <li>Audio plays from the media core's engine, so meters and ducking match export.</li>
       </ol>
     </section>
@@ -217,15 +217,20 @@
       <h3>4. Export</h3>
       <ol>
         <li>The export dialog starts a job on the server.</li>
-        <li>For each frame the media core decodes footage, and the offscreen window renders the same <code>render(t)</code> graphics as the preview.</li>
+        <li>The footage is cut and crossfaded from the original files with the same frame maths as the preview, and an offscreen window renders the same HTML graphics as the preview.</li>
         <li>The compositor layers them and the encoder writes H.264. The audio engine mixes, then normalises to the LUFS target.</li>
         <li>Progress streams to the UI. When it's done, Finder opens on the file.</li>
       </ol>
     </section>
   </div>
 
-  <h2>Decided by spike A, not by this page</h2>
-  <p class="open">Where footage is decoded for preview (Chromium WebCodecs vs. the Rust core), how the core is attached (native module vs. helper process), and whether Smelter is the compositor. The rest of the diagram holds either way.</p>
+  <h2>Decided by spike A</h2>
+  <p>Measured in Electron 44 on an M4 Pro with the user's own drone clip (3840×2160 HEVC Main 10, 59.94 fps, 5.6 minutes, 3.6 GB):</p>
+  <ul>
+    <li><strong>Preview decodes in Chromium.</strong> A <code>&lt;video&gt;</code> element plays the original at 60 fps with 0 dropped frames and seeks in 30 ms (median of 40). Two 4K streams at once, as in a crossfade, hold 55 fps. Scrubbing in the editor settles in about 100 ms. No proxies and no Rust on the preview path.</li>
+    <li><strong>Export uses the same timeline maths.</strong> Shots and crossfades are cut from the originals by ffmpeg with VideoToolbox; text is rendered by Chromium from the same HTML as the preview. Exported frames match the source at SSIM 0.97 to 0.998, and a 35 s 4K export takes about 35 s.</li>
+    <li><strong>The media core becomes a helper process</strong> for analysis, waveforms and the audio engine, started when needed. Smelter wasn't evaluated: the Chromium path passed, so there was nothing left for it to de-risk.</li>
+  </ul>
 </main>
 </body>
 </html>
