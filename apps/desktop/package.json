@@ -2,7 +2,11 @@
   "name": "@uncut/desktop",
   "productName": "Uncut",
   "version": "0.0.1",
-  "description": "AI-first video editor",
+  "description": "Uncut, an AI-first video editor",
+  "author": {
+    "name": "blazejkustra"
+  },
+  "homepage": "https://github.com/blazejkustra",
   "private": true,
   "main": "dist/main.cjs",
   "scripts": {

@@ -56,7 +56,41 @@ export function inspectLock(path = LOCK) {
   return { exists: true, holder, stale };
 }
 
+// Ctrl-C or a kill during a test run must not leave apps, mounts or temp files behind: every
+// spawned app is tracked from the moment it starts, test files register their own cleanups,
+// and SIGINT/SIGTERM runs all of it (synchronously) before exiting.
+const launched = new Set();
+const cleanups = new Set();
+let handlersInstalled = false;
+/** Run `fn` (synchronously) if the test process is interrupted. Returns an unregister function. */
+export function onInterrupt(fn) {
+  installInterruptHandlers();
+  cleanups.add(fn);
+  return () => cleanups.delete(fn);
+}
+function installInterruptHandlers() {
+  if (handlersInstalled) return;
+  handlersInstalled = true;
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => {
+      for (const proc of launched) {
+        try {
+          proc.kill("SIGKILL");
+        } catch {}
+      }
+      for (const fn of cleanups) {
+        try {
+          fn();
+        } catch {}
+      }
+      unlockApps();
+      process.exit(130);
+    });
+  }
+}
+
 export async function lockApps({ path = LOCK, timeoutMs = 10 * 60 * 1000 } = {}) {
+  installInterruptHandlers();
   mkdirSync(dirname(path), { recursive: true });
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -120,7 +154,10 @@ export async function launchApp({ command, args = [], env: extra = {}, port: req
     writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));
   }
   delete env.VITE_DEV_SERVER_URL;
+  installInterruptHandlers();
   const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  launched.add(proc);
+  proc.once("exit", () => launched.delete(proc));
   const exited = new Promise((r) => proc.once("exit", r));
   let output = "";
   proc.stdout.on("data", (d) => (output += d));

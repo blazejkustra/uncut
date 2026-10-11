@@ -26,6 +26,19 @@ import { startServer, type ServerProcess } from "./server.ts";
 // Lets tests drive the window with puppeteer (same switch as the phase 2 spike).
 if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port", process.env.UNCUT_CDP);
 
+// With UNCUT_DATA_DIR (tests, side-by-side runs) Electron's own profile lives there too, so a
+// test never touches the real ~/Library/Application Support/Uncut. Must happen before ready.
+if (process.env.UNCUT_DATA_DIR) {
+  app.setPath("userData", path.join(process.env.UNCUT_DATA_DIR, "electron"));
+  app.setPath("sessionData", path.join(process.env.UNCUT_DATA_DIR, "electron"));
+}
+
+// One Uncut per profile: opening it again focuses the running window. The lock is per userData
+// directory, so test runs with their own UNCUT_DATA_DIR don't block each other.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+
 // Tests can't click native dialogs: with UNCUT_TEST_DIALOG (a JSON array of paths, used in
 // order; an exhausted queue means "cancelled") the dialogs answer from it instead. Only
 // together with UNCUT_CDP, so a stray variable can't change a release user's app. In the
@@ -154,6 +167,13 @@ const fromAppWindow = (event: IpcMainInvokeEvent | IpcMainEvent) => {
   const frame = event.senderFrame;
   return win !== undefined && event.sender === win.webContents && frame !== null && frame.parent === null && isAppUrl(frame.url);
 };
+
+app.on("second-instance", () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 
 app.whenReady().then(() => {
   server = startServer({

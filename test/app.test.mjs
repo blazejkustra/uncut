@@ -2,8 +2,8 @@
 // Needs `pnpm dist` first; skipped (with the reason) when the .app isn't there.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { launchApp, lockApps, unlockApps } from "./helpers/app.mjs";
@@ -166,4 +166,51 @@ test("the packaged server creates, edits and reopens a project (schemas and modu
   assert.deepEqual(recents.value.map((r) => r.dir), [dir]);
   assert.deepEqual(app.errors, []);
   await done(app);
+});
+
+test("one app per profile: a second launch with the same data dir exits, another data dir runs alongside", T, async () => {
+  const first = await launch();
+  // Same UNCUT_DATA_DIR (so the same Electron profile): the second instance hands over and exits.
+  const second = spawnSync(APP, [], { env: { ...process.env, UNCUT_DATA_DIR: join(scratch, "data"), UNCUT_CDP: "" }, timeout: 20000 });
+  assert.equal(second.status, 0, "the second instance exits by itself");
+  assert.equal(first.proc.exitCode, null, "the first keeps running");
+  // A different data dir is a different profile: both run.
+  const other = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(scratch, "data-other") } });
+  assert.equal(first.proc.exitCode, null);
+  assert.equal(other.proc.exitCode, null);
+  await other.close();
+  await done(first);
+});
+
+test("Electron's profile goes to UNCUT_DATA_DIR, not the real ~/Library/Application Support/Uncut", T, async () => {
+  const app = await launch();
+  await done(app);
+  assert.ok(existsSync(join(scratch, "data", "electron", "Local Storage")) || existsSync(join(scratch, "data", "electron", "Preferences")), "the profile was written under the data dir");
+});
+
+test("interrupting a test process kills the app it launched", T, async () => {
+  // A child test process that launches the app and then waits; we send it SIGINT.
+  const script = join(scratch, "interrupted.mjs");
+  writeFileSync(
+    script,
+    `import { launchApp } from ${JSON.stringify(resolve("test/helpers/app.mjs"))};
+const app = await launchApp({ command: ${JSON.stringify(APP)}, env: { UNCUT_DATA_DIR: ${JSON.stringify(join(scratch, "data-int"))} } });
+console.log("PID " + app.proc.pid);
+setInterval(() => {}, 1000);`,
+  );
+  const child = spawn(process.execPath, [script], { stdio: ["ignore", "pipe", "inherit"] });
+  const pid = await new Promise((res, rej) => {
+    let out = "";
+    child.stdout.on("data", (d) => {
+      out += d;
+      const m = /PID (\d+)/.exec(out);
+      if (m) res(Number(m[1]));
+    });
+    child.once("exit", () => rej(new Error(`child exited early: ${out}`)));
+  });
+  assert.ok(alive(pid));
+  child.kill("SIGINT");
+  const code = await new Promise((r) => child.once("exit", (c) => r(c)));
+  assert.equal(code, 130);
+  assert.ok(await waitGone(pid, 3000), `app ${pid} still running after its test process was interrupted`);
 });
