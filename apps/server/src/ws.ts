@@ -42,6 +42,8 @@ const handlersLayer = ({ config, mediaCore, projects, recents }: Services) =>
     [RPC_METHODS.projectOpen]: ({ dir }) => projects.open(dir),
     [RPC_METHODS.projectGet]: () => projects.get,
     [RPC_METHODS.projectReload]: () => projects.reload,
+    [RPC_METHODS.projectClose]: () => projects.close,
+    [RPC_METHODS.projectSubscribe]: () => projects.changes,
     [RPC_METHODS.projectEdit]: (input) => projects.edit(input),
     [RPC_METHODS.projectUndo]: () => projects.undo,
     [RPC_METHODS.projectRedo]: () => projects.redo,

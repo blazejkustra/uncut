@@ -53,9 +53,15 @@ export async function connect(port, token) {
   const ws = await openSocket(`ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`);
   const pending = new Map();
   let id = 0;
+  const streams = new Map();
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
     if (msg._tag === "Exit") pending.get(String(msg.requestId))?.(msg.exit);
+    if (msg._tag === "Chunk") {
+      streams.get(String(msg.requestId))?.(msg.values);
+      // Streams are acknowledged chunk by chunk, or the server stops sending.
+      ws.send(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
+    }
   };
   const call = (tag, payload = {}) =>
     new Promise((res, rej) => {
@@ -76,5 +82,24 @@ export async function connect(port, token) {
     if (exit._tag !== "Failure" || exit.cause[0]?._tag !== "Fail") throw new Error(`${tag}: expected a typed failure, got ${JSON.stringify(exit)}`);
     return exit.cause[0].error;
   };
-  return { call, ok, fail, close: () => ws.close() };
+  /** Subscribe to a streaming RPC; returns { values, next(predicate) } over everything received. */
+  const subscribe = (tag, payload = {}) => {
+    const requestId = String(++id);
+    const values = [];
+    const waiters = [];
+    streams.set(requestId, (chunk) => {
+      values.push(...chunk);
+      for (const w of [...waiters]) if (values.some(w.predicate)) (waiters.splice(waiters.indexOf(w), 1), w.resolve());
+    });
+    ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
+    const until = (predicate) =>
+      values.some(predicate)
+        ? Promise.resolve()
+        : new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`${tag}: no matching value within 10s; got ${JSON.stringify(values).slice(0, 300)}`)), 10000);
+            waiters.push({ predicate, resolve: () => (clearTimeout(timer), resolve()) });
+          });
+    return { values, until };
+  };
+  return { call, ok, fail, subscribe, close: () => ws.close() };
 }

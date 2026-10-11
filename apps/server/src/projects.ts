@@ -14,6 +14,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import type { PlatformError } from "effect/PlatformError";
 import * as Semaphore from "effect/Semaphore";
+import type * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
@@ -46,6 +48,9 @@ export interface ProjectsShape {
   readonly open: (dir: string) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly get: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly reload: Effect.Effect<ProjectSnapshot, ProjectError>;
+  readonly close: Effect.Effect<void>;
+  /** The current snapshot (null: nothing open), then every change. */
+  readonly changes: Stream.Stream<ProjectSnapshot | null>;
   readonly edit: (input: {
     ops: ReadonlyArray<unknown>;
     baseRevision?: number | undefined;
@@ -83,9 +88,12 @@ const validName = (name: string) =>
   name.length > 0 &&
   name.length <= 100 &&
   name.trim() === name &&
+  name.length <= MAX_NAME_LENGTH &&
   !name.startsWith(".") &&
   !name.endsWith(".") &&
   !/[\u0000-\u001f\u007f/\\:]/.test(name);
+
+export const MAX_NAME_LENGTH = 100;
 
 const refused = (message: string, details: ReadonlyArray<Problem> = []) => new EditRefused({ message, details: [...details] });
 
@@ -106,8 +114,17 @@ export const layer = Layer.effect(
     // Everything that changes the open project runs one at a time.
     const lock = yield* Semaphore.make(1);
     let current: OpenProject | undefined;
+    const updates = yield* SubscriptionRef.make<ProjectSnapshot | null>(null);
+    // Tell subscribers what is open now. Called after every change, inside the same lock.
+    const publish = Effect.suspend(() => SubscriptionRef.set(updates, current ? snapshot(current) : null));
+    // The last revision this server handed out, so revisions keep going up across close/open.
+    let lastRevision = -1;
 
-    const snapshot = (p: OpenProject): ProjectSnapshot => ({
+    const snapshot = (p: OpenProject): ProjectSnapshot => {
+      lastRevision = Math.max(lastRevision, p.session.revision);
+      return snapshotOf(p);
+    };
+    const snapshotOf = (p: OpenProject): ProjectSnapshot => ({
       dir: p.dir,
       project: p.session.project,
       revision: p.session.revision,
@@ -155,6 +172,9 @@ export const layer = Layer.effect(
           p.session = next;
           p.diskText = text;
           moveStacks(previous);
+          // Recents show the name the project has now, not the one it was opened with.
+          if (next.project.name !== previous.project.name) yield* recents.touch(p.dir, next.project.name);
+          yield* publish;
           return snapshot(p);
         }),
       );
@@ -162,9 +182,10 @@ export const layer = Layer.effect(
     const setOpen = (dir: string, project: Session["project"], diskText: string) =>
       Effect.gen(function* () {
         // Revisions never go back, not even across opens within one server.
-        const revision = current ? current.session.revision + 1 : 0;
+        const revision = lastRevision + 1;
         current = { dir, session: { project, revision, log: [] }, past: [], future: [], diskText };
         yield* recents.touch(dir, project.name);
+        yield* publish;
         return snapshot(current);
       });
 
@@ -240,7 +261,18 @@ export const layer = Layer.effect(
           }),
         ),
 
-      get: Effect.map(requireOpen, snapshot),
+      // Under the lock, so a read made after an edit was sent sees that edit.
+      get: lock.withPermits(1)(Effect.map(requireOpen, snapshot)),
+
+      close: lock.withPermits(1)(
+        Effect.suspend(() => {
+          if (current) lastRevision = Math.max(lastRevision, current.session.revision);
+          current = undefined;
+          return publish;
+        }),
+      ),
+
+      changes: SubscriptionRef.changes(updates),
 
       reload: lock.withPermits(1)(
         Effect.gen(function* () {
@@ -249,10 +281,13 @@ export const layer = Layer.effect(
           // An invalid file fails here and the current session stays as it was.
           const project = yield* parseProject(p.dir, text);
           // The undo stacks describe the file before the hand edit, so they go.
+          const renamed = project.name !== p.session.project.name;
           p.session = { project, revision: p.session.revision + 1, log: [] };
           p.past = [];
           p.future = [];
           p.diskText = text;
+          if (renamed) yield* recents.touch(p.dir, project.name);
+          yield* publish;
           return snapshot(p);
         }),
       ),
@@ -279,6 +314,14 @@ export const layer = Layer.effect(
             // Validate exactly what will be written and read back, so nothing that wouldn't
             // reopen can be saved.
             const written = JSON.parse(serialize(applied.project)) as Session["project"];
+            // Names double as folder and window names: keep them non-blank and short.
+            if (typeof written.name === "string" && written.name.trim() === "") {
+              return yield* refused("A project needs a name.", [{ code: "name", path: "/name", message: "A project needs a name." }]);
+            }
+            if (typeof written.name === "string" && written.name.length > MAX_NAME_LENGTH) {
+              const message = `A project name can be at most ${MAX_NAME_LENGTH} characters.`;
+              return yield* refused(message, [{ code: "name", path: "/name", message }]);
+            }
             const problems = format.validate(written);
             if (problems.length) return yield* refused("The edit would make the project invalid", problems);
             return yield* commit(p, { ...applied, project: written }, (previous) => {
