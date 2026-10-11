@@ -4,29 +4,19 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { THUMB_PATH, TOKEN_QUERY_PARAM, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
+import { getPlayback, playback } from "./playback.ts";
+import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
-export interface MediaItem {
-  readonly id: string;
-  readonly kind: "video" | "audio" | "image";
-  readonly name: string;
-  readonly path: string;
-  readonly probe?: { readonly frames?: number; readonly fps?: number; readonly width?: number; readonly height?: number; readonly hasAudio?: boolean };
-}
-
-export interface Project {
-  readonly name: string;
-  readonly canvas: Canvas;
-  readonly media: ReadonlyArray<MediaItem>;
-  readonly tracks: ReadonlyArray<{ readonly id: string; readonly kind: "video" | "text" | "audio"; readonly role?: "main"; readonly name: string; readonly items: ReadonlyArray<unknown> }>;
-}
+export type { MediaItem } from "./project.ts";
+export type Project = ProjectModel;
 
 /** A message in the editor's banner. `transport` ones go away when the connection comes back. */
 export interface Notice {
@@ -117,9 +107,15 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
     snapshot,
     ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined } : {}),
   });
+  // Then the playhead follows the project: back to the start for another project, clamped when it
+  // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
+  // preview of the old project ignores changes once the open folder isn't its own).
+  if (switched) playback.reset();
+  if (snapshot) playback.setProject(layoutOf(projectOf(snapshot)).frames, projectOf(snapshot).canvas.fps);
 }
 
-const mediaKey = (s: ProjectSnapshot | null) => (s ? `${s.dir}|${projectOf(s).media.map((m) => m.id).join(",")}` : "");
+// Paths too: a relinked file (same id, new path) has another poster.
+const mediaKey = (s: ProjectSnapshot | null) => (s ? `${s.dir}|${projectOf(s).media.map((m) => `${m.id}=${m.path}`).join(",")}` : "");
 async function refreshThumbs() {
   const ids = await call((c) => c["media.thumbnails"]({}));
   if (ids.ok) set({ thumbIds: new Set(ids.value) });
@@ -145,15 +141,27 @@ export function plainError(error: CallError): string {
 let connection: Connection | undefined;
 let serverConnection: ServerConnection | undefined;
 
-/** The poster for a media item, from the server's token-protected route (never file://). */
-export const thumbUrl = (id: string) => {
+/** A short, stable tag for a file path (FNV-1a), so a relinked file gets a different URL. */
+const pathTag = (path: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < path.length; i++) h = Math.imul(h ^ path.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+};
+const serverUrl = (route: string, id: string, path?: string) => {
   if (!serverConnection) return undefined;
   const url = new URL(serverConnection.url.replace(/^ws/, "http"));
-  url.pathname = `${THUMB_PATH}/${encodeURIComponent(id)}`;
+  url.pathname = `${route}/${encodeURIComponent(id)}`;
   url.search = "";
   url.searchParams.set(TOKEN_QUERY_PARAM, serverConnection.token);
+  // The server only looks at the id; the tag makes the URL (and so every <img>/<video> keyed on
+  // it) change when the media item points at another file.
+  if (path !== undefined) url.searchParams.set("v", pathTag(path));
   return url.href;
 };
+/** The poster for a media item, from the server's token-protected route (never file://). */
+export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id, path);
+/** The original file of a media item, streamed by the server with byte ranges (never file://). */
+export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
 let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
@@ -261,6 +269,27 @@ async function change(run: Parameters<Connection["call"]>[0], { inline = false }
   return error;
 }
 
+/** Plan an edit against the project on screen, send it, then select (and go to) the new item. */
+// One add at a time: a double click must not plan two edits against the same project (they'd
+// pick the same new id, and the second would be refused). Clicks while one is in flight are dropped.
+let adding = false;
+async function addPlanned(plan: (project: ProjectModel) => Planned) {
+  if (adding || !state.snapshot || !online()) return;
+  const planned = plan(projectOf(state.snapshot));
+  if ("problem" in planned) return set({ notice: { text: planned.problem } });
+  adding = true;
+  let error: CallError | undefined;
+  try {
+    error = await change((c) => c["project.edit"]({ ops: planned.ops, summary: planned.summary }));
+  } finally {
+    adding = false;
+  }
+  if (error) return;
+  playback.pause();
+  playback.select(planned.itemId);
+  playback.seek(planned.start);
+}
+
 export const actions = {
   showNewProject: () => set({ newProjectOpen: true }),
   hideNewProject: () => set({ newProjectOpen: false }),
@@ -304,11 +333,16 @@ export const actions = {
     const result = await call((c) => c["project.close"]({}));
     if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });
     set({ snapshot: null, changedOnDisk: false, reloadProblem: undefined, notice: undefined, welcomeError: undefined });
+    playback.reset();
     await refreshRecents();
   },
 
   undo: () => (state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : undefined),
   redo: () => (state.snapshot?.canRedo ? change((c) => c["project.redo"]({})) : undefined),
+  /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
+  addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId)),
+  /** Text tab preset → a text item at the playhead (see planAddText). */
+  addText: (preset: TextPreset) => addPlanned((project) => planAddText(project, preset, getPlayback().frame)),
   rename: (name: string) =>
     change((c) => c["project.edit"]({ ops: [{ op: "update_project", set: { name } }], summary: "Rename project" }), { inline: true }),
 

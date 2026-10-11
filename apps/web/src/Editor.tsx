@@ -1,46 +1,65 @@
-import type { ImportJob, ProjectSnapshot } from "@uncut/contracts";
-import {
-  AudioLines,
-  Blend,
-  Check,
-  CircleDot,
-  Eye,
-  Film,
-  FolderOpen,
-  Image as ImageIcon,
-  Lock,
-  Magnet,
-  Maximize2,
-  Music,
-  Play,
-  Plus,
-  Redo2,
-  RefreshCw,
-  Shapes,
-  SkipBack,
-  SkipForward,
-  TriangleAlert,
-  Sparkles,
-  Type,
-  Undo2,
-  Upload,
-  Volume2,
-  X,
-} from "lucide-react";
-import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { ProjectSnapshot } from "@uncut/contracts";
+import { Blend, Check, CircleDot, Film, FolderOpen, Music, Redo2, RefreshCw, Shapes, Sparkles, TriangleAlert, Type, Undo2, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { canvasLabel, shortPath, timecode } from "./format.ts";
 import { isTransportError } from "./connection.ts";
+import { shortPath } from "./format.ts";
+import { Empty, Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
-import { bridge } from "./bridge.ts";
-import { actions, activeJobs, getState, MAX_NAME_LENGTH, plainError, projectOf, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
+import { playback } from "./playback.ts";
+import { Stage } from "./Preview.tsx";
+import { actions, getState, MAX_NAME_LENGTH, plainError, projectOf, useApp, type Project } from "./store.ts";
+import { Timeline } from "./Timeline.tsx";
 
 const LATER = "Coming in a later phase";
+
+const isEditable = (el: EventTarget | null) =>
+  el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el instanceof HTMLElement && el.isContentEditable);
+
+/**
+ * Editor keys: Space plays/pauses, ←/→ step a frame (⇧ a second), Home/End jump, Esc deselects,
+ * ⌘+/⌘−/⌘0 zoom the timeline. Not while typing or with a dialog open. (⌘Z/⇧⌘Z live in the store.)
+ */
+function useEditorKeys(fps: number) {
+  useEffect(() => {
+    const blocked = (e: KeyboardEvent) => isEditable(e.target) || getState().newProjectOpen || getState().setupOpen;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (blocked(e) || e.altKey || e.ctrlKey) return;
+      const done = () => e.preventDefault();
+      if (e.metaKey) {
+        if (e.key === "=" || e.key === "+") (playback.zoomIn(), done());
+        else if (e.key === "-" || e.key === "_") (playback.zoomOut(), done());
+        else if (e.key === "0") (playback.zoomFit(), done());
+        return;
+      }
+      if (e.code === "Space") {
+        // Also stops a focused button from being "clicked" by the same key.
+        done();
+        if (!e.repeat) playback.toggle();
+      } else if (e.key === "ArrowLeft") (playback.step(e.shiftKey ? -fps : -1), done());
+      else if (e.key === "ArrowRight") (playback.step(e.shiftKey ? fps : 1), done());
+      else if (e.key === "Home") (playback.toStart(), done());
+      else if (e.key === "End") (playback.toEnd(), done());
+      else if (e.key === "Escape") playback.select(undefined);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !blocked(e)) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [fps]);
+}
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
   const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen } = useApp();
   const online = connection === "connected";
+  const [tab, setTab] = useState<LibraryTab>("media");
+  useEditorKeys(project.canvas.fps);
   return (
     <div className="app" data-testid="editor">
       <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} />
@@ -77,9 +96,9 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
           </div>
         )}
       </div>
-      <Rail />
-      <Library project={project} />
-      <Stage project={project} />
+      <Rail tab={tab} onTab={setTab} />
+      <Library project={project} tab={tab} />
+      <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
       <Side snapshot={snapshot} project={project} online={online} />
       <Timeline project={project} />
       {newProjectOpen && (
@@ -124,21 +143,25 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   );
 }
 
+// Media and Text work; the rest arrive in later chunks.
 const RAIL: ReadonlyArray<[string, typeof Film]> = [
   ["Capture", CircleDot],
-  ["Text", Type],
   ["Elements", Shapes],
   ["Transitions", Blend],
   ["Audio", Music],
   ["Generate", Sparkles],
 ];
 
-function Rail() {
+function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => void }) {
   return (
     <nav className="rail">
-      <button className="active" title="Media">
+      <button className={tab === "media" ? "active" : ""} data-testid="rail-media" title="Media" onClick={() => onTab("media")}>
         <Film />
         <span>Media</span>
+      </button>
+      <button className={tab === "text" ? "active" : ""} data-testid="rail-text" title="Text" onClick={() => onTab("text")}>
+        <Type />
+        <span>Text</span>
       </button>
       {RAIL.map(([label, Icon]) => (
         <button key={label} disabled title={`${label}: ${LATER}`}>
@@ -147,217 +170,6 @@ function Rail() {
         </button>
       ))}
     </nav>
-  );
-}
-
-function Library({ project }: { project: Project }) {
-  const app = useApp();
-  const { importReport, connection } = app;
-  const running = activeJobs(app);
-  const importing = running.length > 0;
-  const [dragging, setDragging] = useState(false);
-  const online = connection === "connected";
-  const media = project.media;
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    // Only files from disk have a path; anything else (a dragged link, text) is ignored. A drop
-    // while an import runs is queued behind it on the server.
-    const paths = [...e.dataTransfer.files].map((f) => bridge.pathForFile(f)).filter((p) => p.startsWith("/"));
-    if (paths.length && online) void actions.importMedia(paths);
-  };
-  return (
-    <aside
-      className={`library ${dragging ? "dragging" : ""}`}
-      data-testid="library"
-      onDragOver={(e) => {
-        if (![...e.dataTransfer.types].includes("Files")) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-        setDragging(true);
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
-      }}
-      onDrop={onDrop}
-    >
-      <div className="lib-head">
-        Media
-        <button className="icon-btn" data-testid="import-plus" disabled={!online} title="Import media" onClick={() => void actions.importMedia()}>
-          {importing ? <RefreshCw className="spin" /> : <Plus />}
-        </button>
-      </div>
-      {running.map((job) => (
-        <div key={job.id} className="import-progress" data-testid="import-progress">
-          <RefreshCw className="spin" />
-          <span>{progressText(job)}</span>
-          <div className="bar">
-            <span style={{ width: `${Math.round(progressFraction(job) * 100)}%` }} />
-          </div>
-        </div>
-      ))}
-      {importReport && (
-        <div className="import-report" data-testid="import-report">
-          {importReport.failed.map((f) => (
-            <div key={`f-${f.path}`} className="import-line error">
-              <span className="ellipsis" title={f.path}>
-                {f.path.split("/").pop()}
-              </span>
-              <span>{f.message}</span>
-            </div>
-          ))}
-          {importReport.skipped.map((s) => (
-            <div key={`s-${s.path}`} className="import-line">
-              <span className="ellipsis" title={s.path}>
-                {s.path.split("/").pop()}
-              </span>
-              <span>{s.reason}</span>
-            </div>
-          ))}
-          <button className="link-btn" onClick={actions.dismissImportReport}>
-            Dismiss
-          </button>
-        </div>
-      )}
-      {media.length === 0 ? (
-        <Empty icon={<Film />} title="No media yet" testId="media-empty">
-          Drop files here, or import them. Footage stays where it is; the project references it.
-          <button className="btn" data-testid="import" disabled={!online} onClick={() => void actions.importMedia()}>
-            <Upload />
-            Import…
-          </button>
-        </Empty>
-      ) : (
-        <div className="lib-section">
-          <div className="lib-label">In this project</div>
-          <div className="grid2" data-testid="media-grid">
-            {media.map((m) => (
-              <MediaTile key={m.id} item={m} fps={project.canvas.fps} />
-            ))}
-          </div>
-        </div>
-      )}
-      {dragging && <div className="drop-hint">Drop to import</div>}
-    </aside>
-  );
-}
-
-/** "Importing 37 of 200…" and friends. */
-function progressText(job: ImportJob) {
-  switch (job.phase) {
-    case "queued":
-      return `Waiting to import ${job.total} file${job.total === 1 ? "" : "s"}…`;
-    case "probing":
-      return `Importing ${Math.min(job.probed + 1, job.total)} of ${job.total}…`;
-    case "adding":
-      return `Adding ${job.total} file${job.total === 1 ? "" : "s"}…`;
-    default:
-      return `Making thumbnails, ${job.postersDone} of ${job.postersTotal}…`;
-  }
-}
-const progressFraction = (job: ImportJob) =>
-  job.phase === "posters" ? 0.8 + 0.2 * (job.postersTotal ? job.postersDone / job.postersTotal : 1) : job.phase === "probing" ? 0.75 * (job.probed / Math.max(1, job.total)) : job.phase === "adding" ? 0.78 : 0;
-
-/** "59.94", "30", "23.98" */
-const fpsLabel = (fps: number) => String(Math.round(fps * 100) / 100);
-
-/** "3840×2160, 59.94 fps" for video, "4096×3072" for images, "Audio" for sound. */
-export function mediaMeta(m: MediaItem) {
-  const size = m.probe?.width && m.probe?.height ? `${m.probe.width}×${m.probe.height}` : undefined;
-  if (m.kind === "audio") return "Audio";
-  if (m.kind === "image") return size ?? "Image";
-  return [size, m.probe?.fps ? `${fpsLabel(m.probe.fps)} fps` : undefined].filter(Boolean).join(", ");
-}
-
-function MediaTile({ item, fps }: { item: MediaItem; fps: number }) {
-  const { thumbIds } = useApp();
-  const [broken, setBroken] = useState(false);
-  const Icon = item.kind === "audio" ? AudioLines : item.kind === "image" ? ImageIcon : Film;
-  const src = thumbIds.has(item.id) ? thumbUrl(item.id) : undefined;
-  const seconds = item.probe?.frames ? item.probe.frames / fps : undefined;
-  return (
-    <div className="tile" data-testid="media-tile" data-id={item.id} title={item.path}>
-      <div className="thumb">
-        {src && !broken ? <img key={src} src={src} alt="" onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
-        {seconds !== undefined && (
-          <span className="dur" data-testid="duration">
-            {timecode(Math.round(seconds * fps), fps).replace(/^00:/, "")}
-          </span>
-        )}
-      </div>
-      <div className="tile-name" data-testid="tile-name">
-        {item.name}
-      </div>
-      <div className="tile-sub" data-testid="tile-meta">
-        {mediaMeta(item)}
-      </div>
-    </div>
-  );
-}
-
-function Empty({ icon, title, children, testId }: { icon: ReactNode; title: string; children?: ReactNode; testId?: string }) {
-  return (
-    <div className="empty" data-testid={testId}>
-      <div className="empty-icon">{icon}</div>
-      <div className="empty-title">{title}</div>
-      <div className="empty-sub">{children}</div>
-    </div>
-  );
-}
-
-/** Fits a w×h box inside its container, like object-fit: contain. */
-function useFit(width: number, height: number) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const update = () => {
-      const style = getComputedStyle(el);
-      const aw = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const ah = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
-      const scale = Math.max(0, Math.min(aw / width, ah / height));
-      setSize({ w: Math.floor(width * scale), h: Math.floor(height * scale) });
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [width, height]);
-  return { ref, size };
-}
-
-function Stage({ project }: { project: Project }) {
-  const { width, height, fps } = project.canvas;
-  const { ref, size } = useFit(width, height);
-  return (
-    <main className="stage">
-      <div className="stage-canvas" ref={ref}>
-        <div className="frame" data-testid="preview-frame" style={{ width: size.w, height: size.h }} />
-      </div>
-      <div className="transport">
-        <span className="timecode" data-testid="timecode">
-          {timecode(0, fps)} / {timecode(0, fps)}
-        </span>
-        <div className="transport-mid">
-          <button className="icon-btn" disabled title="Back one frame">
-            <SkipBack />
-          </button>
-          <button className="icon-btn play" disabled title="Play: nothing to play yet">
-            <Play />
-          </button>
-          <button className="icon-btn" disabled title="Forward one frame">
-            <SkipForward />
-          </button>
-        </div>
-        <span className="muted small" data-testid="canvas-info">
-          {canvasLabel(project.canvas)}
-        </span>
-        <button className="icon-btn" disabled title="Fit">
-          <Maximize2 />
-        </button>
-      </div>
-    </main>
   );
 }
 
@@ -494,77 +306,5 @@ function Field({ k, v }: { k: string; v: ReactNode }) {
       <span className="k">{k}</span>
       <span className="v">{v}</span>
     </div>
-  );
-}
-
-const SECONDS = 30;
-const PX_PER_SECOND = 48;
-
-function Timeline({ project }: { project: Project }) {
-  const width = SECONDS * PX_PER_SECOND;
-  const empty = project.tracks.every((t) => t.items.length === 0);
-  return (
-    <section className="bottom">
-      <div className="bottom-toolbar">
-        <div className="seg">
-          <button className="active">Timeline</button>
-          <button disabled title={LATER}>
-            Transcript
-          </button>
-          <button disabled title={LATER}>
-            Mixer
-          </button>
-        </div>
-        <span className="muted small">{project.tracks.length} tracks</span>
-      </div>
-      <div className="bottom-body">
-        <div className="tl" data-testid="timeline">
-          <div className="tl-heads">
-            <div className="tl-corner" />
-            {project.tracks.map((track) => {
-              const main = track.role === "main";
-              const Icon = track.kind === "text" ? Type : track.kind === "audio" ? AudioLines : Film;
-              return (
-                <div key={track.id} className={`tl-head ${main ? "main" : ""}`} data-testid="track" data-kind={track.kind} data-main={main ? "true" : undefined}>
-                  <div className="name">
-                    <Icon />
-                    {track.name}
-                    {main && (
-                      <span className="badge" title="Main track: clips play back to back">
-                        <Magnet />
-                      </span>
-                    )}
-                  </div>
-                  <button className="icon-btn" disabled title={track.kind === "audio" ? "Mute" : "Hide"}>
-                    {track.kind === "audio" ? <Volume2 /> : <Eye />}
-                  </button>
-                  <button className="icon-btn" disabled title="Lock">
-                    <Lock />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div className="tl-lanes" style={{ width: width + 24 }}>
-            <div className="tl-ruler">
-              {Array.from({ length: SECONDS + 1 }, (_, s) => (
-                <div key={s} className="tick" style={{ left: s * PX_PER_SECOND }}>
-                  {s % 2 === 0 && <span>{s}s</span>}
-                </div>
-              ))}
-            </div>
-            {project.tracks.map((track) => (
-              <div key={track.id} className={`tl-lane ${track.role === "main" ? "main" : ""}`} />
-            ))}
-            <div className="playhead" style={{ left: 0 }} />
-          </div>
-        </div>
-      </div>
-      {empty && (
-        <div className="tl-empty" data-testid="timeline-empty">
-          {project.media.length ? "Putting clips on the timeline comes in the next phase" : "Import media to start"}
-        </div>
-      )}
-    </section>
   );
 }
