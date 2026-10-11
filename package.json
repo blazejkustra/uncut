@@ -9,6 +9,7 @@
   "devDependencies": {
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "electron": "44.6.0",
     "puppeteer-core": "23.11.1"
   }
 }

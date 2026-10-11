@@ -6,3 +6,8 @@ test-output/
 # Prose stays private (planning notes, specs), never committed
 planning/
 *.md
+fixtures/
+*.mp4
+*.MP4
+*.mov
+*.MOV
