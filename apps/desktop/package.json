@@ -1,0 +1,18 @@
+{
+  "name": "@uncut/desktop",
+  "productName": "Uncut",
+  "version": "0.0.1",
+  "description": "AI-first video editor",
+  "private": true,
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dist": "electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "@uncut/contracts": "workspace:*",
+    "electron": "44.6.0",
+    "electron-builder": "26.15.6",
+    "esbuild": "0.28.2"
+  }
+}

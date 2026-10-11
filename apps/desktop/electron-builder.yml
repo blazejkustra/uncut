@@ -1,0 +1,22 @@
+appId: com.blazejkustra.uncut
+productName: Uncut
+electronVersion: 44.6.0
+npmRebuild: false
+directories:
+  output: ../../dist
+files:
+  - package.json
+  - dist/**
+extraResources:
+  - from: ../server/dist/server.mjs
+    to: server/server.mjs
+  - from: ../../native/media/target/release/uncut-media
+    to: bin/uncut-media
+mac:
+  category: public.app-category.video
+  identity: null # unsigned for now
+  target:
+    - target: dmg
+      arch: arm64
+    - target: dir
+      arch: arm64
