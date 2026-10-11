@@ -9,6 +9,7 @@ import {
   APP_INFO_CHANNEL,
   APP_STATE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
+  CHOOSE_MEDIA_CHANNEL,
   COPY_TEXT_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
@@ -29,8 +30,9 @@ if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port",
 // order; an exhausted queue means "cancelled") the dialogs answer from it instead. Only
 // together with UNCUT_CDP, so a stray variable can't change a release user's app. In the
 // same mode "Show in Finder" and Copy are logged instead of touching Finder or the clipboard.
-const testDialogs: Array<string> | undefined =
-  process.env.UNCUT_CDP && process.env.UNCUT_TEST_DIALOG ? (JSON.parse(process.env.UNCUT_TEST_DIALOG) as Array<string>) : undefined;
+// Entries are a path (folder dialogs) or an array of paths (the multi-select media dialog).
+const testDialogs: Array<string | Array<string>> | undefined =
+  process.env.UNCUT_CDP && process.env.UNCUT_TEST_DIALOG ? (JSON.parse(process.env.UNCUT_TEST_DIALOG) as Array<string | Array<string>>) : undefined;
 
 // __dirname is apps/desktop/dist in dev and app.asar/dist when packaged.
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -74,8 +76,33 @@ const appInfo: AppInfo = {
 
 const sendMenuCommand = (command: MenuCommand) => win?.webContents.send(MENU_COMMAND_CHANNEL, command);
 
+const MEDIA_EXTENSIONS = ["mp4", "mov", "m4v", "m4a", "mp3", "wav", "aac", "aif", "aiff", "flac", "png", "jpg", "jpeg", "heic", "gif", "webp"];
+
+/** Native multi-select for footage, music and images; [] when cancelled. */
+async function chooseMedia(): Promise<Array<string>> {
+  if (testDialogs) {
+    const next = testDialogs.shift();
+    return Array.isArray(next) ? next : typeof next === "string" ? [next] : [];
+  }
+  if (!win) return [];
+  const result = await dialog.showOpenDialog(win, {
+    title: "Import media",
+    buttonLabel: "Import",
+    defaultPath: appInfo.defaultParentDir,
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      { name: "Video, audio and images", extensions: MEDIA_EXTENSIONS },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  return result.canceled ? [] : result.filePaths;
+}
+
 async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
-  if (testDialogs) return testDialogs.shift() ?? null;
+  if (testDialogs) {
+    const next = testDialogs.shift();
+    return typeof next === "string" ? next : null;
+  }
   if (!win) return null;
   const result = await dialog.showOpenDialog(win, {
     title: purpose === "parent" ? "Choose where to save the project" : "Open a project",
@@ -146,6 +173,7 @@ app.whenReady().then(() => {
   });
   handle(APP_INFO_CHANNEL, (): AppInfo => appInfo);
   handle(CHOOSE_FOLDER_CHANNEL, (purpose: FolderPurpose) => chooseFolder(purpose));
+  handle(CHOOSE_MEDIA_CHANNEL, () => chooseMedia());
   handle(SHOW_IN_FOLDER_CHANNEL, (target: string) => {
     if (typeof target !== "string" || !path.isAbsolute(target)) throw new Error("not an absolute path");
     if (testDialogs) console.log(`[test] showItemInFolder ${target}`);

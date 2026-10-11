@@ -10,13 +10,14 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { ServerConfig } from "./config.ts";
+import { MediaLibrary } from "./media.ts";
 import { MediaCore } from "./mediaCore.ts";
 import { Projects } from "./projects.ts";
 import { Recents } from "./recents.ts";
 import { Settings } from "./settings.ts";
 import { Setup } from "./setup.ts";
 
-const tokensMatch = (given: string | null, expected: string) => {
+export const tokensMatch = (given: string | null, expected: string) => {
   if (given === null) return false;
   const a = Buffer.from(given);
   const b = Buffer.from(expected);
@@ -30,10 +31,11 @@ interface Services {
   readonly recents: typeof Recents.Service;
   readonly setup: typeof Setup.Service;
   readonly settings: typeof Settings.Service;
+  readonly library: typeof MediaLibrary.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -52,6 +54,9 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings }
     [RPC_METHODS.projectUndo]: () => projects.undo,
     [RPC_METHODS.projectRedo]: () => projects.redo,
     [RPC_METHODS.recentsList]: () => recents.list,
+    [RPC_METHODS.mediaImport]: ({ paths }) => library.startImport(paths),
+    [RPC_METHODS.mediaJobs]: () => library.jobs,
+    [RPC_METHODS.mediaThumbnails]: () => library.thumbnails,
     [RPC_METHODS.setupCheck]: () => setup.check,
     [RPC_METHODS.setupState]: () => Effect.map(settings.onboarded, (onboarded) => ({ onboarded })),
     [RPC_METHODS.setupComplete]: () => settings.setOnboarded,
@@ -65,7 +70,8 @@ export const layer = Layer.unwrap(
     const recents = yield* Recents;
     const setup = yield* Setup;
     const settings = yield* Settings;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings }).pipe(
+    const library = yield* MediaLibrary;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

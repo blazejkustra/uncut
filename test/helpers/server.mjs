@@ -94,11 +94,11 @@ export async function connect(port, token) {
       for (const w of [...waiters]) if (values.some(w.predicate)) (waiters.splice(waiters.indexOf(w), 1), w.resolve());
     });
     ws.send(JSON.stringify({ _tag: "Request", id: requestId, tag, payload, headers: [] }));
-    const until = (predicate) =>
+    const until = (predicate, timeout = 10000) =>
       values.some(predicate)
         ? Promise.resolve()
         : new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error(`${tag}: no matching value within 10s; got ${JSON.stringify(values).slice(0, 300)}`)), 10000);
+            const timer = setTimeout(() => reject(new Error(`${tag}: no matching value within ${timeout / 1000}s; got ${JSON.stringify(values).slice(-300)}`)), timeout);
             waiters.push({ predicate, resolve: () => (clearTimeout(timer), resolve()) });
           });
     return { values, until };

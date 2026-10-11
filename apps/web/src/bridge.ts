@@ -25,6 +25,10 @@ export interface UncutBridge {
   readonly showInFolder: (path: string) => Promise<void>;
   readonly setAppState: (state: AppState) => void;
   readonly copyText: (text: string) => Promise<void>;
+  // Native multi-select for media; [] when cancelled.
+  readonly chooseMedia: () => Promise<Array<string>>;
+  // The disk path of a dropped File ("" if it isn't a file on disk).
+  readonly pathForFile: (file: File) => string;
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
 }
 
@@ -45,5 +49,7 @@ export const bridge: UncutBridge = window.uncut ?? {
   showInFolder: () => Promise.resolve(),
   setAppState: () => {},
   copyText: (text) => navigator.clipboard.writeText(text),
+  chooseMedia: () => Promise.resolve([]),
+  pathForFile: () => "",
   onMenuCommand: () => () => {},
 };

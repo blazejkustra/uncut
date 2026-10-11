@@ -1,5 +1,6 @@
 // Launches an Uncut desktop build with DevTools exposed and connects puppeteer to its window.
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:net";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
@@ -94,7 +95,25 @@ export function unlockApps({ path = LOCK } = {}) {
  * onboarded, so tests about other screens aren't covered by the wizard).
  * `cleanEnv`: start from only `env` (what launchd gives a Finder-launched app), not the test's environment.
  */
-export async function launchApp({ command, args = [], env: extra = {}, port = 9800 + Math.floor(Math.random() * 400), firstLaunch = false, cleanEnv = false }) {
+/** A TCP port nothing is listening on right now (the OS picks it). */
+export const freePort = () =>
+  new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolvePort(port));
+    });
+  });
+
+/** The pid listening on a local TCP port, if any. */
+const listenerPid = (port) => {
+  const r = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8" });
+  return r.stdout.trim().split("\n").filter(Boolean).map(Number);
+};
+
+export async function launchApp({ command, args = [], env: extra = {}, port: requested, firstLaunch = false, cleanEnv = false }) {
+  const port = requested ?? (await freePort());
   const env = { ...(cleanEnv ? {} : process.env), ...extra, UNCUT_CDP: String(port) };
   if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
     mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
@@ -121,6 +140,9 @@ export async function launchApp({ command, args = [], env: extra = {}, port = 98
       browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}`, defaultViewport: null }).catch(() => null);
     }
     if (!browser) throw new Error(`Uncut didn't start:\n${output}`);
+    // Make sure we attached to *this* app: the DevTools port must belong to the process we spawned.
+    const owners = listenerPid(port);
+    if (!owners.includes(proc.pid)) throw new Error(`DevTools port ${port} belongs to pid ${owners.join(",") || "?"}, not the app we started (${proc.pid})`);
     let page;
     for (let i = 0; i < 100 && !page; i++) {
       page = (await browser.pages()).find((p) => p.url().endsWith("index.html"));

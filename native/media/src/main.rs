@@ -4,6 +4,11 @@
 
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::path::Path;
+
+mod image;
+mod isobmff;
+mod probe;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -16,6 +21,15 @@ pub fn handle_line(line: &str) -> Value {
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     match request.get("method").and_then(Value::as_str) {
         Some("version") => json!({ "id": id, "result": { "version": VERSION } }),
+        Some("probe") => match request.pointer("/params/path").and_then(Value::as_str) {
+            // A parser bug must cost one file, not the helper and the rest of the batch.
+            Some(path) => match std::panic::catch_unwind(|| probe::probe_path(Path::new(path))) {
+                Ok(Ok(result)) => json!({ "id": id, "result": result }),
+                Ok(Err(e)) => error(id, e.code(), e.message()),
+                Err(_) => error(id, "unreadable", "the file couldn't be read (its structure confused the reader)"),
+            },
+            None => error(id, "invalid_request", "probe needs params.path"),
+        },
         Some(method) => error(id, "unknown_method", &format!("unknown method: {method}")),
         None => error(id, "invalid_request", "missing \"method\""),
     }
@@ -26,8 +40,26 @@ fn error(id: Value, code: &str, message: &str) -> Value {
 }
 
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("--version") {
+    // Panics are caught per request (see handle_line); keep their messages off stdout/stderr noise.
+    std::panic::set_hook(Box::new(|info| eprintln!("uncut-media: {info}")));
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--version") {
         println!("uncut-media {VERSION}");
+        return;
+    }
+    // `uncut-media probe <path>`: the same answer as the JSON method, for people and timing.
+    if args.get(1).map(String::as_str) == Some("probe") {
+        let Some(path) = args.get(2) else {
+            eprintln!("usage: uncut-media probe <path>");
+            std::process::exit(2);
+        };
+        match probe::probe_path(Path::new(path)) {
+            Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
+            Err(e) => {
+                println!("{}", json!({ "error": { "code": e.code(), "message": e.message() } }));
+                std::process::exit(1);
+            }
+        }
         return;
     }
     serve(io::stdin().lock(), io::stdout().lock());

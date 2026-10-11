@@ -30,6 +30,8 @@ interface Session {
 
 interface OpenProject {
   readonly dir: string;
+  // Which opening of the project this is: a close and reopen (or another project) is a new one.
+  readonly openId: number;
   session: Session;
   past: Array<Session>;
   future: Array<Session>;
@@ -49,6 +51,18 @@ export interface ProjectsShape {
   readonly get: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly reload: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly close: Effect.Effect<void>;
+  /** The open project's folder, without waiting for the lock (for read-only uses like thumbnails). */
+  readonly currentDir: Effect.Effect<string | undefined>;
+  /** The open project right now (no lock): its folder, opening and content. */
+  readonly current: Effect.Effect<{ readonly dir: string; readonly openId: number; readonly project: unknown } | undefined>;
+  /**
+   * An edit planned against the project as it is under the lock, refused unless the same
+   * opening of the project is still open. `plan` returns the ops (or nothing to do).
+   */
+  readonly editIn: <E>(
+    openId: number,
+    plan: (project: unknown, dir: string) => Effect.Effect<{ ops: ReadonlyArray<unknown>; summary: string } | undefined, E>,
+  ) => Effect.Effect<ProjectSnapshot | undefined, ProjectError | EditRefused | E>;
   /** The current snapshot (null: nothing open), then every change. */
   readonly changes: Stream.Stream<ProjectSnapshot | null>;
   readonly edit: (input: {
@@ -114,6 +128,7 @@ export const layer = Layer.effect(
     // Everything that changes the open project runs one at a time.
     const lock = yield* Semaphore.make(1);
     let current: OpenProject | undefined;
+    let openCount = 0;
     const updates = yield* SubscriptionRef.make<ProjectSnapshot | null>(null);
     // Tell subscribers what is open now. Called after every change, inside the same lock.
     const publish = Effect.suspend(() => SubscriptionRef.set(updates, current ? snapshot(current) : null));
@@ -183,7 +198,7 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         // Revisions never go back, not even across opens within one server.
         const revision = lastRevision + 1;
-        current = { dir, session: { project, revision, log: [] }, past: [], future: [], diskText };
+        current = { dir, openId: ++openCount, session: { project, revision, log: [] }, past: [], future: [], diskText };
         yield* recents.touch(dir, project.name);
         yield* publish;
         return snapshot(current);
@@ -215,6 +230,42 @@ export const layer = Layer.effect(
           });
         }),
       );
+
+    const editUnlocked = (p: OpenProject, { ops, baseRevision, summary }: { ops: ReadonlyArray<unknown>; baseRevision?: number | undefined; summary?: string | undefined }) =>
+      Effect.gen(function* () {
+        const opProblems = format.validateOps(ops);
+        if (opProblems.length) return yield* refused("The edit is malformed", opProblems);
+        if (baseRevision !== undefined && baseRevision > p.session.revision) {
+          return yield* refused(`baseRevision ${baseRevision} is newer than the project (revision ${p.session.revision})`, [
+            { code: "base-revision", path: "/baseRevision", message: "a revision from the future" },
+          ]);
+        }
+        const applied = yield* Effect.try({
+          try: () => applyEdit(p.session, { actor: "user", ops, baseRevision, summary }, format.validate) as Session,
+          catch: (error) =>
+            error instanceof EditError
+              ? refused(error.message, toProblems(error))
+              : // Well-formed ops can still trip the engine (e.g. a field it doesn't expect).
+                refused("The edit is malformed", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
+        });
+        // Validate exactly what will be written and read back, so nothing that wouldn't
+        // reopen can be saved.
+        const written = JSON.parse(serialize(applied.project)) as Session["project"];
+        // Names double as folder and window names: keep them non-blank and short.
+        if (typeof written.name === "string" && written.name.trim() === "") {
+          return yield* refused("A project needs a name.", [{ code: "name", path: "/name", message: "A project needs a name." }]);
+        }
+        if (typeof written.name === "string" && written.name.length > MAX_NAME_LENGTH) {
+          const message = `A project name can be at most ${MAX_NAME_LENGTH} characters.`;
+          return yield* refused(message, [{ code: "name", path: "/name", message }]);
+        }
+        const problems = format.validate(written);
+        if (problems.length) return yield* refused("The edit would make the project invalid", problems);
+        return yield* commit(p, { ...applied, project: written }, (previous) => {
+          p.past.push(previous);
+          p.future = [];
+        });
+      });
 
     return Projects.of({
       create: ({ parentDir, name, canvas }) =>
@@ -274,6 +325,9 @@ export const layer = Layer.effect(
 
       changes: SubscriptionRef.changes(updates),
 
+      currentDir: Effect.sync(() => current?.dir),
+      current: Effect.sync(() => (current ? { dir: current.dir, openId: current.openId, project: current.session.project } : undefined)),
+
       reload: lock.withPermits(1)(
         Effect.gen(function* () {
           const p = yield* requireOpen;
@@ -292,42 +346,18 @@ export const layer = Layer.effect(
         }),
       ),
 
-      edit: ({ ops, baseRevision, summary }) =>
+      edit: ({ ops, baseRevision, summary }) => lock.withPermits(1)(Effect.flatMap(requireOpen, (p) => editUnlocked(p, { ops, baseRevision, summary }))),
+
+      editIn: (openId, plan) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
-            const p = yield* requireOpen;
-            const opProblems = format.validateOps(ops);
-            if (opProblems.length) return yield* refused("The edit is malformed", opProblems);
-            if (baseRevision !== undefined && baseRevision > p.session.revision) {
-              return yield* refused(`baseRevision ${baseRevision} is newer than the project (revision ${p.session.revision})`, [
-                { code: "base-revision", path: "/baseRevision", message: "a revision from the future" },
-              ]);
+            const p = current;
+            if (!p || p.openId !== openId) {
+              return yield* projectError("no-project", "The project was closed before this finished.");
             }
-            const applied = yield* Effect.try({
-              try: () => applyEdit(p.session, { actor: "user", ops, baseRevision, summary }, format.validate) as Session,
-              catch: (error) =>
-                error instanceof EditError
-                  ? refused(error.message, toProblems(error))
-                  : // Well-formed ops can still trip the engine (e.g. a field it doesn't expect).
-                    refused("The edit is malformed", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
-            });
-            // Validate exactly what will be written and read back, so nothing that wouldn't
-            // reopen can be saved.
-            const written = JSON.parse(serialize(applied.project)) as Session["project"];
-            // Names double as folder and window names: keep them non-blank and short.
-            if (typeof written.name === "string" && written.name.trim() === "") {
-              return yield* refused("A project needs a name.", [{ code: "name", path: "/name", message: "A project needs a name." }]);
-            }
-            if (typeof written.name === "string" && written.name.length > MAX_NAME_LENGTH) {
-              const message = `A project name can be at most ${MAX_NAME_LENGTH} characters.`;
-              return yield* refused(message, [{ code: "name", path: "/name", message }]);
-            }
-            const problems = format.validate(written);
-            if (problems.length) return yield* refused("The edit would make the project invalid", problems);
-            return yield* commit(p, { ...applied, project: written }, (previous) => {
-              p.past.push(previous);
-              p.future = [];
-            });
+            const planned = yield* plan(p.session.project, p.dir);
+            if (!planned || planned.ops.length === 0) return undefined;
+            return yield* editUnlocked(p, planned);
           }),
         ),
 

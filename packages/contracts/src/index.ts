@@ -19,6 +19,9 @@ export const RPC_METHODS = {
   projectUndo: "project.undo",
   projectRedo: "project.redo",
   recentsList: "recents.list",
+  mediaImport: "media.import",
+  mediaThumbnails: "media.thumbnails",
+  mediaJobs: "media.jobs",
   setupCheck: "setup.check",
   setupState: "setup.state",
   setupComplete: "setup.complete",
@@ -93,6 +96,35 @@ export const RecentProject = Schema.Struct({
 });
 export type RecentProject = typeof RecentProject.Type;
 
+// ---- media ----
+
+export const THUMB_PATH = "/media/thumb"; // GET /media/thumb/<media id>?token=…
+
+/** What an import did, file by file. The project change itself arrives as a snapshot. */
+export const MediaImportResult = Schema.Struct({
+  imported: Schema.Array(Schema.Struct({ path: Schema.String, id: Schema.String, name: Schema.String, via: Schema.String })),
+  skipped: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
+  failed: Schema.Array(Schema.Struct({ path: Schema.String, message: Schema.String })),
+});
+export type MediaImportResult = typeof MediaImportResult.Type;
+
+/**
+ * An import runs as a job on the server: it isn't tied to the request that started it, so a
+ * slow batch or a dropped connection can't cancel it halfway. Jobs run one at a time.
+ */
+export const ImportJob = Schema.Struct({
+  id: Schema.String,
+  projectDir: Schema.String,
+  total: Schema.Number,
+  phase: Schema.Literals(["queued", "probing", "adding", "posters", "done", "failed"]),
+  probed: Schema.Number,
+  postersDone: Schema.Number,
+  postersTotal: Schema.Number,
+  result: Schema.optional(MediaImportResult),
+  error: Schema.optional(Schema.String),
+});
+export type ImportJob = typeof ImportJob.Type;
+
 // ---- setup (onboarding) ----
 
 export const SetupStatus = Schema.Literals(["ready", "missing", "needs-login", "warning", "error"]);
@@ -164,12 +196,29 @@ const ProjectRedoRpc = Rpc.make(RPC_METHODS.projectRedo, { payload: Empty, succe
 
 const RecentsListRpc = Rpc.make(RPC_METHODS.recentsList, { payload: Empty, success: Schema.Array(RecentProject) });
 
+// Starts an import job into the open project and returns its id right away; follow it with
+// media.jobs. Footage is referenced by its absolute path, never copied (D12); one undoable edit.
+const MediaImportRpc = Rpc.make(RPC_METHODS.mediaImport, {
+  payload: Schema.Struct({ paths: Schema.Array(Schema.String) }),
+  success: Schema.Struct({ jobId: Schema.String }),
+  error: ProjectError,
+});
+
+// Recent import jobs, now and on every change.
+const MediaJobsRpc = Rpc.make(RPC_METHODS.mediaJobs, { payload: Empty, success: Schema.Array(ImportJob), stream: true });
+
+// Which media ids have a poster at THUMB_PATH (the rest show an icon).
+const MediaThumbnailsRpc = Rpc.make(RPC_METHODS.mediaThumbnails, { payload: Empty, success: Schema.Array(Schema.String) });
+
 const SetupCheckRpc = Rpc.make(RPC_METHODS.setupCheck, { payload: Empty, success: Schema.Array(SetupCheck) });
 const SetupStateRpc = Rpc.make(RPC_METHODS.setupState, { payload: Empty, success: Schema.Struct({ onboarded: Schema.Boolean }) });
 // Onboarding was finished or skipped: don't show it on launch again.
 const SetupCompleteRpc = Rpc.make(RPC_METHODS.setupComplete, { payload: Empty });
 
 export const WsRpcGroup = RpcGroup.make(
+  MediaImportRpc,
+  MediaJobsRpc,
+  MediaThumbnailsRpc,
   SetupCheckRpc,
   SetupStateRpc,
   SetupCompleteRpc,

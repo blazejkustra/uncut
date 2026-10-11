@@ -9,6 +9,8 @@ import { HttpRouter, HttpServer } from "effect/http";
 
 import * as Config from "./config.ts";
 import * as Format from "./format.ts";
+import * as Media from "./media.ts";
+import * as Thumbs from "./thumbs.ts";
 import * as MediaCore from "./mediaCore.ts";
 import * as Projects from "./projects.ts";
 import * as Recents from "./recents.ts";
@@ -52,9 +54,10 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     host: config.host,
     port: config.port,
   });
-  const layerRoutes = HttpRouter.serve(Ws.layer, { disableLogger: true, disableListenLog: true });
+  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer), { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
-    Layer.provide(MediaCore.layer),
+    Layer.provide(Media.layer),
+    Layer.provideMerge(MediaCore.layer),
     Layer.provide(Setup.layer),
     Layer.provide(Settings.layer),
     Layer.provide(Projects.layer.pipe(Layer.provide(Format.layer), Layer.provideMerge(Recents.layer))),
