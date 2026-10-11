@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { launchEditor } from "./helpers/electron.mjs";
+import { lockApps, unlockApps } from "./helpers/app.mjs";
 
 import { demoProject, skipDemo } from "./helpers/demo.mjs";
 
@@ -40,6 +41,8 @@ async function settle() {
 
 before(async () => {
   if (skip) return;
+  // One Electron test file at a time (see lockApps): pixel and timing checks need the CPU.
+  await lockApps();
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/project.json`, readFileSync(DEMO));
@@ -47,7 +50,10 @@ before(async () => {
   app = await launchEditor({ project: dir });
   page = app.page;
 });
-after(async () => app?.close());
+after(async () => {
+  await app?.close();
+  unlockApps();
+});
 
 test("opens the project with no errors and draws every clip", { skip, timeout: 120000 }, async () => {
   assert.equal(await page.evaluate(() => document.body.dataset.ready), "true");

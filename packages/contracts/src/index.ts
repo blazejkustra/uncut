@@ -19,6 +19,9 @@ export const RPC_METHODS = {
   projectUndo: "project.undo",
   projectRedo: "project.redo",
   recentsList: "recents.list",
+  setupCheck: "setup.check",
+  setupState: "setup.state",
+  setupComplete: "setup.complete",
 } as const;
 
 // ---- server ----
@@ -90,6 +93,24 @@ export const RecentProject = Schema.Struct({
 });
 export type RecentProject = typeof RecentProject.Type;
 
+// ---- setup (onboarding) ----
+
+export const SetupStatus = Schema.Literals(["ready", "missing", "needs-login", "warning", "error"]);
+export type SetupStatus = typeof SetupStatus.Type;
+
+/** One thing Uncut looked for on this Mac. `fix` says what to do, with a command to copy when there is one. */
+export const SetupCheck = Schema.Struct({
+  id: Schema.String, // "claude" | "codex" | "argent" | "ffmpeg" | "api-key"
+  name: Schema.String,
+  status: SetupStatus,
+  optional: Schema.Boolean,
+  version: Schema.optional(Schema.String),
+  path: Schema.optional(Schema.String),
+  detail: Schema.String,
+  fix: Schema.optional(Schema.Struct({ text: Schema.String, command: Schema.optional(Schema.String) })),
+});
+export type SetupCheck = typeof SetupCheck.Type;
+
 const Empty = Schema.Struct({});
 
 const ServerHelloRpc = Rpc.make(RPC_METHODS.serverHello, {
@@ -143,7 +164,15 @@ const ProjectRedoRpc = Rpc.make(RPC_METHODS.projectRedo, { payload: Empty, succe
 
 const RecentsListRpc = Rpc.make(RPC_METHODS.recentsList, { payload: Empty, success: Schema.Array(RecentProject) });
 
+const SetupCheckRpc = Rpc.make(RPC_METHODS.setupCheck, { payload: Empty, success: Schema.Array(SetupCheck) });
+const SetupStateRpc = Rpc.make(RPC_METHODS.setupState, { payload: Empty, success: Schema.Struct({ onboarded: Schema.Boolean }) });
+// Onboarding was finished or skipped: don't show it on launch again.
+const SetupCompleteRpc = Rpc.make(RPC_METHODS.setupComplete, { payload: Empty });
+
 export const WsRpcGroup = RpcGroup.make(
+  SetupCheckRpc,
+  SetupStateRpc,
+  SetupCompleteRpc,
   ServerHelloRpc,
   ProjectCreateRpc,
   ProjectOpenRpc,

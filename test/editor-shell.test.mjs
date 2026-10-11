@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { launchApp } from "./helpers/app.mjs";
+import { launchApp, lockApps, unlockApps } from "./helpers/app.mjs";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -55,8 +55,9 @@ async function createThroughForm(page, name) {
 const rect = (page, selector) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON());
 const serverPid = (app) => Number(execFileSync("pgrep", ["-P", String(app.proc.pid), "-f", "server/server.mjs"], { encoding: "utf8" }).trim());
 
-before(() => {
+before(async () => {
   if (skip) return;
+  await lockApps();
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-shell-")));
   data = join(root, "data");
@@ -68,6 +69,7 @@ before(() => {
 });
 after(async () => {
   for (const app of apps) await app.close();
+  unlockApps();
   if (root) rmSync(root, { recursive: true, force: true });
 });
 

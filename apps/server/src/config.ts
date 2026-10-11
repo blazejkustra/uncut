@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 
+import type { ShellEnvironment } from "./shellEnv.ts";
+
 declare const __UNCUT_SERVER_VERSION__: string | undefined;
 
 export interface ServerConfigShape {
@@ -21,6 +23,10 @@ export interface ServerConfigShape {
   readonly modulesDir: string;
   // Where app state lives (recents.json). The desktop passes Electron's userData path.
   readonly dataDir: string;
+  // ANTHROPIC_API_KEY was in our environment at startup (D41: it is removed and never passed on).
+  readonly apiKeyInEnv: boolean;
+  // The login shell's environment, once resolved (undefined when UNCUT_SHELL_ENV=off).
+  readonly shellReady: Promise<ShellEnvironment | undefined>;
   // Test-only fault injection (UNCUT_TEST_FAULT), e.g. "create-after-mkdir".
   readonly testFault: string | undefined;
 }
@@ -58,6 +64,7 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
 export const readConfig = (
   env: NodeJS.ProcessEnv = process.env,
   bootstrapToken?: string,
+  shell: { readonly apiKeyInEnv: boolean; readonly shellReady: Promise<ShellEnvironment | undefined> } = { apiKeyInEnv: false, shellReady: Promise.resolve(undefined) },
 ): ServerConfigShape => {
   const token = bootstrapToken ?? (env.UNCUT_TOKEN || undefined);
   return {
@@ -73,6 +80,8 @@ export const readConfig = (
     modulesDir: env.UNCUT_MODULES_DIR || fileURLToPath(new URL("../../../spec/modules/builtin", import.meta.url)),
     dataDir: env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"),
     testFault: env.UNCUT_TEST_FAULT || undefined,
+    apiKeyInEnv: shell.apiKeyInEnv,
+    shellReady: shell.shellReady,
   };
 };
 
