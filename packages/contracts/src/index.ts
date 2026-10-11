@@ -99,6 +99,9 @@ export type RecentProject = typeof RecentProject.Type;
 // ---- media ----
 
 export const THUMB_PATH = "/media/thumb"; // GET /media/thumb/<media id>?token=…
+// GET /media/file/<media id>?token=…: the original file of a media item of the open project, with
+// HTTP Range support (the preview's <video> seeks with it). Footage is streamed, never copied.
+export const MEDIA_FILE_PATH = "/media/file";
 
 /** What an import did, file by file. The project change itself arrives as a snapshot. */
 export const MediaImportResult = Schema.Struct({

@@ -2,12 +2,23 @@
 export const shortPath = (path: string, home: string) =>
   home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path;
 
-/** Frames → HH:MM:SS (frames dropped; the shell has nothing to play yet). */
+/** Frames → HH:MM:SS, whole seconds (media durations). */
 export const timecode = (frames: number, fps: number) => {
   const total = Math.floor(frames / fps);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
 };
+
+/** Frames → HH:MM:SS:FF, the transport's timecode (frame f is the moment f / fps, D38). */
+export const frameTimecode = (frames: number, fps: number) => {
+  const f = Math.max(0, Math.floor(frames));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${timecode(f, fps)}:${pad(f % fps)}`;
+};
+
+/** Seconds → the ruler's label: "0s", "15s", "1:30". */
+export const rulerLabel = (seconds: number) =>
+  seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
 export interface Canvas {
   readonly width: number;

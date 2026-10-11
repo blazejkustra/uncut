@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\"",
+    "test": "node --test \"test/*.test.mjs\" \"test/*.test.ts\"",
     "wireframe": "node scripts/serve.mjs",
     "editor": "electron spikes/editor/main.cjs",
     "demo": "node spikes/editor/make-demo.mjs",
