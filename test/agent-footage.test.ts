@@ -225,7 +225,7 @@ test("contact_sheet: media sheets (cells, frames, size, first video stream), a t
     { tool: "contact_sheet", args: { media: "m-b", range: { start: 44, end: 46 } } },
     { tool: "contact_sheet", args: { media: "m-opening-shot", max: 60 } },
     { tool: "contact_sheet", args: { media: "m-opening-shot", every: 1 } },
-    { tool: "contact_sheet", args: { media: "m-opening-shot", at: "shots" } },
+    { tool: "contact_sheet", args: { media: "m-b", at: "shots" } },
     { tool: "contact_sheet", args: { media: "m-nope" } },
     { tool: "contact_sheet", args: { range: { start: 0, end: 60 } } },
     { tool: "project_read" },
@@ -271,8 +271,15 @@ test("contact_sheet: media sheets (cells, frames, size, first video stream), a t
 
   assert.ok(tooMany!.isError);
   assert.match(textOf(tooMany!), /Every 1 frames over 120 frames is 120 cells; a sheet holds at most 60\. Use every ≥ 2/);
-  assert.ok(shots!.isError);
-  assert.match(textOf(shots!), /isn't available until shot analysis exists/);
+  // One cell per shot (D67): B cuts from red to yellow at frame 45, so two shots, each shown by its middle frame.
+  assert.ok(!shots!.isError, textOf(shots!));
+  assert.equal(turn.items.filter((i: any) => i.tool === "contact_sheet")[5].text, "Looked over the shots of m-b");
+  assert.match(textOf(shots!), /^Contact sheet of m-b \(B\.mov\), 2 cells in 2 columns, 658×214/);
+  assert.match(textOf(shots!), /2 shots; each cell is the middle frame of its shot/);
+  assert.match(textOf(shots!), /\n1: frame 22 \(0:00\.73\), shot frames 0–45 \(0:00\.00–0:01\.50\)\n2: frame 67 \(0:02\.23\), shot frames 45–90 \(0:01\.50–0:03\.00\)$/);
+  const shotSheet = saveImage(shots!, "agent-sheet-shots.jpg");
+  assert.ok(isRed(pixel(shotSheet, ...cellCentre(0, 2))), "the first shot is red");
+  assert.ok(isYellow(pixel(shotSheet, ...cellCentre(1, 2))), "the second shot is yellow");
   assert.ok(unknown!.isError);
   assert.match(textOf(unknown!), /There's no media "m-nope"\. project_read lists the media ids: m-opening-shot, m-b, m-c/);
   assert.ok(empty!.isError);

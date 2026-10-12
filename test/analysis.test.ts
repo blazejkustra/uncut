@@ -87,10 +87,13 @@ after(() => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("analyzers: none named = loudness; silence is the same job; later and unknown ones are refused", () => {
+test("analyzers: none named = loudness (video is opt-in); silence is the loudness job, shots/motion/stability the video job; later and unknown ones are refused", () => {
   assert.deepEqual(parseAnalyzers(undefined), { analyzers: ["loudness"] });
   assert.deepEqual(parseAnalyzers(["silence", "loudness"]), { analyzers: ["loudness"] });
-  assert.match((parseAnalyzers(["shots"]) as { refused: string }).refused, /shots \(shot detection\) isn't available yet/);
+  assert.deepEqual(parseAnalyzers(["shots", "motion", "stability"]), { analyzers: ["video"] });
+  assert.deepEqual(parseAnalyzers(["silence", "shots"]), { analyzers: ["loudness", "video"] });
+  assert.match((parseAnalyzers(["beats"]) as { refused: string }).refused, /beats \(beats\) isn't available yet/);
+  assert.match((parseAnalyzers(["toString"]) as { refused: string }).refused, /no analyzer "toString"/);
   assert.match((parseAnalyzers(["vibes"]) as { refused: string }).refused, /no analyzer "vibes"/);
   assert.match((parseAnalyzers([]) as { refused: string }).refused, /non-empty list/);
 });

@@ -295,9 +295,10 @@ export class ExportError extends Schema.TaggedError<ExportError>()("ExportError"
 
 /**
  * The analyzers that run today. One ffmpeg pass measures loudness and finds silences, so "silence"
- * is the same job as "loudness" (one cache file, one run).
+ * is the same job as "loudness" (one cache file, one run). Another measures the picture (D67):
+ * cuts, shake, blur, exposure and frozen stretches, so "shots", "motion" and "stability" are "video".
  */
-export const ANALYZERS = ["loudness"] as const;
+export const ANALYZERS = ["loudness", "video"] as const;
 export const Analyzer = Schema.Literals(ANALYZERS);
 export type Analyzer = typeof Analyzer.Type;
 
