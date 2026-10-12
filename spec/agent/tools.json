@@ -46,7 +46,7 @@
     },
     {
       "name": "contact_sheet",
-      "description": "One image with a grid of frames, each captioned with its frame and time: from a media file (pulled from the original) or from the edit (drawn as the export draws it). Much cheaper than many render_frames when scanning footage for the good parts. 'every' samples every N frames; without it, 'max' frames (default 24) are spread evenly. At most 60 cells. 'at: shots' needs shot analysis, which isn't available yet.",
+      "description": "One image with a grid of frames, each captioned with its frame and time: from a media file (pulled from the original) or from the edit (drawn as the export draws it). Much cheaper than many render_frames when scanning footage for the good parts. 'every' samples every N frames; without it, 'max' frames (default 24) are spread evenly. 'at: shots' (with media) shows one frame per shot (the middle of each), from the video analysis (run now if needed, cached after). At most 60 cells.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -59,11 +59,11 @@
           "max": { "type": "integer", "minimum": 1, "maximum": 60, "description": "Most cells (default 24 when every isn't given)." }
         }
       },
-      "returns": "one JPEG (at most 1600 px wide) and, as text, the frame and time of every cell in order"
+      "returns": "one JPEG (at most 1600 px wide) and, as text, the frame and time of every cell in order (with at: shots, each shot's frames too); at: shots while the analysis still runs: { video: { state: running | queued }, note } (call again)"
     },
     {
       "name": "media_analyze",
-      "description": "Analyse a media file's sound: integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s), with frames usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. Today only loudness exists ('silence' means the same job); shots, motion, stability, beats, transcript and description come later.",
+      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. Transcript, beats and description come later.",
       "inputSchema": {
         "type": "object",
         "required": ["media"],
@@ -74,13 +74,28 @@
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": { "enum": ["shots", "motion", "stability", "loudness", "beats", "silence", "transcript", "description"] },
-            "description": "Which analyses (default: all available now, i.e. loudness with silences)."
+            "items": { "enum": ["shots", "motion", "stability", "video", "loudness", "beats", "silence", "transcript", "description"] },
+            "description": "Which analyses (default: loudness with silences; name video to get it, it takes longer). silence = loudness; shots, motion, stability = video."
           },
-          "range": { "$ref": "#/$defs/range", "description": "Only list silences overlapping these project frames of the media [start, end). The measurement is always of the whole file." }
+          "range": { "$ref": "#/$defs/range", "description": "Only list silences, cuts, frozen stretches and per-second scores overlapping these project frames of the media [start, end). The measurement is always of the whole file." }
         }
       },
-      "returns": "per analyzer: { state: done | running | queued | failed | cancelled, ... }; loudness when done: { cached, hasAudio, seconds, integratedLufs, loudnessRangeLu, truePeakDbtp, silence: { thresholdDb, minSeconds, count, ranges: [{ start, end, startSeconds, endSeconds }] } } (frames are project frames of the media)"
+      "returns": "per analyzer (loudness, video): { state: done | running | queued | failed | cancelled, ... }; loudness when done: { cached, hasAudio, seconds, integratedLufs, loudnessRangeLu, truePeakDbtp, silence: { thresholdDb, minSeconds, count, ranges: [{ start, end, startSeconds, endSeconds }] } }; video when done: { cached, hasVideo, seconds, sourceFps, cleanScore, stability, sharpness, exposure, frozen, measures: { shakePercent, panPerSecond, blur, brightness }, best: { start, end, startSeconds, endSeconds, cleanScore, ... }, shots, cuts: { threshold, count, list: [{ frame, seconds, score }] }, frozen: [{ start, end, startSeconds, endSeconds }], drops: [{ frame, seconds, missingSeconds }], stretches: [{ start, end, quality: good | fair | poor, cleanScore }], perSecond: { firstSecond, cleanScore: [], stability: [], sharpness: [], exposure: [], panPerSecond: [] } } (frames are project frames of the media)"
+    },
+    {
+      "name": "media_rank",
+      "description": "Rank video takes by how clean they are: cleanScore 0-1 from stability (no camera shake beyond smooth pans), sharpness (in focus) and exposure, with frozen stretches counted against it. Each take comes with its components (to explain the choice) and its best stretch: the cleanest window seconds inside one shot, as project frames usable as in. Runs or joins the video analysis (cached by content, so asking again is free) and waits up to about a minute; takes still being analysed come back under pending: call again with the same arguments.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "media": { "type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": { "type": "string" }, "description": "Media ids from project_read. Default: the media imported from folder, or all the project's video." },
+          "folder": { "type": "string", "description": "An absolute folder path: rank the project's media whose files are in it (import them first with media_import). Not together with media." },
+          "by": { "enum": ["clean", "best", "stability", "sharpness", "exposure"], "description": "What to rank by: clean (default, the whole take's cleanScore), best (its best stretch's cleanScore), or one component." },
+          "window": { "type": "integer", "minimum": 1, "maximum": 600, "description": "Length of the best stretch in seconds (default 5)." }
+        }
+      },
+      "returns": "{ by, ranked: [{ rank, media, name, cached, seconds, cleanScore, stability, sharpness, exposure, frozen, measures: { shakePercent, panPerSecond, blur, brightness }, shots, drops, best: { start, end, startSeconds, endSeconds, cleanScore, stability, sharpness, exposure, frozen } }], pending?: [{ media, state, progress }], failed?, skipped?, note }"
     },
     {
       "name": "transcript_read",

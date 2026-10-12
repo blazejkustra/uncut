@@ -13,10 +13,10 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AGENT_UI_PANELS, AgentError, type AgentEdit, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import { describeOp, layout, manualEditsNote, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -26,7 +26,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
-import { Analysis, parseAnalyzers, targetOf, type LoudnessResult, type Outcome } from "./analysis.ts";
+import { Analysis, parseAnalyzers, targetOf, type AnalysisTarget, type LoudnessResult, type Outcome } from "./analysis.ts";
+import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { writeFileAtomic } from "./atomicWrite.ts";
@@ -36,6 +37,8 @@ import { ProjectFormat } from "./format.ts";
 import { MediaLibrary, type MediaEntry } from "./media.ts";
 import { Projects, type ProjectView } from "./projects.ts";
 import { which } from "./setup.ts";
+import type { VideoResult } from "./videoAnalysis.ts";
+import { DEFAULT_BEST_SECONDS, RANK_BY, rankValue, type RankBy } from "./videoScores.ts";
 
 export const PROVIDER = "Claude Code";
 const HISTORY_FORMAT = "uncut.agent-history/0";
@@ -569,12 +572,35 @@ export const layer = Layer.effect(
         });
       });
 
+    // Starts (or joins) analysis jobs and waits up to ANALYZE_WAIT_MS for them: each comes back
+    // with its outcome, or without one (still queued or running; the job says how far).
+    const requestAndWait = (requests: ReadonlyArray<{ readonly target: AnalysisTarget; readonly analyzer: Analyzer }>) =>
+      Effect.promise(async () => {
+        const requested = await Promise.all(requests.map(async (q) => ({ ...q, r: await analysis.request(q.target, q.analyzer) })));
+        let timer: NodeJS.Timeout | undefined;
+        const deadline = new Promise<undefined>((r) => (timer = setTimeout(r, analyzeWaitMs(), undefined)));
+        timer?.unref();
+        try {
+          return await Promise.all(requested.map(async ({ target, analyzer, r }) => ({ target, analyzer, jobId: r.job?.id, outcome: (await Promise.race([r.done, deadline])) as Outcome | undefined })));
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+    /** A job still going, as the agent sees it. */
+    const pendingOut = (jobId: string | undefined) => {
+      const job = jobId ? analysis.job(jobId) : undefined;
+      return job?.phase === "queued" ? { state: "queued" as const, ...(job.waiting ? { waitingFor: "an export to finish" } : {}) } : { state: "running" as const, progress: job?.progress ?? 0 };
+    };
+    const cancelledNote = "The analysis was stopped (by the user, or the project closed) before it finished. Ask again to run it.";
+
     // contact_sheet (D65): frames of a media file (pulled from the original, 0:v:0) or of the edit
     // (exporter.renderFrames), in a grid with each cell's frame and time, as one JPEG.
     const contactSheet = (v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
-        if (args.at === "shots") return textResult("at \"shots\" isn't available until shot analysis exists (a later update). Use at \"every\" with every, or max to spread frames evenly.", true);
-        if (args.at !== undefined && args.at !== "every") return textResult('at must be "every" (or "shots", later).', true);
+        if (args.at !== undefined && args.at !== "every" && args.at !== "shots") return textResult('at must be "every" or "shots".', true);
+        const atShots = args.at === "shots";
+        if (atShots && typeof args.media !== "string") return textResult('at "shots" needs media: the shots of a media file (one frame per shot). For the edit, use every or max.', true);
+        if (atShots && args.every !== undefined) return textResult('every goes with at "every"; at "shots" shows one frame per shot (max caps how many).', true);
         const int = (value: unknown, lo: number, hi: number) => (value === undefined ? undefined : Number.isInteger(value) && (value as number) >= lo && (value as number) <= hi ? (value as number) : null);
         const every = int(args.every, 1, Number.MAX_SAFE_INTEGER);
         const columns = int(args.columns, 1, 10);
@@ -597,7 +623,28 @@ export const layer = Layer.effect(
           if (!length) return textResult(`${m.id} has no known length, so it can't be sampled.`, true);
           const start = range ? (range.start as number) : 0;
           const end = range ? Math.min(range.end as number, length) : length;
-          const frames = sheetFrames(start, end, every, limit);
+          let frames: ReadonlyArray<number> | { readonly refused: string };
+          let shotLines: Array<string> | undefined;
+          let shotNote = "";
+          if (atShots) {
+            if (start >= end) return textResult(start >= length ? `${m.id} is ${length} frames long; the range starts after its end.` : `The range is empty (${start} to ${end}).`, true);
+            // The shots come from the video analysis (cached, or run now, joining a running job).
+            const [answer] = yield* requestAndWait([{ target: targetOf(v.dir, m, fps), analyzer: "video" }]);
+            const outcome = answer!.outcome;
+            if (!outcome) {
+              const p = pendingOut(answer!.jobId);
+              return textResult({ media: m.id, video: p, note: `Finding the shots needs the video analysis, which is still ${p.state === "queued" ? "waiting" : "running"} after ${Math.round(analyzeWaitMs() / 1000)} s. Call contact_sheet again with the same arguments; it joins the running job.` });
+            }
+            if (outcome.state === "failed") return textResult(`Couldn't find the shots of ${m.id}: ${outcome.error}`, true);
+            if (outcome.state === "cancelled") return textResult(`Couldn't find the shots of ${m.id}: ${cancelledNote}`, true);
+            const result = outcome.result as VideoResult;
+            if (!result.hasVideo) return textResult(`ffmpeg found no picture in ${m.id}.`, true);
+            const cells = shotCells(result, fps, length, range ? { start, end } : undefined, limit);
+            if (!cells.shots.length) return textResult(`No shot of ${m.id} overlaps frames ${start}–${end}.`, true);
+            frames = cells.shots.map((x) => x.frame);
+            shotLines = cells.shots.map((x) => `shot frames ${x.start}–${x.end} (${clock(x.start / fps)}–${clock(x.end / fps)})`);
+            shotNote = `${cells.total} shot${cells.total === 1 ? "" : "s"}${range ? " in the range" : ""}${cells.total > cells.shots.length ? `, ${cells.shots.length} of them shown (spread evenly; pass a range or max for others)` : ""}; each cell is the middle frame of its shot, and its line says the shot's frames [start, end).${range ? " A shot that only overlaps the range is shown whole, so its middle frame can lie outside the range." : ""}`;
+          } else frames = sheetFrames(start, end, every, limit);
           if ("refused" in frames) return textResult(range && start >= length ? `${m.id} is ${length} frames long; the range starts after its end.` : frames.refused, true);
           const aspect = m.probe?.width && m.probe?.height ? m.probe.width / m.probe.height : 16 / 9;
           const grid = sheetLayout(frames.length, aspect, columns);
@@ -612,9 +659,9 @@ export const layer = Layer.effect(
             Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
           );
           if (!sheet.ok) return textResult(`Couldn't make the contact sheet: ${sheet.message}`, true);
-          const cells = sheet.shown.map((f, i) => `${i + 1}: frame ${f} (${clock(f / fps)})`);
+          const cells = sheet.shown.map((f, i) => `${i + 1}: frame ${f} (${clock(f / fps)})${shotLines ? `, ${shotLines[i]}` : ""}`);
           const past = frames.flatMap((f, i) => (sheet.shown[i] !== f ? [`frame ${f} is past the end of the picture, so cell ${i + 1} shows its last frame, ${sheet.shown[i]}`] : []));
-          const notes = [columnsNote(columns, grid.columns), past.length ? `Note: ${past.join("; ")}.` : ""].filter(Boolean).join(" ");
+          const notes = [shotNote, columnsNote(columns, grid.columns), past.length ? `Note: ${past.join("; ")}.` : ""].filter(Boolean).join(" ");
           return {
             content: [
               { type: "text" as const, text: `Contact sheet of ${m.id} (${m.name}), ${frames.length} cells in ${grid.columns} columns, ${grid.width}×${grid.height}, read left to right, top to bottom. Frames are project frames of the media (use them as in; ${fps} per second), times are media time; each cell is the frame the preview and export show there.${notes ? ` ${notes}` : ""}\n${cells.join("\n")}` },
@@ -668,39 +715,105 @@ export const layer = Layer.effect(
         const length = m.probe?.frames;
         const target = targetOf(v.dir, m, fps);
         const waitMs = analyzeWaitMs();
-        const results = yield* Effect.promise(async () => {
-          const requested = await Promise.all(parsed.analyzers.map(async (analyzer) => ({ analyzer, r: await analysis.request(target, analyzer) })));
-          let timer: NodeJS.Timeout | undefined;
-          const deadline = new Promise<undefined>((r) => (timer = setTimeout(r, waitMs, undefined)));
-          timer?.unref();
-          try {
-            return await Promise.all(requested.map(async ({ analyzer, r }) => ({ analyzer, jobId: r.job?.id, outcome: (await Promise.race([r.done, deadline])) as Outcome | undefined })));
-          } finally {
-            clearTimeout(timer);
-          }
-        });
-        // Seconds to project frames of the media, rounded inwards (a hair of slack for float noise).
-        const frames = (seconds: number, round: (x: number) => number) => {
-          const f = round(seconds * fps + (round === Math.ceil ? -1e-6 : 1e-6));
-          return Math.max(0, length ? Math.min(length, f) : f);
-        };
+        const results = yield* requestAndWait(parsed.analyzers.map((analyzer) => ({ target, analyzer })));
+        const frames = framesFor(fps, length);
         const out: Record<string, unknown> = { media: m.id };
         let pending = false;
         for (const { analyzer, jobId, outcome } of results) {
           if (!outcome) {
             pending = true;
-            const job = jobId ? analysis.job(jobId) : undefined;
-            out[analyzer] = job?.phase === "queued" ? { state: "queued", ...(job.waiting ? { waitingFor: "an export to finish" } : {}) } : { state: "running", progress: job?.progress ?? 0 };
+            out[analyzer] = pendingOut(jobId);
             continue;
           }
           if (outcome.state === "failed") out[analyzer] = { state: "failed", error: outcome.error };
-          else if (outcome.state === "cancelled") out[analyzer] = { state: "cancelled", note: "The analysis was stopped (by the user, or the project closed) before it finished. Ask again to run it." };
-          else out[analyzer] = loudnessOut(outcome.result, outcome.cached, frames, range as { start: number; end: number } | undefined);
+          else if (outcome.state === "cancelled") out[analyzer] = { state: "cancelled", note: cancelledNote };
+          else if (analyzer === "video") out[analyzer] = videoOut(outcome.result as VideoResult, outcome.cached, frames, range as { start: number; end: number } | undefined, fps);
+          else out[analyzer] = loudnessOut(outcome.result as LoudnessResult, outcome.cached, frames, range as { start: number; end: number } | undefined);
         }
-        out.note = pending
-          ? `Still analysing after ${Math.round(waitMs / 1000)} s. Call media_analyze again with the same arguments to get the results; it joins the running job.`
-          : "Silences are where the sound stays below thresholdDb for at least minSeconds. start and end are project frames of the media (use them as in): start is the first silent frame, end the frame after the last, both inside the silence; startSeconds and endSeconds are media time. integratedLufs is the whole file's loudness (EBU R128; about −14 LUFS is usual for online video), loudnessRangeLu how much it varies, truePeakDbtp its loudest peak.";
+        // Finished results keep their explanation even while another analyzer is still going.
+        const finished = new Set(results.filter((x) => x.outcome?.state === "done").map((x) => x.analyzer));
+        const notes: Array<string> = [];
+        if (pending) notes.push(`Still analysing after ${Math.round(waitMs / 1000)} s. Call media_analyze again with the same arguments to get the rest; it joins the running job (finished results come from the cache).`);
+        if (finished.has("loudness"))
+          notes.push(
+            "loudness: silences are where the sound stays below thresholdDb for at least minSeconds. start and end are project frames of the media (use them as in): start is the first silent frame, end the frame after the last, both inside the silence; startSeconds and endSeconds are media time. integratedLufs is the whole file's loudness (EBU R128; about −14 LUFS is usual for online video), loudnessRangeLu how much it varies, truePeakDbtp its loudest peak.",
+          );
+        if (finished.has("video")) notes.push(`video: ${VIDEO_NOTE}`);
+        if (notes.length) out.note = notes.join(" ");
         return textResult(out);
+      });
+
+    // media_rank (D67): the video analysis of several takes (run, joined or cached), ranked by
+    // clean score (or one component), each with its best stretch inside one shot.
+    const mediaRank = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const project = v.session.project;
+        const fps = project.canvas.fps;
+        const by = (args.by ?? "clean") as RankBy;
+        if (!RANK_BY.includes(by)) return textResult(`by must be one of ${RANK_BY.join(", ")}.`, true);
+        const windowSeconds = args.window ?? DEFAULT_BEST_SECONDS;
+        if (typeof windowSeconds !== "number" || !Number.isInteger(windowSeconds) || windowSeconds < 1 || windowSeconds > 600) return textResult("window must be a whole number of seconds, 1 to 600.", true);
+        if (args.media !== undefined && args.folder !== undefined) return textResult("Pass media or folder, not both: media ranks those ids, folder the project's media from that folder.", true);
+        const skipped: Array<{ media: string; reason: string }> = [];
+        let chosen: Array<(typeof project.media)[number]>;
+        if (args.media !== undefined) {
+          const ids = typeof args.media === "string" ? [args.media] : Array.isArray(args.media) ? args.media : null;
+          if (!ids || !ids.length || !ids.every((x) => typeof x === "string")) return textResult("media must be a list of media ids from project_read.", true);
+          const unknown = ids.filter((id) => !project.media.some((x) => x.id === id));
+          if (unknown.length) return textResult(`There's no media ${unknown.map((u) => `"${u}"`).join(", ")}. project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
+          chosen = [...new Set(ids as Array<string>)].map((id) => project.media.find((x) => x.id === id)!);
+        } else if (args.folder !== undefined) {
+          if (typeof args.folder !== "string" || !args.folder.trim()) return textResult("folder must be a folder's absolute path.", true);
+          const raw = args.folder.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+          if (!isAbsolute(raw)) return textResult(`"${args.folder}" isn't an absolute path. Pass the full path of the folder the takes are in.`, true);
+          const folder = yield* Effect.promise(() => realOr(raw, v.dir));
+          const paths = yield* Effect.promise(() => Promise.all(project.media.map((x) => realOr(x.path, v.dir))));
+          chosen = project.media.filter((_, i) => paths[i] === folder || paths[i]!.startsWith(folder + sep));
+          if (!chosen.length) return textResult(`No media in this project is from ${raw}. Import the takes first (media_import with that folder), then rank them.`, true);
+        } else {
+          chosen = project.media.filter((x) => x.kind === "video");
+          if (!chosen.length) return textResult("This project has no video yet. Import the takes first (media_import), then rank them.", true);
+        }
+        const video = chosen.filter((x) => {
+          if (x.kind === "video") return true;
+          skipped.push({ media: x.id, reason: x.kind === "audio" ? "A sound file, with no picture." : "A still image: there's no take to rank." });
+          return false;
+        });
+        if (!video.length) return textResult({ ranked: [], skipped, note: "Nothing to rank: media_rank ranks video takes." }, true);
+        if (video.length > MAX_RANKED) return textResult(`That's ${video.length} videos; media_rank ranks at most ${MAX_RANKED} per call. Pass media with fewer ids.`, true);
+        const results = yield* requestAndWait(video.map((x) => ({ target: targetOf(v.dir, x, fps), analyzer: "video" as const })));
+        const ranked: Array<{ value: number; out: Record<string, unknown> }> = [];
+        const pending: Array<Record<string, unknown>> = [];
+        const failed: Array<{ media: string; error: string }> = [];
+        for (const [i, { jobId, outcome }] of results.entries()) {
+          const x = video[i]!;
+          if (!outcome) pending.push({ media: x.id, ...pendingOut(jobId) });
+          else if (outcome.state === "failed") failed.push({ media: x.id, error: outcome.error });
+          else if (outcome.state === "cancelled") failed.push({ media: x.id, error: cancelledNote });
+          else {
+            const result = outcome.result as VideoResult;
+            if (!result.hasVideo) {
+              skipped.push({ media: x.id, reason: "ffmpeg found no picture in it." });
+              continue;
+            }
+            const e = rankEntry(x, result, outcome.cached, framesFor(fps, x.probe?.frames), windowSeconds);
+            ranked.push({ value: rankValue(e.scores, e.best, by), out: e.out });
+          }
+        }
+        ranked.sort((a, b) => b.value - a.value);
+        return textResult({
+          by,
+          ranked: ranked.map((r, i) => ({ rank: i + 1, ...r.out })),
+          ...(pending.length ? { pending } : {}),
+          ...(failed.length ? { failed } : {}),
+          ...(skipped.length ? { skipped } : {}),
+          note: [
+            pending.length ? `${pending.length} take${pending.length === 1 ? " is" : "s are"} still being analysed after ${Math.round(analyzeWaitMs() / 1000)} s and aren't ranked yet: call media_rank again with the same arguments (it joins the running jobs; finished ones come from the cache).` : "",
+            `Ranked by ${by === "clean" ? "cleanScore (the whole take)" : by === "best" ? "the best stretch's cleanScore" : by}, best first. best is the cleanest ${windowSeconds} s inside one shot (shorter when no shot is that long): start and end are project frames of the media, usable as in and in + duration. ${VIDEO_NOTE}`,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        });
       });
 
     // ui_show (D65): the renderer moves the playhead, selects and opens a panel once per request.
@@ -778,6 +891,8 @@ export const layer = Layer.effect(
             return uiShow(r, v, args);
           case "media_analyze":
             return yield* mediaAnalyze(v, args);
+          case "media_rank":
+            return yield* mediaRank(v, args);
           case "timeline_edit": {
             const { baseRevision, ops, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

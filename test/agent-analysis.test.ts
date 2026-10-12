@@ -152,16 +152,16 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
     { tool: "media_analyze", args: { media: "m-talk" } },
     { tool: "media_analyze", args: { media: "m-talk", analyzers: ["silence"] } },
     { tool: "media_analyze", args: { media: "m-still" } },
-    { tool: "media_analyze", args: { media: "m-talk", analyzers: ["shots"] } },
+    { tool: "media_analyze", args: { media: "m-talk", analyzers: ["beats"] } },
     { tool: "media_analyze", args: { media: "m-nope" } },
     { tool: "media_analyze", args: { media: "m-talk", range: { start: 80, end: 120 } } },
   ]);
   assert.equal(turn.status, "done", turn.error);
   assert.deepEqual(
     turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
-    ["Analysed the sound of m-talk", "Found the silences in m-talk", "Analysed the sound of m-still", "Analysed the sound of m-talk", "Analysed the sound of m-nope", "Analysed the sound of m-talk"],
+    ["Analysed the sound of m-talk", "Found the silences in m-talk", "Analysed the sound of m-still", "Analysed m-talk", "Analysed the sound of m-nope", "Analysed the sound of m-talk"],
   );
-  const [first, again, still, shots, nope, ranged] = results;
+  const [first, again, still, beats, nope, ranged] = results;
   assert.ok(!first!.isError, textOf(first!));
   const out = jsonOf(first!);
   const l = out.loudness;
@@ -184,6 +184,10 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
   assert.ok(Math.abs(l.integratedLufs - Number(input.input_i)) <= 0.5, `${l.integratedLufs} vs ${input.input_i}`);
   assert.equal(loudnessRuns().length, runsBefore + 1, "one ffmpeg run");
   assert.ok(loudnessRuns().at(-1)!.includes("-map 0:a:0"), "the first audio stream, mapped explicitly");
+  // No analyzers named: loudness only (video is opt-in, D67): no video key, no video run, one cache file.
+  assert.equal(out.video, undefined);
+  assert.match(out.note, /^loudness: /);
+  assert.equal(readFileSync(callLog(), "utf8").split("\n").filter((l) => l.includes("blurdetect")).length, 0, "no video analysis");
   const cached = analysisFiles().filter((f) => f.endsWith(".json"));
   assert.equal(cached.length, 1);
   assert.match(cached[0]!, /^[0-9a-f]{32}\/loudness\.json$/);
@@ -198,8 +202,8 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
   assert.ok(!still!.isError);
   assert.equal(jsonOf(still!).loudness.hasAudio, false);
   assert.equal(loudnessRuns().length, runsBefore + 1);
-  assert.ok(shots!.isError);
-  assert.match(textOf(shots!), /shots \(shot detection\) isn't available yet/);
+  assert.ok(beats!.isError);
+  assert.match(textOf(beats!), /beats \(beats\) isn't available yet/);
   assert.ok(nope!.isError);
   assert.match(textOf(nope!), /no media "m-nope".*m-talk/);
   // A range lists only the silences that overlap it.
@@ -213,7 +217,7 @@ test("a slow job answers running and the agent can ask again; a cancel from the 
   slow("ebur128", 40);
   try {
     const t0 = Date.now();
-    const { results } = await ask("analyse talk 2", [{ tool: "media_analyze", args: { media: "m-talk2" } }]);
+    const { results } = await ask("analyse talk 2", [{ tool: "media_analyze", args: { media: "m-talk2", analyzers: ["loudness"] } }]);
     assert.ok(Date.now() - t0 >= WAIT_MS - 200, "it waited");
     const out = jsonOf(results[0]!);
     assert.equal(out.loudness.state, "running", JSON.stringify(out));
@@ -223,7 +227,7 @@ test("a slow job answers running and the agent can ask again; a cancel from the 
     const job = analysisJobs.values.at(-1).find((j: any) => j.mediaId === "m-talk2" && j.phase === "running");
     const runs = loudnessRuns().length;
     // Asked again while it runs: it joins the same job (no second job, no second ffmpeg).
-    const { results: again } = await ask("still going?", [{ tool: "media_analyze", args: { media: "m-talk2" } }]);
+    const { results: again } = await ask("still going?", [{ tool: "media_analyze", args: { media: "m-talk2", analyzers: ["loudness"] } }]);
     assert.equal(jsonOf(again[0]!).loudness.state, "running");
     const talk2Jobs = new Set(analysisJobs.values.flat().filter((j: any) => j.mediaId === "m-talk2").map((j: any) => j.id));
     assert.deepEqual([...talk2Jobs], [job.id], "one job for m-talk2");
@@ -237,7 +241,7 @@ test("a slow job answers running and the agent can ask again; a cancel from the 
   } finally {
     fast();
   }
-  const { results } = await ask("try again", [{ tool: "media_analyze", args: { media: "m-talk2" } }]);
+  const { results } = await ask("try again", [{ tool: "media_analyze", args: { media: "m-talk2", analyzers: ["loudness"] } }]);
   const out = jsonOf(results[0]!);
   assert.equal(out.loudness.state, "done", JSON.stringify(out));
   assert.equal(out.loudness.cached, false);

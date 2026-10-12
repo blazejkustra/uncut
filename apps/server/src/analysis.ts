@@ -9,24 +9,26 @@
 // The first analyzer, "loudness", is one ffmpeg pass over the first audio stream (0:a:0: DJI files
 // carry mjpeg cover and data streams too): EBU R128 loudness (integrated, range, true peak) from
 // ebur128 and the silences from silencedetect (below SILENCE_DB for at least SILENCE_MIN_S).
-import { spawn, type ChildProcess } from "node:child_process";
+// The second, "video" (videoAnalysis.ts, D67), is one pass over the first video stream: cuts,
+// shake, blur, brightness and frozen stretches per second of the file.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm, rmdir } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { AnalysisError, ANALYZERS, type AnalysisJob, type Analyzer } from "@uncut/contracts";
+import { AnalysisError, type AnalysisJob, type Analyzer } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
+import { Cancelled, spawnRunner, type Runner } from "./analysisRunner.ts";
 import { writeAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { Projects } from "./projects.ts";
 import { which } from "./setup.ts";
-import { withoutApiKey } from "./shellEnv.ts";
+import { analyzeVideo, isVideoResult, NO_VIDEO, VIDEO_VERSION, type VideoResult } from "./videoAnalysis.ts";
 
 /** Silence: quieter than this (dBFS) ... */
 export const SILENCE_DB = -40;
@@ -43,9 +45,6 @@ const MAX_JOBS_KEPT = 20;
 
 /** Analyzers the agent's spec names (spec/agent/tools.json) that come with later chunks. */
 export const LATER_ANALYZERS: Readonly<Record<string, string>> = {
-  shots: "shot detection",
-  motion: "motion",
-  stability: "stability",
   beats: "beats",
   transcript: "transcription",
   description: "descriptions",
@@ -74,22 +73,29 @@ export interface LoudnessResult {
   readonly truePeakDbtp?: number | null;
   readonly silence?: { readonly thresholdDb: number; readonly minSeconds: number; readonly ranges: ReadonlyArray<SilenceRange> };
 }
-export type AnalysisResult = LoudnessResult;
+export type AnalysisResult = LoudnessResult | VideoResult;
 
 export const NO_AUDIO: LoudnessResult = { hasAudio: false };
 
+/** Names that mean the same job: one pass finds both silences and loudness, or all of the picture's signals. */
+export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = { loudness: "loudness", silence: "loudness", video: "video", shots: "video", motion: "video", stability: "video" };
+const AVAILABLE = `Available now: loudness (also gives the silences; "silence" means the same) and video (cuts, shake, blur, exposure and frozen stretches; "shots", "motion" and "stability" mean the same).`;
+
 /**
- * Which analyzers a request means: none named = all of today's; "silence" is the loudness job
- * (one pass finds both). Later ones and unknown names are refused with a sentence.
+ * Which analyzers a request means: none named = loudness (cheap, ~400× realtime; video is opt-in,
+ * named or through media_rank, since it takes about a minute on a long 4K clip and would hold the
+ * queue); "silence" is the loudness job (one pass finds both), "shots", "motion" and "stability"
+ * the video job. Later ones and unknown names are refused with a sentence.
  */
 export function parseAnalyzers(value: unknown): { readonly analyzers: ReadonlyArray<Analyzer> } | { readonly refused: string } {
-  if (value === undefined) return { analyzers: [...ANALYZERS] };
+  if (value === undefined) return { analyzers: ["loudness"] };
   if (!Array.isArray(value) || !value.length || !value.every((v) => typeof v === "string")) return { refused: `analyzers must be a non-empty list, e.g. ["loudness"].` };
   const out = new Set<Analyzer>();
   for (const name of value as Array<string>) {
-    if (name === "loudness" || name === "silence") out.add("loudness");
-    else if (name in LATER_ANALYZERS) return { refused: `${name} (${LATER_ANALYZERS[name]}) isn't available yet. Available now: loudness (also gives the silences; "silence" means the same).` };
-    else return { refused: `There's no analyzer "${name}". Available now: loudness (also gives the silences; "silence" means the same).` };
+    const alias = Object.hasOwn(ANALYZER_ALIASES, name) ? ANALYZER_ALIASES[name] : undefined;
+    if (alias) out.add(alias);
+    else if (Object.hasOwn(LATER_ANALYZERS, name)) return { refused: `${name} (${LATER_ANALYZERS[name]}) isn't available yet. ${AVAILABLE}` };
+    else return { refused: `There's no analyzer "${name}". ${AVAILABLE}` };
   }
   return { analyzers: [...out] };
 }
@@ -213,91 +219,7 @@ export class LoudnessLog {
 
 // ---- running ffmpeg ----
 
-export class Cancelled extends Error {
-  constructor() {
-    super("cancelled");
-  }
-}
-
-export interface RunOptions {
-  readonly signal: AbortSignal;
-  readonly onStdout?: (line: string) => void;
-  readonly onStderr?: (line: string) => void;
-  readonly timeoutMs?: number;
-}
-/** Runs a tool to the end; rejects with Cancelled when `signal` aborts (the process is SIGKILLed). */
-export type Runner = (bin: string, args: ReadonlyArray<string>, options: RunOptions) => Promise<{ readonly code: number | null; readonly stderrTail: string }>;
-
-// Children still running, killed if the server goes away.
-const children = new Set<ChildProcess>();
-process.on("exit", () => {
-  for (const child of children) child.kill("SIGKILL");
-});
-
-const lineSplitter = (onLine: ((line: string) => void) | undefined) => {
-  let partial = "";
-  return {
-    push: (chunk: Buffer) => {
-      if (!onLine) return;
-      const lines = (partial + chunk.toString()).split(/\r?\n|\r/);
-      partial = lines.pop() ?? "";
-      for (const line of lines) onLine(line);
-    },
-    end: () => {
-      if (onLine && partial) onLine(partial);
-      partial = "";
-    },
-  };
-};
-
-export const spawnRunner: Runner = (bin, args, { signal, onStdout, onStderr, timeoutMs }) =>
-  new Promise((resolvePromise, reject) => {
-    if (signal.aborted) return reject(new Cancelled());
-    const child = spawn(bin, [...args], { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
-    children.add(child);
-    const out = lineSplitter(onStdout);
-    const err = lineSplitter(onStderr);
-    let tail = "";
-    child.stdout.on("data", (d: Buffer) => out.push(d));
-    child.stderr.on("data", (d: Buffer) => {
-      tail = (tail + d.toString()).slice(-16384);
-      err.push(d);
-    });
-    let timedOut = false;
-    const timer = timeoutMs ? setTimeout(() => ((timedOut = true), child.kill("SIGKILL")), timeoutMs) : undefined;
-    const abort = () => child.kill("SIGKILL");
-    signal.addEventListener("abort", abort, { once: true });
-    let settled = false;
-    const cleanup = () => {
-      settled = true;
-      clearTimeout(timer);
-      signal.removeEventListener("abort", abort);
-      children.delete(child);
-    };
-    child.once("error", (error) => {
-      if (settled) return;
-      cleanup();
-      reject(signal.aborted ? new Cancelled() : error);
-    });
-    // Killed: done once the process is gone, without waiting for its pipes to close (a child it
-    // left behind could hold them open).
-    child.once("exit", () => {
-      if (settled || !signal.aborted) return;
-      cleanup();
-      child.stdout.destroy();
-      child.stderr.destroy();
-      reject(new Cancelled());
-    });
-    child.once("close", (code) => {
-      if (settled) return;
-      cleanup();
-      out.end();
-      err.end();
-      if (signal.aborted) return reject(new Cancelled());
-      if (timedOut) return reject(new Error("The analysis took too long and was stopped."));
-      resolvePromise({ code, stderrTail: tail });
-    });
-  });
+export { Cancelled, spawnRunner, type RunOptions, type Runner } from "./analysisRunner.ts";
 
 /** The last useful lines of ffmpeg's stderr, for an error message. */
 const ffmpegError = (stderr: string) =>
@@ -348,22 +270,22 @@ interface CacheFile {
   readonly result: AnalysisResult;
 }
 
-const versionOf = (analyzer: Analyzer) => (analyzer === "loudness" ? LOUDNESS_VERSION : 0);
+const versionOf = (analyzer: Analyzer) => (analyzer === "loudness" ? LOUDNESS_VERSION : VIDEO_VERSION);
 
 /** A cached result for this content and analyzer (and the analyzer's current version), if any. */
 export async function readCached(projectDir: string, fp: string, analyzer: Analyzer): Promise<AnalysisResult | undefined> {
   try {
     const file = JSON.parse(await readFile(cacheFile(projectDir, fp, analyzer), "utf8")) as CacheFile;
     if (file.format !== ANALYSIS_FORMAT || file.analyzer !== analyzer || file.version !== versionOf(analyzer) || file.fingerprint !== fp) return undefined;
-    return isResult(file.result) ? file.result : undefined;
+    return (analyzer === "video" ? isVideoResult(file.result) : isResult(file.result)) ? file.result : undefined;
   } catch {
     return undefined;
   }
 }
 
 const numOrNull = (v: unknown) => v === null || v === undefined || (typeof v === "number" && Number.isFinite(v));
-/** Whether a cached value has the result's shape (anything else is a miss, redone and rewritten). */
-export function isResult(value: unknown): value is AnalysisResult {
+/** Whether a cached value has the loudness result's shape (anything else is a miss, redone and rewritten). */
+export function isResult(value: unknown): value is LoudnessResult {
   if (!value || typeof value !== "object") return false;
   const r = value as Record<string, unknown>;
   if (typeof r.hasAudio !== "boolean") return false;
@@ -491,7 +413,9 @@ export class AnalysisQueue {
 
   async request(target: AnalysisTarget, analyzer: Analyzer): Promise<Requested> {
     if (this.closed) return settled({ state: "cancelled" });
-    if (target.kind === "image" || target.hasAudio === false) return settled({ state: "done", result: NO_AUDIO, cached: false });
+    // Nothing to measure, known from the probe: no job, no cache file.
+    if (analyzer === "loudness" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_AUDIO, cached: false });
+    if (analyzer === "video" && target.kind !== "video") return settled({ state: "done", result: NO_VIDEO, cached: false });
     const joined = this.find(target, analyzer);
     if (joined) return this.join(joined, target.mediaId);
     let fp: string;
@@ -609,19 +533,20 @@ export class AnalysisQueue {
     let outcome: Outcome;
     try {
       const bin = await this.options.ffmpeg();
-      if (!bin) throw new Error("ffmpeg isn't installed, and Uncut needs it to analyse sound (brew install ffmpeg).");
+      if (!bin) throw new Error(`ffmpeg isn't installed, and Uncut needs it to analyse ${e.job.analyzer === "video" ? "video" : "sound"} (brew install ffmpeg).`);
       let last = 0;
-      const result = await analyzeLoudness(bin, e.target.path, {
+      const options = {
         signal,
         runner: this.options.runner,
         seconds: e.target.seconds,
-        onProgress: (fraction) => {
+        onProgress: (fraction: number) => {
           const now = Date.now();
           if (now - last < 250) return;
           last = now;
           this.patch(e, { progress: Math.round(fraction * 1000) / 1000 });
         },
-      });
+      };
+      const result: AnalysisResult = e.job.analyzer === "video" ? await analyzeVideo(bin, e.target.path, options) : await analyzeLoudness(bin, e.target.path, options);
       if (signal.aborted) throw new Cancelled();
       // Cached only if the file is still what was fingerprinted (it may have changed meanwhile).
       // A cache that can't be written (read-only disk) costs a re-run later, not this result.
@@ -648,7 +573,7 @@ export class AnalysisQueue {
 
 export interface AnalysisShape {
   readonly jobs: Stream.Stream<ReadonlyArray<AnalysisJob>>;
-  /** analysis.start: analyse a media item of the open project. */
+  /** analysis.start: analyse a media item of the open project (the Library's Analyze: the sound, unless analyzers say otherwise). */
   readonly start: (mediaId: string, analyzers?: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<{ analyzer: Analyzer; state: "done" | "queued" | "running"; jobId?: string }>, AnalysisError>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
   /** For the agent's media_analyze: start or join, then follow `done`. */
@@ -691,6 +616,7 @@ export const layer = Layer.effect(
         const project = open.project as { canvas: { fps: number }; media: ReadonlyArray<{ id: string; kind: string; path: string; probe?: { frames?: number; hasAudio?: boolean } }> };
         const media = project.media.find((m) => m.id === mediaId);
         if (!media) return yield* new AnalysisError({ reason: "unknown-media", message: `There's no media "${mediaId}" in this project.` });
+        // The Library's Analyze button is about the sound (D66), which is also the default.
         const parsed = parseAnalyzers(analyzers);
         if ("refused" in parsed) return yield* new AnalysisError({ reason: "unknown-analyzer", message: parsed.refused });
         const target = targetOf(open.dir, media, project.canvas.fps);
