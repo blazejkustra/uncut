@@ -120,7 +120,7 @@ test("D6 across close and reopen: the earlier hand edit is in the next prompt; a
     assert.equal(item(s.onDisk(), "title-1").text, "Kraków, from the air", "the user's edit stands");
     const prompt = s.runs()[1]!.prompt;
     assert.match(prompt, /Earlier, before the project was closed and reopened:/);
-    assert.match(prompt, /Changed text on text "Kraków, from the air" \(title-1\)/);
+    assert.match(prompt, /Changed the text of title-1 to "Kraków, from the air"/);
     assert.match(prompt, /closed and opened again/);
     assert.match(t2.note, /Kraków, from the air/, "the card shows it too");
 
@@ -147,7 +147,7 @@ test("D6 during a turn: a hand edit made while the agent works reaches the next 
     assert.equal((await s.done(t2)).status, "done");
     assert.equal(item(s.onDisk(), "two-1").text, "Two", "an edit to something else goes through");
     await s.ask("next", [{ tool: "project_read" }]);
-    assert.match(s.runs()[2]!.prompt, /Changed text on text "Uno" \(title-1\)/, "the hand edit made mid-turn is reported");
+    assert.match(s.runs()[2]!.prompt, /Changed the text of title-1 to "Uno"/, "the hand edit made mid-turn is reported");
 
     // Turn 4 reads, waits (the user presses ⌘Z), then edits: refused, the undo is news.
     const t4 = await s.start("rename the title", [

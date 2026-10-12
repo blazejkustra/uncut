@@ -13,6 +13,7 @@ import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "./playback.ts";
 import { draftOf, planDelete, planSplit, planTrackFlag, type Plan, type TrackFlag } from "./edit.ts";
 import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
+import { planAddBackground, type BackgroundProps } from "./text.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
@@ -287,7 +288,7 @@ async function change(run: Parameters<Connection["call"]>[0], { inline = false }
 // One add at a time: a double click must not plan two edits against the same project (they'd
 // pick the same new id, and the second would be refused). Clicks while one is in flight are dropped.
 let adding = false;
-async function addPlanned(plan: (project: ProjectModel) => Planned) {
+async function addPlanned(plan: (project: ProjectModel) => Planned | { readonly problem: string }) {
   if (adding || !state.snapshot || !online()) return;
   const planned = plan(projectOf(state.snapshot));
   if ("problem" in planned) return set({ notice: { text: planned.problem } });
@@ -337,6 +338,29 @@ async function timelineEdit(plan: Plan | { readonly problem: string }, origin: {
   } finally {
     adding = false;
   }
+}
+
+// Inspector and canvas edits run one after another: a colour click right after a size change
+// waits for it instead of being refused as "still being saved", and each is planned against the
+// project as it is when its turn comes (update_item replaces nested objects whole).
+let itemChain: Promise<unknown> = Promise.resolve();
+const settled = () => new Promise<void>((resolve) => setTimeout(resolve, 25));
+
+/**
+ * An item edit from the Inspector or the preview (D53): `makePlan` runs against the newest
+ * project when it's this edit's turn. `baseRevision` is what the user saw when the gesture began
+ * (a typing burst, a drag), so the server refuses it if the agent changed the item since (D6).
+ */
+function itemEdit(makePlan: (project: ProjectModel) => Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+  const run = async () => {
+    while (adding) await settled();
+    const snapshot = state.snapshot;
+    if (!snapshot || (origin.dir !== undefined && origin.dir !== snapshot.dir)) return false;
+    return timelineEdit(makePlan(projectOf(snapshot)), origin);
+  };
+  const next = itemChain.then(run, run);
+  itemChain = next.catch(() => undefined);
+  return next;
 }
 
 export const actions = {
@@ -394,6 +418,10 @@ export const actions = {
   addText: (preset: TextPreset) => addPlanned((project) => planAddText(project, preset, getPlayback().frame)),
   /** A planned move or trim from the timeline (see edit.ts). */
   timelineEdit,
+  /** A text or background change from the Inspector or the preview (see text.ts). */
+  itemEdit,
+  /** Elements tab → a full-frame background (see planAddBackground). */
+  addBackground: (props: BackgroundProps) => addPlanned((project) => planAddBackground(project, props, getPlayback().frame, getPlayback().selected)),
   /** S: split at the playhead (see planSplit); the part after the playhead is selected. */
   async split() {
     if (!state.snapshot) return;
@@ -502,11 +530,17 @@ function runCommand(command: MenuCommand) {
   }
 }
 
-const isEditable = (el: Element | null) => el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
+const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "url", "tel", "password"]);
+/**
+ * A field where keys type text (text-like inputs, textareas, contenteditable). A focused checkbox,
+ * colour picker or slider is not one: ⌘Z there undoes the project, not typing.
+ */
+export const isTextEntry = (el: EventTarget | null) =>
+  el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(el.type)) || (el instanceof HTMLElement && el.isContentEditable);
 
 // In a text field ⌘Z undoes typing; elsewhere it undoes the last project change.
 function undoOrRedo(kind: "undo" | "redo") {
-  if (isEditable(document.activeElement)) document.execCommand(kind);
+  if (isTextEntry(document.activeElement)) document.execCommand(kind);
   else void actions[kind]();
 }
 

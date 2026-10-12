@@ -3,6 +3,7 @@
   "id": "component.solid",
   "kind": "component",
   "name": "Background",
+  "description": "A full-frame background: one colour, or a linear gradient from color to `to`. Colours are theme tokens (bg, fg, accent) or CSS colours. Put it on the main track (a title card) or a free video track under the text.",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -15,7 +16,18 @@
     "additionalProperties": false,
     "properties": {
       "color": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "description": "The colour (or the gradient's first colour): a theme token or a CSS colour."
+      },
+      "to": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Makes it a linear gradient from color to this colour."
+      },
+      "angle": {
+        "type": "number",
+        "description": "The gradient's direction in degrees, CSS-style (180 = top to bottom, the default)."
       }
     }
   },

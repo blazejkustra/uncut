@@ -1,0 +1,502 @@
+// The Inspector's editors for text and backgrounds (phase 4 chunk 4, D16/D53): CapCut-style text
+// (content, then Style / Animation / Captions tabs) and a background's colours. Every change is
+// one project.edit through actions.itemEdit (validated, one ⌘Z, in the agent's next note):
+// typing is committed after a pause, on blur or ⌘Enter, so a burst is one undo step; a slider
+// shows a local draft while it moves and commits once on release.
+import { resolveColor, TEXT_STYLES } from "@uncut/core/render";
+import type { Item, Op } from "@uncut/core/types";
+import { AlignCenter, AlignLeft, AlignRight, Crosshair, Highlighter } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+import { draftOf, findItem } from "./edit.ts";
+import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
+import type { ProjectModel } from "./project.ts";
+import { actions, getState, projectOf } from "./store.ts";
+import { MOVES, planAnimation, planBackground, planCentre, planPreset, planStyle, planText, planTransform, swatches, textBox, toggleAccent, type AnimationSlot } from "./text.ts";
+
+/** How long typing has to pause before it's saved (it's also saved on blur and ⌘Enter). */
+export const TYPING_PAUSE_MS = 800;
+
+type PlanResult = { readonly ops: ReadonlyArray<Op>; readonly summary: string } | { readonly problem: string };
+
+/** Show a plan's result in the preview without sending it; returns the draft (to drop later). */
+function showDraft(project: ProjectModel, plan: PlanResult): PreviewDraft | undefined {
+  if (!("ops" in plan) || !plan.ops.length) return undefined;
+  const result = draftOf(project, plan.ops);
+  if (!("project" in result)) return undefined;
+  const draft = { base: project, project: result.project };
+  playback.setDraft(draft);
+  return draft;
+}
+const dropDraft = (draft: PreviewDraft | undefined) => {
+  if (draft && getPlayback().draft === draft) playback.setDraft(undefined);
+};
+
+/** The revision and folder an edit is planned against (see actions.itemEdit). */
+const origin = () => ({ baseRevision: getState().snapshot?.revision, dir: getState().snapshot?.dir });
+
+/** Send an edit planned against the newest project; the draft (if any) goes once it's applied. */
+function send(make: (project: ProjectModel) => PlanResult, draft?: PreviewDraft, from = origin()) {
+  void actions.itemEdit(make, from).finally(() => dropDraft(draft));
+}
+
+/** A number field: typed freely, committed on Enter or blur, Esc puts the saved value back. */
+function NumberField({ label, value, onCommit, testId, placeholder, step = 1, min, disabled }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; testId: string; placeholder?: string; step?: number; min?: number; disabled?: boolean }) {
+  const shown = value === undefined ? "" : String(value);
+  const [text, setText] = useState(shown);
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setText(shown);
+  }, [shown]);
+  const commit = () => {
+    editing.current = false;
+    const trimmed = text.trim();
+    const n = trimmed === "" ? undefined : Number(trimmed);
+    if (n !== undefined && (!Number.isFinite(n) || (min !== undefined && n < min))) return setText(shown);
+    if (n === value) return setText(shown);
+    onCommit(n);
+  };
+  return (
+    <label className="field num-field">
+      <span className="k">{label}</span>
+      <input
+        className="v"
+        data-testid={testId}
+        type="number"
+        step={step}
+        min={min}
+        value={text}
+        placeholder={placeholder}
+        disabled={disabled}
+        onFocus={() => (editing.current = true)}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            editing.current = false;
+            setText(shown);
+            const el = e.currentTarget;
+            requestAnimationFrame(() => el.blur());
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+/** Colour swatches (theme tokens first) plus a custom colour. */
+function ColorPicker({ project, value, onPick, testId, disabled }: { project: ProjectModel; value: string | undefined; onPick: (color: string, final: boolean) => void; testId: string; disabled?: boolean }) {
+  const css = resolveColor(project, value, "#ffffff");
+  const hex = /^#[0-9a-f]{6}$/i.test(css) ? css : "#ffffff";
+  return (
+    <div className="swatches">
+      {swatches(project).map((s) => (
+        <button
+          key={s.value}
+          className={`swatch ${value === s.value ? "active" : ""}`}
+          data-testid={testId}
+          data-color={s.value}
+          title={s.label}
+          disabled={disabled}
+          style={{ background: s.css }}
+          onClick={() => onPick(s.value, true)}
+        />
+      ))}
+      <label className="swatch custom" title="Custom colour">
+        <input type="color" data-testid={`${testId}-custom`} value={hex} disabled={disabled} onChange={(e) => onPick(e.target.value.toUpperCase(), false)} />
+      </label>
+    </div>
+  );
+}
+
+/** Debounces a value that streams in (a colour picker) into one edit after it settles. */
+function useSettle(delay: number) {
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pending = useRef<(() => void) | undefined>(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current);
+      pending.current?.();
+    },
+    [],
+  );
+  return (run: () => void) => {
+    clearTimeout(timer.current);
+    pending.current = run;
+    timer.current = setTimeout(() => {
+      pending.current = undefined;
+      run();
+    }, delay);
+  };
+}
+
+/** A range slider that previews locally while it moves and commits once when released. */
+function Slider({ value, min, max, onPreview, onCommit, testId, disabled }: { value: number; min: number; max: number; onPreview: (v: number) => void; onCommit: (v: number) => void; testId: string; disabled?: boolean }) {
+  const [local, setLocal] = useState<number | undefined>(undefined);
+  const commit = (el: HTMLInputElement) => {
+    if (local === undefined) return;
+    setLocal(undefined);
+    if (local !== value) onCommit(local);
+    // Off the slider, so Space and the arrows go back to the transport.
+    el.blur();
+  };
+  return (
+    <input
+      type="range"
+      className="slider"
+      data-testid={testId}
+      min={min}
+      max={max}
+      value={local ?? value}
+      disabled={disabled}
+      onChange={(e) => {
+        const v = Number(e.target.value);
+        setLocal(v);
+        onPreview(v);
+      }}
+      onPointerUp={(e) => commit(e.currentTarget)}
+      onKeyUp={(e) => commit(e.currentTarget)}
+      onBlur={(e) => commit(e.currentTarget)}
+    />
+  );
+}
+
+function Tabs<T extends string>({ tabs, value, onChange }: { tabs: ReadonlyArray<readonly [T, string, boolean?]>; value: T; onChange: (t: T) => void }) {
+  return (
+    <div className="seg insp-tabs">
+      {tabs.map(([id, label, disabled]) => (
+        <button key={id} className={value === id ? "active" : ""} data-testid={`insp-tab-${id}`} disabled={disabled} title={disabled ? "Captions arrive with transcripts" : undefined} onClick={() => onChange(id)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const Group = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="group">
+    <div className="group-label">{label}</div>
+    {children}
+  </div>
+);
+
+/**
+ * The text's content. Typing shows in the preview at once (a local draft) and is saved after a
+ * pause of TYPING_PAUSE_MS, on blur, or with ⌘Enter; Esc puts the saved text back. A burst is
+ * planned against the revision it started at, so an agent change to the same item meanwhile is
+ * refused rather than overwritten (D6).
+ */
+function TextContent({ project, item, disabled }: { project: ProjectModel; item: Item; disabled: boolean }) {
+  const saved = item.text ?? "";
+  const [value, setValue] = useState(saved);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  // The revision the text field shows: set when it last matched the saved text (mount, a change
+  // to the item while nothing was pending, a finished save). A burst is planned against it, so an
+  // agent edit the user hadn't seen yet makes the save conflict instead of being overwritten.
+  const base = useRef(origin());
+  // Typed but not saved yet.
+  const dirty = useRef(false);
+  const mounted = useRef(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const draft = useRef<PreviewDraft | undefined>(undefined);
+  const latest = useRef({ value, saved, id: item.id });
+  latest.current = { value, saved, id: item.id };
+
+  /** Show the saved text again and take the current revision as the new base. */
+  const resync = (text: string) => {
+    base.current = origin();
+    latest.current = { ...latest.current, value: text };
+    if (mounted.current) setValue(text);
+  };
+  // A change to the item from anywhere (the agent, undo, a save) shows up unless typing is pending.
+  useEffect(() => {
+    if (!dirty.current) resync(item.text ?? "");
+  }, [item]);
+
+  const commit = () => {
+    clearTimeout(timer.current);
+    const { value: text, saved: was, id } = latest.current;
+    const from = base.current;
+    const d = draft.current;
+    draft.current = undefined;
+    const pending = dirty.current;
+    dirty.current = false;
+    if (!pending || text === was) return dropDraft(d);
+    void actions.itemEdit((p) => planText(p, id, text), from).finally(() => {
+      dropDraft(d);
+      // Saved or refused (a conflict shows in the banner): show what's saved now, unless the user
+      // has typed on meanwhile.
+      if (dirty.current) return;
+      const snapshot = getState().snapshot;
+      const now = snapshot ? findItem(projectOf(snapshot), id)?.item.text : undefined;
+      if (now !== undefined) resync(now);
+    });
+  };
+  // Leaving the item (another selection, the Inspector closing) saves what was typed.
+  useEffect(
+    () => () => {
+      commit();
+      mounted.current = false;
+    },
+    [],
+  );
+
+  const change = (text: string) => {
+    setValue(text);
+    latest.current = { ...latest.current, value: text };
+    dirty.current = true;
+    draft.current = showDraft(project, planText(project, item.id, text)) ?? draft.current;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(commit, TYPING_PAUSE_MS);
+  };
+
+  const accent = () => {
+    const el = ref.current;
+    if (!el) return;
+    const next = toggleAccent(value, el.selectionStart, el.selectionEnd);
+    if (next.text === value) return;
+    change(next.text);
+    commit();
+    requestAnimationFrame(() => el.setSelectionRange(next.from, next.to));
+  };
+
+  return (
+    <div className="group">
+      <div className="group-label row">
+        <span>Text</span>
+        <button className="btn ghost small-btn" data-testid="insp-accent" title="Accent the selected words ([[ ]] in the text)" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={accent}>
+          <Highlighter />
+          Accent
+        </button>
+      </div>
+      <textarea
+        ref={ref}
+        className="field input text-area"
+        data-testid="insp-text"
+        value={value}
+        rows={3}
+        disabled={disabled}
+        spellCheck={false}
+        onChange={(e) => change(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && e.metaKey) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            clearTimeout(timer.current);
+            dirty.current = false;
+            dropDraft(draft.current);
+            draft.current = undefined;
+            resync(saved);
+            const el = e.currentTarget;
+            requestAnimationFrame(() => el.blur());
+          }
+        }}
+      />
+      <div className="hint-line muted small">Saved as you pause. [[word]] accents, **bold**, `mono`.</div>
+    </div>
+  );
+}
+
+const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
+const WEIGHT_NAMES: Readonly<Record<number, string>> = { 100: "Thin", 200: "Extra light", 300: "Light", 400: "Regular", 500: "Medium", 600: "Semibold", 700: "Bold", 800: "Heavy", 900: "Black" };
+const ALIGNS = [
+  ["left", AlignLeft],
+  ["center", AlignCenter],
+  ["right", AlignRight],
+] as const;
+
+function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item: Item; disabled: boolean }) {
+  const box = textBox(item, project.canvas);
+  const settle = useSettle(400);
+  const colorDraft = useRef<PreviewDraft | undefined>(undefined);
+  const maxSize = Math.round(project.canvas.height * 0.4);
+  const sizeDraft = useRef<PreviewDraft | undefined>(undefined);
+  return (
+    <>
+      <Group label="Style">
+        <div className="presets">
+          {Object.entries(TEXT_STYLES).map(([id, look]) => (
+            <button key={id} className={`preset ${item.style?.preset === id ? "active" : ""}`} data-testid="insp-preset" data-preset={id} disabled={disabled} onClick={() => send((p) => planPreset(p, item.id, id))}>
+              {look.name}
+            </button>
+          ))}
+        </div>
+      </Group>
+      <Group label="Size and weight">
+        <div className="slider-row">
+          <Slider
+            testId="insp-size"
+            value={box.size}
+            min={8}
+            max={Math.max(maxSize, box.size)}
+            disabled={disabled}
+            onPreview={(v) => (sizeDraft.current = showDraft(project, planStyle(project, item.id, { size: v })) ?? sizeDraft.current)}
+            onCommit={(v) => {
+              const d = sizeDraft.current;
+              sizeDraft.current = undefined;
+              send((p) => planStyle(p, item.id, { size: v }, "Resize text"), d);
+            }}
+          />
+          <NumberField label="px" testId="insp-size-num" value={box.size} min={1} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planStyle(p, item.id, { size: v }, "Resize text"))} />
+        </div>
+        <select className="field input" data-testid="insp-weight" value={box.weight} disabled={disabled} onChange={(e) => {
+            const weight = Number(e.target.value);
+            send((p) => planStyle(p, item.id, { weight }));
+          }}>
+          {WEIGHTS.map((w) => (
+            <option key={w} value={w}>
+              {w} {WEIGHT_NAMES[w]}
+            </option>
+          ))}
+        </select>
+      </Group>
+      <Group label="Colour">
+        <ColorPicker
+          project={project}
+          testId="insp-color"
+          value={box.color}
+          disabled={disabled}
+          onPick={(color, final) => {
+            if (final) return send((p) => planStyle(p, item.id, { color }, "Recolour text"));
+            colorDraft.current = showDraft(project, planStyle(project, item.id, { color })) ?? colorDraft.current;
+            settle(() => {
+              const d = colorDraft.current;
+              colorDraft.current = undefined;
+              send((p) => planStyle(p, item.id, { color }, "Recolour text"), d);
+            });
+          }}
+        />
+      </Group>
+      <Group label="Alignment and position">
+        <div className="seg align" role="group">
+          {ALIGNS.map(([align, Icon]) => (
+            <button key={align} className={box.align === align ? "active" : ""} data-testid="insp-align" data-align={align} title={`Align ${align}`} disabled={disabled} onClick={() => send((p) => planStyle(p, item.id, { align }, `Align text ${align}`))}>
+              <Icon />
+            </button>
+          ))}
+          <button className="centre" data-testid="insp-centre" title="Centre on the canvas: the box spans the safe area and the lines are centred" disabled={disabled} onClick={() => send((p) => planCentre(p, item.id))}>
+            <Crosshair />
+            Centre
+          </button>
+        </div>
+        <div className="field-row three">
+          <NumberField label="X" testId="insp-x" value={box.x} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planTransform(p, item.id, { x: v }))} />
+          <NumberField label="Y" testId="insp-y" value={box.y} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planTransform(p, item.id, { y: v }))} />
+          <NumberField label="W" testId="insp-w" value={box.w} placeholder="auto" min={1} disabled={disabled} onCommit={(v) => send((p) => planTransform(p, item.id, { w: v ?? null }, v === undefined ? "Fit the text box to its text" : "Set the text box width"))} />
+        </div>
+        <div className="hint-line muted small">Drag the text in the preview to move it; it snaps to the centre and the safe margins (hold ⌘ to place it freely). W wraps the text; empty fits it.</div>
+      </Group>
+    </>
+  );
+}
+
+function AnimationRow({ project, item, slot, disabled }: { project: ProjectModel; item: Item; slot: AnimationSlot; disabled: boolean }) {
+  const fps = project.canvas.fps;
+  const current = item.animation?.[slot];
+  const module = current?.module ?? "";
+  const frames = current?.duration ?? Math.min(item.duration, Math.round(fps / 3));
+  const set = (next: string, duration: number) => send((p) => planAnimation(p, item.id, slot, next ? { module: next, duration } : null));
+  return (
+    <Group label={slot === "in" ? "In" : "Out"}>
+      <div className="field-row">
+        <select className="field input" data-testid={`insp-anim-${slot}`} value={module} disabled={disabled} onChange={(e) => set(e.target.value, frames)}>
+          {MOVES.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+          {module && !MOVES.some((m) => m.id === module) && <option value={module}>{module}</option>}
+        </select>
+        <NumberField
+          label="s"
+          testId={`insp-anim-${slot}-dur`}
+          value={Number((frames / fps).toFixed(2))}
+          step={0.1}
+          min={0.04}
+          disabled={disabled || !module}
+          onCommit={(v) => v !== undefined && set(module, Math.round(v * fps))}
+        />
+      </div>
+    </Group>
+  );
+}
+
+/** The selected text item: content, then Style / Animation / Captions. */
+export function TextEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const [tab, setTab] = useState<"style" | "animation" | "captions">("style");
+  return (
+    <div data-testid="text-editor">
+      <TextContent key={item.id} project={project} item={item} disabled={locked} />
+      <div className="group tabs-group">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            ["style", "Style"],
+            ["animation", "Animation"],
+            ["captions", "Captions", true],
+          ]}
+        />
+      </div>
+      {tab === "style" && <TextStyleTab project={project} item={item} disabled={locked} />}
+      {tab === "animation" && (
+        <>
+          <AnimationRow project={project} item={item} slot="in" disabled={locked} />
+          <AnimationRow project={project} item={item} slot="out" disabled={locked} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** A background (component.solid): its colour, or a gradient between two. */
+export function BackgroundEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const props = (item.props ?? {}) as { color?: string; to?: string; angle?: number };
+  const settle = useSettle(400);
+  const drafts = useRef<PreviewDraft | undefined>(undefined);
+  const pick = (patch: { color?: string; to?: string }, final: boolean) => {
+    if (final) return send((p) => planBackground(p, item.id, patch));
+    drafts.current = showDraft(project, planBackground(project, item.id, patch)) ?? drafts.current;
+    settle(() => {
+      const d = drafts.current;
+      drafts.current = undefined;
+      send((p) => planBackground(p, item.id, patch), d);
+    });
+  };
+  const gradient = props.to !== undefined;
+  return (
+    <div data-testid="background-editor">
+      <Group label={gradient ? "From" : "Colour"}>
+        <ColorPicker project={project} testId="bg-color" value={props.color} disabled={locked} onPick={(color, final) => pick({ color }, final)} />
+      </Group>
+      <Group label="Gradient">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            data-testid="bg-gradient"
+            checked={gradient}
+            disabled={locked}
+            onChange={(e) => {
+              // Read now: the plan runs later, when React has put the controlled box back.
+              const patch = e.target.checked ? { to: "#3B1E54", angle: 160 } : { to: null };
+              send((p) => planBackground(p, item.id, patch));
+            }}
+          />
+          Fade to a second colour
+        </label>
+        {gradient && (
+          <>
+            <ColorPicker project={project} testId="bg-to" value={props.to} disabled={locked} onPick={(to, final) => pick({ to }, final)} />
+            <div className="field-row">
+              <NumberField label="Angle °" testId="bg-angle" value={props.angle ?? 180} disabled={locked} onCommit={(v) => v !== undefined && send((p) => planBackground(p, item.id, { angle: v }))} />
+            </div>
+          </>
+        )}
+      </Group>
+    </div>
+  );
+}

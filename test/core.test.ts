@@ -118,13 +118,13 @@ test("esc and textHtml escape <>&\" in text and keep [[accent]] markup", () => {
   assert.equal(esc(`<a href="x">&amp;</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;amp;&lt;/a&gt;");
   assert.equal(esc(42), "42");
   const item: Item = { id: "t1", type: "text", start: 0, duration: 30, text: `Hi <b>"you" & [[me]]</b>`, transform: { x: 960, y: 270 }, style: { size: 108 } };
-  assert.equal(
-    textHtml(item, timeline.canvas),
-    `<div class="pv-text " data-item="t1" style="left:50%;top:25%;font-size:10cqh;font-weight:600;opacity:1">Hi &lt;b&gt;&quot;you&quot; &amp; <span class="accent">me</span>&lt;/b&gt;</div>`,
-  );
-  const styled = textHtml({ ...item, style: { size: 108, weight: 800 } }, timeline.canvas, { opacity: 0.5, selected: true });
+  const plain = textHtml(item, timeline);
+  assert.match(plain, /^<div class="pv-text" data-item="t1" style="left:50%;top:25%;width:max-content;max-width:50%;font-size:10cqh;font-weight:600;/);
+  assert.match(plain, /;opacity:1">Hi &lt;b&gt;&quot;you&quot; &amp; <span class="accent">me<\/span>&lt;\/b&gt;<\/div>$/);
+  const styled = textHtml({ ...item, style: { size: 108, weight: 800 } }, timeline, { opacity: 0.5, selected: true });
   assert.match(styled, /^<div class="pv-text sel-box" /);
-  assert.match(styled, /font-weight:800;opacity:0\.5"/);
+  assert.match(styled, /font-weight:800;/);
+  assert.match(styled, /;opacity:0\.5"/);
   assert.ok(!/<b>|"you"/.test(styled), "no raw markup or quotes from the text get through");
 });
 

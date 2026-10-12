@@ -8,6 +8,18 @@
 // phase 2 spike).
 import { useSyncExternalStore } from "react";
 
+import type { ProjectModel } from "./project.ts";
+
+/**
+ * A local preview of an edit in progress (a canvas drag, a slider, typing): the project after
+ * the planned ops, drawn instead of `base` until the edit is sent. Ignored once the open project
+ * is no longer `base` (a newer snapshot arrived), so it can never show a stale project.
+ */
+export interface PreviewDraft {
+  readonly base: ProjectModel;
+  readonly project: ProjectModel;
+}
+
 export interface PlaybackState {
   /** Fractional while playing; whole frames when paused. */
   readonly frame: number;
@@ -20,9 +32,10 @@ export interface PlaybackState {
   readonly zoom: number;
   /** Moves and trims snap to the playhead, item edges and 0 (hold ⌘ while dragging to skip). */
   readonly snapping: boolean;
+  readonly draft: PreviewDraft | undefined;
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, fps: 30, selected: undefined, zoom: 1, snapping: true };
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, fps: 30, selected: undefined, zoom: 1, snapping: true, draft: undefined };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -78,7 +91,7 @@ export const playback = {
   /** Another project opened: back to the start, nothing selected, fit zoom. */
   reset() {
     cancelAnimationFrame(raf);
-    set({ frame: 0, playing: false, selected: undefined, zoom: 1 });
+    set({ frame: 0, playing: false, selected: undefined, zoom: 1, draft: undefined });
   },
 
   play() {
@@ -129,4 +142,6 @@ export const playback = {
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomFit: () => set({ zoom: 1 }),
   toggleSnapping: () => set({ snapping: !state.snapping }),
+  /** Show (or with undefined, stop showing) a local preview of an edit in progress. */
+  setDraft: (draft: PreviewDraft | undefined) => (draft === state.draft ? undefined : set({ draft })),
 };
