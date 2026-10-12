@@ -16,10 +16,11 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { audibleAt, layout, textHtml, visualsAt } from "../packages/core/src/index.ts";
-import type { Project } from "../packages/core/src/types.ts";
+import { audibleAt, baseBox, isPlainBox, layout, textHtml, visualsAt } from "../packages/core/src/index.ts";
+import type { Item, Project } from "../packages/core/src/types.ts";
 import type { Visual } from "../packages/core/src/timeline.ts";
-import { AUDIO_BLOCK, gainAt, gainExpr, graphFileArgs, outputSize, planExport, rampsAt, wipeAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
+import { alphaAt, AUDIO_BLOCK, exportCommand, silentFailure, frameLookup, gainAt, gainExpr, graphFileArgs, outputSize, placementOf, planExport, rampsAt, wipeAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
+import { CLIP_POINTS, expectedClipColour, makeClipMedia, splitProject } from "./helpers/clip-fixture.ts";
 import { close as closeColour, COLOUR_CHECKS, expectedColour, makeTransitionMedia, rampWipeProject, transitionProject, type Rgb } from "./helpers/transition-fixture.ts";
 import { rasterizerCommand } from "../apps/server/src/rasterizer.ts";
 import { sweepStaleTemp } from "../apps/server/src/exporter.ts";
@@ -109,13 +110,42 @@ function transitionsProject(): Project {
   return { ...p, tracks };
 }
 
-for (const [name, project] of [
-  ["fixture", exportProject("/nowhere")],
-  ["tricky", trickyProject()],
-  ["transitions", transitionsProject()],
+/**
+ * Boxed clips (D75): a cover box with rounded corners zooming (eased) and fading by keys, a looped
+ * clip in a box wiped in from a crossfaded one, a still moving across the frame, a plain clip with
+ * only an opacity, odd sizes and an odd output scale.
+ */
+function boxesProject(): Project {
+  const p = exportProject("/nowhere");
+  const tracks = p.tracks.map((t) => {
+    if (t.id === "main")
+      return {
+        ...t,
+        items: [
+          { id: "a1", type: "clip" as const, media: "m-a", in: 0, duration: 60, transform: { x: 101, y: 51, w: 799, fit: "cover" as const, radius: 21 }, keys: [{ frame: 0, scale: 1, ease: "out" as const }, { frame: 40, scale: 1.37, opacity: 1 }, { frame: 59, opacity: 0.4 }] },
+          { id: "b", type: "clip" as const, media: "m-c", in: 10, duration: 200, loop: true, transform: { x: 0, w: 960.5, opacity: 0.7 }, transitionIn: { module: "transition.wipe", duration: 10 } },
+          { id: "a2", type: "clip" as const, media: "m-a", in: 40, duration: 40, transform: { opacity: 0.5 }, transitionIn: { module: "transition.crossfade", duration: 9 } },
+        ],
+      };
+    if (t.id === "overlay")
+      return {
+        ...t,
+        items: [{ id: "still", type: "clip" as const, media: "m-still", start: 20, duration: 100, transform: { x: 1500, y: 50, w: 333, fit: "contain" as const, radius: 30 }, keys: [{ frame: 0, x: 1500, ease: "inOut" as const }, { frame: 60, x: 40, y: 700 }] }],
+      };
+    return t;
+  });
+  return { ...p, tracks };
+}
+
+for (const [name, project, size] of [
+  ["fixture", exportProject("/nowhere"), [1920, 1080]],
+  ["tricky", trickyProject(), [1920, 1080]],
+  ["transitions", transitionsProject(), [1920, 1080]],
+  ["boxes", boxesProject(), [1278, 718]],
 ] as const) {
-  test(`export plan (${name}): layers, opacity, source time and motion are visualsAt's, in its order`, () => {
-    const plan = planExport(project, { mediaPath: (m) => m.path, width: 1920, height: 1080 });
+  test(`export plan (${name}): layers, opacity, source time, motion and boxes are visualsAt's, in its order`, () => {
+    const [width, height] = size;
+    const plan = planExport(project, { mediaPath: (m) => m.path, width, height });
     if ("problem" in plan) throw new Error(plan.problem);
     const { starts, duration } = layout(project);
     assert.equal(plan.frames, duration);
@@ -129,7 +159,16 @@ for (const [name, project] of [
       );
       for (const [i, l] of layers.entries()) {
         const v = seen[i]!;
-        assert.ok(Math.abs(rampsAt(l.ramps, f) - v.opacity) < 1e-9, `${l.item.id} at ${f}: opacity ${rampsAt(l.ramps, f)} vs ${v.opacity}`);
+        const opacity = rampsAt(l.ramps, f) * alphaAt(l, f);
+        assert.ok(Math.abs(opacity - v.opacity) < 1e-9, `${l.item.id} at ${f}: opacity ${opacity} vs ${v.opacity}`);
+        if (l.kind !== "raster") {
+          // The box (D75): a layer without geometry is the plain full frame; one with it is core's box in output pixels.
+          if (!l.geometry) assert.ok(isPlainBox(v.box!, project.canvas), `${l.item.id} at ${f}: drawn plain but core has a box`);
+          else {
+            const media = project.media.find((m) => m.id === l.item.media)!;
+            assert.deepEqual(l.geometry.frames[f - l.f0], placementOf(v.box!, width / project.canvas.width, height / project.canvas.height, baseBox(l.item, project.canvas, media.probe)), `${l.item.id} at ${f}: box`);
+          }
+        }
         assert.ok(Math.abs(wipeAt(l.wipe, f) - (v.wipe ?? 1)) < 1e-9, `${l.item.id} at ${f}: wipe ${wipeAt(l.wipe, f)} vs ${v.wipe}`);
         if (l.kind === "video") assert.ok(Math.abs(l.source + ((f - l.f0) * l.speed) / FPS - v.source) < 1e-9, `${l.item.id} at ${f}: source time`);
         if (l.kind === "raster" && l.item.type === "text") assert.equal(l.states[l.frames[f - l.f0]!], textHtml(l.item, project, { motion: v.motion }), `${l.item.id} at ${f}: look`);
@@ -154,6 +193,87 @@ for (const [name, project] of [
     }
   });
 }
+
+test("export plan (boxes): keyed boxes, loops in passes, the wipe on a box, and the per-frame lookups ffmpeg evaluates", () => {
+  const project = boxesProject();
+  const plan = planExport(project, { mediaPath: (m) => m.path, width: 1278, height: 718 });
+  if ("problem" in plan) throw new Error(plan.problem);
+  const of = (id: string) => plan.visuals.filter((l) => l.item.id === id);
+  // b (m-c: 120 frames) at 60 from in 10 for 200 frames, wiped in over [55, 65), crossfading out
+  // into a2 until 264.5: the wipe's frames, the rest of the first pass, then the media again from 0.
+  assert.deepEqual(of("b").map((l) => [l.f0, l.f1, !!l.wipe, l.kind === "video" ? Math.round(l.source * FPS) : -1]), [[55, 65, true, 5], [65, 170, false, 15], [170, 265, false, 0]]);
+  // The box's size never changes in a layer; a cover picture covers it at every frame.
+  for (const l of plan.visuals) {
+    if (l.kind === "raster" || !l.geometry) continue;
+    const [p0] = l.geometry.frames;
+    for (const p of l.geometry.frames) {
+      assert.ok(p.w === p0!.w && p.h === p0!.h && p.radius === p0!.radius, `${l.item.id}: one box size`);
+      if (l.item.transform?.fit === "cover") assert.ok(p.cx <= 0 && p.cy <= 0 && p.cx + p.cw >= p.w && p.cy + p.ch >= p.h, `${l.item.id}: covered`);
+    }
+  }
+  // Two boxes that share an edge meet on one pixel at any output scale (no seam, no overlap).
+  for (const k of [1, 0.6667, 0.5, 1.37]) {
+    const left = placementOf({ x: 0, y: 0, w: 640.4, h: 720, fit: "fill", scale: 1, opacity: 1, radius: 0, content: { x: 0, y: 0, w: 640.4, h: 720 } }, k, k);
+    const right = placementOf({ x: 640.4, y: 0, w: 639.6, h: 720, fit: "fill", scale: 1, opacity: 1, radius: 0, content: { x: 640.4, y: 0, w: 639.6, h: 720 } }, k, k);
+    assert.equal(left.x + left.w, right.x, `scale ${k}`);
+    assert.equal(right.x + right.w, Math.round(1280 * k));
+  }
+  // The ffmpeg graph builds (keyed sizes, positions and opacity are expressions and commands).
+  const rasters = new Map(plan.visuals.filter((l) => l.kind === "raster").map((l) => [l, { kind: "still" as const, png: "/x.png" }]));
+  const { graph } = exportCommand(plan, { background: "/bg.png", rasters, caps: { encoders: new Set(), videotoolboxDecode: false, major: 8 }, quality: "draft", output: "/out.mp4" });
+  assert.match(graph, /scale=w='st\(9,floor\(t\*30\+0\.5\)\);if\(lt/);
+  assert.match(graph, /sendcmd=c='/);
+  assert.match(graph, /alphamerge/);
+  assert.match(graph, /repeatlast=0:x='st\(9,floor\(t\*30\+0\.5\)-20\)/);
+});
+
+/** Evaluates the subset of ffmpeg's expression language frameLookup writes (st, ld, if, lt, numbers). */
+function evalLookup(expr: string, frame: number): number {
+  const slots = new Map<number, number>();
+  let i = 0;
+  const parse = (): number => {
+    if (expr.startsWith("st(", i)) {
+      i += 3;
+      const slot = Number(/^\d+/.exec(expr.slice(i))![0]);
+      i += String(slot).length + 1;
+      assert.ok(expr.startsWith("n)", i));
+      i += 2;
+      slots.set(slot, frame);
+      assert.equal(expr[i++], ";");
+      return parse();
+    }
+    if (expr.startsWith("if(lt(ld(", i)) {
+      i += 9;
+      const slot = Number(/^\d+/.exec(expr.slice(i))![0]);
+      i += String(slot).length + 2;
+      const bound = Number(/^-?[\d.]+/.exec(expr.slice(i))![0]);
+      i += /^-?[\d.]+/.exec(expr.slice(i))![0].length + 2;
+      const a = parse();
+      i++;
+      const b = parse();
+      i++;
+      return slots.get(slot)! < bound ? a : b;
+    }
+    const m = /^-?[\d.]+(e-?\d+)?/.exec(expr.slice(i))!;
+    i += m[0].length;
+    return Number(m[0]);
+  };
+  return parse();
+}
+
+test("frameLookup: the value of every frame, clamped outside, shallow for long keyed runs", () => {
+  const values = Array.from({ length: 500 }, (_, f) => (f < 100 ? 7 : Math.round(100 + f * 1.37)));
+  const expr = frameLookup(values, "n");
+  for (let f = 0; f < 500; f++) assert.equal(evalLookup(expr, f), values[f], `frame ${f}`);
+  assert.equal(evalLookup(expr, -3), 7);
+  assert.equal(evalLookup(expr, 900), values[499]);
+  assert.ok((expr.match(/if\(/g) ?? []).length === 400, "one branch per run boundary");
+  let depth = 0;
+  let deepest = 0;
+  for (const c of expr) (c === "(" ? depth++ : c === ")" && depth--), (deepest = Math.max(deepest, depth));
+  assert.ok(deepest < 40, `nesting ${deepest}`);
+  assert.equal(frameLookup([4, 4, 4], "n"), "4");
+});
 
 test("export sizes: Draft 720p, Standard 1080p by the shorter side, never upscaled; High is the canvas", () => {
   assert.deepEqual(outputSize({ width: 3840, height: 2160 }, "draft"), { width: 1280, height: 720 });
@@ -601,4 +721,197 @@ test("export: a wipe keeps the incoming picture in place, up to its edge, and cr
   // A quarter in (frame 55): shown up to 160 px only.
   assert.ok(closeColour(pixelOf(output, 55, 0.2), pixelOf(output, 80, 0.2), 4));
   assert.ok(closeColour(pixelOf(output, 55, 0.3), [255, 0, 0]));
+});
+
+test("export: a boxed split clip, cover, zooming 1 → 1.2 by a key, matches core's box pixel for pixel (D75)", { skip: skipServer, timeout: 120000 }, async () => {
+  const media = join(root, "boxes");
+  makeClipMedia(media);
+  const project = splitProject(media);
+  await open("Split", project);
+  const output = join(root, "out", "Split.mp4");
+  const { jobId } = await client.ok("export.start", { output, quality: "standard", loudness: "off" });
+  const done = await finished(jobId);
+  assert.equal(done.phase, "done", done.error);
+  const v = probe(output).streams.find((s) => s.codec_type === "video")!;
+  assert.equal(v.width, 1280);
+  assert.equal(Number(v.nb_frames), 90);
+  // The clip's colours as a decoder reads them back from the source (a pure red comes back as about
+  // 252, 0, 0): the export is held to core's box with those, as the transition test is (D73).
+  const read = (file: string, f: number, x: number, y: number): Rgb => {
+    const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${f}),format=rgb24,crop=1:1:${x}:${y}`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+    return [raw[0]!, raw[1]!, raw[2]!];
+  };
+  const palette = { red: read(join(media, "Split.mp4"), 0, 40, 240), blue: read(join(media, "Split.mp4"), 0, 400, 240), grey: [128, 128, 128] as Rgb };
+  console.log(`  source colours: red ${palette.red.join(",")}, blue ${palette.blue.join(",")}`);
+  for (const f of [0, 30, 89]) {
+    for (const [x, y, what] of CLIP_POINTS) {
+      const want = expectedClipColour(project, f, x, y, palette);
+      assert.ok(want.margin >= 3, `frame ${f} (${x}, ${y}) is ${want.margin} px from an edge: pick another point`);
+      const got = read(output, f, x, y);
+      console.log(`  frame ${f} at (${x}, ${y}) (${what}): export ${got.join(",")}, core ${want.colour.join(",")}`);
+      assert.ok(closeColour(got, want.colour, 3), `frame ${f} at (${x}, ${y}) (${what}): ${got} vs ${want.colour}`);
+    }
+  }
+  // render_frames draws the box as the export does (the agent's view of the edit).
+  // The fake claude plays the plan's turns in order (a counter file): this is a first turn again.
+  rmSync(join(root, "plan.json.turn"), { force: true });
+  writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames: [0, 89], scale: 1 } }]]));
+  const before = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).length;
+  const agent = client.subscribe("agent.subscribe");
+  const { turnId } = await client.ok("agent.send", { prompt: "Look at the box" });
+  await agent.until((st) => st?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
+  const result = JSON.parse(readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean)[before]!) as { result: { isError?: boolean; content: Array<{ type: string; data?: string }> } };
+  assert.ok(!result.result.isError, JSON.stringify(result.result).slice(0, 300));
+  for (const [i, f] of [0, 89].entries()) {
+    const jpg = join(root, `split-agent-${f}.jpg`);
+    writeFileSync(jpg, Buffer.from(result.result.content.filter((c) => c.type === "image")[i]!.data!, "base64"));
+    const score = ssim(jpg, frameOf(output, f, join(root, `split-exported-${f}.png`)));
+    console.log(`  render_frames ${f} vs export: SSIM ${score.toFixed(4)}`);
+    assert.ok(score > 0.95, `frame ${f}: SSIM ${score}`);
+    for (const [x, y, what] of CLIP_POINTS) {
+      const got = read(jpg, 0, x, y);
+      const want = expectedClipColour(project, f, x, y, palette).colour;
+      // A JPEG through render_frames' RGB path (its colours run a little off, as before D75): which of red, blue and grey is what counts.
+      assert.ok(closeColour(got, want, 32), `render_frames ${f} at (${x}, ${y}) (${what}): ${got} vs ${want}`);
+    }
+  }
+  // The zoom is real: at frame 0 the point at x 244 is red (left of the split), by frame 89 blue.
+  assert.deepEqual(expectedClipColour(project, 0, 244, 440).colour, [255, 0, 0]);
+  assert.deepEqual(expectedClipColour(project, 89, 244, 440).colour, [0, 0, 255]);
+});
+
+// ---- boxes through ffmpeg (D75 review): odd sizes and offsets, keyed scale and pans, shared
+// edges, fade with box opacity, long loops. exportCommand run directly, no server. ----
+
+const boxMedia = () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "uncut-box-ffmpeg-")));
+  const v = (args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
+  v(["-f", "lavfi", "-i", "color=c=white:s=640x360:r=30", "-t", "4", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-crf", "10", join(dir, "white.mp4")]);
+  v(["-f", "lavfi", "-i", "color=c=white:s=300x200", "-frames:v", "1", join(dir, "white.png")]);
+  v(["-f", "lavfi", "-i", "color=c=black:s=1280x720", "-frames:v", "1", join(dir, "bg.png")]);
+  // One second: white picture, a 0.1 s beep at its start (sine is 1/8 full scale, so ×4), then silence.
+  v(["-f", "lavfi", "-i", "color=c=white:s=320x180:r=30", "-f", "lavfi", "-i", "sine=f=1000:r=48000,volume=4,atrim=duration=0.1,apad=whole_dur=1", "-t", "1", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-c:a", "aac", "-b:a", "192k", "-shortest", join(dir, "beep.mp4")]);
+  return dir;
+};
+const runPlan = (dir: string, project: Project, name: string, size = { width: 1280, height: 720 }) => {
+  const plan = planExport(project, { mediaPath: (m) => m.path, ...size });
+  if ("problem" in plan) throw new Error(plan.problem);
+  const out = join(dir, `${name}.mp4`);
+  const cmd = exportCommand(plan, { background: join(dir, "bg.png"), rasters: new Map(), caps: { encoders: new Set(["libx264"]), videotoolboxDecode: false, major: 8 }, quality: "high", output: out });
+  writeFileSync(join(dir, "graph.txt"), cmd.graph);
+  const r = spawnSync("ffmpeg", ["-hide_banner", "-y", ...cmd.inputs, "-/filter_complex", join(dir, "graph.txt"), ...cmd.outputArgs], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr.slice(-800));
+  assert.equal(silentFailure(r.stderr), undefined);
+  return { out, plan, inputs: cmd.inputs.filter((a) => a === "-i").length };
+};
+/** The lit (white) region of frame n: [x0, x1) × [y0, y1). */
+const litBox = (file: string, n: number, w = 1280, h = 720) => {
+  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n}),format=gray`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+  let x0 = w, x1 = 0, y0 = h, y1 = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (raw[y * w + x]! > 128) (x0 = Math.min(x0, x), (x1 = Math.max(x1, x + 1)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y + 1)));
+  return [x0, x1, y0, y1];
+};
+const boxProject = (dir: string, items: Array<Item>, extra: Array<Item> = []): Project => ({
+  format: "uncut/0",
+  name: "Boxes",
+  canvas: { width: 1280, height: 720, fps: 30 },
+  media: [
+    { id: "w", kind: "video", name: "white.mp4", path: join(dir, "white.mp4"), probe: { frames: 120, fps: 30, width: 640, height: 360, hasAudio: false } },
+    { id: "s", kind: "image", name: "white.png", path: join(dir, "white.png"), probe: { width: 300, height: 200 } },
+    { id: "b", kind: "video", name: "beep.mp4", path: join(dir, "beep.mp4"), probe: { frames: 30, fps: 30, width: 320, height: 180, hasAudio: true } },
+  ],
+  tracks: [
+    { id: "top", kind: "video", name: "Top", items: extra },
+    { id: "main", kind: "video", role: "main", name: "Main", items },
+  ],
+});
+/** What core says is lit: the box ∩ the picture, in whole pixels (edges rounded like placementOf). */
+const coreLit = (project: Project, id: string, f: number) => {
+  const v = visualsAt(project, layout(project).starts, f).find((x) => x.item.id === id)!;
+  const b = v.box!;
+  const r = (n: number) => Math.round(n);
+  return [r(Math.max(b.x, b.content.x)), r(Math.min(b.x + b.w, b.content.x + b.content.w)), r(Math.max(b.y, b.content.y)), r(Math.min(b.y + b.h, b.content.y + b.content.h))];
+};
+const within = (got: Array<number>, want: Array<number>, tol: number, what: string) => assert.ok(got.every((g, i) => Math.abs(g - want[i]!) <= tol), `${what}: ${got} vs ${want}`);
+
+test("ffmpeg boxes: odd-size contain boxes (clip and still) export and land where core says, to the pixel", { skip: skipFfmpeg, timeout: 120000 }, () => {
+  const dir = boxMedia();
+  try {
+    for (const [name, item] of [
+      ["clip-odd-w", { id: "c", type: "clip", media: "w", in: 0, duration: 10, transform: { x: 101, y: 99, w: 641, h: 480, fit: "contain" } }],
+      ["clip-odd-h", { id: "c", type: "clip", media: "w", in: 0, duration: 10, transform: { x: 100, y: 101, w: 801, h: 301, fit: "contain" } }],
+      ["still-odd", { id: "c", type: "clip", media: "s", duration: 10, transform: { x: 101, y: 101, w: 401, h: 401, fit: "contain", radius: 9 } }],
+    ] as const) {
+      const project = boxProject(dir, [item as Item]);
+      const { out } = runPlan(dir, project, name);
+      within(litBox(out, 5), coreLit(project, "c", 5), 1, name);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ffmpeg boxes: a keyed zoom is on its frame (first and last), a slow pan moves one pixel a frame, shared odd edges meet", { skip: skipFfmpeg, timeout: 120000 }, () => {
+  const dir = boxMedia();
+  try {
+    const zoom = boxProject(dir, [{ id: "c", type: "clip", media: "w", in: 0, duration: 60, transform: { x: 101, y: 100, w: 641, h: 361, fit: "contain" }, keys: [{ frame: 0, scale: 1 }, { frame: 59, scale: 0.5 }] }]);
+    const a = runPlan(dir, zoom, "zoom");
+    for (const f of [0, 1, 30, 59]) within(litBox(a.out, f), coreLit(zoom, "c", f), 1, `zoom frame ${f}`);
+    const pan = boxProject(dir, [{ id: "c", type: "clip", media: "w", in: 0, duration: 60, transform: { x: 100, y: 101, w: 640, h: 360 }, keys: [{ frame: 0, x: 0 }, { frame: 59, x: 59 }] }]);
+    const b = runPlan(dir, pan, "pan");
+    for (const f of [1, 2, 3, 4, 5]) assert.deepEqual(litBox(b.out, f), [f, f + 640, 101, 461], `pan frame ${f}`);
+    // Two boxes sharing the odd edge 321: full white left of it, the right box at half opacity (grey) from it on: no gap, no overlap.
+    const two = boxProject(dir, [{ id: "c", type: "clip", media: "w", in: 0, duration: 10, transform: { x: 0, y: 0, w: 321, h: 720, fit: "fill" } }], [{ id: "d", type: "clip", media: "w", in: 0, start: 0, duration: 10, transform: { x: 321, y: 0, w: 959, h: 720, fit: "fill", opacity: 0.5 } }]);
+    const c = runPlan(dir, two, "two");
+    const raw = execFileSync("ffmpeg", ["-v", "error", "-i", c.out, "-vf", "select=eq(n\\,3),format=gray,crop=4:1:319:360", "-frames:v", "1", "-f", "rawvideo", "-"]);
+    assert.ok(raw[0]! > 240 && raw[1]! > 240, `left of the edge: ${[...raw]}`);
+    assert.ok(Math.abs(raw[2]! - 128) < 12 && Math.abs(raw[3]! - 128) < 12, `right of the edge: ${[...raw]}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ffmpeg boxes: a fade-in animation times the box's opacity, as core multiplies them", { skip: skipFfmpeg, timeout: 120000 }, () => {
+  const dir = boxMedia();
+  try {
+    const project = boxProject(dir, [{ id: "c", type: "clip", media: "w", in: 0, duration: 40, transform: { x: 100, y: 100, w: 640, h: 360, opacity: 0.6 }, animation: { in: { module: "move.fade", duration: 20 } } }]);
+    const { out } = runPlan(dir, project, "fade");
+    for (const f of [0, 5, 10, 19, 30]) {
+      const v = visualsAt(project, layout(project).starts, f).find((x) => x.item.id === "c")!;
+      const raw = execFileSync("ffmpeg", ["-v", "error", "-i", out, "-vf", `select=eq(n\\,${f}),format=gray,crop=1:1:400:300`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+      const want = 16 + (235 - 16) * v.opacity;
+      // Full-range readback of limited-range white over black.
+      const got = 16 + ((235 - 16) * raw[0]!) / 255;
+      assert.ok(Math.abs(got - want) < 6, `frame ${f}: ${raw[0]} vs opacity ${v.opacity.toFixed(3)}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ffmpeg boxes: a 1 s clip looped for 200 s is one input, keeps its picture to the end and its beeps on the second", { skip: skipFfmpeg, timeout: 300000 }, () => {
+  const dir = boxMedia();
+  try {
+    const project: Project = { ...boxProject(dir, [{ id: "c", type: "clip", media: "b", in: 0, duration: 6000, loop: true, transform: { x: 100, y: 100, w: 320, h: 180 } }]), canvas: { width: 640, height: 360, fps: 30 } };
+    writeFileSync(join(dir, "bg.png"), execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360", "-frames:v", "1", "-f", "image2", "-c:v", "png", "-"]));
+    const { out, plan, inputs } = runPlan(dir, project, "loop", { width: 640, height: 360 });
+    assert.equal(plan.visuals.filter((l) => l.item.id === "c").length, 1, "one layer");
+    assert.ok(inputs <= 3, `${inputs} inputs`);
+    within(litBox(out, 5990, 640, 360), [100, 420, 100, 280], 1, "picture at the end");
+    const pcm = execFileSync("ffmpeg", ["-v", "error", "-i", out, "-map", "0:a", "-ac", "1", "-ar", "48000", "-f", "f32le", "-"], { maxBuffer: 1 << 28 });
+    const s = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
+    const onsets: Array<number> = [];
+    let last = -48000;
+    for (let i = 0; i < s.length; i++) if (Math.abs(s[i]!) > 0.1) (i - last > 24000 && onsets.push(i / 48000), (last = i));
+    assert.ok(onsets.length >= 199, `${onsets.length} beeps`);
+    for (const t of onsets) assert.ok(Math.abs(t - Math.round(t)) < 0.01, `beep at ${t.toFixed(4)} s, core says on the second`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("silentFailure: scaler and filter errors ffmpeg exits 0 on are export failures", () => {
+  assert.match(silentFailure("frame=1\n[swscaler @ 0x1] Failed to allocate memory\n")!, /swscaler/);
+  assert.match(silentFailure("x\nError while filtering: Cannot allocate memory\n")!, /Error while filtering/);
+  assert.equal(silentFailure("[h264 @ 0x2] Reinit context\nframe=  10 fps\n"), undefined);
 });

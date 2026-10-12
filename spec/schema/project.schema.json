@@ -149,18 +149,24 @@
         "y": { "type": "number" },
         "w": { "type": "number" },
         "h": { "type": "number" },
-        "scale": { "type": "number" },
+        "scale": { "type": "number", "exclusiveMinimum": 0, "description": "Clips: zooms the picture about the box's centre; the box clips it (D75)." },
         "rotate": { "type": "number" },
         "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
-        "fit": { "enum": ["contain", "cover", "fill"] }
-      }
+        "fit": { "enum": ["contain", "cover", "fill"], "description": "Clips: how the picture sits in the box at scale 1 (default contain)." },
+        "radius": { "type": "number", "minimum": 0, "description": "Clips: corner radius of the box in canvas pixels." }
+      },
+      "description": "Text: x, y = the box's top-left, w its width (canvas pixels). Clips (D75): x, y, w, h = the box in canvas pixels (no w and h = the whole canvas; one of them = the other from the media's aspect; no x / y = centred), fit, scale, opacity and radius."
     },
     "keyframe": {
       "type": "object",
       "required": ["frame"],
       "properties": {
         "frame": { "$ref": "#/$defs/frame", "description": "Frames from the item's start." },
-        "ease": { "enum": ["linear", "in", "out", "inOut"] }
+        "ease": { "enum": ["linear", "in", "out", "inOut"], "description": "Shapes the motion from this key to the next one that sets the same property (default linear; in, out and inOut are cubic)." },
+        "x": { "type": "number", "description": "Clips: the box's left edge in canvas pixels." },
+        "y": { "type": "number", "description": "Clips: the box's top edge in canvas pixels." },
+        "scale": { "type": "number", "exclusiveMinimum": 0, "description": "Clips: the picture's zoom in the box." },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
     "itemBase": {
@@ -194,6 +200,7 @@
             "media": { "$ref": "#/$defs/id" },
             "in": { "$ref": "#/$defs/frame" },
             "speed": { "type": "number", "exclusiveMinimum": 0 },
+            "loop": { "type": "boolean", "description": "The media starts over from its beginning when the clip runs past its end." },
             "gainDb": { "type": "number", "minimum": -60, "maximum": 12, "description": "Volume of the clip's own sound in dB; -60 is silence." },
             "fadeIn": { "$ref": "#/$defs/frame" },
             "fadeOut": { "$ref": "#/$defs/frame" },

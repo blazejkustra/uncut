@@ -84,8 +84,27 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
     } else if (key === "transform" && value && typeof value === "object") {
       const t = value as Record<string, unknown>;
       const pos = [t.x !== undefined ? `x ${round(t.x)}` : "", t.y !== undefined ? `y ${round(t.y)}` : ""].filter(Boolean).join(", ");
-      parts.push(`position ${pos || "default"}${t.w !== undefined ? `, box ${round(t.w)} wide` : ""}`);
-    } else if (key === "animation") {
+      const size = t.w !== undefined && t.h !== undefined ? `, box ${round(t.w)}×${round(t.h)}` : t.w !== undefined ? `, box ${round(t.w)} wide` : t.h !== undefined ? `, box ${round(t.h)} high` : "";
+      // A clip's box (D75): fit, zoom, opacity and corners.
+      const extra = [
+        typeof t.fit === "string" ? `fit ${t.fit}` : "",
+        typeof t.scale === "number" ? `scale ${Math.round(t.scale * 100)}%` : "",
+        typeof t.opacity === "number" ? `opacity ${Math.round(t.opacity * 100)}%` : "",
+        typeof t.radius === "number" && t.radius > 0 ? `corners ${round(t.radius)}` : "",
+      ].filter(Boolean);
+      parts.push(`position ${pos || "default"}${size}${extra.length ? `, ${extra.join(", ")}` : ""}`);
+    } else if (key === "transform" && value === null) parts.push("position and size reset");
+    else if (key === "keys") {
+      // Keyframes (D75): which properties are keyed, at which times.
+      const keys = Array.isArray(value) ? (value as ReadonlyArray<Record<string, unknown>>) : [];
+      const props = ["x", "y", "scale", "opacity"].filter((p) => keys.some((k) => typeof k[p] === "number"));
+      parts.push(
+        props.length
+          ? `keys ${props.map((p) => `${p} at ${keys.filter((k) => typeof k[p] === "number").map((k) => secs(Number(k.frame), fps)).join(", ")}`).join("; ")}`
+          : "no keys",
+      );
+    } else if (key === "loop") parts.push(value === true ? "looped" : "not looped");
+    else if (key === "animation") {
       const a = (value ?? {}) as Record<string, { module?: string; duration?: number } | undefined>;
       const one = (k: "in" | "out") => (a[k]?.module ? `${MOVE_NAMES[a[k]!.module!] ?? a[k]!.module} ${k} ${secs(a[k]!.duration ?? 0, fps)}` : `no ${k} animation`);
       parts.push(`${one("in")}, ${one("out")}`);
@@ -96,7 +115,8 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
   }
   if (!parts.length) return `Changed ${keys.join(", ")} on ${it(id)}`;
   const tail = `${parts.join("; ")}${rest.length ? `; changed ${rest.join(", ")}` : ""}`;
-  if (keys.length === 1 && keys[0] === "transform") return `Moved ${it(id)} on the canvas to ${tail.replace(/^position /, "")}`;
+  if (keys.length === 1 && keys[0] === "transform" && set.transform) return `Moved ${it(id)} on the canvas to ${tail.replace(/^position /, "")}`;
+  if (keys.every((k) => k === "keys")) return `Keyframed ${it(id)}: ${tail}`;
   return `${keys.length === 1 && keys[0] === "animation" ? "Animated" : "Restyled"} ${it(id)}: ${tail}`;
 }
 

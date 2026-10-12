@@ -3,9 +3,11 @@
 // how each draws): an overlapping one (crossfade, wipe) has the outgoing clip run half the
 // transition past its end and the incoming one start half before its start, on top; a dip to
 // black keeps the clips apart and puts a black layer over the main track across the cut.
+import { sourceAt } from "./audio.ts";
+import { clipBox, type ClipBox } from "./box.ts";
 import { SOLID, type Motion } from "./render.ts";
 import { overlaps, WIPE } from "./transitions.ts";
-import type { Canvas, Item, Project, Track } from "./types.ts";
+import type { Canvas, Item, Media, Project, Track } from "./types.ts";
 
 export interface Visual {
   readonly item: Item;
@@ -15,8 +17,20 @@ export interface Visual {
   readonly motion: Motion;
   /** A wipe transition into it: the share of its width shown, from the left edge (0–1). Absent when whole. */
   readonly wipe?: number;
-  /** Source time in seconds (0 for items without media). */
+  /** Source time in seconds (0 for items without media); a looped clip wraps at its media's end. */
   readonly source: number;
+  /**
+   * A clip of video or still media: its box at this frame (D75, box.ts). Its opacity is already in
+   * `opacity`. A wipe reveals the canvas from the left, whatever the box.
+   */
+  readonly box?: ClipBox;
+}
+
+/** The media a clip draws (video or still), if any. */
+export function pictureMedia(project: Partial<Pick<Project, "media">>, item: Item): Media | undefined {
+  if (item.type !== "clip" || !item.media) return undefined;
+  const media = project.media?.find((m) => m.id === item.media);
+  return media && media.kind !== "audio" ? media : undefined;
 }
 
 /**
@@ -88,8 +102,7 @@ export function layout(project: Pick<Project, "tracks">): { starts: Map<string, 
 }
 
 /** Everything visible at frame f, bottom layer first, with opacity and source time in seconds. */
-export function visualsAt(project: Pick<Project, "tracks" | "canvas">, starts: ReadonlyMap<string, number>, f: number): Array<Visual> {
-  const fps = project.canvas.fps;
+export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "media">>, starts: ReadonlyMap<string, number>, f: number): Array<Visual> {
   const out: Array<Visual> = [];
   for (const track of [...project.tracks].reverse()) {
     if (track.hidden || track.kind === "audio") continue;
@@ -104,8 +117,11 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas">, starts: R
       // A main-track transition owns the blend at its cut: the in/out animation on that side is skipped.
       const anim = animationAt(item, f - start, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut });
       opacity *= anim.opacity;
-      const source = item.media ? ((item.in ?? 0) + (f - start) * (item.speed ?? 1)) / fps : 0;
-      out.push({ item, track, opacity, motion: anim.motion, source, ...(span.wipe && p < 1 ? { wipe: p } : {}) });
+      const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
+      const media = pictureMedia(project, item);
+      const box = media ? clipBox(item, project.canvas, media.probe, f - start) : undefined;
+      if (box) opacity *= box.opacity;
+      out.push({ item, track, opacity, motion: anim.motion, source, ...(span.wipe && p < 1 ? { wipe: p } : {}), ...(box ? { box } : {}) });
     });
     // Dips to black: a black layer over the main track's clips, under the tracks above it.
     for (const dip of dipsOf(track, starts)) {

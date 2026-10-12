@@ -7,11 +7,13 @@ import { MAX_DB, SILENCE_DB, soundMedia } from "@uncut/core/audio";
 import { resolveColor, TEXT_STYLES } from "@uncut/core/render";
 import type { Item, Op } from "@uncut/core/types";
 import { transitionInfo, transitionLimits, transitionName, TRANSITIONS } from "@uncut/core/transitions";
-import { Activity, AlignCenter, AlignLeft, AlignRight, Blend, Crosshair, Highlighter, X } from "lucide-react";
+import { Activity, AlignCenter, AlignLeft, AlignRight, Blend, Crosshair, Diamond, Highlighter, RotateCcw, X } from "lucide-react";
+import type { Fit, KeyProp } from "@uncut/core/box";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { draftOf, findItem } from "./edit.ts";
-import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
+import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
+import { clipState, keyState, planClipBox, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "./clip.ts";
 import { itemLabel, type ProjectModel } from "./project.ts";
 import { useBeats } from "./beats.ts";
 import { analysisText } from "./analysisText.ts";
@@ -677,6 +679,128 @@ export function TransitionInspector({ project, placed, online }: { project: Proj
         </div>
       )}
       <div className="hint muted small">Esc deselects.</div>
+    </div>
+  );
+}
+
+const FITS: ReadonlyArray<readonly [Fit, string, string]> = [
+  ["contain", "Contain", "All of the picture inside the box"],
+  ["cover", "Cover", "Fill the box; what doesn't fit is cut off"],
+  ["fill", "Fill", "Stretch the picture to the box"],
+];
+
+/** A keyframe diamond (D75): filled with a key at the playhead, outlined when the property has keys elsewhere. */
+function KeyButton({ project, item, prop, local, inside, disabled }: { project: ProjectModel; item: Item; prop: KeyProp; local: number; inside: boolean; disabled: boolean }) {
+  const state = keyState(item, prop, local);
+  const title = !inside ? "Move the playhead over the clip to add a key" : state === "on" ? `Remove the ${PROP_NAMES[prop]} key at the playhead` : `Add a ${PROP_NAMES[prop]} key at the playhead`;
+  return (
+    <button
+      className={`icon-btn key-btn ${state}`}
+      data-testid="insp-key"
+      data-prop={prop}
+      data-state={state}
+      title={title}
+      disabled={disabled || !inside}
+      onClick={() => send((p) => planToggleKey(p, item.id, prop, getPlayback().frame))}
+    >
+      <Diamond />
+    </button>
+  );
+}
+
+/**
+ * A clip's box (D75): position and size in canvas pixels, fit, scale (zoom inside the box),
+ * opacity, corner radius, keys for x / y / scale / opacity at the playhead, loop, and Reset. Each
+ * change is one edit; sliders show a local draft while they move and commit once on release.
+ */
+export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const frame = usePlayback((s) => Math.round(s.frame));
+  const state = clipState(project, item.id, frame);
+  const scaleDraft = useRef<PreviewDraft | undefined>(undefined);
+  const opacityDraft = useRef<PreviewDraft | undefined>(undefined);
+  if (!state) return null;
+  const { box, local, inside } = state;
+  const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
+  const edit = (patch: BoxPatch, summary?: string, d?: PreviewDraft) => send((p) => planClipBox(p, item.id, patch, getPlayback().frame, summary), d);
+  const key = (prop: KeyProp) => <KeyButton project={project} item={item} prop={prop} local={local} inside={inside} disabled={locked} />;
+  const radius = typeof item.transform?.radius === "number" ? item.transform.radius : 0;
+  return (
+    <div data-testid="clip-box-editor">
+      <Group label="Position & size">
+        <div className="field-row key-row">
+          <NumberField label="X" testId="insp-box-x" value={Math.round(box.x)} disabled={locked} onCommit={(v) => v !== undefined && edit({ x: v })} />
+          {key("x")}
+          <NumberField label="Y" testId="insp-box-y" value={Math.round(box.y)} disabled={locked} onCommit={(v) => v !== undefined && edit({ y: v })} />
+          {key("y")}
+        </div>
+        <div className="field-row">
+          <NumberField label="W" testId="insp-box-w" value={Math.round(box.w)} min={1} disabled={locked} onCommit={(v) => v !== undefined && edit({ w: v })} />
+          <NumberField label="H" testId="insp-box-h" value={Math.round(box.h)} min={1} disabled={locked} onCommit={(v) => v !== undefined && edit({ h: v })} />
+        </div>
+        <div className="seg fit" role="group">
+          {FITS.map(([fit, label, title]) => (
+            <button key={fit} className={box.fit === fit ? "active" : ""} data-testid="insp-fit" data-fit={fit} title={title} disabled={locked} onClick={() => edit({ fit })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </Group>
+      <Group label="Scale and opacity">
+        <div className="slider-row key-row">
+          <Slider
+            testId="insp-scale"
+            value={Math.round(box.scale * 100)}
+            min={10}
+            max={400}
+            title="Zoom inside the box"
+            disabled={locked}
+            onPreview={(v) => (scaleDraft.current = showDraft(project, planClipBox(project, item.id, { scale: v / 100 }, frame)) ?? scaleDraft.current)}
+            onCommit={(v) => {
+              const d = scaleDraft.current;
+              scaleDraft.current = undefined;
+              edit({ scale: v / 100 }, undefined, d);
+            }}
+          />
+          <NumberField label="Scale %" testId="insp-scale-num" value={Math.round(box.scale * 100)} min={5} max={2000} disabled={locked} onCommit={(v) => v !== undefined && edit({ scale: v / 100 })} />
+          {key("scale")}
+        </div>
+        <div className="slider-row key-row">
+          <Slider
+            testId="insp-opacity"
+            value={Math.round(box.opacity * 100)}
+            min={0}
+            max={100}
+            disabled={locked}
+            onPreview={(v) => (opacityDraft.current = showDraft(project, planClipBox(project, item.id, { opacity: v / 100 }, frame)) ?? opacityDraft.current)}
+            onCommit={(v) => {
+              const d = opacityDraft.current;
+              opacityDraft.current = undefined;
+              edit({ opacity: v / 100 }, undefined, d);
+            }}
+          />
+          <NumberField label="Opacity %" testId="insp-opacity-num" value={Math.round(box.opacity * 100)} min={0} max={100} disabled={locked} onCommit={(v) => v !== undefined && edit({ opacity: v / 100 })} />
+          {key("opacity")}
+        </div>
+        <div className="field-row">
+          <NumberField label="Radius" testId="insp-radius" value={radius} min={0} disabled={locked} onCommit={(v) => edit({ radius: v ?? 0 })} />
+        </div>
+      </Group>
+      <div className="group">
+        {media?.kind === "video" && (
+          <label className="check-row">
+            <input type="checkbox" data-testid="insp-loop" checked={item.loop === true} disabled={locked} onChange={(e) => {
+                const on = e.target.checked;
+                send((p) => planLoop(p, item.id, on));
+              }} />
+            Loop the footage when the clip is longer
+          </label>
+        )}
+        <button className="btn" data-testid="insp-box-reset" disabled={locked || (!item.transform && !item.keys)} onClick={() => send((p) => planResetBox(p, item.id))}>
+          <RotateCcw />
+          Reset position and size
+        </button>
+        <div className="hint-line muted small">Drag the selected clip in the preview to move it (it snaps to the centre and the margins; ⌘ places it freely), its corners to resize it (⇧ for any shape). ◆ keys a value at the playhead.</div>
+      </div>
     </div>
   );
 }
