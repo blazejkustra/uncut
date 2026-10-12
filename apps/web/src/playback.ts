@@ -18,9 +18,11 @@ export interface PlaybackState {
   readonly selected: string | undefined;
   /** Timeline zoom as a multiple of "fit the whole project". */
   readonly zoom: number;
+  /** Moves and trims snap to the playhead, item edges and 0 (hold ⌘ while dragging to skip). */
+  readonly snapping: boolean;
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, fps: 30, selected: undefined, zoom: 1 };
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, fps: 30, selected: undefined, zoom: 1, snapping: true };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -126,4 +128,5 @@ export const playback = {
   zoomIn: () => set({ zoom: clamp(state.zoom * 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomFit: () => set({ zoom: 1 }),
+  toggleSnapping: () => set({ snapping: !state.snapping }),
 };

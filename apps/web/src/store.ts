@@ -11,6 +11,7 @@ import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "./playback.ts";
+import { draftOf, planDelete, planSplit, planTrackFlag, type Plan, type TrackFlag } from "./edit.ts";
 import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
@@ -138,6 +139,7 @@ export function plainError(error: CallError): string {
   const first = error.details?.[0];
   if (error._tag === "EditRefused" && first && /invalid|malformed/.test(error.message)) return `That change isn't allowed: ${first.message}.`;
   if (error._tag === "EditRefused" && first?.code === "depends") return error.message;
+  if (error._tag === "EditRefused" && first?.code === "conflict") return "The agent changed that while you were editing it, so your change wasn't applied. Try again on what's there now.";
   if (error.reason === "missing") return "The project folder is gone, or has no project.json.";
   if (error.reason === "invalid" && first?.code === "json") return "project.json can't be read: it isn't valid JSON.";
   if (error.reason === "invalid") return `project.json can't be read: ${first ? `${first.path === "/" ? "" : `${first.path} `}${first.message}` : error.message}.`;
@@ -302,6 +304,41 @@ async function addPlanned(plan: (project: ProjectModel) => Planned) {
   playback.seek(planned.start);
 }
 
+/**
+ * A manual timeline edit (D52): ops planned against the project at `baseRevision`, sent as one
+ * project.edit, so it is validated, undoes in one step and is listed in the agent's next note.
+ * If the agent changed the same item after that revision the server refuses it (D6) and the
+ * banner says so. Shares the one-at-a-time guard with adds. Returns whether it was applied.
+ */
+async function timelineEdit(plan: Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+  const snapshot = state.snapshot;
+  if (!snapshot || !online()) return false;
+  // Planned in another project (it was switched mid-gesture): never send it to this one.
+  if (origin.dir !== undefined && origin.dir !== snapshot.dir) return false;
+  if ("problem" in plan) {
+    set({ notice: { text: plan.problem } });
+    return false;
+  }
+  if (!plan.ops.length) return false;
+  if (adding) {
+    set({ notice: { text: "The last change is still being saved. Try that again in a moment." } });
+    return false;
+  }
+  // Checked with the server's timeline rules first, so a refusal reads as a sentence, not jargon.
+  const draft = draftOf(projectOf(snapshot), plan.ops);
+  if ("problem" in draft && origin.baseRevision === undefined) {
+    set({ notice: { text: draft.problem } });
+    return false;
+  }
+  const baseRevision = origin.baseRevision ?? snapshot.revision;
+  adding = true;
+  try {
+    return !(await change((c) => c["project.edit"]({ ops: plan.ops, summary: plan.summary, baseRevision })));
+  } finally {
+    adding = false;
+  }
+}
+
 export const actions = {
   showNewProject: () => set({ newProjectOpen: true }),
   hideNewProject: () => set({ newProjectOpen: false }),
@@ -355,6 +392,21 @@ export const actions = {
   addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId)),
   /** Text tab preset → a text item at the playhead (see planAddText). */
   addText: (preset: TextPreset) => addPlanned((project) => planAddText(project, preset, getPlayback().frame)),
+  /** A planned move or trim from the timeline (see edit.ts). */
+  timelineEdit,
+  /** S: split at the playhead (see planSplit); the part after the playhead is selected. */
+  async split() {
+    if (!state.snapshot) return;
+    const { selected, frame } = getPlayback();
+    const plan = planSplit(projectOf(state.snapshot), selected, frame);
+    if (await timelineEdit(plan)) playback.select("newId" in plan ? plan.newId : undefined);
+  },
+  /** ⌫: delete the selected item; on main the rest closes up. */
+  async deleteSelected() {
+    if (!state.snapshot) return;
+    if (await timelineEdit(planDelete(projectOf(state.snapshot), getPlayback().selected))) playback.select(undefined);
+  },
+  toggleTrack: (trackId: string, flag: TrackFlag) => (state.snapshot ? timelineEdit(planTrackFlag(projectOf(state.snapshot), trackId, flag)) : undefined),
   rename: (name: string) =>
     change((c) => c["project.edit"]({ ops: [{ op: "update_project", set: { name } }], summary: "Rename project" }), { inline: true }),
 

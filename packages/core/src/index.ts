@@ -1,6 +1,7 @@
 // @uncut/core: the reference format code shared by the server, the renderer and the tests.
 export type * from "./types.ts";
-export { loadModules, validateModule, validateOps, validateProject, resolveStarts, projectDuration } from "./validate.ts";
+export { loadModules, validateModule, validateOps, validateProject } from "./validate.ts";
+export { resolveStarts, projectDuration, timelineProblems } from "./rules.ts";
 export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn } from "./apply-ops.ts";
 export { describeOp, manualEditsNote } from "./edit-log.ts";
 export { layout, visualsAt } from "./timeline.ts";
