@@ -1,7 +1,7 @@
 // What the agent CLI sees of Uncut (spec/agent/tools.json, uncut.agent-tools/0): the tools it
 // gets over MCP, how each call reads in a turn card, the project summary project_read returns,
 // and the system prompt. Pure functions; the agent service runs them.
-import { layout, type ModuleManifest, type Modules, type Project } from "@uncut/core";
+import { DRAWN_MOVES, layout, SOLID, TEXT_STYLES, type ModuleManifest, type Modules, type Project } from "@uncut/core";
 
 import editOpsSchema from "../../../spec/schema/edit-ops.schema.json" with { type: "json" };
 import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
@@ -90,7 +90,14 @@ export function projectSummary(project: Project, revision: number, range?: { sta
 }
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
-const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || m.id === "move.fade" || m.id === "transition.crossfade";
+const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || m.id === "transition.crossfade" || m.id === SOLID;
+
+/** A built-in text style's look (core TEXT_STYLES), in canvas fractions, for the agent. */
+const textStyleLook = (id: string) => {
+  const look = TEXT_STYLES[id];
+  if (!look) return undefined;
+  return { size: `${look.size} × canvas height`, weight: look.weight, font: look.font, color: look.color, ...(look.align ? { align: look.align } : {}), position: `x ${look.x} × width, y ${look.y} × height` };
+};
 
 export function modulesList(modules: Modules, kind?: string) {
   return [...modules.values()]
@@ -102,6 +109,7 @@ export function modulesList(modules: Modules, kind?: string) {
       ...(typeof m.description === "string" ? { description: m.description } : {}),
       ...(m.params ? { params: m.params } : {}),
       ...(m.transition ? { transition: m.transition } : {}),
+      ...(m.kind === "text-style" && textStyleLook(m.id) ? { look: textStyleLook(m.id) } : {}),
       showsInPreview: SHOWN_IN_PREVIEW(m),
     }));
 }
@@ -114,9 +122,13 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - If the message lists edits the user made by hand, they are intentional: keep them and build on them.
 - A project can start empty, with no media. Text needs none. Add a text item to a text track (project_read lists the tracks), for example on a 1920x1080 canvas at 30 fps:
   {"op":"insert_item","track":"text","item":{"id":"title-1","type":"text","start":0,"duration":150,"text":"Kraków from above","transform":{"x":154,"y":410},"style":{"preset":"text.title","size":130,"weight":700}}}
-  transform x and y are the text's top-left corner in canvas pixels, style.size is the font size in canvas pixels; scale them to the canvas. Text styles: modules_list with kind "text-style" (text.title, text.header, text.lower-third, ...). [[word]] accents a word, \\n breaks a line. Items on one free track can't overlap: put more text on another time or a new track (add_track with kind "text", index 0 puts it on top).
+  transform x and y are the text box's top-left corner in canvas pixels, transform.w its width (omit it and the box fits the text); style.size is the font size in canvas pixels; scale them to the canvas. style.align (left, center, right) aligns the lines inside the box: to centre a title, set x to the safe margin (theme.margin, else the shorter canvas side / 15), w to canvas width minus twice that, and align "center". style.color is a theme token (fg, bg, mute, accent; a project without a theme still has these) or a CSS colour like "#0B1D3A"; style.weight 100–900. Text styles: modules_list with kind "text-style" (text.title, text.header, text.lower-third, ...) lists each one's look. [[word]] accents a word, **bold**, \\n breaks a line. Items on one free track can't overlap: put more text on another time or a new track (add_track with kind "text", index 0 puts it on top).
+  Animations: "animation":{"in":{"module":"move.fade","duration":9},"out":{"module":"move.fade","duration":9}}; move.fade, move.rise, move.slide-left and move.wipe draw; a duration can't be longer than the item.
   The video is as long as its last item, so a 5 s title card on an empty project makes a 5 s video.
-- What the preview draws today: media clips and text (position, size, weight, fade-in). Components, backgrounds, effects, colours and alignment are saved but don't draw yet, so prefer text and media, and say so if the user asks for something that won't show.
+- Backgrounds are component.solid items on a video track: props.color (a theme token or CSS colour), or a gradient with props.to and props.angle (degrees, 180 = top to bottom). A title card on an empty project is a background on the main track plus the text over it, same length, e.g. a dark blue 5 s card:
+  {"op":"insert_item","track":"main","item":{"id":"background-1","type":"component","component":"component.solid","duration":150,"props":{"color":"#0B1D3A"}}}
+  Main-track items play back to back, so a background there sits between clips; to put one under text over footage, use a free video track above main (add_track with kind "video" at main's index) with a start.
+- What the preview draws today: media clips, backgrounds (component.solid), and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. Other components, effects and transitions other than crossfade are saved but don't draw yet, so say so if the user asks for something that won't show.
 - You can't look at frames yet. Describe what you changed instead of claiming how it looks.
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."

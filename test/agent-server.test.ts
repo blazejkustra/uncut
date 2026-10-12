@@ -151,7 +151,7 @@ test("D6: a manual edit is in the next prompt, and the agent's stale edit to it 
   assert.equal(t.status, "done", t.error);
   const prompt = sent()[1]!;
   assert.match(prompt.prompt, /made 1 edit by hand/);
-  assert.match(prompt.prompt, /Changed text on text "Kraków, from above" \(title-1\)/);
+  assert.match(prompt.prompt, /Changed the text of title-1 to "Kraków, from above"/);
   assert.match(prompt.prompt, /intentional/);
   assert.equal(prompt.resume, "fake-session", "the second turn continues the conversation");
   assert.match(t.note, /by hand/, "the card shows the note");

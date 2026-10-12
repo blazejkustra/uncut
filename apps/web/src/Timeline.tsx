@@ -13,6 +13,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { draftOf, findItem, fitsTrack, lockOf, planMove, planTrim, SNAP_PX, snapTargets, trackFlag, trimSnapTargets, type Plan } from "./edit.ts";
 import { frameTimecode, rulerLabel } from "./format.ts";
 import { getPlayback, playback, usePlayback } from "./playback.ts";
+import { SOLID, solidBackground } from "@uncut/core/render";
 import { displayTracks, itemLabel, layoutOf, type Item, type ProjectModel, type Track } from "./project.ts";
 import { actions, getState, projectOf, thumbUrl, useApp } from "./store.ts";
 
@@ -478,6 +479,7 @@ function ItemBox({
       onPointerDown={onPointerDown}
     >
       {poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />}
+      {item.type === "component" && item.component === SOLID && <div className="strip solid-fill" data-testid="solid-fill" style={{ background: solidBackground(item, project) }} />}
       <span className="nm">{label}</span>
       <span className="meta">{(duration / project.canvas.fps).toFixed(1)}s</span>
       {edges && (

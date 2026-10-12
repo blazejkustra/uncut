@@ -1,15 +1,19 @@
 // The preview and the transport under it. The preview draws the project at the playhead at the
 // canvas's aspect ratio: media through <video> (D37; <img> for stills), seeked to the source time
-// of the frame (D38), text from @uncut/core's textHtml on top (D39), black where nothing is.
+// of the frame (D38), backgrounds (component.solid) between them in track order, text from
+// @uncut/core's textHtml on top (D39), the canvas colour where nothing is. The text can be
+// selected, dragged and edited in place (D53).
 import { visualsAt } from "@uncut/core/timeline";
-import { textHtml } from "@uncut/core/render";
+import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
 import { Maximize2, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { draftOf, findItem, lockOf } from "./edit.ts";
 import { canvasLabel, frameTimecode } from "./format.ts";
-import { getPlayback, playback, usePlayback } from "./playback.ts";
+import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "./project.ts";
-import { getState, mediaUrl } from "./store.ts";
+import { actions, getState, mediaUrl } from "./store.ts";
+import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 
 /** Fits a w×h box inside its container, like object-fit: contain. */
 function useFit(width: number, height: number) {
@@ -58,7 +62,10 @@ function seek(el: HTMLVideoElement, t: number) {
 class Compositor {
   private project: ProjectModel | undefined;
   private readonly els = new Map<string, MediaEl>();
+  private readonly solids = new Map<string, HTMLDivElement>();
   private textKey = "";
+  // The text being edited in place: hidden while the editor sits over it.
+  private editing: string | undefined;
   private readonly unsubscribe: () => void;
   private readonly frameEl: HTMLDivElement;
   private readonly mediaLayer: HTMLDivElement;
@@ -80,6 +87,19 @@ class Compositor {
     this.unsubscribe();
     playback.setFollower(undefined);
     for (const id of [...this.els.keys()]) this.drop(id);
+    for (const el of this.solids.values()) el.remove();
+    this.solids.clear();
+  }
+
+  setEditing(id: string | undefined) {
+    this.editing = id;
+    this.render();
+  }
+
+  /** The project on screen: the open one, or a local draft of an edit in progress on top of it. */
+  shown(): ProjectModel | undefined {
+    const draft = getPlayback().draft;
+    return draft && draft.base === this.project ? draft.project : this.project;
   }
 
   setProject(project: ProjectModel) {
@@ -150,12 +170,14 @@ class Compositor {
   }
 
   render() {
-    const project = this.project;
+    const project = this.shown();
     if (!project) return;
     if (getState().snapshot?.dir !== this.dir) {
       for (const id of [...this.els.keys()]) this.drop(id);
       return;
     }
+    const background = canvasBackground(project);
+    if (this.frameEl.style.background !== background) this.frameEl.style.background = background;
     const { frame, playing, selected } = getPlayback();
     const fps = project.canvas.fps;
     const { starts } = layoutOf(project);
@@ -171,12 +193,45 @@ class Compositor {
     const keep = new Set([...clips.map((c) => c.item.id), ...(ahead ? [ahead.id] : [])]);
     for (const id of [...this.els.keys()]) if (!keep.has(id)) this.drop(id);
 
-    clips.forEach((c, z) => {
+    // Everything is stacked in track order (visualsAt's, the order export composites in, D39):
+    // media and backgrounds in the media layer, text in the text layer, interleaved by z-index
+    // (the layers don't form stacking contexts of their own), so a background on a track above a
+    // text track covers it here exactly as it will in the export.
+    const drawn = visible.filter(
+      (v) => (v.item.type === "clip" && mediaKind(v.item) && mediaKind(v.item)!.kind !== "audio") || (v.item.type === "component" && v.item.component === SOLID) || (v.item.type === "text" && typeof v.item.text === "string"),
+    );
+    const z = new Map(drawn.map((v, i) => [v.item.id, i + 1]));
+    const layered = drawn.filter((v) => v.item.type !== "text");
+    const solids = layered.filter((v) => v.item.type === "component");
+    for (const [id, el] of [...this.solids]) {
+      if (solids.some((v) => v.item.id === id)) continue;
+      el.remove();
+      this.solids.delete(id);
+    }
+    for (const v of solids) {
+      let el = this.solids.get(v.item.id);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "pv-solid";
+        el.dataset.item = v.item.id;
+        this.solids.set(v.item.id, el);
+        this.mediaLayer.append(el);
+      }
+      const bg = solidBackground(v.item, project);
+      if (el.dataset.bg !== bg) {
+        el.dataset.bg = bg;
+        el.style.background = bg;
+      }
+      el.style.opacity = String(v.opacity);
+      el.style.zIndex = String(z.get(v.item.id));
+    }
+
+    clips.forEach((c) => {
       const media = mediaKind(c.item)!;
       const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video");
       if (!el) return;
       el.style.opacity = String(c.opacity);
-      el.style.zIndex = String(z + 1);
+      el.style.zIndex = String(z.get(c.item.id));
       if (!(el instanceof HTMLVideoElement)) return;
       el.muted = !playing || c.opacity < 1 || !media.probe?.hasAudio;
       const target = c.source + 0.0001;
@@ -202,12 +257,18 @@ class Compositor {
 
     // Text: rebuilt only when what it shows changes, not on every frame.
     const html = visible
-      .filter((v) => v.item.type === "text" && typeof v.item.text === "string" && v.item.transform && v.item.style?.size)
-      .map(({ item, opacity }) => textHtml(item, project.canvas, { opacity, selected: item.id === selected }))
+      .filter((v) => v.item.type === "text" && typeof v.item.text === "string")
+      .map(({ item, opacity, motion }) => textHtml(item, project, { opacity, motion, selected: item.id === selected }))
       .join("");
-    if (html !== this.textKey) {
-      this.textKey = html;
+    const key = `${this.editing ?? ""}|${html}`;
+    if (key !== this.textKey) {
+      this.textKey = key;
       this.textLayer.innerHTML = html;
+      if (this.editing) this.textLayer.querySelector<HTMLElement>(`[data-item="${CSS.escape(this.editing)}"]`)?.style.setProperty("visibility", "hidden");
+    }
+    for (const el of this.textLayer.children) {
+      const zi = String(z.get((el as HTMLElement).dataset.item ?? "") ?? 0);
+      if ((el as HTMLElement).style.zIndex !== zi) (el as HTMLElement).style.zIndex = zi;
     }
     this.frameEl.dataset.frame = String(Math.floor(frame));
     this.frameEl.dataset.playing = playing ? "true" : "false";
@@ -215,7 +276,7 @@ class Compositor {
 
   /** Where the top fully visible video really is, so the clock can follow a late decoder. */
   private follow(f: number) {
-    const project = this.project;
+    const project = this.shown();
     if (!project) return undefined;
     const { starts } = layoutOf(project);
     const top = visualsAt(project, starts, f)
@@ -228,7 +289,45 @@ class Compositor {
   }
 }
 
-/** Keyed on the project folder by its parent: another project gets a fresh preview. */
+interface CanvasDrag {
+  readonly id: string;
+  readonly pointer: number;
+  readonly px: number;
+  readonly py: number;
+  readonly x: number;
+  readonly y: number;
+  /** The box in canvas pixels, for snapping. */
+  readonly w: number;
+  readonly h: number;
+  readonly revision: number;
+  moved: boolean;
+  to?: { x: number; y: number };
+  draft?: PreviewDraft;
+}
+
+interface InlineEdit {
+  readonly id: string;
+  /** The text element's inline style, so the editor sits exactly over it with the same type. */
+  readonly css: string;
+  readonly text: string;
+  readonly revision: number;
+}
+
+/** Stop showing a draft, unless a newer gesture has put up its own since. */
+const dropDraft = (draft: PreviewDraft | undefined) => {
+  if (draft && getPlayback().draft === draft) playback.setDraft(undefined);
+};
+
+/** Pointer travel (screen px) before a press on a text becomes a drag, and the snap distance. */
+const DRAG_PX = 3;
+const SNAP_SCREEN_PX = 8;
+
+/**
+ * Keyed on the project folder by its parent: another project gets a fresh preview. On the canvas
+ * (D53): a click on a text selects it, dragging moves it (snapping to the centre lines and safe
+ * margins, ⌘ to move freely; one edit on release), a double click edits it in place (Enter
+ * saves, ⇧Enter is a new line, Esc cancels, clicking away saves).
+ */
 export function Stage({ project, dir }: { project: ProjectModel; dir: string }) {
   const { width, height } = project.canvas;
   const { ref, size } = useFit(width, height);
@@ -236,6 +335,9 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   const mediaRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const compositor = useRef<Compositor | undefined>(undefined);
+  const drag = useRef<CanvasDrag | undefined>(undefined);
+  const [guides, setGuides] = useState<ReadonlyArray<Guide>>([]);
+  const [editing, setEditing] = useState<InlineEdit | undefined>();
   useEffect(() => {
     const c = new Compositor(dir, frameRef.current!, mediaRef.current!, textRef.current!);
     compositor.current = c;
@@ -245,21 +347,191 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     };
   }, [dir]);
   useEffect(() => compositor.current?.setProject(project), [project]);
+  useEffect(() => compositor.current?.setEditing(editing?.id), [editing?.id]);
+  // Canvas pixels per screen pixel.
+  const scale = width / Math.max(1, size.w);
+
+  /** The text item under an event, if it can be moved or edited by hand. */
+  const editableText = (target: EventTarget, at?: { clientX: number; clientY: number }) => {
+    const el =
+      (target as HTMLElement).closest<HTMLElement>(".pv-text[data-item]") ??
+      (at ? document.elementsFromPoint(at.clientX, at.clientY).find((n): n is HTMLElement => n instanceof HTMLElement && n.matches(".pv-text[data-item]")) : undefined);
+    const placed = findItem(project, el?.dataset.item);
+    if (!el || !placed || placed.item.type !== "text" || lockOf(placed)) return undefined;
+    return { el, item: placed.item };
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Presses in the in-place editor are its own (caret, selection).
+    if (e.button !== 0 || (e.target as HTMLElement).closest(".pv-inline")) return;
+    playback.select((e.target as HTMLElement).closest<HTMLElement>("[data-item]")?.dataset.item);
+    const hit = editableText(e.target);
+    const snapshot = getState().snapshot;
+    if (!hit || editing || !snapshot || snapshot.dir !== dir) return;
+    const box = textBox(hit.item, project.canvas);
+    drag.current = {
+      id: hit.item.id,
+      pointer: e.pointerId,
+      px: e.clientX,
+      py: e.clientY,
+      x: box.x,
+      y: box.y,
+      w: hit.el.offsetWidth * scale,
+      h: hit.el.offsetHeight * scale,
+      revision: snapshot.revision,
+      moved: false,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId) return;
+    // Released outside the frame before it became a drag: forget it.
+    if (e.buttons === 0) {
+      drag.current = undefined;
+      return dropDraft(d.draft);
+    }
+    const dx = e.clientX - d.px;
+    const dy = e.clientY - d.py;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_PX) return;
+    if (!d.moved) {
+      playback.pause();
+      // Captured only once it's a drag: capturing on press would retarget the clicks (and the
+      // double click that edits in place) to the layer.
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    d.moved = true;
+    let x = Math.round(d.x + dx * scale);
+    let y = Math.round(d.y + dy * scale);
+    let shown: ReadonlyArray<Guide> = [];
+    if (!e.metaKey && getPlayback().snapping) {
+      const snapped = snapBox({ x, y, w: d.w, h: d.h }, project, SNAP_SCREEN_PX * scale);
+      ({ x, y } = snapped);
+      shown = snapped.guides;
+    }
+    d.to = { x, y };
+    // Planned on the project as it is now: a snapshot that arrived mid-drag (an agent edit, a
+    // save) becomes the base, so the preview keeps following the pointer.
+    const plan = planTransform(project, d.id, { x, y });
+    const draft = "ops" in plan ? draftOf(project, plan.ops) : undefined;
+    if (draft && "project" in draft) {
+      dropDraft(d.draft);
+      d.draft = { base: project, project: draft.project };
+      playback.setDraft(d.draft);
+    }
+    setGuides(shown);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId) return;
+    drag.current = undefined;
+    setGuides([]);
+    if (!commit || !d.moved || !d.to) return dropDraft(d.draft);
+    const to = d.to;
+    void actions.itemEdit((p) => planTransform(p, d.id, to), { baseRevision: d.revision, dir }).finally(() => dropDraft(d.draft));
+  };
+
+  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const hit = editableText(e.target, e);
+    const snapshot = getState().snapshot;
+    if (!hit || !snapshot || snapshot.dir !== dir) return;
+    playback.pause();
+    setEditing({ id: hit.item.id, css: hit.el.getAttribute("style") ?? "", text: hit.item.text ?? "", revision: snapshot.revision });
+  };
+
+  const finishEdit = (text: string | undefined) => {
+    const edit = editing;
+    setEditing(undefined);
+    if (!edit || text === undefined) return;
+    void actions.itemEdit((p) => planText(p, edit.id, text), { baseRevision: edit.revision, dir });
+  };
+
   return (
     <main className="stage">
+      <style>{RENDER_CSS}</style>
       <div className="stage-canvas" ref={ref}>
-        <div className="frame" ref={frameRef} data-testid="preview-frame" data-frame="0" style={{ width: size.w, height: size.h }}>
+        <div
+          className="frame"
+          ref={frameRef}
+          data-testid="preview-frame"
+          data-frame="0"
+          style={{ width: size.w, height: size.h }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={(e) => endDrag(e, true)}
+          onPointerCancel={(e) => endDrag(e, false)}
+          onDoubleClick={onDoubleClick}
+        >
           <div className="pv-layer" ref={mediaRef} data-testid="preview-media" />
-          <div
-            className="pv-layer pv-texts"
-            ref={textRef}
-            data-testid="preview-text"
-            onPointerDown={(e) => playback.select((e.target as HTMLElement).closest<HTMLElement>("[data-item]")?.dataset.item)}
-          />
+          <div className="pv-layer pv-texts" ref={textRef} data-testid="preview-text" />
+          <div className="pv-layer pv-overlay">
+            {guides.map((g) => (
+              <div
+                key={`${g.axis}-${g.at}`}
+                className={`pv-guide ${g.axis} ${g.kind}`}
+                data-testid="canvas-guide"
+                data-axis={g.axis}
+                data-kind={g.kind}
+                style={g.axis === "x" ? { left: `${(g.at / width) * 100}%` } : { top: `${(g.at / height) * 100}%` }}
+              />
+            ))}
+            {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
+          </div>
         </div>
       </div>
       <Transport project={project} />
     </main>
+  );
+}
+
+/**
+ * Text editing in place: a textarea over the hidden text with the same inline style (position,
+ * font, size, colour, alignment), growing with its content. Enter saves, ⇧Enter adds a line,
+ * Esc cancels, blur saves. Editor shortcuts don't fire while it has focus (Editor.tsx skips
+ * editable targets).
+ */
+function InlineEditor({ edit, onDone }: { edit: InlineEdit; onDone: (text: string | undefined) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [value, setValue] = useState(edit.text);
+  const done = useRef(false);
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    // Same box and type as the text; a fit-to-content box grows with what's typed instead.
+    el.style.cssText = `${edit.css.replace(/width:max-content;?/, "")};opacity:1;visibility:visible;transform:none;clip-path:none`;
+    el.focus();
+    el.select();
+  }, [edit.css]);
+  const finish = (text: string | undefined) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(text);
+  };
+  return (
+    <textarea
+      ref={ref}
+      className="pv-inline"
+      data-testid="inline-editor"
+      data-item={edit.id}
+      value={value}
+      spellCheck={false}
+      rows={1}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => finish(value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        // Mid-composition (IME) Esc and Enter belong to the input method.
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(undefined);
+        } else if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          finish(value);
+        }
+      }}
+    />
   );
 }
 

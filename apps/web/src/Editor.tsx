@@ -6,19 +6,21 @@ import { AgentPanel } from "./Agent.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
+import { BackgroundEditor, TextEditor } from "./ItemEditors.tsx";
 import { Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
+import { SOLID } from "@uncut/core/render";
 import { findItem } from "./edit.ts";
 import { frameTimecode } from "./format.ts";
 import { playback, usePlayback } from "./playback.ts";
 import { Stage } from "./Preview.tsx";
-import { actions, getState, MAX_NAME_LENGTH, plainError, projectOf, useApp, type Project } from "./store.ts";
+import { actions, getState, isTextEntry, MAX_NAME_LENGTH, plainError, projectOf, useApp, type Project } from "./store.ts";
 import { Timeline } from "./Timeline.tsx";
 
 const LATER = "Coming in a later phase";
 
-const isEditable = (el: EventTarget | null) =>
-  el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el instanceof HTMLElement && el.isContentEditable);
+// Keys belong to the control while typing, picking from a list or moving a slider.
+const isEditable = (el: EventTarget | null) => isTextEntry(el) || el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && el.type === "range");
 
 /**
  * Editor keys: Space plays/pauses, ←/→ step a frame (⇧ a second), Home/End jump, Esc deselects,
@@ -150,10 +152,9 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   );
 }
 
-// Media and Text work; the rest arrive in later chunks.
+// Media, Text and Elements (backgrounds) work; the rest arrive in later chunks.
 const RAIL: ReadonlyArray<[string, typeof Film]> = [
   ["Capture", CircleDot],
-  ["Elements", Shapes],
   ["Transitions", Blend],
   ["Audio", Music],
   ["Generate", Sparkles],
@@ -169,6 +170,10 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
       <button className={tab === "text" ? "active" : ""} data-testid="rail-text" title="Text" onClick={() => onTab("text")}>
         <Type />
         <span>Text</span>
+      </button>
+      <button className={tab === "elements" ? "active" : ""} data-testid="rail-elements" title="Elements: backgrounds" onClick={() => onTab("elements")}>
+        <Shapes />
+        <span>Elements</span>
       </button>
       {RAIL.map(([label, Icon]) => (
         <button key={label} disabled title={`${label}: ${LATER}`}>
@@ -195,7 +200,7 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
       </div>
       <div className="side-body">
         {tab === "inspector" && selected ? (
-          <ItemInspector project={project} placed={selected} />
+          <ItemInspector key={selected.item.id} project={project} placed={selected} />
         ) : tab === "inspector" ? (
           // Keyed on the folder: switching projects drops any half-typed value with the old Inspector.
           <Inspector key={snapshot.dir} snapshot={snapshot} project={project} online={online} />
@@ -310,9 +315,10 @@ function Inspector({ snapshot, project, online }: { snapshot: ProjectSnapshot; p
 
 const TYPE_NAMES: Readonly<Record<string, string>> = { clip: "Clip", component: "Component", graphic: "Graphic", text: "Text", captions: "Captions", audio: "Audio" };
 
-/** The selected item's basics (chunk 3); text styling and the rest come with chunk 4. */
+/** The selected item: text and backgrounds get their editors (chunk 4), every item its basics (chunk 3). */
 function ItemInspector({ project, placed }: { project: Project; placed: NonNullable<ReturnType<typeof findItem>> }) {
   const { item, track, start } = placed;
+  const locked = track.locked === true || item.locked === true;
   const fps = project.canvas.fps;
   const tc = (f: number) => `${frameTimecode(f, fps)}`;
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
@@ -331,9 +337,11 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
         <span className="ellipsis">{itemLabel(project, item)}</span>
       </div>
       <div className="insp-sub">
-        {TYPE_NAMES[item.type] ?? item.type} on {track.name}
-        {track.locked ? ". The track is locked: unlock it in the timeline to edit it." : ". Drag it on the timeline to move it, its edges to trim it."}
+        {item.type === "component" && item.component === SOLID ? "Background" : (TYPE_NAMES[item.type] ?? item.type)} on {track.name}
+        {locked ? ". The track is locked: unlock it in the timeline to edit it." : ". Drag it on the timeline to move it, its edges to trim it."}
       </div>
+      {item.type === "text" && <TextEditor project={project} item={item} locked={locked} />}
+      {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
       <div className="group">
         <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
         <Row k="Track" id="insp-track" v={track.name} />

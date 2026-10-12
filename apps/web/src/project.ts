@@ -1,6 +1,7 @@
 // The project as the renderer reads it, the timeline maths it borrows from @uncut/core (D39: the
 // preview, export and agent share one implementation), and the edit ops the editor sends for
 // "add to timeline". The ops go through project.edit, so the server validates them and they undo.
+import { SOLID, textLook } from "@uncut/core/render";
 import { layout } from "@uncut/core/timeline";
 
 import type { Item, Media, Project, Track } from "@uncut/core/types";
@@ -98,11 +99,14 @@ export function planAddMedia(project: ProjectModel, mediaId: string): Planned {
   };
 }
 
-/** The Text tab's presets: built-in text-style modules (spec/modules/builtin/text.*.json). */
+/**
+ * The Text tab's presets: built-in text-style modules (spec/modules/builtin/text.*.json). Their
+ * size, weight and position come from core TEXT_STYLES, the same looks the renderer falls back to.
+ */
 export const TEXT_PRESETS = [
-  { id: "title", module: "text.title", label: "Title", text: "Title", size: 0.12, weight: 700, x: 0.08, y: 0.38 },
-  { id: "text", module: "text.header", label: "Text", text: "Text", size: 0.06, weight: 500, x: 0.08, y: 0.46 },
-  { id: "lower-third", module: "text.lower-third", label: "Lower third", text: "Lower third", size: 0.05, weight: 600, x: 0.0625, y: 0.8 },
+  { id: "title", module: "text.title", label: "Title", text: "Title" },
+  { id: "text", module: "text.header", label: "Text", text: "Text" },
+  { id: "lower-third", module: "text.lower-third", label: "Lower third", text: "Lower third" },
 ] as const;
 export type TextPreset = (typeof TEXT_PRESETS)[number];
 
@@ -129,6 +133,7 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
     track = { id, kind: "text", name, items: [] };
   }
   const itemId = uniqueId(project, preset.id, taken);
+  const look = textLook(preset.module);
   ops.push({
     op: "insert_item",
     track: track.id,
@@ -138,16 +143,22 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
       start,
       duration,
       text: preset.text,
-      transform: { x: Math.round(width * preset.x), y: Math.round(height * preset.y) },
-      style: { preset: preset.module, size: Math.round(height * preset.size), weight: preset.weight },
+      transform: { x: Math.round(width * look.x), y: Math.round(height * look.y) },
+      style: { preset: preset.module, size: Math.round(height * look.size), weight: look.weight },
     },
   });
   return { ops, summary: `Add ${preset.label.toLowerCase()}`, itemId, start };
 }
 
-/** What a timeline item is called: its text, its media's name, or its id. */
+/** A background's colours in words: "Background #0B1D3A", "Gradient #0B1D3A → #3B1E54". */
+const colourName = (value: unknown) => (typeof value === "string" ? value : "default");
+export const backgroundLabel = (item: Item) =>
+  item.props?.to !== undefined ? `Gradient ${colourName(item.props?.color)} → ${colourName(item.props.to)}` : `Background ${colourName(item.props?.color)}`;
+
+/** What a timeline item is called: its text, a background's colour, its media's name, or its id. */
 export function itemLabel(project: ProjectModel, item: Item) {
   if (item.type === "text" && typeof item.text === "string") return item.text.replace(/\[\[|\]\]|\*\*|`/g, "").replace(/\n/g, " ");
+  if (item.type === "component" && item.component === SOLID && !item.name) return backgroundLabel(item);
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   return item.name ?? media?.name ?? item.id;
 }

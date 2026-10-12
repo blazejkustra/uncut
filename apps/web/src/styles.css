@@ -138,14 +138,20 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .stage { grid-area: stage; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .stage-canvas { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 18px; background: #080808; }
 /* The preview: a size container so text sized in cqh scales with it (as in export, D39). */
-.frame { position: relative; overflow: hidden; container-type: size; background: #000; outline: 1px solid var(--border); }
-.pv-layer { position: absolute; inset: 0; isolation: isolate; }
+.frame { position: relative; overflow: hidden; container-type: size; isolation: isolate; background: #000; outline: 1px solid var(--border); }
+/* No stacking context per layer: media, backgrounds and text interleave by z-index (track order). */
+.pv-layer { position: absolute; inset: 0; }
 .pv-layer video, .pv-layer img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.pv-texts { z-index: 1; }
 .pv-missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); font-size: 12px; background: repeating-linear-gradient(135deg, #111 0 10px, #0d0d0d 10px 20px); }
-.pv-text { position: absolute; color: #f2f1ee; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; white-space: pre-line; text-shadow: 0 2px 18px rgb(0 0 0 / 45%); cursor: default; user-select: none; }
-.pv-text .accent { color: #99daff; }
-.pv-text.sel-box { outline: 1px solid var(--select); outline-offset: 4px; }
+/* How text and backgrounds look comes from @uncut/core's RENDER_CSS and inline styles (D39); these
+   are the editor's own additions: selection, drag guides and the in-place editor. */
+.pv-text.sel-box { outline: 1px solid var(--select); outline-offset: 4px; cursor: move; }
+.pv-overlay { z-index: 100000; pointer-events: none; }
+.pv-guide { position: absolute; background: #ff4fa3; }
+.pv-guide.x { top: 0; bottom: 0; width: 1px; transform: translateX(-0.5px); }
+.pv-guide.y { left: 0; right: 0; height: 1px; transform: translateY(-0.5px); }
+.pv-guide.margin { background: rgb(255 79 163 / 55%); }
+.pv-inline { position: absolute; pointer-events: auto; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden; field-sizing: content; min-width: 1ch; white-space: pre-wrap; background: rgb(0 0 0 / 30%); outline: 1px solid var(--select); outline-offset: 4px; caret-color: var(--select); }
 .transport { height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid var(--border); overflow: hidden; }
 .timecode { font: 12px var(--mono); white-space: nowrap; }
 .transport [data-testid="canvas-info"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -385,3 +391,32 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .clip.refused { outline-color: var(--error); border-color: var(--error); }
 .clip.dragging.refused { opacity: 0.5; }
 .drag-tip.refused { color: var(--error); border-color: rgb(248 113 113 / 40%); white-space: normal; max-width: 280px; transform: none; }
+/* Text and background editors (chunk 4). */
+.group-label.row { display: flex; align-items: center; justify-content: space-between; }
+.small-btn { height: 22px; padding: 0 6px; font-size: 11px; }
+.text-area { height: auto; min-height: 64px; padding: 6px 8px; resize: vertical; font: 13px/1.4 var(--font); white-space: pre-wrap; }
+.hint-line { margin-top: 6px; line-height: 1.4; }
+.tabs-group { padding: 8px 14px; }
+.insp-tabs { width: 100%; }
+.insp-tabs button { flex: 1; }
+.presets { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.preset { height: 28px; border-radius: var(--radius-sm); border: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.preset.active { border-color: var(--select); color: var(--fg); background: var(--select-soft); }
+.slider-row { display: grid; grid-template-columns: 1fr 92px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.slider { width: 100%; accent-color: var(--select); }
+.num-field input { width: 100%; min-width: 0; border: 0; background: none; outline: 0; text-align: right; color: inherit; }
+.num-field input::-webkit-inner-spin-button { display: none; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%); }
+.swatch.active { outline: 2px solid var(--select); outline-offset: 2px; }
+.swatch.custom { position: relative; overflow: hidden; cursor: pointer; background: conic-gradient(#f87171, #fbbf24, #4ade80, #60a5fa, #c084fc, #f87171); }
+.swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.seg.align { margin-bottom: 8px; }
+.seg.align button { display: inline-flex; align-items: center; gap: 4px; }
+.seg.align .centre { margin-left: auto; }
+.check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+.bg-thumb { border: 1px solid var(--border); }
+.custom-bg .bg-thumb { position: relative; cursor: pointer; display: block; }
+.custom-bg input[type=color] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.clip .solid-fill { opacity: 1; }
+.clip:has(.solid-fill) .nm, .clip:has(.solid-fill) .meta { text-shadow: 0 1px 3px rgb(0 0 0 / 70%); color: #fff; }
