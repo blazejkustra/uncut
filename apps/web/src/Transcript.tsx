@@ -12,7 +12,7 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { Plan } from "./edit.ts";
 import { frameTimecode, timecode } from "./format.ts";
-import { analysisText } from "./Library.tsx";
+import { analysisText } from "./analysisText.ts";
 import { getPlayback, playback, usePlayback } from "./playback.ts";
 import type { ProjectModel } from "./project.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "./store.ts";

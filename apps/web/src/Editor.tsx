@@ -8,6 +8,7 @@ import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
 import { AudioEditor, BackgroundEditor, TextEditor } from "./ItemEditors.tsx";
+import { useBeatsLoading } from "./beats.ts";
 import { hasSound } from "./sound.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
@@ -82,6 +83,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
     if (panel === "media" || panel === "text" || panel === "elements" || panel === "audio") setTab(panel);
   }, [panelRequest]);
   useEditorKeys(project.canvas.fps);
+  useBeatsLoading(project, snapshot.dir);
   return (
     <div className="app" data-testid="editor">
       <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} />
