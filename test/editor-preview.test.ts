@@ -181,13 +181,35 @@ test("an empty project gets a title and a lower third, plays them at their frame
   await meta(page, "KeyZ");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 1);
   assert.deepEqual(await trackIds(page), ["text", "main", "audio"]);
-  assert.ok(await frameOf(page) <= 89, "the playhead is clamped to the shorter project");
+  assert.ok(await frameOf(page) <= 90, "the playhead is clamped to the shorter project (at most its end)");
   await page.click("[data-testid=undo]");
   await waitFor(page, "[data-testid=timeline-empty]");
   assert.equal(await page.$(".pv-text"), null);
   assert.deepEqual(onDisk().tracks.map((t: { items: unknown[] }) => t.items.length), [0, 0, 0]);
   await meta(page, "KeyZ", true);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 1);
+
+  // End puts the playhead after the last frame (nothing drawn there; → goes no further), so a
+  // text added there follows the title instead of overlapping its last frame.
+  await page.click("[data-testid=timeline]");
+  await page.keyboard.press("End");
+  await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) === 90);
+  assert.equal(await text(page, "timecode"), "00:00:03:00 / 00:00:03:00");
+  assert.equal(await page.$(".pv-text"), null, "nothing is drawn at the end");
+  assert.deepEqual(await page.$$eval("[data-testid=step-forward],[data-testid=to-end]", (b) => (b as Array<HTMLButtonElement>).map((x) => x.disabled)), [true, true]);
+  await page.keyboard.press("ArrowRight");
+  await sleep(100);
+  assert.equal(await frameOf(page), 90, "→ stops at the end");
+  await page.click("[data-testid=text-preset][data-preset=text]");
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 2);
+  const added = (await items(page)).find((i) => i.id !== "title-1")!;
+  assert.deepEqual({ ...added, id: undefined }, { id: undefined, type: "text", start: 90, duration: 90, track: "text" });
+  assert.equal(await frameOf(page), 90, "the playhead stays where the text was added");
+  // Play from the end starts over.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.frame) < 90);
+  await page.keyboard.press("Space");
   assert.deepEqual(app.errors, []);
   await app.close();
   apps.delete(app);

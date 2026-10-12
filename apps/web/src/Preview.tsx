@@ -394,8 +394,9 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   }, [dir]);
   useEffect(() => compositor.current?.setProject(project), [project]);
   useEffect(() => compositor.current?.setEditing(editing?.id), [editing?.id]);
-  // Canvas pixels per screen pixel.
+  // Canvas pixels per screen pixel, and its inverse: how the canvas-size layer is scaled.
   const scale = width / Math.max(1, size.w);
+  const fit = size.w / width;
 
   /** The text item under an event, if it can be moved or edited by hand. */
   const editableText = (target: EventTarget, at?: { clientX: number; clientY: number }) => {
@@ -422,8 +423,9 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       py: e.clientY,
       x: box.x,
       y: box.y,
-      w: hit.el.offsetWidth * scale,
-      h: hit.el.offsetHeight * scale,
+      // Laid out at canvas size, so its offset size is already in canvas pixels.
+      w: hit.el.offsetWidth,
+      h: hit.el.offsetHeight,
       revision: snapshot.revision,
       moved: false,
     };
@@ -509,9 +511,13 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           onPointerCancel={(e) => endDrag(e, false)}
           onDoubleClick={onDoubleClick}
         >
-          <div className="pv-layer" ref={mediaRef} data-testid="preview-media" />
-          <div className="pv-layer pv-texts" ref={textRef} data-testid="preview-text" />
-          <div className="pv-layer pv-overlay">
+          {/* Everything is laid out at canvas size and scaled down as one (D56): the text's
+              cqh sizes, shadows and line breaks resolve exactly as in the export's canvas-size
+              page, whatever the preview's size (the system font's tracking depends on size). */}
+          <div className="pv-canvas" style={{ width, height, transform: `scale(${fit})`, ["--pv-scale" as string]: fit || 1 }}>
+            <div className="pv-layer" ref={mediaRef} data-testid="preview-media" />
+            <div className="pv-layer pv-texts" ref={textRef} data-testid="preview-text" />
+            <div className="pv-layer pv-overlay">
             {guides.map((g) => (
               <div
                 key={`${g.axis}-${g.at}`}
@@ -523,6 +529,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
               />
             ))}
             {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
+            </div>
           </div>
         </div>
       </div>
@@ -601,10 +608,10 @@ function Transport({ project }: { project: ProjectModel }) {
         <button className="icon-btn play" data-testid="play" title={playing ? "Pause (Space)" : "Play (Space)"} disabled={frames <= 1} onClick={playback.toggle}>
           {playing ? <Pause /> : <Play />}
         </button>
-        <button className="icon-btn" data-testid="step-forward" title="Forward one frame (→)" disabled={frame >= frames - 1} onClick={() => playback.step(1)}>
+        <button className="icon-btn" data-testid="step-forward" title="Forward one frame (→)" disabled={frame >= Math.max(frames - 1, end)} onClick={() => playback.step(1)}>
           <StepForward />
         </button>
-        <button className="icon-btn" data-testid="to-end" title="Go to end (End)" disabled={frame >= frames - 1} onClick={playback.toEnd}>
+        <button className="icon-btn" data-testid="to-end" title="Go to end (End)" disabled={frame >= end} onClick={playback.toEnd}>
           <SkipForward />
         </button>
       </div>

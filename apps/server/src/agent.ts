@@ -26,7 +26,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
-import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
@@ -477,9 +477,11 @@ export const layer = Layer.effect(
             );
             if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
             const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
+            // Frames past the last one are drawn as the last one: say so, not silently.
+            const clamped = rendered.list.flatMap((r, i) => (r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : []));
             return {
               content: [
-                { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.` },
+                { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}` },
                 ...rendered.list.map((r) => ({ type: "image" as const, data: r.jpeg.toString("base64"), mimeType: "image/jpeg" })),
               ],
             };
@@ -710,7 +712,7 @@ export const layer = Layer.effect(
         const note = joinNotes(owner.carried, noteFor(v, owner.agentSeen));
         const project = v.session.project;
         const context = [
-          frame !== undefined ? `Playhead: frame ${frame} (${timecode(frame, project.canvas.fps)}).` : "",
+          frame !== undefined ? playheadLine(project, frame) : "",
           selected ? `Selected item: ${selected}.` : "",
           note,
         ].filter(Boolean);

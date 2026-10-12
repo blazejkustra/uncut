@@ -263,3 +263,47 @@ test("a locked item on an unlocked track can't be edited, and the ops around it 
   }
   assert.ok(!("problem" in planMove(p, "late", "text", 200)), "its neighbour still moves");
 });
+
+test("the playhead can rest at the end (D56): End, seeking and stepping reach it; adding there appends after everything", async () => {
+  // Never playing here, so the animation-frame clock is never started; reset() still cancels it.
+  globalThis.cancelAnimationFrame ??= () => {};
+  const { playback, getPlayback } = await import("../apps/web/src/playback.ts");
+  const { planAddText, TEXT_PRESETS } = await import("../apps/web/src/project.ts");
+  const { planAddBackground } = await import("../apps/web/src/text.ts");
+  // A 4 s clip on main: 120 frames, playback over 0–119, the end at 120.
+  const clip: Project = {
+    ...project,
+    tracks: [
+      { id: "text", kind: "text", name: "Text", items: [] },
+      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m", in: 0, duration: 120 }] },
+    ],
+  };
+  playback.reset();
+  playback.setProject(120, 30, 120);
+  playback.toEnd();
+  assert.equal(getPlayback().frame, 120, "End goes after the last frame");
+  playback.step(1);
+  assert.equal(getPlayback().frame, 120, "and no further");
+  playback.seek(500);
+  assert.equal(getPlayback().frame, 120);
+  playback.step(-1);
+  assert.equal(getPlayback().frame, 119);
+  // Text and a background added there go after the clip; the background onto main.
+  const text = planAddText(clip, TEXT_PRESETS[0], 120);
+  assert.ok("ops" in text);
+  assert.equal(text.start, 120);
+  const bg = planAddBackground(clip, { color: "#000000" }, 120, undefined);
+  assert.ok("ops" in bg);
+  assert.deepEqual(bg.ops, [{ op: "insert_item", track: "main", item: { id: "background-1", type: "component", component: "component.solid", duration: 90, props: { color: "#000000" } } }]);
+  // The project grows: the playhead stays; it shrinks past the playhead: the new last frame.
+  playback.toEnd();
+  playback.setProject(210, 30, 210);
+  assert.equal(getPlayback().frame, 120);
+  playback.toEnd();
+  playback.setProject(90, 30, 90);
+  assert.equal(getPlayback().frame, 90, "to the new end, where the next thing added goes");
+  // An empty project: frame 0 only.
+  playback.setProject(1, 30, 0);
+  playback.toEnd();
+  assert.equal(getPlayback().frame, 0);
+});

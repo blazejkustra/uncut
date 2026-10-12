@@ -143,3 +143,14 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."
 - Keep replies short: what you changed, in plain words.`;
+
+/**
+ * The editor-context line for the playhead. At the project's end (after its last frame, where
+ * End puts it, D56) nothing is drawn, and what the user adds there goes after everything.
+ */
+export function playheadLine(project: Project, frame: number) {
+  const { duration } = layout(project);
+  const end = project.tracks.some((t) => t.items.length) ? duration : 0;
+  const at = `Playhead: frame ${frame} (${(frame / project.canvas.fps).toFixed(2)} s)`;
+  return end > 0 && frame >= end ? `${at}, the end of the project, after its last frame (${end - 1}); nothing is drawn here.` : `${at}.`;
+}
