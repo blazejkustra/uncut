@@ -291,10 +291,12 @@ export function mediaMeta(m: MediaItem) {
   return [size, m.probe?.fps ? `${fpsLabel(m.probe.fps)} fps` : undefined].filter(Boolean).join(", ");
 }
 
-/** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67), or why it waits. */
+/** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67; "Transcribing…", D68), or why it waits. */
 function analysisText(job: AnalysisJob) {
-  if (job.phase === "running") return `Analysing the ${job.analyzer === "video" ? "picture" : "sound"}… ${Math.round(job.progress * 100)}%`;
-  return job.waiting === "export" ? "Waiting for the export to finish" : "Waiting to analyse";
+  const pct = `${Math.round(job.progress * 100)}%`;
+  if (job.phase === "running" && job.analyzer === "transcript") return job.stage === "model" ? `Downloading the speech model… ${pct}` : `Transcribing… ${pct}`;
+  if (job.phase === "running") return `Analysing the ${job.analyzer === "video" ? "picture" : "sound"}… ${pct}`;
+  return job.waiting === "export" ? "Waiting for the export to finish" : job.analyzer === "transcript" ? "Waiting to transcribe" : "Waiting to analyse";
 }
 
 function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online: boolean }) {
@@ -353,7 +355,7 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
           </button>
         )}
         {analysis && (
-          <div className="tile-analysis" data-testid="analysis-progress" data-phase={analysis.phase} title={analysisText(analysis)}>
+          <div className="tile-analysis" data-testid="analysis-progress" data-phase={analysis.phase} data-analyzer={analysis.analyzer} title={analysisText(analysis)}>
             <Gauge />
             <div className="bar">
               <span style={{ width: `${Math.round((analysis.phase === "running" ? analysis.progress : 0) * 100)}%` }} />

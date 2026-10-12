@@ -26,7 +26,9 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
-import { Analysis, parseAnalyzers, targetOf, type AnalysisTarget, type LoudnessResult, type Outcome } from "./analysis.ts";
+import { Analysis, cachedFor, parseAnalyzers, targetOf, type AnalysisTarget, type LoudnessResult, type Outcome, type RequestOptions } from "./analysis.ts";
+import { transcriptOut, transcriptSummary, TRANSCRIPT_NOTE } from "./agentTranscript.ts";
+import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
@@ -574,9 +576,9 @@ export const layer = Layer.effect(
 
     // Starts (or joins) analysis jobs and waits up to ANALYZE_WAIT_MS for them: each comes back
     // with its outcome, or without one (still queued or running; the job says how far).
-    const requestAndWait = (requests: ReadonlyArray<{ readonly target: AnalysisTarget; readonly analyzer: Analyzer }>) =>
+    const requestAndWait = (requests: ReadonlyArray<{ readonly target: AnalysisTarget; readonly analyzer: Analyzer; readonly options?: RequestOptions }>) =>
       Effect.promise(async () => {
-        const requested = await Promise.all(requests.map(async (q) => ({ ...q, r: await analysis.request(q.target, q.analyzer) })));
+        const requested = await Promise.all(requests.map(async (q) => ({ ...q, r: await analysis.request(q.target, q.analyzer, q.options) })));
         let timer: NodeJS.Timeout | undefined;
         const deadline = new Promise<undefined>((r) => (timer = setTimeout(r, analyzeWaitMs(), undefined)));
         timer?.unref();
@@ -589,7 +591,13 @@ export const layer = Layer.effect(
     /** A job still going, as the agent sees it. */
     const pendingOut = (jobId: string | undefined) => {
       const job = jobId ? analysis.job(jobId) : undefined;
-      return job?.phase === "queued" ? { state: "queued" as const, ...(job.waiting ? { waitingFor: "an export to finish" } : {}) } : { state: "running" as const, progress: job?.progress ?? 0 };
+      if (job?.phase === "queued") return { state: "queued" as const, ...(job.waiting ? { waitingFor: "an export to finish" } : job.analyzer === "transcript" ? { waitingFor: "another transcript to finish" } : {}) };
+      return { state: "running" as const, progress: job?.progress ?? 0, ...(job?.stage === "model" ? { stage: "downloading the speech model (first transcript only)" } : {}) };
+    };
+    /** The loudness analyzer's silences, when cached (no job): transcript pauses are aligned to them. */
+    const silencesOf = async (target: AnalysisTarget) => {
+      const loud = (await cachedFor(target, "loudness")) as LoudnessResult | undefined;
+      return loud?.hasAudio ? loud.silence?.ranges : undefined;
     };
     const cancelledNote = "The analysis was stopped (by the user, or the project closed) before it finished. Ask again to run it.";
 
@@ -728,6 +736,7 @@ export const layer = Layer.effect(
           if (outcome.state === "failed") out[analyzer] = { state: "failed", error: outcome.error };
           else if (outcome.state === "cancelled") out[analyzer] = { state: "cancelled", note: cancelledNote };
           else if (analyzer === "video") out[analyzer] = videoOut(outcome.result as VideoResult, outcome.cached, frames, range as { start: number; end: number } | undefined, fps);
+          else if (analyzer === "transcript") out[analyzer] = transcriptSummary(outcome.result as TranscriptResult, outcome.cached, yield* Effect.promise(() => silencesOf(target)));
           else out[analyzer] = loudnessOut(outcome.result as LoudnessResult, outcome.cached, frames, range as { start: number; end: number } | undefined);
         }
         // Finished results keep their explanation even while another analyzer is still going.
@@ -739,8 +748,51 @@ export const layer = Layer.effect(
             "loudness: silences are where the sound stays below thresholdDb for at least minSeconds. start and end are project frames of the media (use them as in): start is the first silent frame, end the frame after the last, both inside the silence; startSeconds and endSeconds are media time. integratedLufs is the whole file's loudness (EBU R128; about −14 LUFS is usual for online video), loudnessRangeLu how much it varies, truePeakDbtp its loudest peak.",
           );
         if (finished.has("video")) notes.push(`video: ${VIDEO_NOTE}`);
+        if (finished.has("transcript")) notes.push("transcript: transcribed on this Mac (whisper.cpp). This is a summary; transcript_read gives the words with their frames, fillers and pauses.");
         if (notes.length) out.note = notes.join(" ");
         return textResult(out);
+      });
+
+    // transcript_read (D68): starts (or joins) the transcript job like media_analyze (the first one
+    // may download the speech model first), then the words in project frames of the media, paged.
+    const transcriptRead = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const project = v.session.project;
+        if (typeof args.media !== "string") return textResult("Pass media: a media id from project_read.", true);
+        const m = project.media.find((x) => x.id === args.media);
+        if (!m) return textResult(`There's no media "${args.media}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
+        const range = args.range as { start?: unknown; end?: unknown } | undefined;
+        if (range !== undefined && (typeof range !== "object" || range === null || !Number.isInteger(range.start) || !Number.isInteger(range.end) || (range.start as number) < 0 || (range.end as number) <= (range.start as number))) {
+          return textResult("range must be { start, end } in whole project frames of the media, start from 0 and before end.", true);
+        }
+        if (args.format !== undefined && args.format !== "text" && args.format !== "words") return textResult('format must be "text" (lines, the default) or "words" (each word with its frames).', true);
+        if (args.from !== undefined && (!Number.isInteger(args.from) || (args.from as number) < 0)) return textResult("from must be a word index (a whole number from 0), as next.from gave it.", true);
+        if (args.language !== undefined && !isLanguage(args.language)) return textResult('language must be a language code like "en" or "pl", or "auto" (detect it).', true);
+        if (m.kind === "image") return textResult(`${m.id} is a still image: there's no sound to transcribe.`, true);
+        const fps = project.canvas.fps;
+        const target = targetOf(v.dir, m, fps);
+        const language = args.language as string | undefined;
+        const [answer] = yield* requestAndWait([{ target, analyzer: "transcript", options: { language } }]);
+        const { outcome, jobId } = answer!;
+        if (!outcome) {
+          const p = pendingOut(jobId);
+          const what = "stage" in p && p.stage ? "is downloading the speech model (once, then it's kept)" : p.state === "queued" ? "is waiting its turn" : "is still transcribing";
+          return textResult({ media: m.id, transcript: p, note: `The transcript ${what} after ${Math.round(analyzeWaitMs() / 1000)} s. Call transcript_read again with the same arguments; it joins the running job.` });
+        }
+        if (outcome.state === "failed") return textResult({ media: m.id, transcript: { state: "failed", error: outcome.error } }, true);
+        if (outcome.state === "cancelled") return textResult({ media: m.id, transcript: { state: "cancelled", note: cancelledNote } }, true);
+        const result = outcome.result as TranscriptResult;
+        const silences = yield* Effect.promise(() => silencesOf(target));
+        const out = transcriptOut(result, {
+          cached: outcome.cached,
+          fps,
+          length: m.probe?.frames,
+          range: range as { start: number; end: number } | undefined,
+          ...(args.from !== undefined ? { from: args.from as number } : {}),
+          format: (args.format as "text" | "words" | undefined) ?? "text",
+          silences,
+        });
+        return textResult({ media: m.id, ...out, note: [("note" in out && typeof out.note === "string") ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : ""].filter(Boolean).join(" ") });
       });
 
     // media_rank (D67): the video analysis of several takes (run, joined or cached), ranked by
@@ -893,6 +945,8 @@ export const layer = Layer.effect(
             return yield* mediaAnalyze(v, args);
           case "media_rank":
             return yield* mediaRank(v, args);
+          case "transcript_read":
+            return yield* transcriptRead(v, args);
           case "timeline_edit": {
             const { baseRevision, ops, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

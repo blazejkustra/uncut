@@ -22,6 +22,7 @@ import * as Projects from "./projects.ts";
 import * as Recents from "./recents.ts";
 import * as Settings from "./settings.ts";
 import * as Setup from "./setup.ts";
+import * as Whisper from "./whisper.ts";
 import * as Ws from "./ws.ts";
 
 // stdout is a protocol channel: exactly one JSON line once the port is bound. The desktop
@@ -66,6 +67,8 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     Layer.provide(Agent.layer),
     // media_analyze and analysis.* (D66); analysis waits for exports.
     Layer.provide(Analysis.layer),
+    // whisper-cli and the speech models (D68), for transcripts and the Setup row.
+    Layer.provideMerge(Whisper.layer),
     Layer.provide(Media.layer),
     Layer.provide(Exporter.layer),
     Layer.provideMerge(MediaCore.layer),

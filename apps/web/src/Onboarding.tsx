@@ -1,12 +1,12 @@
 import type { SetupCheck } from "@uncut/contracts";
-import { ArrowRight, Check, CircleAlert, CircleDot, Clapperboard, Copy, Film, RefreshCw, Sparkle, Terminal, TriangleAlert } from "lucide-react";
+import { ArrowRight, AudioLines, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { actions, useApp } from "./store.ts";
 
 const STEPS = ["Agents", "Capture", "First video"] as const;
 
-const ICONS: Record<string, typeof Film> = { claude: Sparkle, codex: Terminal, argent: CircleDot, ffmpeg: Film };
+const ICONS: Record<string, typeof Film> = { claude: Sparkle, codex: Terminal, argent: CircleDot, ffmpeg: Film, whisper: Captions };
 
 const CHIP: Record<SetupCheck["status"], { label: string; className: string; icon: typeof Check }> = {
   ready: { label: "Ready", className: "ok", icon: Check },
@@ -88,10 +88,12 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
     body = (
       <>
         <h1>Record and export</h1>
-        <p className="wiz-lead">Argent records simulators, emulators, web and desktop apps. ffmpeg makes thumbnails, waveforms and the final video.</p>
+        <p className="wiz-lead">Argent records simulators, emulators, web and desktop apps. ffmpeg makes thumbnails, waveforms and the final video. whisper.cpp transcribes speech on this Mac.</p>
         <div className="wiz-list">
           {row("argent")}
           {row("ffmpeg")}
+          {row("whisper")}
+          {byId.whisper && <SpeechModelRow />}
           {failure}
           {ffmpegMissing && (
             <div className="wiz-note error" data-testid="ffmpeg-callout">
@@ -206,6 +208,78 @@ export function CheckRow({ check }: { check: SetupCheck }) {
               </button>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
+
+/** The speech model for transcripts (D68): which one, and its download (on demand, never at start). */
+export function SpeechModelRow() {
+  const { transcription, transcriptionError, connection } = useApp();
+  if (!transcription) return null;
+  const model = transcription.models.find((m) => m.id === transcription.selected);
+  if (!model) return null;
+  const choices = transcription.models.filter((m) => m.offered || m.id === model.id);
+  const download = transcription.downloads.find((d) => d.model === model.id);
+  const downloading = download?.phase === "downloading";
+  const total = download?.total ?? model.bytes;
+  const fraction = downloading && total ? Math.min(1, download.received / total) : 0;
+  const offline = connection !== "connected";
+  const sub = model.installed
+    ? `Downloaded · ${mb(model.bytes)} · ${model.multilingual ? "Polish, English and many more languages" : "English only"}`
+    : downloading
+      ? `Downloading… ${Math.round(fraction * 100)}% (${mb(download.received)} of ${mb(total)})`
+      : download?.phase === "failed"
+        ? (download.error ?? "The download failed.")
+        : `Not downloaded yet (${mb(model.bytes)}). It downloads the first time a transcript is needed, or now.`;
+  return (
+    <div className="wiz-check" data-testid="whisper-model" data-model={model.id} data-installed={model.installed} data-phase={download?.phase ?? ""}>
+      <div className="wiz-row">
+        <AudioLines />
+        <div className="grow">
+          <div className="wiz-name">
+            Speech model
+            <span className="wiz-optional">For transcripts</span>
+          </div>
+          <div className="wiz-sub" data-testid="whisper-model-status" title={transcription.dir}>
+            {sub}
+          </div>
+          {downloading && (
+            <div className="wiz-progress" data-testid="whisper-download-progress">
+              <span style={{ width: `${Math.round(fraction * 100)}%` }} />
+            </div>
+          )}
+        </div>
+        <select className="wiz-select" data-testid="whisper-model-select" value={model.id} disabled={downloading || offline} onChange={(e) => void actions.selectModel(e.target.value)} title="The model transcripts use: bigger is more accurate, smaller downloads faster">
+          {choices.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name} · {mb(m.bytes)}
+            </option>
+          ))}
+        </select>
+        {model.installed ? (
+          <span className="wiz-chip ok" data-testid="chip-whisper-model">
+            <Check />
+            Ready
+          </span>
+        ) : downloading ? (
+          <button className="btn ghost" data-testid="whisper-download-cancel" disabled={offline} onClick={() => void actions.cancelModelDownload(model.id)} title="Stop the download">
+            <X />
+            Cancel
+          </button>
+        ) : (
+          <button className="btn" data-testid="whisper-download" disabled={offline} onClick={() => void actions.downloadModel(model.id)}>
+            <Download />
+            Download
+          </button>
+        )}
+      </div>
+      {transcriptionError && (
+        <div className="wiz-fix" data-testid="whisper-model-error">
+          {transcriptionError}
         </div>
       )}
     </div>

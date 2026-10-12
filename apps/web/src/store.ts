@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -69,6 +69,10 @@ export interface AppStateShape {
   readonly analysisJobs: ReadonlyArray<AnalysisJob>;
   // Why the last Analyze click was refused, shown in the Library.
   readonly analysisError?: string;
+  // The speech models for transcripts and their downloads (D68), for the Setup row.
+  readonly transcription?: TranscriptionState;
+  // Why the last model action was refused.
+  readonly transcriptionError?: string;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -199,6 +203,7 @@ let unsubscribeJobs: (() => void) | undefined;
 let unsubscribeAgent: (() => void) | undefined;
 let unsubscribeExports: (() => void) | undefined;
 let unsubscribeAnalysis: (() => void) | undefined;
+let unsubscribeTranscription: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
 const reported = new Set<string>();
 let jobsSeen = false;
@@ -330,6 +335,8 @@ export async function start() {
       unsubscribeExports = conn.subscribe((c) => c["export.jobs"]({}), onExportJobs);
       unsubscribeAnalysis?.();
       unsubscribeAnalysis = conn.subscribe((c) => c["analysis.jobs"]({}), onAnalysisJobs);
+      unsubscribeTranscription?.();
+      unsubscribeTranscription = conn.subscribe((c) => c["transcription.state"]({}), (transcription) => set({ transcription }));
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
@@ -615,6 +622,19 @@ export const actions = {
   },
   cancelAnalysis: (jobId: string) => call((c) => c["analysis.cancel"]({ jobId })),
   dismissAnalysisError: () => set({ analysisError: undefined }),
+
+  /** The Setup row's speech model (D68): download, cancel, choose. */
+  async downloadModel(model?: string) {
+    set({ transcriptionError: undefined });
+    const result = await call((c) => c["transcription.download"](model ? { model } : {}));
+    if (!result.ok) set({ transcriptionError: plainError(result.error) });
+  },
+  cancelModelDownload: (model?: string) => call((c) => c["transcription.cancelDownload"](model ? { model } : {})),
+  async selectModel(model: string) {
+    set({ transcriptionError: undefined });
+    const result = await call((c) => c["transcription.selectModel"]({ model }));
+    if (!result.ok) set({ transcriptionError: plainError(result.error) });
+  },
 
   openSetup() {
     set({ setupOpen: true });

@@ -63,24 +63,18 @@
     },
     {
       "name": "media_analyze",
-      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. Transcript, beats and description come later.",
+      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. 'transcript': the speech transcribed on this Mac (a summary: language, word, filler and pause counts; transcript_read gives the words). Beats and description come later.",
       "inputSchema": {
         "type": "object",
         "required": ["media"],
         "additionalProperties": false,
         "properties": {
           "media": { "type": "string", "description": "A media id from project_read." },
-          "analyzers": {
-            "type": "array",
-            "minItems": 1,
-            "uniqueItems": true,
-            "items": { "enum": ["shots", "motion", "stability", "video", "loudness", "beats", "silence", "transcript", "description"] },
-            "description": "Which analyses (default: loudness with silences; name video to get it, it takes longer). silence = loudness; shots, motion, stability = video."
-          },
+          "analyzers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["shots", "motion", "stability", "video", "loudness", "beats", "silence", "transcript", "description"] }, "description": "Which analyses (default: loudness with silences; name video to get it, it takes longer). silence = loudness; shots, motion, stability = video." },
           "range": { "$ref": "#/$defs/range", "description": "Only list silences, cuts, frozen stretches and per-second scores overlapping these project frames of the media [start, end). The measurement is always of the whole file." }
         }
       },
-      "returns": "per analyzer (loudness, video): { state: done | running | queued | failed | cancelled, ... }; loudness when done: { cached, hasAudio, seconds, integratedLufs, loudnessRangeLu, truePeakDbtp, silence: { thresholdDb, minSeconds, count, ranges: [{ start, end, startSeconds, endSeconds }] } }; video when done: { cached, hasVideo, seconds, sourceFps, cleanScore, stability, sharpness, exposure, frozen, measures: { shakePercent, panPerSecond, blur, brightness }, best: { start, end, startSeconds, endSeconds, cleanScore, ... }, shots, cuts: { threshold, count, list: [{ frame, seconds, score }] }, frozen: [{ start, end, startSeconds, endSeconds }], drops: [{ frame, seconds, missingSeconds }], stretches: [{ start, end, quality: good | fair | poor, cleanScore }], perSecond: { firstSecond, cleanScore: [], stability: [], sharpness: [], exposure: [], panPerSecond: [] } } (frames are project frames of the media)"
+      "returns": "per analyzer (loudness, video, transcript): { state: done | running | queued | failed | cancelled, ... }; loudness when done: { cached, hasAudio, seconds, integratedLufs, loudnessRangeLu, truePeakDbtp, silence: { thresholdDb, minSeconds, count, ranges: [{ start, end, startSeconds, endSeconds }] } }; video when done: { cached, hasVideo, seconds, sourceFps, cleanScore, stability, sharpness, exposure, frozen, measures: { shakePercent, panPerSecond, blur, brightness }, best: { start, end, startSeconds, endSeconds, cleanScore, ... }, shots, cuts: { threshold, count, list: [{ frame, seconds, score }] }, frozen: [{ start, end, startSeconds, endSeconds }], drops: [{ frame, seconds, missingSeconds }], stretches: [{ start, end, quality: good | fair | poor, cleanScore }], perSecond: { firstSecond, cleanScore: [], stability: [], sharpness: [], exposure: [], panPerSecond: [] } } (frames are project frames of the media); transcript when done: { cached, hasAudio, seconds, language, model, words, segments, fillers: { hesitation, maybe }, pauses, pauseSeconds, opening }"
     },
     {
       "name": "media_rank",
@@ -99,14 +93,20 @@
     },
     {
       "name": "transcript_read",
-      "description": "Words with frame timings for a media file, optionally a range. Fillers and long pauses are marked.",
+      "description": "What's said in a media file, transcribed on this Mac with whisper.cpp (language detected; pass language to force one): text lines with word indices and frames, or each word with its frames; fillers and pauses (at least 0.3 s, aligned to the silences when the loudness analysis is cached) are marked and listed. Paged: pass from = next.from for more. The first call for a file runs the transcription (and the very first one downloads the speech model) and waits up to about a minute; if it answers running, call again with the same arguments. Cached afterwards by the file's content.",
       "inputSchema": {
         "type": "object",
         "required": ["media"],
         "additionalProperties": false,
-        "properties": { "media": { "type": "string" }, "range": { "$ref": "#/$defs/range" } }
+        "properties": {
+          "media": { "type": "string", "description": "A media id from project_read." },
+          "range": { "$ref": "#/$defs/range", "description": "Only words overlapping these project frames of the media [start, end)." },
+          "format": { "enum": ["text", "words"], "description": "text (default): one line per sentence, 'w<first word index> [start–end] words', {fillers} and (pause n s) inline. words: each word with start and end frames." },
+          "from": { "type": "integer", "minimum": 0, "description": "The first word index to list (next.from of the previous page)." },
+          "language": { "type": "string", "pattern": "^(auto|[a-z]{2,3})$", "description": "The spoken language as a code (en, pl, ...), or auto (default: detect). A cached transcript in another language is redone." }
+        }
       },
-      "returns": "words: [{ i, text, start, end, filler? }], pauses: [{ start, end }]"
+      "returns": "{ media, state, cached, language, model, seconds, words (total), segments, shown: { from, to }, text (format text) | list: [{ i, text, start, end, unsure?, filler? }] (format words), fillers: [{ i, n, text, start, end, kind: hesitation | maybe }], pauses: [{ start, end, startSeconds, endSeconds, after, edge?, silent? }], next?: { from } } or { transcript: { state: running | queued, progress, stage? } } (frames are project frames of the media)"
     },
     {
       "name": "media_import",
@@ -170,7 +170,10 @@
       "type": "object",
       "required": ["start", "end"],
       "additionalProperties": false,
-      "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 1 } }
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 }
+      }
     }
   }
 }

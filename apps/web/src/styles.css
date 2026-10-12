@@ -236,6 +236,9 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .wiz-check .wiz-row { border: 0; border-radius: 0; }
 .wiz-row.pending { color: var(--muted); }
 .wiz-optional { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--dim); }
+.wiz-progress { height: 3px; margin-top: 6px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.wiz-progress > span { display: block; height: 100%; background: var(--select); transition: width 0.2s; }
+.wiz-select { flex: none; max-width: 190px; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--fg); font-size: 12px; }
 .wiz-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; }
 .wiz-chip svg.lucide { width: 14px; height: 14px; }
 .wiz-chip.ok { color: var(--ok); }
