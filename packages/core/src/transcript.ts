@@ -245,6 +245,8 @@ function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, f
   const f = (s: number) => s * fps;
   const clamp = (v: number) => Math.min(length, Math.max(0, v));
   const spans: Array<Span> = [];
+  // Words a removed run took with it (slivers of words mostly cut): no pause handle next to them.
+  const absorbed = new Set<number>();
   for (const run of runsOf(removed)) {
     let a = run[0]!;
     let b = run.at(-1)!;
@@ -260,11 +262,18 @@ function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, f
       for (const i of run) tight.add(i);
       continue;
     }
+    for (let k = a; k <= b; k++) absorbed.add(k);
     spans.push({ from, to, words: [...run], pauses: 0, fillers: run.filter((i) => fillerWords.has(i)).length });
   }
+  // A pause keeps a handle next to a word that isn't removed and still has frames in the clip, even
+  // when its middle frame doesn't play there: a pause aligned to a silence can take the middle of a
+  // word whisper timed too late, and the next plan (Remove pauses again, after a cut) must not then
+  // cut the handle that was left (D72).
+  // A word a removed run took with it isn't near: a handle there would leave a sliver (D72 review).
+  const near = (i: number) => kept(i) || (!removed.has(i) && !absorbed.has(i) && sliver(i));
   for (const p of pauses) {
-    const before = p.after >= 0 && kept(p.after) ? H : 0;
-    const after = p.after + 1 < n && kept(p.after + 1) ? H : 0;
+    const before = p.after >= 0 && near(p.after) ? H : 0;
+    const after = p.after + 1 < n && near(p.after + 1) ? H : 0;
     const from = clamp(p.edge === "start" ? 0 : ceilF(f(p.start)) + before);
     const to = clamp(p.edge === "end" ? length : floorF(f(p.end)) - after);
     if (to - from >= 1) spans.push({ from, to, words: [], pauses: 1, fillers: 0 });
