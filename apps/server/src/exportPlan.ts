@@ -430,6 +430,20 @@ export interface CommandOptions {
   readonly output: string;
 }
 
+/**
+ * One frame of a video file as the preview and the export show it at `source` seconds (D38): the
+ * last source frame that starts at or before that moment. Seek up to a second early, shift the
+ * timestamps so the moment is 0, and let fps (round=up) pick, then keep the first frame. Shared by
+ * render_frames and contact sheets of media (D65); the export's own chain does the same per layer.
+ */
+export function sourceFramePick(source: number, fps: number): { readonly seekArgs: ReadonlyArray<string>; readonly filter: string } {
+  const pre = Math.min(1, Math.max(0, source));
+  return {
+    seekArgs: ["-ss", n(source - pre), "-t", n(pre + 0.5)],
+    filter: `setpts=PTS-${n(pre + 0.0001)}/TB,fps=${fps}:start_time=0:round=up,trim=end_frame=1,setpts=0`,
+  };
+}
+
 /** The ffmpeg graph and arguments for the whole export (the graph goes in a file: -/filter_complex). */
 export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
   const { width: W, height: H, fps } = plan;
