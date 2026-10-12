@@ -109,6 +109,39 @@
       "returns": "{ media, state, cached, language, model, seconds, words (total), segments, shown: { from, to }, text (format text) | list: [{ i, text, start, end, unsure?, filler? }] (format words), fillers: [{ i, n, text, start, end, kind: hesitation | maybe }], pauses: [{ start, end, startSeconds, endSeconds, after, edge?, silent? }], next?: { from } } or { transcript: { state: running | queued, progress, stage? } } (frames are project frames of the media)"
     },
     {
+      "name": "transcript_edit",
+      "description": "Cut by text: remove words (ranges of transcript_read's word ids), pauses (at least min seconds) and/or hesitation fillers (um, uh, yyy, eee; never the 'maybe' ones) of a media file from every main-track clip that uses it, as one edit on your turn (Undo turn reverts it). Respects each clip's in, length and speed; the main track closes up, items on other tracks don't move. Cuts snap to frames and keep a couple of frames next to the words that stay; adjacent cuts merge; words no longer in the edit are skipped with a note. dryRun returns the plan without changing anything. Gets the transcript like transcript_read (it may have to be made first: if it answers running, call again).",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "media": { "type": "string", "description": "A media id from project_read; may be left out when exactly one media with sound is on the main track." },
+          "remove": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Word ranges to cut, both ends included, e.g. [{\"from\": \"w12\", \"to\": \"w20\"}, {\"from\": \"w31\"}].",
+            "items": {
+              "type": "object",
+              "required": ["from"],
+              "additionalProperties": false,
+              "properties": {
+                "from": { "type": ["string", "integer"], "description": "The first word: \"w12\" (or 12)." },
+                "to": { "type": ["string", "integer"], "description": "The last word (default: from)." }
+              }
+            }
+          },
+          "pauses": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "min": { "type": "number", "minimum": 0.1, "maximum": 60, "description": "Pauses at least this many seconds long (default 0.5). A little quiet stays next to each word." } }
+          },
+          "fillers": { "type": "boolean", "description": "true: also cut the hesitation fillers (English and Polish)." },
+          "dryRun": { "type": "boolean", "description": "true: only say what would be cut and the new length." }
+        }
+      },
+      "returns": "{ media, applied, removed: [{ words?, text, pauses?, fillers?, mediaFrames: { start, end }, frames, seconds, clips }], framesRemoved, secondsSaved, revision, duration, seconds, durationBefore, notes? } (frames: the edit's, mediaFrames: project frames of the media)"
+    },
+    {
       "name": "media_import",
       "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed. At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
       "inputSchema": {

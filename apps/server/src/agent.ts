@@ -17,7 +17,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { describeOp, layout, manualEditsNote, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
+import { DEFAULT_PAUSE_MIN_S, describeOp, layout, manualEditsNote, planTextCut, TurnDependency, undoTurn, type Op, type Project, type Session, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -795,6 +795,132 @@ export const layer = Layer.effect(
         return textResult({ media: m.id, ...out, note: [("note" in out && typeof out.note === "string") ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : ""].filter(Boolean).join(" ") });
       });
 
+    // transcript_edit (D69): cut words (w12–w20 ranges), pauses and/or hesitation fillers of a media
+    // file out of the main track with core planTextCut (the Transcript panel's planner), as one
+    // agent edit on the turn (Undo turn reverts it). Gets the transcript like transcript_read (it
+    // may have to be made first); dryRun answers with the plan and applies nothing.
+    const transcriptEdit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const project = v.session.project;
+        const fps = project.canvas.fps;
+        let mediaId = args.media;
+        if (mediaId === undefined) {
+          const heard = [...new Set(project.tracks.filter((t) => t.role === "main").flatMap((t) => t.items.filter((i) => i.type === "clip" && i.media).map((i) => i.media!)))].filter((id) => {
+            const m = project.media.find((x) => x.id === id);
+            return m && m.kind !== "image" && m.probe?.hasAudio !== false;
+          });
+          if (heard.length !== 1) return textResult(heard.length ? `Several media with sound are on the main track (${heard.join(", ")}): pass media.` : "No clip with sound is on the main track. Pass media, or put the talk on the timeline first.", true);
+          mediaId = heard[0];
+        }
+        if (typeof mediaId !== "string") return textResult("media must be a media id from project_read.", true);
+        const m = project.media.find((x) => x.id === mediaId);
+        if (!m) return textResult(`There's no media "${mediaId}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
+        if (m.kind === "image") return textResult(`${m.id} is a still image: there's no speech to cut.`, true);
+        const word = (value: unknown) => (Number.isInteger(value) && (value as number) >= 0 ? (value as number) : typeof value === "string" && /^w?\d+$/.test(value) ? Number(value.replace(/^w/, "")) : undefined);
+        const request: { remove?: Array<{ from: number; to: number }>; pauses?: { min: number }; fillers?: boolean } = {};
+        if (args.remove !== undefined) {
+          if (!Array.isArray(args.remove) || !args.remove.length) return textResult('remove must be a list of word ranges like {"from":"w12","to":"w20"} (word ids from transcript_read).', true);
+          const ranges: Array<{ from: number; to: number }> = [];
+          for (const x of args.remove as ReadonlyArray<unknown>) {
+            const range = (x && typeof x === "object" ? x : {}) as { from?: unknown; to?: unknown };
+            const from = word(range.from);
+            const to = range.to === undefined ? from : word(range.to);
+            if (from === undefined || to === undefined) return textResult(`Each remove entry needs from (and optionally to) as word ids like "w12" from transcript_read; got ${JSON.stringify(x)}.`, true);
+            ranges.push({ from, to });
+          }
+          request.remove = ranges;
+        }
+        if (args.pauses !== undefined) {
+          const raw = args.pauses === true ? {} : args.pauses;
+          const min = raw && typeof raw === "object" ? ((raw as { min?: unknown }).min ?? DEFAULT_PAUSE_MIN_S) : undefined;
+          if (typeof min !== "number" || !Number.isFinite(min) || min < 0.1 || min > 60) return textResult(`pauses must be {"min": seconds} (0.1 to 60; ${DEFAULT_PAUSE_MIN_S} if left out).`, true);
+          request.pauses = { min };
+        }
+        if (args.fillers !== undefined && typeof args.fillers !== "boolean") return textResult("fillers must be true or false.", true);
+        if (args.fillers === true) request.fillers = true;
+        if (args.dryRun !== undefined && typeof args.dryRun !== "boolean") return textResult("dryRun must be true or false.", true);
+        if (!request.remove && !request.pauses && !request.fillers) return textResult("Say what to cut: remove (word ranges), pauses ({min} seconds) and/or fillers: true.", true);
+        const target = targetOf(v.dir, m, fps);
+        const [answer] = yield* requestAndWait([{ target, analyzer: "transcript" }]);
+        const { outcome, jobId } = answer!;
+        if (!outcome) {
+          const p = pendingOut(jobId);
+          return textResult({ media: m.id, transcript: p, note: `There's no transcript yet and it's still being made after ${Math.round(analyzeWaitMs() / 1000)} s. Call transcript_edit again with the same arguments (it joins the running job), or transcript_read to follow it.` });
+        }
+        if (outcome.state === "failed") return textResult({ media: m.id, transcript: { state: "failed", error: outcome.error } }, true);
+        if (outcome.state === "cancelled") return textResult({ media: m.id, transcript: { state: "cancelled", note: cancelledNote } }, true);
+        const result = outcome.result as TranscriptResult;
+        if (!result.hasAudio || !result.words?.length) return textResult(`${m.id} has ${result.hasAudio ? "no speech in its transcript" : "no sound"}, so there's nothing to cut by text.`, true);
+        const silences = yield* Effect.promise(() => silencesOf(target));
+        // The wait can be long: plan on the project as it is now, not as it was when the call came in.
+        const fresh = view();
+        if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
+        if (!fresh.session.project.media.some((x) => x.id === m.id)) return textResult(`${m.id} isn't in the project any more.`, true);
+        const plan = planTextCut(fresh.session.project, m.id, { words: result.words, language: result.language, seconds: result.seconds }, { ...request, silences } as TextCutRequest);
+        if ("problem" in plan) return textResult(plan.problem, true);
+        const secs = (frames: number) => Number((frames / fps).toFixed(2));
+        const removed = plan.cuts.map((c) => ({
+          ...(c.words ? { words: c.words[0] === c.words[1] ? `w${c.words[0]}` : `w${c.words[0]}–w${c.words[1]}` } : {}),
+          text: c.text || "(pause)",
+          ...(c.pauses ? { pauses: c.pauses } : {}),
+          ...(c.fillers ? { fillers: c.fillers } : {}),
+          mediaFrames: { start: c.from, end: c.to },
+          frames: c.frames,
+          seconds: secs(c.frames),
+          clips: c.clips,
+        }));
+        const base = { media: m.id, removed, framesRemoved: plan.framesRemoved, secondsSaved: secs(plan.framesRemoved), ...(plan.notes.length ? { notes: plan.notes } : {}) };
+        if (args.dryRun === true || !plan.ops.length) {
+          return textResult({
+            ...base,
+            applied: false,
+            revision: fresh.session.revision,
+            duration: plan.after,
+            seconds: secs(plan.after),
+            durationBefore: plan.before,
+            note: args.dryRun === true ? "A dry run: nothing changed. duration is what the edit would be; call again without dryRun to cut." : "Nothing to cut, so nothing changed.",
+          });
+        }
+        const outcome2 = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops: plan.ops, baseRevision: fresh.session.revision, summary: plan.summary }).pipe(
+          Effect.map((snapshot) => ({ ok: true as const, snapshot })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+        );
+        if (!outcome2.ok) {
+          const now = view();
+          const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+          return textResult(
+            {
+              refused: outcome2.error.message,
+              details: outcome2.error.details,
+              revision: now?.session.revision,
+              ...(userChanges ? { userChanges } : {}),
+              note: "Nothing was cut. transcript_edit plans on the newest project each time, so call it again with the same arguments (the user's changes stay).",
+            },
+            true,
+          );
+        }
+        const { snapshot } = outcome2;
+        const lines = plan.cuts.map((c) => `${c.text ? `Cut "${c.text.length > 50 ? `${c.text.slice(0, 49)}…` : c.text}"` : `Removed ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}`}${c.text && c.pauses ? ` and ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}` : ""} (${(c.frames / fps).toFixed(1)} s) from ${c.clips.join(", ")}`);
+        r.turn.edits.push({ revision: snapshot.revision, summary: plan.summary, lines });
+        persist(r.owner);
+        publish();
+        // As media_import: the new revision is read; user edits since the agent's read come back with it.
+        r.owner.seen.add(snapshot.revision);
+        const now = view();
+        const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+        const end = projectSummary(snapshot.project as Project, snapshot.revision).duration;
+        return textResult({
+          ...base,
+          applied: true,
+          revision: snapshot.revision,
+          duration: end,
+          seconds: secs(end),
+          durationBefore: plan.before,
+          note: "One edit on your turn (Undo turn reverts it). Word ids don't change (they belong to the media's transcript): transcript_read still lists every word of the file, including the ones now cut; project_read shows the clips that are left.",
+          ...(userChanges ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
+        });
+      });
+
     // media_rank (D67): the video analysis of several takes (run, joined or cached), ranked by
     // clean score (or one component), each with its best stretch inside one shot.
     const mediaRank = (v: ProjectView, args: Record<string, unknown>) =>
@@ -947,6 +1073,8 @@ export const layer = Layer.effect(
             return yield* mediaRank(v, args);
           case "transcript_read":
             return yield* transcriptRead(v, args);
+          case "transcript_edit":
+            return yield* transcriptEdit(r, v, args);
           case "timeline_edit": {
             const { baseRevision, ops, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

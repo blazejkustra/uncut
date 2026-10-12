@@ -35,6 +35,7 @@ export const RPC_METHODS = {
   analysisStart: "analysis.start",
   analysisJobs: "analysis.jobs",
   analysisCancel: "analysis.cancel",
+  analysisCached: "analysis.cached",
   transcriptionState: "transcription.state",
   transcriptionDownload: "transcription.download",
   transcriptionCancelDownload: "transcription.cancelDownload",
@@ -494,6 +495,14 @@ const AnalysisJobsRpc = Rpc.make(RPC_METHODS.analysisJobs, { payload: Empty, suc
 // Stops a queued or running analysis; nothing of it is left in .cache.
 const AnalysisCancelRpc = Rpc.make(RPC_METHODS.analysisCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
 
+// A cached analysis result for a media item of the open project, without starting a job (null:
+// not analysed yet). The Transcript panel reads the transcript (and the silences) this way (D69).
+const AnalysisCachedRpc = Rpc.make(RPC_METHODS.analysisCached, {
+  payload: Schema.Struct({ mediaId: Schema.String, analyzer: Analyzer }),
+  success: Schema.Struct({ result: Schema.NullOr(Schema.Unknown) }),
+  error: AnalysisError,
+});
+
 // The speech models and their downloads, now and on every change.
 const TranscriptionStateRpc = Rpc.make(RPC_METHODS.transcriptionState, { payload: Empty, success: TranscriptionState, stream: true });
 // Downloads a model (the chosen one when none is named); returns at once, progress on transcription.state.
@@ -511,6 +520,7 @@ export const WsRpcGroup = RpcGroup.make(
   AnalysisStartRpc,
   AnalysisJobsRpc,
   AnalysisCancelRpc,
+  AnalysisCachedRpc,
   ExportStartRpc,
   ExportJobsRpc,
   ExportCancelRpc,
