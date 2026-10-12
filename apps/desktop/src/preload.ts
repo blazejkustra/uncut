@@ -5,6 +5,7 @@ import {
   APP_STATE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
+  CHOOSE_SAVE_PATH_CHANNEL,
   COPY_TEXT_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
@@ -32,6 +33,7 @@ contextBridge.exposeInMainWorld("uncut", {
   setAppState: (state: AppState) => ipcRenderer.send(APP_STATE_CHANNEL, state),
   copyText: (text: string) => ipcRenderer.invoke(COPY_TEXT_CHANNEL, text),
   chooseMedia: () => ipcRenderer.invoke(CHOOSE_MEDIA_CHANNEL),
+  chooseSavePath: (defaultPath: string) => ipcRenderer.invoke(CHOOSE_SAVE_PATH_CHANNEL, defaultPath),
   // The disk path of a dropped File ("" for files that don't come from disk).
   pathForFile: (file: File) => {
     try {

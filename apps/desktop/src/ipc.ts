@@ -9,6 +9,7 @@ export const APP_STATE_CHANNEL = "uncut:app-state";
 export const MENU_COMMAND_CHANNEL = "uncut:menu-command";
 export const COPY_TEXT_CHANNEL = "uncut:copy-text";
 export const CHOOSE_MEDIA_CHANNEL = "uncut:choose-media";
+export const CHOOSE_SAVE_PATH_CHANNEL = "uncut:choose-save-path";
 
 export type FolderPurpose = "parent" | "project";
 
@@ -25,5 +26,5 @@ export interface AppState {
 }
 
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" }
+  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" }
   | { readonly type: "open-recent"; readonly dir: string };

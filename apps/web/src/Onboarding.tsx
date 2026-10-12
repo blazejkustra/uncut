@@ -169,7 +169,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
   );
 }
 
-function CheckRow({ check }: { check: SetupCheck }) {
+export function CheckRow({ check }: { check: SetupCheck }) {
   const Icon = ICONS[check.id] ?? Terminal;
   const chip = CHIP[check.status];
   const ChipIcon = chip.icon;

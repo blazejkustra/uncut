@@ -36,6 +36,9 @@ export function startServer(options: {
   mediaBin: string;
   modulesDir: string;
   dataDir: string;
+  // How the server starts the export rasteriser (this binary with --uncut-render): the entry to
+  // run, or undefined when packaged (the binary always runs its bundled main).
+  renderEntry: string | undefined;
   onExit: (reason: string) => void;
 }): ServerProcess {
   const token = randomBytes(24).toString("base64url");
@@ -46,6 +49,8 @@ export function startServer(options: {
     UNCUT_MEDIA_BIN: options.mediaBin,
     UNCUT_MODULES_DIR: options.modulesDir,
     UNCUT_DATA_DIR: options.dataDir,
+    UNCUT_RENDER_BIN: process.execPath,
+    UNCUT_RENDER_ENTRY: options.renderEntry ?? "",
   };
   delete env.UNCUT_TOKEN;
   const child = spawn(process.execPath, [options.serverEntry, "--bootstrap-fd", "3", "--exit-with-stdin"], {

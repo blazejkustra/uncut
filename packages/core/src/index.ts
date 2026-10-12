@@ -10,3 +10,5 @@ export type { Audible } from "./audio.ts";
 export type { Visual } from "./timeline.ts";
 export { canvasBackground, DEFAULT_THEME, esc, RENDER_CSS, resolveColor, resolveFont, safeMargin, SOLID, solidBackground, solidHtml, TEXT_STYLES, textHtml, textLook, themeColors } from "./render.ts";
 export type { Motion, RenderTarget, TextLook } from "./render.ts";
+export { outputSize } from "./export.ts";
+export type { ExportQuality } from "./export.ts";
