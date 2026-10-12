@@ -23,9 +23,6 @@ importers:
       electron:
         specifier: 44.6.0
         version: 44.6.0
-      lucide:
-        specifier: 0.460.0
-        version: 0.460.0
       puppeteer-core:
         specifier: 23.11.1
         version: 23.11.1
@@ -2472,10 +2469,6 @@ packages:
     dependencies:
       react: 19.2.6
     dev: false
-
-  /lucide@0.460.0:
-    resolution: {integrity: sha512-kEqx3yHU+q4S0k7RH183QFaDy6xepEcN3yVjiBhxM1qX/tSMrmOSuUQJCobiIYzB1q9m8RmAN0efPiXZq79JSQ==}
-    dev: true
 
   /matcher@3.0.0:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}

@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, type AgentState, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -51,6 +51,10 @@ export interface AppStateShape {
   readonly importReport?: { readonly failed: MediaImportResult["failed"]; readonly skipped: MediaImportResult["skipped"] };
   // Media ids that have a poster on the server; others show an icon (no request, no 404).
   readonly thumbIds: ReadonlySet<string>;
+  // The open project's agent (turns, the running one) from agent.subscribe.
+  readonly agent: AgentState | null;
+  // Why the last agent action failed (not installed, busy…), shown in the Agent tab.
+  readonly agentError?: string;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -67,6 +71,7 @@ let state: AppStateShape = {
   setupChecking: false,
   jobs: [],
   thumbIds: new Set(),
+  agent: null,
 };
 const listeners = new Set<() => void>();
 
@@ -132,6 +137,7 @@ export function plainError(error: CallError): string {
   if (isTransportError(error)) return "Not connected to the server. Try again when it's back.";
   const first = error.details?.[0];
   if (error._tag === "EditRefused" && first && /invalid|malformed/.test(error.message)) return `That change isn't allowed: ${first.message}.`;
+  if (error._tag === "EditRefused" && first?.code === "depends") return error.message;
   if (error.reason === "missing") return "The project folder is gone, or has no project.json.";
   if (error.reason === "invalid" && first?.code === "json") return "project.json can't be read: it isn't valid JSON.";
   if (error.reason === "invalid") return `project.json can't be read: ${first ? `${first.path === "/" ? "" : `${first.path} `}${first.message}` : error.message}.`;
@@ -164,6 +170,7 @@ export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id,
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
 let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
+let unsubscribeAgent: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
 const reported = new Set<string>();
 let jobsSeen = false;
@@ -224,6 +231,11 @@ export async function start() {
       set({ connection: "connected", notice: state.notice?.transport ? undefined : state.notice });
       unsubscribeJobs?.();
       unsubscribeJobs = conn.subscribe((c) => c["media.jobs"]({}), onJobs);
+      unsubscribeAgent?.();
+      unsubscribeAgent = conn.subscribe(
+        (c) => c["agent.subscribe"]({}),
+        (agent) => set({ agent }),
+      );
       unsubscribe?.();
       unsubscribe = conn.subscribe(
         (c) => c["project.subscribe"]({}),
@@ -373,6 +385,30 @@ export const actions = {
   dismissImportReport: () => set({ importReport: undefined }),
 
   dismissNotice: () => set({ notice: undefined }),
+
+  /** Start an agent turn; returns false (and says why in the Agent tab) when it didn't start. */
+  async agentSend(prompt: string): Promise<boolean> {
+    if (!online()) return false;
+    set({ agentError: undefined });
+    // The agent works on what's on screen: stop playback so the frame it's told about stays put.
+    playback.pause();
+    const { frame, selected } = getPlayback();
+    const result = await call((c) => c["agent.send"]({ prompt, frame: Math.floor(frame), ...(selected ? { selected } : {}) }));
+    if (result.ok) return true;
+    set({ agentError: plainError(result.error) });
+    // "Not installed" may be news to the setup rows too.
+    if (result.error.reason === "not-installed") void actions.checkSetup();
+    return false;
+  },
+  agentCancel: () => call((c) => c["agent.cancel"]({})),
+  async agentUndoTurn(turnId: string) {
+    set({ agentError: undefined });
+    const result = (await call((c) => c["agent.undoTurn"]({ turnId }))) as Result<ProjectSnapshot>;
+    if (result.ok) applyFromCall(result.value);
+    else if (result.error.reason === "changed-on-disk") set({ changedOnDisk: true, reloadProblem: undefined });
+    else set({ agentError: plainError(result.error) });
+  },
+  dismissAgentError: () => set({ agentError: undefined }),
 
   openSetup() {
     set({ setupOpen: true });

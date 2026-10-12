@@ -37,10 +37,17 @@ export function describeOp(op: Op, project: Project): string {
       return op.transition ? `Set ${op.transition.module} into ${it(op.item)}` : `Removed the transition into ${it(op.item)}`;
     case "update_track":
       return `Changed ${Object.keys(op.set).join(", ")} on track ${op.track}`;
+    case "add_track":
+      return `Added ${op.track.kind ?? ""} track ${op.track.name ? `"${op.track.name}" (${op.track.id})` : op.track.id}`.replace("  ", " ");
+    case "delete_track":
+      return `Deleted track ${op.track}`;
+    case "add_media":
+      return `Added media ${op.media.name} (${op.media.id})`;
     case "update_project":
       return `Changed project ${Object.keys(op.set).join(", ")}`;
     default:
-      return `${op.op.replace(/_/g, " ")}`;
+      // Every op is handled above; this is for ops from a newer format.
+      return String((op as { op: unknown }).op).replace(/_/g, " ");
   }
 }
 

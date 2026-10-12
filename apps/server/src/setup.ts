@@ -98,7 +98,8 @@ export const layer = Layer.effect(
 
     const claude = isolated({ id: "claude", name: "Claude Code", optional: false }, async () => {
       const base = { id: "claude", name: "Claude Code", optional: false } as const;
-      const bin = await which("claude", path());
+      // The same binary the agent runs (UNCUT_CLAUDE points at another install, or a test stand-in).
+      const bin = process.env.UNCUT_CLAUDE || (await which("claude", path()));
       if (!bin) {
         return {
           ...base,

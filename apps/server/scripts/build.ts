@@ -22,3 +22,15 @@ await build({
   define: { __UNCUT_SERVER_VERSION__: JSON.stringify(version) },
   logLevel: "warning",
 });
+
+// The agent's MCP server (D40): a separate small entry, shipped next to server.mjs, which the
+// server finds as ./mcp.mjs and claude starts per turn.
+await build({
+  entryPoints: [new URL("src/mcp.ts", root).pathname],
+  outfile: new URL("dist/mcp.mjs", root).pathname,
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  logLevel: "warning",
+});
