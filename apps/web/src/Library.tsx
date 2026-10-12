@@ -2,7 +2,7 @@
 // the Text tab's presets and the Elements tab's backgrounds. Which one shows is the rail's choice.
 import type { ImportJob } from "@uncut/contracts";
 import { solidBackground } from "@uncut/core/render";
-import { AudioLines, Film, Image as ImageIcon, Layers, Plus, RefreshCw, Type, Upload } from "lucide-react";
+import { AudioLines, Film, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload } from "lucide-react";
 import React, { useState, type ReactNode } from "react";
 
 import { bridge } from "./bridge.ts";
@@ -12,10 +12,66 @@ import { BACKGROUNDS } from "./text.ts";
 import { actions, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
 import { MEDIA_DRAG_TYPE } from "./Timeline.tsx";
 
-export type LibraryTab = "media" | "text" | "elements";
+export type LibraryTab = "media" | "text" | "elements" | "audio";
 
 export function Library({ project, tab }: { project: Project; tab: LibraryTab }) {
-  return tab === "text" ? <TextLibrary /> : tab === "elements" ? <ElementsLibrary project={project} /> : <MediaLibrary project={project} />;
+  return tab === "text" ? <TextLibrary /> : tab === "elements" ? <ElementsLibrary project={project} /> : tab === "audio" ? <AudioLibrary project={project} /> : <MediaLibrary project={project} />;
+}
+
+/**
+ * The Audio tab (D33, D54): the project's sound files (music, voiceover, effects) with + to put one
+ * on the first audio track, at the playhead if it's free there, else after the last sound (a track
+ * is made if there is none). The free CC0 library comes later.
+ */
+function AudioLibrary({ project }: { project: Project }) {
+  const app = useApp();
+  const online = app.connection === "connected";
+  const importing = activeJobs(app).length > 0;
+  const fps = project.canvas.fps;
+  const sounds = project.media.filter((m) => m.kind === "audio");
+  return (
+    <aside className="library" data-testid="audio-library">
+      <div className="lib-head">
+        Audio
+        <button className="icon-btn" data-testid="audio-import" disabled={!online} title="Import music or sound" onClick={() => void actions.importMedia()}>
+          {importing ? <RefreshCw className="spin" /> : <Plus />}
+        </button>
+      </div>
+      <div className="lib-section">
+        <div className="lib-label">In this project</div>
+        {sounds.length === 0 ? (
+          <div className="muted small" data-testid="audio-empty">
+            No music or sound yet. Import an audio file (or drop it on the Media tab); it shows up here.
+          </div>
+        ) : (
+          <div data-testid="audio-list">
+            {sounds.map((m) => (
+              <div key={m.id} className="audio-row" data-testid="audio-row" data-id={m.id} title={m.path}>
+                <AudioLines />
+                <span className="audio-name">{m.name}</span>
+                {m.probe?.frames !== undefined && <span className="audio-dur">{timecode(m.probe.frames, fps).replace(/^00:/, "")}</span>}
+                <button
+                  className="icon-btn"
+                  data-testid="audio-add"
+                  disabled={!online}
+                  title="Add to the audio track at the playhead (or after the last sound)"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    void actions.addMedia(m.id);
+                  }}
+                >
+                  <Plus />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="lib-soon" data-testid="audio-library-soon">
+        <Music /> Free music and sound effects (CC0, searchable by mood and tempo) are coming in a later version.
+      </div>
+    </aside>
+  );
 }
 
 /**

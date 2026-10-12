@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, type AgentState, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -171,6 +171,8 @@ const serverUrl = (route: string, id: string, path?: string) => {
 export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id, path);
 /** The original file of a media item, streamed by the server with byte ranges (never file://). */
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
+/** The peaks of a media item's sound, made and cached by the server (D54). */
+export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PATH, id, path);
 let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
 let unsubscribeAgent: (() => void) | undefined;
@@ -413,7 +415,7 @@ export const actions = {
   undo: () => (state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : undefined),
   redo: () => (state.snapshot?.canRedo ? change((c) => c["project.redo"]({})) : undefined),
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
-  addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId)),
+  addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
   /** Text tab preset → a text item at the playhead (see planAddText). */
   addText: (preset: TextPreset) => addPlanned((project) => planAddText(project, preset, getPlayback().frame)),
   /** A planned move or trim from the timeline (see edit.ts). */

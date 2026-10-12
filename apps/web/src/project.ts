@@ -60,10 +60,11 @@ const IMAGE_SECONDS = 5;
 
 /**
  * "Add to timeline" for a library tile. Video and images are appended to the end of the magnetic
- * main track (D17: no gaps, nothing shifts); audio goes after the last item of the first audio
- * track (one is created if there is none).
+ * main track (D17: no gaps, nothing shifts); audio goes on the first unlocked audio track (one is
+ * created if there is none) at the playhead if the track is free there for the sound's whole
+ * length, else after its last item (D54).
  */
-export function planAddMedia(project: ProjectModel, mediaId: string): Planned {
+export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0): Planned {
   const media = project.media.find((m) => m.id === mediaId);
   if (!media) return { problem: "That media isn't in the project any more." };
   const fps = project.canvas.fps;
@@ -80,7 +81,9 @@ export function planAddMedia(project: ProjectModel, mediaId: string): Planned {
       ops.push({ op: "add_track", track: { id, kind: "audio", name: "Audio" } });
       track = { id, kind: "audio", name: "Audio", items: [] };
     }
-    const start = Math.max(0, ...track.items.map((i) => (starts.get(i.id) ?? 0) + i.duration));
+    const at = Math.max(0, Math.floor(frame));
+    const free = track.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= at || at + frames! <= (starts.get(i.id) ?? 0));
+    const start = free ? at : Math.max(0, ...track.items.map((i) => (starts.get(i.id) ?? 0) + i.duration));
     const itemId = uniqueId(project, "audio", taken);
     ops.push({ op: "insert_item", track: track.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration: frames, start } });
     return { ops, summary: `Add ${media.name} to the timeline`, itemId, start };

@@ -74,7 +74,7 @@ const realOr = (path: string) => realpath(path).catch(() => path);
  * A poster belongs to the file it was made from: its name carries a short hash of the path,
  * size and modification time, so a reused id or a changed file never shows a stale picture.
  */
-const posterKey = async (path: string) => {
+export const posterKey = async (path: string) => {
   try {
     const s = await stat(path);
     return createHash("sha1").update(`${path}\0${s.size}\0${s.mtimeMs}`).digest("hex").slice(0, 12);
@@ -173,7 +173,7 @@ export const layer = Layer.effect(
         // Older posters for this id (another file, or this file before it changed) go.
         yield* Effect.promise(async () => {
           const files = await readdir(folder).catch(() => [] as Array<string>);
-          await Promise.all(files.filter((f) => f.startsWith(`${entry.id}--`) && (!ok || f !== posterName(entry.id, key))).map((f) => rm(join(folder, f), { force: true })));
+          await Promise.all(files.filter((f) => f.startsWith(`${entry.id}--`) && /^[0-9a-f]{12}\.jpg$/.test(f.slice(entry.id.length + 2)) && (!ok || f !== posterName(entry.id, key))).map((f) => rm(join(folder, f), { force: true })));
         });
         return ok;
       });

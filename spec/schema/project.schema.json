@@ -194,7 +194,13 @@
             "media": { "$ref": "#/$defs/id" },
             "in": { "$ref": "#/$defs/frame" },
             "speed": { "type": "number", "exclusiveMinimum": 0 },
-            "gainDb": { "type": "number" }
+            "gainDb": { "type": "number", "minimum": -60, "maximum": 12, "description": "Volume of the clip's own sound in dB; -60 is silence." },
+            "fadeIn": { "$ref": "#/$defs/frame" },
+            "fadeOut": { "$ref": "#/$defs/frame" },
+            "gainKeys": {
+              "type": "array",
+              "items": { "type": "object", "required": ["frame", "db"], "additionalProperties": false, "properties": { "frame": { "$ref": "#/$defs/frame" }, "db": { "type": "number" } } }
+            }
           },
           "required": ["media"]
         },
@@ -259,7 +265,7 @@
             "type": { "const": "audio" },
             "media": { "$ref": "#/$defs/id" },
             "in": { "$ref": "#/$defs/frame" },
-            "gainDb": { "type": "number" },
+            "gainDb": { "type": "number", "minimum": -60, "maximum": 12, "description": "Volume in dB; -60 is silence." },
             "fadeIn": { "$ref": "#/$defs/frame" },
             "fadeOut": { "$ref": "#/$defs/frame" },
             "loop": { "type": "boolean" },

@@ -1,5 +1,6 @@
 // Reference engine for edit ops: applies them atomically, records who made
 // them, and refuses an agent edit that would overwrite newer user edits (D6).
+import { keyDbAt } from "./audio.ts";
 import type { Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
 type Draft = Mutable<Project>;
@@ -120,7 +121,12 @@ function applyOp(project: Draft, op: Op) {
         if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
         // Keys stay on their moment: they shift with the new start, and ones now before it go.
         if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
-        if (item.gainKeys) item.gainKeys = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+        if (item.gainKeys?.length) {
+          // The envelope keeps its value at the new start: a key goes there when keys were cut off.
+          const at = keyDbAt(item.gainKeys, op.frames);
+          const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+          item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
+        }
       }
       return;
     }
@@ -153,9 +159,12 @@ function applyOp(project: Draft, op: Op) {
         second.keys = item.keys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
         item.keys = item.keys.filter((k) => k.frame <= op.at);
       }
-      if (item.gainKeys) {
-        second.gainKeys = item.gainKeys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
-        item.gainKeys = item.gainKeys.filter((k) => k.frame <= op.at);
+      if (item.gainKeys?.length) {
+        // Both halves get a key at the cut with the envelope's value there, so the volume doesn't step.
+        const cut = { frame: op.at, db: keyDbAt(item.gainKeys, op.at) };
+        const keys = (item.gainKeys.some((k) => k.frame === op.at) ? item.gainKeys : [...item.gainKeys, cut]).sort((a, b) => a.frame - b.frame);
+        second.gainKeys = keys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
+        item.gainKeys = keys.filter((k) => k.frame <= op.at);
       }
       for (const half of [item, second]) {
         if (half.keys?.length === 0) delete half.keys;
