@@ -13,6 +13,8 @@ import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtemp
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { decodeEnvelope } from "../packages/core/src/index.ts";
+
 import {
   AnalysisQueue,
   analysisDir,
@@ -139,6 +141,15 @@ test("a tone with silent gaps: silences within ±50 ms; a known-level tone's lou
     assert.ok(Math.abs(ranges[i]!.start - start!) <= 0.05 && Math.abs(ranges[i]!.end - end!) <= 0.05, `silence ${i}: ${JSON.stringify(ranges[i])} vs ${start}–${end}`);
   }
   assert.deepEqual([result.silence!.thresholdDb, result.silence!.minSeconds], [-40, 0.3], "the defaults are in the result");
+  // The speech envelope from the same pass (D74): 10 ms RMS windows, silent in the gaps, loud elsewhere.
+  const env = decodeEnvelope(result.envelope)!;
+  assert.equal(env.rate, 100);
+  assert.ok(Math.abs(env.db.length - 510) <= 2, `${env.db.length} windows`);
+  for (const [start, end] of GAPS) {
+    const mid = Math.round(((start! + end!) / 2) * 100);
+    assert.ok(env.db[mid]! <= -90, `gap ${start}–${end}: ${env.db[mid]} dB`);
+  }
+  assert.ok(env.db[Math.round(GAPS[0]![0]! * 100) - 10]! > -40, "sound before the first gap");
 
   const level = (await doneResult(q, target(join(root, "level.wav"), "m-level"))).result;
   const loudnorm = spawnSync("ffmpeg", ["-hide_banner", "-nostdin", "-i", join(root, "level.wav"), "-af", "loudnorm=print_format=json", "-f", "null", "-"], { encoding: "utf8" });
@@ -148,6 +159,9 @@ test("a tone with silent gaps: silences within ±50 ms; a known-level tone's lou
   assert.ok(Math.abs(level.integratedLufs! - -15.04) <= 1, `${level.integratedLufs} LUFS`);
   assert.ok(Math.abs(level.truePeakDbtp! - -12.04) <= 0.5, `true peak ${level.truePeakDbtp}`);
   assert.equal(level.silence!.ranges.length, 0);
+  // A −12 dBFS sine's RMS is −15 dBFS, in every window (0.5 dB steps).
+  const levels = Array.from(decodeEnvelope(level.envelope)!.db).slice(5, -5);
+  assert.ok(levels.every((v) => Math.abs(v - -15.05) <= 0.6), `envelope ${Math.min(...levels)}–${Math.max(...levels)} dB`);
 });
 
 test("cache: a re-ask spawns no ffmpeg; the same content under another name hits; a modified file misses", { skip, timeout: 60000 }, async () => {
@@ -159,7 +173,7 @@ test("cache: a re-ask spawns no ffmpeg; the same content under another name hits
   const first = await doneResult(q, target(file, "m-cache"));
   assert.equal(first.cached, false);
   assert.equal(calls.length, 1, "one ffmpeg run");
-  assert.ok(calls[0]!.includes("0:a:0"), "the first audio stream, mapped explicitly");
+  assert.ok(calls[0]!.some((a) => a.startsWith("[0:a:0]")), "the first audio stream, mapped explicitly");
   const fp = await fingerprint(file);
   assert.ok(existsSync(cacheFile(project, fp, "loudness")), "cached under the fingerprint");
   assert.deepEqual(filesUnder(join(analysisDir(project), fp)), ["loudness.json"], "no temp files left");

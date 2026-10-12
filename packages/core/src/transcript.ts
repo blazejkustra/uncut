@@ -74,40 +74,349 @@ export interface Pause {
   readonly silent?: boolean;
 }
 
+/** A transcript segment: its span (seconds) and its words [first, end) (whisper's segments, D68). */
+export interface SpeechSegment {
+  readonly start: number;
+  readonly end: number;
+  readonly words: readonly [number, number];
+}
+
+type Span2 = { readonly start: number; readonly end: number };
+
+/** A segment's edge counts only when at least this far (seconds) from the neighbouring word (speechWords). */
+const SEGMENT_EDGE_GAP_S = 0.1;
+
+/** The silence overlapping [start, end] the most, if one does. */
+function silenceIn(silences: ReadonlyArray<Span2>, start: number, end: number): Span2 | undefined {
+  let best: Span2 | undefined;
+  let overlap = 0;
+  for (const s of silences) {
+    const o = Math.min(s.end, end) - Math.max(s.start, start);
+    if (o > overlap) {
+      overlap = o;
+      best = s;
+    }
+  }
+  return best;
+}
+
+// ---- the speech envelope (D74) ----
+
 /**
- * Gaps of at least `min` seconds between words, and before the first and after the last. With
- * `silences` (loudness analyzer, seconds), a pause overlapping one takes the silence's edges
- * (accurate, where whisper's word edges are ±0.1 s), kept between the neighbouring words' starts and
- * ends, and says silent; one overlapping none says silent: false (breath, noise or music there).
+ * The loudness analyzer's speech envelope as cached: the RMS level of every 1/rate s of the sound
+ * (mono), in dBFS, quantised to `step` dB above `db0` (0 = at or below db0) as one byte per window,
+ * base64. 10 ms windows at 0.5 dB: 100 bytes a second, ~480 kB of JSON for an hour.
  */
-export function pausesOf(words: ReadonlyArray<{ readonly start: number; readonly end: number }>, seconds: number | undefined, silences?: ReadonlyArray<{ readonly start: number; readonly end: number }>, min = PAUSE_MIN_S): Array<Pause> {
+export interface StoredEnvelope {
+  readonly rate: number;
+  readonly db0: number;
+  readonly step: number;
+  readonly data: string;
+}
+/** A decoded envelope: dBFS per window of 1/rate s. */
+export interface SpeechEnvelope {
+  readonly rate: number;
+  readonly db: ArrayLike<number>;
+}
+export const ENVELOPE_RATE = 100;
+const ENVELOPE_DB0 = -100;
+const ENVELOPE_STEP = 0.5;
+
+/** dBFS levels (one per window) as a StoredEnvelope. */
+export function encodeEnvelope(db: ArrayLike<number>, rate = ENVELOPE_RATE): StoredEnvelope {
+  let bin = "";
+  for (let i = 0; i < db.length; i++) {
+    const v = db[i]!;
+    const q = Number.isFinite(v) ? Math.round((v - ENVELOPE_DB0) / ENVELOPE_STEP) : 0;
+    bin += String.fromCharCode(Math.max(0, Math.min(255, q)));
+  }
+  return { rate, db0: ENVELOPE_DB0, step: ENVELOPE_STEP, data: btoa(bin) };
+}
+
+/** A cached envelope decoded (undefined when it isn't one). */
+export function decodeEnvelope(value: unknown): SpeechEnvelope | undefined {
+  const e = value as Partial<StoredEnvelope> | undefined;
+  if (!e || typeof e !== "object" || typeof e.data !== "string" || !(typeof e.rate === "number" && e.rate > 0) || typeof e.db0 !== "number" || typeof e.step !== "number") return undefined;
+  let bin: string;
+  try {
+    bin = atob(e.data);
+  } catch {
+    return undefined;
+  }
+  const db = new Float32Array(bin.length);
+  for (let i = 0; i < bin.length; i++) db[i] = e.db0 + bin.charCodeAt(i) * e.step;
+  return { rate: e.rate, db };
+}
+
+/** Speech is at most this far (dB) below the speech level (90th percentile): breaths and room tone are further down... */
+const SPEECH_RANGE_DB = 25;
+/** ...and at least this far above the noise floor (10th percentile: a music or noise bed). */
+const ABOVE_FLOOR_DB = 10;
+/** Speech ends after this much quiet (s): a stop consonant's closure (≤ ~0.1 s) doesn't end a word. */
+const QUIET_HOLD_S = 0.1;
+/** The sound moves a word's edge at most this far (s) past where the transcript and silences put it (whisper's sentence ends run up to ~0.3 s early). */
+const MAX_EXTEND_S = 0.35;
+/** A word whisper timed shorter than this (s) is a timestamp, not a span (fillers: "Um," at 4.02–4.02). */
+const SHORT_WORD_S = 0.05;
+/** Without an envelope, such a word is given this long (s), centred, between its neighbours; with one, its sound is looked for this far from the timestamp... */
+const SHORT_WORD_SPAN_S = 0.2;
+/** ...and may last this long on each side of it (a drawn-out "ummm"). */
+const SHORT_WORD_MAX_S = 1;
+
+const thresholds = new WeakMap<SpeechEnvelope, number>();
+/** The level (dBFS) speech is above: the speech level less SPEECH_RANGE_DB, or the floor plus ABOVE_FLOOR_DB. */
+function speechThreshold(env: SpeechEnvelope): number {
+  const known = thresholds.get(env);
+  if (known !== undefined) return known;
+  const sorted = Float32Array.from(env.db as ArrayLike<number>).sort();
+  const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? -Infinity;
+  const thr = Math.max(at(0.9) - SPEECH_RANGE_DB, at(0.1) + ABOVE_FLOOR_DB);
+  thresholds.set(env, thr);
+  return thr;
+}
+
+/**
+ * Whether an envelope tells speech from quiet: some windows above the speech threshold and some
+ * below (a steady tone or music bed with no gaps has neither, so it says nothing about words).
+ */
+export function envelopeInformative(env: SpeechEnvelope | undefined): env is SpeechEnvelope {
+  if (!env?.db.length) return false;
+  const thr = speechThreshold(env);
+  let loud = false;
+  let quiet = false;
+  for (let k = 0; k < env.db.length && !(loud && quiet); k++) env.db[k]! > thr ? (loud = true) : (quiet = true);
+  return loud && quiet;
+}
+
+type SpeechOptions = { readonly segments?: ReadonlyArray<SpeechSegment> | undefined; readonly silences?: ReadonlyArray<Span2> | undefined; readonly seconds?: number | undefined; readonly envelope?: SpeechEnvelope | undefined };
+
+/** speechWords' words, and which of their edges the sound measured (a silence, or the envelope going quiet). */
+export interface HeardWords<W> {
+  readonly words: Array<W>;
+  /** Per word: its end / start is where the sound stops / starts (a cut there needs no margin into a removed neighbour). */
+  readonly endMeasured: ReadonlyArray<boolean>;
+  readonly startMeasured: ReadonlyArray<boolean>;
+}
+
+/**
+ * Where each word is heard, as best the transcript and the sound tell (D74): whisper's word edges
+ * are early at the end of a sentence (its last word's end is 0.15–0.65 s before the sound stops,
+ * measured on real large-v3-turbo output), while its segments' edges (timestamp tokens) are close.
+ * - A word whisper put wholly inside a silence (no sound there) moves to the silence's nearer edge
+ *   (and the words after it start no earlier than it).
+ * - A segment's last word ends no earlier than the segment and its first word starts no later than
+ *   it (unless that edge is within SEGMENT_EDGE_GAP_S of the next / previous word: punctuation timed
+ *   at the next word, D68).
+ * - With the loudness analyzer's silences, a word before a silence lasts until it starts and a word
+ *   after one starts when it ends.
+ * - With its speech envelope (when it tells speech from quiet): a word's end follows the sound while
+ *   it's above the speech threshold until QUIET_HOLD_S of quiet, its start back the same way, at most
+ *   MAX_EXTEND_S, never into a silence or past a neighbour. When two words' sound runs together the
+ *   gap between them is split at its quietest window. A word whisper gave no length (a timestamp,
+ *   often a filler) takes the sound within SHORT_WORD_SPAN_S of it (up to SHORT_WORD_MAX_S long on
+ *   each side); without the envelope it gets SHORT_WORD_SPAN_S around it.
+ * Words with sound only get longer here; idempotent (running it on its own output changes nothing).
+ */
+export function speechEdges<W extends { readonly start: number; readonly end: number }>(words: ReadonlyArray<W>, { segments, silences, seconds, envelope }: SpeechOptions = {}): HeardWords<W> {
+  // Copies with writable edges (W's own fields kept).
+  const out = words.map((w) => ({ ...w })) as Array<W & { start: number; end: number }>;
+  const n = out.length;
+  const endMeasured = Array<boolean>(n).fill(false);
+  const startMeasured = Array<boolean>(n).fill(false);
+  if (!n) return { words: out, endMeasured, startMeasured };
+  const limit = seconds ?? Infinity;
+  // 1. Words the silences placed (no sound where whisper put them): judged on whisper's own span.
+  const moved = new Set<number>();
+  if (silences?.length) {
+    out.forEach((w, i) => {
+      const s = silences.find((x) => x.start <= w.start && w.end <= x.end && x.end - x.start > 0);
+      if (!s || (w.start === w.end && (w.start === s.start || w.start === s.end))) return;
+      const at = (w.start + w.end) / 2 - s.start < s.end - (w.start + w.end) / 2 ? s.start : s.end;
+      w.start = at;
+      w.end = at;
+      moved.add(i);
+    });
+  }
+  // In order: no word starts before the one before it ends (a moved word can land before its
+  // predecessor's end, and push the ones after it).
+  for (let i = 1; i < n; i++) {
+    const w = out[i]!;
+    if (!moved.has(i) && !moved.has(i - 1)) continue;
+    if (w.start < out[i - 1]!.end) {
+      w.start = out[i - 1]!.end;
+      w.end = Math.max(w.end, w.start);
+      moved.add(i);
+    }
+  }
+  // 2. Segment edges.
+  const lastAt = new Map<number, number>();
+  const firstAt = new Map<number, number>();
+  for (const s of segments ?? []) {
+    const [a, b] = s.words;
+    if (!(b > a) || a < 0 || b > n) continue;
+    if (Number.isFinite(s.end)) lastAt.set(b - 1, Math.max(lastAt.get(b - 1) ?? -Infinity, s.end));
+    if (Number.isFinite(s.start)) firstAt.set(a, Math.min(firstAt.get(a) ?? Infinity, s.start));
+  }
+  // A segment edge inside a silence is where the silence says the sound stops / starts.
+  const outOfSilence = (t: number | undefined, side: "start" | "end") => {
+    const s = t === undefined ? undefined : silences?.find((x) => x.start < t && t < x.end);
+    return s ? (side === "end" ? s.start : s.end) : t;
+  };
+  for (let i = 0; i < n; i++) {
+    const w = out[i]!;
+    const nextStart = i + 1 < n ? out[i + 1]!.start : limit;
+    const prevEnd = i > 0 ? out[i - 1]!.end : 0;
+    const segEnd = outOfSilence(lastAt.get(i), "end");
+    if (segEnd !== undefined && segEnd > w.end && nextStart - segEnd >= SEGMENT_EDGE_GAP_S) w.end = segEnd;
+    const segStart = outOfSilence(firstAt.get(i), "start");
+    if (segStart !== undefined && segStart < w.start && segStart - prevEnd >= SEGMENT_EDGE_GAP_S) w.start = segStart;
+  }
+  // 3. The silences in the gaps: before the first word, between words, after the last.
+  if (silences?.length) {
+    for (let i = -1; i < n; i++) {
+      const gapStart = i >= 0 ? out[i]!.end : 0;
+      const gapEnd = i + 1 < n ? out[i + 1]!.start : limit;
+      if (!(gapEnd >= gapStart) || !Number.isFinite(gapEnd)) continue;
+      const s = silenceIn(silences, gapStart, gapEnd);
+      if (!s) continue;
+      if (i >= 0) {
+        if (s.start > out[i]!.end) out[i]!.end = Math.min(s.start, gapEnd);
+        endMeasured[i] = true;
+      }
+      if (i + 1 < n) {
+        if (s.end < out[i + 1]!.start) out[i + 1]!.start = Math.max(s.end, i >= 0 ? out[i]!.end : 0);
+        startMeasured[i + 1] = true;
+      }
+    }
+  }
+  // 4. The sound.
+  const short = out.map((w) => w.end - w.start < SHORT_WORD_S - 1e-9);
+  if (envelopeInformative(envelope)) {
+    const { rate, db } = envelope;
+    const thr = speechThreshold(envelope);
+    const loud = (k: number) => k >= 0 && k < db.length && db[k]! > thr;
+    const end = db.length / rate;
+    const silenceAfter = (t: number) => Math.min(...(silences ?? []).filter((x) => x.end > t + 1e-9).map((x) => Math.max(x.start, t)), Infinity);
+    const silenceBefore = (t: number) => Math.max(...(silences ?? []).filter((x) => x.start < t - 1e-9).map((x) => Math.min(x.end, t)), -Infinity);
+    // Ends, left to right.
+    for (let i = 0; i < n; i++) {
+      const w = out[i]!;
+      if (endMeasured[i]) continue;
+      const next = i + 1 < n ? out[i + 1]!.start : Math.min(limit, end);
+      const cap = w.end + (short[i] ? SHORT_WORD_MAX_S : MAX_EXTEND_S);
+      const silence = silenceAfter(w.end);
+      const hold = Math.round(QUIET_HOLD_S * rate);
+      // The quiet after the sound may run past the cap; sound past the cap may not.
+      const bound = Math.min(next, cap + hold / rate, silence, end);
+      let k = Math.floor(w.end * rate + 1e-6);
+      // A timestamp in the quiet: its sound may start a little after it, so quiet before the first
+      // loud window doesn't end it (not once its end follows sound: then it's an ordinary edge).
+      const search = Math.round((short[i] && !loud(k - 1) ? SHORT_WORD_SPAN_S : QUIET_HOLD_S) * rate);
+      let lastLoud = -1;
+      let quiet = 0;
+      let capped = false;
+      for (; k < bound * rate - 1e-6 && quiet < (lastLoud < 0 ? search : hold); k++) {
+        if (loud(k) && k >= cap * rate - 1e-6) {
+          capped = true;
+          break;
+        }
+        if (loud(k)) (lastLoud = k), (quiet = 0);
+        else quiet++;
+      }
+      if (!capped && (quiet >= (lastLoud < 0 ? search : hold) || bound === silence || bound === end)) {
+        // The sound went quiet (or a silence or the file's end came first): its end, measured.
+        if (lastLoud >= 0) w.end = Math.max(w.end, Math.min(bound, (lastLoud + 1) / rate));
+        endMeasured[i] = true;
+      } else if (!capped && bound === next) {
+        // The sound runs into the next word: split the gap at its quietest window.
+        let best = -1;
+        for (let j = Math.floor(w.end * rate + 1e-6); j < next * rate - 1e-6; j++) if (best < 0 || db[j]! < db[best]!) best = j;
+        if (best >= 0) w.end = Math.max(w.end, Math.min(next, best / rate));
+      }
+      // Still loud at the cap: not this word's tail (music, another voice); left as it was.
+    }
+    // Starts, right to left.
+    for (let i = n - 1; i >= 0; i--) {
+      const w = out[i]!;
+      if (startMeasured[i]) continue;
+      const prev = i > 0 ? out[i - 1]!.end : 0;
+      const cap = w.start - (short[i] ? SHORT_WORD_MAX_S : MAX_EXTEND_S);
+      const silence = silenceBefore(w.start);
+      const hold = Math.round(QUIET_HOLD_S * rate);
+      const bound = Math.max(prev, cap - hold / rate, silence, 0);
+      let k = Math.ceil(w.start * rate - 1e-6) - 1;
+      const search = Math.round((short[i] && !loud(k + 1) ? SHORT_WORD_SPAN_S : QUIET_HOLD_S) * rate);
+      let firstLoud = -1;
+      let quiet = 0;
+      let capped = false;
+      for (; k >= bound * rate - 1e-6 && k >= 0 && quiet < (firstLoud < 0 ? search : hold); k--) {
+        if (loud(k) && k < cap * rate - 1e-6) {
+          capped = true;
+          break;
+        }
+        if (loud(k)) (firstLoud = k), (quiet = 0);
+        else quiet++;
+      }
+      if (!capped && (quiet >= (firstLoud < 0 ? search : hold) || bound === silence || bound === 0)) {
+        if (firstLoud >= 0) w.start = Math.min(w.start, Math.max(bound, firstLoud / rate));
+        startMeasured[i] = true;
+      } else if (!capped && bound === prev && firstLoud >= 0) {
+        // Runs into the word before (its end was split at the quietest window): start there or at the sound.
+        w.start = Math.min(w.start, Math.max(prev, firstLoud / rate));
+      }
+    }
+  } else {
+    // No envelope: a timestamp gets SHORT_WORD_SPAN_S around it, between its neighbours, not into a silence.
+    for (let i = 0; i < n; i++) {
+      if (!short[i]) continue;
+      const w = out[i]!;
+      const mid = (w.start + w.end) / 2;
+      const prevEnd = Math.max(i > 0 ? out[i - 1]!.end : 0, ...(silences ?? []).filter((x) => x.start < mid && x.end > mid - SHORT_WORD_SPAN_S / 2).map((x) => Math.min(x.end, mid)));
+      const nextStart = Math.min(i + 1 < n ? out[i + 1]!.start : limit, ...(silences ?? []).filter((x) => x.end > mid && x.start < mid + SHORT_WORD_SPAN_S / 2).map((x) => Math.max(x.start, mid)));
+      w.start = Math.min(w.start, Math.max(prevEnd, mid - SHORT_WORD_SPAN_S / 2));
+      w.end = Math.max(w.end, Math.min(nextStart, mid + SHORT_WORD_SPAN_S / 2));
+    }
+  }
+  for (const w of out) {
+    w.start = ms3(w.start);
+    w.end = ms3(Math.max(w.end, w.start));
+  }
+  return { words: out, endMeasured, startMeasured };
+}
+
+/** speechEdges' words (where each word is heard, D74). */
+export const speechWords = <W extends { readonly start: number; readonly end: number }>(words: ReadonlyArray<W>, options: SpeechOptions = {}): Array<W> => speechEdges(words, options).words;
+
+/**
+ * Gaps of at least `min` seconds between words, and before the first and after the last, between
+ * where the words are heard (speechWords: whisper's words, its segments' edges and the silences).
+ * With `silences` (loudness analyzer, seconds), a pause overlapping one starts where the word
+ * before it ends or the silence starts, whichever is later (a −40 dB silence can start in a word's
+ * quiet decay), and ends where the silence ends (onsets are sharp; it may take the start of a word
+ * whisper timed too early, never past its end), and says silent; one overlapping none says
+ * silent: false (breath, noise or music there).
+ */
+export function pausesOf(words: ReadonlyArray<{ readonly start: number; readonly end: number }>, seconds: number | undefined, silences?: ReadonlyArray<{ readonly start: number; readonly end: number }>, min = PAUSE_MIN_S, segments?: ReadonlyArray<SpeechSegment>, envelope?: SpeechEnvelope): Array<Pause> {
   const out: Array<Pause> = [];
   if (!words.length) return out;
-  const gaps: Array<{ start: number; end: number; after: number; edge?: "start" | "end"; lo: number; hi: number }> = [];
-  gaps.push({ start: 0, end: words[0]!.start, after: -1, edge: "start", lo: 0, hi: words[0]!.end });
-  for (let i = 1; i < words.length; i++) gaps.push({ start: words[i - 1]!.end, end: words[i]!.start, after: i - 1, lo: words[i - 1]!.start, hi: words[i]!.end });
-  const last = words.at(-1)!;
-  if (seconds !== undefined) gaps.push({ start: last.end, end: seconds, after: words.length - 1, edge: "end", lo: last.start, hi: seconds });
+  const heard = speechWords(words, { segments, silences, seconds, envelope });
+  const gaps: Array<{ start: number; end: number; after: number; edge?: "start" | "end"; hi: number }> = [];
+  gaps.push({ start: 0, end: heard[0]!.start, after: -1, edge: "start", hi: heard[0]!.end });
+  for (let i = 1; i < heard.length; i++) gaps.push({ start: heard[i - 1]!.end, end: heard[i]!.start, after: i - 1, hi: heard[i]!.end });
+  const last = heard.at(-1)!;
+  if (seconds !== undefined) gaps.push({ start: last.end, end: Math.max(seconds, last.end), after: heard.length - 1, edge: "end", hi: seconds });
   for (const g of gaps) {
     let { start, end } = g;
     let silent: boolean | undefined;
     if (silences) {
-      let best: { start: number; end: number } | undefined;
-      let overlap = 0;
-      for (const s of silences) {
-        const o = Math.min(s.end, end) - Math.max(s.start, start);
-        if (o > overlap) {
-          overlap = o;
-          best = s;
-        }
-      }
+      const best = silenceIn(silences, start, end);
       silent = best !== undefined;
       if (best) {
-        start = Math.max(best.start, g.lo);
-        end = Math.min(best.end, g.hi);
+        start = Math.max(best.start, g.start);
+        end = Math.max(start, Math.min(best.end, g.hi));
       }
     }
-    if (end - start < min) continue;
+    if (end - start < min - 1e-9) continue;
     out.push({ start: ms3(start), end: ms3(end), after: g.after, ...(g.edge ? { edge: g.edge } : {}), ...(silent !== undefined ? { silent } : {}) });
   }
   return out;
@@ -115,13 +424,23 @@ export function pausesOf(words: ReadonlyArray<{ readonly start: number; readonly
 
 // ---- cutting by text (D69) ----
 
+/** Seconds of sound kept before a word that stays, at a cut (onsets are sharp; ~67 ms). */
+export const HEAD_S = 0.06;
+/** Seconds kept after a word that stays (its decay and final consonant fade slowly, D74). */
+export const TAIL_S = 0.15;
+
 /**
- * Frames kept next to a word that stays, on each side of a cut: whisper's word edges are good to
- * about 0.1 s, so a cut right on them can clip a phoneme. 2 frames at 24–30 fps, 3 at 50, 4 at 60
- * (about 67 ms). A pause that's removed keeps this much on each side of it too, so speech isn't
- * glued together.
+ * Frames kept before a word that stays, on each cut next to it: 2 at 24–30 fps, 3 at 50, 4 at 60
+ * (HEAD_S, at least 2). A removed pause keeps this much before the word after it too.
  */
-export const handleFrames = (fps: number) => Math.max(2, Math.round(fps / 15));
+export const handleFrames = (fps: number) => Math.max(2, Math.ceil(HEAD_S * fps - 1e-6));
+
+/**
+ * Frames kept after a word that stays (D74): TAIL_S, at least 3: 5 at 30 fps, 4 at 24–25, 8 at 50,
+ * 9 at 60. Longer than the head: a word's end fades out slowly (below a −40 dB silence's start)
+ * and whisper's ends run early, so a cut right after one clips its tail.
+ */
+export const tailFrames = (fps: number) => Math.max(3, Math.ceil(TAIL_S * fps - 1e-6));
 
 /** Removing pauses: those at least this long (seconds) by default (the panel's threshold). */
 export const DEFAULT_PAUSE_MIN_S = 0.5;
@@ -139,6 +458,8 @@ export interface CutTranscript {
   readonly language?: string | undefined;
   /** The file's length in seconds (for the pause after the last word). */
   readonly seconds?: number | undefined;
+  /** Whisper's segments (their edges extend the words at the ends of a sentence, speechWords). */
+  readonly segments?: ReadonlyArray<SpeechSegment> | undefined;
 }
 
 export interface TextCutRequest {
@@ -148,12 +469,14 @@ export interface TextCutRequest {
    * from every clip that plays them.
    */
   readonly remove?: ReadonlyArray<{ readonly from: number; readonly to: number; readonly clip?: string | undefined }>;
-  /** Remove pauses at least `min` seconds long (keeping handleFrames of quiet next to the words). */
+  /** Remove pauses at least `min` seconds long (keeping tailFrames after a kept word and handleFrames before one). */
   readonly pauses?: { readonly min: number };
   /** Remove the hesitation fillers (um, uh, yyy, eee); "maybe" fillers are never removed here. */
   readonly fillers?: boolean;
   /** The loudness analyzer's silences (seconds), when known: pauses take their edges (as transcript_read does). */
   readonly silences?: ReadonlyArray<{ readonly start: number; readonly end: number }> | undefined;
+  /** The loudness analyzer's speech envelope, when known: words end where their sound does (D74). */
+  readonly envelope?: SpeechEnvelope | undefined;
   /** Only these main-track clips (the panel cuts where the words were selected); default: every main clip using the media. */
   readonly clips?: ReadonlyArray<string>;
 }
@@ -197,6 +520,8 @@ interface Span {
   fillers: number;
 }
 
+/** A piece shorter than this (frames) is a sliver: a cut doesn't leave one between itself and an earlier cut. */
+const MIN_PIECE = 3;
 const floorF = (x: number) => Math.floor(x + 1e-6);
 const ceilF = (x: number) => Math.ceil(x - 1e-6);
 const quote = (text: string, max = 48) => `"${text.length > max ? `${text.slice(0, max - 1)}…` : text}"`;
@@ -233,14 +558,16 @@ function runsOf(ids: Iterable<number>): Array<Array<number>> {
  * counts as kept when it isn't removed and the clip still plays it (its middle frame); only kept
  * words get a handle. Words: a run of removed words, widened over neighbours that aren't kept but
  * of which the clip still plays a few frames (the sliver an earlier cut's handle left), from the frame its first word starts in to the frame
- * after its last one ends (the transcript's covering convention), pulled back to keep handleFrames
- * next to the nearest kept word. So deleting touching words one by one ends like deleting them
+ * after its last one ends (the transcript's covering convention), pulled back to keep tailFrames after
+ * the kept word before it and handleFrames before the kept word after it. So deleting touching words one by one ends like deleting them
  * together, and a selection across a clip seam leaves no slivers. Pauses: inward (both ends inside
- * the gap), keeping handleFrames next to a kept word (none next to one that goes). Edge pauses
+ * the gap), keeping tailFrames after a kept word and handleFrames before one (none next to one that goes). Edge pauses
  * (before the first word, after the last) run to the media's start or end.
  */
-function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, fillerWords: ReadonlySet<number>, kept: (i: number) => boolean, sliver: (i: number) => boolean, pauses: ReadonlyArray<Pause>, fps: number, length: number, tight: Set<number>): Array<Span> {
+function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, fillerWords: ReadonlySet<number>, kept: (i: number) => boolean, sliver: (i: number) => boolean, pauses: ReadonlyArray<Pause>, fps: number, length: number, tight: Set<number>, measured: { readonly endMeasured: ReadonlyArray<boolean>; readonly startMeasured: ReadonlyArray<boolean> } = { endMeasured: [], startMeasured: [] }): Array<Span> {
   const n = words.length;
+  // Kept after a kept word (its tail) and before one (its head), D74.
+  const T = tailFrames(fps);
   const H = handleFrames(fps);
   const f = (s: number) => s * fps;
   const clamp = (v: number) => Math.min(length, Math.max(0, v));
@@ -254,8 +581,27 @@ function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, f
     while (b + 1 < n && !kept(b + 1) && sliver(b + 1)) b++;
     let from = floorF(f(words[a]!.start));
     let to = ceilF(f(words[b]!.end));
-    if (a > 0 && kept(a - 1)) from = Math.max(from, ceilF(f(words[a - 1]!.end)) + H);
-    if (b + 1 < n && kept(b + 1)) to = Math.min(to, floorF(f(words[b + 1]!.start)) - H);
+    // A neighbour that's gone from the clip (an earlier cut took it): a sliver of the gap up to it
+    // (under MIN_PIECE frames) goes too, so cutting words one by one leaves no blip between the cuts.
+    if (a > 0 && !kept(a - 1) && !sliver(a - 1)) {
+      const gapFrom = ceilF(f(words[a - 1]!.end));
+      if (from - gapFrom < MIN_PIECE) from = Math.min(from, gapFrom);
+    }
+    if (b + 1 < n && !kept(b + 1) && !sliver(b + 1)) {
+      const gapTo = floorF(f(words[b + 1]!.start));
+      if (gapTo - to < MIN_PIECE) to = Math.max(to, gapTo);
+    }
+    // A kept word's edge the sound measured (D74: the envelope went quiet, or a silence): the
+    // removed words' sound goes whole, the margin only takes the gap. Otherwise (whisper's edges,
+    // or two words whose sound runs together) the kept word's margin wins.
+    if (a > 0 && kept(a - 1)) {
+      const keptEnd = ceilF(f(words[a - 1]!.end));
+      from = measured.endMeasured[a - 1] ? Math.max(from, keptEnd) : Math.max(from, keptEnd + T);
+    }
+    if (b + 1 < n && kept(b + 1)) {
+      const keptStart = floorF(f(words[b + 1]!.start));
+      to = measured.startMeasured[b + 1] ? Math.min(to, keptStart) : Math.min(to, keptStart - H);
+    }
     from = clamp(from);
     to = clamp(to);
     if (to - from < 1) {
@@ -272,7 +618,7 @@ function spansFor(words: ReadonlyArray<CutWord>, removed: ReadonlySet<number>, f
   // A word a removed run took with it isn't near: a handle there would leave a sliver (D72 review).
   const near = (i: number) => kept(i) || (!removed.has(i) && !absorbed.has(i) && sliver(i));
   for (const p of pauses) {
-    const before = p.after >= 0 && near(p.after) ? H : 0;
+    const before = p.after >= 0 && near(p.after) ? T : 0;
     const after = p.after + 1 < n && near(p.after + 1) ? H : 0;
     const from = clamp(p.edge === "start" ? 0 : ceilF(f(p.start)) + before);
     const to = clamp(p.edge === "end" ? length : floorF(f(p.end)) - after);
@@ -337,7 +683,7 @@ function fitPiece(item: Item): Op | undefined {
  * `request.clips`, or a range's own `clip`), respecting each clip's in-point, length and speed. The
  * main track is magnetic, so the clips after a cut close up; items on other tracks don't move (as
  * deleting on main, D52). Each clip's stretches are merged and snapped to frames (words cover their
- * frames, pauses go inward, a handle of handleFrames stays next to every word that's kept), a cut
+ * frames, pauses go inward, tailFrames stay after and handleFrames before every word that's kept), a cut
  * never leaves an empty clip, and transitions at the cuts that change are removed (D52). All of it
  * is one edit. Words that aren't in the edit any more (already cut) change nothing and come back
  * as a note.
@@ -350,7 +696,10 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   if (!main) return { problem: "This project has no main track." };
   if (main.locked) return { problem: "The main track is locked. Unlock it to cut by text." };
   const fps = project.canvas.fps;
-  const { words } = transcript;
+  // Where the words are heard (whisper's words widened to its segments' edges and the silences, D74):
+  // every rule below (kept, handles, pauses) works on these.
+  const heard = speechEdges(transcript.words, { segments: transcript.segments, silences: request.silences, seconds: transcript.seconds, envelope: request.envelope });
+  const { words } = heard;
   const n = words.length;
   const length = media.probe?.frames ?? ceilF((transcript.seconds ?? words.at(-1)?.end ?? 0) * fps);
   const notes: Array<string> = [];
@@ -373,7 +722,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   if (request.pauses) {
     const min = request.pauses.min;
     if (!(typeof min === "number" && Number.isFinite(min) && min > 0)) return { problem: "pauses.min must be a number of seconds above 0." };
-    pauses = pausesOf(words, transcript.seconds, request.silences, Math.max(min, 0.05));
+    pauses = pausesOf(words, transcript.seconds, request.silences, Math.max(min, 0.05), undefined, request.envelope);
   }
 
   const only = request.clips ? new Set(request.clips) : undefined;
@@ -407,7 +756,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     if (!removed.size && !pauses.length) continue;
     const kept = (i: number) => !removed.has(i) && plays(item, i);
     const ranges: Array<[number, number]> = [];
-    for (const sp of spansFor(words, removed, fillerWords, kept, (i) => touches(item, i), pauses, fps, length, tight)) {
+    for (const sp of spansFor(words, removed, fillerWords, kept, (i) => touches(item, i), pauses, fps, length, tight, heard)) {
       const [a, b] = localRange(item, sp.from, sp.to);
       if (b <= a) {
         if ((item.speed ?? 1) !== 1) for (const i of sp.words) if (plays(item, i)) slowWords.add(i);
@@ -497,7 +846,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   }
   if (request.pauses && ![...byStretch.values()].some((c) => c.pauses)) {
     if (!pauses.length || !cuttable.length) notes.push("There are no pauses that long in the edit.");
-    else notes.push(`The ${plural(pauses.length, "pause")} of that length ${pauses.length === 1 ? "isn't" : "aren't"} in the edit, or leave nothing to cut after keeping ${handleFrames(fps)} frames next to the words.`);
+    else notes.push(`The ${plural(pauses.length, "pause")} of that length ${pauses.length === 1 ? "isn't" : "aren't"} in the edit, or leave nothing to cut after keeping ${tailFrames(fps)} frames after the words and ${handleFrames(fps)} before them.`);
   }
   if (!clips.length) notes.push(`No clip on the main track uses ${media.name}${only ? " (among the clips asked for)" : ""}.`);
   const elsewhere = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => i.media === mediaId).map((i) => i.id));

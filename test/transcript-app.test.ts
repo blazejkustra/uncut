@@ -119,7 +119,8 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=tx-word][data-index='6']")?.dataset.current === "true");
   assert.equal(await page.$eval("[data-testid=tx-word][data-index='6']", (el) => (el as HTMLElement).dataset.start), "120");
 
-  // Select "this is a test." (w2–w5) with a click and a ⇧-click, then ⌫: frames 48–90 go (42), one edit.
+  // Select "this is a test." (w2–w5) with a click and a ⇧-click, then ⌫: frames 50–90 go (40; "um" before
+  // them keeps its 5-frame tail, D74), one edit.
   await page.click("[data-testid=tx-word][data-index='2']");
   await page.keyboard.down("Shift");
   await page.click("[data-testid=tx-word][data-index='5']");
@@ -129,7 +130,7 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   await page.screenshot({ path: "test-output/transcript-selected.png" });
   const revision = await page.$eval("[data-testid=saved]", (el) => (el as HTMLElement).title);
   await page.keyboard.press("Backspace");
-  await untilSaved(dir, [["clip-1", 0, 48], ["clip-2", 90, 90]]);
+  await untilSaved(dir, [["clip-1", 0, 50], ["clip-2", 90, 90]]);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=tx-word]").length === 4);
   assert.deepEqual(await page.$$eval("[data-testid=tx-word]", (els) => els.map((el) => el.textContent)), ["Hello", "um", "Second", "part."]);
   assert.equal(await page.$$eval("[data-testid=tx-word].sel", (els) => els.length), 0, "the selection goes with the words");
@@ -143,9 +144,10 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   await untilSaved(dir, [["clip-1", 0, 180]]);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=tx-word]").length === 8);
 
-  // Remove pauses (≥ 0.5 s): the lead-in, the gap after "test." and the tail (13 + 26 + 28 frames).
+  // Remove pauses (≥ 0.5 s): the lead-in, the gap after "test." and the tail (13 + 23 + 25 frames:
+  // 5 frames stay after a kept word, 2 before one, D74).
   await page.click("[data-testid=remove-pauses]");
-  await untilSaved(dir, [["clip-1", 13, 79], ["clip-2", 118, 34]]);
+  await untilSaved(dir, [["clip-1", 13, 82], ["clip-2", 118, 37]]);
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=remove-pauses]")?.dataset.count === "0");
   assert.equal(await page.$$eval("[data-testid=tx-word]", (els) => els.length), 8, "every word stays");
   assert.equal(await page.$$eval("[data-testid=tx-block]", (els) => els.length), 2, "one block per clip");
@@ -154,7 +156,7 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   // The Timeline tab shows the two pieces, back to back.
   await page.click("[data-testid=bottom-timeline]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 2);
-  assert.deepEqual(await page.$$eval("[data-testid=timeline-item]", (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])), [["0", "79"], ["79", "34"]]);
+  assert.deepEqual(await page.$$eval("[data-testid=timeline-item]", (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])), [["0", "82"], ["82", "37"]]);
 
   // A clip whose media has no transcript, with whisper.cpp missing: its block points to Setup.
   await page.click("[data-testid=import-plus]");
