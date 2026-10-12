@@ -67,9 +67,14 @@ function useEditorKeys(fps: number) {
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
-  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen } = useApp();
+  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest } = useApp();
   const online = connection === "connected";
   const [tab, setTab] = useState<LibraryTab>("media");
+  // The agent's ui_show can open a library tab (D65).
+  useEffect(() => {
+    const panel = panelRequest?.panel;
+    if (panel === "media" || panel === "text" || panel === "elements" || panel === "audio") setTab(panel);
+  }, [panelRequest]);
   useEditorKeys(project.canvas.fps);
   return (
     <div className="app" data-testid="editor">
@@ -201,6 +206,12 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
 function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
   const [tab, setTab] = useState<"inspector" | "agent">("inspector");
   const selected = findItem(project, usePlayback((s) => s.selected));
+  // ...or a side tab.
+  const { panelRequest } = useApp();
+  useEffect(() => {
+    const panel = panelRequest?.panel;
+    if (panel === "inspector" || panel === "agent") setTab(panel);
+  }, [panelRequest]);
   return (
     <aside className="side">
       <div className="tabs">

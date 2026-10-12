@@ -1,7 +1,8 @@
 // The export rasteriser (D55): an offscreen, transparent Chromium page that draws HTML at a given
 // size and saves it as a PNG. The server starts it (this binary with --uncut-render) for an
 // export or the agent's frame renders and talks to it in JSON lines:
-//   stdin  ← { id, width, height, css, html, out }   one request at a time
+//   stdin  ← { id, width, height, css, html, out }   one request at a time (out: .png, or .jpg for
+//                                                    an opaque JPEG such as the agent's contact sheet)
 //   stdout → { uncut: "render", id, ok: true } | { uncut: "render", id, ok: false, error }
 //   stdout → { uncut: "render", ready: true }          once, when the page is loaded
 // It knows nothing about projects: the server builds the HTML with core's textHtml / solidHtml
@@ -39,9 +40,9 @@ app.on("window-all-closed", () => {});
 if (!given) app.on("will-quit", () => rmSync(profile, { recursive: true, force: true }));
 
 // Nothing in the page may load anything: inline styles only, no scripts of its own (the content
-// is set from here), no network, no images.
+// is set from here), no network. Images only as data: URLs (the contact sheet's frames, D65).
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}
 .frame{position:absolute;inset:0;overflow:hidden;container-type:size}</style>
 <style id="css"></style></head><body><div class="frame" id="frame"></div></body></html>`;
@@ -86,15 +87,18 @@ async function main() {
   const render = async (r: Request) => {
     const [w, h] = win.getContentSize();
     if (w !== r.width || h !== r.height) win.setContentSize(r.width, r.height);
-    // Set the content, then wait for fonts and two frames so what's captured is what was set.
+    // Set the content, then wait for fonts, images and two frames so what's captured is what was set.
     await win.webContents.executeJavaScript(
       `(() => { document.getElementById("css").textContent = ${JSON.stringify(r.css)}; document.getElementById("frame").innerHTML = ${JSON.stringify(r.html)};
-        return document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(innerWidth + "x" + innerHeight))))); })()`,
+        const images = Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+        const settled = Promise.all([document.fonts.ready, images]).then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(innerWidth + "x" + innerHeight)))));
+        // A frame that never comes (a busy machine) mustn't hang the request: capture after 5 s regardless.
+        return Promise.race([settled, new Promise((done) => setTimeout(done, 5000))]); })()`,
     );
     let image = await win.webContents.capturePage({ x: 0, y: 0, width: r.width, height: r.height });
     const size = image.getSize();
     if (size.width !== r.width || size.height !== r.height) image = image.resize({ width: r.width, height: r.height, quality: "best" });
-    writeFileSync(r.out, image.toPNG());
+    writeFileSync(r.out, /\.jpe?g$/i.test(r.out) ? image.toJPEG(85) : image.toPNG());
   };
 
   // One request at a time, in order.

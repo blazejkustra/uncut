@@ -50,6 +50,7 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-agent-app-")));
   mkdirSync(join(root, "projects"));
   mkdirSync(join(root, "projects-bare"));
+  mkdirSync(join(root, "projects-ui"));
   writeFileSync(promptLog(), "");
 });
 after(async () => {
@@ -198,6 +199,66 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   await page.screenshot({ path: "test-output/agent-stopped.png" });
   assert.deepEqual(app.errors, []);
 }
+
+test("ui_show moves the playhead, selects and opens a panel in the editor, once per request (D65)", { skip, timeout: 120000 }, async () => {
+  const app = await launchApp({
+    command: APP,
+    env: {
+      UNCUT_DATA_DIR: join(root, "data-ui"),
+      UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects-ui")]),
+      UNCUT_CLAUDE: FAKE,
+      FAKE_PLAN: plan(),
+      FAKE_PROMPT_LOG: promptLog(),
+    },
+  });
+  apps.add(app);
+  const { page } = app;
+  await newProject(app);
+  await page.click("[data-testid=tab-agent]");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"));
+  const textItem = (id: string, start: number, duration: number, words: string) => ({ id, type: "text", start, duration, text: words, transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 130, weight: 700 } });
+  // A turn adds two text items, then points at the second one: frame 200, selected, Inspector open.
+  nextTurn([
+    { tool: "project_read" },
+    { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Add a title and an end card", ops: [{ op: "insert_item", track: "text", item: textItem("title-1", 0, 150, "Hello") }, { op: "insert_item", track: "text", item: textItem("end-1", 150, 90, "Bye") }] } },
+    { tool: "ui_show", args: { frame: 200, select: ["end-1"], panel: "inspector" } },
+  ]);
+  await page.click("[data-testid=agent-input]");
+  await page.type("[data-testid=agent-input]", "add a title and an end card, then show me the end card");
+  await page.keyboard.press("Enter");
+  // The side switched to the Inspector (the Agent tab is hidden), showing the selected item.
+  await waitFor(page, '[data-testid=inspector-item][data-item="end-1"]', 30000);
+  assert.equal(await page.$eval("[data-testid=tab-inspector]", (el) => el.classList.contains("active")), true);
+  await page.waitForFunction(() => document.querySelector("[data-testid=timecode]")!.textContent!.startsWith("00:00:06:20"));
+  assert.equal(await text(page, "[data-testid=timecode]"), "00:00:06:20 / 00:00:08:00");
+  assert.equal(await page.$eval('[data-testid=timeline-item][data-item="end-1"]', (el) => el.classList.contains("selected")), true);
+  await page.screenshot({ path: "test-output/agent-ui-show.png" });
+
+  // Applied once: the user moves on (Home, the Agent tab), and the next turn (which publishes the
+  // agent state again, still carrying that request) doesn't move them back.
+  await page.click("[data-testid=tab-agent]");
+  await page.waitForFunction(() => document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[0]?.dataset.status === "done", { timeout: 30000 });
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Home");
+  await page.waitForFunction(() => document.querySelector("[data-testid=timecode]")!.textContent!.startsWith("00:00:00:00"));
+  nextTurn([{ tool: "project_read" }, { text: "Nothing to change." }]);
+  await page.click("[data-testid=agent-input]");
+  await page.type("[data-testid=agent-input]", "anything else?");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[1]?.dataset.status === "done", { timeout: 30000 });
+  assert.equal(await page.$eval("[data-testid=tab-agent]", (el) => el.classList.contains("active")), true, "still on the Agent tab");
+  assert.match(await text(page, "[data-testid=timecode]"), /^00:00:00:00/, "the playhead stayed where the user put it");
+  assert.equal(await page.$('[data-testid=timeline-item][data-item="end-1"].selected'), null, "and nothing was selected again");
+
+  // A request for a library panel opens that tab of the rail.
+  nextTurn([{ tool: "ui_show", args: { panel: "text" } }]);
+  await page.click("[data-testid=agent-input]");
+  await page.type("[data-testid=agent-input]", "where are the text styles?");
+  await page.keyboard.press("Enter");
+  await waitFor(page, "[data-testid=text-library]", 30000);
+  assert.equal(await page.$eval("[data-testid=rail-text]", (el) => el.classList.contains("active")), true);
+  assert.deepEqual(app.errors, []);
+});
 
 test("without Claude Code the Agent tab says how to install it instead of failing", { skip, timeout: 120000 }, async () => {
   const app = await launchApp({

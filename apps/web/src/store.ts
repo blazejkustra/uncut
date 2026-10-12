@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AgentUi, type AgentUiPanel, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -57,6 +57,8 @@ export interface AppStateShape {
   readonly agent: AgentState | null;
   // Why the last agent action failed (not installed, busy…), shown in the Agent tab.
   readonly agentError?: string;
+  // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
+  readonly panelRequest?: { readonly panel: AgentUiPanel; readonly seq: number };
   // The export dialog (D34) and the server's export jobs; the one this window started last.
   readonly exportOpen: boolean;
   readonly exportJobs: ReadonlyArray<ExportJob>;
@@ -120,7 +122,7 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false } : {}),
+    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined } : {}),
   });
   // Then the playhead follows the project: back to the start for another project, clamped when it
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
@@ -130,6 +132,7 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
     const { frames, end } = layoutOf(projectOf(snapshot));
     playback.setProject(frames, projectOf(snapshot).canvas.fps, end);
   }
+  applyWaitingUi();
 }
 
 // Paths too: a relinked file (same id, new path) has another poster.
@@ -206,7 +209,8 @@ function onJobs(jobs: ReadonlyArray<ImportJob>) {
     if (finished && !reported.has(job.id)) {
       reported.add(job.id);
       posters = true;
-      if (job.projectDir === state.snapshot?.dir) {
+      // The agent's imports (D65) are reported in its turn, not as the Library's import report.
+      if (job.projectDir === state.snapshot?.dir && !job.agent) {
         const failed = job.phase === "failed" ? job.result?.failed ?? [{ path: `${job.total} file${job.total === 1 ? "" : "s"}`, message: job.error ?? "The import stopped." }] : job.result?.failed ?? [];
         const skipped = job.result?.skipped ?? [];
         report = failed.length || skipped.length ? { failed: [...(report?.failed ?? []), ...failed], skipped: [...(report?.skipped ?? []), ...skipped] } : report;
@@ -227,6 +231,42 @@ function onExportJobs(jobs: ReadonlyArray<ExportJob>) {
     if (job.phase === "done") void bridge.showInFolder(job.output);
   }
   set({ exportJobs: jobs });
+}
+
+// The agent's ui_show (D65): each request is applied once, when its id is new. The first state
+// for a project this window shows only records the request it carries: that one is old news,
+// from before this window was looking.
+// A request waits until the project snapshot it was made against (or a newer one) is here, so the
+// playhead isn't clamped to an older, shorter project (the two streams can arrive in either order).
+let uiDir: string | undefined;
+let uiSeen: string | undefined;
+let uiWaiting: AgentUi | undefined;
+let panelSeq = 0;
+function applyAgentUi(agent: AgentState | null) {
+  if (!agent) return void ((uiDir = undefined), (uiWaiting = undefined));
+  const ui = agent.ui;
+  if (agent.dir !== uiDir) {
+    uiDir = agent.dir;
+    uiSeen = ui?.id;
+    uiWaiting = undefined;
+    return;
+  }
+  if (!ui || ui.id === uiSeen) return;
+  uiSeen = ui.id;
+  uiWaiting = ui;
+  applyWaitingUi();
+}
+function applyWaitingUi() {
+  const ui = uiWaiting;
+  const snap = state.snapshot;
+  if (!ui || !snap || snap.dir !== uiDir || snap.revision < ui.revision) return;
+  uiWaiting = undefined;
+  if (ui.frame !== undefined) {
+    playback.pause();
+    playback.seek(ui.frame);
+  }
+  if (ui.select !== undefined) playback.select(ui.select);
+  if (ui.panel) set({ panelRequest: { panel: ui.panel, seq: ++panelSeq } });
 }
 
 /** The open project's import jobs that are still running or waiting. */
@@ -264,7 +304,10 @@ export async function start() {
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
-        (agent) => set({ agent }),
+        (agent) => {
+          set({ agent });
+          applyAgentUi(agent);
+        },
       );
       unsubscribe?.();
       unsubscribe = conn.subscribe(

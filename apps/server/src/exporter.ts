@@ -7,7 +7,8 @@
 // where the user chose, replacing nothing unless asked to.
 //
 // Also the agent's frame renders (D51): a few frames of the edit as JPEGs, composited the way the
-// export composites them.
+// export composites them; and its contact sheets (D65): frames pulled from a media file, and a
+// grid of frames with captions drawn by the rasteriser.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
@@ -23,6 +24,7 @@ import * as Layer from "effect/Layer";
 import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
+import { sheetHtml, type SheetLayout } from "./agentFootage.ts";
 import { ServerConfig } from "./config.ts";
 import {
   exportCommand,
@@ -33,6 +35,7 @@ import {
   parseLoudness,
   planExport,
   RASTER_CSS,
+  sourceFramePick,
   graphFileArgs,
   untaggedFilter,
   type Caps,
@@ -63,6 +66,10 @@ export interface ExporterShape {
   readonly jobs: Stream.Stream<ReadonlyArray<ExportJob>>;
   /** Frames of the open project as JPEGs, `width` px wide (the agent's render_frames). */
   readonly renderFrames: (frames: ReadonlyArray<number>, width: number) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  /** contact_sheet (D65): the first video stream of `path` at each of `seconds`, `width` px wide, as JPEGs. */
+  readonly mediaFrames: (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) => Effect.Effect<ReadonlyArray<MediaFrame>, ExportError>;
+  /** contact_sheet (D65): the cells in a grid with their captions, drawn by the rasteriser, as one JPEG. */
+  readonly sheetImage: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
 }
 
 export class Exporter extends Context.Service<Exporter, ExporterShape>()("uncut/Exporter") {}
@@ -485,7 +492,26 @@ export const layer = Layer.effect(
         });
       });
 
-    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), renderFrames });
+    // ---- the agent's contact sheets ----
+
+    const mediaFrames = (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) =>
+      Effect.gen(function* () {
+        const bin = yield* Effect.promise(ffmpegBin);
+        if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be pulled from the footage." });
+        return yield* Effect.tryPromise({
+          try: (signal) => mediaFramesWith(bin, path, seconds, width, fps, signal),
+          catch: (error) => new ExportError({ reason: "source-media", message: (error as Error).message }),
+        });
+      });
+
+    const sheetImage = (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) =>
+      Effect.tryPromise({
+        // A rasteriser that stalls (seen once on a loaded machine) gets one fresh try.
+        try: () => drawSheet(cells, layout).catch(() => drawSheet(cells, layout)),
+        catch: (error) => new ExportError({ reason: "source-media", message: `Couldn't draw the contact sheet: ${(error as Error).message}` }),
+      });
+
+    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), renderFrames, mediaFrames, sheetImage });
   }),
 );
 
@@ -523,8 +549,8 @@ async function renderFramesWith(bin: string, project: Project, mediaPath: (m: Me
         const media = v.item.media ? project.media.find((m) => m.id === v.item.media) : undefined;
         let input: Array<string> | undefined;
         // The source frame on screen at that moment, picked like the export picks it (exportPlan.ts).
-        const pre = Math.min(1, v.source);
-        if (v.item.type === "clip" && media && media.kind === "video") input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), "-ss", String(v.source - pre), "-t", String(pre + 0.5), "-i", mediaPath(media)];
+        const pick = sourceFramePick(v.source, project.canvas.fps);
+        if (v.item.type === "clip" && media && media.kind === "video") input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];
         else if (v.item.type === "clip" && media && media.kind === "image") input = ["-f", "image2", "-pattern_type", "none", "-i", mediaPath(media)];
         else if ((v.item.type === "text" && typeof v.item.text === "string") || (v.item.type === "component" && v.item.component === SOLID)) {
           const png = join(temp, `f${f}-${k}.png`);
@@ -537,8 +563,8 @@ async function renderFramesWith(bin: string, project: Project, mediaPath: (m: Me
         inputs.push(...input);
         const fade = v.item.type === "clip" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
         const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
-        const pick = v.item.type === "clip" && media?.kind === "video" ? `${tag}setpts=PTS-${pre + 0.0001}/TB,fps=${project.canvas.fps}:start_time=0:round=up,` : "";
-        graph.push(`[${k}:v:0]${pick}trim=end_frame=1,setpts=0,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}[l${k}]`);
+        const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
+        graph.push(`[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}[l${k}]`);
         graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
         base = `b${k}`;
       }
@@ -552,6 +578,98 @@ async function renderFramesWith(bin: string, project: Project, mediaPath: (m: Me
   } finally {
     signal.removeEventListener("abort", onAbort);
     await raster?.close().catch(() => {});
+    await rm(temp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** The contact sheet's grid drawn by a rasteriser of its own, as a JPEG. */
+async function drawSheet(cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout): Promise<Buffer> {
+  const command = rasterizerCommand();
+  if ("problem" in command) throw new Error(command.problem);
+  const temp = await makeTemp();
+  let raster: Rasterizer | undefined;
+  try {
+    raster = await startRasterizer(command);
+    const out = join(temp, "sheet.jpg");
+    await raster.render({ width: layout.width, height: layout.height, css: "", html: sheetHtml(cells, layout), out });
+    return await readFile(out);
+  } finally {
+    await raster?.close().catch(() => {});
+    await rm(temp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** At most this many ffmpeg runs at once when pulling a contact sheet's frames from footage. */
+const SHEET_CONCURRENCY = 4;
+
+/** A frame pulled from a media file for a contact sheet, and the moment (seconds) it was taken at. */
+export interface MediaFrame {
+  readonly jpeg: Buffer;
+  readonly seconds: number;
+}
+
+/**
+ * One JPEG per moment of a media file, `width` px wide (height kept to the picture's shape), a
+ * few at a time, each the source frame the preview and export show at that moment in a `fps`
+ * project (sourceFramePick, D38). Always the file's first video stream (0:v:0): DJI clips also
+ * carry an mjpeg cover picture and data streams, and ffmpeg's own pick is the largest picture.
+ * A moment past the end of the video stream (its probed length can include longer sound) shows
+ * the stream's last frame, and says so through `seconds`.
+ */
+async function mediaFramesWith(bin: string, path: string, seconds: ReadonlyArray<number>, width: number, fps: number, signal: AbortSignal): Promise<Array<MediaFrame>> {
+  const caps = await capsOf(bin);
+  const temp = await makeTemp();
+  let streamEnd: Promise<number | undefined> | undefined;
+  const videoEnd = () =>
+    (streamEnd ??= run(join(dirname(bin), "ffprobe"), ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration:format=duration", "-of", "json", path], signal).then(
+      (r) => {
+        try {
+          const j = JSON.parse(r.stdout) as { streams?: Array<{ duration?: string }>; format?: { duration?: string } };
+          const d = Number(j.streams?.[0]?.duration ?? j.format?.duration);
+          return Number.isFinite(d) && d > 0 ? d : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      () => undefined,
+    ));
+  try {
+    const out: Array<MediaFrame> = new Array(seconds.length);
+    const grab = async (i: number) => {
+      const file = join(temp, `cell-${i}.jpg`);
+      const pullAt = async (at: number) => {
+        const pick = sourceFramePick(at, fps);
+        const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", path, "-map", "0:v:0", "-vf", `${pick.filter},scale=${Math.max(16, Math.round(width / 2) * 2)}:-2`, "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
+        // Past the end of the picture ffmpeg writes nothing (and, since 7, exits with an error saying so).
+        if (r.code !== 0 && /Nothing was written into output file|received no packets/.test(r.stderr)) return undefined;
+        if (r.code !== 0) throw new Error(`Couldn't read ${basename(path)} at ${at.toFixed(2)} s: ${ffmpegError(r.stderr) || `ffmpeg exited with ${r.code}`}`);
+        return readFile(file).catch(() => undefined);
+      };
+      const got = await pullAt(seconds[i]!);
+      if (got?.length) return void (out[i] = { jpeg: got, seconds: seconds[i]! });
+      // No frame and no error: the moment is past the end of the video stream. Show its last frame.
+      const end = await videoEnd();
+      const last = end !== undefined ? Math.max(0, end - 0.001) : undefined;
+      const tail = last !== undefined && last < seconds[i]! ? await pullAt(last) : undefined;
+      if (!tail?.length) throw new Error(`No picture at ${seconds[i]!.toFixed(2)} s of ${basename(path)}.`);
+      out[i] = { jpeg: tail, seconds: last! };
+    };
+    let next = 0;
+    let stopped = false;
+    const worker = async () => {
+      try {
+        while (next < seconds.length && !stopped) await grab(next++);
+      } catch (error) {
+        stopped = true; // the other workers finish the frame they're on, then stop
+        throw error;
+      }
+    };
+    // All settled before the temp folder goes, so no ffmpeg is still writing into it.
+    const settled = await Promise.allSettled(Array.from({ length: Math.min(SHEET_CONCURRENCY, seconds.length) }, worker));
+    const failure = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failure) throw failure.reason;
+    return out;
+  } finally {
     await rm(temp, { recursive: true, force: true }).catch(() => {});
   }
 }

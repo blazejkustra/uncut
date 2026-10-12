@@ -61,8 +61,9 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
   });
   const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, MediaFiles.layer, Waveforms.layer, AgentBridge.layer), { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
-    Layer.provide(Media.layer),
+    // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),
+    Layer.provide(Media.layer),
     Layer.provide(Exporter.layer),
     Layer.provideMerge(MediaCore.layer),
     Layer.provide(Setup.layer),

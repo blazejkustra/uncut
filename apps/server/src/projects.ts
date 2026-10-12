@@ -80,11 +80,14 @@ export interface ProjectsShape {
   readonly current: Effect.Effect<{ readonly dir: string; readonly openId: number; readonly project: unknown } | undefined>;
   /**
    * An edit planned against the project as it is under the lock, refused unless the same
-   * opening of the project is still open. `plan` returns the ops (or nothing to do).
+   * opening of the project is still open. `plan` returns the ops (or nothing to do). With
+   * `agent`, the edit is the agent's (actor "agent", tagged with its turn), so Undo turn takes
+   * it back and the manual-edit note doesn't list it (an agent media_import, D65).
    */
   readonly editIn: <E>(
     openId: number,
     plan: (project: unknown, dir: string) => Effect.Effect<{ ops: ReadonlyArray<unknown>; summary: string } | undefined, E>,
+    agent?: { readonly turnId: string },
   ) => Effect.Effect<ProjectSnapshot | undefined, ProjectError | EditRefused | E>;
   /** The current snapshot (null: nothing open), then every change. */
   readonly changes: Stream.Stream<ProjectSnapshot | null>;
@@ -427,7 +430,7 @@ export const layer = Layer.effect(
 
       edit: ({ ops, baseRevision, summary }) => lock.withPermits(1)(Effect.flatMap(requireOpen, (p) => editUnlocked(p, { ops, baseRevision, summary }))),
 
-      editIn: (openId, plan) =>
+      editIn: (openId, plan, agent) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
             const p = current;
@@ -436,7 +439,7 @@ export const layer = Layer.effect(
             }
             const planned = yield* plan(p.session.project, p.dir);
             if (!planned || planned.ops.length === 0) return undefined;
-            return yield* editUnlocked(p, planned);
+            return yield* editUnlocked(p, planned, agent);
           }),
         ),
 
