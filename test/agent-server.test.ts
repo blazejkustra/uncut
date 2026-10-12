@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "./helpers/server.ts";
+import { readAgentHistory } from "./helpers/history.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -119,7 +120,7 @@ test("an empty project: a turn adds a title through MCP, live and saved, and the
   assert.equal(first!.allowed, "mcp__uncut");
   assert.match(first!.prompt, /^make a 5 s title card that says Kraków from above\n\n<editor-context>\nPlayhead: frame 0/);
   // Saves are queued; give the last one a moment to land.
-  const saved = () => JSON.parse(readFileSync(join(dir, "agent", "turns.json"), "utf8"));
+  const saved = () => readAgentHistory(dir);
   for (let i = 0; i < 50 && saved().turns[0]?.status !== "done"; i++) await new Promise((r) => setTimeout(r, 50));
   const history = saved();
   assert.equal(history.sessionId, "fake-session");
@@ -215,7 +216,7 @@ test("cancel stops claude (and its MCP server), revokes the turn's token, and ke
   assert.equal(latest().running, null);
 });
 
-test("the history survives closing and reopening the project; old turns can't be undone any more", { skip, timeout: 30000 }, async () => {
+test("the history survives closing and reopening the project; old turns keep their Undo turn state (history.db)", { skip, timeout: 30000 }, async () => {
   await client.ok("project.close");
   await agent.until((s) => s === null);
   const mark = agent.values.length;
@@ -223,7 +224,9 @@ test("the history survives closing and reopening the project; old turns can't be
   await agent.until((s, i) => i >= mark && s?.dir === dir && s.turns.length === 3);
   const [first, second, third] = latest().turns;
   assert.deepEqual([first.status, second.status, third.status], ["done", "done", "cancelled"]);
-  assert.equal(first.undo.state, "unavailable");
+  // D71: the edit log is in history.db, so the first turn is still blocked by the user's later
+  // reword (not "unavailable"), and the second stays undone.
+  assert.equal(first.undo.state, "blocked");
   assert.equal(second.undo.state, "undone");
   assert.equal(first.edits[0].summary, "Add a 5 s title card");
   assert.match(second.note, /by hand/);

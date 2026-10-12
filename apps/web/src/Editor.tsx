@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { AgentPanel } from "./Agent.tsx";
 import { ExportDialog, exportRunning } from "./ExportDialog.tsx";
+import { HistoryPanel } from "./History.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
@@ -77,6 +78,9 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest } = useApp();
   const online = connection === "connected";
   const [tab, setTab] = useState<LibraryTab>("media");
+  // history.db can't be used (D71): said once per project and problem, dismissable.
+  const [dismissedProblem, setDismissedProblem] = useState<string | undefined>();
+  const historyProblem = snapshot.historyProblem && `${snapshot.dir}\n${snapshot.historyProblem}` !== dismissedProblem ? snapshot.historyProblem : undefined;
   // The agent's ui_show can open a library tab (D65).
   useEffect(() => {
     const panel = panelRequest?.panel;
@@ -108,6 +112,15 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
             </button>
             <button className="btn ghost" data-testid="banner-close-project" onClick={() => void actions.closeProject()} disabled={!online}>
               Close project
+            </button>
+          </div>
+        )}
+        {historyProblem && !changedOnDisk && (
+          <div className="banner warn" data-testid="history-note">
+            <TriangleAlert />
+            <span className="banner-text">{historyProblem}</span>
+            <button className="icon-btn" title="Dismiss" onClick={() => setDismissedProblem(`${snapshot.dir}\n${historyProblem}`)}>
+              <X />
             </button>
           </div>
         )}
@@ -164,7 +177,7 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
         {unsaved ? <TriangleAlert /> : online ? <Check /> : <RefreshCw />}
         {unsaved ? "Not saved" : online ? "Saved" : "Offline"}
       </div>
-      <button className="icon-btn" title="Undo (⌘Z)" data-testid="undo" disabled={!online || !snapshot.canUndo} onClick={() => void actions.undo()}>
+      <button className="icon-btn" title={snapshot.canUndo || !snapshot.undoStop ? "Undo (⌘Z)" : snapshot.undoStop} data-testid="undo" disabled={!online || !snapshot.canUndo} onClick={() => void actions.undo()}>
         <Undo2 />
       </button>
       <button className="icon-btn" title="Redo (⇧⌘Z)" data-testid="redo" disabled={!online || !snapshot.canRedo} onClick={() => void actions.redo()}>
@@ -218,7 +231,7 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
 }
 
 function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
-  const [tab, setTab] = useState<"inspector" | "agent">("inspector");
+  const [tab, setTab] = useState<"inspector" | "agent" | "history">("inspector");
   const selected = findItem(project, usePlayback((s) => s.selected));
   // ...or a side tab.
   const { panelRequest } = useApp();
@@ -235,6 +248,9 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
         <button className={tab === "agent" ? "active" : ""} data-testid="tab-agent" onClick={() => setTab("agent")}>
           Agent
         </button>
+        <button className={tab === "history" ? "active" : ""} data-testid="tab-history" onClick={() => setTab("history")}>
+          History
+        </button>
       </div>
       <div className="side-body">
         {tab === "inspector" && selected ? (
@@ -242,8 +258,10 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
         ) : tab === "inspector" ? (
           // Keyed on the folder: switching projects drops any half-typed value with the old Inspector.
           <Inspector key={snapshot.dir} snapshot={snapshot} project={project} online={online} />
-        ) : (
+        ) : tab === "agent" ? (
           <AgentPanel project={project} online={online} />
+        ) : (
+          <HistoryPanel key={snapshot.dir} snapshot={snapshot} online={online} />
         )}
       </div>
     </aside>

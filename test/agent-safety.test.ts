@@ -11,6 +11,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "./helpers/server.ts";
+import { readAgentHistory } from "./helpers/history.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -212,7 +213,7 @@ test("reopening the same project mid-turn stops the turn, keeps its reply, and t
     assert.equal(s.latest().turns.length, 1, "one history, not two");
     // Saved as stopped, with its reply.
     await sleep(200);
-    const saved = JSON.parse(readFileSync(join(s.dir, "agent", "turns.json"), "utf8")).turns;
+    const saved = readAgentHistory(s.dir).turns;
     assert.deepEqual([saved.length, saved[0].status, saved[0].items.length], [1, "cancelled", 2]);
     const t2 = await s.ask("again", [{ tool: "project_read" }]);
     assert.equal(t2.status, "done", "not busy");
