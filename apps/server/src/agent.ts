@@ -973,7 +973,7 @@ export const layer = Layer.effect(
           );
         }
         const { snapshot } = outcome2;
-        const lines = plan.cuts.map((c) => `${c.text ? `Cut "${c.text.length > 50 ? `${c.text.slice(0, 49)}…` : c.text}"` : `Removed ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}`}${c.text && c.pauses ? ` and ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}` : ""} (${(c.frames / fps).toFixed(1)} s) from ${c.clips.join(", ")}`);
+        const lines = plan.cuts.map((c) => `${c.text ? `Cut "${c.text.length > 50 ? `${c.text.slice(0, 49)}…` : c.text}"` : `Removed ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}`}${c.text && c.pauses ? ` and ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}` : ""} (${(c.frames / fps).toFixed(1)} s${c.text && c.pauses ? " in all" : ""}) from ${c.clips.join(", ")}`);
         r.turn.edits.push({ revision: snapshot.revision, summary: plan.summary, lines });
         persist(r.owner);
         publish();

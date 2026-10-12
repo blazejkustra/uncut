@@ -308,7 +308,9 @@ test("the store: a cancel ends the download at once (a new Download starts afres
   store.cancel("base");
   store.download("base");
   assert.equal(store.state().downloads.find((d) => d.model === "base")!.phase, "downloading");
-  for (let i = 0; i < 200 && !store.state().models.find((m) => m.id === "base")!.installed; i++) await sleep(25);
+  // The file is renamed into place a moment before the download's phase turns "done": wait for both.
+  const finished = () => store.state().models.find((m) => m.id === "base")!.installed && store.state().downloads.find((d) => d.model === "base")!.phase === "done";
+  for (let i = 0; i < 200 && !finished(); i++) await sleep(25);
   assert.ok(readFileSync(join(dir, "ggml-base.bin")).equals(BODY), "the new download finished whole");
   assert.equal(store.state().downloads.find((d) => d.model === "base")!.phase, "done");
   assert.ok(!existsSync(join(dir, "ggml-base.bin.part")));

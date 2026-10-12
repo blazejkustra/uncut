@@ -9,6 +9,8 @@
 //   { text, split? } say something (split: cut the line inside a multi-byte character)
 //   { sleep: ms }   wait (so a test can cancel mid-turn)
 //   { fail: msg }   end the turn with an error result
+//   { await: path } wait (up to 5 min) for the JSON file at path, an array of steps, and play them
+//                   next: the test decides them from the results so far, like claude would
 // Every run appends { prompt, resume, env (variable names only), pid, mcpPid, mcpToken, ... } to $FAKE_PROMPT_LOG,
 // and, with $FAKE_RESULT_LOG, every tool result ({ tool, result }) to that file.
 import { spawn } from "node:child_process";
@@ -25,7 +27,7 @@ if (argv[0] === "auth" && argv[1] === "status") {
   process.exit(0);
 }
 
-type Step = { tool: string; args?: unknown } | { text: string; split?: boolean } | { sleep: number } | { fail: string };
+type Step = { tool: string; args?: unknown } | { text: string; split?: boolean } | { sleep: number } | { fail: string } | { await: string };
 interface RpcReply {
   id: number;
   result?: any;
@@ -77,7 +79,18 @@ out({
 });
 let rev = 0;
 let steps = 0;
-for (const step of plan) {
+for (let k = 0; k < plan.length; k++) {
+  const step = plan[k]!;
+  if ("await" in step) {
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (!existsSync(step.await) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    let more: unknown;
+    try {
+      more = existsSync(step.await) ? JSON.parse(readFileSync(step.await, "utf8")) : undefined;
+    } catch {}
+    plan.splice(k + 1, 0, ...(Array.isArray(more) ? (more as Array<Step>) : [{ fail: existsSync(step.await) ? `${step.await} isn't a list of steps` : `no steps at ${step.await} within 5 minutes` }]));
+    continue;
+  }
   if ("sleep" in step) {
     await new Promise((r) => setTimeout(r, step.sleep));
     continue;
