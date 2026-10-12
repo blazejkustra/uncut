@@ -291,9 +291,9 @@ export function mediaMeta(m: MediaItem) {
   return [size, m.probe?.fps ? `${fpsLabel(m.probe.fps)} fps` : undefined].filter(Boolean).join(", ");
 }
 
-/** "Analysing the sound… 42%", or why it waits. */
+/** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67), or why it waits. */
 function analysisText(job: AnalysisJob) {
-  if (job.phase === "running") return `Analysing the sound… ${Math.round(job.progress * 100)}%`;
+  if (job.phase === "running") return `Analysing the ${job.analyzer === "video" ? "picture" : "sound"}… ${Math.round(job.progress * 100)}%`;
   return job.waiting === "export" ? "Waiting for the export to finish" : "Waiting to analyse";
 }
 
