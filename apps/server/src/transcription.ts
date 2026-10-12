@@ -14,8 +14,6 @@ import { Cancelled, ffmpegError, NO_AUDIO_STREAM, spawnRunner, type Runner } fro
 
 /** Bumped when the transcript's shape or the way words are made changes, so older cache files are redone. */
 export const TRANSCRIPT_VERSION = 1;
-/** A gap between words at least this long (seconds) is a pause. */
-export const PAUSE_MIN_S = 0.3;
 /** Temp folders are uncut-transcript-<server pid>-XXXXXX, so a sweep can tell whose they are. */
 export const TEMP_PREFIX = "uncut-transcript-";
 
@@ -319,104 +317,5 @@ export function isTranscriptResult(value: unknown): value is TranscriptResult {
 }
 
 // ---- fillers and pauses (derived when read) ----
-
-// Conservative on purpose: hesitation sounds are safe to cut; discourse words ("no", "znaczy",
-// "you know") often carry meaning, so they're marked "maybe" for the agent to judge in context.
-// A list applies only to its language ("no" is a Polish filler and an English word).
-const HESITATIONS: Readonly<Record<string, ReadonlyArray<string>>> = {
-  en: ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "hmm", "mm", "mmm"],
-  pl: ["yyy", "yy", "yyyy", "eee", "ee", "eeee", "eem", "yyym", "hmm", "mmm", "mhm"],
-};
-const DISCOURSE: Readonly<Record<string, ReadonlyArray<string>>> = {
-  en: ["you know", "i mean"],
-  pl: ["no", "znaczy", "jakby", "tak jakby", "wiesz"],
-};
-export const FILLERS = { hesitation: HESITATIONS, discourse: DISCOURSE } as const;
-
-const bare = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, "").trim();
-
-export interface Filler {
-  /** Index of its first word, and how many words. */
-  readonly i: number;
-  readonly n: number;
-  readonly kind: "hesitation" | "maybe";
-}
-
-/** The fillers among `words` for `language` (other languages: none; whisper rarely writes them anyway). */
-export function fillersOf(words: ReadonlyArray<{ readonly text: string }>, language: string | undefined): Array<Filler> {
-  const lang = language === "en" || language === "pl" ? language : undefined;
-  if (!lang) return [];
-  const hes = new Set(HESITATIONS[lang]);
-  const phrases = DISCOURSE[lang]!.map((p) => p.split(" ")).sort((a, b) => b.length - a.length);
-  const out: Array<Filler> = [];
-  for (let i = 0; i < words.length; i++) {
-    const w = bare(words[i]!.text);
-    if (hes.has(w)) {
-      out.push({ i, n: 1, kind: "hesitation" });
-      continue;
-    }
-    for (const phrase of phrases) {
-      if (phrase.every((part, k) => i + k < words.length && bare(words[i + k]!.text) === part)) {
-        // A discourse word only counts when it stands apart: "no" ending a clause or followed by a comma.
-        const lastText = words[i + phrase.length - 1]!.text;
-        const prevText = i > 0 ? words[i - 1]!.text : ".";
-        if (phrase.length > 1 || /[,.?!…]$/.test(lastText) || /[,.?!…]$/.test(prevText)) {
-          out.push({ i, n: phrase.length, kind: "maybe" });
-          i += phrase.length - 1;
-        }
-        break;
-      }
-    }
-  }
-  return out;
-}
-
-export interface Pause {
-  /** Seconds of the file. */
-  readonly start: number;
-  readonly end: number;
-  /** The word before it (index), or -1 before the first word. */
-  readonly after: number;
-  readonly edge?: "start" | "end";
-  /** With the loudness analysis cached: whether the sound is below its silence threshold here (start/end then come from the silence). */
-  readonly silent?: boolean;
-}
-
-/**
- * Gaps of at least `min` seconds between words, and before the first and after the last. With
- * `silences` (loudness analyzer, seconds), a pause overlapping one takes the silence's edges
- * (accurate, where whisper's word edges are ±0.1 s), kept between the neighbouring words' starts and
- * ends, and says silent; one overlapping none says silent: false (breath, noise or music there).
- */
-export function pausesOf(words: ReadonlyArray<{ readonly start: number; readonly end: number }>, seconds: number | undefined, silences?: ReadonlyArray<{ readonly start: number; readonly end: number }>, min = PAUSE_MIN_S): Array<Pause> {
-  const out: Array<Pause> = [];
-  if (!words.length) return out;
-  const gaps: Array<{ start: number; end: number; after: number; edge?: "start" | "end"; lo: number; hi: number }> = [];
-  gaps.push({ start: 0, end: words[0]!.start, after: -1, edge: "start", lo: 0, hi: words[0]!.end });
-  for (let i = 1; i < words.length; i++) gaps.push({ start: words[i - 1]!.end, end: words[i]!.start, after: i - 1, lo: words[i - 1]!.start, hi: words[i]!.end });
-  const last = words.at(-1)!;
-  if (seconds !== undefined) gaps.push({ start: last.end, end: seconds, after: words.length - 1, edge: "end", lo: last.start, hi: seconds });
-  for (const g of gaps) {
-    let { start, end } = g;
-    let silent: boolean | undefined;
-    if (silences) {
-      let best: { start: number; end: number } | undefined;
-      let overlap = 0;
-      for (const s of silences) {
-        const o = Math.min(s.end, end) - Math.max(s.start, start);
-        if (o > overlap) {
-          overlap = o;
-          best = s;
-        }
-      }
-      silent = best !== undefined;
-      if (best) {
-        start = Math.max(best.start, g.lo);
-        end = Math.min(best.end, g.hi);
-      }
-    }
-    if (end - start < min) continue;
-    out.push({ start: ms3(start), end: ms3(end), after: g.after, ...(g.edge ? { edge: g.edge } : {}), ...(silent !== undefined ? { silent } : {}) });
-  }
-  return out;
-}
+// They live in @uncut/core (browser-safe) so the Transcript panel derives the same ones (D69).
+export { FILLERS, fillersOf, PAUSE_MIN_S, pausesOf, type Filler, type Pause } from "@uncut/core/transcript";

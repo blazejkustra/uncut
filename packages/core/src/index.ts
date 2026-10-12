@@ -12,3 +12,5 @@ export { canvasBackground, DEFAULT_THEME, esc, RENDER_CSS, resolveColor, resolve
 export type { Motion, RenderTarget, TextLook } from "./render.ts";
 export { outputSize } from "./export.ts";
 export type { ExportQuality } from "./export.ts";
+export { DEFAULT_PAUSE_MIN_S, editWords, FILLERS, fillersOf, handleFrames, PAUSE_MIN_S, pausesOf, planTextCut } from "./transcript.ts";
+export type { CutTranscript, CutWord, EditWord, Filler, Pause, TextCut, TextCutPlan, TextCutRequest } from "./transcript.ts";

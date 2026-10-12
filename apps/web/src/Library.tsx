@@ -292,7 +292,7 @@ export function mediaMeta(m: MediaItem) {
 }
 
 /** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67; "Transcribing…", D68), or why it waits. */
-function analysisText(job: AnalysisJob) {
+export function analysisText(job: AnalysisJob) {
   const pct = `${Math.round(job.progress * 100)}%`;
   if (job.phase === "running" && job.analyzer === "transcript") return job.stage === "model" ? `Downloading the speech model… ${pct}` : `Transcribing… ${pct}`;
   if (job.phase === "running") return `Analysing the ${job.analyzer === "video" ? "picture" : "sound"}… ${pct}`;

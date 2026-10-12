@@ -627,6 +627,8 @@ export interface AnalysisShape {
   readonly request: (target: AnalysisTarget, analyzer: Analyzer, options?: RequestOptions) => Promise<Requested>;
   /** A job as it is now. */
   readonly job: (jobId: string) => AnalysisJob | undefined;
+  /** analysis.cached: a media item's cached result, without a job (null: none yet). */
+  readonly cached: (mediaId: string, analyzer: Analyzer) => Effect.Effect<{ readonly result: AnalysisResult | null }, AnalysisError>;
 }
 
 export class Analysis extends Context.Service<Analysis, AnalysisShape>()("uncut/Analysis") {}
@@ -685,7 +687,19 @@ export const layer = Layer.effect(
         return answers as ReadonlyArray<{ analyzer: Analyzer; state: "done" | "queued" | "running"; jobId?: string }>;
       });
 
+    const cached = (mediaId: string, analyzer: Analyzer) =>
+      Effect.gen(function* () {
+        const open = yield* projects.current;
+        if (!open) return yield* new AnalysisError({ reason: "no-project", message: "Open a project first." });
+        const project = open.project as { canvas: { fps: number }; media: ReadonlyArray<{ id: string; kind: string; path: string; probe?: { frames?: number; hasAudio?: boolean } }> };
+        const media = project.media.find((m) => m.id === mediaId);
+        if (!media) return yield* new AnalysisError({ reason: "unknown-media", message: `There's no media "${mediaId}" in this project.` });
+        const result = yield* Effect.promise(() => cachedFor(targetOf(open.dir, media, project.canvas.fps), analyzer));
+        return { result: result ?? null };
+      });
+
     return Analysis.of({
+      cached,
       jobs: SubscriptionRef.changes(jobsRef),
       start,
       cancel: (jobId) => Effect.sync(() => queue.cancel(jobId)),
