@@ -4,7 +4,9 @@ export { loadModules, validateModule, validateOps, validateProject } from "./val
 export { resolveStarts, projectDuration, timelineProblems } from "./rules.ts";
 export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn } from "./apply-ops.ts";
 export { describeOp, manualEditsNote } from "./edit-log.ts";
-export { animationAt, dipId, dipOpacity, dipsOf, DRAWN_MOVES, layout, spanOf, visualsAt } from "./timeline.ts";
+export { animationAt, dipId, dipOpacity, dipsOf, DRAWN_MOVES, layout, pictureMedia, spanOf, visualsAt } from "./timeline.ts";
+export { baseBox, clipBox, EASES, fitRect, FITS, hasKeys, isPlainBox, keyAt, keysOf, KEY_PROPS } from "./box.ts";
+export type { ClipBox, Ease, Fit, KeyProp, Rect } from "./box.ts";
 export { CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, DRAWN_TRANSITIONS, handleAfter, handleBefore, overlaps, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE } from "./transitions.ts";
 export type { Cut, TransitionInfo, TransitionLimits } from "./transitions.ts";
 export { audibleAt, audioSpan, dbToGain, fadeAt, gainToDb, itemGain, keyDbAt, MAX_DB, SILENCE_DB, soundMedia, sourceAt, trackAudible } from "./audio.ts";

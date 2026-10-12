@@ -1,6 +1,7 @@
 // Reference engine for edit ops: applies them atomically, records who made
 // them, and refuses an agent edit that would overwrite newer user edits (D6).
 import { keyDbAt } from "./audio.ts";
+import { KEY_PROPS, keyAt, keysOf } from "./box.ts";
 import type { Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
 type Draft = Mutable<Project>;
@@ -111,6 +112,7 @@ function applyOp(project: Draft, op: Op) {
       return;
     }
     case "trim_item": {
+      // Box keys (D75) keep their values at a cut: a key goes on the cut with each keyed property's value there.
       const { item } = editable(project, op.item);
       if (item.duration - op.frames < 1) throw new EditError(`Trimming ${op.frames} frames would leave "${item.id}" empty`);
       item.duration -= op.frames;
@@ -120,14 +122,16 @@ function applyOp(project: Draft, op: Op) {
         if (item.start !== undefined) item.start += op.frames;
         if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
         // Keys stay on their moment: they shift with the new start, and ones now before it go.
-        if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+        if (item.keys && op.frames > 0) item.keys = withCutKey(item.keys, op.frames).map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+        else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames }));
         if (item.gainKeys?.length) {
           // The envelope keeps its value at the new start: a key goes there when keys were cut off.
           const at = keyDbAt(item.gainKeys, op.frames);
           const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
           item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
         }
-      }
+      } else if (item.keys?.some((k) => k.frame > item.duration)) item.keys = withCutKey(item.keys, item.duration).filter((k) => k.frame <= item.duration);
+      if (item.keys?.length === 0) delete item.keys;
       return;
     }
     case "split_item": {
@@ -156,8 +160,9 @@ function applyOp(project: Draft, op: Op) {
       if (item.fadeIn !== undefined) item.fadeIn = Math.min(item.fadeIn, item.duration);
       if (second.fadeOut !== undefined) second.fadeOut = Math.min(second.fadeOut, second.duration);
       if (item.keys) {
-        second.keys = item.keys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
-        item.keys = item.keys.filter((k) => k.frame <= op.at);
+        const keys = withCutKey(item.keys, op.at);
+        second.keys = keys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
+        item.keys = keys.filter((k) => k.frame <= op.at);
       }
       if (item.gainKeys?.length) {
         // Both halves get a key at the cut with the envelope's value there, so the volume doesn't step.
@@ -287,4 +292,33 @@ export function undoTurn(initialProject: Project, session: Session, turnId: stri
     kept.push(e);
   }
   return { project: s.project, revision: session.revision + 1, log: kept };
+}
+
+type Keys = NonNullable<Item["keys"]>;
+/**
+ * Box keys (D75) prepared for a cut at `at`: each keyed property gets its value there on a key at
+ * `at`, so neither side jumps; and when the segment crossing the cut is eased (in / out / inOut),
+ * it is baked into linear keys on every frame of that segment, so both halves keep the same motion
+ * frame for frame (a split eased key can't be expressed with the whole-segment eases).
+ */
+function withCutKey(keys: Keys, at: number): Keys {
+  const add = new Map<number, Record<string, number>>();
+  const put = (frame: number, p: string, v: number) => add.set(frame, { ...(add.get(frame) ?? {}), [p]: Math.round(v * 1e6) / 1e6 });
+  for (const p of KEY_PROPS) {
+    const list = keysOf(keys, p);
+    if (!list.length || list.some((k) => k.frame === at)) continue;
+    const i = list.findIndex((k) => k.frame > at);
+    put(at, p, keyAt(keys, p, at)!);
+    // Inside an eased segment: every frame of it gets its value (linear between frames).
+    if (i > 0 && list[i - 1]!.ease !== "linear") for (let f = list[i - 1]!.frame + 1; f < list[i]!.frame; f++) put(f, p, keyAt(keys, p, f)!);
+  }
+  if (!add.size) return keys;
+  const out = keys.map((k) => ({ ...k }));
+  for (const [frame, values] of add) {
+    const i = out.findLastIndex((k) => k.frame === frame);
+    if (i !== -1) out[i] = { ...out[i]!, ...values };
+    else out.push({ frame, ...values });
+  }
+  // A baked segment moves linearly from frame to frame: the key it starts from mustn't ease it again.
+  return out.sort((a, b) => a.frame - b.frame);
 }

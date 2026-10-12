@@ -56,6 +56,8 @@ export interface Transform {
   readonly rotate?: number;
   readonly opacity?: number;
   readonly fit?: "contain" | "cover" | "fill";
+  /** Clips: corner radius of the box in canvas pixels (D75). */
+  readonly radius?: number;
 }
 
 export interface TextStyle {
@@ -83,7 +85,8 @@ export interface Item {
   readonly duration: Frame;
   readonly locked?: boolean;
   readonly transform?: Transform;
-  readonly keys?: ReadonlyArray<{ readonly frame: Frame; readonly ease?: "linear" | "in" | "out" | "inOut"; readonly [key: string]: unknown }>;
+  /** Clips: keyframes of x, y, scale and opacity (D75, box.ts). */
+  readonly keys?: ReadonlyArray<{ readonly frame: Frame; readonly ease?: "linear" | "in" | "out" | "inOut"; readonly x?: number; readonly y?: number; readonly scale?: number; readonly opacity?: number; readonly [key: string]: unknown }>;
   readonly transitionIn?: TimedModule;
   readonly animation?: { readonly in?: TimedModule; readonly out?: TimedModule; readonly loop?: TimedModule };
   readonly effects?: ReadonlyArray<ModuleUse>;
@@ -109,9 +112,10 @@ export interface Item {
   readonly source?: Id;
   readonly mode?: "line" | "word";
   readonly edits?: ReadonlyArray<{ readonly word: number; readonly text: string }>;
-  // audio
+  // clip, audio
   readonly fadeIn?: Frame;
   readonly fadeOut?: Frame;
+  /** The media starts over when the item is longer than it (clip: D75). */
   readonly loop?: boolean;
   readonly gainKeys?: ReadonlyArray<{ readonly frame: Frame; readonly db: number }>;
 }
