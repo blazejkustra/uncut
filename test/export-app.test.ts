@@ -171,8 +171,22 @@ test("export dialog: ⌘E, quality, file and folder, progress, shown in Finder; 
     // Text and backgrounds are the same HTML in the same Chromium: near identical. Footage goes
     // through Chromium's colour management in the preview (its BT.709 curve lifts mid-tones a few
     // levels) while the export keeps the code values, so video frames sit a little lower.
-    assert.ok(score >= (f <= 30 ? 0.97 : 0.94), `frame ${f}: SSIM ${score}`);
+    // (Raised with D56: the preview lays out at canvas size, so text matches; measured 0.997 and 0.974–0.992.)
+    assert.ok(score >= (f <= 30 ? 0.99 : 0.96), `frame ${f}: SSIM ${score}`);
   }
+  // The title card's text (frame 30, fully faded in) in the same place, the same width (D56).
+  const brightBox = (png: string) => {
+    const [w, h] = [1920, 1080];
+    const px = execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", `scale=${w}:${h},format=gray`, "-f", "rawvideo", "-"], { maxBuffer: 16 << 20 });
+    const b = { x0: w, x1: -1, y0: h, y1: -1 };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[y * w + x]! > 200) Object.assign(b, { x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), y0: Math.min(b.y0, y), y1: Math.max(b.y1, y) });
+    return b;
+  };
+  const [tp, te] = [brightBox(preview.get(30)!), brightBox(out("export-frame-30.png"))];
+  const ratio = (tp.x1 - tp.x0) / (te.x1 - te.x0);
+  console.log(`  title text: preview ${JSON.stringify(tp)}, export ${JSON.stringify(te)}, width ratio ${ratio.toFixed(4)}`);
+  for (const k of ["x0", "x1", "y0", "y1"] as const) assert.ok(Math.abs(tp[k] - te[k]) <= 2, `title ${k}: ${tp[k]} vs ${te[k]} (canvas px)`);
+  assert.ok(Math.abs(ratio - 1) < 0.005, `title width ratio ${ratio}`);
 
   // Again to the same file, typed by hand (not confirmed by the save panel): refused, with Replace.
   await page.click("[data-testid=export-again]");

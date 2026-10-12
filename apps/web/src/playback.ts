@@ -24,8 +24,14 @@ export interface PlaybackState {
   /** Fractional while playing; whole frames when paused. */
   readonly frame: number;
   readonly playing: boolean;
-  /** Frames the playhead can be on: [0, frames - 1]. */
+  /** Frames of the project: playback runs over [0, frames - 1] and stops on the last frame. */
   readonly frames: number;
+  /**
+   * Where the last item ends (0 when empty). End and seeking can put the playhead here, one past
+   * the last frame (nothing is drawn there), so whatever is added at the playhead goes after
+   * everything: an end card after the last clip, not over its last frame.
+   */
+  readonly end: number;
   readonly fps: number;
   readonly selected: string | undefined;
   /** Timeline zoom as a multiple of "fit the whole project". */
@@ -35,7 +41,7 @@ export interface PlaybackState {
   readonly draft: PreviewDraft | undefined;
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, fps: 30, selected: undefined, zoom: 1, snapping: true, draft: undefined };
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, zoom: 1, snapping: true, draft: undefined };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -48,6 +54,8 @@ export const usePlayback = <T>(select: (s: PlaybackState) => T): T => useSyncExt
 export const getPlayback = () => state;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** The furthest the playhead can go: the end of the project (or its only frame when empty). */
+const lastPosition = (s: { frames: number; end: number }) => Math.max(s.frames - 1, s.end);
 const ZOOM_MIN = 1 / 8;
 const ZOOM_MAX = 400;
 
@@ -78,14 +86,18 @@ function tick(now: number) {
 export const playback = {
   subscribe,
 
-  /** The open project changed: the playhead stays where it is unless the project got shorter. */
-  setProject(frames: number, fps: number) {
-    if (frames === state.frames && fps === state.fps) return;
+  /**
+   * The open project changed: the playhead stays where it is unless the project got shorter than
+   * that; then it goes to the new end (so deleting an end card at the end leaves the playhead
+   * where the next one goes).
+   */
+  setProject(frames: number, fps: number, end: number) {
+    if (frames === state.frames && fps === state.fps && end === state.end) return;
     const last = frames - 1;
     if (state.playing && state.frame >= last) {
       cancelAnimationFrame(raf);
-      set({ frames, fps, frame: last, playing: false });
-    } else set({ frames, fps, frame: clamp(state.frame, 0, last) });
+      set({ frames, end, fps, frame: last, playing: false });
+    } else set({ frames, end, fps, frame: clamp(state.frame, 0, lastPosition({ frames, end })) });
   },
 
   /** Another project opened: back to the start, nothing selected, fit zoom. */
@@ -113,7 +125,7 @@ export const playback = {
 
   /** Move the playhead (whole frames). While playing, playback carries on from there. */
   seek(frame: number) {
-    const f = clamp(Math.round(frame), 0, state.frames - 1);
+    const f = clamp(Math.round(frame), 0, lastPosition(state));
     if (state.playing) clock = { f0: f, t0: performance.now() };
     set({ frame: f });
   },
@@ -126,9 +138,10 @@ export const playback = {
     playback.pause();
     playback.seek(0);
   },
+  /** To the end of the project, after its last frame (where an end card goes). */
   toEnd() {
     playback.pause();
-    playback.seek(state.frames - 1);
+    playback.seek(state.end);
   },
 
   /** The preview's video follower; undefined unregisters. */
