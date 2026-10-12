@@ -106,6 +106,17 @@ export const THUMB_PATH = "/media/thumb"; // GET /media/thumb/<media id>?token=�
 // GET /media/file/<media id>?token=…: the original file of a media item of the open project, with
 // HTTP Range support (the preview's <video> seeks with it). Footage is streamed, never copied.
 export const MEDIA_FILE_PATH = "/media/file";
+// GET /media/waveform/<media id>?token=…: the sound's peaks for the timeline, as JSON
+// { version, rate, seconds, peaks } where peaks is base64 of one byte per 1/rate s (the loudest
+// sample in it, 0–255 for 0–full scale). Made once per file and cached in the project's .cache/.
+export const WAVEFORM_PATH = "/media/waveform";
+export interface Waveform {
+  readonly version: 1;
+  /** Peaks per second. */
+  readonly rate: number;
+  readonly seconds: number;
+  readonly peaks: string;
+}
 
 /** What an import did, file by file. The project change itself arrives as a snapshot. */
 export const MediaImportResult = Schema.Struct({

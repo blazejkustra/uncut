@@ -8,6 +8,7 @@ import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "
 import { Maximize2, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { Mix, PREROLL_S, setCurrentMix } from "./audio.ts";
 import { draftOf, findItem, lockOf } from "./edit.ts";
 import { canvasLabel, frameTimecode } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
@@ -56,6 +57,27 @@ function seek(el: HTMLVideoElement, t: number) {
 }
 
 /**
+ * Keep a <video> at `source` seconds: playing at the clip's speed (pitch kept), seeked only when
+ * it drifts; paused, seeked to the frame.
+ */
+function drive(el: HTMLVideoElement, source: number, playing: boolean, speed: number) {
+  if (el.playbackRate !== speed) {
+    el.playbackRate = speed;
+    el.preservesPitch = true;
+  }
+  const target = source + 0.0001;
+  if (playing) {
+    if (el.paused) {
+      seek(el, target);
+      el.play().catch(() => {});
+    } else if (Math.abs(el.currentTime - target) > 0.12 * Math.max(1, speed)) seek(el, target);
+  } else {
+    if (!el.paused) el.pause();
+    seek(el, target);
+  }
+}
+
+/**
  * Draws the project into the preview frame, imperatively: it runs on every playhead change
  * (60 times a second while playing) without going through React.
  */
@@ -73,6 +95,8 @@ class Compositor {
   // The project folder this preview draws. Another folder open means this preview is on its way
   // out: it draws nothing more (its media ids could name the new project's files).
   private readonly dir: string;
+  // The playback mix (D54): clips' sound comes from the <video> elements made here.
+  private readonly mix = new Mix();
 
   constructor(dir: string, frameEl: HTMLDivElement, mediaLayer: HTMLDivElement, textLayer: HTMLDivElement) {
     this.dir = dir;
@@ -81,6 +105,7 @@ class Compositor {
     this.textLayer = textLayer;
     this.unsubscribe = playback.subscribe(() => this.render());
     playback.setFollower((f) => this.follow(f));
+    setCurrentMix(this.mix);
   }
 
   destroy() {
@@ -89,6 +114,8 @@ class Compositor {
     for (const id of [...this.els.keys()]) this.drop(id);
     for (const el of this.solids.values()) el.remove();
     this.solids.clear();
+    this.mix.destroy();
+    setCurrentMix(undefined);
   }
 
   setEditing(id: string | undefined) {
@@ -111,6 +138,7 @@ class Compositor {
     const el = this.els.get(id);
     if (!el) return;
     if (el instanceof HTMLVideoElement) {
+      this.mix.detach(id, el);
       el.pause();
       el.removeAttribute("src");
       el.load();
@@ -135,7 +163,9 @@ class Compositor {
       el.alt = "";
     } else {
       const video = document.createElement("video");
+      // Muted until the mix routes its sound (a clip with sound); CORS mode so Web Audio may hear it.
       video.muted = true;
+      video.crossOrigin = "anonymous";
       video.playsInline = true;
       video.preload = "auto";
       video.addEventListener("seeked", () => {
@@ -164,6 +194,7 @@ class Compositor {
       this.mediaLayer.append(note);
     });
     el.src = src;
+    if (el instanceof HTMLVideoElement && media.probe?.hasAudio) this.mix.attach(item.id, el);
     this.els.set(item.id, el);
     this.mediaLayer.append(el);
     return el;
@@ -174,6 +205,7 @@ class Compositor {
     if (!project) return;
     if (getState().snapshot?.dir !== this.dir) {
       for (const id of [...this.els.keys()]) this.drop(id);
+      this.mix.stop();
       return;
     }
     const background = canvasBackground(project);
@@ -191,7 +223,19 @@ class Compositor {
       return start > frame && start - frame < 2 * fps && mediaKind(it)?.kind === "video";
     });
     const keep = new Set([...clips.map((c) => c.item.id), ...(ahead ? [ahead.id] : [])]);
-    for (const id of [...this.els.keys()]) if (!keep.has(id)) this.drop(id);
+    for (const [id, el] of [...this.els]) {
+      if (keep.has(id)) continue;
+      // No longer shown (it ended, its track was hidden): the mix may hold the <video> a moment,
+      // out of sight, while its sound ramps down or hands over to an <audio>, so nothing clicks.
+      if (el instanceof HTMLVideoElement) {
+        this.mix.unshow(id, el);
+        if (this.mix.holds(el)) {
+          el.style.opacity = "0";
+          continue;
+        }
+      }
+      this.drop(id);
+    }
 
     // Everything is stacked in track order (visualsAt's, the order export composites in, D39):
     // media and backgrounds in the media layer, text in the text layer, interleaved by z-index
@@ -233,25 +277,25 @@ class Compositor {
       el.style.opacity = String(c.opacity);
       el.style.zIndex = String(z.get(c.item.id));
       if (!(el instanceof HTMLVideoElement)) return;
-      el.muted = !playing || c.opacity < 1 || !media.probe?.hasAudio;
-      const target = c.source + 0.0001;
-      if (playing) {
-        if (el.paused) {
-          seek(el, target);
-          el.play().catch(() => {});
-        } else if (Math.abs(el.currentTime - target) > 0.12) seek(el, target);
-      } else {
-        if (!el.paused) el.pause();
-        seek(el, target);
-      }
+      if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
+      drive(el, c.source, playing, c.item.speed ?? 1);
     });
     if (ahead && !clips.some((c) => c.item.id === ahead.id)) {
       const el = this.elementFor(ahead, "video");
       if (el instanceof HTMLVideoElement) {
         el.style.opacity = "0";
         el.style.zIndex = "0";
-        if (!el.paused) el.pause();
-        seek(el, ((ahead.in ?? 0) - (ahead.transitionIn?.duration ?? 0) / 2) / fps + 0.0001);
+        if (mediaKind(ahead)?.probe?.hasAudio) this.mix.attach(ahead.id, el);
+        const from = starts.get(ahead.id)! - (ahead.transitionIn?.duration ?? 0) / 2;
+        const speed = ahead.speed ?? 1;
+        // Just before it starts (while playing) it already runs, out of sight and silent, so the
+        // cut doesn't wait for the decoder to start (picture and sound).
+        const early = (ahead.in ?? 0) + (frame - starts.get(ahead.id)!) * speed;
+        if (playing && from - frame <= PREROLL_S * fps && early >= 0) drive(el, early / fps, true, speed);
+        else {
+          if (!el.paused) el.pause();
+          seek(el, ((ahead.in ?? 0) - ((ahead.transitionIn?.duration ?? 0) / 2) * speed) / fps + 0.0001);
+        }
       }
     }
 
@@ -270,6 +314,8 @@ class Compositor {
       const zi = String(z.get((el as HTMLElement).dataset.item ?? "") ?? 0);
       if ((el as HTMLElement).style.zIndex !== zi) (el as HTMLElement).style.zIndex = zi;
     }
+    // Sound after picture: the mix uses the <video> elements made above.
+    this.mix.render(project, frame, playing);
     this.frameEl.dataset.frame = String(Math.floor(frame));
     this.frameEl.dataset.playing = playing ? "true" : "false";
   }
@@ -285,7 +331,7 @@ class Compositor {
     if (!top) return undefined;
     const el = this.els.get(top.item.id);
     if (!(el instanceof HTMLVideoElement) || el.paused || el.seeking || el.readyState < 3) return undefined;
-    return starts.get(top.item.id)! + el.currentTime * project.canvas.fps - (top.item.in ?? 0);
+    return starts.get(top.item.id)! + (el.currentTime * project.canvas.fps - (top.item.in ?? 0)) / (top.item.speed ?? 1);
   }
 }
 

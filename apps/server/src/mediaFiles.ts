@@ -17,7 +17,8 @@ import { tokensMatch } from "./ws.ts";
 
 // The lookup is an exact match against the project's media ids; this only rejects junk early.
 const MEDIA_ID = /^[a-z0-9][a-z0-9-]*$/;
-const notFound = () => HttpServerResponse.text("Not found", { status: 404 });
+const CORS = { "access-control-allow-origin": "*", "access-control-expose-headers": "Content-Range, Accept-Ranges, Content-Length" };
+const notFound = () => HttpServerResponse.text("Not found", { status: 404, headers: CORS });
 
 const TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
@@ -86,7 +87,7 @@ export const layer = Layer.unwrap(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = HttpServerRequest.toURL(request);
         if (Option.isNone(url) || !tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), config.token)) {
-          return HttpServerResponse.text("Unauthorized", { status: 401 });
+          return HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
         }
         const id = decode(url.value.pathname.slice(MEDIA_FILE_PATH.length + 1));
         const open = yield* projects.current;
@@ -110,11 +111,14 @@ export const layer = Layer.unwrap(
             return (error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM" ? "forbidden" : undefined;
           }
         });
-        if (opened === "forbidden") return HttpServerResponse.text("Forbidden", { status: 403 });
+        if (opened === "forbidden") return HttpServerResponse.text("Forbidden", { status: 403, headers: CORS });
         if (!opened) return notFound();
         const { file, size } = opened;
 
-        const headers = { "accept-ranges": "bytes", "cache-control": "no-store" };
+        // CORS (D54): the preview routes the sound through Web Audio, which needs the file fetched
+        // in CORS mode (crossOrigin="anonymous") from the file:// renderer, an opaque origin. The
+        // token in the URL protects the route, so any origin may read it.
+        const headers = { "accept-ranges": "bytes", "cache-control": "no-store", ...CORS };
         const range = parseRange(request.headers["range"], size);
         if (range === "unsatisfiable") {
           yield* Effect.promise(() => file.close().catch(() => {}));

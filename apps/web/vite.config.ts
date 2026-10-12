@@ -10,8 +10,8 @@ const csp: Plugin = {
       tag: "meta",
       attrs: {
         "http-equiv": "Content-Security-Policy",
-        // Thumbnails and footage come from the local server's token-protected /media routes.
-        content: "default-src 'self'; connect-src ws://127.0.0.1:*; img-src 'self' http://127.0.0.1:*; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'",
+        // Thumbnails, footage and waveforms come from the local server's token-protected /media routes.
+        content: "default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' http://127.0.0.1:*; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'",
       },
       injectTo: "head",
     },

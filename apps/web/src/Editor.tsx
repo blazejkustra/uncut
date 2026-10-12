@@ -6,7 +6,8 @@ import { AgentPanel } from "./Agent.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
-import { BackgroundEditor, TextEditor } from "./ItemEditors.tsx";
+import { AudioEditor, BackgroundEditor, TextEditor } from "./ItemEditors.tsx";
+import { hasSound } from "./sound.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
 import { SOLID } from "@uncut/core/render";
@@ -152,11 +153,10 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   );
 }
 
-// Media, Text and Elements (backgrounds) work; the rest arrive in later chunks.
+// Media, Text, Elements (backgrounds) and Audio work; the rest arrive in later chunks.
 const RAIL: ReadonlyArray<[string, typeof Film]> = [
   ["Capture", CircleDot],
   ["Transitions", Blend],
-  ["Audio", Music],
   ["Generate", Sparkles],
 ];
 
@@ -174,6 +174,10 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
       <button className={tab === "elements" ? "active" : ""} data-testid="rail-elements" title="Elements: backgrounds" onClick={() => onTab("elements")}>
         <Shapes />
         <span>Elements</span>
+      </button>
+      <button className={tab === "audio" ? "active" : ""} data-testid="rail-audio" title="Audio: music and sound" onClick={() => onTab("audio")}>
+        <Music />
+        <span>Audio</span>
       </button>
       {RAIL.map(([label, Icon]) => (
         <button key={label} disabled title={`${label}: ${LATER}`}>
@@ -333,7 +337,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
   return (
     <div data-testid="inspector-item" data-item={item.id}>
       <div className="insp-title">
-        {item.type === "text" ? <Type /> : <Film />}
+        {item.type === "text" ? <Type /> : item.type === "audio" ? <Music /> : <Film />}
         <span className="ellipsis">{itemLabel(project, item)}</span>
       </div>
       <div className="insp-sub">
@@ -342,6 +346,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
       </div>
       {item.type === "text" && <TextEditor project={project} item={item} locked={locked} />}
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
+      {hasSound(project, item) && <AudioEditor project={project} item={item} locked={locked} />}
       <div className="group">
         <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
         <Row k="Track" id="insp-track" v={track.name} />
