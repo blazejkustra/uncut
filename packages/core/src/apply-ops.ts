@@ -65,45 +65,109 @@ function merge(target: object, set: FieldSet) {
   }
 }
 
+/**
+ * Locked tracks and items can't be edited, by the user or the agent (D52). update_track stays
+ * allowed, so a locked track can still be unlocked, hidden or muted.
+ */
+function guard(track: DraftTrack, item?: DraftItem) {
+  if (track.locked) throw new EditError(`Track "${track.name ?? track.id}" is locked: unlock it to edit it`);
+  if (item?.locked) throw new EditError(`"${item.id}" is locked: unlock it to edit it`);
+}
+
+/** The item an op works on, refused if it (or its track) is locked. */
+function editable(project: Draft, itemId: Id) {
+  const found = locate(project, itemId);
+  guard(found.track, found.item);
+  return found;
+}
+
+/** Clips and audio play from a time in their media; still images and items without media don't. */
+function hasSourceTime(project: Draft, item: DraftItem) {
+  if (!item.media) return item.in !== undefined;
+  return project.media.find((m) => m.id === item.media)?.kind !== "image";
+}
+
+/** An item's animations, each no longer than the item. */
+function fitAnimation<T extends { duration: number }>(animation: { in?: T; out?: T; loop?: T }, duration: number) {
+  for (const a of Object.values(animation)) if (a) a.duration = Math.min(a.duration, duration);
+  return animation;
+}
+
 function applyOp(project: Draft, op: Op) {
   switch (op.op) {
     case "insert_item": {
       const track = findTrack(project, op.track);
+      guard(track);
       const item = structuredClone(op.item) as DraftItem;
       if (track.role === "main") track.items.splice(op.index ?? track.items.length, 0, item);
       else track.items.push(item);
       return;
     }
-    case "update_item":
-      merge(locate(project, op.item).item, op.set);
+    case "update_item": {
+      // Locking or unlocking an item is the one change a locked item takes.
+      const onlyLock = Object.keys(op.set).every((k) => k === "locked");
+      merge((onlyLock ? locate(project, op.item) : editable(project, op.item)).item, op.set);
       return;
+    }
     case "trim_item": {
-      const { item } = locate(project, op.item);
+      const { item } = editable(project, op.item);
       if (item.duration - op.frames < 1) throw new EditError(`Trimming ${op.frames} frames would leave "${item.id}" empty`);
       item.duration -= op.frames;
       if (op.edge === "start") {
-        if ("in" in item || item.media) item.in = (item.in ?? 0) + op.frames;
+        // The source moves with the start, at the clip's speed. A still image has no source time.
+        if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1));
         if (item.start !== undefined) item.start += op.frames;
-        if (item.in! < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
+        if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
+        // Keys stay on their moment: they shift with the new start, and ones now before it go.
+        if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+        if (item.gainKeys) item.gainKeys = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
       }
       return;
     }
     case "split_item": {
-      const { track, index, item } = locate(project, op.item);
-      if (op.at >= item.duration) throw new EditError(`Split point ${op.at} is outside "${item.id}"`);
+      const { track, index, item } = editable(project, op.item);
+      if (op.at < 1 || op.at >= item.duration) throw new EditError(`Split point ${op.at} is outside "${item.id}"`);
       const second = structuredClone(item);
       second.id = op.newId;
       second.duration = item.duration - op.at;
-      if (item.media || "in" in item) second.in = (item.in ?? 0) + op.at;
+      if (hasSourceTime(project, item)) second.in = (item.in ?? 0) + Math.round(op.at * (item.speed ?? 1));
       if (item.start !== undefined) second.start = item.start + op.at;
       delete second.transitionIn;
       item.duration = op.at;
+      // The first half keeps how the item comes in, the second how it goes out; keys go to the
+      // half they fall in (a key on the cut goes to both, so each half keeps its value there).
+      if (item.animation) {
+        const { in: animIn, out, loop } = item.animation;
+        const first = { ...(animIn ? { in: animIn } : {}), ...(loop ? { loop } : {}) };
+        const last = { ...(out ? { out } : {}), ...(loop ? { loop } : {}) };
+        if (Object.keys(first).length) item.animation = fitAnimation(first, item.duration);
+        else delete item.animation;
+        if (Object.keys(last).length) second.animation = fitAnimation(last, second.duration);
+        else delete second.animation;
+      }
+      delete item.fadeOut;
+      delete second.fadeIn;
+      if (item.fadeIn !== undefined) item.fadeIn = Math.min(item.fadeIn, item.duration);
+      if (second.fadeOut !== undefined) second.fadeOut = Math.min(second.fadeOut, second.duration);
+      if (item.keys) {
+        second.keys = item.keys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
+        item.keys = item.keys.filter((k) => k.frame <= op.at);
+      }
+      if (item.gainKeys) {
+        second.gainKeys = item.gainKeys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
+        item.gainKeys = item.gainKeys.filter((k) => k.frame <= op.at);
+      }
+      for (const half of [item, second]) {
+        if (half.keys?.length === 0) delete half.keys;
+        if (half.gainKeys?.length === 0) delete half.gainKeys;
+      }
       track.items.splice(index + 1, 0, second);
       return;
     }
     case "move_item": {
-      const { track, index, item } = locate(project, op.item);
+      const { track, index, item } = editable(project, op.item);
       const target = op.track ? findTrack(project, op.track) : track;
+      guard(target);
       track.items.splice(index, 1);
       if (target.role === "main") {
         delete item.start;
@@ -117,12 +181,12 @@ function applyOp(project: Draft, op: Op) {
       return;
     }
     case "delete_item": {
-      const { track, index } = locate(project, op.item);
+      const { track, index } = editable(project, op.item);
       track.items.splice(index, 1);
       return;
     }
     case "set_transition": {
-      const { item } = locate(project, op.item);
+      const { item } = editable(project, op.item);
       if (op.transition === null) delete item.transitionIn;
       else item.transitionIn = structuredClone(op.transition) as DraftItem["transitionIn"];
       return;
@@ -130,13 +194,21 @@ function applyOp(project: Draft, op: Op) {
     case "add_track":
       project.tracks.splice(op.index ?? project.tracks.length, 0, { items: [], ...(structuredClone(op.track) as Partial<DraftTrack>) } as DraftTrack);
       return;
-    case "update_track":
-      merge(findTrack(project, op.track), op.set);
+    case "update_track": {
+      const track = findTrack(project, op.track);
+      // Items change through item ops (so locks, ids and the log see them); an id is a reference.
+      for (const key of ["items", "id"]) if (key in op.set) throw new EditError(`A track's ${key} can't be changed with update_track`);
+      if (track.locked && ("kind" in op.set || "role" in op.set)) guard(track);
+      merge(track, op.set);
       return;
-    case "delete_track":
-      findTrack(project, op.track);
+    }
+    case "delete_track": {
+      const track = findTrack(project, op.track);
+      guard(track);
+      for (const item of track.items) guard(track, item);
       project.tracks = project.tracks.filter((t) => t.id !== op.track);
       return;
+    }
     case "add_media":
       project.media.push(structuredClone(op.media) as Draft["media"][number]);
       return;

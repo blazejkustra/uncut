@@ -5,9 +5,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AgentPanel } from "./Agent.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
+import { itemLabel } from "./project.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
-import { playback } from "./playback.ts";
+import { findItem } from "./edit.ts";
+import { frameTimecode } from "./format.ts";
+import { playback, usePlayback } from "./playback.ts";
 import { Stage } from "./Preview.tsx";
 import { actions, getState, MAX_NAME_LENGTH, plainError, projectOf, useApp, type Project } from "./store.ts";
 import { Timeline } from "./Timeline.tsx";
@@ -19,7 +22,8 @@ const isEditable = (el: EventTarget | null) =>
 
 /**
  * Editor keys: Space plays/pauses, ←/→ step a frame (⇧ a second), Home/End jump, Esc deselects,
- * ⌘+/⌘−/⌘0 zoom the timeline. Not while typing or with a dialog open. (⌘Z/⇧⌘Z live in the store.)
+ * S splits at the playhead, ⌫/Delete deletes the selected item, ⌘+/⌘−/⌘0 zoom the timeline.
+ * Not while typing or with a dialog open. (⌘Z/⇧⌘Z live in the store.)
  */
 function useEditorKeys(fps: number) {
   useEffect(() => {
@@ -42,6 +46,8 @@ function useEditorKeys(fps: number) {
       else if (e.key === "Home") (playback.toStart(), done());
       else if (e.key === "End") (playback.toEnd(), done());
       else if (e.key === "Escape") playback.select(undefined);
+      else if ((e.key === "s" || e.key === "S") && !e.shiftKey) (done(), e.repeat || void actions.split());
+      else if (e.key === "Backspace" || e.key === "Delete") (done(), e.repeat || void actions.deleteSelected());
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space" && !blocked(e)) e.preventDefault();
@@ -176,6 +182,7 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
 
 function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
   const [tab, setTab] = useState<"inspector" | "agent">("inspector");
+  const selected = findItem(project, usePlayback((s) => s.selected));
   return (
     <aside className="side">
       <div className="tabs">
@@ -187,7 +194,9 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
         </button>
       </div>
       <div className="side-body">
-        {tab === "inspector" ? (
+        {tab === "inspector" && selected ? (
+          <ItemInspector project={project} placed={selected} />
+        ) : tab === "inspector" ? (
           // Keyed on the folder: switching projects drops any half-typed value with the old Inspector.
           <Inspector key={snapshot.dir} snapshot={snapshot} project={project} online={online} />
         ) : (
@@ -296,6 +305,50 @@ function Inspector({ snapshot, project, online }: { snapshot: ProjectSnapshot; p
         </div>
       </div>
     </>
+  );
+}
+
+const TYPE_NAMES: Readonly<Record<string, string>> = { clip: "Clip", component: "Component", graphic: "Graphic", text: "Text", captions: "Captions", audio: "Audio" };
+
+/** The selected item's basics (chunk 3); text styling and the rest come with chunk 4. */
+function ItemInspector({ project, placed }: { project: Project; placed: NonNullable<ReturnType<typeof findItem>> }) {
+  const { item, track, start } = placed;
+  const fps = project.canvas.fps;
+  const tc = (f: number) => `${frameTimecode(f, fps)}`;
+  const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
+  const Row = ({ k, id, v, title }: { k: string; id: string; v: ReactNode; title?: string }) => (
+    <div className="kv-row">
+      <span className="muted">{k}</span>
+      <span className="mono small" data-testid={id} title={title}>
+        {v}
+      </span>
+    </div>
+  );
+  return (
+    <div data-testid="inspector-item" data-item={item.id}>
+      <div className="insp-title">
+        {item.type === "text" ? <Type /> : <Film />}
+        <span className="ellipsis">{itemLabel(project, item)}</span>
+      </div>
+      <div className="insp-sub">
+        {TYPE_NAMES[item.type] ?? item.type} on {track.name}
+        {track.locked ? ". The track is locked: unlock it in the timeline to edit it." : ". Drag it on the timeline to move it, its edges to trim it."}
+      </div>
+      <div className="group">
+        <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
+        <Row k="Track" id="insp-track" v={track.name} />
+        <Row k="Start" id="insp-start" v={tc(start)} title={`frame ${start}`} />
+        <Row k="Duration" id="insp-duration" v={`${(item.duration / fps).toFixed(2)}s`} title={`${item.duration} frames`} />
+        {media && (
+          <>
+            <Row k="Media" id="insp-media" v={media.name} />
+            <Row k="Source in" id="insp-in" v={tc(item.in ?? 0)} title={`frame ${item.in ?? 0}`} />
+            <Row k="Source out" id="insp-out" v={tc((item.in ?? 0) + item.duration)} title={`frame ${(item.in ?? 0) + item.duration}`} />
+          </>
+        )}
+      </div>
+      <div className="hint muted small">S splits at the playhead, ⌫ deletes, Esc deselects.</div>
+    </div>
   );
 }
 

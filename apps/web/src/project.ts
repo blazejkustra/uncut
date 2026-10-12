@@ -71,7 +71,7 @@ export function planAddMedia(project: ProjectModel, mediaId: string): Planned {
   if (media.kind !== "image" && !frames) return { problem: `${media.name} has no known length, so it can't go on the timeline.` };
   if (media.kind === "audio") {
     const ops: Array<unknown> = [];
-    let track = project.tracks.find((t) => t.kind === "audio" && t.role !== "main");
+    let track = project.tracks.find((t) => t.kind === "audio" && t.role !== "main" && !t.locked);
     const taken = new Set<string>();
     if (!track) {
       const id = uniqueId(project, "audio", taken);
@@ -86,6 +86,7 @@ export function planAddMedia(project: ProjectModel, mediaId: string): Planned {
   }
   const main = project.tracks.find((t) => t.role === "main");
   if (!main) return { problem: "This project has no main track." };
+  if (main.locked) return { problem: "The main track is locked. Unlock it to add clips." };
   const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
   const itemId = uniqueId(project, "clip");
   const duration = media.kind === "image" ? IMAGE_SECONDS * fps : frames!;
@@ -119,7 +120,7 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
   const free = (t: Track) => t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
   const ops: Array<unknown> = [];
   const taken = new Set<string>();
-  let track = displayTracks(project).find((t) => t.kind === "text" && free(t));
+  let track = displayTracks(project).find((t) => t.kind === "text" && !t.locked && free(t));
   if (!track) {
     const id = uniqueId(project, "text", taken);
     taken.add(id);

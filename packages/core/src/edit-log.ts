@@ -17,6 +17,22 @@ function label(project: Project, id: Id) {
   return id;
 }
 
+/** Hide, lock and mute in words (the timeline's track buttons); undefined for anything else. */
+function trackFlag(track: Id, set: { readonly [key: string]: unknown }): string | undefined {
+  const keys = Object.keys(set);
+  if (keys.length !== 1) return undefined;
+  const on = (v: unknown) => v === true;
+  if (keys[0] === "hidden") return `${on(set.hidden) ? "Hid" : "Showed"} track ${track}`;
+  if (keys[0] === "locked") return `${on(set.locked) ? "Locked" : "Unlocked"} track ${track}`;
+  if (keys[0] === "mixer") {
+    // Only when the mute flag is the news; other mixer changes keep the generic line.
+    const mute = (set.mixer as { readonly mute?: unknown } | null)?.mute;
+    if (mute === true) return `Muted track ${track}`;
+    if (mute === false) return `Unmuted track ${track}`;
+  }
+  return undefined;
+}
+
 export function describeOp(op: Op, project: Project): string {
   const fps = project.canvas.fps;
   const it = (id: Id) => label(project, id);
@@ -28,7 +44,7 @@ export function describeOp(op: Op, project: Project): string {
     case "split_item":
       return `Split ${it(op.item)} at ${secs(op.at, fps)}`;
     case "move_item":
-      return `Moved ${it(op.item)}${op.track ? ` to track ${op.track}` : ""}${op.start !== undefined ? ` to ${secs(op.start, fps)}` : ""}`;
+      return `Moved ${it(op.item)}${op.track ? ` to track ${op.track}` : ""}${op.start !== undefined ? ` to ${secs(op.start, fps)}` : ""}${op.index !== undefined ? ` to position ${op.index + 1}` : ""}`;
     case "delete_item":
       return `Deleted ${op.item}`;
     case "insert_item":
@@ -36,7 +52,7 @@ export function describeOp(op: Op, project: Project): string {
     case "set_transition":
       return op.transition ? `Set ${op.transition.module} into ${it(op.item)}` : `Removed the transition into ${it(op.item)}`;
     case "update_track":
-      return `Changed ${Object.keys(op.set).join(", ")} on track ${op.track}`;
+      return trackFlag(op.track, op.set) ?? `Changed ${Object.keys(op.set).join(", ")} on track ${op.track}`;
     case "add_track":
       return `Added ${op.track.kind ?? ""} track ${op.track.name ? `"${op.track.name}" (${op.track.id})` : op.track.id}`.replace("  ", " ");
     case "delete_track":

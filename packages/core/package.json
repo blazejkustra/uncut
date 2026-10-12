@@ -10,7 +10,8 @@
     "./apply-ops": "./src/apply-ops.ts",
     "./edit-log": "./src/edit-log.ts",
     "./timeline": "./src/timeline.ts",
-    "./render": "./src/render.ts"
+    "./render": "./src/render.ts",
+    "./rules": "./src/rules.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"
