@@ -7,8 +7,8 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// node --test runs test files in parallel. Several packaged apps starting at once (plus the
-// spike's Electron tests) can starve each other on a busy machine, so the Electron test files
+// node --test runs test files in parallel. Several packaged apps starting at once can starve
+// each other on a busy machine, so the Electron test files
 // take turns: each holds a lock from its before() to its after(). Hooks have no timeout, so
 // waiting doesn't eat into any test's own timeout; the wait itself gives up after 10 minutes.
 //

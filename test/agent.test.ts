@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import Ajv2020Module from "ajv/dist/2020.js";
 import type { ValidateFunction } from "ajv";
 import { loadModules, validateProject, projectDuration } from "../packages/core/src/validate.ts";
-import { applyEdit, createSession, undoTurn, EditConflict, EditError } from "../packages/core/src/apply-ops.ts";
+import { applyEdit, createSession, undoTurn, EditConflict, EditError, TurnDependency } from "../packages/core/src/apply-ops.ts";
 import { manualEditsNote } from "../packages/core/src/edit-log.ts";
 import type { Op, Problem, Project } from "../packages/core/src/types.ts";
 
@@ -125,6 +125,30 @@ test("D7: undo a whole agent turn and keep the user's later edits", () => {
   const undone = undoTurn(montage, s, "turn-1");
   assert.equal(projectDuration(undone.project), 5850, "the cut is gone");
   assert.equal(undone.project.tracks[1].items[0].gainDb, -3, "the user's change survived");
+});
+
+test("D7: undoing a turn never moves revisions back; kept entries keep theirs", () => {
+  let s = createSession(promo);
+  s = applyEdit(s, { actor: "agent", turnId: "t1", ops: [{ op: "update_item", item: "txt-hook", set: { text: "one" } }] }, validate);
+  s = applyEdit(s, { actor: "agent", turnId: "t1", ops: [{ op: "trim_item", item: "sim-login", edge: "end", frames: 30 }] }, validate);
+  s = applyEdit(s, { actor: "user", ops: [{ op: "update_track", track: "a1", set: { mixer: { gainDb: -4 } } }] }, validate);
+  const undone = undoTurn(promo, s, "t1", validate);
+  assert.equal(undone.revision, s.revision + 1, "one past the session, not renumbered from 0");
+  assert.deepEqual(undone.log.map((e) => [e.revision, e.actor]), [[3, "user"]], "the user's entry keeps revision 3");
+  assert.equal(JSON.stringify(undone.project.tracks.find((t) => t.id === "a1")), JSON.stringify(s.project.tracks.find((t) => t.id === "a1")));
+  // A revision read before the undo can still be checked against the kept log.
+  assert.throws(() => applyEdit(undone, { actor: "agent", baseRevision: 2, ops: [{ op: "update_track", track: "a1", set: { hidden: true } }] }), EditConflict);
+});
+
+test("D7: a turn a later edit builds on can't be undone, and a turn with nothing in the log says so", () => {
+  let s = createSession(promo);
+  s = applyEdit(s, { actor: "agent", turnId: "t1", summary: "add a label", ops: [{ op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "x" } }] }, validate);
+  s = applyEdit(s, { actor: "user", summary: "reword it", ops: [{ op: "update_item", item: "txt-new", set: { text: "y" } }] }, validate);
+  assert.throws(
+    () => undoTurn(promo, s, "t1", validate),
+    (e) => e instanceof TurnDependency && e.entry.summary === "reword it" && /builds on this turn/.test(e.message),
+  );
+  assert.throws(() => undoTurn(promo, s, "t-unknown", validate), (e) => e instanceof EditError && !(e instanceof TurnDependency) && /no edits in this session/.test(e.message));
 });
 
 test("edits are atomic: an invalid edit leaves the project untouched", () => {

@@ -174,12 +174,36 @@ export function applyEdit(session: Session, { actor, ops, baseRevision = session
   return { project, revision, log: [...session.log, entry] };
 }
 
-/** Undo one agent turn (D7): rebuild from the start, skipping that turn's entries. */
-export function undoTurn(initialProject: Project, session: Session, turnId: string): Session {
+/** A later edit can't be replayed without the turn being undone: it builds on that turn. */
+export class TurnDependency extends EditError {
+  readonly entry: LogEntry;
+  constructor(entry: LogEntry, cause: EditError) {
+    super(`A later edit builds on this turn${entry.summary ? ` ("${entry.summary}")` : ""}: ${cause.message}`, [entry.revision]);
+    this.name = "TurnDependency";
+    this.entry = entry;
+  }
+}
+
+/**
+ * Undo one agent turn (D7): rebuild from the project the log starts at, skipping that turn's
+ * entries, so later edits by anyone survive. Revisions don't go back: the kept entries keep
+ * theirs and the result is one revision past `session` (a revision the agent read before the
+ * undo still means what it meant). Throws TurnDependency when a later edit needs the turn
+ * (e.g. it trims an item the turn added), and EditError when the turn has nothing in the log.
+ */
+export function undoTurn(initialProject: Project, session: Session, turnId: string, validate?: (project: Project) => ReadonlyArray<Problem>): Session {
+  if (!session.log.some((e) => e.turnId === turnId)) throw new EditError(`Turn "${turnId}" has no edits in this session`);
   let s = createSession(initialProject);
+  const kept: Array<LogEntry> = [];
   for (const e of session.log) {
     if (e.turnId === turnId) continue;
-    s = applyEdit(s, { ...e, baseRevision: s.revision });
+    try {
+      s = applyEdit(s, { ...e, baseRevision: s.revision }, validate);
+    } catch (error) {
+      if (error instanceof EditError) throw new TurnDependency(e, error);
+      throw error;
+    }
+    kept.push(e);
   }
-  return s;
+  return { project: s.project, revision: session.revision + 1, log: kept };
 }

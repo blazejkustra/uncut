@@ -10,6 +10,9 @@ files:
 extraResources:
   - from: ../server/dist/server.mjs
     to: server/server.mjs
+  # The agent's MCP server; the server starts it from next to itself (D40).
+  - from: ../server/dist/mcp.mjs
+    to: server/mcp.mjs
   - from: ../../native/media/target/release/uncut-media
     to: bin/uncut-media
   # The server validates projects against these; schemas are bundled into server.mjs.
