@@ -32,7 +32,7 @@
     },
     {
       "name": "render_frames",
-      "description": "Render frames of the current edit exactly as export would, and return image paths to look at.",
+      "description": "Render frames of the current edit exactly as export would, and return them as images to look at.",
       "inputSchema": {
         "type": "object",
         "required": ["frames"],
@@ -42,7 +42,7 @@
           "scale": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
         }
       },
-      "returns": "one image path per frame"
+      "returns": "one image per frame"
     },
     {
       "name": "contact_sheet",

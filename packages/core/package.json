@@ -12,7 +12,8 @@
     "./timeline": "./src/timeline.ts",
     "./audio": "./src/audio.ts",
     "./render": "./src/render.ts",
-    "./rules": "./src/rules.ts"
+    "./rules": "./src/rules.ts",
+    "./export": "./src/export.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

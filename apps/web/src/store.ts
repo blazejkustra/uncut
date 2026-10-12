@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -57,6 +57,12 @@ export interface AppStateShape {
   readonly agent: AgentState | null;
   // Why the last agent action failed (not installed, busy…), shown in the Agent tab.
   readonly agentError?: string;
+  // The export dialog (D34) and the server's export jobs; the one this window started last.
+  readonly exportOpen: boolean;
+  readonly exportJobs: ReadonlyArray<ExportJob>;
+  readonly exportJobId?: string;
+  // The folder the last export went to (this session), offered for the next one.
+  readonly exportFolder?: string;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -74,6 +80,8 @@ let state: AppStateShape = {
   jobs: [],
   thumbIds: new Set(),
   agent: null,
+  exportOpen: false,
+  exportJobs: [],
 };
 const listeners = new Set<() => void>();
 
@@ -112,7 +120,7 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined } : {}),
+    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false } : {}),
   });
   // Then the playhead follows the project: back to the start for another project, clamped when it
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
@@ -176,6 +184,7 @@ export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PAT
 let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
 let unsubscribeAgent: (() => void) | undefined;
+let unsubscribeExports: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
 const reported = new Set<string>();
 let jobsSeen = false;
@@ -204,6 +213,17 @@ function onJobs(jobs: ReadonlyArray<ImportJob>) {
   jobsSeen = true;
   set({ jobs, importReport: report });
   if (posters) void refreshThumbs();
+}
+
+// Exports this window started: each is shown in Finder once it's done ("Opens in Finder when it's done").
+const revealWhenDone = new Set<string>();
+function onExportJobs(jobs: ReadonlyArray<ExportJob>) {
+  for (const job of jobs) {
+    if (!revealWhenDone.has(job.id) || (job.phase !== "done" && job.phase !== "failed" && job.phase !== "cancelled")) continue;
+    revealWhenDone.delete(job.id);
+    if (job.phase === "done") void bridge.showInFolder(job.output);
+  }
+  set({ exportJobs: jobs });
 }
 
 /** The open project's import jobs that are still running or waiting. */
@@ -236,6 +256,8 @@ export async function start() {
       set({ connection: "connected", notice: state.notice?.transport ? undefined : state.notice });
       unsubscribeJobs?.();
       unsubscribeJobs = conn.subscribe((c) => c["media.jobs"]({}), onJobs);
+      unsubscribeExports?.();
+      unsubscribeExports = conn.subscribe((c) => c["export.jobs"]({}), onExportJobs);
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
@@ -492,6 +514,24 @@ export const actions = {
   },
   dismissAgentError: () => set({ agentError: undefined }),
 
+  /** ⌘E / the Export button: the export dialog, with ffmpeg checked (it shows the fix when missing). */
+  openExport() {
+    if (!state.snapshot) return;
+    set({ exportOpen: true });
+    if (state.setupChecks?.find((c) => c.id === "ffmpeg")?.status !== "ready") void actions.checkSetup();
+  },
+  closeExport: () => set({ exportOpen: false }),
+  chooseExportPath: (defaultPath: string) => bridge.chooseSavePath(defaultPath),
+  /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
+  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; overwrite?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+    const result = await call((c) => c["export.start"](input));
+    if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
+    revealWhenDone.add(result.value.jobId);
+    set({ exportJobId: result.value.jobId, exportFolder: input.output.slice(0, input.output.lastIndexOf("/")) || "/" });
+    return undefined;
+  },
+  cancelExport: (jobId: string) => call((c) => c["export.cancel"]({ jobId })),
+
   openSetup() {
     set({ setupOpen: true });
     void actions.checkSetup();
@@ -515,6 +555,7 @@ function runCommand(command: MenuCommand) {
   // Everything below talks to the server; while it's away the buttons are disabled too.
   if (!online()) return;
   if (command.type === "open-setup") return actions.openSetup();
+  if (command.type === "export") return actions.openExport();
   switch (command.type) {
     case "new-project":
       // Over the editor if one is open; the current project only closes once the new one exists.
@@ -560,6 +601,8 @@ function onKeyDown(event: KeyboardEvent) {
           ? { type: "open-setup" }
           : key === "n"
           ? { type: "new-project" }
+          : key === "e" && state.snapshot
+          ? { type: "export" }
           : key === "o"
             ? { type: "open-project" }
             : key === "w" && state.snapshot

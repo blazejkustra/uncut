@@ -439,3 +439,16 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .audio-row .audio-dur { font: 11px var(--mono); color: var(--dim); }
 .lib-soon { margin: 4px 14px 14px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--muted); font-size: 12px; line-height: 1.5; }
 .lib-soon svg.lucide { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+
+/* Export (D34) */
+.export-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.export-fields { margin-top: 12px; }
+.export-label { margin: 16px 0 8px; }
+.export-note { margin: 0 auto 0 0; font-size: 12px; color: var(--muted); }
+.export-replace { margin-left: 10px; height: 24px; }
+.export-status { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 8px; }
+.export-bar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.export-bar > div { height: 100%; background: var(--fg); border-radius: 3px; transition: width 0.2s linear; }
+.export-bar > div.indeterminate { width: 30% !important; animation: export-slide 1.2s ease-in-out infinite; background: var(--muted); }
+@keyframes export-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.export-btn { margin-right: 4px; }

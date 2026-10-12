@@ -12,7 +12,7 @@ export interface AppState {
 }
 
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" }
+  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" }
   | { readonly type: "open-recent"; readonly dir: string };
 
 export interface UncutBridge {
@@ -27,6 +27,8 @@ export interface UncutBridge {
   readonly copyText: (text: string) => Promise<void>;
   // Native multi-select for media; [] when cancelled.
   readonly chooseMedia: () => Promise<Array<string>>;
+  // The native save panel for an export, starting at `defaultPath`; null when cancelled.
+  readonly chooseSavePath: (defaultPath: string) => Promise<string | null>;
   // The disk path of a dropped File ("" if it isn't a file on disk).
   readonly pathForFile: (file: File) => string;
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
@@ -50,6 +52,7 @@ export const bridge: UncutBridge = window.uncut ?? {
   setAppState: () => {},
   copyText: (text) => navigator.clipboard.writeText(text),
   chooseMedia: () => Promise.resolve([]),
+  chooseSavePath: () => Promise.resolve(null),
   pathForFile: () => "",
   onMenuCommand: () => () => {},
 };

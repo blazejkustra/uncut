@@ -6,10 +6,14 @@ import { DRAWN_MOVES, layout, SOLID, TEXT_STYLES, type ModuleManifest, type Modu
 import editOpsSchema from "../../../spec/schema/edit-ops.schema.json" with { type: "json" };
 import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
 
-// The tools that work today. render_frames and contact_sheet need the export rasteriser
-// (phase 4 chunk 6); media_analyze, transcript_read, media_import, generate_media and ui_show
+// The tools that work today. render_frames came with the export rasteriser (phase 4 chunk 6,
+// D55); contact_sheet, media_analyze, transcript_read, media_import, generate_media and ui_show
 // come with their features. See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames"] as const;
+
+/** render_frames: at most this many frames per call, and the default width of each. */
+export const MAX_FRAMES = 24;
+export const FRAME_WIDTH = 960;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 export interface McpTool {
@@ -48,6 +52,11 @@ export function stepLabel(tool: string, input: unknown): string {
       return typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "Edited the timeline";
     case "modules_list":
       return typeof args.kind === "string" ? `Checked the ${args.kind} modules` : "Checked the installed modules";
+    case "render_frames": {
+      const frames = Array.isArray(args.frames) ? args.frames.filter((f): f is number => typeof f === "number") : [];
+      const list = frames.length > 4 ? `${frames.slice(0, 3).join(", ")} and ${frames.length - 3} more` : frames.join(", ");
+      return frames.length === 1 ? `Looked at frame ${list}` : frames.length ? `Looked at frames ${list}` : "Looked at the edit";
+    }
     default:
       return `Used ${tool}`;
   }
@@ -130,7 +139,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
   Main-track items play back to back, so a background there sits between clips; to put one under text over footage, use a free video track above main (add_track with kind "video" at main's index) with a start.
 - Sound: a clip plays its media's sound (media with probe.hasAudio); music, voiceover and effects are audio items on an audio track, e.g. {"op":"insert_item","track":"audio","item":{"id":"music-1","type":"audio","media":"m-song","in":0,"start":0,"duration":300}}. On a clip or audio item, gainDb is the volume in dB (0 or absent = as recorded, −6 about half as loud, −60 = silent, at most +12), fadeIn / fadeOut are fade lengths in frames (together no longer than the item; remove one with null), and gainKeys [{"frame":…,"db":…}] is a volume envelope in dB on top of gainDb (linear between keys). A track's volume is mixer.gainDb and mixer.mute silences it; update_track replaces the whole mixer, so send the fields you want to keep. A main-track transition crossfades the sound too. A hidden track only hides the picture: its clips still sound unless the track is muted.
 - What the preview draws today: media clips, backgrounds (component.solid), and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components, effects and transitions other than crossfade are saved but don't draw yet, so say so if the user asks for something that won't show.
-- You can't look at frames yet. Describe what you changed instead of claiming how it looks.
+- render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."
 - Keep replies short: what you changed, in plain words.`;

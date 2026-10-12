@@ -26,9 +26,10 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
-import { mcpTools, modulesList, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
+import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
 import { Projects, type ProjectView } from "./projects.ts";
 import { which } from "./setup.ts";
@@ -39,7 +40,7 @@ const KILL_AFTER_MS = 1500;
 
 /** An MCP tools/call result. */
 export interface McpResult {
-  readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
+  readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "image"; readonly data: string; readonly mimeType: string }>;
   readonly isError?: boolean;
 }
 
@@ -289,6 +290,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const projects = yield* Projects;
     const format = yield* ProjectFormat;
+    const exporter = yield* Exporter;
     const config = yield* ServerConfig;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
@@ -463,6 +465,25 @@ export const layer = Layer.effect(
           }
           case "modules_list":
             return textResult(modulesList(format.modules, typeof args.kind === "string" ? args.kind : undefined));
+          case "render_frames": {
+            const frames = Array.isArray(args.frames) ? args.frames : [];
+            if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0)) return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
+            const canvas = v.session.project.canvas;
+            const scale = typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_WIDTH / canvas.width);
+            const width = Math.max(64, Math.round(canvas.width * scale));
+            const rendered = yield* exporter.renderFrames(frames as Array<number>, width).pipe(
+              Effect.map((list) => ({ ok: true as const, list })),
+              Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+            );
+            if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
+            const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
+            return {
+              content: [
+                { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.` },
+                ...rendered.list.map((r) => ({ type: "image" as const, data: r.jpeg.toString("base64"), mimeType: "image/jpeg" })),
+              ],
+            };
+          }
           case "timeline_edit": {
             const { baseRevision, ops, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

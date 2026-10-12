@@ -1,8 +1,9 @@
 import type { ProjectSnapshot } from "@uncut/contracts";
-import { Blend, Check, CircleDot, Film, FolderOpen, Music, Redo2, RefreshCw, Shapes, Sparkles, TriangleAlert, Type, Undo2, X } from "lucide-react";
+import { Blend, Check, CircleDot, Film, FolderOpen, Music, Redo2, RefreshCw, Shapes, Share, Sparkles, TriangleAlert, Type, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { AgentPanel } from "./Agent.tsx";
+import { ExportDialog, exportRunning } from "./ExportDialog.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
@@ -30,7 +31,7 @@ const isEditable = (el: EventTarget | null) => isTextEntry(el) || el instanceof 
  */
 function useEditorKeys(fps: number) {
   useEffect(() => {
-    const blocked = (e: KeyboardEvent) => isEditable(e.target) || getState().newProjectOpen || getState().setupOpen;
+    const blocked = (e: KeyboardEvent) => isEditable(e.target) || getState().newProjectOpen || getState().setupOpen || getState().exportOpen;
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked(e) || e.altKey || e.ctrlKey) return;
       const done = () => e.preventDefault();
@@ -66,7 +67,7 @@ function useEditorKeys(fps: number) {
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
-  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen } = useApp();
+  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen } = useApp();
   const online = connection === "connected";
   const [tab, setTab] = useState<LibraryTab>("media");
   useEditorKeys(project.canvas.fps);
@@ -111,6 +112,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
       <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
       <Side snapshot={snapshot} project={project} online={online} />
       <Timeline project={project} />
+      {exportOpen && !newProjectOpen && <ExportDialog key={snapshot.dir} project={project} dir={snapshot.dir} />}
       {newProjectOpen && (
         <div className="modal-layer" data-testid="new-project-modal">
           <div className="modal wiz">
@@ -125,6 +127,9 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
 }
 
 function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean }) {
+  const { exportJobs, exportJobId } = useApp();
+  const job = exportJobs.find((j) => j.id === exportJobId && j.projectDir === snapshot.dir);
+  const running = exportRunning(job);
   return (
     <header className="topbar">
       <div className="brand">Uncut</div>
@@ -145,6 +150,10 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
       </button>
       <button className="icon-btn" title="Redo (⇧⌘Z)" data-testid="redo" disabled={!online || !snapshot.canRedo} onClick={() => void actions.redo()}>
         <Redo2 />
+      </button>
+      <button className="btn export-btn" title="Export the video (⌘E)" data-testid="export-button" data-running={running} disabled={!online} onClick={actions.openExport}>
+        <Share />
+        {running && job ? (job.phase === "rendering" ? `Exporting ${Math.round(job.progress * 100)}%` : "Exporting…") : "Export"}
       </button>
       <button className="icon-btn" title="Close project (⌘W)" data-testid="close-project" disabled={!online} onClick={() => void actions.closeProject()}>
         <X />
