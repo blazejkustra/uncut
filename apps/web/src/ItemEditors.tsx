@@ -3,6 +3,7 @@
 // one project.edit through actions.itemEdit (validated, one ⌘Z, in the agent's next note):
 // typing is committed after a pause, on blur or ⌘Enter, so a burst is one undo step; a slider
 // shows a local draft while it moves and commits once on release.
+import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 import { resolveColor, TEXT_STYLES } from "@uncut/core/render";
 import type { Item, Op } from "@uncut/core/types";
 import { AlignCenter, AlignLeft, AlignRight, Crosshair, Highlighter } from "lucide-react";
@@ -12,6 +13,7 @@ import { draftOf, findItem } from "./edit.ts";
 import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
 import type { ProjectModel } from "./project.ts";
 import { actions, getState, projectOf } from "./store.ts";
+import { dbLabel, planFade, planGain } from "./sound.ts";
 import { MOVES, planAnimation, planBackground, planCentre, planPreset, planStyle, planText, planTransform, swatches, textBox, toggleAccent, type AnimationSlot } from "./text.ts";
 
 /** How long typing has to pause before it's saved (it's also saved on blur and ⌘Enter). */
@@ -41,7 +43,7 @@ function send(make: (project: ProjectModel) => PlanResult, draft?: PreviewDraft,
 }
 
 /** A number field: typed freely, committed on Enter or blur, Esc puts the saved value back. */
-function NumberField({ label, value, onCommit, testId, placeholder, step = 1, min, disabled }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; testId: string; placeholder?: string; step?: number; min?: number; disabled?: boolean }) {
+export function NumberField({ label, value, onCommit, testId, placeholder, step = 1, min, max, disabled }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; testId: string; placeholder?: string; step?: number; min?: number; max?: number; disabled?: boolean }) {
   const shown = value === undefined ? "" : String(value);
   const [text, setText] = useState(shown);
   const editing = useRef(false);
@@ -52,7 +54,7 @@ function NumberField({ label, value, onCommit, testId, placeholder, step = 1, mi
     editing.current = false;
     const trimmed = text.trim();
     const n = trimmed === "" ? undefined : Number(trimmed);
-    if (n !== undefined && (!Number.isFinite(n) || (min !== undefined && n < min))) return setText(shown);
+    if (n !== undefined && (!Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max))) return setText(shown);
     if (n === value) return setText(shown);
     onCommit(n);
   };
@@ -65,6 +67,7 @@ function NumberField({ label, value, onCommit, testId, placeholder, step = 1, mi
         type="number"
         step={step}
         min={min}
+        max={max}
         value={text}
         placeholder={placeholder}
         disabled={disabled}
@@ -132,7 +135,7 @@ function useSettle(delay: number) {
 }
 
 /** A range slider that previews locally while it moves and commits once when released. */
-function Slider({ value, min, max, onPreview, onCommit, testId, disabled }: { value: number; min: number; max: number; onPreview: (v: number) => void; onCommit: (v: number) => void; testId: string; disabled?: boolean }) {
+export function Slider({ value, min, max, step, onPreview, onCommit, testId, disabled, title }: { value: number; min: number; max: number; step?: number; onPreview: (v: number) => void; onCommit: (v: number) => void; testId: string; disabled?: boolean; title?: string }) {
   const [local, setLocal] = useState<number | undefined>(undefined);
   const commit = (el: HTMLInputElement) => {
     if (local === undefined) return;
@@ -148,6 +151,8 @@ function Slider({ value, min, max, onPreview, onCommit, testId, disabled }: { va
       data-testid={testId}
       min={min}
       max={max}
+      step={step}
+      title={title}
       value={local ?? value}
       disabled={disabled}
       onChange={(e) => {
@@ -496,6 +501,52 @@ export function BackgroundEditor({ project, item, locked }: { project: ProjectMo
             </div>
           </>
         )}
+      </Group>
+    </div>
+  );
+}
+
+/**
+ * The sound of a clip or audio item (D54): volume in dB (a slider from −∞ to +12 and a number) and
+ * fade in / fade out in seconds. The slider is heard while it moves (the playback mix plays the
+ * local draft) and saved once on release; each change is one edit.
+ */
+export function AudioEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const fps = project.canvas.fps;
+  const db = item.gainDb ?? 0;
+  const gainDraft = useRef<PreviewDraft | undefined>(undefined);
+  const secs = (frames: number | undefined) => Number(((frames ?? 0) / fps).toFixed(2));
+  return (
+    <div data-testid="audio-editor">
+      <Group label="Volume">
+        <div className="slider-row">
+          <Slider
+            testId="insp-volume"
+            value={db}
+            min={SILENCE_DB}
+            max={MAX_DB}
+            step={0.5}
+            title={`${dbLabel(db)} dB`}
+            disabled={locked}
+            onPreview={(v) => (gainDraft.current = showDraft(project, planGain(project, item.id, v)) ?? gainDraft.current)}
+            onCommit={(v) => {
+              const d = gainDraft.current;
+              gainDraft.current = undefined;
+              send((p) => planGain(p, item.id, v), d);
+            }}
+          />
+          <NumberField label="dB" testId="insp-volume-num" value={db} step={0.5} min={SILENCE_DB} max={MAX_DB} disabled={locked} onCommit={(v) => send((p) => planGain(p, item.id, v ?? 0))} />
+        </div>
+        <div className="hint-line muted small" data-testid="insp-volume-label">
+          {db <= SILENCE_DB ? "Silent (−∞ dB)" : db === 0 ? "As recorded (0 dB)" : `${dbLabel(db)} dB`}
+        </div>
+      </Group>
+      <Group label="Fades">
+        <div className="field-row">
+          <NumberField label="In s" testId="insp-fade-in" value={secs(item.fadeIn)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "in", Math.round((v ?? 0) * fps)))} />
+          <NumberField label="Out s" testId="insp-fade-out" value={secs(item.fadeOut)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "out", Math.round((v ?? 0) * fps)))} />
+        </div>
+        <div className="hint-line muted small">Or drag the small handles at the top corners of the item on the timeline.</div>
       </Group>
     </div>
   );

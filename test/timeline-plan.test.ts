@@ -246,8 +246,9 @@ test("split keeps the in-animation and fade-in on the first half, the out ones o
   assert.deepEqual(item(p, "t").keys!.map((k) => k.frame), [0, 30]);
   assert.deepEqual(item(p, "t-1").keys!.map((k) => k.frame), [0, 50]);
   p = applyValid(anim, planSplit(anim, "s", 20));
-  assert.deepEqual([item(p, "s").fadeIn, item(p, "s").fadeOut, item(p, "s").gainKeys], [10, undefined, undefined]);
-  assert.deepEqual([item(p, "s-1").fadeIn, item(p, "s-1").fadeOut, item(p, "s-1").gainKeys], [undefined, 10, [{ frame: 30, db: -6 }]]);
+  // A key at the cut on both halves keeps the envelope's value there (−6 dB: held before the first key).
+  assert.deepEqual([item(p, "s").fadeIn, item(p, "s").fadeOut, item(p, "s").gainKeys], [10, undefined, [{ frame: 20, db: -6 }]]);
+  assert.deepEqual([item(p, "s-1").fadeIn, item(p, "s-1").fadeOut, item(p, "s-1").gainKeys], [undefined, 10, [{ frame: 0, db: -6 }, { frame: 30, db: -6 }]]);
   // The end can't cut below the last key (80); the start trim moves keys with it.
   assert.equal(ok(planTrim(anim, "t", "end", -500)).duration, 80);
   p = applyValid(anim, planTrim(anim, "t", "start", 60));

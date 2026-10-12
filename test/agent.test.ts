@@ -113,7 +113,7 @@ test("D6: the agent gets a note listing the user's manual edits, and only those"
   assert.match(note, /intentional/);
   assert.match(note, /Trimmed Login flow, iPhone 16 Pro \(sim-login\) by 3\.0s at the end/);
   assert.match(note, /Moved text "Claude Code tests your app" \(txt-hook\) on the canvas to x 72, y 496/);
-  assert.match(note, /Changed mixer on track a1/);
+  assert.match(note, /Set volume of track a1 to −4 dB/);
   assert.doesNotMatch(note, /built the promo/);
 });
 

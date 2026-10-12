@@ -17,18 +17,32 @@ function label(project: Project, id: Id) {
   return id;
 }
 
-/** Hide, lock and mute in words (the timeline's track buttons); undefined for anything else. */
-function trackFlag(track: Id, set: { readonly [key: string]: unknown }): string | undefined {
+/** A volume in words: "−6 dB", "+3.5 dB", "0 dB", "−∞ dB (silent)" at or below −60. */
+export const dbWords = (db: unknown) => {
+  if (typeof db !== "number") return "0 dB";
+  if (db <= -60) return "−∞ dB (silent)";
+  const n = Math.round(db * 10) / 10;
+  return `${n < 0 ? "−" : n > 0 ? "+" : ""}${Math.abs(n)} dB`;
+};
+
+/**
+ * Hide, lock, mute and volume in words (the timeline's track buttons); undefined for anything
+ * else. update_track replaces the mixer whole, so a mute toggle on a track with a volume and a
+ * volume change on a muted track both send gainDb and mute: the edit's summary ("Mute track …",
+ * "Set volume of track …") says which it was.
+ */
+function trackFlag(track: Id, set: { readonly [key: string]: unknown }, hint?: string): string | undefined {
   const keys = Object.keys(set);
   if (keys.length !== 1) return undefined;
   const on = (v: unknown) => v === true;
   if (keys[0] === "hidden") return `${on(set.hidden) ? "Hid" : "Showed"} track ${track}`;
   if (keys[0] === "locked") return `${on(set.locked) ? "Locked" : "Unlocked"} track ${track}`;
   if (keys[0] === "mixer") {
-    // Only when the mute flag is the news; other mixer changes keep the generic line.
-    const mute = (set.mixer as { readonly mute?: unknown } | null)?.mute;
-    if (mute === true) return `Muted track ${track}`;
-    if (mute === false) return `Unmuted track ${track}`;
+    const mixer = (set.mixer ?? {}) as { readonly mute?: unknown; readonly gainDb?: unknown };
+    const muteNews = hint && /^(un)?mute\b/i.test(hint) ? true : hint && /\bvolume\b/i.test(hint) ? false : !("gainDb" in mixer);
+    if (muteNews && mixer.mute === true) return `Muted track ${track}`;
+    if (muteNews && mixer.mute === false) return `Unmuted track ${track}`;
+    if (!muteNews) return `Set volume of track ${track} to ${dbWords(mixer.gainDb)}${mixer.mute === true ? " (muted)" : ""}`;
   }
   return undefined;
 }
@@ -57,6 +71,8 @@ const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
 function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, project: Project, it: (id: Id) => string, fps: number): string {
   const keys = Object.keys(set);
   if (keys.length === 1 && keys[0] === "text" && typeof set.text === "string") return `Changed the text of ${id} to ${quote(set.text)}`;
+  const sound = describeSound(id, set, it, fps);
+  if (sound) return sound;
   const parts: Array<string> = [];
   const rest: Array<string> = [];
   for (const key of keys) {
@@ -84,7 +100,31 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
   return `${keys.length === 1 && keys[0] === "animation" ? "Animated" : "Restyled"} ${it(id)}: ${tail}`;
 }
 
-export function describeOp(op: Op, project: Project): string {
+const SOUND_KEYS = new Set(["gainDb", "fadeIn", "fadeOut", "gainKeys"]);
+const fadeSecs = (v: unknown, fps: number) => (typeof v === "number" && v > 0 ? secs(v, fps).replace("s", " s") : undefined);
+
+/** Volume, fades and volume keys in words, when they are all an update_item changes. */
+function describeSound(id: Id, set: { readonly [key: string]: unknown }, it: (id: Id) => string, fps: number): string | undefined {
+  const keys = Object.keys(set);
+  if (!keys.length || !keys.every((k) => SOUND_KEYS.has(k))) return undefined;
+  if (keys.length === 1) {
+    const [key] = keys;
+    if (key === "gainDb") return `Set volume of ${it(id)} to ${dbWords(set.gainDb)}`;
+    if (key === "fadeIn") return fadeSecs(set.fadeIn, fps) ? `Faded in ${it(id)} over ${fadeSecs(set.fadeIn, fps)}` : `Removed the fade in on ${it(id)}`;
+    if (key === "fadeOut") return fadeSecs(set.fadeOut, fps) ? `Faded out ${it(id)} over ${fadeSecs(set.fadeOut, fps)}` : `Removed the fade out on ${it(id)}`;
+  }
+  const parts = keys.map((k) =>
+    k === "gainDb"
+      ? `volume ${dbWords(set.gainDb)}`
+      : k === "fadeIn" || k === "fadeOut"
+        ? `${fadeSecs(set[k], fps) ? `fade ${k === "fadeIn" ? "in" : "out"} ${fadeSecs(set[k], fps)}` : `no fade ${k === "fadeIn" ? "in" : "out"}`}`
+        : `${Array.isArray(set.gainKeys) ? set.gainKeys.length : 0} volume keys`,
+  );
+  return `Changed the sound of ${it(id)}: ${parts.join(", ")}`;
+}
+
+/** An op in words, for the agent's note and turn cards. `hint` is the edit's summary, if any. */
+export function describeOp(op: Op, project: Project, hint?: string): string {
   const fps = project.canvas.fps;
   const it = (id: Id) => label(project, id);
   switch (op.op) {
@@ -107,7 +147,7 @@ export function describeOp(op: Op, project: Project): string {
     case "set_transition":
       return op.transition ? `Set ${op.transition.module} into ${it(op.item)}` : `Removed the transition into ${it(op.item)}`;
     case "update_track":
-      return trackFlag(op.track, op.set) ?? `Changed ${Object.keys(op.set).join(", ")} on track ${op.track}`;
+      return trackFlag(op.track, op.set, hint) ?? `Changed ${Object.keys(op.set).join(", ")} on track ${op.track}`;
     case "add_track":
       return `Added ${op.track.kind ?? ""} track ${op.track.name ? `"${op.track.name}" (${op.track.id})` : op.track.id}`.replace("  ", " ");
     case "delete_track":
@@ -125,7 +165,7 @@ export function describeOp(op: Op, project: Project): string {
 /** The note the agent receives. Empty string when the user changed nothing. */
 export function manualEditsNote(session: Session, sinceRevision: number): string {
   const entries = session.log.filter((e) => e.revision > sinceRevision && e.actor === "user");
-  const lines = entries.flatMap((e) => e.ops.map((op) => `- ${describeOp(op, session.project)}`));
+  const lines = entries.flatMap((e) => e.ops.map((op) => `- ${describeOp(op, session.project, e.summary)}`));
   if (!lines.length) return "";
   return [
     `The user made ${lines.length} edit${lines.length === 1 ? "" : "s"} by hand since your last turn (now at revision ${session.revision}).`,
