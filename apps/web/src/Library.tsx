@@ -1,19 +1,70 @@
 // The library panel on the left: the media in the project (import, drop, add to the timeline)
-// and the Text tab's presets. Which one shows is the rail's choice.
+// the Text tab's presets and the Elements tab's backgrounds. Which one shows is the rail's choice.
 import type { ImportJob } from "@uncut/contracts";
-import { AudioLines, Film, Image as ImageIcon, Plus, RefreshCw, Type, Upload } from "lucide-react";
+import { solidBackground } from "@uncut/core/render";
+import { AudioLines, Film, Image as ImageIcon, Layers, Plus, RefreshCw, Type, Upload } from "lucide-react";
 import React, { useState, type ReactNode } from "react";
 
 import { bridge } from "./bridge.ts";
 import { timecode } from "./format.ts";
 import { TEXT_PRESETS } from "./project.ts";
+import { BACKGROUNDS } from "./text.ts";
 import { actions, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
 import { MEDIA_DRAG_TYPE } from "./Timeline.tsx";
 
-export type LibraryTab = "media" | "text";
+export type LibraryTab = "media" | "text" | "elements";
 
 export function Library({ project, tab }: { project: Project; tab: LibraryTab }) {
-  return tab === "text" ? <TextLibrary /> : <MediaLibrary project={project} />;
+  return tab === "text" ? <TextLibrary /> : tab === "elements" ? <ElementsLibrary project={project} /> : <MediaLibrary project={project} />;
+}
+
+/**
+ * Backgrounds (component.solid, D53): a full-frame colour or gradient under the text. With a
+ * text item selected it spans that text (a title card); otherwise 3 s at the playhead.
+ */
+function ElementsLibrary({ project }: { project: Project }) {
+  const { connection } = useApp();
+  const online = connection === "connected";
+  const [custom, setCustom] = useState("#1E3A5F");
+  return (
+    <aside className="library" data-testid="elements-library">
+      <div className="lib-head">Elements</div>
+      <div className="lib-section">
+        <div className="lib-label">Backgrounds</div>
+        <div className="grid2">
+          {BACKGROUNDS.map((bg) => (
+            <button
+              key={bg.id}
+              className="tile text-tile"
+              data-testid="background-preset"
+              data-background={bg.id}
+              disabled={!online}
+              title={`Add a ${bg.label.toLowerCase()} background`}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                void actions.addBackground(bg.props);
+              }}
+            >
+              <div className="thumb bg-thumb" style={{ background: solidBackground({ id: bg.id, type: "component", duration: 1, props: bg.props }, project) }} />
+              <div className="tile-name">{bg.label}</div>
+            </button>
+          ))}
+          <div className="tile text-tile custom-bg">
+            <label className="thumb bg-thumb" style={{ background: custom }} title="Pick a colour">
+              <input type="color" data-testid="background-custom-color" value={custom} onChange={(e) => setCustom(e.target.value.toUpperCase())} />
+            </label>
+            <button className="tile-name link-btn" data-testid="background-custom" disabled={!online} onClick={(e) => (e.currentTarget.blur(), void actions.addBackground({ color: custom }))}>
+              Add {custom}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="lib-hint">
+        <Layers />
+        A background fills the frame under the text. Select a title first to make it a title card.
+      </div>
+    </aside>
+  );
 }
 
 /** Presets that add a 3 s text item at the playhead (on a free text track). */
