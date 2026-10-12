@@ -11,9 +11,10 @@ import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
 // The tools that work today. render_frames came with the export rasteriser (phase 4 chunk 6,
 // D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze with
 // chunk 2 (D66, loudness and silences); the video analyzer and media_rank with chunk 3 (D67);
-// transcript_read with chunk 4 (D68, local whisper.cpp); generate_media comes with its feature.
+// transcript_read with chunk 4 (D68, local whisper.cpp); transcript_edit with chunk 5 (D69, cut by
+// text through core planTextCut); generate_media comes with its feature.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "media_import", "contact_sheet", "ui_show"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "media_import", "contact_sheet", "ui_show"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -105,6 +106,19 @@ export function stepLabel(tool: string, input: unknown): string {
       const range = args.range && typeof args.range === "object" ? (args.range as { start?: unknown; end?: unknown }) : undefined;
       const span = range && typeof range.start === "number" && typeof range.end === "number" ? ` (frames ${range.start}–${range.end})` : "";
       return typeof args.from === "number" && args.from > 0 ? `Read more of the transcript of ${media}${span}` : `Read the transcript of ${media}${span}`;
+    }
+    case "transcript_edit": {
+      const what: Array<string> = [];
+      const ranges = Array.isArray(args.remove) ? args.remove.length : 0;
+      if (ranges) what.push(ranges === 1 ? "words" : `${ranges} word ranges`);
+      if (args.pauses !== undefined) {
+        const min = args.pauses && typeof args.pauses === "object" ? (args.pauses as { min?: unknown }).min : undefined;
+        what.push(typeof min === "number" ? `pauses over ${min} s` : "pauses");
+      }
+      if (args.fillers === true) what.push("fillers");
+      const list = what.length > 1 ? `${what.slice(0, -1).join(", ")} and ${what.at(-1)}` : (what[0] ?? "words");
+      const from = typeof args.media === "string" ? ` from ${args.media}` : "";
+      return args.dryRun === true ? `Planned cutting ${list}${from}` : `Cut ${list}${from}`;
     }
     case "ui_show": {
       const parts: Array<string> = [];
@@ -203,6 +217,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - media_analyze measures a media file: "loudness" (also "silence") gives integrated loudness (LUFS), loudness range, true peak and the silences (below −40 dB for at least 0.3 s); "video" (also "shots", "motion", "stability") gives the cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0–1, with the best stretch and good/fair/poor stretches. Frames in the answers are project frames of the media you can use as in. "transcript" transcribes the speech (a summary: language, word, filler and pause counts; read it with transcript_read). Default: loudness only; ask for "video" by name (it takes longer: about a minute on a long 4K clip). It waits up to about a minute; if it answers "running", call it again with the same arguments. Results are cached, so asking again is free. Beats come later.
 - media_rank ranks video takes (media ids, or the media from a folder, or all the project's video) by cleanScore, best first, each with its stability, sharpness and exposure and its best stretch inside one shot (window seconds long, default 5; start and end usable as in). Use it to pick the clean take or the clean part of a long one, and say why from the components (e.g. "sharper, less shake"). Look at the pick with contact_sheet or render_frames before you rely on it.
 - transcript_read gives what's said in a media file, transcribed on this Mac (whisper.cpp; the language is detected, pass language like "pl" if it's wrong). Text lines start with their first word's index and frames, e.g. "w12 [300–452] So {um} this is the shot (pause 0.8 s) we wanted."; {braces} mark fillers, (pause …) gaps of at least 0.3 s; fillers and pauses also come as lists with frames. format "words" gives each word with start (the frame it begins in) and end (the frame after it), project frames of the media usable as in. Long transcripts come in pages: call again with from = next.from; range narrows to project frames of the media. The first transcript of a file takes a while (and the very first one downloads the speech model): if it answers running, call again with the same arguments. Cached afterwards.
+- transcript_edit cuts by text: remove takes word ranges by the ids transcript_read gives ({"from":"w12","to":"w20"}, both ends included; {"from":"w31"} is one word), pauses {"min": seconds} removes pauses at least that long (default 0.5; a little quiet stays next to each word), fillers true removes the hesitation fillers (um, uh, yyy; never the "maybe" ones: judge those and pass them in remove if they should go). It cuts from every main-track clip that uses the media, as one edit on your turn (Undo turn reverts it); the main track closes up and items on other tracks don't move, so check titles and music still line up. Read the transcript first and cut whole phrases or sentences, not single words in the middle of one; dryRun true shows what would go and the new length without changing anything. It answers what was removed (text, seconds) and the new duration.
 - ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements, audio, inspector, agent). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."

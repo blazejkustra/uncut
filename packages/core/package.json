@@ -13,7 +13,8 @@
     "./audio": "./src/audio.ts",
     "./render": "./src/render.ts",
     "./rules": "./src/rules.ts",
-    "./export": "./src/export.ts"
+    "./export": "./src/export.ts",
+    "./transcript": "./src/transcript.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

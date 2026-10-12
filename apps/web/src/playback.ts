@@ -39,9 +39,11 @@ export interface PlaybackState {
   /** Moves and trims snap to the playhead, item edges and 0 (hold ⌘ while dragging to skip). */
   readonly snapping: boolean;
   readonly draft: PreviewDraft | undefined;
+  /** What the bottom panel shows (D32): the timeline or the transcript. */
+  readonly bottom: "timeline" | "transcript";
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, zoom: 1, snapping: true, draft: undefined };
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, zoom: 1, snapping: true, draft: undefined, bottom: "timeline" };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -155,6 +157,7 @@ export const playback = {
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomFit: () => set({ zoom: 1 }),
   toggleSnapping: () => set({ snapping: !state.snapping }),
+  setBottom: (bottom: PlaybackState["bottom"]) => (bottom === state.bottom ? undefined : set({ bottom })),
   /** Show (or with undefined, stop showing) a local preview of an edit in progress. */
   setDraft: (draft: PreviewDraft | undefined) => (draft === state.draft ? undefined : set({ draft })),
 };

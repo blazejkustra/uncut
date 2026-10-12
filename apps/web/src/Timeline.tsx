@@ -21,6 +21,24 @@ import { actions, getState, projectOf, thumbUrl, useApp } from "./store.ts";
 import { ItemWaveform } from "./Waveform.tsx";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 
+/** Timeline | Transcript | Mixer (D32): the bottom panel's modes. Mixer comes later. */
+export function BottomTabs() {
+  const bottom = usePlayback((s) => s.bottom);
+  return (
+    <div className="seg" data-testid="bottom-tabs">
+      <button className={bottom === "timeline" ? "active" : ""} data-testid="bottom-timeline" onClick={() => playback.setBottom("timeline")}>
+        Timeline
+      </button>
+      <button className={bottom === "transcript" ? "active" : ""} data-testid="bottom-transcript" title="What's said on the main track: cut by deleting words" onClick={() => playback.setBottom("transcript")}>
+        Transcript
+      </button>
+      <button disabled title="Coming in a later phase">
+        Mixer
+      </button>
+    </div>
+  );
+}
+
 /** The drag type a media tile carries when it's dragged onto the timeline. */
 export const MEDIA_DRAG_TYPE = "application/x-uncut-media";
 
@@ -277,15 +295,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
   return (
     <section className="bottom">
       <div className="bottom-toolbar">
-        <div className="seg">
-          <button className="active">Timeline</button>
-          <button disabled title="Coming in a later phase">
-            Transcript
-          </button>
-          <button disabled title="Coming in a later phase">
-            Mixer
-          </button>
-        </div>
+        <BottomTabs />
         <span className="muted small">{project.tracks.length} tracks</span>
         <div className="toolbar-spacer" />
         <button className="icon-btn" data-testid="split" title="Split at the playhead (S)" disabled={!online || empty} onClick={() => void actions.split()}>

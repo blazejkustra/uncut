@@ -621,6 +621,17 @@ export const actions = {
     if (!result.ok) set({ analysisError: plainError(result.error) });
   },
   cancelAnalysis: (jobId: string) => call((c) => c["analysis.cancel"]({ jobId })),
+  /** Transcribe a media item (the Transcript panel, D69): the analysis job, as the Library starts one. */
+  async transcribe(mediaId: string) {
+    set({ analysisError: undefined });
+    const result = await call((c) => c["analysis.start"]({ mediaId, analyzers: ["transcript"] }));
+    if (!result.ok) set({ analysisError: plainError(result.error) });
+  },
+  /** A cached analysis result (no job): undefined when the call failed, null when there's none yet. */
+  async analysisCached(mediaId: string, analyzer: "loudness" | "transcript"): Promise<unknown> {
+    const result = await call((c) => c["analysis.cached"]({ mediaId, analyzer }));
+    return result.ok ? result.value.result : undefined;
+  },
   dismissAnalysisError: () => set({ analysisError: undefined }),
 
   /** The Setup row's speech model (D68): download, cancel, choose. */

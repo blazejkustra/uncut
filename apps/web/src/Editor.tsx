@@ -14,10 +14,12 @@ import { NewProject } from "./NewProject.tsx";
 import { SOLID } from "@uncut/core/render";
 import { findItem } from "./edit.ts";
 import { frameTimecode } from "./format.ts";
-import { playback, usePlayback } from "./playback.ts";
+import { getPlayback, playback, usePlayback } from "./playback.ts";
 import { Stage } from "./Preview.tsx";
 import { actions, getState, isTextEntry, MAX_NAME_LENGTH, plainError, projectOf, useApp, type Project } from "./store.ts";
 import { Timeline } from "./Timeline.tsx";
+import { cutSelectedWords, TranscriptPanel } from "./Transcript.tsx";
+import { transcriptStore } from "./transcript.ts";
 
 const LATER = "Coming in a later phase";
 
@@ -49,9 +51,13 @@ function useEditorKeys(fps: number) {
       else if (e.key === "ArrowRight") (playback.step(e.shiftKey ? fps : 1), done());
       else if (e.key === "Home") (playback.toStart(), done());
       else if (e.key === "End") (playback.toEnd(), done());
-      else if (e.key === "Escape") playback.select(undefined);
+      else if (e.key === "Escape") (playback.select(undefined), transcriptStore.clear());
       else if ((e.key === "s" || e.key === "S") && !e.shiftKey) (done(), e.repeat || void actions.split());
-      else if (e.key === "Backspace" || e.key === "Delete") (done(), e.repeat || void actions.deleteSelected());
+      else if (e.key === "Backspace" || e.key === "Delete") {
+        done();
+        // In the Transcript panel ⌫ cuts the selected words (D69), never the timeline item it doesn't show.
+        if (!e.repeat) void (getPlayback().bottom === "transcript" ? cutSelectedWords() : actions.deleteSelected());
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space" && !blocked(e)) e.preventDefault();
@@ -116,7 +122,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
       <Library project={project} tab={tab} />
       <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
       <Side snapshot={snapshot} project={project} online={online} />
-      <Timeline project={project} />
+      <Bottom project={project} dir={snapshot.dir} />
       {exportOpen && !newProjectOpen && <ExportDialog key={snapshot.dir} project={project} dir={snapshot.dir} />}
       {newProjectOpen && (
         <div className="modal-layer" data-testid="new-project-modal">
@@ -129,6 +135,12 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
       )}
     </div>
   );
+}
+
+/** The bottom panel (D32): the timeline, or the transcript of what's on the main track. */
+function Bottom({ project, dir }: { project: Project; dir: string }) {
+  const bottom = usePlayback((s) => s.bottom);
+  return bottom === "transcript" ? <TranscriptPanel project={project} dir={dir} /> : <Timeline project={project} />;
 }
 
 function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean }) {
