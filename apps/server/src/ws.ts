@@ -19,6 +19,7 @@ import { Projects } from "./projects.ts";
 import { Recents } from "./recents.ts";
 import { Settings } from "./settings.ts";
 import { Setup } from "./setup.ts";
+import { Whisper } from "./whisper.ts";
 
 export const tokensMatch = (given: string | null, expected: string) => {
   if (given === null) return false;
@@ -38,10 +39,11 @@ interface Services {
   readonly agent: typeof Agent.Service;
   readonly exporter: typeof Exporter.Service;
   readonly analysis: typeof Analysis.Service;
+  readonly whisper: typeof Whisper.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -76,6 +78,10 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.analysisStart]: ({ mediaId, analyzers }) => analysis.start(mediaId, analyzers),
     [RPC_METHODS.analysisJobs]: () => analysis.jobs,
     [RPC_METHODS.analysisCancel]: ({ jobId }) => analysis.cancel(jobId),
+    [RPC_METHODS.transcriptionState]: () => whisper.state,
+    [RPC_METHODS.transcriptionDownload]: ({ model }) => whisper.download(model),
+    [RPC_METHODS.transcriptionCancelDownload]: ({ model }) => whisper.cancelDownload(model),
+    [RPC_METHODS.transcriptionSelectModel]: ({ model }) => whisper.select(model),
   });
 
 export const layer = Layer.unwrap(
@@ -90,7 +96,8 @@ export const layer = Layer.unwrap(
     const agent = yield* Agent;
     const exporter = yield* Exporter;
     const analysis = yield* Analysis;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis }).pipe(
+    const whisper = yield* Whisper;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

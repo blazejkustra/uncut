@@ -11,8 +11,9 @@ import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
 // The tools that work today. render_frames came with the export rasteriser (phase 4 chunk 6,
 // D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze with
 // chunk 2 (D66, loudness and silences); the video analyzer and media_rank with chunk 3 (D67);
-// transcript_read and generate_media come with their features. See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "media_import", "contact_sheet", "ui_show"] as const;
+// transcript_read with chunk 4 (D68, local whisper.cpp); generate_media comes with its feature.
+// See DECISIONS.md D51.
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "media_import", "contact_sheet", "ui_show"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -76,7 +77,9 @@ export function stepLabel(tool: string, input: unknown): string {
       const sound = new Set(["loudness", "silence"]);
       const picture = new Set(["video", "shots", "motion", "stability"]);
       const only = (n: string) => names.length > 0 && names.every((x) => x === n);
-      const what = only("silence")
+      const what = names.length > 0 && names.every((x) => x === "transcript" || x === "transcription")
+        ? "Transcribed"
+        : only("silence")
         ? "Found the silences in"
         : only("loudness")
           ? "Measured the loudness of"
@@ -96,6 +99,12 @@ export function stepLabel(tool: string, input: unknown): string {
       if (ids.length) return ids.length === 1 ? `Scored the take ${ids[0]}` : `Ranked ${ids.length} takes`;
       if (typeof args.folder === "string") return `Ranked the takes from ${shortName(args.folder)}`;
       return "Ranked the takes";
+    }
+    case "transcript_read": {
+      const media = typeof args.media === "string" ? args.media : "the media";
+      const range = args.range && typeof args.range === "object" ? (args.range as { start?: unknown; end?: unknown }) : undefined;
+      const span = range && typeof range.start === "number" && typeof range.end === "number" ? ` (frames ${range.start}–${range.end})` : "";
+      return typeof args.from === "number" && args.from > 0 ? `Read more of the transcript of ${media}${span}` : `Read the transcript of ${media}${span}`;
     }
     case "ui_show": {
       const parts: Array<string> = [];
@@ -191,8 +200,9 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" (with media) shows one frame per shot, from the video analysis.
-- media_analyze measures a media file: "loudness" (also "silence") gives integrated loudness (LUFS), loudness range, true peak and the silences (below −40 dB for at least 0.3 s); "video" (also "shots", "motion", "stability") gives the cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0–1, with the best stretch and good/fair/poor stretches. Frames in the answers are project frames of the media you can use as in. Default: loudness only; ask for "video" by name (it takes longer: about a minute on a long 4K clip). It waits up to about a minute; if it answers "running", call it again with the same arguments. Results are cached, so asking again is free. Transcripts and beats come later.
+- media_analyze measures a media file: "loudness" (also "silence") gives integrated loudness (LUFS), loudness range, true peak and the silences (below −40 dB for at least 0.3 s); "video" (also "shots", "motion", "stability") gives the cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0–1, with the best stretch and good/fair/poor stretches. Frames in the answers are project frames of the media you can use as in. "transcript" transcribes the speech (a summary: language, word, filler and pause counts; read it with transcript_read). Default: loudness only; ask for "video" by name (it takes longer: about a minute on a long 4K clip). It waits up to about a minute; if it answers "running", call it again with the same arguments. Results are cached, so asking again is free. Beats come later.
 - media_rank ranks video takes (media ids, or the media from a folder, or all the project's video) by cleanScore, best first, each with its stability, sharpness and exposure and its best stretch inside one shot (window seconds long, default 5; start and end usable as in). Use it to pick the clean take or the clean part of a long one, and say why from the components (e.g. "sharper, less shake"). Look at the pick with contact_sheet or render_frames before you rely on it.
+- transcript_read gives what's said in a media file, transcribed on this Mac (whisper.cpp; the language is detected, pass language like "pl" if it's wrong). Text lines start with their first word's index and frames, e.g. "w12 [300–452] So {um} this is the shot (pause 0.8 s) we wanted."; {braces} mark fillers, (pause …) gaps of at least 0.3 s; fillers and pauses also come as lists with frames. format "words" gives each word with start (the frame it begins in) and end (the frame after it), project frames of the media usable as in. Long transcripts come in pages: call again with from = next.from; range narrows to project frames of the media. The first transcript of a file takes a while (and the very first one downloads the speech model): if it answers running, call again with the same arguments. Cached afterwards.
 - ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements, audio, inspector, agent). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."

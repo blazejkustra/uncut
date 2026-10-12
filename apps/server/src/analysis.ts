@@ -11,6 +11,8 @@
 // ebur128 and the silences from silencedetect (below SILENCE_DB for at least SILENCE_MIN_S).
 // The second, "video" (videoAnalysis.ts, D67), is one pass over the first video stream: cuts,
 // shake, blur, brightness and frozen stretches per second of the file.
+// The third, "transcript" (transcription.ts, D68), transcribes the speech with whisper.cpp; at most
+// one runs at a time (it keeps the GPU busy), after its speech model is there (downloaded first).
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm, rmdir } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
@@ -22,13 +24,15 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
-import { Cancelled, spawnRunner, type Runner } from "./analysisRunner.ts";
+import { Cancelled, ffmpegError, NO_AUDIO_STREAM, spawnRunner, type Runner } from "./analysisRunner.ts";
 import { writeAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { Projects } from "./projects.ts";
 import { which } from "./setup.ts";
+import { analyzeTranscript, isTranscriptResult, NO_SPEECH_AUDIO, TRANSCRIPT_VERSION, type TranscriptResult } from "./transcription.ts";
 import { analyzeVideo, isVideoResult, NO_VIDEO, VIDEO_VERSION, type VideoResult } from "./videoAnalysis.ts";
+import { Whisper, type ResolveWhisper } from "./whisper.ts";
 
 /** Silence: quieter than this (dBFS) ... */
 export const SILENCE_DB = -40;
@@ -46,7 +50,6 @@ const MAX_JOBS_KEPT = 20;
 /** Analyzers the agent's spec names (spec/agent/tools.json) that come with later chunks. */
 export const LATER_ANALYZERS: Readonly<Record<string, string>> = {
   beats: "beats",
-  transcript: "transcription",
   description: "descriptions",
 };
 
@@ -73,13 +76,13 @@ export interface LoudnessResult {
   readonly truePeakDbtp?: number | null;
   readonly silence?: { readonly thresholdDb: number; readonly minSeconds: number; readonly ranges: ReadonlyArray<SilenceRange> };
 }
-export type AnalysisResult = LoudnessResult | VideoResult;
+export type AnalysisResult = LoudnessResult | VideoResult | TranscriptResult;
 
 export const NO_AUDIO: LoudnessResult = { hasAudio: false };
 
 /** Names that mean the same job: one pass finds both silences and loudness, or all of the picture's signals. */
-export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = { loudness: "loudness", silence: "loudness", video: "video", shots: "video", motion: "video", stability: "video" };
-const AVAILABLE = `Available now: loudness (also gives the silences; "silence" means the same) and video (cuts, shake, blur, exposure and frozen stretches; "shots", "motion" and "stability" mean the same).`;
+export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = { loudness: "loudness", silence: "loudness", video: "video", shots: "video", motion: "video", stability: "video", transcript: "transcript", transcription: "transcript" };
+const AVAILABLE = `Available now: loudness (also gives the silences; "silence" means the same), video (cuts, shake, blur, exposure and frozen stretches; "shots", "motion" and "stability" mean the same) and transcript (the speech, transcribed on this Mac).`;
 
 /**
  * Which analyzers a request means: none named = loudness (cheap, ~400× realtime; video is opt-in,
@@ -150,8 +153,6 @@ export const loudnessArgs = (path: string) => [
   "-",
 ];
 
-/** ffmpeg's ways of saying the file has no audio stream for 0:a:0. */
-const NO_AUDIO_STREAM = /matches no streams|does not contain any stream|Failed to set value '0:a:0' for option 'map'/i;
 
 const num = (s: string | undefined) => {
   const n = Number(s);
@@ -221,15 +222,6 @@ export class LoudnessLog {
 
 export { Cancelled, spawnRunner, type RunOptions, type Runner } from "./analysisRunner.ts";
 
-/** The last useful lines of ffmpeg's stderr, for an error message. */
-const ffmpegError = (stderr: string) =>
-  stderr
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !/^(size=|frame=|Press \[q\])/.test(l))
-    .slice(-3)
-    .join(" ")
-    .slice(0, 400);
 
 /** Loudness and silences of the first audio stream of `path`. */
 export async function analyzeLoudness(
@@ -270,14 +262,15 @@ interface CacheFile {
   readonly result: AnalysisResult;
 }
 
-const versionOf = (analyzer: Analyzer) => (analyzer === "loudness" ? LOUDNESS_VERSION : VIDEO_VERSION);
+const versionOf = (analyzer: Analyzer) => (analyzer === "loudness" ? LOUDNESS_VERSION : analyzer === "video" ? VIDEO_VERSION : TRANSCRIPT_VERSION);
+const shapeOk = (analyzer: Analyzer, result: unknown) => (analyzer === "video" ? isVideoResult(result) : analyzer === "transcript" ? isTranscriptResult(result) : isResult(result));
 
 /** A cached result for this content and analyzer (and the analyzer's current version), if any. */
 export async function readCached(projectDir: string, fp: string, analyzer: Analyzer): Promise<AnalysisResult | undefined> {
   try {
     const file = JSON.parse(await readFile(cacheFile(projectDir, fp, analyzer), "utf8")) as CacheFile;
     if (file.format !== ANALYSIS_FORMAT || file.analyzer !== analyzer || file.version !== versionOf(analyzer) || file.fingerprint !== fp) return undefined;
-    return (analyzer === "video" ? isVideoResult(file.result) : isResult(file.result)) ? file.result : undefined;
+    return shapeOk(analyzer, file.result) ? file.result : undefined;
   } catch {
     return undefined;
   }
@@ -294,6 +287,15 @@ export function isResult(value: unknown): value is LoudnessResult {
   const silence = r.silence as { thresholdDb?: unknown; minSeconds?: unknown; ranges?: unknown } | undefined;
   if (!silence || typeof silence !== "object" || typeof silence.thresholdDb !== "number" || typeof silence.minSeconds !== "number" || !Array.isArray(silence.ranges)) return false;
   return silence.ranges.every((x) => x && typeof x === "object" && typeof (x as SilenceRange).start === "number" && typeof (x as SilenceRange).end === "number");
+}
+
+/** A cached result for a media file, without a job (undefined: none, or the file can't be read). */
+export async function cachedFor(target: AnalysisTarget, analyzer: Analyzer): Promise<AnalysisResult | undefined> {
+  try {
+    return await readCached(target.dir, await fingerprint(target.path), analyzer);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Removes a cache file and its folder when that's empty (a cancel that came after the write). */
@@ -339,6 +341,15 @@ export const targetOf = (dir: string, media: { readonly id: string; readonly kin
   seconds: media.probe?.frames ? media.probe.frames / fps : undefined,
 });
 
+/** Per-request choices: a transcript's language ("auto" or a code; none: any cached transcript will do). */
+export interface RequestOptions {
+  readonly language?: string | undefined;
+}
+
+/** A cached transcript answers a request that names no language, or one in the language it's in. */
+const fits = (analyzer: Analyzer, result: AnalysisResult, options: RequestOptions | undefined) =>
+  analyzer !== "transcript" || !options?.language || options.language === "auto" || !(result as TranscriptResult).hasAudio || (result as TranscriptResult).language === options.language;
+
 export type Outcome = { readonly state: "done"; readonly result: AnalysisResult; readonly cached: boolean } | { readonly state: "failed"; readonly error: string } | { readonly state: "cancelled" };
 
 /** A request's answer: the job doing it (none when the answer was there at once) and its outcome. */
@@ -350,6 +361,7 @@ export interface Requested {
 interface Entry {
   job: AnalysisJob;
   readonly target: AnalysisTarget;
+  readonly options: RequestOptions | undefined;
   readonly fp: string;
   readonly controller: AbortController;
   readonly done: Promise<Outcome>;
@@ -366,6 +378,10 @@ export interface QueueOptions {
   readonly exportBusy?: () => boolean;
   /** Whether `dir` is still the open project (a request that took a while for a closed one is dropped). */
   readonly isOpen?: (dir: string) => boolean;
+  /** whisper-cli and the speech model for transcripts (undefined: transcription isn't set up here). */
+  readonly whisper?: ResolveWhisper;
+  /** Where transcripts' temp folders go (tests). */
+  readonly tmpRoot?: string;
 }
 
 const finished = (job: AnalysisJob) => job.phase === "done" || job.phase === "failed" || job.phase === "cancelled";
@@ -394,9 +410,11 @@ export class AnalysisQueue {
   job = (id: string) => this.jobs.find((j) => j.id === id);
 
   /** A waiting or running job for the same media (same file path) or, once fingerprinted, the same content. */
-  private find(target: AnalysisTarget, analyzer: Analyzer, fp?: string) {
+  private find(target: AnalysisTarget, analyzer: Analyzer, fp?: string, options?: RequestOptions) {
     for (const e of this.active.values()) {
       if (e.target.dir !== target.dir || e.job.analyzer !== analyzer) continue;
+      // A transcript in another language is another job (no language asked: any will do).
+      if (options?.language && options.language !== "auto" && (e.options?.language ?? "auto") !== options.language) continue;
       if ((e.target.mediaId === target.mediaId && e.target.path === target.path) || (fp !== undefined && e.fp === fp)) return e;
     }
     return undefined;
@@ -411,12 +429,13 @@ export class AnalysisQueue {
   private busy = () => this.exportBusy || (this.options.exportBusy?.() ?? false);
   private stillOpen = (dir: string) => this.options.isOpen?.(dir) ?? true;
 
-  async request(target: AnalysisTarget, analyzer: Analyzer): Promise<Requested> {
+  async request(target: AnalysisTarget, analyzer: Analyzer, options?: RequestOptions): Promise<Requested> {
     if (this.closed) return settled({ state: "cancelled" });
     // Nothing to measure, known from the probe: no job, no cache file.
     if (analyzer === "loudness" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_AUDIO, cached: false });
     if (analyzer === "video" && target.kind !== "video") return settled({ state: "done", result: NO_VIDEO, cached: false });
-    const joined = this.find(target, analyzer);
+    if (analyzer === "transcript" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_SPEECH_AUDIO, cached: false });
+    const joined = this.find(target, analyzer, undefined, options);
     if (joined) return this.join(joined, target.mediaId);
     let fp: string;
     try {
@@ -426,11 +445,11 @@ export class AnalysisQueue {
       return settled({ state: "failed", error: code === "ENOENT" ? `The file isn't there any more: ${target.path}` : code === "EACCES" || code === "EPERM" ? `Uncut isn't allowed to read ${target.path}.` : (error as Error).message });
     }
     const cached = await readCached(target.dir, fp, analyzer);
-    if (cached) return settled({ state: "done", result: cached, cached: true });
+    if (cached && fits(analyzer, cached, options)) return settled({ state: "done", result: cached, cached: true });
     // The project may have closed while the file was read: nothing more for it.
     if (this.closed || !this.stillOpen(target.dir)) return settled({ state: "cancelled" });
     // Another request may have queued it while this one read the file.
-    const again = this.find(target, analyzer, fp);
+    const again = this.find(target, analyzer, fp, options);
     if (again) return this.join(again, target.mediaId);
     let resolveOutcome: (outcome: Outcome) => void = () => {};
     const done = new Promise<Outcome>((r) => (resolveOutcome = r));
@@ -445,7 +464,7 @@ export class AnalysisQueue {
       ...(this.busy() ? { waiting: "export" as const } : {}),
       startedAt: new Date().toISOString(),
     };
-    const entry: Entry = { job, target, fp, controller: new AbortController(), done, resolve: resolveOutcome };
+    const entry: Entry = { job, target, options, fp, controller: new AbortController(), done, resolve: resolveOutcome };
     this.active.set(job.id, entry);
     this.waiting.push(entry);
     const kept = this.jobs.filter(finished).slice(-MAX_JOBS_KEPT);
@@ -495,7 +514,7 @@ export class AnalysisQueue {
     this.options.onChange?.(this.jobs);
   }
 
-  private patch(e: Entry, change: Partial<AnalysisJob> & { waiting?: "export" | undefined }, emit = true) {
+  private patch(e: Entry, change: Partial<AnalysisJob> & { waiting?: "export" | undefined; stage?: "model" | undefined }, emit = true) {
     const next = { ...e.job, ...change } as Record<string, unknown>;
     for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
     const job = next as unknown as AnalysisJob;
@@ -509,6 +528,7 @@ export class AnalysisQueue {
     this.patch(e, {
       phase: outcome.state,
       waiting: undefined,
+      stage: undefined,
       ...(outcome.state === "done" ? { progress: 1 } : {}),
       ...(outcome.state === "failed" ? { error: outcome.error } : {}),
       finishedAt: new Date().toISOString(),
@@ -523,17 +543,26 @@ export class AnalysisQueue {
       if (stale.length) this.emit();
       return;
     }
-    while (!this.closed && !this.busy() && this.running < (this.options.concurrency ?? CONCURRENCY) && this.waiting.length) void this.run(this.waiting.shift()!);
+    while (!this.closed && !this.busy() && this.running < (this.options.concurrency ?? CONCURRENCY)) {
+      // One transcript at a time (whisper keeps the GPU busy); others wait their turn, the rest go by.
+      const at = this.waiting.findIndex((e) => e.job.analyzer !== "transcript" || this.transcribing === 0);
+      if (at < 0) break;
+      void this.run(this.waiting.splice(at, 1)[0]!);
+    }
   }
+
+  private transcribing = 0;
 
   private async run(e: Entry) {
     this.running++;
+    const transcript = e.job.analyzer === "transcript";
+    if (transcript) this.transcribing++;
     this.patch(e, { phase: "running", progress: 0, waiting: undefined });
     const { signal } = e.controller;
     let outcome: Outcome;
     try {
       const bin = await this.options.ffmpeg();
-      if (!bin) throw new Error(`ffmpeg isn't installed, and Uncut needs it to analyse ${e.job.analyzer === "video" ? "video" : "sound"} (brew install ffmpeg).`);
+      if (!bin) throw new Error(`ffmpeg isn't installed, and Uncut needs it to ${transcript ? "transcribe" : `analyse ${e.job.analyzer === "video" ? "video" : "sound"}`} (brew install ffmpeg).`);
       let last = 0;
       const options = {
         signal,
@@ -546,7 +575,24 @@ export class AnalysisQueue {
           this.patch(e, { progress: Math.round(fraction * 1000) / 1000 });
         },
       };
-      const result: AnalysisResult = e.job.analyzer === "video" ? await analyzeVideo(bin, e.target.path, options) : await analyzeLoudness(bin, e.target.path, options);
+      let result: AnalysisResult;
+      if (transcript) {
+        if (!this.options.whisper) throw new Error("Transcription isn't set up in this build.");
+        // The model may need downloading first: the job shows that download's progress meanwhile.
+        let lastDownload = 0;
+        const whisper = await this.options.whisper({
+          signal,
+          onDownload: (fraction) => {
+            const now = Date.now();
+            if (now - lastDownload < 250) return;
+            lastDownload = now;
+            this.patch(e, { stage: "model", progress: Math.round(fraction * 1000) / 1000 });
+          },
+        });
+        if (signal.aborted) throw new Cancelled();
+        if (e.job.stage) this.patch(e, { stage: undefined, progress: 0 });
+        result = await analyzeTranscript(bin, whisper, e.target.path, { ...options, language: e.options?.language, ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}) });
+      } else result = e.job.analyzer === "video" ? await analyzeVideo(bin, e.target.path, options) : await analyzeLoudness(bin, e.target.path, options);
       if (signal.aborted) throw new Cancelled();
       // Cached only if the file is still what was fingerprinted (it may have changed meanwhile).
       // A cache that can't be written (read-only disk) costs a re-run later, not this result.
@@ -563,6 +609,7 @@ export class AnalysisQueue {
       outcome = error instanceof Cancelled || signal.aborted ? { state: "cancelled" } : { state: "failed", error: (error as Error).message || "The analysis stopped unexpectedly." };
     } finally {
       this.running--;
+      if (transcript) this.transcribing--;
     }
     this.finish(e, outcome);
     this.pump();
@@ -577,7 +624,7 @@ export interface AnalysisShape {
   readonly start: (mediaId: string, analyzers?: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<{ analyzer: Analyzer; state: "done" | "queued" | "running"; jobId?: string }>, AnalysisError>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
   /** For the agent's media_analyze: start or join, then follow `done`. */
-  readonly request: (target: AnalysisTarget, analyzer: Analyzer) => Promise<Requested>;
+  readonly request: (target: AnalysisTarget, analyzer: Analyzer, options?: RequestOptions) => Promise<Requested>;
   /** A job as it is now. */
   readonly job: (jobId: string) => AnalysisJob | undefined;
 }
@@ -592,6 +639,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const projects = yield* Projects;
     const exporter = yield* Exporter;
+    const whisper = yield* Whisper;
     const jobsRef = yield* SubscriptionRef.make<ReadonlyArray<AnalysisJob>>([]);
     const queue = new AnalysisQueue({
       ffmpeg: async () => {
@@ -602,6 +650,7 @@ export const layer = Layer.effect(
       // Read synchronously: an export started a moment ago counts before its stream update arrives.
       exportBusy: exporter.busy,
       isOpen: (dir) => Effect.runSync(projects.currentDir) === dir,
+      whisper: whisper.resolve,
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => queue.shutdown()));
     // Exports come first (D55): no analysis starts while one is queued or running.
@@ -640,7 +689,7 @@ export const layer = Layer.effect(
       jobs: SubscriptionRef.changes(jobsRef),
       start,
       cancel: (jobId) => Effect.sync(() => queue.cancel(jobId)),
-      request: (target, analyzer) => queue.request(target, analyzer),
+      request: (target, analyzer, options) => queue.request(target, analyzer, options),
       job: (jobId) => queue.job(jobId),
     });
   }),
