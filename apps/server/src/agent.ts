@@ -11,13 +11,13 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, rename } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AgentError, type AgentEdit, type AgentItem, type AgentState, type AgentTurn, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { describeOp, manualEditsNote, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
+import { AGENT_UI_PANELS, AgentError, type AgentEdit, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { describeOp, layout, manualEditsNote, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -26,11 +26,13 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
+import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
+import { MediaLibrary, type MediaEntry } from "./media.ts";
 import { Projects, type ProjectView } from "./projects.ts";
 import { which } from "./setup.ts";
 
@@ -104,6 +106,8 @@ interface Loaded {
   pending: string;
   // turns.json exists but can't be read (permissions, I/O): never overwrite it.
   readError: string | undefined;
+  // The agent's latest ui_show (D65), for the renderer to apply once. Not saved.
+  ui: AgentUi | undefined;
 }
 
 interface Running {
@@ -237,7 +241,10 @@ function undoState(turn: StoredTurn, view: ProjectView | undefined, openId: numb
   return state;
 }
 
+/** contact_sheet: when the asked-for columns didn't fit the sheet, say what was used instead. */
+const columnsNote = (asked: number | undefined, used: number) => (asked !== undefined && asked !== used ? `${asked} columns didn't fit the sheet's size, so it has ${used}.` : "");
 const timecode = (frame: number, fps: number) => `${(frame / fps).toFixed(2)} s`;
+const realOr = (path: string, dir: string) => realpath(isAbsolute(path) ? path : resolve(dir, path)).catch(() => path);
 
 // Each turn's --mcp-config lives in tmpdir/uncut-agent-<server pid>-XXXXXX (0600, removed when
 // the turn ends).
@@ -291,7 +298,9 @@ export const layer = Layer.effect(
     const projects = yield* Projects;
     const format = yield* ProjectFormat;
     const exporter = yield* Exporter;
+    const media = yield* MediaLibrary;
     const config = yield* ServerConfig;
+    let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
     const bridgeUrl = `http://127.0.0.1:${port}`;
@@ -312,6 +321,7 @@ export const layer = Layer.effect(
         provider: PROVIDER,
         running: running && running.owner === owner ? running.turn.id : null,
         turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
+        ...(owner.ui ? { ui: owner.ui } : {}),
       };
     };
     const publish = () => Effect.runSync(SubscriptionRef.set(stateRef, stateNow()));
@@ -372,6 +382,7 @@ export const layer = Layer.effect(
           same.openId = v.openId;
           same.seen = new Set();
           same.agentSeen = Math.min(same.agentSeen, v.session.revision - 1);
+          same.ui = undefined;
           loaded = same;
           return same;
         }
@@ -390,6 +401,7 @@ export const layer = Layer.effect(
           carried: history.pendingNote,
           pending: "",
           readError: history.readError,
+          ui: undefined,
         };
         return loaded;
       }),
@@ -452,6 +464,188 @@ export const layer = Layer.effect(
 
     // ---- tools ----
 
+    /** A media entry as media_import returns it: its probe in project terms. */
+    const entryInfo = (e: MediaEntry, fps: number) => ({
+      id: e.id,
+      kind: e.kind,
+      name: e.name,
+      path: e.path,
+      ...(e.probe.frames ? { frames: e.probe.frames, seconds: Number((e.probe.frames / fps).toFixed(2)) } : {}),
+      ...(e.probe.fps ? { fps: Number(e.probe.fps.toFixed(3)) } : {}),
+      ...(e.probe.width ? { width: e.probe.width, height: e.probe.height } : {}),
+      hasAudio: e.probe.hasAudio,
+    });
+
+    // media_import (D65): files or a folder's media files, through the Library's import job but
+    // as the agent's edit (one entry in the turn, so Undo turn takes it back and the next
+    // manual-edit note doesn't list it).
+    const mediaImport = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const hasPath = args.path !== undefined;
+        const hasPaths = args.paths !== undefined;
+        if (hasPath === hasPaths) return textResult("Pass path (one file or folder) or paths (a list of them), not both.", true);
+        if (hasPaths && !Array.isArray(args.paths)) return textResult("paths must be a list of absolute paths.", true);
+        const raw: ReadonlyArray<unknown> = hasPath ? [args.path] : (args.paths as ReadonlyArray<unknown>);
+        const name = typeof args.name === "string" ? args.name.trim() : undefined;
+        if (args.name !== undefined && !name) return textResult("name must be a non-empty string.", true);
+        const plan = yield* Effect.promise(() => planImport(raw, v.dir));
+        if ("refused" in plan) return textResult(plan.refused, true);
+        if (name && plan.files.length !== 1) return textResult("name is only for importing one file; leave it out for a folder or several paths.", true);
+        if (!plan.files.length) return textResult({ imported: [], ...capSkipped(plan.skipped), failed: [], note: "Nothing to import: no media files there." });
+        // Uninterruptible: a turn stopped mid-import still gets the edit on its card (so Undo turn
+        // can take back media the job adds anyway).
+        const outcome = yield* Effect.uninterruptible(
+          media.importForAgent({ openId: r.openId, dir: v.dir, turnId: r.turn.id, paths: plan.files, names: name ? new Map([[plan.files[0]!, name]]) : undefined }).pipe(
+            Effect.map((value) => {
+              const { snapshot, entries } = value;
+              if (snapshot) {
+                const lines = entries.map((entry) => describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project));
+                r.turn.edits.push({ revision: snapshot.revision, summary: entries.length === 1 ? `Imported ${entries[0]!.name}` : `Imported ${entries.length} files`, lines });
+                persist(r.owner);
+                publish();
+                // The agent may edit from the revision it gets back: user edits made since its last
+                // read are in that state, and come back with the result (userChanges), so it knows.
+                r.owner.seen.add(snapshot.revision);
+              }
+              const now = view();
+              return { ok: true as const, value, userChanges: snapshot && now ? noteFor(now, r.owner.agentSeen) : "" };
+            }),
+            Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+          ),
+        );
+        if (!outcome.ok) return textResult(`The import didn't finish: ${outcome.message}`, true);
+        const { snapshot, entries, skipped, failed } = outcome.value;
+        const project = (snapshot?.project ?? v.session.project) as Project;
+        // Files already in the project say which media they are.
+        const byPath = new Map<string, string>();
+        for (const m of project.media) byPath.set(yield* Effect.promise(() => realOr(m.path, v.dir)), m.id);
+        const skippedOut: Array<{ path: string; reason: string; id?: string }> = [...plan.skipped];
+        for (const s of skipped) {
+          const id = byPath.get(yield* Effect.promise(() => realOr(s.path, v.dir)));
+          skippedOut.push(id ? { ...s, id } : s);
+        }
+        return textResult({
+          ...(snapshot ? { revision: snapshot.revision } : {}),
+          imported: entries.map((e) => entryInfo(e, project.canvas.fps)),
+          ...capSkipped(skippedOut),
+          failed,
+          ...(entries.length ? { note: "Frames, in and duration are project frames; probe frames is each file's length in them." } : {}),
+          ...(outcome.userChanges ? { userChanges: outcome.userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
+        });
+      });
+
+    // contact_sheet (D65): frames of a media file (pulled from the original, 0:v:0) or of the edit
+    // (exporter.renderFrames), in a grid with each cell's frame and time, as one JPEG.
+    const contactSheet = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        if (args.at === "shots") return textResult("at \"shots\" isn't available until shot analysis exists (a later update). Use at \"every\" with every, or max to spread frames evenly.", true);
+        if (args.at !== undefined && args.at !== "every") return textResult('at must be "every" (or "shots", later).', true);
+        const int = (value: unknown, lo: number, hi: number) => (value === undefined ? undefined : Number.isInteger(value) && (value as number) >= lo && (value as number) <= hi ? (value as number) : null);
+        const every = int(args.every, 1, Number.MAX_SAFE_INTEGER);
+        const columns = int(args.columns, 1, 10);
+        const max = int(args.max, 1, MAX_CELLS);
+        if (every === null) return textResult("every must be a whole number of frames, at least 1.", true);
+        if (columns === null) return textResult("columns must be 1 to 10.", true);
+        if (max === null) return textResult(`max must be 1 to ${MAX_CELLS}.`, true);
+        const range = args.range as { start?: unknown; end?: unknown } | undefined;
+        if (range !== undefined && (typeof range !== "object" || !Number.isInteger(range.start) || !Number.isInteger(range.end) || (range.start as number) < 0)) {
+          return textResult("range must be { start, end } in whole frames (start from 0).", true);
+        }
+        const project = v.session.project;
+        const fps = project.canvas.fps;
+        const limit = max ?? (every !== undefined ? MAX_CELLS : DEFAULT_CELLS);
+        if (typeof args.media === "string") {
+          const m = project.media.find((x) => x.id === args.media);
+          if (!m) return textResult(`There's no media "${args.media}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
+          if (m.kind !== "video") return textResult(`${m.id} is ${m.kind === "audio" ? "a sound file, with no picture" : "a still image; render_frames or the preview shows it"}. contact_sheet takes video.`, true);
+          const length = m.probe?.frames ?? 0;
+          if (!length) return textResult(`${m.id} has no known length, so it can't be sampled.`, true);
+          const start = range ? (range.start as number) : 0;
+          const end = range ? Math.min(range.end as number, length) : length;
+          const frames = sheetFrames(start, end, every, limit);
+          if ("refused" in frames) return textResult(range && start >= length ? `${m.id} is ${length} frames long; the range starts after its end.` : frames.refused, true);
+          const aspect = m.probe?.width && m.probe?.height ? m.probe.width / m.probe.height : 16 / 9;
+          const grid = sheetLayout(frames.length, aspect, columns);
+          const path = isAbsolute(m.path) ? m.path : resolve(v.dir, m.path);
+          const sheet = yield* exporter.mediaFrames(path, frames.map((f) => f / fps), CELL_WIDTH, fps).pipe(
+            Effect.flatMap((pulled) => {
+              // A moment past the end of the picture shows its last frame: label the cell with the frame shown.
+              const shown = pulled.map((p, i) => (p.seconds < frames[i]! / fps ? Math.floor(p.seconds * fps + 1e-6) : frames[i]!));
+              return exporter.sheetImage(pulled.map((p, i) => ({ jpeg: p.jpeg, caption: `${i + 1}   f ${shown[i]}   ${clock(shown[i]! / fps)}` })), grid).pipe(Effect.map((jpeg) => ({ jpeg, shown })));
+            }),
+            Effect.map(({ jpeg, shown }) => ({ ok: true as const, jpeg, shown })),
+            Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+          );
+          if (!sheet.ok) return textResult(`Couldn't make the contact sheet: ${sheet.message}`, true);
+          const cells = sheet.shown.map((f, i) => `${i + 1}: frame ${f} (${clock(f / fps)})`);
+          const past = frames.flatMap((f, i) => (sheet.shown[i] !== f ? [`frame ${f} is past the end of the picture, so cell ${i + 1} shows its last frame, ${sheet.shown[i]}`] : []));
+          const notes = [columnsNote(columns, grid.columns), past.length ? `Note: ${past.join("; ")}.` : ""].filter(Boolean).join(" ");
+          return {
+            content: [
+              { type: "text" as const, text: `Contact sheet of ${m.id} (${m.name}), ${frames.length} cells in ${grid.columns} columns, ${grid.width}×${grid.height}, read left to right, top to bottom. Frames are project frames of the media (use them as in; ${fps} per second), times are media time; each cell is the frame the preview and export show there.${notes ? ` ${notes}` : ""}\n${cells.join("\n")}` },
+              { type: "image" as const, data: sheet.jpeg.toString("base64"), mimeType: "image/jpeg" },
+            ],
+          };
+        }
+        if (args.media !== undefined) return textResult("media must be a media id.", true);
+        const { duration } = layout(project);
+        const total = project.tracks.some((t) => t.items.length) ? duration : 0;
+        if (!total) return textResult("The timeline is empty: there's nothing to sample yet. Pass media to look at a media file.", true);
+        const start = range ? (range.start as number) : 0;
+        const end = range ? Math.min(range.end as number, total) : total;
+        if (start >= total) return textResult(`The edit is ${total} frames long; the range starts after its end.`, true);
+        const frames = sheetFrames(start, end, every, limit);
+        if ("refused" in frames) return textResult(frames.refused, true);
+        const grid = sheetLayout(frames.length, project.canvas.width / project.canvas.height, columns);
+        const sheet = yield* exporter.renderFrames(frames, CELL_WIDTH).pipe(
+          Effect.flatMap((list) => exporter.sheetImage(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), grid).pipe(Effect.map((jpeg) => ({ jpeg, shown: list.map((f) => f.frame) })))),
+          Effect.map(({ jpeg, shown }) => ({ ok: true as const, jpeg, shown })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+        );
+        if (!sheet.ok) return textResult(`Couldn't make the contact sheet: ${sheet.message}`, true);
+        const cells = sheet.shown.map((f, i) => `${i + 1}: frame ${f} (${clock(f / fps)})`);
+        const notes = columnsNote(columns, grid.columns);
+        return {
+          content: [
+            { type: "text" as const, text: `Contact sheet of the edit (revision ${v.session.revision}), ${frames.length} cells in ${grid.columns} columns, ${grid.width}×${grid.height}, drawn as the export draws them, read left to right, top to bottom.${notes ? ` ${notes}` : ""}\n${cells.join("\n")}` },
+            { type: "image" as const, data: sheet.jpeg.toString("base64"), mimeType: "image/jpeg" },
+          ],
+        };
+      });
+
+    // ui_show (D65): the renderer moves the playhead, selects and opens a panel once per request.
+    const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
+      const project = v.session.project;
+      const said: Array<string> = [];
+      let frame: number | undefined;
+      if (args.frame !== undefined) {
+        if (!Number.isInteger(args.frame) || (args.frame as number) < 0) return textResult("frame must be a whole frame number from 0.", true);
+        const { duration } = layout(project);
+        const end = project.tracks.some((t) => t.items.length) ? duration : 0;
+        frame = Math.min(args.frame as number, end);
+        said.push(frame === args.frame ? `the playhead is at frame ${frame}` : `the project ends at frame ${end}, so the playhead went there`);
+      }
+      let select: string | undefined;
+      if (args.select !== undefined) {
+        const ids = Array.isArray(args.select) ? args.select : typeof args.select === "string" ? [args.select] : [];
+        if (ids.length !== 1 || typeof ids[0] !== "string") return textResult("select takes one item id, e.g. [\"clip-1\"] (the editor selects one item at a time).", true);
+        const id = ids[0];
+        if (!project.tracks.some((t) => t.items.some((i) => i.id === id))) return textResult(`There's no timeline item "${id}". project_read lists the items.`, true);
+        select = id;
+        said.push(`${id} is selected`);
+      }
+      let panel: AgentUiPanel | undefined;
+      if (args.panel !== undefined) {
+        if (!(AGENT_UI_PANELS as ReadonlyArray<unknown>).includes(args.panel)) return textResult(`panel must be one of ${AGENT_UI_PANELS.join(", ")}.`, true);
+        panel = args.panel as AgentUiPanel;
+        said.push(`the ${panel} panel is open`);
+      }
+      if (!said.length) return textResult("Pass frame, select or panel.", true);
+      r.owner.ui = { id: `${r.turn.id}-${++uiCount}`, revision: v.session.revision, ...(frame !== undefined ? { frame } : {}), ...(select ? { select } : {}), ...(panel ? { panel } : {}) };
+      publish();
+      return textResult(`Shown: ${said.join(", ")}.`);
+    };
+
     const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
       Effect.gen(function* () {
         const v = view();
@@ -486,6 +680,12 @@ export const layer = Layer.effect(
               ],
             };
           }
+          case "media_import":
+            return yield* mediaImport(r, v, args);
+          case "contact_sheet":
+            return yield* contactSheet(v, args);
+          case "ui_show":
+            return uiShow(r, v, args);
           case "timeline_edit": {
             const { baseRevision, ops, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

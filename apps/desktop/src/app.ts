@@ -21,6 +21,7 @@ import {
   type FolderPurpose,
   type MenuCommand,
 } from "./ipc.ts";
+import { BACKGROUND_SWITCHES, isTestBackground } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { startServer, type ServerProcess } from "./server.ts";
 
@@ -47,6 +48,17 @@ if (!app.requestSingleInstanceLock()) {
 // Entries are a path (folder dialogs) or an array of paths (the multi-select media dialog).
 const testDialogs: Array<string | Array<string>> | undefined =
   process.env.UNCUT_CDP && process.env.UNCUT_TEST_DIALOG ? (JSON.parse(process.env.UNCUT_TEST_DIALOG) as Array<string | Array<string>>) : undefined;
+
+// Tests run in the background (UNCUT_TEST_BACKGROUND=1, only with UNCUT_CDP): no dock icon, and
+// the window is shown inactive and fully transparent, so test runs never steal focus or cover what
+// the user is doing. CDP screenshots read the page, not the screen, so they are unaffected.
+const testBackground = isTestBackground(process.env);
+if (testBackground) {
+  app.dock?.hide();
+  // An accessory app (no dock icon, no menu bar) is never made the active app by showing a window.
+  app.setActivationPolicy?.("accessory");
+  for (const name of BACKGROUND_SWITCHES) app.commandLine.appendSwitch(name);
+}
 
 // __dirname is apps/desktop/dist in dev and app.asar/dist when packaged.
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -163,6 +175,8 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
+      // A background test window is inactive and transparent: keep its timers and frames running.
+      backgroundThrottling: !testBackground,
     },
   });
   const contents = win.webContents;
@@ -177,7 +191,14 @@ function createWindow() {
     return { action: "deny" };
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
-  win.once("ready-to-show", () => win?.show());
+  win.once("ready-to-show", () => {
+    if (!testBackground) return win?.show();
+    win?.setOpacity(0);
+    // Invisible must also mean untouchable: the user's clicks pass through to what's behind it.
+    // (Puppeteer's input goes straight to the page over CDP, not through the window.)
+    win?.setIgnoreMouseEvents(true);
+    win?.showInactive();
+  });
   win.on("closed", () => (win = undefined));
   if (devServerUrl) void win.loadURL(devServerUrl);
   else void win.loadFile(path.join(__dirname, "renderer", "index.html"));
@@ -192,6 +213,7 @@ const fromAppWindow = (event: IpcMainInvokeEvent | IpcMainEvent) => {
 app.on("second-instance", () => {
   if (!win) return;
   if (win.isMinimized()) win.restore();
+  if (testBackground) return;
   win.show();
   win.focus();
 });

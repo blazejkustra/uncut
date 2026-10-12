@@ -143,6 +143,8 @@ export const ImportJob = Schema.Struct({
   postersTotal: Schema.Number,
   result: Schema.optional(MediaImportResult),
   error: Schema.optional(Schema.String),
+  // Started by the agent's media_import (D65): the agent reports skips and failures itself.
+  agent: Schema.optional(Schema.Boolean),
 });
 export type ImportJob = typeof ImportJob.Type;
 
@@ -211,12 +213,33 @@ export const AgentTurn = Schema.Struct({
 });
 export type AgentTurn = typeof AgentTurn.Type;
 
+/** The editor panels the agent's ui_show can open (D65): the library rail's tabs and the side tabs. */
+export const AGENT_UI_PANELS = ["media", "text", "elements", "audio", "inspector", "agent"] as const;
+export const AgentUiPanel = Schema.Literals(AGENT_UI_PANELS);
+export type AgentUiPanel = typeof AgentUiPanel.Type;
+
+/**
+ * The agent's latest ui_show (D65): move the playhead, select an item, open a panel. Each request
+ * has a new id; the renderer applies a request once, when its id is new to it.
+ */
+export const AgentUi = Schema.Struct({
+  id: Schema.String,
+  // The project revision it was made against: applied once the renderer has that snapshot, so a
+  // frame isn't clamped to an older, shorter project.
+  revision: Schema.Number,
+  frame: Schema.optional(Schema.Number),
+  select: Schema.optional(Schema.String),
+  panel: Schema.optional(AgentUiPanel),
+});
+export type AgentUi = typeof AgentUi.Type;
+
 /** The open project's agent: its turns (oldest first) and the one running, if any. */
 export const AgentState = Schema.Struct({
   dir: Schema.String,
   provider: Schema.String,
   running: Schema.NullOr(Schema.String),
   turns: Schema.Array(AgentTurn),
+  ui: Schema.optional(AgentUi),
 });
 export type AgentState = typeof AgentState.Type;
 

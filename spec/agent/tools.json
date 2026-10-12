@@ -46,20 +46,20 @@
     },
     {
       "name": "contact_sheet",
-      "description": "One image with a grid of frames from a media file or from the edit. Cheaper than many render_frames when scanning footage. 'at: shots' takes one frame per shot.",
+      "description": "One image with a grid of frames, each captioned with its frame and time: from a media file (pulled from the original) or from the edit (drawn as the export draws it). Much cheaper than many render_frames when scanning footage for the good parts. 'every' samples every N frames; without it, 'max' frames (default 24) are spread evenly. At most 60 cells. 'at: shots' needs shot analysis, which isn't available yet.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string" },
-          "range": { "$ref": "#/$defs/range" },
+          "media": { "type": "string", "description": "A media id from project_read. Frames and range are then in project frames of that media (like an item's in)." },
+          "range": { "$ref": "#/$defs/range", "description": "Frames [start, end): of the edit, or of the media when media is given. Default: all of it." },
           "at": { "enum": ["every", "shots"] },
           "every": { "type": "integer", "minimum": 1, "description": "Frames between samples when at is 'every'." },
-          "columns": { "type": "integer", "minimum": 1, "maximum": 10 }
-        },
-        "oneOf": [{ "required": ["media"] }, { "required": ["range"] }]
+          "columns": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "max": { "type": "integer", "minimum": 1, "maximum": 60, "description": "Most cells (default 24 when every isn't given)." }
+        }
       },
-      "returns": "an image path and the frame number of every cell"
+      "returns": "one JPEG (at most 1600 px wide) and, as text, the frame and time of every cell in order"
     },
     {
       "name": "media_analyze",
@@ -94,14 +94,17 @@
     },
     {
       "name": "media_import",
-      "description": "Add a file from disk to the project's media. It is referenced, not copied.",
+      "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed. At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
       "inputSchema": {
         "type": "object",
-        "required": ["path"],
         "additionalProperties": false,
-        "properties": { "path": { "type": "string" }, "name": { "type": "string" } }
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "An absolute path (or ~/...) to a file or a folder." },
+          "paths": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "string", "minLength": 1 }, "description": "Several absolute paths (files or folders)." },
+          "name": { "type": "string", "minLength": 1, "description": "A display name, for a single file only." }
+        }
       },
-      "returns": "the new media entry with its probe"
+      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], skipped: [{ path, reason }], failed: [{ path, message }]"
     },
     {
       "name": "generate_media",
@@ -132,18 +135,18 @@
     },
     {
       "name": "ui_show",
-      "description": "Point the user at something: move the playhead, select items, open a panel. Used to show results and, later, to walk the user through doing an edit (D5).",
+      "description": "Point the user at something in the editor: move the playhead to a frame, select an item (the timeline and Inspector follow) and/or open a panel. Use it to show a result, e.g. the playhead on the cut you made with that clip selected. Later also to walk the user through doing an edit (D5).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "minProperties": 1,
         "properties": {
           "frame": { "type": "integer", "minimum": 0 },
-          "select": { "type": "array", "items": { "type": "string" } },
-          "panel": { "enum": ["media", "capture", "text", "components", "transitions", "audio", "generate", "inspector", "timeline", "transcript", "mixer"] }
+          "select": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string" }, "description": "The id of one timeline item (the editor selects one item at a time)." },
+          "panel": { "enum": ["media", "text", "elements", "audio", "inspector", "agent"], "description": "Left: media, text, elements (backgrounds), audio. Right: inspector, agent (this chat)." }
         }
       },
-      "returns": "ok"
+      "returns": "what was shown"
     }
   ],
   "$defs": {

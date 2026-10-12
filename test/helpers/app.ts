@@ -172,7 +172,9 @@ export interface LaunchedApp {
 
 export async function launchApp({ command, args = [], env: extra = {}, port: requested, firstLaunch = false, cleanEnv = false }: LaunchOptions): Promise<LaunchedApp> {
   const port = requested ?? (await freePort());
-  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...extra, UNCUT_CDP: String(port) };
+  // Background by default so test runs don't pop windows over the user's work; UNCUT_TEST_VISIBLE=1 to watch.
+  const background = process.env.UNCUT_TEST_VISIBLE === "1" ? {} : { UNCUT_TEST_BACKGROUND: "1" };
+  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...background, ...extra, UNCUT_CDP: String(port) };
   if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
     mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
     writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));
@@ -210,6 +212,9 @@ export async function launchApp({ command, args = [], env: extra = {}, port: req
       if (!page) await sleep(100);
     }
     if (!page) throw new Error(`no index.html page; pages: ${(await browser.pages()).map((p) => p.url())}`);
+    // The background window is never key, so tell Chromium the page has focus anyway (keyboard,
+    // :focus and document.hasFocus() behave as for a window the user is typing into).
+    if (env.UNCUT_TEST_BACKGROUND === "1") await (await page.createCDPSession()).send("Emulation.setFocusEmulationEnabled", { enabled: true });
     const errors: Array<string> = [];
     page.on("pageerror", (e) => errors.push((e as Error).message));
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));

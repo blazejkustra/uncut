@@ -6,9 +6,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
-import { ProjectError, type ImportJob, type MediaImportResult } from "@uncut/contracts";
+import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
@@ -30,11 +31,34 @@ export interface MediaLibraryShape {
   readonly thumbnails: Effect.Effect<ReadonlyArray<string>>;
   /** The poster file for a media id of the open project, if it exists. */
   readonly posterFor: (id: string) => Effect.Effect<string | undefined>;
+  /**
+   * The agent's media_import (D65): an import job like the Library's, but its edit is the agent's
+   * (tagged with the turn, so Undo turn removes it and the manual-edit note doesn't list it).
+   * Resolves once the media is in the project; posters carry on in the background.
+   */
+  readonly importForAgent: (input: AgentImportInput) => Effect.Effect<AgentImport, ProjectError>;
+}
+
+export interface AgentImportInput {
+  readonly openId: number;
+  readonly dir: string;
+  readonly turnId: string;
+  readonly paths: ReadonlyArray<string>;
+  /** Display names to use instead of the file name, by path. */
+  readonly names?: ReadonlyMap<string, string> | undefined;
+}
+
+export interface AgentImport {
+  /** The project after the import, or undefined when nothing was added. */
+  readonly snapshot: ProjectSnapshot | undefined;
+  readonly entries: ReadonlyArray<MediaEntry>;
+  readonly skipped: ReadonlyArray<{ readonly path: string; readonly reason: string }>;
+  readonly failed: ReadonlyArray<{ readonly path: string; readonly message: string }>;
 }
 
 export class MediaLibrary extends Context.Service<MediaLibrary, MediaLibraryShape>()("uncut/MediaLibrary") {}
 
-interface MediaEntry {
+export interface MediaEntry {
   readonly id: string;
   readonly kind: "video" | "audio" | "image";
   readonly name: string;
@@ -192,7 +216,14 @@ export const layer = Layer.effect(
         }
       });
 
-    const runJob = (jobId: string, openId: number, dir: string, paths: ReadonlyArray<string>) =>
+    interface JobOptions {
+      readonly agent?: { readonly turnId: string } | undefined;
+      readonly names?: ReadonlyMap<string, string> | undefined;
+      /** Completed once the media is in the project (or the job failed before that). */
+      readonly added?: Deferred.Deferred<AgentImport, string> | undefined;
+    }
+
+    const runJob = (jobId: string, openId: number, dir: string, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
       Effect.gen(function* () {
         const skipped: Array<{ path: string; reason: string; at: number }> = [];
         const failed: Array<{ path: string; message: string; at: number }> = [];
@@ -245,7 +276,7 @@ export const layer = Layer.effect(
         // Ids, duplicates against the project and the edit itself happen under the project
         // lock, against the opening of the project the import was started in.
         let entries: Array<{ entry: MediaEntry; info: ProbeInfo }> = [];
-        yield* projects.editIn(openId, (raw, projectDir) =>
+        const snapshot = yield* projects.editIn(openId, (raw, projectDir) =>
           Effect.gen(function* () {
             const project = raw as ProjectShape;
             const known = new Set<string>();
@@ -265,7 +296,7 @@ export const layer = Layer.effect(
               const width = turned ? info.height : info.width;
               const height = turned ? info.width : info.height;
               const frames = info.kind !== "image" && info.durationSeconds ? Math.max(1, Math.floor(info.durationSeconds * fps)) : undefined;
-              const name = basename(p.path);
+              const name = options.names?.get(p.path) ?? basename(p.path);
               entries.push({
                 info,
                 entry: {
@@ -283,7 +314,11 @@ export const layer = Layer.effect(
               summary: entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import ${entries.length} files`,
             };
           }),
+          options.agent,
         );
+
+        const inOrder = <A extends { at: number }>(list: Array<A>) => [...list].sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);
+        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed) });
 
         // Posters after the edit (tiles show an icon until theirs exists), into the folder of
         // the project they belong to.
@@ -298,7 +333,6 @@ export const layer = Layer.effect(
           { concurrency: 2, discard: true },
         );
 
-        const inOrder = <A extends { at: number }>(list: Array<A>) => list.sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);
         const result: MediaImportResult = {
           imported: entries.map(({ entry, info }) => ({ path: entry.path, id: entry.id, name: entry.name, via: info.via })),
           skipped: inOrder(skipped),
@@ -308,21 +342,35 @@ export const layer = Layer.effect(
       }).pipe(
         Effect.catchCause((cause) => {
           const error = Cause.squash(cause) as { message?: unknown } | undefined;
-          return update(jobId, { phase: "failed", error: typeof error?.message === "string" ? error.message : "The import stopped unexpectedly." });
+          const message = typeof error?.message === "string" ? error.message : "The import stopped unexpectedly.";
+          return update(jobId, { phase: "failed", error: message }).pipe(Effect.andThen(options.added ? Deferred.fail(options.added, message) : Effect.void));
         }),
       );
+
+    /** Add a job to the list and run it in the server's scope, one at a time. */
+    const queueJob = (open: { readonly openId: number; readonly dir: string }, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
+      Effect.gen(function* () {
+        const id = randomUUID();
+        const job: ImportJob = { id, projectDir: open.dir, total: paths.length, phase: "queued", probed: 0, postersDone: 0, postersTotal: 0, ...(options.agent ? { agent: true } : {}) };
+        yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter((j) => j.phase !== "done" && j.phase !== "failed"), ...jobs.filter((j) => j.phase === "done" || j.phase === "failed").slice(-MAX_JOBS_KEPT), job]);
+        // Forked into the server's scope, not the request's: a client that goes away or times
+        // out doesn't cancel the import; one job runs at a time.
+        yield* Effect.forkIn(oneAtATime.withPermits(1)(runJob(id, open.openId, open.dir, paths, options)), scope);
+        return id;
+      });
 
     const startImport = (paths: ReadonlyArray<string>) =>
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
-        const id = randomUUID();
-        const job: ImportJob = { id, projectDir: open.dir, total: paths.length, phase: "queued", probed: 0, postersDone: 0, postersTotal: 0 };
-        yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter((j) => j.phase !== "done" && j.phase !== "failed"), ...jobs.filter((j) => j.phase === "done" || j.phase === "failed").slice(-MAX_JOBS_KEPT), job]);
-        // Forked into the server's scope, not the request's: a client that goes away or times
-        // out doesn't cancel the import; one job runs at a time.
-        yield* Effect.forkIn(oneAtATime.withPermits(1)(runJob(id, open.openId, open.dir, paths)), scope);
-        return { jobId: id };
+        return { jobId: yield* queueJob(open, paths) };
+      });
+
+    const importForAgent = ({ openId, dir, turnId, paths, names }: AgentImportInput) =>
+      Effect.gen(function* () {
+        const added = yield* Deferred.make<AgentImport, string>();
+        yield* queueJob({ openId, dir }, paths, { agent: { turnId }, names, added });
+        return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 
     const currentPosters = Effect.gen(function* () {
@@ -343,6 +391,7 @@ export const layer = Layer.effect(
       jobs: SubscriptionRef.changes(jobsRef),
       thumbnails: Effect.map(currentPosters, (m) => [...m.keys()]),
       posterFor: (id) => Effect.map(currentPosters, (m) => m.get(id)),
+      importForAgent,
     });
   }),
 );
