@@ -12,6 +12,7 @@
 // into stability, sharpness, exposure and a clean score, so tuning the scores needs no re-run).
 import { execFile } from "node:child_process";
 
+import { fft as fft1, fftTables } from "./fft.ts";
 import { Cancelled, type Runner, spawnRunner } from "./analysisRunner.ts";
 import { withoutApiKey } from "./shellEnv.ts";
 
@@ -244,44 +245,6 @@ export class VideoLog {
 
 // ---- phase correlation ----
 
-/** In-place radix-2 complex FFT of length n (a power of two) over re/im at offset, stride. */
-function fft1(re: Float64Array, im: Float64Array, offset: number, stride: number, n: number, inverse: boolean, cos: Float64Array, sin: Float64Array) {
-  // Bit reversal.
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      const a = offset + i * stride;
-      const b = offset + j * stride;
-      let t = re[a]!;
-      re[a] = re[b]!;
-      re[b] = t;
-      t = im[a]!;
-      im[a] = im[b]!;
-      im[b] = t;
-    }
-  }
-  for (let size = 2; size <= n; size <<= 1) {
-    const half = size >> 1;
-    const step = n / size;
-    for (let i = 0; i < n; i += size) {
-      for (let k = 0; k < half; k++) {
-        const wr = cos[k * step]!;
-        const wi = inverse ? sin[k * step]! : -sin[k * step]!;
-        const a = offset + (i + k) * stride;
-        const b = offset + (i + k + half) * stride;
-        const xr = re[b]! * wr - im[b]! * wi;
-        const xi = re[b]! * wi + im[b]! * wr;
-        re[b] = re[a]! - xr;
-        im[b] = im[a]! - xi;
-        re[a] = re[a]! + xr;
-        im[a] = im[a]! + xi;
-      }
-    }
-  }
-}
-
 /**
  * The translation between consecutive frames, by phase correlation on a Hann-windowed W × H
  * patch: dx, dy in pixels (positive: the picture moved right / down, so the camera turned left /
@@ -305,17 +268,8 @@ export class PhaseCorrelator {
     this.h = h;
     this.window = new Float64Array(w * h);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) this.window[y * w + x] = (0.5 - 0.5 * Math.cos((2 * Math.PI * (x + 0.5)) / w)) * (0.5 - 0.5 * Math.cos((2 * Math.PI * (y + 0.5)) / h));
-    const table = (n: number) => {
-      const c = new Float64Array(n / 2);
-      const s = new Float64Array(n / 2);
-      for (let k = 0; k < n / 2; k++) {
-        c[k] = Math.cos((2 * Math.PI * k) / n);
-        s[k] = Math.sin((2 * Math.PI * k) / n);
-      }
-      return [c, s] as const;
-    };
-    [this.cosW, this.sinW] = table(w);
-    [this.cosH, this.sinH] = table(h);
+    [this.cosW, this.sinW] = fftTables(w);
+    [this.cosH, this.sinH] = fftTables(h);
     this.re = new Float64Array(w * h);
     this.im = new Float64Array(w * h);
   }

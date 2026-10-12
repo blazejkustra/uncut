@@ -302,9 +302,10 @@ export class ExportError extends Schema.TaggedError<ExportError>()("ExportError"
  * The analyzers that run today. One ffmpeg pass measures loudness and finds silences, so "silence"
  * is the same job as "loudness" (one cache file, one run). Another measures the picture (D67):
  * cuts, shake, blur, exposure and frozen stretches, so "shots", "motion" and "stability" are "video".
- * A third transcribes the speech on this Mac with whisper.cpp (D68).
+ * A third transcribes the speech on this Mac with whisper.cpp (D68). A fourth finds the tempo, the
+ * beats and the onsets of the sound (D70).
  */
-export const ANALYZERS = ["loudness", "video", "transcript"] as const;
+export const ANALYZERS = ["loudness", "video", "transcript", "beats"] as const;
 export const Analyzer = Schema.Literals(ANALYZERS);
 export type Analyzer = typeof Analyzer.Type;
 
@@ -496,9 +497,10 @@ const AnalysisJobsRpc = Rpc.make(RPC_METHODS.analysisJobs, { payload: Empty, suc
 const AnalysisCancelRpc = Rpc.make(RPC_METHODS.analysisCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
 
 // A cached analysis result for a media item of the open project, without starting a job (null:
-// not analysed yet). The Transcript panel reads the transcript (and the silences) this way (D69).
+// not analysed yet). The Transcript panel reads the transcript (and the silences) this way (D69); the
+// timeline reads beats without their onsets (`omit: ["onsets"]`, D70): top-level result fields left out.
 const AnalysisCachedRpc = Rpc.make(RPC_METHODS.analysisCached, {
-  payload: Schema.Struct({ mediaId: Schema.String, analyzer: Analyzer }),
+  payload: Schema.Struct({ mediaId: Schema.String, analyzer: Analyzer, omit: Schema.optional(Schema.Array(Schema.String)) }),
   success: Schema.Struct({ result: Schema.NullOr(Schema.Unknown) }),
   error: AnalysisError,
 });

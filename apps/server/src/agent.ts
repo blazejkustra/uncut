@@ -28,6 +28,8 @@ import { HttpServer } from "effect/http";
 
 import { Analysis, cachedFor, parseAnalyzers, targetOf, type AnalysisTarget, type LoudnessResult, type Outcome, type RequestOptions } from "./analysis.ts";
 import { transcriptOut, transcriptSummary, TRANSCRIPT_NOTE } from "./agentTranscript.ts";
+import { BEATS_NOTE, beatsOut } from "./agentBeats.ts";
+import type { BeatsResult } from "./beats.ts";
 import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
@@ -736,6 +738,7 @@ export const layer = Layer.effect(
           if (outcome.state === "failed") out[analyzer] = { state: "failed", error: outcome.error };
           else if (outcome.state === "cancelled") out[analyzer] = { state: "cancelled", note: cancelledNote };
           else if (analyzer === "video") out[analyzer] = videoOut(outcome.result as VideoResult, outcome.cached, frames, range as { start: number; end: number } | undefined, fps);
+          else if (analyzer === "beats") out[analyzer] = beatsOut(outcome.result as BeatsResult, outcome.cached, frames, range as { start: number; end: number } | undefined, fps);
           else if (analyzer === "transcript") out[analyzer] = transcriptSummary(outcome.result as TranscriptResult, outcome.cached, yield* Effect.promise(() => silencesOf(target)));
           else out[analyzer] = loudnessOut(outcome.result as LoudnessResult, outcome.cached, frames, range as { start: number; end: number } | undefined);
         }
@@ -748,6 +751,7 @@ export const layer = Layer.effect(
             "loudness: silences are where the sound stays below thresholdDb for at least minSeconds. start and end are project frames of the media (use them as in): start is the first silent frame, end the frame after the last, both inside the silence; startSeconds and endSeconds are media time. integratedLufs is the whole file's loudness (EBU R128; about −14 LUFS is usual for online video), loudnessRangeLu how much it varies, truePeakDbtp its loudest peak.",
           );
         if (finished.has("video")) notes.push(`video: ${VIDEO_NOTE}`);
+        if (finished.has("beats")) notes.push(`beats: ${BEATS_NOTE}`);
         if (finished.has("transcript")) notes.push("transcript: transcribed on this Mac (whisper.cpp). This is a summary; transcript_read gives the words with their frames, fillers and pauses.");
         if (notes.length) out.note = notes.join(" ");
         return textResult(out);

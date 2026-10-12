@@ -152,7 +152,7 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
     { tool: "media_analyze", args: { media: "m-talk" } },
     { tool: "media_analyze", args: { media: "m-talk", analyzers: ["silence"] } },
     { tool: "media_analyze", args: { media: "m-still" } },
-    { tool: "media_analyze", args: { media: "m-talk", analyzers: ["beats"] } },
+    { tool: "media_analyze", args: { media: "m-talk", analyzers: ["description"] } },
     { tool: "media_analyze", args: { media: "m-nope" } },
     { tool: "media_analyze", args: { media: "m-talk", range: { start: 80, end: 120 } } },
   ]);
@@ -203,7 +203,7 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
   assert.equal(jsonOf(still!).loudness.hasAudio, false);
   assert.equal(loudnessRuns().length, runsBefore + 1);
   assert.ok(beats!.isError);
-  assert.match(textOf(beats!), /beats \(beats\) isn't available yet/);
+  assert.match(textOf(beats!), /description \(descriptions\) isn't available yet/);
   assert.ok(nope!.isError);
   assert.match(textOf(nope!), /no media "m-nope".*m-talk/);
   // A range lists only the silences that overlap it.
@@ -251,7 +251,7 @@ test("a slow job answers running and the agent can ask again; a cancel from the 
 test("analysis.start waits while an export renders, then runs; refusals are typed", { skip, timeout: 180000 }, async () => {
   const unknown = await client.fail("analysis.start", { mediaId: "m-nope" });
   assert.equal(unknown.reason, "unknown-media");
-  const later = await client.fail("analysis.start", { mediaId: "m-talk", analyzers: ["beats"] });
+  const later = await client.fail("analysis.start", { mediaId: "m-talk", analyzers: ["description"] });
   assert.equal(later.reason, "unknown-analyzer");
   // A file that went missing since the import: a typed failure the Library shows.
   rmSync(join(footage, "Gone.mp4"));
