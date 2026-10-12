@@ -2,6 +2,7 @@
 // track, starts, media ranges, keys, fades, animations, transitions between main items, overlaps.
 // Browser-safe (no node:fs, no ajv), so the renderer checks a drag's planned result with the same
 // rules the server's validator uses (D52) before showing it as droppable.
+import { overlaps } from "./transitions.ts";
 import type { Item, ItemType, Media, Problem, Project, Track } from "./types.ts";
 
 const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>> = {
@@ -91,14 +92,15 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
           if (tr.duration > Math.min(prev.duration, item.duration) / 2) {
             errors.push(err("transition-too-long", ipath, `a ${tr.duration}-frame transition needs both items to be at least ${tr.duration * 2} frames`));
           }
-          // A transition is centred on the cut, so both clips need spare media (handles) past the cut.
-          const half = Math.ceil(tr.duration / 2);
+          // An overlapping transition is centred on the cut, so both clips need spare media
+          // (handles) past the cut; a dip to black keeps them apart and needs none.
+          const half = overlaps(tr.module) ? Math.ceil(tr.duration / 2) : 0;
           const prevMedia = prev.media && media.get(prev.media);
           const curMedia = item.media && media.get(item.media);
-          if (curMedia && curMedia.kind === "video" && (item.in ?? 0) < half) {
+          if (half > 0 && curMedia && curMedia.kind === "video" && (item.in ?? 0) < half) {
             errors.push(err("transition-handles", ipath, `needs ${half} frames of "${item.media}" before its in-point for the ${tr.module}`));
           }
-          if (prevMedia && prevMedia.kind === "video" && prevMedia.probe?.frames && (prev.in ?? 0) + prev.duration + half > prevMedia.probe.frames) {
+          if (half > 0 && prevMedia && prevMedia.kind === "video" && prevMedia.probe?.frames && (prev.in ?? 0) + prev.duration + half > prevMedia.probe.frames) {
             errors.push(err("transition-handles", ipath, `"${prev.id}" needs ${half} frames of "${prev.media}" after its out-point for the ${tr.module}`));
           }
         }

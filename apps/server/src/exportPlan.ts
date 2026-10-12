@@ -7,7 +7,9 @@
 //   bars. Text and backgrounds are PNGs Chromium drew from core's textHtml / solidHtml with
 //   RENDER_CSS; a text whose position moves (rise, slide, wipe) gets one PNG per distinct state.
 //   Opacity (a transition's crossfade, fade/rise/slide in and out) is linear in frames, so it is
-//   ffmpeg's fade on the layer's alpha, evaluated at the same frames (time mode).
+//   ffmpeg's fade on the layer's alpha, evaluated at the same frames (time mode). A dip to black
+//   is core's black layer over the main track (a raster with two ramps); a wipe crops the
+//   incoming layer from the left at the same frames (pad + crop + overlay x, per frame).
 // - Sound: every item audibleAt would return, from its media at the same source time, with the
 //   gain of core itemGain (combined dB with the −60 dB cutoff, gainKeys, fades, transition
 //   crossfades) as one volume expression per item, mixed with amix normalize=0 (D54).
@@ -16,6 +18,8 @@
 import {
   animationAt,
   audioSpan,
+  dipsOf,
+  spanOf,
   canvasBackground,
   layout,
   outputSize,
@@ -29,6 +33,7 @@ import {
   trackAudible,
   type ExportQuality,
   type Item,
+  type Span,
   type Media,
   type Project,
   type Track,
@@ -55,6 +60,8 @@ interface LayerBase {
   readonly f0: number;
   readonly f1: number;
   readonly ramps: ReadonlyArray<Ramp>;
+  /** A wipe transition into it: shown from the left edge, 0 at frame `st` to the whole width at st + d. */
+  readonly wipe?: { readonly st: number; readonly d: number };
 }
 
 export type VisualLayer =
@@ -126,18 +133,21 @@ export const RASTER_CSS = RENDER_CSS;
 const OPACITY_MOVES = new Set(["move.fade", "move.rise", "move.slide-left"]);
 
 /**
- * The opacity ramps of an item as visualsAt computes its opacity: the transition's crossfade
- * (0 at `from` → 1 at start + half), then the in and out animations (fade, rise and slide-left
- * change opacity; wipe doesn't), skipped on a side where a main-track transition blends.
+ * The opacity ramps of an item as visualsAt computes its opacity: a crossfade's (0 at `from` → 1
+ * at start + half; a wipe changes no opacity), then the in and out animations (fade, rise and
+ * slide-left change opacity; wipe doesn't), skipped on a side where a main-track transition blends.
  */
-export function opacityRamps(item: Item, start: number, half: number, nextHalf: number): Array<Ramp> {
+export function opacityRamps(item: Item, start: number, span: Pick<Span, "half" | "skipIn" | "skipOut" | "wipe">): Array<Ramp> {
   const ramps: Array<Ramp> = [];
-  if (half > 0) ramps.push({ type: "in", st: start - half, d: 2 * half });
+  if (span.half > 0 && !span.wipe) ramps.push({ type: "in", st: start - span.half, d: 2 * span.half });
   const a = item.animation;
-  if (!(half > 0) && a?.in && a.in.duration > 0 && OPACITY_MOVES.has(a.in.module)) ramps.push({ type: "in", st: start, d: a.in.duration });
-  if (!(nextHalf > 0) && a?.out && a.out.duration > 0 && OPACITY_MOVES.has(a.out.module)) ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
+  if (!span.skipIn && a?.in && a.in.duration > 0 && OPACITY_MOVES.has(a.in.module)) ramps.push({ type: "in", st: start, d: a.in.duration });
+  if (!span.skipOut && a?.out && a.out.duration > 0 && OPACITY_MOVES.has(a.out.module)) ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
   return ramps;
 }
+
+/** The share of a wiped layer shown at frame f (core visualsAt's `wipe`; 1 when whole). */
+export const wipeAt = (wipe: VisualLayer["wipe"], f: number) => (wipe ? Math.min(1, Math.max(0, (f - wipe.st) / wipe.d)) : 1);
 
 /** The ramps' opacity at frame f, as ffmpeg's fade computes it (the tests compare it with visualsAt). */
 export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
@@ -145,6 +155,27 @@ export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
     const p = Math.min(1, Math.max(0, (f - r.st) / r.d));
     return o * (r.type === "in" ? p : 1 - p);
   }, 1);
+
+/**
+ * A wiped layer as two: the wipe's frames (cropped per frame, so with alpha) and the rest of the
+ * item as a plain layer, so the pad/crop/overlay work runs only over the wipe.
+ */
+function splitWipe(layer: VisualLayer, fps: number): Array<VisualLayer> {
+  if (!layer.wipe) return [layer];
+  const end = Math.min(layer.f1, Math.max(layer.f0, Math.ceil(layer.wipe.st + layer.wipe.d)));
+  const { wipe, ...plain } = layer;
+  if (end <= layer.f0) return [plain as VisualLayer];
+  const at = end - layer.f0;
+  const head: VisualLayer = layer.kind === "raster" ? { ...layer, f1: end, frames: layer.frames.slice(0, at) } : { ...layer, f1: end };
+  if (end >= layer.f1) return [head];
+  const tail: VisualLayer =
+    plain.kind === "raster"
+      ? { ...plain, f0: end, frames: plain.frames.slice(at) }
+      : plain.kind === "video"
+        ? { ...plain, f0: end, source: plain.source + (at * plain.speed) / fps }
+        : { ...plain, f0: end };
+  return [head, tail];
+}
 
 // ---- gain ----
 
@@ -251,20 +282,18 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
       const isText = item.type === "text" && typeof item.text === "string";
       if (!isMedia && !isSolid && !isText) return;
       const start = starts.get(item.id)!;
-      const half = item.transitionIn ? item.transitionIn.duration / 2 : 0;
-      const next = track.items[i + 1];
-      const nextHalf = track.role === "main" && next?.transitionIn ? next.transitionIn.duration / 2 : 0;
-      const f0 = Math.max(0, Math.ceil(start - half));
-      const f1 = Math.min(duration, Math.ceil(start + item.duration + nextHalf));
+      const span = spanOf(track, i, start);
+      const f0 = Math.max(0, Math.ceil(span.from));
+      const f1 = Math.min(duration, Math.ceil(span.to));
       if (f1 <= f0) return;
-      const ramps = opacityRamps(item, start, half, nextHalf);
-      const base = { item, track, f0, f1, ramps };
+      const ramps = opacityRamps(item, start, span);
+      const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: { st: span.from, d: 2 * span.half } } : {}) };
       if (isMedia) {
         const path = fileOf(media);
-        if (media.kind === "image") visuals.push({ ...base, kind: "image", file: path, fills: fills(media) });
+        if (media.kind === "image") visuals.push(...splitWipe({ ...base, kind: "image", file: path, fills: fills(media) }, fps));
         else {
           const speed = item.speed ?? 1;
-          visuals.push({ ...base, kind: "video", file: path, source: ((item.in ?? 0) + (f0 - start) * speed) / fps, speed, fills: fills(media) });
+          visuals.push(...splitWipe({ ...base, kind: "video", file: path, source: ((item.in ?? 0) + (f0 - start) * speed) / fps, speed, fills: fills(media) }, fps));
         }
         return;
       }
@@ -273,7 +302,7 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
       const index = new Map<string, number>();
       const frames: Array<number> = [];
       for (let f = f0; f < f1; f++) {
-        const motion = isText ? animationAt(item, f - start, project.canvas, { skipIn: half > 0, skipOut: nextHalf > 0 }).motion : {};
+        const motion = isText ? animationAt(item, f - start, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut }).motion : {};
         const html = isText ? textHtml(item, project, { motion }) : solidHtml(item, project);
         let k = index.get(html);
         if (k === undefined) {
@@ -283,8 +312,19 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
         }
         frames.push(k);
       }
-      visuals.push({ ...base, kind: "raster", states, frames });
+      visuals.push(...splitWipe({ ...base, kind: "raster", states, frames }, fps));
     });
+    // Dips to black: core's black layer over the main track, fading in to the cut and out after it.
+    for (const dip of dipsOf(track, starts)) {
+      const f0 = Math.max(0, Math.ceil(dip.cut - dip.half));
+      const f1 = Math.min(duration, Math.ceil(dip.cut + dip.half));
+      if (f1 <= f0) continue;
+      const ramps: Array<Ramp> = [
+        { type: "in", st: dip.cut - dip.half, d: dip.half },
+        { type: "out", st: dip.cut, d: dip.half },
+      ];
+      visuals.push({ item: dip.item, track, f0, f1, ramps, kind: "raster", states: [solidHtml(dip.item, project)], frames: Array.from({ length: f1 - f0 }, () => 0) });
+    }
   }
 
   const audio: Array<AudioLayer> = [];
@@ -301,8 +341,9 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
         duration: item.duration,
         half: span.half,
         nextHalf: span.nextHalf,
-        fadeIn: item.fadeIn ?? 0,
-        fadeOut: item.fadeOut ?? 0,
+        // A dip to black dips the sound: core fades it over half the dip instead of the item's own fade.
+        fadeIn: span.dipIn > 0 ? span.dipIn : (item.fadeIn ?? 0),
+        fadeOut: span.dipOut > 0 ? span.dipOut : (item.fadeOut ?? 0),
       };
       if (constantGain(gain) === 0) return;
       const from = Math.max(0, span.from);
@@ -464,7 +505,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       // or before its source time (round=up), like the preview's <video> (D38).
       const pre = Math.min(1, layer.source);
       inputs.push(...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), "-ss", n(layer.source - pre), "-t", n(pre + (frames / fps) * layer.speed + 1), "-i", layer.file);
-      const alpha = !layer.fills || fades.length > 0;
+      const alpha = !layer.fills || fades.length > 0 || !!layer.wipe;
       chain = [
         `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`,
         `fps=${fps}:start_time=0:round=up`,
@@ -497,8 +538,18 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         chain = [`[${index}:v:0]${toYuv(true)}`, `trim=end_frame=${frames}`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades];
       }
     }
+    // A wipe: the layer shows only its left X pixels (X even, the chroma grid): padded with W
+    // transparent pixels on the left, a W-wide window at X holds the hidden part then the shown
+    // one, and overlaying it X − W to the left puts the shown part back where it was. Both
+    // expressions see the same frame time, so they agree on X.
+    let at = "";
+    if (layer.wipe) {
+      const x = `2*floor(${W}*clip((t*${fps}+0.0001-${n(layer.wipe.st)})/${n(layer.wipe.d)},0,1)/2)`;
+      chain.push(`pad=${2 * W}:${H}:${W}:0:color=black@0`, `crop=w=${W}:h=${H}:x='${x}':y=0`);
+      at = `:x='${x}-${W}':y=0`;
+    }
     graph.push(`${chain.join(",")}[l${k}]`);
-    graph.push(`[${base}][l${k}]overlay=eof_action=pass:format=auto:repeatlast=0[b${k + 1}]`);
+    graph.push(`[${base}][l${k}]overlay=eof_action=pass:format=auto:repeatlast=0${at}[b${k + 1}]`);
     base = `b${k + 1}`;
   });
   // fps on frames already on the 1/fps grid passes them through one to one; it gives the stream its rate.

@@ -6,12 +6,13 @@
 import { MAX_DB, SILENCE_DB, soundMedia } from "@uncut/core/audio";
 import { resolveColor, TEXT_STYLES } from "@uncut/core/render";
 import type { Item, Op } from "@uncut/core/types";
-import { Activity, AlignCenter, AlignLeft, AlignRight, Crosshair, Highlighter, X } from "lucide-react";
+import { transitionInfo, transitionLimits, transitionName, TRANSITIONS } from "@uncut/core/transitions";
+import { Activity, AlignCenter, AlignLeft, AlignRight, Blend, Crosshair, Highlighter, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { draftOf, findItem } from "./edit.ts";
 import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
-import type { ProjectModel } from "./project.ts";
+import { itemLabel, type ProjectModel } from "./project.ts";
 import { useBeats } from "./beats.ts";
 import { analysisText } from "./analysisText.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "./store.ts";
@@ -55,7 +56,8 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
   const commit = () => {
     editing.current = false;
     const trimmed = text.trim();
-    const n = trimmed === "" ? undefined : Number(trimmed);
+    // A comma is a decimal point too (typed on a Polish keyboard, say); shown values always use ".".
+    const n = trimmed === "" ? undefined : Number(trimmed.replace(",", "."));
     if (n !== undefined && (!Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max))) return setText(shown);
     if (n === value) return setText(shown);
     onCommit(n);
@@ -66,10 +68,11 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
       <input
         className="v"
         data-testid={testId}
-        type="number"
-        step={step}
-        min={min}
-        max={max}
+        // Text, not type="number": Chromium shows a number input in the system locale ("0,5"),
+        // and the app writes numbers with "." everywhere else. ↑/↓ step like a number input.
+        type="text"
+        inputMode="decimal"
+        spellCheck={false}
         value={text}
         placeholder={placeholder}
         disabled={disabled}
@@ -78,6 +81,15 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            const base = Number(text.trim().replace(",", "."));
+            let next = (Number.isFinite(base) ? base : (value ?? 0)) + (e.key === "ArrowUp" ? step : -step);
+            if (min !== undefined) next = Math.max(min, next);
+            if (max !== undefined) next = Math.min(max, next);
+            editing.current = true;
+            setText(String(Math.round(next * 1e6) / 1e6));
+          }
           if (e.key === "Escape") {
             editing.current = false;
             setText(shown);
@@ -597,5 +609,74 @@ function BeatsGroup({ project, item }: { project: ProjectModel; item: Item }) {
         </div>
       </div>
     </Group>
+  );
+}
+
+/**
+ * A selected cut on the main track (D73): its transition's type (or none: a hard cut), length in
+ * seconds and frames (the module's limits and the cut's: half the shorter clip, the footage past
+ * the cut), and Remove (⌫ too). Each change is one edit through planSetTransition.
+ */
+export function TransitionInspector({ project, placed, online }: { project: ProjectModel; placed: NonNullable<ReturnType<typeof findItem>>; online: boolean }) {
+  const fps = project.canvas.fps;
+  const { item, index, track } = placed;
+  const prev = track.items[index - 1]!;
+  const tr = item.transitionIn;
+  const locked = !online || track.locked === true || item.locked === true || prev.locked === true;
+  const limits = tr ? transitionLimits(project, item.id, tr.module) : undefined;
+  const range = limits && !("problem" in limits) ? limits : undefined;
+  const set = (next: { module: string; duration?: number } | null) => void actions.setTransition(item.id, next);
+  const secs = (frames: number) => Number((frames / fps).toFixed(2));
+  return (
+    <div data-testid="inspector-transition" data-item={item.id}>
+      <div className="insp-title">
+        <Blend />
+        <span className="ellipsis">{tr ? transitionName(tr.module) : "Cut"}</span>
+      </div>
+      <div className="insp-sub">
+        Between {itemLabel(project, prev)} and {itemLabel(project, item)} on {track.name}.{" "}
+        {tr ? "Drag the marker's edges on the timeline to change its length; ⌫ removes it." : "A hard cut. Pick a transition here or click one in the Transitions panel."}
+      </div>
+      <Group label="Transition">
+        <select className="field input" data-testid="insp-transition-type" value={tr?.module ?? ""} disabled={locked} onChange={(e) => set(e.target.value ? { module: e.target.value } : null)}>
+          <option value="">None (cut)</option>
+          {TRANSITIONS.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+          {tr && !transitionInfo(tr.module) && <option value={tr.module}>{transitionName(tr.module)} (draws as a crossfade)</option>}
+        </select>
+        {tr && transitionInfo(tr.module) && <div className="hint-line muted small">{transitionInfo(tr.module)!.description}</div>}
+      </Group>
+      {tr && (
+        <Group label="Duration">
+          <div className="field-row">
+            <NumberField
+              label="s"
+              testId="insp-transition-seconds"
+              value={secs(tr.duration)}
+              step={Number((1 / fps).toFixed(3))}
+              min={0}
+              disabled={locked}
+              onCommit={(v) => v !== undefined && set({ module: tr.module, duration: Math.round(v * fps) })}
+            />
+            <NumberField label="frames" testId="insp-transition-frames" value={tr.duration} step={1} min={1} disabled={locked} onCommit={(v) => v !== undefined && set({ module: tr.module, duration: Math.round(v) })} />
+          </div>
+          <div className="hint-line muted small" data-testid="insp-transition-range">
+            {range ? `${secs(range.min)}–${secs(range.max)} s (${range.min}–${range.max} frames) fit at this cut` : limits && "problem" in limits ? limits.problem : ""}
+          </div>
+        </Group>
+      )}
+      {tr && (
+        <div className="group">
+          <button className="btn" data-testid="insp-transition-remove" disabled={locked} onClick={() => set(null)}>
+            <X />
+            Remove transition
+          </button>
+        </div>
+      )}
+      <div className="hint muted small">Esc deselects.</div>
+    </div>
   );
 }
