@@ -445,13 +445,13 @@ test("render_frames: the agent gets JPEGs of the edit that match the export's fr
   const project = exportProject(join(root, "media"));
   const snap = await open("Frames", project);
   assert.ok(snap.dir);
-  writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames: [5, 120, 150], scale: 0.25 } }, { tool: "render_frames", args: { frames: [] } }]]));
+  writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames: [5, 120, 150], scale: 0.25 } }, { tool: "render_frames", args: { frames: [] } }, { tool: "render_frames", args: { frames: [999], scale: 0.25 } }]]));
   const agent = client.subscribe("agent.subscribe");
   const { turnId } = await client.ok("agent.send", { prompt: "Look at it" });
   await agent.until((s) => s?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
   const turn = agent.values.at(-1).turns.find((t: any) => t.id === turnId);
   assert.equal(turn.items.find((i: any) => i.tool === "render_frames")?.text, "Looked at frames 5, 120, 150");
-  const [ok, bad] = readFileSync(resultLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l)) as Array<{ result: { isError?: boolean; content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> } }>;
+  const [ok, bad, past] = readFileSync(resultLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l)) as Array<{ result: { isError?: boolean; content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> } }>;
   assert.ok(!ok!.result.isError, JSON.stringify(ok!.result).slice(0, 300));
   assert.match(ok!.result.content[0]!.text!, /Frames 5, 120, 150 .* at 480×270/);
   const images = ok!.result.content.filter((c) => c.type === "image");
@@ -471,6 +471,9 @@ test("render_frames: the agent gets JPEGs of the edit that match the export's fr
   }
   assert.ok(bad!.result.isError);
   assert.match(bad!.result.content[0]!.text!, /frames must be/);
+  // Past the end: the last frame is drawn, and the agent is told so.
+  assert.ok(!past!.result.isError);
+  assert.match(past!.result.content[0]!.text!, /^Frame 239 .*Note: frame 999 is past the last frame, so frame 239 is shown for it\./);
 });
 
 test("export: the DJI 4K clip exports at 4K and matches the source frame", { skip: skipServer || skipDemo, timeout: 600000 }, async () => {

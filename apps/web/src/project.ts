@@ -16,7 +16,7 @@ export interface Layout {
   readonly starts: Map<string, number>;
   /** Where the last item ends, in frames; 0 for an empty project. */
   readonly end: number;
-  /** Frames the playhead can be on: [0, frames - 1]. At least 1, so an empty project has frame 0. */
+  /** Frames playback runs over: [0, frames - 1]. At least 1, so an empty project has frame 0. (The playhead can also rest at `end`.) */
   readonly frames: number;
 }
 

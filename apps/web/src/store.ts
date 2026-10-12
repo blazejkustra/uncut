@@ -126,7 +126,10 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
   // preview of the old project ignores changes once the open folder isn't its own).
   if (switched) playback.reset();
-  if (snapshot) playback.setProject(layoutOf(projectOf(snapshot)).frames, projectOf(snapshot).canvas.fps);
+  if (snapshot) {
+    const { frames, end } = layoutOf(projectOf(snapshot));
+    playback.setProject(frames, projectOf(snapshot).canvas.fps, end);
+  }
 }
 
 // Paths too: a relinked file (same id, new path) has another poster.

@@ -189,3 +189,11 @@ test("every op type works and keeps the promo valid", () => {
   const covered = new Set(editOpsSchema.$defs.op.oneOf.map((o: any) => o.properties.op.const));
   assert.deepEqual([...new Set(steps.flat().map((o) => o.op))].sort(), [...covered].sort(), "every op type is exercised");
 });
+
+test("the editor context says when the playhead is at the end, after the last frame (D56)", async () => {
+  const { playheadLine } = await import("../apps/server/src/agentTools.ts");
+  const p = { format: "uncut/0", name: "P", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 420, text: "Hi" }] }] } as unknown as Project;
+  assert.equal(playheadLine(p, 30), "Playhead: frame 30 (1.00 s).");
+  assert.equal(playheadLine(p, 420), "Playhead: frame 420 (14.00 s), the end of the project, after its last frame (419); nothing is drawn here.");
+  assert.equal(playheadLine({ ...p, tracks: [] }, 0), "Playhead: frame 0 (0.00 s).");
+});

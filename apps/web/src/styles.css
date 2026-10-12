@@ -140,18 +140,21 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 /* The preview: a size container so text sized in cqh scales with it (as in export, D39). */
 .frame { position: relative; overflow: hidden; container-type: size; isolation: isolate; background: #000; outline: 1px solid var(--border); }
 /* No stacking context per layer: media, backgrounds and text interleave by z-index (track order). */
+/* The canvas-size layer the preview draws in, scaled to the frame (D56); --pv-scale is that scale,
+   so the editor's own lines stay one screen pixel wide. */
+.pv-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; container-type: size; }
 .pv-layer { position: absolute; inset: 0; }
 .pv-layer video, .pv-layer img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.pv-missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); font-size: 12px; background: repeating-linear-gradient(135deg, #111 0 10px, #0d0d0d 10px 20px); }
+.pv-missing { position: absolute; inset: 0; display: grid; place-items: center; padding: calc(16px / var(--pv-scale)); text-align: center; color: var(--muted); font-size: calc(12px / var(--pv-scale)); background: repeating-linear-gradient(135deg, #111 0 calc(10px / var(--pv-scale)), #0d0d0d calc(10px / var(--pv-scale)) calc(20px / var(--pv-scale))); }
 /* How text and backgrounds look comes from @uncut/core's RENDER_CSS and inline styles (D39); these
    are the editor's own additions: selection, drag guides and the in-place editor. */
-.pv-text.sel-box { outline: 1px solid var(--select); outline-offset: 4px; cursor: move; }
+.pv-text.sel-box { outline: calc(1px / var(--pv-scale)) solid var(--select); outline-offset: calc(4px / var(--pv-scale)); cursor: move; }
 .pv-overlay { z-index: 100000; pointer-events: none; }
 .pv-guide { position: absolute; background: #ff4fa3; }
-.pv-guide.x { top: 0; bottom: 0; width: 1px; transform: translateX(-0.5px); }
-.pv-guide.y { left: 0; right: 0; height: 1px; transform: translateY(-0.5px); }
+.pv-guide.x { top: 0; bottom: 0; width: calc(1px / var(--pv-scale)); transform: translateX(-50%); }
+.pv-guide.y { left: 0; right: 0; height: calc(1px / var(--pv-scale)); transform: translateY(-50%); }
 .pv-guide.margin { background: rgb(255 79 163 / 55%); }
-.pv-inline { position: absolute; pointer-events: auto; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden; field-sizing: content; min-width: 1ch; white-space: pre-wrap; background: rgb(0 0 0 / 30%); outline: 1px solid var(--select); outline-offset: 4px; caret-color: var(--select); }
+.pv-inline { position: absolute; pointer-events: auto; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden; field-sizing: content; min-width: 1ch; white-space: pre-wrap; background: rgb(0 0 0 / 30%); outline: calc(1px / var(--pv-scale)) solid var(--select); outline-offset: calc(4px / var(--pv-scale)); caret-color: var(--select); }
 .transport { height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid var(--border); overflow: hidden; }
 .timecode { font: 12px var(--mono); white-space: nowrap; }
 .transport [data-testid="canvas-info"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

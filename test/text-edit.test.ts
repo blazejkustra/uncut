@@ -152,7 +152,10 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     assert.equal(title().text, "Krakow from above");
     await sleep(TYPING_SETTLE);
     assert.equal(await revision(page), rev, "one burst of typing is one edit");
+    // A click on the timeline past the title's end puts the playhead at the end (D56), where
+    // nothing is drawn: back to the start to see the title.
     await page.click("[data-testid=timeline]");
+    await page.keyboard.press("Home");
     await meta(page, "KeyZ");
     await page.waitForFunction(() => document.querySelector('.pv-text[data-item="title-1"]')?.textContent === "Title");
     assert.equal(title().text, "Title", "one ⌘Z takes the whole burst back");
@@ -230,7 +233,9 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     rev = await savedAfter(page, rev);
     assert.equal(await page.$("[data-testid=canvas-guide]"), null, "guides go on release");
     const moved = title().transform;
-    const wCanvas = (await page.$eval('.pv-text[data-item="title-1"]', (el) => (el as HTMLElement).offsetWidth)) * scale;
+    // The preview lays text out at canvas size (D56): its layout width is in canvas pixels.
+    const wCanvas = await page.$eval('.pv-text[data-item="title-1"]', (el) => (el as HTMLElement).offsetWidth);
+    assert.ok(Math.abs(wCanvas - (await page.$eval('.pv-text[data-item="title-1"]', (el) => el.getBoundingClientRect().width)) * scale) < 2, "drawn scaled to the frame");
     assert.ok(Math.abs(moved.x + wCanvas / 2 - 960) <= 2, `centred: x ${moved.x}, box ${wCanvas.toFixed(0)} wide`);
     assert.ok(Math.abs(moved.y - (410 + dy * scale)) <= 3 * scale, `y follows the drag: ${moved.y}`);
     await sleep(300);
