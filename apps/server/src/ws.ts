@@ -10,6 +10,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { Agent } from "./agent.ts";
+import { Analysis } from "./analysis.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { MediaLibrary } from "./media.ts";
@@ -36,10 +37,11 @@ interface Services {
   readonly library: typeof MediaLibrary.Service;
   readonly agent: typeof Agent.Service;
   readonly exporter: typeof Exporter.Service;
+  readonly analysis: typeof Analysis.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -71,6 +73,9 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.exportStart]: (input) => exporter.start(input),
     [RPC_METHODS.exportJobs]: () => exporter.jobs,
     [RPC_METHODS.exportCancel]: ({ jobId }) => exporter.cancel(jobId),
+    [RPC_METHODS.analysisStart]: ({ mediaId, analyzers }) => analysis.start(mediaId, analyzers),
+    [RPC_METHODS.analysisJobs]: () => analysis.jobs,
+    [RPC_METHODS.analysisCancel]: ({ jobId }) => analysis.cancel(jobId),
   });
 
 export const layer = Layer.unwrap(
@@ -84,7 +89,8 @@ export const layer = Layer.unwrap(
     const library = yield* MediaLibrary;
     const agent = yield* Agent;
     const exporter = yield* Exporter;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter }).pipe(
+    const analysis = yield* Analysis;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AgentUi, type AgentUiPanel, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -65,6 +65,10 @@ export interface AppStateShape {
   readonly exportJobId?: string;
   // The folder the last export went to (this session), offered for the next one.
   readonly exportFolder?: string;
+  // Analysis jobs on the server (D66); the Library shows the open project's running ones per tile.
+  readonly analysisJobs: ReadonlyArray<AnalysisJob>;
+  // Why the last Analyze click was refused, shown in the Library.
+  readonly analysisError?: string;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -84,12 +88,15 @@ let state: AppStateShape = {
   agent: null,
   exportOpen: false,
   exportJobs: [],
+  analysisJobs: [],
 };
 const listeners = new Set<() => void>();
 
 const set = (patch: Partial<AppStateShape>) => {
   const before = state;
   state = { ...state, ...patch };
+  // An Analyze refusal belongs to the project it was about.
+  if (state.analysisError && before.snapshot?.dir !== state.snapshot?.dir) state = { ...state, analysisError: undefined };
   for (const listener of listeners) listener();
   if (before.snapshot !== state.snapshot || before.recents !== state.recents) syncShell();
 };
@@ -191,6 +198,7 @@ let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
 let unsubscribeAgent: (() => void) | undefined;
 let unsubscribeExports: (() => void) | undefined;
+let unsubscribeAnalysis: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
 const reported = new Set<string>();
 let jobsSeen = false;
@@ -269,6 +277,25 @@ function applyWaitingUi() {
   if (ui.panel) set({ panelRequest: { panel: ui.panel, seq: ++panelSeq } });
 }
 
+/** The open project's analysis jobs for a media item (also joined ones, same content) that are waiting or running. */
+export const activeAnalyses = (s: AppStateShape, mediaId: string) =>
+  s.analysisJobs.filter((j) => j.projectDir === s.snapshot?.dir && (j.mediaId === mediaId || j.mediaIds.includes(mediaId)) && (j.phase === "queued" || j.phase === "running"));
+
+// Analysis jobs this window saw waiting or running: if one of them fails, the Library says why
+// (a cancel, by the user or a project closing, says nothing).
+const analysesWatched = new Set<string>();
+function onAnalysisJobs(analysisJobs: ReadonlyArray<AnalysisJob>) {
+  let analysisError = state.analysisError;
+  for (const job of analysisJobs) {
+    if (job.phase === "queued" || job.phase === "running") analysesWatched.add(job.id);
+    else if (analysesWatched.delete(job.id) && job.phase === "failed" && job.projectDir === state.snapshot?.dir) {
+      const name = state.snapshot ? (projectOf(state.snapshot).media.find((m) => m.id === job.mediaId)?.name ?? job.mediaId) : job.mediaId;
+      analysisError = `Couldn't analyse ${name}: ${job.error ?? "the analysis stopped."}`;
+    }
+  }
+  set({ analysisJobs, analysisError });
+}
+
 /** The open project's import jobs that are still running or waiting. */
 export const activeJobs = (s: AppStateShape) => s.jobs.filter((j) => j.projectDir === s.snapshot?.dir && j.phase !== "done" && j.phase !== "failed");
 const call: Connection["call"] = (f) =>
@@ -301,6 +328,8 @@ export async function start() {
       unsubscribeJobs = conn.subscribe((c) => c["media.jobs"]({}), onJobs);
       unsubscribeExports?.();
       unsubscribeExports = conn.subscribe((c) => c["export.jobs"]({}), onExportJobs);
+      unsubscribeAnalysis?.();
+      unsubscribeAnalysis = conn.subscribe((c) => c["analysis.jobs"]({}), onAnalysisJobs);
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
@@ -577,6 +606,15 @@ export const actions = {
     return undefined;
   },
   cancelExport: (jobId: string) => call((c) => c["export.cancel"]({ jobId })),
+
+  /** The Library's Analyze button (D66): loudness and silences of a media item, on demand. */
+  async analyzeMedia(mediaId: string) {
+    set({ analysisError: undefined });
+    const result = await call((c) => c["analysis.start"]({ mediaId }));
+    if (!result.ok) set({ analysisError: plainError(result.error) });
+  },
+  cancelAnalysis: (jobId: string) => call((c) => c["analysis.cancel"]({ jobId })),
+  dismissAnalysisError: () => set({ analysisError: undefined }),
 
   openSetup() {
     set({ setupOpen: true });

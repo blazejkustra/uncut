@@ -15,7 +15,8 @@ const resolveTarget = async (path: string) => {
   }
 };
 
-const writeAtomic = async (path: string, data: string) => {
+/** writeFileAtomic as a plain promise. */
+export const writeAtomic = async (path: string, data: string) => {
   const target = await resolveTarget(path);
   const tmp = join(dirname(target), `.${basename(target)}.tmp-${process.pid}-${++counter}`);
   let renamed = false;

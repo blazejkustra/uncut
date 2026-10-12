@@ -32,6 +32,9 @@ export const RPC_METHODS = {
   exportStart: "export.start",
   exportJobs: "export.jobs",
   exportCancel: "export.cancel",
+  analysisStart: "analysis.start",
+  analysisJobs: "analysis.jobs",
+  analysisCancel: "analysis.cancel",
 } as const;
 
 // ---- server ----
@@ -288,6 +291,42 @@ export class ExportError extends Schema.TaggedError<ExportError>()("ExportError"
   message: Schema.String,
 }) {}
 
+// ---- analysis (D66) ----
+
+/**
+ * The analyzers that run today. One ffmpeg pass measures loudness and finds silences, so "silence"
+ * is the same job as "loudness" (one cache file, one run).
+ */
+export const ANALYZERS = ["loudness"] as const;
+export const Analyzer = Schema.Literals(ANALYZERS);
+export type Analyzer = typeof Analyzer.Type;
+
+/**
+ * Analysing one media file with one analyzer, as a server job: queued (waiting for a slot, or for
+ * an export to finish: `waiting: "export"`) → running (progress 0–1) → done, failed or cancelled.
+ * Results go to <project>/.cache/analysis/<fingerprint>/<analyzer>.json; a cached result needs no job.
+ */
+export const AnalysisJob = Schema.Struct({
+  id: Schema.String,
+  projectDir: Schema.String,
+  mediaId: Schema.String,
+  // Every media id this job answers: one with the same content joins it (its tile shows the progress too).
+  mediaIds: Schema.Array(Schema.String),
+  analyzer: Analyzer,
+  phase: Schema.Literals(["queued", "running", "done", "failed", "cancelled"]),
+  progress: Schema.Number,
+  waiting: Schema.optional(Schema.Literals(["export"])),
+  error: Schema.optional(Schema.String),
+  startedAt: Schema.String,
+  finishedAt: Schema.optional(Schema.String),
+});
+export type AnalysisJob = typeof AnalysisJob.Type;
+
+export class AnalysisError extends Schema.TaggedError<AnalysisError>()("AnalysisError", {
+  reason: Schema.Literals(["no-project", "unknown-media", "unknown-analyzer", "failed"]),
+  message: Schema.String,
+}) {}
+
 const Empty = Schema.Struct({});
 
 const ServerHelloRpc = Rpc.make(RPC_METHODS.serverHello, {
@@ -398,7 +437,22 @@ const ExportJobsRpc = Rpc.make(RPC_METHODS.exportJobs, { payload: Empty, success
 // Stops a queued or running export; its temp files and partial output are removed.
 const ExportCancelRpc = Rpc.make(RPC_METHODS.exportCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
 
+// Analyses a media item of the open project (all analyzers when none are named). A cached result
+// or a file without sound is "done" at once; otherwise a job is queued (or an equal one joined).
+const AnalysisStartRpc = Rpc.make(RPC_METHODS.analysisStart, {
+  payload: Schema.Struct({ mediaId: Schema.String, analyzers: Schema.optional(Schema.Array(Schema.String)) }),
+  success: Schema.Array(Schema.Struct({ analyzer: Analyzer, state: Schema.Literals(["done", "queued", "running"]), jobId: Schema.optional(Schema.String) })),
+  error: AnalysisError,
+});
+// Recent analysis jobs, now and on every change.
+const AnalysisJobsRpc = Rpc.make(RPC_METHODS.analysisJobs, { payload: Empty, success: Schema.Array(AnalysisJob), stream: true });
+// Stops a queued or running analysis; nothing of it is left in .cache.
+const AnalysisCancelRpc = Rpc.make(RPC_METHODS.analysisCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
+
 export const WsRpcGroup = RpcGroup.make(
+  AnalysisStartRpc,
+  AnalysisJobsRpc,
+  AnalysisCancelRpc,
   ExportStartRpc,
   ExportJobsRpc,
   ExportCancelRpc,

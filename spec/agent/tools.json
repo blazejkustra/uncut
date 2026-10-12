@@ -63,23 +63,24 @@
     },
     {
       "name": "media_analyze",
-      "description": "Run analyzers on a media file and return the index. Results are cached in .cache/, so asking twice is free. Motion and stability score each stretch of footage, so you can tell a clean take from a shaky one.",
+      "description": "Analyse a media file's sound: integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s), with frames usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. Today only loudness exists ('silence' means the same job); shots, motion, stability, beats, transcript and description come later.",
       "inputSchema": {
         "type": "object",
-        "required": ["media", "analyses"],
+        "required": ["media"],
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string" },
-          "analyses": {
+          "media": { "type": "string", "description": "A media id from project_read." },
+          "analyzers": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": { "enum": ["shots", "motion", "stability", "loudness", "beats", "silence", "transcript", "description"] }
+            "items": { "enum": ["shots", "motion", "stability", "loudness", "beats", "silence", "transcript", "description"] },
+            "description": "Which analyses (default: all available now, i.e. loudness with silences)."
           },
-          "range": { "$ref": "#/$defs/range" }
+          "range": { "$ref": "#/$defs/range", "description": "Only list silences overlapping these project frames of the media [start, end). The measurement is always of the whole file." }
         }
       },
-      "returns": "per analysis: a list of { start, end, value, label } segments in media frames"
+      "returns": "per analyzer: { state: done | running | queued | failed | cancelled, ... }; loudness when done: { cached, hasAudio, seconds, integratedLufs, loudnessRangeLu, truePeakDbtp, silence: { thresholdDb, minSeconds, count, ranges: [{ start, end, startSeconds, endSeconds }] } } (frames are project frames of the media)"
     },
     {
       "name": "transcript_read",
