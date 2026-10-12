@@ -8,11 +8,18 @@
 // items with sound; the playhead snaps to them too) (⌘ held: no snapping). The drag is
 // previewed locally from the planned ops (edit.ts) and sent as one edit on release. Split,
 // delete and the track buttons (hide, mute, lock) are edits too.
+//
+// Transitions (D73): each cut between two main-track clips can be clicked to select it; a
+// transition on it shows as a marker straddling the cut (click selects it for the Inspector,
+// dragging its edges changes its length, centred on the cut). A transition tile dragged from the
+// Transitions panel highlights the cuts it fits (and why the others don't) and drops on the
+// nearest one.
 import { AudioLines, Eye, EyeOff, Film, Layers, Lock, LockOpen, Magnet, Maximize2, Scissors, SlidersHorizontal, Trash2, Type, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { cutsOf, transitionName } from "@uncut/core/transitions";
 
 import { getBeats, useBeats } from "./beats.ts";
-import { draftOf, findItem, fitsTrack, lockOf, planMove, planTrim, SNAP_PX, snapPlayhead, snapTargets, trackFlag, trimSnapTargets, visibleBeats, type Plan } from "./edit.ts";
+import { draftOf, findItem, fitsTrack, lockOf, planMove, planSetTransition, planTrim, secondsLabel, SNAP_PX, snapPlayhead, snapTargets, trackFlag, trimSnapTargets, visibleBeats, type Plan } from "./edit.ts";
 import { frameTimecode, rulerLabel } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { SOLID, solidBackground } from "@uncut/core/render";
@@ -43,6 +50,21 @@ export function BottomTabs() {
 
 /** The drag type a media tile carries when it's dragged onto the timeline. */
 export const MEDIA_DRAG_TYPE = "application/x-uncut-media";
+/** The drag type a transition tile carries (its module id); the data can't be read while dragging over, so the module is kept here too. */
+export const TRANSITION_DRAG_TYPE = "application/x-uncut-transition";
+let draggedTransition: string | undefined;
+const draggedListeners = new Set<() => void>();
+export function setDraggedTransition(module: string | undefined) {
+  draggedTransition = module;
+  for (const l of draggedListeners) l();
+}
+const useDraggedTransition = () =>
+  useSyncExternalStore(
+    (l) => (draggedListeners.add(l), () => void draggedListeners.delete(l)),
+    () => draggedTransition,
+  );
+/** Within this many pixels of a cut, a dropped transition goes on it. */
+const CUT_DROP_PX = 40;
 
 const HEAD_WIDTH = 184;
 // "Fit" shows the whole project, but never less than this, so an empty or short project has room.
@@ -54,7 +76,7 @@ const DRAG_PX = 3;
 /** What the lanes draw while an item is dragged: the planned result, before it is sent. */
 interface DragView {
   readonly itemId: string;
-  readonly mode: "move" | "start" | "end" | "fade";
+  readonly mode: "move" | "start" | "end" | "fade" | "transition";
   /** The project with the planned ops applied (or as it is, when they would be refused). */
   readonly view: ProjectModel;
   /** Drawn at this start and length instead of where the view puts it (a main clip's left trim). */
@@ -74,6 +96,13 @@ export function Timeline({ project }: { project: ProjectModel }) {
   const online = connection === "connected";
   const zoom = usePlayback((s) => s.zoom);
   const selected = usePlayback((s) => s.selected);
+  const selectedCut = usePlayback((s) => s.cut);
+  const transitionDragged = useDraggedTransition();
+  // The cut a dragged transition tile is over (the id of the clip after it).
+  const [dropCut, setDropCut] = useState<string | undefined>();
+  useEffect(() => {
+    if (!transitionDragged) setDropCut(undefined);
+  }, [transitionDragged]);
   const snapping = usePlayback((s) => s.snapping);
   const beatMap = useBeats((s) => s.map);
   const [drag, setDrag] = useState<DragView | undefined>();
@@ -111,6 +140,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
   // While dragging, the lanes draw the planned result; data-start/data-duration stay the server's.
   const view = drag?.view ?? project;
   const viewStarts = layoutOf(view).starts;
+  // The main track's cuts as drawn (a drag's planned result included).
+  const cuts = cutsOf(view.tracks.find((t) => t.role === "main"));
 
   /** The track of the lane under a y position, if an item of this kind may go there. */
   const laneAt = (clientY: number, item: Item): string | undefined => {
@@ -263,6 +294,80 @@ export function Timeline({ project }: { project: ProjectModel }) {
     window.addEventListener("blur", cancel);
   };
 
+  /**
+   * Press on a transition marker: select its cut. From an edge, dragging changes its length,
+   * centred on the cut (the edge follows the pointer, so the length is twice its distance from
+   * the cut), clamped to what fits there; one edit on release ("Changed transition to 0.8 s").
+   */
+  const onTransitionDown = (e: React.PointerEvent, itemId: string, cutFrame: number) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    playback.selectCut(itemId);
+    const edge = (e.target as HTMLElement).dataset.trEdge;
+    const base = project;
+    const placed = findItem(base, itemId);
+    const tr = placed?.item.transitionIn;
+    const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
+    if (!edge || !placed || !tr || lockOf(placed) || !online) return;
+    e.preventDefault();
+    const x0 = e.clientX;
+    let active = false;
+    let plan: Plan | undefined;
+    const compute = (ev: PointerEvent, against: ProjectModel) => {
+      plan = undefined;
+      const now = findItem(against, itemId)?.item.transitionIn;
+      if (!now) return;
+      const wanted = Math.max(1, Math.round(2 * Math.abs(frameAt(ev.clientX) - cutFrame)));
+      const p = planSetTransition(against, itemId, { module: now.module, duration: wanted });
+      if ("problem" in p) return setDrag({ itemId: `tr:${itemId}`, mode: "transition", view: against, refused: p.problem, tipAt: cutFrame, tip: p.problem });
+      const draft = draftOf(against, p.ops);
+      if (!("problem" in draft)) plan = p;
+      const shown = ("project" in draft ? findItem(draft.project, itemId)?.item.transitionIn?.duration : undefined) ?? now.duration;
+      setDrag({
+        itemId: `tr:${itemId}`,
+        mode: "transition",
+        view: "problem" in draft ? against : draft.project,
+        ...("problem" in draft ? { refused: draft.problem } : {}),
+        tipAt: cutFrame + shown / 2,
+        tip: "problem" in draft ? draft.problem : `${secondsLabel(shown, fps)} (${shown} frames)`,
+      });
+    };
+    const move = (ev: PointerEvent) => {
+      if (!active && Math.abs(ev.clientX - x0) < DRAG_PX) return;
+      if (!active) playback.pause();
+      active = true;
+      compute(ev, base);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+      if (stopDrag.current === cancel) stopDrag.current = undefined;
+    };
+    const cancel = () => {
+      stop();
+      setDrag(undefined);
+    };
+    const up = (ev: PointerEvent) => {
+      stop();
+      if (!active) return;
+      const now = getState().snapshot;
+      if (!now || now.dir !== origin.dir) return setDrag(undefined);
+      const fresh = now.revision !== origin.revision;
+      compute(ev, fresh ? projectOf(now) : base);
+      const sent = plan;
+      if (!sent?.ops.length) return setDrag(undefined);
+      void actions.timelineEdit(sent, { baseRevision: fresh ? now.revision : origin.revision, dir: now.dir }).finally(() => setDrag(undefined));
+    };
+    stopDrag.current?.();
+    stopDrag.current = cancel;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+  };
+
   const frameAt = (clientX: number) => {
     const rect = lanesRef.current!.getBoundingClientRect();
     return (clientX - rect.left) / ppf;
@@ -291,7 +396,21 @@ export function Timeline({ project }: { project: ProjectModel }) {
     window.addEventListener("pointercancel", up);
   };
 
+  /** The main cut nearest a pointer x, within CUT_DROP_PX. */
+  const cutNear = (clientX: number) => {
+    const f = frameAt(clientX);
+    let best: (typeof cuts)[number] | undefined;
+    for (const c of cuts) if (Math.abs(c.frame - f) * ppf <= CUT_DROP_PX && (!best || Math.abs(c.frame - f) < Math.abs(best.frame - f))) best = c;
+    return best;
+  };
   const onDragOver = (e: React.DragEvent) => {
+    if (online && [...e.dataTransfer.types].includes(TRANSITION_DRAG_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      const over = cutNear(e.clientX)?.item.id;
+      if (over !== dropCut) setDropCut(over);
+      return;
+    }
     if (!online || ![...e.dataTransfer.types].includes(MEDIA_DRAG_TYPE)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -299,6 +418,15 @@ export function Timeline({ project }: { project: ProjectModel }) {
   };
   const onDrop = (e: React.DragEvent) => {
     setDropping(false);
+    const module = e.dataTransfer.getData(TRANSITION_DRAG_TYPE);
+    if (module) {
+      e.preventDefault();
+      const cut = cutNear(e.clientX);
+      setDropCut(undefined);
+      setDraggedTransition(undefined);
+      if (cut) void actions.applyTransition(module, { cut: cut.item.id });
+      return;
+    }
     const id = e.dataTransfer.getData(MEDIA_DRAG_TYPE);
     if (!id) return;
     e.preventDefault();
@@ -309,12 +437,18 @@ export function Timeline({ project }: { project: ProjectModel }) {
     <section className="bottom">
       <div className="bottom-toolbar">
         <BottomTabs />
-        <span className="muted small">{project.tracks.length} tracks</span>
+        <span className="muted small">{project.tracks.length === 1 ? "1 track" : `${project.tracks.length} tracks`}</span>
         <div className="toolbar-spacer" />
         <button className="icon-btn" data-testid="split" title="Split at the playhead (S)" disabled={!online || empty} onClick={() => void actions.split()}>
           <Scissors />
         </button>
-        <button className="icon-btn" data-testid="delete-item" title="Delete the selected item (⌫)" disabled={!online || !selected} onClick={() => void actions.deleteSelected()}>
+        <button
+          className="icon-btn"
+          data-testid="delete-item"
+          title={selectedCut ? "Remove the selected transition (⌫)" : "Delete the selected item (⌫)"}
+          disabled={!online || !(selected || (selectedCut && findItem(project, selectedCut)?.item.transitionIn))}
+          onClick={() => void actions.deleteSelected()}
+        >
           <Trash2 />
         </button>
         <button
@@ -414,7 +548,9 @@ export function Timeline({ project }: { project: ProjectModel }) {
             style={{ width }}
             onDragOver={onDragOver}
             onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setDropping(false);
+              setDropCut(undefined);
             }}
             onDrop={onDrop}
           >
@@ -458,11 +594,63 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         beats={item.media ? beatMap.get(item.media) : undefined}
                         className={`${item.id === selected ? "selected" : ""} ${dragged && drag.mode === "move" ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
                         data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
+                        labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
                         edges={editable}
                         onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
                       />
                     );
                   })}
+                  {track.role === "main" &&
+                    cuts.map((cut) => {
+                      const tr = cut.item.transitionIn;
+                      const isSel = selectedCut === cut.item.id;
+                      // What a drop here would do: the planner's checks (locks on either clip, the cut's limits).
+                      const fit = transitionDragged ? planSetTransition(view, cut.item.id, { module: transitionDragged }) : undefined;
+                      const dropState = fit ? ("problem" in fit ? "invalid" : "valid") : undefined;
+                      const target = transitionDragged && dropCut === cut.item.id;
+                      if (!tr) {
+                        return (
+                          <div
+                            key={`cut-${cut.item.id}`}
+                            className={`cut-point ${isSel ? "selected" : ""} ${dropState ?? ""} ${target ? "target" : ""}`}
+                            data-testid="cut-point"
+                            data-item={cut.item.id}
+                            data-frame={cut.frame}
+                            data-drop={dropState}
+                            title={fit && "problem" in fit ? fit.problem : `Cut between ${itemLabel(view, cut.prev)} and ${itemLabel(view, cut.item)}: click to select, then pick a transition`}
+                            style={{ left: cut.frame * ppf }}
+                            onPointerDown={(e) => {
+                              if (e.button !== 0) return;
+                              e.stopPropagation();
+                              playback.selectCut(cut.item.id);
+                            }}
+                          />
+                        );
+                      }
+                      const w = tr.duration * ppf;
+                      return (
+                        <div
+                          key={`tr-${cut.item.id}`}
+                          className={`tr-marker ${isSel ? "selected" : ""} ${dropState ?? ""} ${target ? "target" : ""} ${drag?.mode === "transition" && drag.itemId === `tr:${cut.item.id}` ? (drag.refused ? "refused" : "resizing") : ""}`}
+                          data-testid="transition-marker"
+                          data-item={cut.item.id}
+                          data-module={tr.module}
+                          data-duration={tr.duration}
+                          data-frame={cut.frame}
+                          title={`${transitionName(tr.module)}, ${secondsLabel(tr.duration, fps)} (${tr.duration} frames): click to select, drag an edge to change its length`}
+                          style={{ left: cut.frame * ppf - Math.max(w, 14) / 2, width: Math.max(w, 14) }}
+                          onPointerDown={(e) => onTransitionDown(e, cut.item.id, cut.frame)}
+                        >
+                          <span className="tr-x" />
+                          {editable && (
+                            <>
+                              <div className="tr-edge start" data-tr-edge="start" data-testid="transition-edge-start" />
+                              <div className="tr-edge end" data-tr-edge="end" data-testid="transition-edge-end" />
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   {drag?.float?.track === track.id &&
                     (() => {
                       const item = findItem(project, drag.itemId)?.item;
@@ -506,6 +694,7 @@ function ItemBox({
   data,
   edges,
   onPointerDown,
+  labelInset = 0,
 }: {
   project: ProjectModel;
   item: Item;
@@ -519,6 +708,8 @@ function ItemBox({
   data: Readonly<Record<string, string | number>>;
   edges: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
+  /** Pixels the name starts in from the left (a transition marker sits over the start). */
+  labelInset?: number;
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
@@ -554,7 +745,9 @@ function ItemBox({
           {fadeOut > 0 && <path d={`M${px} 0 L${px - fadeOut} 0 L${px} 100 Z`} />}
         </svg>
       )}
-      <span className="nm">{label}</span>
+      <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
+        {label}
+      </span>
       <span className="meta">{(duration / project.canvas.fps).toFixed(1)}s</span>
       {edges && (
         <>

@@ -4,6 +4,7 @@
 // @uncut/core's textHtml on top (D39), the canvas colour where nothing is. The text can be
 // selected, dragged and edited in place (D53).
 import { visualsAt } from "@uncut/core/timeline";
+import { overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
 import { Maximize2, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -75,6 +76,12 @@ function drive(el: HTMLVideoElement, source: number, playing: boolean, speed: nu
     if (!el.paused) el.pause();
     seek(el, target);
   }
+}
+
+/** A wipe transition: show the left share of the element (core's `wipe`), or all of it. */
+function wipe(el: HTMLElement, shown: number | undefined) {
+  const clip = shown === undefined ? "" : `inset(0 ${((1 - shown) * 100).toFixed(4)}% 0 0)`;
+  if (el.style.clipPath !== clip) el.style.clipPath = clip;
 }
 
 /**
@@ -218,8 +225,10 @@ class Compositor {
     const clips = visible.filter((v) => v.item.type === "clip" && mediaKind(v.item) && mediaKind(v.item)!.kind !== "audio");
     // Warm up the next main clip two seconds ahead so the cut doesn't wait for a decoder.
     const main = project.tracks.find((t) => t.role === "main");
+    // How early a main clip starts: half an overlapping transition into it (a dip doesn't overlap).
+    const preroll = (it: Item) => (it.transitionIn && overlaps(it.transitionIn.module) ? it.transitionIn.duration / 2 : 0);
     const ahead = main?.items.find((it) => {
-      const start = starts.get(it.id)! - (it.transitionIn?.duration ?? 0) / 2;
+      const start = starts.get(it.id)! - preroll(it);
       return start > frame && start - frame < 2 * fps && mediaKind(it)?.kind === "video";
     });
     const keep = new Set([...clips.map((c) => c.item.id), ...(ahead ? [ahead.id] : [])]);
@@ -257,7 +266,9 @@ class Compositor {
       if (!el) {
         el = document.createElement("div");
         el.className = "pv-solid";
-        el.dataset.item = v.item.id;
+        // A dip to black's black layer isn't an item: clicking it selects nothing.
+        if (v.item.id.startsWith("dip:")) el.dataset.dip = v.item.id;
+        else el.dataset.item = v.item.id;
         this.solids.set(v.item.id, el);
         this.mediaLayer.append(el);
       }
@@ -268,6 +279,7 @@ class Compositor {
       }
       el.style.opacity = String(v.opacity);
       el.style.zIndex = String(z.get(v.item.id));
+      wipe(el, v.wipe);
     }
 
     clips.forEach((c) => {
@@ -276,6 +288,7 @@ class Compositor {
       if (!el) return;
       el.style.opacity = String(c.opacity);
       el.style.zIndex = String(z.get(c.item.id));
+      wipe(el, c.wipe);
       if (!(el instanceof HTMLVideoElement)) return;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       drive(el, c.source, playing, c.item.speed ?? 1);
@@ -286,7 +299,7 @@ class Compositor {
         el.style.opacity = "0";
         el.style.zIndex = "0";
         if (mediaKind(ahead)?.probe?.hasAudio) this.mix.attach(ahead.id, el);
-        const from = starts.get(ahead.id)! - (ahead.transitionIn?.duration ?? 0) / 2;
+        const from = starts.get(ahead.id)! - preroll(ahead);
         const speed = ahead.speed ?? 1;
         // Just before it starts (while playing) it already runs, out of sight and silent, so the
         // cut doesn't wait for the decoder to start (picture and sound).
@@ -294,7 +307,7 @@ class Compositor {
         if (playing && from - frame <= PREROLL_S * fps && early >= 0) drive(el, early / fps, true, speed);
         else {
           if (!el.paused) el.pause();
-          seek(el, ((ahead.in ?? 0) - ((ahead.transitionIn?.duration ?? 0) / 2) * speed) / fps + 0.0001);
+          seek(el, ((ahead.in ?? 0) - preroll(ahead) * speed) / fps + 0.0001);
         }
       }
     }

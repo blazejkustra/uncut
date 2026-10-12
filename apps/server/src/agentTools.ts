@@ -1,7 +1,7 @@
 // What the agent CLI sees of Uncut (spec/agent/tools.json, uncut.agent-tools/0): the tools it
 // gets over MCP, how each call reads in a turn card, the project summary project_read returns,
 // and the system prompt. Pure functions; the agent service runs them.
-import { DRAWN_MOVES, layout, SOLID, TEXT_STYLES, type ModuleManifest, type Modules, type Project } from "@uncut/core";
+import { DRAWN_MOVES, DRAWN_TRANSITIONS, layout, SOLID, TEXT_STYLES, TRANSITIONS, type ModuleManifest, type Modules, type Project } from "@uncut/core";
 
 import { MAX_CELLS, MAX_IMPORT, shortName } from "./agentFootage.ts";
 
@@ -175,7 +175,7 @@ export function projectSummary(project: Project, revision: number, range?: { sta
 }
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
-const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || m.id === "transition.crossfade" || m.id === SOLID;
+const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || DRAWN_TRANSITIONS.includes(m.id) || m.id === SOLID;
 
 /** A built-in text style's look (core TEXT_STYLES), in canvas fractions, for the agent. */
 const textStyleLook = (id: string) => {
@@ -199,6 +199,9 @@ export function modulesList(modules: Modules, kind?: string) {
     }));
 }
 
+/** The drawn transitions for the system prompt: id, what it does, frame limits. */
+const TRANSITION_DOCS = TRANSITIONS.map((t) => `${t.id} (${t.name.toLowerCase()}, ${t.minFrames}–${t.maxFrames} frames)`).join(", ");
+
 export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop video editor. The user sees the timeline and a live preview next to this chat; every edit you make appears there immediately and is saved.
 - Positions and lengths are integer frames at the project's canvas fps (project_read gives canvas and fps). Main-track items have no start: they play back to back. "in" is where an item starts inside its media, in project frames.
 - Always project_read before editing and pass its revision as baseRevision. Group related ops into one timeline_edit with a short summary; the user reads it in the turn card.
@@ -213,8 +216,9 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - Backgrounds are component.solid items on a video track: props.color (a theme token or CSS colour), or a gradient with props.to and props.angle (degrees, 180 = top to bottom). A title card on an empty project is a background on the main track plus the text over it, same length, e.g. a dark blue 5 s card:
   {"op":"insert_item","track":"main","item":{"id":"background-1","type":"component","component":"component.solid","duration":150,"props":{"color":"#0B1D3A"}}}
   Main-track items play back to back, so a background there sits between clips; to put one under text over footage, use a free video track above main (add_track with kind "video" at main's index) with a start.
-- Sound: a clip plays its media's sound (media with probe.hasAudio); music, voiceover and effects are audio items on an audio track, e.g. {"op":"insert_item","track":"audio","item":{"id":"music-1","type":"audio","media":"m-song","in":0,"start":0,"duration":300}}. On a clip or audio item, gainDb is the volume in dB (0 or absent = as recorded, −6 about half as loud, −60 = silent, at most +12), fadeIn / fadeOut are fade lengths in frames (together no longer than the item; remove one with null), and gainKeys [{"frame":…,"db":…}] is a volume envelope in dB on top of gainDb (linear between keys). A track's volume is mixer.gainDb and mixer.mute silences it; update_track replaces the whole mixer, so send the fields you want to keep. A main-track transition crossfades the sound too. A hidden track only hides the picture: its clips still sound unless the track is muted.
-- What the preview draws today: media clips, backgrounds (component.solid), and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components, effects and transitions other than crossfade are saved but don't draw yet, so say so if the user asks for something that won't show.
+- Sound: a clip plays its media's sound (media with probe.hasAudio); music, voiceover and effects are audio items on an audio track, e.g. {"op":"insert_item","track":"audio","item":{"id":"music-1","type":"audio","media":"m-song","in":0,"start":0,"duration":300}}. On a clip or audio item, gainDb is the volume in dB (0 or absent = as recorded, −6 about half as loud, −60 = silent, at most +12), fadeIn / fadeOut are fade lengths in frames (together no longer than the item; remove one with null), and gainKeys [{"frame":…,"db":…}] is a volume envelope in dB on top of gainDb (linear between keys). A track's volume is mixer.gainDb and mixer.mute silences it; update_track replaces the whole mixer, so send the fields you want to keep. A main-track transition blends the sound too (a crossfade or wipe crossfades it, a dip to black dips it). A hidden track only hides the picture: its clips still sound unless the track is muted.
+- Transitions go between two neighbouring main-track items, on the incoming one: {"op":"set_transition","item":"clip-2","transition":{"module":"transition.crossfade","duration":15}} (null removes it). They draw: ${TRANSITION_DOCS}. Both items must be at least twice the transition long. A crossfade or wipe is centred on the cut, so video needs spare footage there: ceil(duration/2) frames before the incoming clip's in and after the outgoing clip's end in its media; a dip to black needs none. Other transition modules (cut, iris, push-left, zoom) are saved but draw as a crossfade.
+- What the preview draws today: media clips, backgrounds (component.solid), the transitions above, and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" (with media) shows one frame per shot, from the video analysis.

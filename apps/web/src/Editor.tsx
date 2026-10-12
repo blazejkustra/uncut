@@ -8,7 +8,7 @@ import { HistoryPanel } from "./History.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
-import { AudioEditor, BackgroundEditor, TextEditor } from "./ItemEditors.tsx";
+import { AudioEditor, BackgroundEditor, TextEditor, TransitionInspector } from "./ItemEditors.tsx";
 import { useBeatsLoading } from "./beats.ts";
 import { hasSound } from "./sound.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
@@ -194,10 +194,9 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   );
 }
 
-// Media, Text, Elements (backgrounds) and Audio work; the rest arrive in later chunks.
+// Media, Text, Elements (backgrounds), Audio and Transitions work; the rest arrive in later chunks.
 const RAIL: ReadonlyArray<[string, typeof Film]> = [
   ["Capture", CircleDot],
-  ["Transitions", Blend],
   ["Generate", Sparkles],
 ];
 
@@ -220,6 +219,10 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
         <Music />
         <span>Audio</span>
       </button>
+      <button className={tab === "transitions" ? "active" : ""} data-testid="rail-transitions" title="Transitions between clips on the main track" onClick={() => onTab("transitions")}>
+        <Blend />
+        <span>Transitions</span>
+      </button>
       {RAIL.map(([label, Icon]) => (
         <button key={label} disabled title={`${label}: ${LATER}`}>
           <Icon />
@@ -233,6 +236,15 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
 function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
   const [tab, setTab] = useState<"inspector" | "agent" | "history">("inspector");
   const selected = findItem(project, usePlayback((s) => s.selected));
+  // A selected cut (D73): only while the clip after it is still on the main track, after another clip.
+  const cutId = usePlayback((s) => s.cut);
+  const cut = findItem(project, cutId);
+  const cutPlaced = cut && cut.track.role === "main" && cut.index > 0 ? cut : undefined;
+  // A cut that no longer exists (its clip deleted, moved off main or first now) isn't selected any
+  // more; one whose transition was undone stays selected as a hard cut.
+  useEffect(() => {
+    if (cutId !== undefined && !cutPlaced) playback.selectCut(undefined);
+  }, [cutId, cutPlaced]);
   // ...or a side tab.
   const { panelRequest } = useApp();
   useEffect(() => {
@@ -253,7 +265,9 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
         </button>
       </div>
       <div className="side-body">
-        {tab === "inspector" && selected ? (
+        {tab === "inspector" && cutPlaced ? (
+          <TransitionInspector key={cutPlaced.item.id} project={project} placed={cutPlaced} online={online} />
+        ) : tab === "inspector" && selected ? (
           <ItemInspector key={selected.item.id} project={project} placed={selected} />
         ) : tab === "inspector" ? (
           // Keyed on the folder: switching projects drops any half-typed value with the old Inspector.

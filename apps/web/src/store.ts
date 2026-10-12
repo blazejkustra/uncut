@@ -11,7 +11,7 @@ import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "./playback.ts";
-import { draftOf, planDelete, planSplit, planTrackFlag, type Plan, type TrackFlag } from "./edit.ts";
+import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "./edit.ts";
 import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "./text.ts";
 
@@ -543,11 +543,37 @@ export const actions = {
     const plan = planSplit(projectOf(state.snapshot), selected, frame);
     if (await timelineEdit(plan)) playback.select("newId" in plan ? plan.newId : undefined);
   },
-  /** ⌫: delete the selected item; on main the rest closes up. */
+  /** ⌫: delete the selected item; on main the rest closes up. A selected cut: remove its transition (D73). */
   async deleteSelected() {
     if (!state.snapshot) return;
+    const cut = getPlayback().cut;
+    if (cut !== undefined) {
+      const placed = findItem(projectOf(state.snapshot), cut);
+      if (placed?.item.transitionIn) await timelineEdit(planSetTransition(projectOf(state.snapshot), cut, null));
+      return;
+    }
     if (await timelineEdit(planDelete(projectOf(state.snapshot), getPlayback().selected))) playback.select(undefined);
   },
+  /**
+   * Put a transition on a cut (D73): `cut` (the id of the clip after it), else the selected cut;
+   * with `nearest`, the cut nearest the playhead. The cut is selected afterwards, so the Inspector
+   * shows it. Replaces a transition already there (keeping its length, clamped).
+   */
+  async applyTransition(module: string, { cut, nearest = false }: { cut?: string; nearest?: boolean } = {}) {
+    if (!state.snapshot) return false;
+    const project = projectOf(state.snapshot);
+    const target = cut ?? (nearest ? nearestCut(project, getPlayback().frame)?.item.id : getPlayback().cut);
+    if (target === undefined) {
+      set({ notice: { text: nearest ? "There's no cut yet: put two clips on the main track first." : "Pick a cut first: click between two clips on the main track, drag the transition onto a cut, or use + for the cut nearest the playhead." } });
+      return false;
+    }
+    const ok = await timelineEdit(planSetTransition(project, target, { module }));
+    if (ok || findItem(project, target)?.item.transitionIn?.module === module) playback.selectCut(target);
+    return ok;
+  },
+  /** Change (or with null remove) the transition at the cut before main item `itemId`. */
+  setTransition: (itemId: string, next: { module: string; duration?: number } | null, origin?: { baseRevision?: number; dir?: string }) =>
+    state.snapshot ? timelineEdit(planSetTransition(projectOf(state.snapshot), itemId, next), origin) : Promise.resolve(false),
   toggleTrack: (trackId: string, flag: TrackFlag) => (state.snapshot ? timelineEdit(planTrackFlag(projectOf(state.snapshot), trackId, flag)) : undefined),
   rename: (name: string) =>
     change((c) => c["project.edit"]({ ops: [{ op: "update_project", set: { name } }], summary: "Rename project" }), { inline: true }),

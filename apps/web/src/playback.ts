@@ -34,6 +34,11 @@ export interface PlaybackState {
   readonly end: number;
   readonly fps: number;
   readonly selected: string | undefined;
+  /**
+   * A selected cut on the main track (D73): the id of the clip after it, whose transitionIn the
+   * transition is. Exclusive with `selected`; the Inspector shows the cut's transition.
+   */
+  readonly cut: string | undefined;
   /** Timeline zoom as a multiple of "fit the whole project". */
   readonly zoom: number;
   /** Moves and trims snap to the playhead, item edges and 0 (hold ⌘ while dragging to skip). */
@@ -43,7 +48,7 @@ export interface PlaybackState {
   readonly bottom: "timeline" | "transcript";
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, zoom: 1, snapping: true, draft: undefined, bottom: "timeline" };
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: true, draft: undefined, bottom: "timeline" };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -105,7 +110,7 @@ export const playback = {
   /** Another project opened: back to the start, nothing selected, fit zoom. */
   reset() {
     cancelAnimationFrame(raf);
-    set({ frame: 0, playing: false, selected: undefined, zoom: 1, draft: undefined });
+    set({ frame: 0, playing: false, selected: undefined, cut: undefined, zoom: 1, draft: undefined });
   },
 
   play() {
@@ -151,7 +156,9 @@ export const playback = {
     follower = fn;
   },
 
-  select: (id: string | undefined) => (id === state.selected ? undefined : set({ selected: id })),
+  select: (id: string | undefined) => (id === state.selected && state.cut === undefined ? undefined : set({ selected: id, cut: undefined })),
+  /** Select the cut before main item `id` (its transition, if it has one); undefined clears it. */
+  selectCut: (id: string | undefined) => (id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined })),
 
   zoomIn: () => set({ zoom: clamp(state.zoom * 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),

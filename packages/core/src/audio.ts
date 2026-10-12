@@ -12,9 +12,12 @@
 // - A main-track transition crossfades the sound too, linearly over the transition's frames
 //   (centred on the cut, like the picture): the outgoing clip goes 1 → 0 while the incoming one
 //   goes 0 → 1. The item's own fade on that side is skipped, as the picture skips its animation.
+//   A dip to black (transitions.ts) dips the sound instead: the outgoing clip fades out over its
+//   last half of the transition, the incoming one fades in over its first half (no overlap).
 // - A muted track is silent (gain 0); if any track is soloed, only soloed tracks sound. A hidden
 //   track only hides the picture: its clips still sound (mute is the sound's switch).
 // - dB at or below SILENCE_DB is silence (the volume slider's "−∞").
+import { overlaps } from "./transitions.ts";
 import type { Item, Project, Track } from "./types.ts";
 
 export const SILENCE_DB = -60;
@@ -67,16 +70,20 @@ export function soundMedia(project: Pick<Project, "media">, item: Item) {
 }
 
 /**
- * The frames an item sounds over: its own, plus half a transition on either side of a main-track
- * cut (the outgoing clip plays on into the incoming one, which starts early).
+ * The frames an item sounds over: its own, plus half an overlapping transition on either side of a
+ * main-track cut (the outgoing clip plays on into the incoming one, which starts early). `dipIn` /
+ * `dipOut` are the fade lengths of a dip to black at its start / end (half the dip; no overlap).
  */
-export function audioSpan(track: Track, index: number, start: number): { from: number; to: number; half: number; nextHalf: number } {
+export function audioSpan(track: Track, index: number, start: number): { from: number; to: number; half: number; nextHalf: number; dipIn: number; dipOut: number } {
   const item = track.items[index]!;
   const main = track.role === "main";
-  const half = main && item.transitionIn ? item.transitionIn.duration / 2 : 0;
-  const next = track.items[index + 1];
-  const nextHalf = main && next?.transitionIn ? next.transitionIn.duration / 2 : 0;
-  return { from: start - half, to: start + item.duration + nextHalf, half, nextHalf };
+  const into = main ? item.transitionIn : undefined;
+  const out = main ? track.items[index + 1]?.transitionIn : undefined;
+  const half = into && overlaps(into.module) ? into.duration / 2 : 0;
+  const nextHalf = out && overlaps(out.module) ? out.duration / 2 : 0;
+  const dipIn = into && !overlaps(into.module) ? into.duration / 2 : 0;
+  const dipOut = out && !overlaps(out.module) ? out.duration / 2 : 0;
+  return { from: start - half, to: start + item.duration + nextHalf, half, nextHalf, dipIn, dipOut };
 }
 
 /** Where in its media an item is `local` frames after its start, in seconds (looped audio wraps). */
@@ -97,9 +104,11 @@ export function trackAudible(project: Pick<Project, "tracks">, track: Track): bo
 /** An item's gain at `local` frames from its start (see the header), before mute and solo. */
 export function itemGain(track: Track, index: number, local: number): number {
   const item = track.items[index]!;
-  const { half, nextHalf } = audioSpan(track, index, 0);
+  const { half, nextHalf, dipIn, dipOut } = audioSpan(track, index, 0);
   const db = (item.gainDb ?? 0) + keyDbAt(item.gainKeys, Math.min(item.duration, Math.max(0, local))) + (track.mixer?.gainDb ?? 0);
-  let gain = dbToGain(db) * fadeAt(item, local, { skipIn: half > 0, skipOut: nextHalf > 0 });
+  let gain = dbToGain(db) * fadeAt(item, local, { skipIn: half > 0 || dipIn > 0, skipOut: nextHalf > 0 || dipOut > 0 });
+  if (dipIn > 0) gain *= clamp01(local / dipIn);
+  if (dipOut > 0) gain *= clamp01((item.duration - local) / dipOut);
   if (half > 0 && local < half) gain *= clamp01((local + half) / (2 * half));
   if (nextHalf > 0 && local > item.duration - nextHalf) gain *= clamp01((item.duration + nextHalf - local) / (2 * nextHalf));
   return gain;
