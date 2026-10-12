@@ -92,7 +92,7 @@ test("analyzers: none named = loudness (video is opt-in); silence is the loudnes
   assert.deepEqual(parseAnalyzers(["silence", "loudness"]), { analyzers: ["loudness"] });
   assert.deepEqual(parseAnalyzers(["shots", "motion", "stability"]), { analyzers: ["video"] });
   assert.deepEqual(parseAnalyzers(["silence", "shots"]), { analyzers: ["loudness", "video"] });
-  assert.match((parseAnalyzers(["beats"]) as { refused: string }).refused, /beats \(beats\) isn't available yet/);
+  assert.match((parseAnalyzers(["description"]) as { refused: string }).refused, /description \(descriptions\) isn't available yet/);
   assert.match((parseAnalyzers(["toString"]) as { refused: string }).refused, /no analyzer "toString"/);
   assert.match((parseAnalyzers(["vibes"]) as { refused: string }).refused, /no analyzer "vibes"/);
   assert.match((parseAnalyzers([]) as { refused: string }).refused, /non-empty list/);

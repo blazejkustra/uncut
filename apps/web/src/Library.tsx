@@ -1,6 +1,6 @@
 // The library panel on the left: the media in the project (import, drop, add to the timeline)
 // the Text tab's presets and the Elements tab's backgrounds. Which one shows is the rail's choice.
-import type { AnalysisJob, ImportJob } from "@uncut/contracts";
+import type { ImportJob } from "@uncut/contracts";
 import { solidBackground } from "@uncut/core/render";
 import { AudioLines, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
 import React, { useState, type ReactNode } from "react";
@@ -11,6 +11,7 @@ import { TEXT_PRESETS } from "./project.ts";
 import { BACKGROUNDS } from "./text.ts";
 import { actions, activeAnalyses, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
 import { MEDIA_DRAG_TYPE } from "./Timeline.tsx";
+import { analysisText } from "./analysisText.ts";
 
 export type LibraryTab = "media" | "text" | "elements" | "audio";
 
@@ -292,12 +293,6 @@ export function mediaMeta(m: MediaItem) {
 }
 
 /** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67; "Transcribing…", D68), or why it waits. */
-export function analysisText(job: AnalysisJob) {
-  const pct = `${Math.round(job.progress * 100)}%`;
-  if (job.phase === "running" && job.analyzer === "transcript") return job.stage === "model" ? `Downloading the speech model… ${pct}` : `Transcribing… ${pct}`;
-  if (job.phase === "running") return `Analysing the ${job.analyzer === "video" ? "picture" : "sound"}… ${pct}`;
-  return job.waiting === "export" ? "Waiting for the export to finish" : job.analyzer === "transcript" ? "Waiting to transcribe" : "Waiting to analyse";
-}
 
 function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online: boolean }) {
   const app = useApp();

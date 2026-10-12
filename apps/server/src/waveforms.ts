@@ -20,6 +20,7 @@ import * as Option from "effect/Option";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "./config.ts";
+import { pcmArgs } from "./analysisRunner.ts";
 import { posterKey } from "./media.ts";
 import { Projects } from "./projects.ts";
 import { which } from "./setup.ts";
@@ -103,7 +104,7 @@ const PARTIAL_MIN_S = 1;
 function decodePeaks(ffmpeg: string, path: string): Promise<Decoded> {
   return new Promise((resolvePeaks) => {
     const meter = new PeakMeter();
-    const child = spawn(ffmpeg, ["-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-ar", String(SAMPLE_RATE), "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1"], {
+    const child = spawn(ffmpeg, ["-v", "error", "-nostdin", ...pcmArgs(path, SAMPLE_RATE)], {
       env: withoutApiKey(process.env),
       stdio: ["ignore", "pipe", "pipe"],
     });

@@ -13,6 +13,8 @@
 // shake, blur, brightness and frozen stretches per second of the file.
 // The third, "transcript" (transcription.ts, D68), transcribes the speech with whisper.cpp; at most
 // one runs at a time (it keeps the GPU busy), after its speech model is there (downloaded first).
+// The fourth, "beats" (beats.ts, D70), finds the tempo, beats and onsets of the first audio stream
+// in TypeScript on PCM decoded like the waveform's.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm, rmdir } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
@@ -24,6 +26,7 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
+import { analyzeBeats, BEATS_VERSION, isBeatsResult, NO_BEATS_AUDIO, type BeatsResult } from "./beats.ts";
 import { Cancelled, ffmpegError, NO_AUDIO_STREAM, spawnRunner, type Runner } from "./analysisRunner.ts";
 import { writeAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
@@ -49,7 +52,6 @@ const MAX_JOBS_KEPT = 20;
 
 /** Analyzers the agent's spec names (spec/agent/tools.json) that come with later chunks. */
 export const LATER_ANALYZERS: Readonly<Record<string, string>> = {
-  beats: "beats",
   description: "descriptions",
 };
 
@@ -76,13 +78,13 @@ export interface LoudnessResult {
   readonly truePeakDbtp?: number | null;
   readonly silence?: { readonly thresholdDb: number; readonly minSeconds: number; readonly ranges: ReadonlyArray<SilenceRange> };
 }
-export type AnalysisResult = LoudnessResult | VideoResult | TranscriptResult;
+export type AnalysisResult = LoudnessResult | VideoResult | TranscriptResult | BeatsResult;
 
 export const NO_AUDIO: LoudnessResult = { hasAudio: false };
 
 /** Names that mean the same job: one pass finds both silences and loudness, or all of the picture's signals. */
-export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = { loudness: "loudness", silence: "loudness", video: "video", shots: "video", motion: "video", stability: "video", transcript: "transcript", transcription: "transcript" };
-const AVAILABLE = `Available now: loudness (also gives the silences; "silence" means the same), video (cuts, shake, blur, exposure and frozen stretches; "shots", "motion" and "stability" mean the same) and transcript (the speech, transcribed on this Mac).`;
+export const ANALYZER_ALIASES: Readonly<Record<string, Analyzer>> = { loudness: "loudness", silence: "loudness", video: "video", shots: "video", motion: "video", stability: "video", transcript: "transcript", transcription: "transcript", beats: "beats", rhythm: "beats", onsets: "beats", tempo: "beats" };
+const AVAILABLE = `Available now: loudness (also gives the silences; "silence" means the same), video (cuts, shake, blur, exposure and frozen stretches; "shots", "motion" and "stability" mean the same) transcript (the speech, transcribed on this Mac) and beats (tempo, beats and onsets; "rhythm", "onsets" and "tempo" mean the same).`;
 
 /**
  * Which analyzers a request means: none named = loudness (cheap, ~400× realtime; video is opt-in,
@@ -262,8 +264,10 @@ interface CacheFile {
   readonly result: AnalysisResult;
 }
 
-const versionOf = (analyzer: Analyzer) => (analyzer === "loudness" ? LOUDNESS_VERSION : analyzer === "video" ? VIDEO_VERSION : TRANSCRIPT_VERSION);
-const shapeOk = (analyzer: Analyzer, result: unknown) => (analyzer === "video" ? isVideoResult(result) : analyzer === "transcript" ? isTranscriptResult(result) : isResult(result));
+const VERSIONS: Readonly<Record<Analyzer, number>> = { loudness: LOUDNESS_VERSION, video: VIDEO_VERSION, transcript: TRANSCRIPT_VERSION, beats: BEATS_VERSION };
+const versionOf = (analyzer: Analyzer) => VERSIONS[analyzer];
+const SHAPES: Readonly<Record<Analyzer, (result: unknown) => boolean>> = { loudness: isResult, video: isVideoResult, transcript: isTranscriptResult, beats: isBeatsResult };
+const shapeOk = (analyzer: Analyzer, result: unknown) => SHAPES[analyzer](result);
 
 /** A cached result for this content and analyzer (and the analyzer's current version), if any. */
 export async function readCached(projectDir: string, fp: string, analyzer: Analyzer): Promise<AnalysisResult | undefined> {
@@ -435,6 +439,7 @@ export class AnalysisQueue {
     if (analyzer === "loudness" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_AUDIO, cached: false });
     if (analyzer === "video" && target.kind !== "video") return settled({ state: "done", result: NO_VIDEO, cached: false });
     if (analyzer === "transcript" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_SPEECH_AUDIO, cached: false });
+    if (analyzer === "beats" && (target.kind === "image" || target.hasAudio === false)) return settled({ state: "done", result: NO_BEATS_AUDIO, cached: false });
     const joined = this.find(target, analyzer, undefined, options);
     if (joined) return this.join(joined, target.mediaId);
     let fp: string;
@@ -592,7 +597,9 @@ export class AnalysisQueue {
         if (signal.aborted) throw new Cancelled();
         if (e.job.stage) this.patch(e, { stage: undefined, progress: 0 });
         result = await analyzeTranscript(bin, whisper, e.target.path, { ...options, language: e.options?.language, ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}) });
-      } else result = e.job.analyzer === "video" ? await analyzeVideo(bin, e.target.path, options) : await analyzeLoudness(bin, e.target.path, options);
+      } else if (e.job.analyzer === "video") result = await analyzeVideo(bin, e.target.path, options);
+      else if (e.job.analyzer === "beats") result = await analyzeBeats(bin, e.target.path, options);
+      else result = await analyzeLoudness(bin, e.target.path, options);
       if (signal.aborted) throw new Cancelled();
       // Cached only if the file is still what was fingerprinted (it may have changed meanwhile).
       // A cache that can't be written (read-only disk) costs a re-run later, not this result.
@@ -628,7 +635,7 @@ export interface AnalysisShape {
   /** A job as it is now. */
   readonly job: (jobId: string) => AnalysisJob | undefined;
   /** analysis.cached: a media item's cached result, without a job (null: none yet). */
-  readonly cached: (mediaId: string, analyzer: Analyzer) => Effect.Effect<{ readonly result: AnalysisResult | null }, AnalysisError>;
+  readonly cached: (mediaId: string, analyzer: Analyzer, omit?: ReadonlyArray<string>) => Effect.Effect<{ readonly result: AnalysisResult | null }, AnalysisError>;
 }
 
 export class Analysis extends Context.Service<Analysis, AnalysisShape>()("uncut/Analysis") {}
@@ -687,7 +694,7 @@ export const layer = Layer.effect(
         return answers as ReadonlyArray<{ analyzer: Analyzer; state: "done" | "queued" | "running"; jobId?: string }>;
       });
 
-    const cached = (mediaId: string, analyzer: Analyzer) =>
+    const cached = (mediaId: string, analyzer: Analyzer, omit?: ReadonlyArray<string>) =>
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new AnalysisError({ reason: "no-project", message: "Open a project first." });
@@ -695,7 +702,11 @@ export const layer = Layer.effect(
         const media = project.media.find((m) => m.id === mediaId);
         if (!media) return yield* new AnalysisError({ reason: "unknown-media", message: `There's no media "${mediaId}" in this project.` });
         const result = yield* Effect.promise(() => cachedFor(targetOf(open.dir, media, project.canvas.fps), analyzer));
-        return { result: result ?? null };
+        if (!result || !omit?.length) return { result: result ?? null };
+        // Fields the caller doesn't need (the timeline: a beats result's onsets) stay on the server.
+        const kept: Record<string, unknown> = { ...(result as unknown as Record<string, unknown>) };
+        for (const key of omit) delete kept[key];
+        return { result: kept as unknown as AnalysisResult };
       });
 
     return Analysis.of({

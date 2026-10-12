@@ -4,6 +4,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 import { withoutApiKey } from "./shellEnv.ts";
 
+/**
+ * ffmpeg's input and output arguments for the first audio stream of `path` as mono 16-bit PCM at
+ * `sampleRate` on stdout: the waveform's decode (waveforms.ts), and the beats analyzer's (D70) at
+ * its own rate. Here, in this leaf module, so beats.ts doesn't import the HTTP side.
+ */
+export const pcmArgs = (path: string, sampleRate: number) => ["-i", path, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-ar", String(sampleRate), "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1"];
+
 /** ffmpeg's ways of saying the file has no audio stream for 0:a:0. */
 export const NO_AUDIO_STREAM = /matches no streams|does not contain any stream|Failed to set value '0:a:0' for option 'map'/i;
 

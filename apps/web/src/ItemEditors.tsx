@@ -3,16 +3,18 @@
 // one project.edit through actions.itemEdit (validated, one ⌘Z, in the agent's next note):
 // typing is committed after a pause, on blur or ⌘Enter, so a burst is one undo step; a slider
 // shows a local draft while it moves and commits once on release.
-import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
+import { MAX_DB, SILENCE_DB, soundMedia } from "@uncut/core/audio";
 import { resolveColor, TEXT_STYLES } from "@uncut/core/render";
 import type { Item, Op } from "@uncut/core/types";
-import { AlignCenter, AlignLeft, AlignRight, Crosshair, Highlighter } from "lucide-react";
+import { Activity, AlignCenter, AlignLeft, AlignRight, Crosshair, Highlighter, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { draftOf, findItem } from "./edit.ts";
 import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
 import type { ProjectModel } from "./project.ts";
-import { actions, getState, projectOf } from "./store.ts";
+import { useBeats } from "./beats.ts";
+import { analysisText } from "./analysisText.ts";
+import { actions, activeAnalyses, getState, projectOf, useApp } from "./store.ts";
 import { dbLabel, planFade, planGain } from "./sound.ts";
 import { MOVES, planAnimation, planBackground, planCentre, planPreset, planStyle, planText, planTransform, swatches, textBox, toggleAccent, type AnimationSlot } from "./text.ts";
 
@@ -548,6 +550,52 @@ export function AudioEditor({ project, item, locked }: { project: ProjectModel; 
         </div>
         <div className="hint-line muted small">Or drag the small handles at the top corners of the item on the timeline.</div>
       </Group>
+      <BeatsGroup project={project} item={item} />
     </div>
+  );
+}
+
+/**
+ * The beats of the item's sound (D70): Find beats runs the analysis job (on demand, D66) with its
+ * progress and a stop button; once cached, the tempo and the beat count. The timeline draws the
+ * beats as ticks and snaps to them.
+ */
+function BeatsGroup({ project, item }: { project: ProjectModel; item: Item }) {
+  const app = useApp();
+  const media = soundMedia(project, item);
+  const entry = useBeats((s) => (media ? s.entries.get(media.id) : undefined));
+  if (!media) return null;
+  const online = app.connection === "connected";
+  const job = activeAnalyses(app, media.id).find((j) => j.analyzer === "beats");
+  return (
+    <Group label="Beats">
+      <div data-testid="insp-beats" data-state={job ? job.phase : entry === undefined ? "loading" : entry === null || entry === "failed" ? "none" : entry.bpm === null ? "no-beat" : "done"}>
+        {job ? (
+          <div className="beats-progress" title={analysisText(job)}>
+            <Activity />
+            <div className="bar">
+              <span style={{ width: `${Math.round((job.phase === "running" ? job.progress : 0) * 100)}%` }} />
+            </div>
+            <button className="icon-btn" data-testid="insp-beats-cancel" title="Stop finding the beats" disabled={!online} onClick={() => void actions.cancelAnalysis(job.id)}>
+              <X />
+            </button>
+          </div>
+        ) : entry === null || entry === undefined || entry === "failed" ? (
+          <button className="btn" data-testid="insp-find-beats" disabled={!online || entry === undefined} onClick={() => void actions.analyzeBeats(media.id)}>
+            <Activity />
+            Find beats
+          </button>
+        ) : entry.bpm === null ? (
+          <div className="small" data-testid="insp-beats-summary">No steady beat found</div>
+        ) : (
+          <div className="small" data-testid="insp-beats-summary">
+            {Math.round(entry.bpm)} BPM, {entry.beats.length} beats
+          </div>
+        )}
+        <div className="hint-line muted small">
+          {entry && entry !== "failed" && entry.bpm !== null ? "Ticks on the timeline. With snapping on, moves, trims and the playhead stick to them." : "Finds the tempo and the beats, to cut on the beat."}
+        </div>
+      </div>
+    </Group>
   );
 }

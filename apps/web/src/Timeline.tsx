@@ -4,13 +4,15 @@
 //
 // Editing (chunk 3, D52): click selects; dragging an item moves it (free tracks: in time and to
 // another compatible track, landing on the nearest free spot; main: reorders), dragging an edge
-// trims it, both snapping to the playhead, item edges and 0 (⌘ held: no snapping). The drag is
+// trims it, both snapping to the playhead, item edges, 0 and cached beats (D70: drawn as ticks on
+// items with sound; the playhead snaps to them too) (⌘ held: no snapping). The drag is
 // previewed locally from the planned ops (edit.ts) and sent as one edit on release. Split,
 // delete and the track buttons (hide, mute, lock) are edits too.
 import { AudioLines, Eye, EyeOff, Film, Layers, Lock, LockOpen, Magnet, Maximize2, Scissors, SlidersHorizontal, Trash2, Type, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { draftOf, findItem, fitsTrack, lockOf, planMove, planTrim, SNAP_PX, snapTargets, trackFlag, trimSnapTargets, type Plan } from "./edit.ts";
+import { getBeats, useBeats } from "./beats.ts";
+import { draftOf, findItem, fitsTrack, lockOf, planMove, planTrim, SNAP_PX, snapPlayhead, snapTargets, trackFlag, trimSnapTargets, visibleBeats, type Plan } from "./edit.ts";
 import { frameTimecode, rulerLabel } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { SOLID, solidBackground } from "@uncut/core/render";
@@ -73,7 +75,10 @@ export function Timeline({ project }: { project: ProjectModel }) {
   const zoom = usePlayback((s) => s.zoom);
   const selected = usePlayback((s) => s.selected);
   const snapping = usePlayback((s) => s.snapping);
+  const beatMap = useBeats((s) => s.map);
   const [drag, setDrag] = useState<DragView | undefined>();
+  // The beat the playhead stuck to while scrubbing (for the snap line).
+  const [scrubSnap, setScrubSnap] = useState<number | undefined>();
   // The running drag's cancel: a new press or unmounting (another project) ends it.
   const stopDrag = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => stopDrag.current?.(), []);
@@ -149,6 +154,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       const delta = (ev.clientX - x0) / ppf;
       const snapOn = getPlayback().snapping && !ev.metaKey;
       const threshold = SNAP_PX / ppf;
+      const beats = { beats: getBeats().map, ppf };
       if (fade) {
         const x = (ev.clientX - (lanesRef.current?.getBoundingClientRect().left ?? 0)) / ppf;
         const frames = fade === "in" ? x - placed.start : placed.start + placed.item.duration - x;
@@ -171,7 +177,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       if (edge) {
         // The edge goes where the pointer is, also when re-planned against a newer project.
         const own = edge === "end" ? placed.start + placed.item.duration : placed.start;
-        const snap = snapOn ? { targets: trimSnapTargets(base, getPlayback().frame, item.id, edge), threshold } : undefined;
+        const snap = snapOn ? { targets: trimSnapTargets(base, getPlayback().frame, item.id, edge, beats), threshold } : undefined;
         const p = planTrim(base, item.id, edge, pressEdge + delta - own, snap);
         if ("problem" in p) return;
         const draft = draftOf(base, p.ops);
@@ -193,7 +199,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
         return;
       }
       const desired = press.start + delta;
-      const snap = snapOn ? { targets: snapTargets(base, getPlayback().frame, item.id), threshold } : undefined;
+      const snap = snapOn ? { targets: snapTargets(base, getPlayback().frame, item.id, beats), threshold } : undefined;
       const p = planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
       if ("problem" in p) return;
       const draft = draftOf(base, p.ops);
@@ -261,14 +267,21 @@ export function Timeline({ project }: { project: ProjectModel }) {
     const rect = lanesRef.current!.getBoundingClientRect();
     return (clientX - rect.left) / ppf;
   };
-  /** Click or drag on the ruler, the playhead or an empty lane: move the playhead there. */
+  /** Click or drag on the ruler, the playhead or an empty lane: move the playhead there (with snapping on, to a beat within reach, D70). */
   const scrub = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
     playback.pause();
-    playback.seek(frameAt(e.clientX));
-    const move = (ev: PointerEvent) => playback.seek(frameAt(ev.clientX));
+    const seek = (ev: { clientX: number; metaKey: boolean }) => {
+      const frame = frameAt(ev.clientX);
+      const snapped = getPlayback().snapping && !ev.metaKey ? snapPlayhead(project, frame, { beats: getBeats().map, ppf }, SNAP_PX / ppf) : { frame };
+      setScrubSnap(snapped.snapAt);
+      playback.seek(snapped.frame);
+    };
+    seek(e);
+    const move = (ev: PointerEvent) => seek(ev);
     const up = () => {
+      setScrubSnap(undefined);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
@@ -308,7 +321,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
           className={`icon-btn ${snapping ? "on" : ""}`}
           data-testid="snap-toggle"
           aria-pressed={snapping}
-          title={snapping ? "Snapping on: moves and trims stick to the playhead and item edges (hold ⌘ while dragging to skip)" : "Snapping off"}
+          title={snapping ? "Snapping on: moves and trims stick to the playhead, item edges and beats; the playhead sticks to beats (hold ⌘ while dragging to skip)" : "Snapping off"}
           onClick={playback.toggleSnapping}
         >
           <Magnet />
@@ -442,6 +455,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         duration={duration}
                         ppf={ppf}
                         thumbIds={thumbIds}
+                        beats={item.media ? beatMap.get(item.media) : undefined}
                         className={`${item.id === selected ? "selected" : ""} ${dragged && drag.mode === "move" ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
                         data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
                         edges={editable}
@@ -460,6 +474,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
               );
             })}
             {drag?.snapAt !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={drag.snapAt} style={{ left: drag.snapAt * ppf }} />}
+            {!drag && scrubSnap !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={scrubSnap} style={{ left: scrubSnap * ppf }} />}
             {drag && (
               <div className={`drag-tip ${drag.refused ? "refused" : ""}`} data-testid="drag-tip" data-refused={drag.refused ? "true" : undefined} style={{ left: drag.tipAt * ppf }}>
                 {drag.tip}
@@ -486,6 +501,7 @@ function ItemBox({
   duration,
   ppf,
   thumbIds,
+  beats,
   className,
   data,
   edges,
@@ -497,6 +513,8 @@ function ItemBox({
   duration: number;
   ppf: number;
   thumbIds: ReadonlySet<string>;
+  /** The item's media's beats (seconds), when cached (D70). */
+  beats?: ReadonlyArray<number> | undefined;
   className: string;
   data: Readonly<Record<string, string | number>>;
   edges: boolean;
@@ -510,6 +528,8 @@ function ItemBox({
   const px = Math.max(4, duration * ppf - 2);
   const fadeIn = sound ? Math.min(px, (item.fadeIn ?? 0) * ppf) : 0;
   const fadeOut = sound ? Math.min(px, (item.fadeOut ?? 0) * ppf) : 0;
+  // Beats as ticks along the top and bottom edges, unless too close together at this zoom.
+  const ticks = sound && beats ? visibleBeats(project, item, beats, ppf) : [];
   return (
     <div
       className={`clip ${kind} ${className}`}
@@ -522,6 +542,11 @@ function ItemBox({
       {poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />}
       {item.type === "component" && item.component === SOLID && <div className="strip solid-fill" data-testid="solid-fill" style={{ background: solidBackground(item, project) }} />}
       {sound && <ItemWaveform item={item} media={sound} fps={project.canvas.fps} width={px} compact={item.type !== "audio"} />}
+      {ticks.length > 0 && (
+        <svg className="beat-ticks" data-testid="beat-ticks" data-media={sound!.id} data-count={ticks.length} data-first={Math.round(start + ticks[0]!)} viewBox={`0 0 ${px} 100`} preserveAspectRatio="none">
+          <path d={ticks.map((f) => `M${(f * ppf).toFixed(1)} 0V22M${(f * ppf).toFixed(1)} 78V100`).join("")} />
+        </svg>
+      )}
       {sound && (fadeIn > 0 || fadeOut > 0) && (
         // The fades as ramps: the shaded corner is what the fade takes away.
         <svg className="fade-shape" data-testid="fade-shape" viewBox={`0 0 ${px} 100`} preserveAspectRatio="none">

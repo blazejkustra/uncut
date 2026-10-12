@@ -627,9 +627,15 @@ export const actions = {
     const result = await call((c) => c["analysis.start"]({ mediaId, analyzers: ["transcript"] }));
     if (!result.ok) set({ analysisError: plainError(result.error) });
   },
+  /** Find the beats of a media item (D70: the inspector's Find beats): the analysis job. */
+  async analyzeBeats(mediaId: string) {
+    set({ analysisError: undefined });
+    const result = await call((c) => c["analysis.start"]({ mediaId, analyzers: ["beats"] }));
+    if (!result.ok) set({ analysisError: plainError(result.error) });
+  },
   /** A cached analysis result (no job): undefined when the call failed, null when there's none yet. */
-  async analysisCached(mediaId: string, analyzer: "loudness" | "transcript"): Promise<unknown> {
-    const result = await call((c) => c["analysis.cached"]({ mediaId, analyzer }));
+  async analysisCached(mediaId: string, analyzer: "loudness" | "transcript" | "beats", omit?: ReadonlyArray<string>): Promise<unknown> {
+    const result = await call((c) => c["analysis.cached"]({ mediaId, analyzer, ...(omit ? { omit } : {}) }));
     return result.ok ? result.value.result : undefined;
   },
   dismissAnalysisError: () => set({ analysisError: undefined }),
