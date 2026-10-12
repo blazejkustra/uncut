@@ -11,6 +11,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { Agent } from "./agent.ts";
 import { ServerConfig } from "./config.ts";
+import { Exporter } from "./exporter.ts";
 import { MediaLibrary } from "./media.ts";
 import { MediaCore } from "./mediaCore.ts";
 import { Projects } from "./projects.ts";
@@ -34,10 +35,11 @@ interface Services {
   readonly settings: typeof Settings.Service;
   readonly library: typeof MediaLibrary.Service;
   readonly agent: typeof Agent.Service;
+  readonly exporter: typeof Exporter.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -66,6 +68,9 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.agentSend]: (input) => agent.send(input),
     [RPC_METHODS.agentCancel]: () => agent.cancel,
     [RPC_METHODS.agentUndoTurn]: ({ turnId }) => agent.undoTurn(turnId),
+    [RPC_METHODS.exportStart]: (input) => exporter.start(input),
+    [RPC_METHODS.exportJobs]: () => exporter.jobs,
+    [RPC_METHODS.exportCancel]: ({ jobId }) => exporter.cancel(jobId),
   });
 
 export const layer = Layer.unwrap(
@@ -78,7 +83,8 @@ export const layer = Layer.unwrap(
     const settings = yield* Settings;
     const library = yield* MediaLibrary;
     const agent = yield* Agent;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent }).pipe(
+    const exporter = yield* Exporter;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

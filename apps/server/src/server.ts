@@ -10,6 +10,7 @@ import { HttpRouter, HttpServer } from "effect/http";
 import * as Agent from "./agent.ts";
 import * as AgentBridge from "./agentBridge.ts";
 import * as Config from "./config.ts";
+import * as Exporter from "./exporter.ts";
 import * as Format from "./format.ts";
 import * as Media from "./media.ts";
 import * as MediaFiles from "./mediaFiles.ts";
@@ -62,6 +63,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     Layer.provide(Media.layer),
     Layer.provide(Agent.layer),
+    Layer.provide(Exporter.layer),
     Layer.provideMerge(MediaCore.layer),
     Layer.provide(Setup.layer),
     Layer.provide(Settings.layer),

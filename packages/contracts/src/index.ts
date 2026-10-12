@@ -29,6 +29,9 @@ export const RPC_METHODS = {
   agentSend: "agent.send",
   agentCancel: "agent.cancel",
   agentUndoTurn: "agent.undoTurn",
+  exportStart: "export.start",
+  exportJobs: "export.jobs",
+  exportCancel: "export.cancel",
 } as const;
 
 // ---- server ----
@@ -222,6 +225,46 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String,
 }) {}
 
+// ---- export (D34, D55) ----
+
+/** Draft = 720p, fast; Standard = 1080p; High = the canvas size at a high bitrate. */
+export const ExportQuality = Schema.Literals(["draft", "standard", "high"]);
+export type ExportQuality = typeof ExportQuality.Type;
+/** off = the mix as it is; normal = −14 LUFS (YouTube, Instagram, TikTok); quiet = −16 LUFS (podcasts, Apple). */
+export const ExportLoudness = Schema.Literals(["off", "normal", "quiet"]);
+export type ExportLoudness = typeof ExportLoudness.Type;
+
+/**
+ * An export runs as a job on the server, like an import: queued → preparing (text drawn, loudness
+ * measured) → rendering (progress 0–1 with an ETA) → done, failed or cancelled. It isn't tied to the
+ * request that started it; exports run one at a time.
+ */
+export const ExportJob = Schema.Struct({
+  id: Schema.String,
+  projectDir: Schema.String,
+  name: Schema.String,
+  output: Schema.String,
+  quality: ExportQuality,
+  loudness: ExportLoudness,
+  phase: Schema.Literals(["queued", "preparing", "rendering", "done", "failed", "cancelled"]),
+  progress: Schema.Number,
+  etaSeconds: Schema.optional(Schema.Number),
+  width: Schema.Number,
+  height: Schema.Number,
+  fps: Schema.Number,
+  seconds: Schema.Number,
+  startedAt: Schema.String,
+  finishedAt: Schema.optional(Schema.String),
+  elapsedSeconds: Schema.optional(Schema.Number),
+  error: Schema.optional(Schema.String),
+});
+export type ExportJob = typeof ExportJob.Type;
+
+export class ExportError extends Schema.TaggedError<ExportError>()("ExportError", {
+  reason: Schema.Literals(["no-project", "no-ffmpeg", "exists", "invalid-path", "empty", "missing-media", "source-media", "busy", "unknown-job"]),
+  message: Schema.String,
+}) {}
+
 const Empty = Schema.Struct({});
 
 const ServerHelloRpc = Rpc.make(RPC_METHODS.serverHello, {
@@ -320,7 +363,22 @@ const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
   error: Schema.Union([AgentError, EditRefused, ProjectError]),
 });
 
+// Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
+// the job id at once. An existing file is replaced only with `overwrite`.
+const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
+  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, overwrite: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ jobId: Schema.String }),
+  error: ExportError,
+});
+// Recent export jobs, now and on every change.
+const ExportJobsRpc = Rpc.make(RPC_METHODS.exportJobs, { payload: Empty, success: Schema.Array(ExportJob), stream: true });
+// Stops a queued or running export; its temp files and partial output are removed.
+const ExportCancelRpc = Rpc.make(RPC_METHODS.exportCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
+
 export const WsRpcGroup = RpcGroup.make(
+  ExportStartRpc,
+  ExportJobsRpc,
+  ExportCancelRpc,
   AgentSubscribeRpc,
   AgentSendRpc,
   AgentCancelRpc,

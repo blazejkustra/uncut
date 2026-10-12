@@ -42,6 +42,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         item("Open…", "CmdOrCtrl+O", { type: "open-project" }),
         { label: "Open Recent", submenu: recent },
         { type: "separator" },
+        { ...item("Export…", "CmdOrCtrl+E", { type: "export" }), enabled: state.projectOpen },
+        { type: "separator" },
         // ⌘W closes the project when one is open, otherwise the window (and with it the app).
         state.projectOpen ? item("Close Project", "CmdOrCtrl+W", { type: "close-project" }) : { role: "close" },
       ],

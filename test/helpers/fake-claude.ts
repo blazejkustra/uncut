@@ -9,7 +9,8 @@
 //   { text, split? } say something (split: cut the line inside a multi-byte character)
 //   { sleep: ms }   wait (so a test can cancel mid-turn)
 //   { fail: msg }   end the turn with an error result
-// Every run appends { prompt, resume, env (variable names only), pid, mcpPid, mcpToken, ... } to $FAKE_PROMPT_LOG.
+// Every run appends { prompt, resume, env (variable names only), pid, mcpPid, mcpToken, ... } to $FAKE_PROMPT_LOG,
+// and, with $FAKE_RESULT_LOG, every tool result ({ tool, result }) to that file.
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -102,6 +103,7 @@ for (const step of plan) {
   const useId = `toolu_${steps}`;
   out({ type: "assistant", message: { content: [{ type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: args }] } });
   const r = (await rpc("tools/call", { name: step.tool, arguments: args })).result as { isError?: boolean; content: Array<{ type: string; text: string }> };
+  if (process.env.FAKE_RESULT_LOG) appendFileSync(process.env.FAKE_RESULT_LOG, `${JSON.stringify({ tool: step.tool, result: r })}\n`);
   if (step.tool === "project_read" && !r.isError) rev = JSON.parse(r.content[0]!.text).revision;
   out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: useId, is_error: !!r.isError, content: r.content }] } });
 }
