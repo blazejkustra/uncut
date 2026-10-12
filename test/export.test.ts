@@ -19,7 +19,8 @@ import { dirname, join, resolve } from "node:path";
 import { audibleAt, layout, textHtml, visualsAt } from "../packages/core/src/index.ts";
 import type { Project } from "../packages/core/src/types.ts";
 import type { Visual } from "../packages/core/src/timeline.ts";
-import { AUDIO_BLOCK, gainAt, gainExpr, graphFileArgs, outputSize, planExport, rampsAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
+import { AUDIO_BLOCK, gainAt, gainExpr, graphFileArgs, outputSize, planExport, rampsAt, wipeAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
+import { close as closeColour, COLOUR_CHECKS, expectedColour, makeTransitionMedia, rampWipeProject, transitionProject, type Rgb } from "./helpers/transition-fixture.ts";
 import { rasterizerCommand } from "../apps/server/src/rasterizer.ts";
 import { sweepStaleTemp } from "../apps/server/src/exporter.ts";
 import { demoProject, FOOTAGE, skipDemo } from "./helpers/demo.ts";
@@ -88,9 +89,30 @@ const drawn = (project: Project, v: Visual) => {
   return (v.item.type === "clip" && media !== undefined && media.kind !== "audio") || (v.item.type === "component" && v.item.component === "component.solid") || (v.item.type === "text" && typeof v.item.text === "string");
 };
 
+/** The fixture's main track with every drawn transition (D73) and odd lengths: a dip into a clip with a fade, a wipe into a background. */
+function transitionsProject(): Project {
+  const p = exportProject("/nowhere");
+  const tracks = p.tracks.map((t) =>
+    t.id === "main"
+      ? {
+          ...t,
+          items: [
+            { id: "a1", type: "clip" as const, media: "m-a", in: 0, duration: 60, fadeOut: 20, animation: { out: { module: "move.fade", duration: 10 } } },
+            { id: "b", type: "clip" as const, media: "m-b", in: 0, duration: 50, fadeIn: 10, transitionIn: { module: "transition.dip-to-black", duration: 15 } },
+            { id: "a2", type: "clip" as const, media: "m-a", in: 120, duration: 40, transitionIn: { module: "transition.wipe", duration: 11 } },
+            { id: "card", type: "component" as const, component: "component.solid", duration: 40, props: { color: "#123" }, transitionIn: { module: "transition.wipe", duration: 8 } },
+            { id: "a3", type: "clip" as const, media: "m-a", in: 200, duration: 50, transitionIn: { module: "transition.crossfade", duration: 7 } },
+          ],
+        }
+      : t,
+  );
+  return { ...p, tracks };
+}
+
 for (const [name, project] of [
   ["fixture", exportProject("/nowhere")],
   ["tricky", trickyProject()],
+  ["transitions", transitionsProject()],
 ] as const) {
   test(`export plan (${name}): layers, opacity, source time and motion are visualsAt's, in its order`, () => {
     const plan = planExport(project, { mediaPath: (m) => m.path, width: 1920, height: 1080 });
@@ -108,6 +130,7 @@ for (const [name, project] of [
       for (const [i, l] of layers.entries()) {
         const v = seen[i]!;
         assert.ok(Math.abs(rampsAt(l.ramps, f) - v.opacity) < 1e-9, `${l.item.id} at ${f}: opacity ${rampsAt(l.ramps, f)} vs ${v.opacity}`);
+        assert.ok(Math.abs(wipeAt(l.wipe, f) - (v.wipe ?? 1)) < 1e-9, `${l.item.id} at ${f}: wipe ${wipeAt(l.wipe, f)} vs ${v.wipe}`);
         if (l.kind === "video") assert.ok(Math.abs(l.source + ((f - l.f0) * l.speed) / FPS - v.source) < 1e-9, `${l.item.id} at ${f}: source time`);
         if (l.kind === "raster" && l.item.type === "text") assert.equal(l.states[l.frames[f - l.f0]!], textHtml(l.item, project, { motion: v.motion }), `${l.item.id} at ${f}: look`);
       }
@@ -313,6 +336,13 @@ test("export: the fixture renders at the canvas size and fps with sound at core'
   assert.deepEqual(children(), []);
 });
 
+/** The colour of a video's frame n at x (a fraction of the width), mid-height, averaged over 8×8 pixels. */
+const pixelOf = (file: string, n: number, x: number, width = 640, height = 360): Rgb => {
+  const cx = Math.max(0, Math.min(width - 8, Math.round(x * width) - 4));
+  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n}),crop=8:8:${cx}:${height / 2 - 4},scale=1:1:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+  return [raw[0]!, raw[1]!, raw[2]!];
+};
+
 test("export: an existing file is replaced only when asked; loudness lands on its target; draft is 720p", { skip: skipServer, timeout: 120000 }, async () => {
   const output = join(root, "out", "Fixture.mp4");
   assert.ok(existsSync(output));
@@ -516,4 +546,59 @@ test("export: the DJI 4K clip exports at 4K and matches the source frame", { ski
   assert.ok(scores[1]! > 0.95, `SSIM ${scores}`);
   assert.ok(scores[1]! >= Math.max(scores[0]!, scores[2]!), "the frame on screen matches best");
   rmSync(output, { force: true });
+});
+
+test("export: crossfade, dip to black and wipe between solid colours blend as core says (D73)", { skip: skipServer, timeout: 120000 }, async () => {
+  const media = join(root, "solids");
+  makeTransitionMedia(media);
+  const project = transitionProject(media);
+  await open("Transitions", project);
+  const output = join(root, "out", "Transitions.mp4");
+  const { jobId } = await client.ok("export.start", { output, quality: "standard", loudness: "off" });
+  const done = await finished(jobId);
+  assert.equal(done.phase, "done", done.error);
+  const v = probe(output).streams.find((s) => s.codec_type === "video")!;
+  assert.equal(v.width, 640);
+  assert.equal(Number(v.nb_frames), 240);
+  for (const [f, x, what] of COLOUR_CHECKS) {
+    const got = pixelOf(output, f, x);
+    const want = expectedColour(project, f, x);
+    console.log(`  frame ${f} at x ${x} (${what}): export ${got.join(",")}, core ${want.join(",")}`);
+    assert.ok(closeColour(got, want), `frame ${f} at ${x} (${what}): ${got} vs ${want}`);
+  }
+  // The blends themselves, not just agreement: mid-crossfade is half red, half blue; the dip's cut is black.
+  assert.deepEqual(expectedColour(project, 60, 0.5), [128, 0, 128]);
+  assert.deepEqual(expectedColour(project, 120, 0.5), [0, 0, 0]);
+  assert.deepEqual(expectedColour(project, 115, 0.5), [0, 0, 128]);
+  assert.deepEqual(expectedColour(project, 125, 0.5), [128, 0, 0]);
+  assert.deepEqual(expectedColour(project, 180, 0.25), [0, 0, 255]);
+  assert.deepEqual(expectedColour(project, 180, 0.75), [255, 0, 0]);
+});
+
+test("export: a wipe keeps the incoming picture in place, up to its edge, and crops only over the wipe (D73)", { skip: skipServer, timeout: 120000 }, async () => {
+  const media = join(root, "solids");
+  if (!existsSync(join(media, "Ramp.mp4"))) makeTransitionMedia(media);
+  const project = rampWipeProject(media);
+  // The plan: the wiped clip is two layers, the cropped one only over the wipe's frames.
+  const plan = planExport(project, { mediaPath: (m) => m.path, width: 640, height: 360 });
+  if ("problem" in plan) throw new Error(plan.problem);
+  const ramp = plan.visuals.filter((l) => l.item.id === "ramp");
+  assert.deepEqual(ramp.map((l) => [l.f0, l.f1, !!l.wipe]), [[50, 70, true], [70, 120, false]]);
+  await open("Ramp wipe", project);
+  const output = join(root, "out", "Ramp wipe.mp4");
+  const { jobId } = await client.ok("export.start", { output, quality: "standard", loudness: "off" });
+  const done = await finished(jobId);
+  assert.equal(done.phase, "done", done.error);
+  // Mid-wipe (frame 60: the left 320 px shown): the ramp at x is what it is at x once the wipe is
+  // over (frame 80), right up to the edge; past the edge it's still red.
+  for (const x of [0.05, 0.25, 0.4, 0.47]) {
+    const mid = pixelOf(output, 60, x);
+    const after = pixelOf(output, 80, x);
+    console.log(`  ramp at x ${x}: mid-wipe ${mid.join(",")}, after ${after.join(",")}`);
+    assert.ok(closeColour(mid, after, 4), `x ${x}: ${mid} vs ${after}`);
+  }
+  assert.ok(closeColour(pixelOf(output, 60, 0.53), [255, 0, 0]), "past the edge: the outgoing clip");
+  // A quarter in (frame 55): shown up to 160 px only.
+  assert.ok(closeColour(pixelOf(output, 55, 0.2), pixelOf(output, 80, 0.2), 4));
+  assert.ok(closeColour(pixelOf(output, 55, 0.3), [255, 0, 0]));
 });

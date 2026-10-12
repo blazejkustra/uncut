@@ -1,8 +1,10 @@
 // Timeline maths shared by the preview, export and the agent's frame renders.
-// Frame f means the moment f / fps. A transition is centred on its cut: the outgoing clip
-// runs half the transition past its end, the incoming one starts half before its start
-// and fades in on top.
-import type { Motion } from "./render.ts";
+// Frame f means the moment f / fps. A main-track transition sits on its cut (transitions.ts says
+// how each draws): an overlapping one (crossfade, wipe) has the outgoing clip run half the
+// transition past its end and the incoming one start half before its start, on top; a dip to
+// black keeps the clips apart and puts a black layer over the main track across the cut.
+import { SOLID, type Motion } from "./render.ts";
+import { overlaps, WIPE } from "./transitions.ts";
 import type { Canvas, Item, Project, Track } from "./types.ts";
 
 export interface Visual {
@@ -11,9 +13,63 @@ export interface Visual {
   readonly opacity: number;
   /** Offset and wipe from the item's in/out animation (opacity is already in `opacity`). */
   readonly motion: Motion;
+  /** A wipe transition into it: the share of its width shown, from the left edge (0–1). Absent when whole. */
+  readonly wipe?: number;
   /** Source time in seconds (0 for items without media). */
   readonly source: number;
 }
+
+/**
+ * The frames an item is drawn over and how its transitions meet it. Off the main track it's just
+ * its own frames. `half` and `nextHalf` are the overlaps at its cuts (an overlapping transition
+ * into it, and out of it into the next item); `skipIn` / `skipOut` say a transition blends that
+ * side, so the item's own in/out animation doesn't apply there.
+ */
+export interface Span {
+  readonly from: number;
+  readonly to: number;
+  readonly half: number;
+  readonly nextHalf: number;
+  readonly skipIn: boolean;
+  readonly skipOut: boolean;
+  /** The transition into it is a wipe (it is revealed from the left over [from, from + 2·half)). */
+  readonly wipe: boolean;
+}
+
+export function spanOf(track: Track, index: number, start: number): Span {
+  const item = track.items[index]!;
+  const main = track.role === "main";
+  const into = main ? item.transitionIn : undefined;
+  const out = main ? track.items[index + 1]?.transitionIn : undefined;
+  const half = into && overlaps(into.module) ? into.duration / 2 : 0;
+  const nextHalf = out && overlaps(out.module) ? out.duration / 2 : 0;
+  return { from: start - half, to: start + item.duration + nextHalf, half, nextHalf, skipIn: !!into, skipOut: !!out, wipe: half > 0 && into!.module === WIPE };
+}
+
+/** The id of the black layer a dip to black into `itemId` draws (not a valid item id, so it can't collide). */
+export const dipId = (itemId: string) => `dip:${itemId}`;
+
+/** A dip to black's black layer over the main track: [cut − half, cut + half), opaque on the cut. */
+export interface Dip {
+  readonly item: Item;
+  readonly cut: number;
+  readonly half: number;
+}
+
+/** The black layers of the dips to black on a main track, in cut order. */
+export function dipsOf(track: Track, starts: ReadonlyMap<string, number>): Array<Dip> {
+  if (track.role !== "main") return [];
+  const out: Array<Dip> = [];
+  track.items.forEach((item, index) => {
+    const tr = item.transitionIn;
+    if (index === 0 || !tr || overlaps(tr.module) || !(tr.duration > 0)) return;
+    out.push({ item: { id: dipId(item.id), type: "component", component: SOLID, duration: tr.duration, props: { color: "#000000" } }, cut: starts.get(item.id)!, half: tr.duration / 2 });
+  });
+  return out;
+}
+
+/** A dip's opacity at frame f: up from 0 at cut − half to 1 on the cut, back to 0 at cut + half. */
+export const dipOpacity = (dip: Pick<Dip, "cut" | "half">, f: number) => Math.min(1, Math.max(0, f < dip.cut ? (f - (dip.cut - dip.half)) / dip.half : 1 - (f - dip.cut) / dip.half));
 
 /** Start frame of every item and the project length. */
 export function layout(project: Pick<Project, "tracks">): { starts: Map<string, number>; duration: number } {
@@ -39,19 +95,22 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas">, starts: R
     if (track.hidden || track.kind === "audio") continue;
     track.items.forEach((item, i) => {
       const start = starts.get(item.id)!;
-      const half = item.transitionIn ? item.transitionIn.duration / 2 : 0;
-      const next = track.items[i + 1];
-      const nextHalf = track.role === "main" && next?.transitionIn ? next.transitionIn.duration / 2 : 0;
-      const from = start - half;
-      const to = start + item.duration + nextHalf;
-      if (f < from || f >= to) return;
-      let opacity = 1;
-      if (half && f < start + half) opacity = Math.min(1, Math.max(0, (f - from) / (2 * half)));
+      const span = spanOf(track, i, start);
+      if (f < span.from || f >= span.to) return;
+      const { half } = span;
+      // An overlapping transition in: a crossfade ramps the opacity, a wipe reveals from the left.
+      const p = half ? Math.min(1, Math.max(0, (f - span.from) / (2 * half))) : 1;
+      let opacity = span.wipe ? 1 : p;
       // A main-track transition owns the blend at its cut: the in/out animation on that side is skipped.
-      const anim = animationAt(item, f - start, project.canvas, { skipIn: half > 0, skipOut: nextHalf > 0 });
+      const anim = animationAt(item, f - start, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut });
       opacity *= anim.opacity;
-      out.push({ item, track, opacity, motion: anim.motion, source: item.media ? ((item.in ?? 0) + (f - start) * (item.speed ?? 1)) / fps : 0 });
+      const source = item.media ? ((item.in ?? 0) + (f - start) * (item.speed ?? 1)) / fps : 0;
+      out.push({ item, track, opacity, motion: anim.motion, source, ...(span.wipe && p < 1 ? { wipe: p } : {}) });
     });
+    // Dips to black: a black layer over the main track's clips, under the tracks above it.
+    for (const dip of dipsOf(track, starts)) {
+      if (f >= dip.cut - dip.half && f < dip.cut + dip.half) out.push({ item: dip.item, track, opacity: dipOpacity(dip, f), motion: {}, source: 0 });
+    }
   }
   return out;
 }

@@ -562,12 +562,15 @@ async function renderFramesWith(bin: string, project: Project, mediaPath: (m: Me
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }
         if (!input) continue;
+        // A wipe transition shows the left X pixels (even, as the export's crop does).
+        const shown = v.wipe === undefined ? W : 2 * Math.floor((W * v.wipe) / 2);
+        if (shown <= 0) continue;
         k++;
         inputs.push(...input);
         const fade = v.item.type === "clip" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
         const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
         const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
-        graph.push(`[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}[l${k}]`);
+        graph.push(`[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
         graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
         base = `b${k}`;
       }

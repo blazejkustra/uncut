@@ -60,7 +60,7 @@
         },
         {
           "type": "object",
-          "description": "Set or clear the transition into a main-track item.",
+          "description": "Set or clear (null) the transition into a main-track item (not the first). Drawn modules: transition.crossfade (2–60 frames), transition.dip-to-black (4–90 frames, needs no media handles), transition.wipe (4–30 frames, revealed from the left). Both items must be at least twice the duration; a crossfade or wipe needs ceil(duration/2) frames of video before the incoming clip's in-point and after the outgoing clip's out-point. Other transition modules draw as a crossfade.",
           "required": ["op", "item", "transition"],
           "additionalProperties": false,
           "properties": {
@@ -69,7 +69,7 @@
             "transition": {
               "oneOf": [
                 { "type": "null" },
-                { "type": "object", "required": ["module", "duration"], "properties": { "module": { "type": "string" }, "duration": { "type": "integer", "minimum": 1 } } }
+                { "type": "object", "required": ["module", "duration"], "properties": { "module": { "type": "string", "description": "A transition module id, e.g. transition.crossfade, transition.dip-to-black or transition.wipe." }, "duration": { "type": "integer", "minimum": 1, "description": "Length in frames, centred on the cut." } } }
               ]
             }
           }

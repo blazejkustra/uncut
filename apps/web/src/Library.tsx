@@ -2,7 +2,8 @@
 // the Text tab's presets and the Elements tab's backgrounds. Which one shows is the rail's choice.
 import type { ImportJob } from "@uncut/contracts";
 import { solidBackground } from "@uncut/core/render";
-import { AudioLines, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
+import { defaultFrames, TRANSITIONS, type TransitionInfo } from "@uncut/core/transitions";
+import { AudioLines, Blend, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
 import React, { useState, type ReactNode } from "react";
 
 import { bridge } from "./bridge.ts";
@@ -10,13 +11,104 @@ import { timecode } from "./format.ts";
 import { TEXT_PRESETS } from "./project.ts";
 import { BACKGROUNDS } from "./text.ts";
 import { actions, activeAnalyses, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
-import { MEDIA_DRAG_TYPE } from "./Timeline.tsx";
+import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./Timeline.tsx";
+import { secondsLabel } from "./edit.ts";
+import { usePlayback } from "./playback.ts";
 import { analysisText } from "./analysisText.ts";
 
-export type LibraryTab = "media" | "text" | "elements" | "audio";
+export type LibraryTab = "media" | "text" | "elements" | "audio" | "transitions";
 
 export function Library({ project, tab }: { project: Project; tab: LibraryTab }) {
-  return tab === "text" ? <TextLibrary /> : tab === "elements" ? <ElementsLibrary project={project} /> : tab === "audio" ? <AudioLibrary project={project} /> : <MediaLibrary project={project} />;
+  return tab === "text" ? (
+    <TextLibrary />
+  ) : tab === "elements" ? (
+    <ElementsLibrary project={project} />
+  ) : tab === "audio" ? (
+    <AudioLibrary project={project} />
+  ) : tab === "transitions" ? (
+    <TransitionsLibrary project={project} />
+  ) : (
+    <MediaLibrary project={project} />
+  );
+}
+
+/** The CSS look of a transition's tile preview (styles.css .tr-thumb.<look>). */
+const TILE_LOOK: Readonly<Record<string, string>> = { "transition.crossfade": "crossfade", "transition.dip-to-black": "dip", "transition.wipe": "wipe" };
+
+/**
+ * The Transitions tab (D73): the transitions the preview and export draw (core TRANSITIONS), each a
+ * tile with a looping preview (still with reduced motion), its name and default length. Drag one
+ * onto a cut between two main-track clips; or select a cut and click the tile; or + puts it on the
+ * cut nearest the playhead.
+ */
+function TransitionsLibrary({ project }: { project: Project }) {
+  const { connection } = useApp();
+  const online = connection === "connected";
+  const cut = usePlayback((s) => s.cut);
+  const fps = project.canvas.fps;
+  const apply = (t: TransitionInfo, e: React.MouseEvent, nearest: boolean) => {
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).blur();
+    if (online) void actions.applyTransition(t.id, { nearest });
+  };
+  return (
+    <aside className="library" data-testid="transitions-library">
+      <div className="lib-head">Transitions</div>
+      <div className="lib-section">
+        <div className="lib-label">{cut ? "Click one to put it on the selected cut" : "Drag one onto a cut between two clips"}</div>
+        <div className="grid2">
+          {TRANSITIONS.map((t) => (
+            <div
+              key={t.id}
+              className="tile tr-tile"
+              data-testid="transition-tile"
+              data-module={t.id}
+              role="button"
+              tabIndex={0}
+              aria-disabled={!online}
+              draggable={online}
+              title={`${t.name}: ${t.description}`}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(TRANSITION_DRAG_TYPE, t.id);
+                e.dataTransfer.effectAllowed = "copy";
+                setDraggedTransition(t.id);
+              }}
+              onDragEnd={() => setDraggedTransition(undefined)}
+              onClick={(e) => apply(t, e, false)}
+              onKeyDown={(e) => {
+                // Keys on the + belong to it (its click), not to the tile as well.
+                if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                e.preventDefault();
+                if (online) void actions.applyTransition(t.id);
+              }}
+            >
+              <div className={`thumb tr-thumb ${TILE_LOOK[t.id] ?? "crossfade"}`}>
+                {/* Two shots, A then B, and (for the dip) the black between them. */}
+                <span className="tr-a" aria-hidden="true">
+                  <i />
+                </span>
+                <span className="tr-b" aria-hidden="true">
+                  <i />
+                </span>
+                <span className="tr-k" aria-hidden="true" />
+                <button className="tile-add" data-testid="transition-add" disabled={!online} title={`Put a ${t.name.toLowerCase()} on the cut nearest the playhead`} onClick={(e) => apply(t, e, true)}>
+                  <Plus />
+                </button>
+              </div>
+              <div className="tile-name">{t.name}</div>
+              <div className="tile-sub" data-testid="transition-default">
+                {secondsLabel(defaultFrames(t, fps), fps)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="lib-hint">
+        <Blend />
+        A transition sits on the cut between two clips on the main track. Click its marker on the timeline to change its length or type, ⌫ removes it. A crossfade or wipe needs a little footage past the cut on both clips; a dip to black doesn't.
+      </div>
+    </aside>
+  );
 }
 
 /**
