@@ -9,6 +9,7 @@ import { HttpRouter, HttpServer } from "effect/http";
 
 import * as Agent from "./agent.ts";
 import * as AgentBridge from "./agentBridge.ts";
+import * as Analysis from "./analysis.ts";
 import * as Config from "./config.ts";
 import * as Exporter from "./exporter.ts";
 import * as Format from "./format.ts";
@@ -63,6 +64,8 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),
+    // media_analyze and analysis.* (D66); analysis waits for exports.
+    Layer.provide(Analysis.layer),
     Layer.provide(Media.layer),
     Layer.provide(Exporter.layer),
     Layer.provideMerge(MediaCore.layer),

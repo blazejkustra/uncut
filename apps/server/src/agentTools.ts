@@ -9,9 +9,10 @@ import editOpsSchema from "../../../spec/schema/edit-ops.schema.json" with { typ
 import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
 
 // The tools that work today. render_frames came with the export rasteriser (phase 4 chunk 6,
-// D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze,
-// transcript_read and generate_media come with their features. See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_import", "contact_sheet", "ui_show"] as const;
+// D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze with
+// chunk 2 (D66, loudness and silences for now); transcript_read and generate_media come with
+// their features. See DECISIONS.md D51.
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_import", "contact_sheet", "ui_show"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -68,6 +69,11 @@ export function stepLabel(tool: string, input: unknown): string {
       const range = args.range && typeof args.range === "object" ? (args.range as { start?: unknown; end?: unknown }) : undefined;
       const span = range && typeof range.start === "number" && typeof range.end === "number" ? ` (frames ${range.start}–${range.end})` : "";
       return typeof args.media === "string" ? `Looked over ${args.media}${span}` : `Looked over the edit${span}`;
+    }
+    case "media_analyze": {
+      const names = Array.isArray(args.analyzers) ? args.analyzers.filter((a): a is string => typeof a === "string") : [];
+      const what = names.length && names.every((n) => n === "silence") ? "Found the silences in" : names.length && names.every((n) => n === "loudness") ? "Measured the loudness of" : "Analysed the sound of";
+      return typeof args.media === "string" ? `${what} ${args.media}` : "Analysed media";
     }
     case "ui_show": {
       const parts: Array<string> = [];
@@ -163,6 +169,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" isn't available yet.
+- media_analyze measures a media file's sound: integrated loudness (LUFS), loudness range, true peak, and the silences (below −40 dB for at least 0.3 s), each with frames you can use as in. Use it to find pauses to cut or to check levels. It waits up to about a minute; if it answers "running", call it again with the same arguments. Results are cached, so asking again is free. Only loudness (with silences) exists so far; shots, motion and transcripts come later.
 - ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements, audio, inspector, agent). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."

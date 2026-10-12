@@ -11,7 +11,7 @@
     },
     {
       "tool": "media_analyze",
-      "input": { "media": "m-lake", "analyses": ["stability", "motion"] },
+      "input": { "media": "m-lake", "analyzers": ["stability", "motion"] },
       "output": {
         "stability": [
           { "start": 0, "end": 600, "value": 0.92, "label": "smooth forward pass" },
@@ -22,7 +22,7 @@
     },
     {
       "tool": "media_analyze",
-      "input": { "media": "m-ridge", "analyses": ["stability", "motion"] },
+      "input": { "media": "m-ridge", "analyzers": ["stability", "motion"] },
       "output": {
         "stability": [
           { "start": 0, "end": 120, "value": 0.2, "label": "take-off jolt" },
@@ -33,7 +33,7 @@
     },
     {
       "tool": "media_analyze",
-      "input": { "media": "m-orbit", "analyses": ["stability", "motion"] },
+      "input": { "media": "m-orbit", "analyzers": ["stability", "motion"] },
       "output": {
         "stability": [
           { "start": 0, "end": 1500, "value": 0.9, "label": "clean orbit" },
