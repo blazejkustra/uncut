@@ -302,3 +302,42 @@ test("a word shorter than a frame at the clip's speed gets its own note, and no 
   assert.match(plan.notes.join(" "), /"b" \(w1\) is too short to cut at the clip's speed/);
   assert.doesNotMatch(plan.notes.join(" "), /already cut/);
 });
+
+test("removing pauses twice changes nothing the second time, even when a silence takes a mistimed word's middle (D72)", () => {
+  // Whisper heard "shakes" at 1.2–1.6 s, but the sound is silent from 1.0 to 1.6 s: the pause after
+  // "picture" follows the silence and takes the middle of "shakes"; "a" and "lot." come right after.
+  const words = [
+    { text: "the", start: 0.2, end: 0.4 },
+    { text: "picture", start: 0.4, end: 1.0 },
+    { text: "shakes", start: 1.2, end: 1.6 },
+    { text: "a", start: 1.6, end: 1.7 },
+    { text: "lot.", start: 1.7, end: 2.2 },
+    { text: "Next", start: 3.4, end: 3.8 },
+    { text: "week.", start: 3.8, end: 4.4 },
+  ];
+  const t: CutTranscript = { words, language: "en", seconds: 6 };
+  const silences = [{ start: 1.0, end: 1.6 }, { start: 2.3, end: 3.4 }, { start: 4.5, end: 6 }];
+  const first = ok(planTextCut(projectWith([clip("clip-1", 0, 180)]), "m-talk", t, { pauses: { min: 0.5 }, silences }));
+  assert.ok(first.framesRemoved > 0);
+  const again = ok(planTextCut(first.project, "m-talk", t, { pauses: { min: 0.5 }, silences }));
+  assert.deepEqual(again.cuts, [], JSON.stringify(again.cuts));
+  assert.equal(again.ops.length, 0);
+});
+
+test("Remove pauses, then cutting a word with pauses: no sliver between the word's cut and the pause's (D72 review)", () => {
+  // "shakes" is timed late: a silence (0.95–1.52 s) takes its middle, another follows it (1.6–2.4 s).
+  const words = [
+    { text: "the", start: 0.2, end: 0.4 },
+    { text: "picture", start: 0.4, end: 1.0 },
+    { text: "shakes", start: 1.2, end: 1.6 },
+    { text: "lot", start: 2.4, end: 2.8 },
+    { text: "end.", start: 2.8, end: 3.2 },
+  ];
+  const t: CutTranscript = { words, language: "en", seconds: 6 };
+  const silences = [{ start: 0.95, end: 1.52 }, { start: 1.6, end: 2.4 }, { start: 3.3, end: 6 }];
+  const first = ok(planTextCut(projectWith([clip("clip-1", 0, 180)]), "m-talk", t, { pauses: { min: 0.5 }, silences }));
+  assert.deepEqual(shape(first.project), [["clip-1", 0, 31], ["clip-2", 43, 7], ["clip-3", 70, 31]]);
+  const second = ok(planTextCut(first.project, "m-talk", t, { remove: [{ from: 1, to: 1 }], pauses: { min: 0.5 }, silences }));
+  assert.deepEqual(shape(second.project), [["clip-1", 0, 14], ["clip-3", 70, 31]]);
+  assert.ok(mainOf(second.project).every((i) => i.duration >= 3));
+});
