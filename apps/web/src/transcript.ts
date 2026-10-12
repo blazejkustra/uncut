@@ -5,7 +5,7 @@
 // survives re-renders and falls away when the words it names are cut. Cutting goes through core
 // planTextCut, the same planner as the agent's transcript_edit, chained clip by clip into ONE
 // project.edit, so one ⌘Z restores it.
-import { editWords, planTextCut, type CutWord, type EditWord } from "@uncut/core/transcript";
+import { editWords, planTextCut, speechWords, type CutWord, type EditWord, type SpeechEnvelope, type SpeechSegment } from "@uncut/core/transcript";
 import { useSyncExternalStore } from "react";
 
 import type { Plan } from "./edit.ts";
@@ -17,6 +17,12 @@ export interface MediaTranscript {
   readonly seconds?: number | undefined;
   /** The loudness analysis's silences (seconds), when cached: pauses take their edges. */
   readonly silences?: ReadonlyArray<{ readonly start: number; readonly end: number }> | undefined;
+  /** Whisper's segments: a sentence's last word ends no earlier than its segment (D74). */
+  readonly segments?: ReadonlyArray<SpeechSegment> | undefined;
+  /** The loudness analysis's speech envelope, when cached: words end where their sound does (D74). */
+  readonly envelope?: SpeechEnvelope | undefined;
+  /** Whether the loudness analysis was cached when this was read (else cutting runs it first). */
+  readonly measured?: boolean;
 }
 
 export type TranscriptEntry =
@@ -76,9 +82,9 @@ export const doneTranscripts = (entries: ReadonlyMap<string, TranscriptEntry>) =
   return out;
 };
 
-/** Every word heard on the main track, in edit order. */
+/** Every word heard on the main track, in edit order: where the planner hears them (speechWords, D74). */
 export const wordsOfEdit = (project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>) =>
-  editWords(project, new Map([...transcripts].map(([id, t]) => [id, t.words])));
+  editWords(project, new Map([...transcripts].map(([id, t]) => [id, speechWords(t.words, { segments: t.segments, silences: t.silences, seconds: t.seconds, envelope: t.envelope })])));
 
 /** The selected words (edit order), or [] when the selection names words that aren't there. */
 export function selectedWords(words: ReadonlyArray<EditWord>, anchor: string | undefined, focus: string | undefined): ReadonlyArray<EditWord> {
@@ -124,7 +130,7 @@ function chain(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTran
   for (const step of steps) {
     const t = transcripts.get(step.media);
     if (!t) continue;
-    const plan = planTextCut(current, step.media, { words: t.words, language: t.language, seconds: t.seconds }, { ...step.request, silences: t.silences });
+    const plan = planTextCut(current, step.media, { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments }, { ...step.request, silences: t.silences, envelope: t.envelope });
     if ("problem" in plan) return plan;
     if (!plan.ops.length) {
       notes.push(...plan.notes);

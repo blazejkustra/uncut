@@ -14,5 +14,5 @@ export { canvasBackground, DEFAULT_THEME, esc, RENDER_CSS, resolveColor, resolve
 export type { Motion, RenderTarget, TextLook } from "./render.ts";
 export { outputSize } from "./export.ts";
 export type { ExportQuality } from "./export.ts";
-export { DEFAULT_PAUSE_MIN_S, editWords, FILLERS, fillersOf, handleFrames, PAUSE_MIN_S, pausesOf, planTextCut } from "./transcript.ts";
-export type { CutTranscript, CutWord, EditWord, Filler, Pause, TextCut, TextCutPlan, TextCutRequest } from "./transcript.ts";
+export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOPE_RATE, FILLERS, fillersOf, handleFrames, HEAD_S, PAUSE_MIN_S, pausesOf, planTextCut, speechEdges, speechWords, TAIL_S, tailFrames } from "./transcript.ts";
+export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./transcript.ts";

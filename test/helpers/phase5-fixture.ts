@@ -170,10 +170,12 @@ export function talkTranscript(fixture: Fixture) {
  * The talk's frames the cut should remove, worked out from the layout by the rules D69 states (not
  * with core's planner): removed words (the fillers and `sentence`) go from the frame they start in
  * to the frame after they end; silences of at least `minPause` seconds go inward (whole frames
- * inside them); `handle` frames stay next to every kept word; the clip's edges go entirely;
+ * inside them); `tail` frames stay after every kept word and `head` frames before one (D74: 0.15 s
+ * and 0.06 s at 30 fps); with `measured` (the loudness analysis's speech envelope, as the exit
+ * test has it) those margins don't reach into removed words' sound; the clip's edges go entirely;
  * touching cuts are one. Returns the cuts as [from, to) frames of the talk.
  */
-export function expectedCuts(fixture: Fixture, { sentence = CUT_SENTENCE, minPause = 0.5, handle = 2, frames }: { sentence?: string; minPause?: number; handle?: number; frames: number }) {
+export function expectedCuts(fixture: Fixture, { sentence = CUT_SENTENCE, minPause = 0.5, head = 2, tail = 5, measured = true, frames }: { sentence?: string; minPause?: number; head?: number; tail?: number; measured?: boolean; frames: number }) {
   const all = fixture.layout;
   const removed = (p: Placed) => p.kind === "filler" || (p.kind === "sentence" && p.text === sentence);
   const spokenBefore = (i: number) => all.slice(0, i).findLast((p) => p.kind !== "silence");
@@ -186,8 +188,8 @@ export function expectedCuts(fixture: Fixture, { sentence = CUT_SENTENCE, minPau
       if (p.end - p.start < minPause) continue;
       const prev = spokenBefore(i);
       const next = spokenAfter(i);
-      const from = prev ? Math.ceil(p.start * FPS - 1e-9) + (keptWord(prev) ? handle : 0) : 0;
-      const to = next ? Math.floor(p.end * FPS + 1e-9) - (keptWord(next) ? handle : 0) : frames;
+      const from = prev ? Math.ceil(p.start * FPS - 1e-9) + (keptWord(prev) ? tail : 0) : 0;
+      const to = next ? Math.floor(p.end * FPS + 1e-9) - (keptWord(next) ? head : 0) : frames;
       if (to > from) cuts.push([from, to]);
       continue;
     }
@@ -203,8 +205,8 @@ export function expectedCuts(fixture: Fixture, { sentence = CUT_SENTENCE, minPau
     const next = spokenAfter(j);
     let from = Math.floor(p.start * FPS + 1e-9);
     let to = Math.ceil(all[j]!.end * FPS - 1e-9);
-    if (keptWord(prev)) from = Math.max(from, Math.ceil(prev!.end * FPS - 1e-9) + handle);
-    if (keptWord(next)) to = Math.min(to, Math.floor(next!.start * FPS + 1e-9) - handle);
+    if (keptWord(prev)) from = Math.max(from, Math.ceil(prev!.end * FPS - 1e-9) + (measured ? 0 : tail));
+    if (keptWord(next)) to = Math.min(to, Math.floor(next!.start * FPS + 1e-9) - (measured ? 0 : head));
     if (to > from) cuts.push([from, to]);
     i = j;
   }

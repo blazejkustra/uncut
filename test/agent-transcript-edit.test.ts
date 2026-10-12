@@ -11,7 +11,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fingerprint, writeCached } from "../apps/server/src/analysis.ts";
@@ -143,9 +143,13 @@ test("transcript_edit: dryRun changes nothing; applying cuts words and pauses as
 
   const applied = jsonOf(results[1]!);
   assert.equal(applied.applied, true, textOf(results[1]!));
-  assert.deepEqual(applied.removed.map((r: any) => [r.text, r.mediaFrames.start, r.mediaFrames.end, r.pauses ?? 0]), [["(pause)", 0, 13, 1], ["um", 36, 45, 0], ["(pause)", 92, 118, 1], ["(pause)", 152, 180, 1]]);
-  assert.equal(applied.framesRemoved, 13 + 9 + 26 + 28);
-  assert.deepEqual([applied.durationBefore, applied.duration, applied.seconds], [180, 104, 3.47]);
+  assert.deepEqual(applied.removed.map((r: any) => [r.text, r.mediaFrames.start, r.mediaFrames.end, r.pauses ?? 0]), [["(pause)", 0, 13, 1], ["um", 36, 45, 0], ["(pause)", 95, 118, 1], ["(pause)", 155, 180, 1]]);
+  // 5 frames stay after a kept word, 2 before one (D74).
+  assert.equal(applied.framesRemoved, 13 + 9 + 23 + 25);
+  assert.deepEqual([applied.durationBefore, applied.duration, applied.seconds], [180, 110, 3.67]);
+  // transcript_edit ran the loudness pass for the silences (D74); the tone has none, so whisper's edges stand.
+  const cached = (readdirSync(join(dir, ".cache", "analysis"), { recursive: true }) as Array<string>).filter((f) => f.endsWith(".json")).map((f) => f.replace(/^[0-9a-f]{32}\//, "")).sort();
+  assert.ok(cached.includes("loudness.json"), JSON.stringify(cached));
   assert.equal(applied.revision, start.revision + 1);
   assert.match(applied.note, /Undo turn reverts it/);
 
@@ -156,10 +160,10 @@ test("transcript_edit: dryRun changes nothing; applying cuts words and pauses as
 
   const after = await client.ok("project.get", {});
   assert.equal(after.revision, start.revision + 1, "one edit");
-  assert.deepEqual(mainOf(after), [["clip-1", "m-talk", 13, 23], ["clip-2", "m-talk", 45, 47], ["clip-3", "m-talk", 118, 34]]);
+  assert.deepEqual(mainOf(after), [["clip-1", "m-talk", 13, 23], ["clip-2", "m-talk", 45, 50], ["clip-3", "m-talk", 118, 37]]);
   assert.equal(turn.edits.length, 1);
-  assert.equal(turn.edits[0].summary, "Cut 1 word and 3 pauses (2.5 s)");
-  assert.deepEqual(turn.edits[0].lines, ["Removed a pause (0.4 s) from clip-1", 'Cut "um" (0.3 s) from clip-1', "Removed a pause (0.9 s) from clip-1", "Removed a pause (0.9 s) from clip-1"]);
+  assert.equal(turn.edits[0].summary, "Cut 1 word and 3 pauses (2.3 s)");
+  assert.deepEqual(turn.edits[0].lines, ["Removed a pause (0.4 s) from clip-1", 'Cut "um" (0.3 s) from clip-1', "Removed a pause (0.8 s) from clip-1", "Removed a pause (0.8 s) from clip-1"]);
 
   const undone = await client.ok("agent.undoTurn", { turnId: turn.id });
   assert.deepEqual(mainOf(undone), [["clip-1", "m-talk", 0, 180]]);

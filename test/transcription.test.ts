@@ -150,7 +150,8 @@ test("pauses: gaps of 0.3 s or more, the edges, aligned to the loudness silences
     { start: 3.5, end: 4, after: 3, edge: "end" },
   ]);
   // The silence (accurate) moves the pause's edges; a gap with no silence under it is not silent;
-  // a short word gap over a long silence becomes a pause.
+  // a short word gap over a long silence becomes a pause. A silence that starts before a word's end
+  // (in its quiet decay) doesn't take the word: the pause starts at the word's end (D74).
   const silences = [
     { start: 0, end: 0.45 },
     { start: 1.7, end: 2.3 },
@@ -159,7 +160,7 @@ test("pauses: gaps of 0.3 s or more, the edges, aligned to the loudness silences
   assert.deepEqual(pausesOf(words, 4, silences), [
     { start: 0, end: 0.45, after: -1, edge: "start", silent: true },
     { start: 1.7, end: 2.3, after: 1, silent: true },
-    { start: 2.95, end: 3.3, after: 2, silent: true },
+    { start: 3.0, end: 3.3, after: 2, silent: true },
     { start: 3.5, end: 4, after: 3, edge: "end", silent: false },
   ]);
 });
@@ -317,7 +318,8 @@ test("transcript_read's answer: words in project frames, text lines with fillers
   const lines = (out.text as string).split("\n");
   assert.deepEqual(lines, [
     "w0 [1–58] Hello world, (pause 0.5 s) this is a test. (pause 0.4 s)",
-    "w6 [68–144] {Um,} the quick (pause 0.5 s) brown fox jumps over (pause 0.3 s) the lazy dog. (pause 0.5 s)",
+    // "the" was heard as a timestamp (4.46–4.46): it gets 0.1 s on each side (D74), so the gap before it is 0.2 s.
+    "w6 [68–144] {Um,} the quick (pause 0.5 s) brown fox jumps over the lazy dog. (pause 0.5 s)",
   ]);
   assert.deepEqual(out.fillers, [{ i: 6, n: 1, text: "Um,", start: 68, end: 71, kind: "hesitation" }]);
   // Pauses inward: from the first frame inside the gap to the frame after it ends.
@@ -352,7 +354,8 @@ test("transcript_read's answer: words in project frames, text lines with fillers
   assert.equal((transcriptOut({ hasAudio: false }, { cached: false, fps: 30, length: 10 }) as Record<string, any>).hasAudio, false);
   assert.match((transcriptOut({ ...result, words: [], segments: [] }, { cached: false, fps: 30, length: 10 }) as Record<string, any>).note, /No speech/);
   const summary = transcriptSummary(result, true) as Record<string, any>;
-  assert.deepEqual([summary.words, summary.segments, summary.fillers, summary.pauses, summary.language], [16, 2, { hesitation: 1, maybe: 0 }, 5, "en"]);
+  // 4 pauses: the 0.3 s one before "the" (a timestamp, given 0.2 s) is gone (D74).
+  assert.deepEqual([summary.words, summary.segments, summary.fillers, summary.pauses, summary.language], [16, 2, { hesitation: 1, maybe: 0 }, 4, "en"]);
   assert.match(summary.opening, /^Hello world, this is a test\. Um,/);
 });
 
