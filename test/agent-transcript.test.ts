@@ -190,7 +190,8 @@ test("the first transcript downloads the model on demand (running meanwhile), th
   assert.equal(out.model, "large-v3-turbo-q5_0");
   assert.equal(out.words, 16);
   assert.equal(out.text.split("\n")[0], "w0 [1–58] Hello world, (pause 0.5 s) this is a test. (pause 0.4 s)");
-  assert.match(out.text.split("\n")[1], /^w6 \[68–144\] \{Um,\} the quick/);
+  // "dog." ends with its sentence's segment (5.24 s, the file is 6 s), as cuts see it (D74).
+  assert.match(out.text.split("\n")[1], /^w6 \[68–158\] \{Um,\} the quick/);
   assert.deepEqual(out.fillers, [{ i: 6, n: 1, text: "Um,", start: 68, end: 71, kind: "hesitation" }]);
   assert.equal(out.pauses[0].silent, undefined, "no loudness analysis yet");
   assert.match(out.note, /Frames are project frames of the media/);

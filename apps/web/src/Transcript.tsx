@@ -6,7 +6,7 @@
 // edit, with the count they'd cut on the button. Media without a transcript can be transcribed
 // here (the Library's analysis job, with its progress); a missing whisper.cpp or speech model
 // points to Setup.
-import { DEFAULT_PAUSE_MIN_S, fillersOf, pausesOf, type EditWord, type Filler, type Pause } from "@uncut/core/transcript";
+import { decodeEnvelope, DEFAULT_PAUSE_MIN_S, fillersOf, pausesOf, type EditWord, type Filler, type Pause } from "@uncut/core/transcript";
 import { Captions, Scissors, Settings, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
@@ -103,22 +103,91 @@ async function sendCut(plan: Plan | { readonly problem: string }) {
   return applied;
 }
 
+/** How long a cut waits for a loudness analysis it started (as the agent's transcript_edit, D74). */
+const LOUDNESS_WAIT_MS = 20_000;
+
+/**
+ * Before cutting: the loudness analysis (silences and speech envelope, D74) of these media, run
+ * when it isn't cached and waited for up to LOUDNESS_WAIT_MS, then their transcripts re-read, so
+ * the panel cuts where the agent's transcript_edit would. Without it (failed, an export holds the
+ * queue, too slow) the cut uses the transcript's own edges.
+ */
+async function withLoudness(mediaIds: ReadonlyArray<string>) {
+  const dir = getTranscripts().dir;
+  const missing = mediaIds.filter((id) => {
+    const e = getTranscripts().entries.get(id);
+    return e?.state === "done" && !e.transcript.measured && !loudnessFailed.has(`${dir}:${id}`);
+  });
+  if (!dir || !missing.length) return;
+  await Promise.all(
+    missing.map(async (id) => {
+      const startedAt = Date.now();
+      await actions.analyzeMedia(id);
+      // Couldn't start (or a job of it failed / was stopped): not again for this media this session.
+      const failed = () =>
+        getState().analysisError !== undefined ||
+        getState().analysisJobs.some((j) => j.projectDir === dir && j.analyzer === "loudness" && (j.mediaId === id || j.mediaIds.includes(id)) && (j.phase === "failed" || j.phase === "cancelled") && Date.parse(j.startedAt) >= startedAt - 1000);
+      const deadline = startedAt + LOUDNESS_WAIT_MS;
+      while (Date.now() < deadline) {
+        if (failed()) {
+          loudnessFailed.add(`${dir}:${id}`);
+          return;
+        }
+        if (await actions.analysisCached(id, "loudness", ["envelope"])) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      await load(dir, id);
+    }),
+  );
+}
+
+/** Media whose loudness analysis failed this session ("dir:mediaId"): cuts don't wait for it again. */
+const loudnessFailed = new Set<string>();
+/** A cut is being prepared (the loudness analysis it waits for): the buttons wait, ⌫ does nothing. */
+let cutBusy = false;
+const busyListeners = new Set<() => void>();
+const setCutBusy = (busy: boolean) => {
+  cutBusy = busy;
+  for (const l of busyListeners) l();
+};
+const useCutBusy = () => useSyncExternalStore((l) => (busyListeners.add(l), () => void busyListeners.delete(l)), () => cutBusy);
+/** Runs one cut at a time, marked busy while it waits. */
+async function oneCut(run: () => Promise<boolean>) {
+  if (cutBusy) return false;
+  setCutBusy(true);
+  try {
+    return await run();
+  } finally {
+    setCutBusy(false);
+  }
+}
+
 /** ⌫ in the Transcript panel: cut the selected words. */
-export function cutSelectedWords() {
+export const cutSelectedWords = () => oneCut(cutSelected);
+async function cutSelected() {
+  if (!getState().snapshot) return false;
+  const before = getTranscripts();
+  const keys = selectedWords(wordsOfEdit(projectOf(getState().snapshot!), doneTranscripts(before.entries)), before.anchor, before.focus);
+  if (!keys.length) return false;
+  await withLoudness([...new Set(keys.map((w) => w.media))]);
   const snapshot = getState().snapshot;
-  if (!snapshot) return Promise.resolve(false);
+  if (!snapshot) return false;
   const project = projectOf(snapshot);
   const { entries, anchor, focus } = getTranscripts();
   const transcripts = doneTranscripts(entries);
   const selected = selectedWords(wordsOfEdit(project, transcripts), anchor, focus);
-  if (!selected.length) return Promise.resolve(false);
+  if (!selected.length) return false;
   return sendCut(planCutWords(project, transcripts, selected));
 }
 
 /** Remove pauses / fillers: planned when clicked, on the project as it is then (not the render's). */
-export function removeAll(kind: "pauses" | "fillers") {
+export const removeAll = (kind: "pauses" | "fillers") => oneCut(() => removeEvery(kind));
+async function removeEvery(kind: "pauses" | "fillers") {
+  const first = getState().snapshot;
+  if (!first) return false;
+  await withLoudness(mediaOnMain(projectOf(first)));
   const snapshot = getState().snapshot;
-  if (!snapshot) return Promise.resolve(false);
+  if (!snapshot) return false;
   const project = projectOf(snapshot);
   const transcripts = doneTranscripts(getTranscripts().entries);
   return sendCut(kind === "pauses" ? planRemovePauses(project, transcripts, pauseMin) : planRemoveFillers(project, transcripts));
@@ -126,14 +195,25 @@ export function removeAll(kind: "pauses" | "fillers") {
 
 async function load(dir: string, mediaId: string) {
   if (getTranscripts().entries.get(mediaId)?.state !== "done") transcriptStore.setEntry(dir, mediaId, { state: "loading" });
-  const result = (await actions.analysisCached(mediaId, "transcript")) as { hasAudio?: boolean; words?: MediaTranscript["words"]; language?: string; seconds?: number } | null | undefined;
+  const result = (await actions.analysisCached(mediaId, "transcript")) as { hasAudio?: boolean; words?: MediaTranscript["words"]; segments?: MediaTranscript["segments"]; language?: string; seconds?: number } | null | undefined;
   let entry: TranscriptEntry;
   if (result === undefined) entry = { state: "error", message: "Couldn't read the transcript." };
   else if (result === null) entry = { state: "none" };
   else if (!result.hasAudio) entry = { state: "silent" };
   else {
-    const loud = (await actions.analysisCached(mediaId, "loudness")) as { hasAudio?: boolean; silence?: { ranges?: MediaTranscript["silences"] } } | null | undefined;
-    entry = { state: "done", transcript: { words: result.words ?? [], language: result.language, seconds: result.seconds, silences: loud?.hasAudio ? loud.silence?.ranges : undefined } };
+    const loud = (await actions.analysisCached(mediaId, "loudness")) as { hasAudio?: boolean; silence?: { ranges?: MediaTranscript["silences"] }; envelope?: unknown } | null | undefined;
+    entry = {
+      state: "done",
+      transcript: {
+        words: result.words ?? [],
+        segments: result.segments,
+        language: result.language,
+        seconds: result.seconds,
+        silences: loud?.hasAudio ? loud.silence?.ranges : undefined,
+        envelope: loud?.hasAudio ? decodeEnvelope(loud.envelope) : undefined,
+        measured: !!loud,
+      },
+    };
   }
   transcriptStore.setEntry(dir, mediaId, entry);
 }
@@ -221,7 +301,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
       const fillers = new Map<number, Filler["kind"]>();
       for (const f of fillersOf(t.words, t.language)) for (let k = 0; k < f.n; k++) fillers.set(f.i + k, f.kind);
       const pauses = new Map<number, Pause>();
-      for (const p of pausesOf(t.words, t.seconds, t.silences, PAUSE_SHOWN_S)) if (!p.edge) pauses.set(p.after, p);
+      for (const p of pausesOf(t.words, t.seconds, t.silences, PAUSE_SHOWN_S, t.segments, t.envelope)) if (!p.edge) pauses.set(p.after, p);
       out.set(id, { fillers, pauses });
     }
     return out;
@@ -289,16 +369,17 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
   const secs = (p: typeof pausePlan) => ("problem" in p ? "" : `${(p.framesRemoved / fps).toFixed(1)} s`);
   const anyDone = transcripts.size > 0;
   const locked = main?.locked === true;
+  const busy = useCutBusy();
   return (
     <section className="bottom" data-testid="transcript-panel">
       <div className="bottom-toolbar">
         <BottomTabs />
         <span className="muted small" data-testid="tx-status">
-          {locked ? "The main track is locked: unlock it to cut by text." : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected · ⌫ cuts ${selected.length === 1 ? "it" : "them"}` : anyDone ? "Click a word to go there; drag or ⇧-click to select" : ""}
+          {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected · ⌫ cuts ${selected.length === 1 ? "it" : "them"}` : anyDone ? "Click a word to go there; drag or ⇧-click to select" : ""}
         </span>
         <div className="toolbar-spacer" />
         {selected.length > 0 && (
-          <button className="btn ghost" data-testid="tx-cut" disabled={!online} title="Cut the selected words (⌫)" onClick={() => void cutSelectedWords()}>
+          <button className="btn ghost" data-testid="tx-cut" disabled={!online || busy} title="Cut the selected words (⌫)" onClick={() => void cutSelectedWords()}>
             <Scissors />
             Cut
           </button>
@@ -307,7 +388,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
           className="btn"
           data-testid="remove-fillers"
           data-count={fillerCount}
-          disabled={!online || !fillerCount}
+          disabled={!online || busy || !fillerCount}
           title={locked ? "The main track is locked" : fillerCount ? `Cut ${fillerCount} hesitation${fillerCount === 1 ? "" : "s"} (um, uh, yyy), ${secs(fillerPlan)}. Words marked "maybe" stay.` : "No hesitations (um, uh, yyy) in the edit"}
           onClick={() => void removeAll("fillers")}
         >
@@ -325,7 +406,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
           className="btn"
           data-testid="remove-pauses"
           data-count={pauseCount}
-          disabled={!online || !pauseCount}
+          disabled={!online || busy || !pauseCount}
           title={locked ? "The main track is locked" : pauseCount ? `Cut ${pauseCount} pause${pauseCount === 1 ? "" : "s"} of at least ${threshold} s (${secs(pausePlan)}), keeping a little quiet next to the words` : `No pauses of ${threshold} s or more in the edit`}
           onClick={() => void removeAll("pauses")}
         >

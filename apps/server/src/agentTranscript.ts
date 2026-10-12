@@ -3,6 +3,8 @@
 // agent gets project frames of the media (usable as in): a word from the frame it starts in to
 // the frame after it ends (it covers the word), a pause inward (both ends inside the gap), like
 // the silences.
+import { speechWords, type SpeechEnvelope } from "@uncut/core/transcript";
+
 import { framesFor } from "./agentVideo.ts";
 import { fillersOf, pausesOf, type Filler, type Pause, type TranscriptResult } from "./transcription.ts";
 
@@ -21,6 +23,8 @@ export interface ReadOptions {
   readonly format?: "text" | "words";
   /** The loudness analyzer's silences (seconds), when cached. */
   readonly silences?: ReadonlyArray<{ readonly start: number; readonly end: number }> | undefined;
+  /** Its speech envelope (D74), when cached. */
+  readonly envelope?: SpeechEnvelope | undefined;
   readonly maxWords?: number;
 }
 
@@ -48,14 +52,17 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
   };
   if (!words.length) return { ...base, text: "", note: "No speech was found in it." };
   const fillers = fillersOf(words, result.language);
-  const pauses = pausesOf(words, result.seconds, options.silences);
+  // Where the words are heard (D74: whisper's edges widened to its segments, the silences and the
+  // envelope), as the cut planner sees them: their frames, the range and the pauses all come from it.
+  const heard = speechWords(words, { segments, silences: options.silences, seconds: result.seconds, envelope: options.envelope });
+  const pauses = pausesOf(heard, result.seconds, options.silences, undefined, undefined, options.envelope);
   const inRange = (start: number, end: number) => !range || (end * fps > range.start && start * fps < range.end);
   const from = options.from ?? 0;
   const cap = options.maxWords ?? (options.format === "words" ? MAX_JSON_WORDS : MAX_TEXT_WORDS);
   const picked: Array<number> = [];
   let more: number | undefined;
   for (let i = from; i < words.length; i++) {
-    if (!inRange(words[i]!.start, words[i]!.end)) continue;
+    if (!inRange(heard[i]!.start, heard[i]!.end)) continue;
     if (picked.length === cap) {
       more = i;
       break;
@@ -67,8 +74,8 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
   const shown = new Set(picked);
   const fillerAt = new Map<number, Filler>();
   for (const f of fillers) for (let k = 0; k < f.n; k++) fillerAt.set(f.i + k, f);
-  const wordStart = (i: number) => toFrames(words[i]!.start, Math.floor);
-  const wordEnd = (i: number) => Math.max(wordStart(i) + 1, toFrames(words[i]!.end, Math.ceil));
+  const wordStart = (i: number) => toFrames(heard[i]!.start, Math.floor);
+  const wordEnd = (i: number) => Math.max(wordStart(i) + 1, toFrames(heard[i]!.end, Math.ceil));
   const pauseOut = (p: Pause) => ({ start: toFrames(p.start, Math.ceil), end: toFrames(p.end, Math.floor), startSeconds: p.start, endSeconds: p.end, after: p.after, ...(p.edge ? { edge: p.edge } : {}), ...(p.silent !== undefined ? { silent: p.silent } : {}) });
   // The pauses after a listed word, and the one before the first word with it.
   const listedPauses = pauses.filter((p) => shown.has(p.after) || (p.edge === "start" && shown.has(0)));
@@ -113,11 +120,11 @@ export function transcriptOut(result: TranscriptResult, options: ReadOptions) {
 }
 
 /** media_analyze's "transcript": a summary; transcript_read gives the words. */
-export function transcriptSummary(result: TranscriptResult, cached: boolean, silences?: ReadonlyArray<{ readonly start: number; readonly end: number }>) {
+export function transcriptSummary(result: TranscriptResult, cached: boolean, sound: { readonly silences?: ReadonlyArray<{ readonly start: number; readonly end: number }> | undefined; readonly envelope?: SpeechEnvelope | undefined } = {}) {
   if (!result.hasAudio) return { state: "done", cached, hasAudio: false, note: "This media has no sound, so there's nothing to transcribe." };
   const words = result.words ?? [];
   const fillers = fillersOf(words, result.language);
-  const pauses = pausesOf(words, result.seconds, silences);
+  const pauses = pausesOf(words, result.seconds, sound.silences, undefined, result.segments, sound.envelope);
   return {
     state: "done",
     cached,

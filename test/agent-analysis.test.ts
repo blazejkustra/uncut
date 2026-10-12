@@ -183,7 +183,7 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
   const input = JSON.parse([...measured.stderr.matchAll(/\{[^{}]*\}/g)].at(-1)![0]) as { input_i: string };
   assert.ok(Math.abs(l.integratedLufs - Number(input.input_i)) <= 0.5, `${l.integratedLufs} vs ${input.input_i}`);
   assert.equal(loudnessRuns().length, runsBefore + 1, "one ffmpeg run");
-  assert.ok(loudnessRuns().at(-1)!.includes("-map 0:a:0"), "the first audio stream, mapped explicitly");
+  assert.ok(loudnessRuns().at(-1)!.includes("[0:a:0]asplit"), "the first audio stream, mapped explicitly");
   // No analyzers named: loudness only (video is opt-in, D67): no video key, no video run, one cache file.
   assert.equal(out.video, undefined);
   assert.match(out.note, /^loudness: /);

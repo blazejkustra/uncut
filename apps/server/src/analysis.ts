@@ -8,7 +8,8 @@
 //
 // The first analyzer, "loudness", is one ffmpeg pass over the first audio stream (0:a:0: DJI files
 // carry mjpeg cover and data streams too): EBU R128 loudness (integrated, range, true peak) from
-// ebur128 and the silences from silencedetect (below SILENCE_DB for at least SILENCE_MIN_S).
+// ebur128 and the silences from silencedetect (below SILENCE_DB for at least SILENCE_MIN_S), and in
+// the same pass the speech envelope (RMS every 10 ms, D74) from a 16 kHz mono decode on stdout.
 // The second, "video" (videoAnalysis.ts, D67), is one pass over the first video stream: cuts,
 // shake, blur, brightness and frozen stretches per second of the file.
 // The third, "transcript" (transcription.ts, D68), transcribes the speech with whisper.cpp; at most
@@ -33,6 +34,7 @@ import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { Projects } from "./projects.ts";
 import { which } from "./setup.ts";
+import { decodeEnvelope, encodeEnvelope, ENVELOPE_RATE, type StoredEnvelope } from "@uncut/core/transcript";
 import { analyzeTranscript, isTranscriptResult, NO_SPEECH_AUDIO, TRANSCRIPT_VERSION, type TranscriptResult } from "./transcription.ts";
 import { analyzeVideo, isVideoResult, NO_VIDEO, VIDEO_VERSION, type VideoResult } from "./videoAnalysis.ts";
 import { Whisper, type ResolveWhisper } from "./whisper.ts";
@@ -43,7 +45,9 @@ export const SILENCE_DB = -40;
 export const SILENCE_MIN_S = 0.3;
 export const ANALYSIS_FORMAT = "uncut.analysis/0";
 /** Bumped when the loudness analyzer's output changes, so older cache files are redone. */
-export const LOUDNESS_VERSION = 1;
+export const LOUDNESS_VERSION = 2;
+/** The speech envelope's decode (D74): mono 16-bit PCM at this rate, RMS per 1/ENVELOPE_RATE s. */
+const ENVELOPE_PCM_RATE = 16000;
 /** Bytes per fingerprint sample. */
 export const SAMPLE_BYTES = 1 << 20;
 const CONCURRENCY = 2;
@@ -77,6 +81,8 @@ export interface LoudnessResult {
   /** True peak (dBTP). */
   readonly truePeakDbtp?: number | null;
   readonly silence?: { readonly thresholdDb: number; readonly minSeconds: number; readonly ranges: ReadonlyArray<SilenceRange> };
+  /** The speech envelope (D74, version 2): RMS dBFS every 10 ms, quantised (core decodeEnvelope). */
+  readonly envelope?: StoredEnvelope;
 }
 export type AnalysisResult = LoudnessResult | VideoResult | TranscriptResult | BeatsResult;
 
@@ -134,26 +140,67 @@ export async function fingerprint(path: string): Promise<string> {
 
 // ---- the loudness analyzer ----
 
-/** ffmpeg's arguments: progress on stdout, the silences and the loudness summary on stderr. */
+/**
+ * ffmpeg's arguments, one pass over the first audio stream: the silences, the loudness summary and
+ * progress on stderr; the sound as mono 16-bit PCM at ENVELOPE_PCM_RATE on stdout, for the speech
+ * envelope (D74).
+ */
 export const loudnessArgs = (path: string) => [
   "-hide_banner",
   "-nostdin",
   "-nostats",
   "-progress",
-  "pipe:1",
+  "pipe:2",
   "-i",
   path,
+  "-filter_complex",
+  `[0:a:0]asplit=2[m][e];[m]silencedetect=noise=${SILENCE_DB}dB:d=${SILENCE_MIN_S},ebur128=peak=true:framelog=quiet[mo];[e]aresample=${ENVELOPE_PCM_RATE},aformat=sample_fmts=s16:channel_layouts=mono[eo]`,
   "-map",
-  "0:a:0",
-  "-vn",
-  "-sn",
-  "-dn",
-  "-af",
-  `silencedetect=noise=${SILENCE_DB}dB:d=${SILENCE_MIN_S},ebur128=peak=true:framelog=quiet`,
+  "[mo]",
   "-f",
   "null",
   "-",
+  "-map",
+  "[eo]",
+  "-f",
+  "s16le",
+  "-acodec",
+  "pcm_s16le",
+  "pipe:1",
 ];
+
+/** RMS level (dBFS) of every 1/ENVELOPE_RATE s of mono s16le PCM at ENVELOPE_PCM_RATE. */
+export class RmsEnvelope {
+  private readonly per = ENVELOPE_PCM_RATE / ENVELOPE_RATE;
+  private readonly db: Array<number> = [];
+  private sum = 0;
+  private count = 0;
+  private carry: number | undefined;
+  push(chunk: Buffer) {
+    let i = 0;
+    if (this.carry !== undefined && chunk.length) {
+      this.add(Buffer.from([this.carry, chunk[0]!]).readInt16LE(0));
+      this.carry = undefined;
+      i = 1;
+    }
+    for (; i + 1 < chunk.length; i += 2) this.add(chunk.readInt16LE(i));
+    if (i < chunk.length) this.carry = chunk[i];
+  }
+  private add(sample: number) {
+    const x = sample / 32768;
+    this.sum += x * x;
+    if (++this.count === this.per) this.flush();
+  }
+  private flush() {
+    if (this.count) this.db.push(10 * Math.log10(this.sum / this.count + 1e-12));
+    this.sum = 0;
+    this.count = 0;
+  }
+  finish(): StoredEnvelope {
+    this.flush();
+    return encodeEnvelope(this.db, ENVELOPE_RATE);
+  }
+}
 
 
 const num = (s: string | undefined) => {
@@ -206,7 +253,7 @@ export class LoudnessLog {
   }
 
   /** The result once ffmpeg is done; a silence still open runs to `end` (older ffmpeg doesn't close it at EOF). */
-  finish(end: number | undefined): LoudnessResult {
+  finish(end: number | undefined, envelope?: StoredEnvelope): LoudnessResult {
     const ranges = [...this.ranges];
     if (this.open !== undefined && end !== undefined && end > this.open) ranges.push({ start: this.open, end });
     return {
@@ -216,6 +263,7 @@ export class LoudnessLog {
       loudnessRangeLu: this.range,
       truePeakDbtp: this.peak,
       silence: { thresholdDb: SILENCE_DB, minSeconds: SILENCE_MIN_S, ranges: ranges.map((r) => ({ start: ms(r.start), end: ms(r.end) })) },
+      ...(envelope ? { envelope } : {}),
     };
   }
 }
@@ -232,25 +280,26 @@ export async function analyzeLoudness(
   options: { readonly signal: AbortSignal; readonly runner?: Runner; readonly seconds?: number | undefined; readonly onProgress?: (fraction: number) => void },
 ): Promise<LoudnessResult> {
   const log = new LoudnessLog();
+  const envelope = new RmsEnvelope();
   let decoded = 0;
   const runner = options.runner ?? spawnRunner;
   const r = await runner(ffmpeg, loudnessArgs(path), {
     signal: options.signal,
     timeoutMs: JOB_TIMEOUT_MS,
-    onStderr: (line) => log.line(line),
-    onStdout: (line) => {
+    onStderr: (line) => {
       const m = /^out_time_us=(\d+)/.exec(line);
-      if (!m) return;
+      if (!m) return log.line(line);
       decoded = Number(m[1]) / 1e6;
       const total = options.seconds ?? log.duration;
       if (total) options.onProgress?.(Math.min(0.99, decoded / total));
     },
+    onStdoutData: (chunk) => envelope.push(chunk),
   });
   if (r.code !== 0) {
     if (NO_AUDIO_STREAM.test(r.stderrTail)) return NO_AUDIO;
     throw new Error(`ffmpeg couldn't read the sound: ${ffmpegError(r.stderrTail) || `it exited with ${r.code}`}`);
   }
-  return log.finish(decoded > 0 ? decoded : (options.seconds ?? log.duration));
+  return log.finish(decoded > 0 ? decoded : (options.seconds ?? log.duration), envelope.finish());
 }
 
 // ---- the cache ----
@@ -290,6 +339,7 @@ export function isResult(value: unknown): value is LoudnessResult {
   if (!numOrNull(r.seconds) || !numOrNull(r.integratedLufs) || !numOrNull(r.loudnessRangeLu) || !numOrNull(r.truePeakDbtp)) return false;
   const silence = r.silence as { thresholdDb?: unknown; minSeconds?: unknown; ranges?: unknown } | undefined;
   if (!silence || typeof silence !== "object" || typeof silence.thresholdDb !== "number" || typeof silence.minSeconds !== "number" || !Array.isArray(silence.ranges)) return false;
+  if (r.envelope !== undefined && !decodeEnvelope(r.envelope)) return false;
   return silence.ranges.every((x) => x && typeof x === "object" && typeof (x as SilenceRange).start === "number" && typeof (x as SilenceRange).end === "number");
 }
 

@@ -19,7 +19,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { DEFAULT_PAUSE_MIN_S, describeOp, layout, manualEditsNote, planTextCut, TurnDependency, undoTurn, type Op, type Project, type Session, type TextCutRequest } from "@uncut/core";
+import { decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, layout, manualEditsNote, planTextCut, TurnDependency, undoTurn, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,7 +28,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
-import { Analysis, cachedFor, parseAnalyzers, targetOf, type AnalysisTarget, type LoudnessResult, type Outcome, type RequestOptions } from "./analysis.ts";
+import { Analysis, cachedFor, parseAnalyzers, targetOf, type AnalysisTarget, type LoudnessResult, type Outcome, type RequestOptions, type SilenceRange } from "./analysis.ts";
 import { transcriptOut, transcriptSummary, TRANSCRIPT_NOTE } from "./agentTranscript.ts";
 import { BEATS_NOTE, beatsOut } from "./agentBeats.ts";
 import type { BeatsResult } from "./beats.ts";
@@ -314,6 +314,8 @@ const analyzeWaitMs = () => {
   const n = Number(process.env.UNCUT_ANALYZE_WAIT_MS);
   return Number.isFinite(n) && n >= 0 ? n : 55_000;
 };
+/** transcript_edit waits this long for a loudness pass that isn't cached (D74). */
+const SILENCES_WAIT_MS = 20_000;
 /** At most this many silences in one answer (a range narrows it down). */
 const MAX_SILENCES = 400;
 
@@ -665,10 +667,29 @@ export const layer = Layer.effect(
       if (job?.phase === "queued") return { state: "queued" as const, ...(job.waiting ? { waitingFor: "an export to finish" } : job.analyzer === "transcript" ? { waitingFor: "another transcript to finish" } : {}) };
       return { state: "running" as const, progress: job?.progress ?? 0, ...(job?.stage === "model" ? { stage: "downloading the speech model (first transcript only)" } : {}) };
     };
-    /** The loudness analyzer's silences, when cached (no job): transcript pauses are aligned to them. */
-    const silencesOf = async (target: AnalysisTarget) => {
-      const loud = (await cachedFor(target, "loudness")) as LoudnessResult | undefined;
-      return loud?.hasAudio ? loud.silence?.ranges : undefined;
+    /**
+     * The loudness analyzer's silences and speech envelope: transcript pauses and cuts by text are
+     * aligned to them (D74: whisper's word edges alone clip words). Cached, or (transcript_edit, which cuts) the loudness
+     * pass is run (one quick ffmpeg pass, a few seconds for a long talk) and waited for up to
+     * SILENCES_WAIT_MS; without them (it failed, or an export holds the queue) the transcript's own
+     * edges are used. `run` false: cached only (transcript_read and media_analyze's summary only
+     * report; media_analyze runs loudness when asked).
+     */
+    const soundOf = (loud: LoudnessResult | undefined) => (loud?.hasAudio ? { silences: loud.silence?.ranges, envelope: decodeEnvelope(loud.envelope) } : {});
+    const silencesOf = async (target: AnalysisTarget, run = true): Promise<{ silences?: ReadonlyArray<SilenceRange> | undefined; envelope?: SpeechEnvelope | undefined }> => {
+      const cached = (await cachedFor(target, "loudness")) as LoudnessResult | undefined;
+      if (cached) return soundOf(cached);
+      if (!run) return {};
+      const { done } = await analysis.request(target, "loudness");
+      let timer: NodeJS.Timeout | undefined;
+      const deadline = new Promise<undefined>((r) => (timer = setTimeout(r, Math.min(SILENCES_WAIT_MS, analyzeWaitMs()), undefined)));
+      timer?.unref();
+      try {
+        const outcome = await Promise.race([done, deadline]);
+        return soundOf(outcome?.state === "done" ? (outcome.result as LoudnessResult) : undefined);
+      } finally {
+        clearTimeout(timer);
+      }
     };
     const cancelledNote = "The analysis was stopped (by the user, or the project closed) before it finished. Ask again to run it.";
 
@@ -808,7 +829,7 @@ export const layer = Layer.effect(
           else if (outcome.state === "cancelled") out[analyzer] = { state: "cancelled", note: cancelledNote };
           else if (analyzer === "video") out[analyzer] = videoOut(outcome.result as VideoResult, outcome.cached, frames, range as { start: number; end: number } | undefined, fps);
           else if (analyzer === "beats") out[analyzer] = beatsOut(outcome.result as BeatsResult, outcome.cached, frames, range as { start: number; end: number } | undefined, fps);
-          else if (analyzer === "transcript") out[analyzer] = transcriptSummary(outcome.result as TranscriptResult, outcome.cached, yield* Effect.promise(() => silencesOf(target)));
+          else if (analyzer === "transcript") out[analyzer] = transcriptSummary(outcome.result as TranscriptResult, outcome.cached, yield* Effect.promise(() => silencesOf(target, false)));
           else out[analyzer] = loudnessOut(outcome.result as LoudnessResult, outcome.cached, frames, range as { start: number; end: number } | undefined);
         }
         // Finished results keep their explanation even while another analyzer is still going.
@@ -855,7 +876,7 @@ export const layer = Layer.effect(
         if (outcome.state === "failed") return textResult({ media: m.id, transcript: { state: "failed", error: outcome.error } }, true);
         if (outcome.state === "cancelled") return textResult({ media: m.id, transcript: { state: "cancelled", note: cancelledNote } }, true);
         const result = outcome.result as TranscriptResult;
-        const silences = yield* Effect.promise(() => silencesOf(target));
+        const { silences, envelope } = yield* Effect.promise(() => silencesOf(target, false));
         const out = transcriptOut(result, {
           cached: outcome.cached,
           fps,
@@ -864,6 +885,7 @@ export const layer = Layer.effect(
           ...(args.from !== undefined ? { from: args.from as number } : {}),
           format: (args.format as "text" | "words" | undefined) ?? "text",
           silences,
+          envelope,
         });
         return textResult({ media: m.id, ...out, note: [("note" in out && typeof out.note === "string") ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : ""].filter(Boolean).join(" ") });
       });
@@ -924,12 +946,12 @@ export const layer = Layer.effect(
         if (outcome.state === "cancelled") return textResult({ media: m.id, transcript: { state: "cancelled", note: cancelledNote } }, true);
         const result = outcome.result as TranscriptResult;
         if (!result.hasAudio || !result.words?.length) return textResult(`${m.id} has ${result.hasAudio ? "no speech in its transcript" : "no sound"}, so there's nothing to cut by text.`, true);
-        const silences = yield* Effect.promise(() => silencesOf(target));
+        const { silences, envelope } = yield* Effect.promise(() => silencesOf(target));
         // The wait can be long: plan on the project as it is now, not as it was when the call came in.
         const fresh = view();
         if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
         if (!fresh.session.project.media.some((x) => x.id === m.id)) return textResult(`${m.id} isn't in the project any more.`, true);
-        const plan = planTextCut(fresh.session.project, m.id, { words: result.words, language: result.language, seconds: result.seconds }, { ...request, silences } as TextCutRequest);
+        const plan = planTextCut(fresh.session.project, m.id, { words: result.words, language: result.language, seconds: result.seconds, segments: result.segments }, { ...request, silences, envelope } as TextCutRequest);
         if ("problem" in plan) return textResult(plan.problem, true);
         const secs = (frames: number) => Number((frames / fps).toFixed(2));
         const removed = plan.cuts.map((c) => ({
