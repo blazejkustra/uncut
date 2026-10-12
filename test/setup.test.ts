@@ -52,12 +52,13 @@ after(() => {
 });
 
 test("everything installed: ready, with versions and paths, and no account details", T, async () => {
-  const dir = stubs("all", { claude: CLAUDE_READY, argent: `echo 0.28.0`, ...FFMPEG });
+  const dir = stubs("all", { claude: CLAUDE_READY, argent: `echo 0.28.0`, ...FFMPEG, "whisper-cli": `echo "whisper.cpp version: 1.9.5"` });
   const { byId, raw } = await check({ PATH: `${dir}:/usr/bin:/bin` });
   assert.deepEqual(byId.claude, { id: "claude", name: "Claude Code", status: "ready", optional: false, version: "2.1.296", path: join(dir, "claude"), detail: "Signed in with Claude, Max plan" });
   assert.equal(byId.argent.status, "ready");
   assert.equal(byId.argent.version, "0.28.0");
   assert.deepEqual([byId.ffmpeg.status, byId.ffmpeg.version], ["ready", "8.1.1"]);
+  assert.deepEqual(byId.whisper, { id: "whisper", name: "whisper.cpp", status: "ready", optional: true, version: "1.9.5", path: join(dir, "whisper-cli"), detail: "Transcribes speech on this Mac." });
   assert.equal(byId.codex.status, "missing");
   assert.equal(byId.codex.fix.command, "npm install -g @openai/codex");
   assert.equal(byId["api-key"], undefined, "no API key, no warning");
@@ -74,6 +75,7 @@ test("signed out, too old to tell, and missing tools each get their own status a
   assert.equal(r.byId.ffmpeg.status, "missing");
   assert.equal(r.byId.ffmpeg.fix.command, "brew install ffmpeg");
   assert.match(r.byId.ffmpeg.detail, /ffmpeg and ffprobe not found/);
+  assert.deepEqual([r.byId.whisper.status, r.byId.whisper.optional, r.byId.whisper.fix.command], ["missing", true, "brew install whisper-cpp"]);
 
   const old = stubs("old", { claude: `case "$1" in --version) echo "1.0.0 (Claude Code)";; *) echo "error: unknown command 'auth'" >&2; exit 1;; esac`, ffmpeg: FFMPEG.ffmpeg });
   r = await check({ PATH: `${old}:/usr/bin:/bin` });

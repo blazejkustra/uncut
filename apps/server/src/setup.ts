@@ -1,5 +1,6 @@
 // What Uncut needs on this Mac, checked for real: the agent CLIs (and how Claude Code is
-// signed in), Argent for capture, ffmpeg for thumbnails and export, and a stray API key.
+// signed in), Argent for capture, ffmpeg for thumbnails and export, whisper.cpp for transcripts
+// (D68), and a stray API key.
 // Every probe is local, read-only, time-boxed and output-capped, and each one is isolated:
 // whatever a tool does, it costs its own row an "error", never the whole check.
 import { constants } from "node:fs";
@@ -189,6 +190,25 @@ export const layer = Layer.effect(
       return { ...base, status: "ready", path: ffmpegPath, ...(version ? { version } : {}), detail: "ffmpeg and ffprobe found." };
     });
 
+    // whisper.cpp (Homebrew's whisper-cpp) transcribes speech on this Mac (D68). Its model is
+    // shown and downloaded beside this row (transcription.state), not checked here.
+    const whisper = isolated({ id: "whisper", name: "whisper.cpp", optional: true }, async () => {
+      const base = { id: "whisper", name: "whisper.cpp", optional: true } as const;
+      const bin = await which("whisper-cli", path());
+      if (!bin) {
+        return {
+          ...base,
+          status: "missing",
+          detail: "Not installed. Optional: transcribes speech on this Mac, so the agent can cut by what's said.",
+          fix: { text: "Install with Homebrew:", command: "brew install whisper-cpp" },
+        };
+      }
+      const versionRun = await run(bin, ["--version"]);
+      if (versionRun.kind !== "done" || versionRun.code !== 0) return errorRow(base, problem(bin, versionRun), bin);
+      const version = versionToken(versionRun.stdout);
+      return { ...base, status: "ready", path: bin, ...(version ? { version } : {}), detail: "Transcribes speech on this Mac." };
+    });
+
     // Presence only. The key's value is never read into a check, a log line or a reply.
     const apiKey = Effect.map(Effect.promise(() => config.shellReady), (shell): Array<SetupCheck> => {
       const where = config.apiKeyInEnv ? "in your environment" : shell?.apiKeySetInShell ? "in your shell" : undefined;
@@ -201,8 +221,8 @@ export const layer = Layer.effect(
       // Wait for the login shell's PATH first, or a check right after launch would miss tools.
       check: Effect.andThen(
         Effect.promise(() => config.shellReady),
-        Effect.all([claude, codex, argent, ffmpeg, apiKey], { concurrency: "unbounded" }).pipe(
-          Effect.map(([a, b, c, d, keys]) => [a, b, c, d, ...keys] as ReadonlyArray<SetupCheck>),
+        Effect.all([claude, codex, argent, ffmpeg, whisper, apiKey], { concurrency: "unbounded" }).pipe(
+          Effect.map(([a, b, c, d, w, keys]) => [a, b, c, d, w, ...keys] as ReadonlyArray<SetupCheck>),
         ),
       ),
     });

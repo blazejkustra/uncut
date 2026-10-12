@@ -35,6 +35,10 @@ export const RPC_METHODS = {
   analysisStart: "analysis.start",
   analysisJobs: "analysis.jobs",
   analysisCancel: "analysis.cancel",
+  transcriptionState: "transcription.state",
+  transcriptionDownload: "transcription.download",
+  transcriptionCancelDownload: "transcription.cancelDownload",
+  transcriptionSelectModel: "transcription.selectModel",
 } as const;
 
 // ---- server ----
@@ -158,7 +162,7 @@ export type SetupStatus = typeof SetupStatus.Type;
 
 /** One thing Uncut looked for on this Mac. `fix` says what to do, with a command to copy when there is one. */
 export const SetupCheck = Schema.Struct({
-  id: Schema.String, // "claude" | "codex" | "argent" | "ffmpeg" | "api-key"
+  id: Schema.String, // "claude" | "codex" | "argent" | "ffmpeg" | "whisper" | "api-key"
   name: Schema.String,
   status: SetupStatus,
   optional: Schema.Boolean,
@@ -297,8 +301,9 @@ export class ExportError extends Schema.TaggedError<ExportError>()("ExportError"
  * The analyzers that run today. One ffmpeg pass measures loudness and finds silences, so "silence"
  * is the same job as "loudness" (one cache file, one run). Another measures the picture (D67):
  * cuts, shake, blur, exposure and frozen stretches, so "shots", "motion" and "stability" are "video".
+ * A third transcribes the speech on this Mac with whisper.cpp (D68).
  */
-export const ANALYZERS = ["loudness", "video"] as const;
+export const ANALYZERS = ["loudness", "video", "transcript"] as const;
 export const Analyzer = Schema.Literals(ANALYZERS);
 export type Analyzer = typeof Analyzer.Type;
 
@@ -317,6 +322,8 @@ export const AnalysisJob = Schema.Struct({
   phase: Schema.Literals(["queued", "running", "done", "failed", "cancelled"]),
   progress: Schema.Number,
   waiting: Schema.optional(Schema.Literals(["export"])),
+  // A transcript job downloading its speech model first (D68): progress is the download's.
+  stage: Schema.optional(Schema.Literals(["model"])),
   error: Schema.optional(Schema.String),
   startedAt: Schema.String,
   finishedAt: Schema.optional(Schema.String),
@@ -325,6 +332,43 @@ export type AnalysisJob = typeof AnalysisJob.Type;
 
 export class AnalysisError extends Schema.TaggedError<AnalysisError>()("AnalysisError", {
   reason: Schema.Literals(["no-project", "unknown-media", "unknown-analyzer", "failed"]),
+  message: Schema.String,
+}) {}
+
+// ---- transcription (D68) ----
+
+/** A whisper.cpp speech model: downloaded on demand into <data dir>/models. */
+export const WhisperModel = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  bytes: Schema.Number,
+  multilingual: Schema.Boolean,
+  // Shown in the Setup row's picker (English-only ones are for tests).
+  offered: Schema.Boolean,
+  installed: Schema.Boolean,
+});
+export type WhisperModel = typeof WhisperModel.Type;
+
+export const ModelDownload = Schema.Struct({
+  model: Schema.String,
+  phase: Schema.Literals(["downloading", "done", "failed", "cancelled"]),
+  received: Schema.Number,
+  total: Schema.optional(Schema.Number),
+  error: Schema.optional(Schema.String),
+});
+export type ModelDownload = typeof ModelDownload.Type;
+
+export const TranscriptionState = Schema.Struct({
+  // The model transcripts use (a setting).
+  selected: Schema.String,
+  dir: Schema.String,
+  models: Schema.Array(WhisperModel),
+  downloads: Schema.Array(ModelDownload),
+});
+export type TranscriptionState = typeof TranscriptionState.Type;
+
+export class TranscriptionError extends Schema.TaggedError<TranscriptionError>()("TranscriptionError", {
+  reason: Schema.Literals(["unknown-model", "failed"]),
   message: Schema.String,
 }) {}
 
@@ -450,7 +494,20 @@ const AnalysisJobsRpc = Rpc.make(RPC_METHODS.analysisJobs, { payload: Empty, suc
 // Stops a queued or running analysis; nothing of it is left in .cache.
 const AnalysisCancelRpc = Rpc.make(RPC_METHODS.analysisCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
 
+// The speech models and their downloads, now and on every change.
+const TranscriptionStateRpc = Rpc.make(RPC_METHODS.transcriptionState, { payload: Empty, success: TranscriptionState, stream: true });
+// Downloads a model (the chosen one when none is named); returns at once, progress on transcription.state.
+const TranscriptionDownloadRpc = Rpc.make(RPC_METHODS.transcriptionDownload, { payload: Schema.Struct({ model: Schema.optional(Schema.String) }), error: TranscriptionError });
+// Stops a model download (all of them when none is named); nothing of it is left.
+const TranscriptionCancelDownloadRpc = Rpc.make(RPC_METHODS.transcriptionCancelDownload, { payload: Schema.Struct({ model: Schema.optional(Schema.String) }) });
+// Chooses the model transcripts use (saved in settings).
+const TranscriptionSelectModelRpc = Rpc.make(RPC_METHODS.transcriptionSelectModel, { payload: Schema.Struct({ model: Schema.String }), error: TranscriptionError });
+
 export const WsRpcGroup = RpcGroup.make(
+  TranscriptionStateRpc,
+  TranscriptionDownloadRpc,
+  TranscriptionCancelDownloadRpc,
+  TranscriptionSelectModelRpc,
   AnalysisStartRpc,
   AnalysisJobsRpc,
   AnalysisCancelRpc,

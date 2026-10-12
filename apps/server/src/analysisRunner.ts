@@ -4,6 +4,19 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 import { withoutApiKey } from "./shellEnv.ts";
 
+/** ffmpeg's ways of saying the file has no audio stream for 0:a:0. */
+export const NO_AUDIO_STREAM = /matches no streams|does not contain any stream|Failed to set value '0:a:0' for option 'map'/i;
+
+/** The last useful lines of a tool's stderr, for an error message. */
+export const ffmpegError = (stderr: string) =>
+  stderr
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^(size=|frame=|Press \[q\])/.test(l))
+    .slice(-3)
+    .join(" ")
+    .slice(0, 400);
+
 export class Cancelled extends Error {
   constructor() {
     super("cancelled");

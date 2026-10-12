@@ -29,6 +29,8 @@ export interface ServerConfigShape {
   readonly shellReady: Promise<ShellEnvironment | undefined>;
   // Test-only fault injection (UNCUT_TEST_FAULT), e.g. "create-after-mkdir".
   readonly testFault: string | undefined;
+  // Where speech models come from (UNCUT_WHISPER_MODEL_URL, tests or a mirror; D68). Unset: Hugging Face, checked against the catalog.
+  readonly whisperModelUrl: string | undefined;
 }
 
 export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()(
@@ -80,6 +82,7 @@ export const readConfig = (
     modulesDir: env.UNCUT_MODULES_DIR || fileURLToPath(new URL("../../../spec/modules/builtin", import.meta.url)),
     dataDir: env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"),
     testFault: env.UNCUT_TEST_FAULT || undefined,
+    whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
     apiKeyInEnv: shell.apiKeyInEnv,
     shellReady: shell.shellReady,
   };

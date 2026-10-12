@@ -4,6 +4,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -14,6 +16,10 @@ const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
 
 let root: string, data: string;
+// The speech model's download (D68) comes from here: a small fake, slowly, never the real 550 MB.
+let modelServer: Server | undefined;
+let modelUrl = "";
+const modelRequests: Array<string> = [];
 const apps = new Set<LaunchedApp>();
 // Only what launchd sets for a GUI app: no Homebrew, nvm or ~/.local/bin on PATH.
 const launch = async () => {
@@ -30,6 +36,7 @@ const launch = async () => {
       PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
       UNCUT_DATA_DIR: data,
       UNCUT_TEST_DIALOG: "[]",
+      UNCUT_WHISPER_MODEL_URL: modelUrl,
     },
   });
   apps.add(app);
@@ -51,10 +58,24 @@ before(async () => {
   mkdirSync("test-output", { recursive: true });
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-onboarding-")));
   data = join(root, "data");
+  const body = Buffer.alloc(1024 * 1024, 7);
+  modelServer = createServer(async (req, res) => {
+    modelRequests.push(req.url ?? "");
+    res.writeHead(200, { "content-length": String(body.length) });
+    for (let at = 0; at < body.length && !res.destroyed; at += 64 * 1024) {
+      res.write(body.subarray(at, at + 64 * 1024));
+      await sleep(60);
+    }
+    res.end();
+  });
+  await new Promise<void>((r) => modelServer!.listen(0, "127.0.0.1", () => r()));
+  modelUrl = `http://127.0.0.1:${(modelServer.address() as AddressInfo).port}/models`;
 });
 after(async () => {
   for (const app of apps) await app.close();
   unlockApps();
+  modelServer?.closeAllConnections();
+  modelServer?.close();
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
@@ -94,6 +115,27 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   }
   if (existsSync("/opt/homebrew/bin/ffmpeg")) assert.equal(await text(page, "chip-ffmpeg"), "Ready");
   if (existsSync("/opt/homebrew/bin/argent")) assert.equal(await text(page, "chip-argent"), "Ready");
+  // whisper.cpp and its speech model (D68): nothing downloaded until asked; a smaller model can be chosen.
+  await waitFor(page, "[data-testid=check-whisper]");
+  if (existsSync("/opt/homebrew/bin/whisper-cli")) assert.equal(await text(page, "chip-whisper"), "Ready");
+  else assert.match(await text(page, "check-whisper"), /brew install whisper-cpp/);
+  await waitFor(page, "[data-testid=whisper-model]");
+  assert.equal(await attr(page, "whisper-model", "data-installed"), "false");
+  assert.equal(await attr(page, "whisper-model", "data-model"), "large-v3-turbo-q5_0");
+  assert.match(await text(page, "whisper-model-status"), /Not downloaded yet \(574 MB\)/);
+  assert.deepEqual(await page.$$eval("[data-testid=whisper-model-select] option", (els) => els.map((e) => (e as HTMLOptionElement).value)), ["large-v3-turbo-q5_0", "small", "base"]);
+  assert.deepEqual(modelRequests, [], "nothing downloaded at start");
+  await page.select("[data-testid=whisper-model-select]", "base");
+  await waitFor(page, "[data-testid=whisper-model][data-model=base]");
+  assert.equal(JSON.parse(readFileSync(join(data, "settings.json"), "utf8")).whisperModel, "base");
+  await page.click("[data-testid=whisper-download]");
+  await waitFor(page, "[data-testid=whisper-download-progress]");
+  assert.match(await text(page, "whisper-model-status"), /Downloading… \d+%/);
+  await shot(app, "2-capture-downloading");
+  await waitFor(page, "[data-testid=whisper-model][data-installed=true]", 30000);
+  assert.equal(await text(page, "chip-whisper-model"), "Ready");
+  assert.deepEqual(modelRequests, ["/models/ggml-base.bin"]);
+  assert.ok(existsSync(join(data, "models", "ggml-base.bin")));
   await shot(app, "2-capture");
 
   // Step 3: first video → skip for now.
@@ -103,7 +145,8 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   await page.click("[data-testid=wizard-skip]");
   await page.waitForFunction(() => !document.querySelector("[data-testid=onboarding]"));
   await waitFor(page, "[data-testid=welcome]");
-  for (let i = 0; i < 20 && !existsSync(join(data, "settings.json")); i++) await sleep(100);
+  const onboarded = () => existsSync(join(data, "settings.json")) && JSON.parse(readFileSync(join(data, "settings.json"), "utf8")).onboarded === true;
+  for (let i = 0; i < 20 && !onboarded(); i++) await sleep(100);
   assert.equal(JSON.parse(readFileSync(join(data, "settings.json"), "utf8")).onboarded, true);
   assert.deepEqual(app.errors, []);
   await close(app);
