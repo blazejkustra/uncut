@@ -111,7 +111,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   assert.equal(await text(page, "saved"), "Saved");
   assert.deepEqual(await page.$$eval("[data-testid=undo],[data-testid=redo]", (b) => (b as Array<HTMLButtonElement>).map((x) => x.disabled)), [true, true]);
   await page.click("[data-testid=tab-agent]");
-  assert.match(await text(page, "agent-empty"), /later phase/);
+  assert.match(await text(page, "agent-empty"), /No media needed to start/);
   await page.click("[data-testid=tab-inspector]");
   await shot(app, "editor-16x9");
 

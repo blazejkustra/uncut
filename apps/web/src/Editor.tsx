@@ -2,9 +2,10 @@ import type { ProjectSnapshot } from "@uncut/contracts";
 import { Blend, Check, CircleDot, Film, FolderOpen, Music, Redo2, RefreshCw, Shapes, Sparkles, TriangleAlert, Type, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { AgentPanel } from "./Agent.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
-import { Empty, Library, type LibraryTab } from "./Library.tsx";
+import { Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
 import { playback } from "./playback.ts";
 import { Stage } from "./Preview.tsx";
@@ -190,9 +191,7 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
           // Keyed on the folder: switching projects drops any half-typed value with the old Inspector.
           <Inspector key={snapshot.dir} snapshot={snapshot} project={project} online={online} />
         ) : (
-          <Empty icon={<Sparkles />} title="No agent yet" testId="agent-empty">
-            The agent arrives in a later phase.
-          </Empty>
+          <AgentPanel project={project} online={online} />
         )}
       </div>
     </aside>

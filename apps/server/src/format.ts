@@ -1,6 +1,6 @@
 // The project format, from @uncut/core: installed modules and the validator.
 import type { Problem } from "@uncut/contracts";
-import { loadModules, validateOps, validateProject } from "@uncut/core";
+import { loadModules, validateOps, validateProject, type Modules } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -12,6 +12,8 @@ export interface ProjectFormatShape {
   readonly validate: (project: unknown) => ReadonlyArray<Problem>;
   /** Problems with a list of edit ops (edit-ops schema, no prototype keys, no renames). */
   readonly validateOps: (ops: unknown) => ReadonlyArray<Problem>;
+  /** The installed modules (built-in manifests), e.g. for the agent's modules_list. */
+  readonly modules: Modules;
 }
 
 export class ProjectFormat extends Context.Service<ProjectFormat, ProjectFormatShape>()("uncut/ProjectFormat") {}
@@ -25,6 +27,6 @@ export const layer = Layer.effect(
       try: () => loadModules(modulesDir),
       catch: (cause) => new Error(`can't load modules from ${modulesDir}: ${String(cause)}`),
     }).pipe(Effect.orDie);
-    return ProjectFormat.of({ validate: (project) => validateProject(project, modules), validateOps });
+    return ProjectFormat.of({ validate: (project) => validateProject(project, modules), validateOps, modules });
   }),
 );

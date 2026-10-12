@@ -7,7 +7,7 @@
 import { isAbsolute, join } from "node:path";
 
 import { EditRefused, ProjectError, type Problem, type ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, EditConflict, EditError, type Op, type Project, type Session } from "@uncut/core";
+import { applyEdit, EditConflict, EditError, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -31,6 +31,35 @@ interface OpenProject {
   future: Array<Session>;
   // project.json exactly as we last read or wrote it, to notice hand edits before saving.
   diskText: string;
+  // The project the session's log starts from (at open or reload): undoing a turn replays from it.
+  initial: Project;
+  // Changes that aren't log entries (undo, redo, reload, undoing a turn), for the agent's note and
+  // its conflict check: an agent edit based on a revision before one of these is refused.
+  unlogged: Array<UnloggedChange>;
+  // The agent turn whose first edit put the pre-turn project on the undo stack (D7: a turn is
+  // one undo step). Cleared by anything else that touches the stack.
+  pushedForTurn: string | undefined;
+}
+
+export interface UnloggedChange {
+  readonly revision: number;
+  readonly what: string;
+}
+
+/** The open project as the agent service needs it: the session with its log. Read-only. */
+export interface ProjectView {
+  readonly dir: string;
+  readonly openId: number;
+  readonly session: Session;
+  readonly initial: Project;
+  readonly unlogged: ReadonlyArray<UnloggedChange>;
+}
+
+export interface AgentEditInput {
+  readonly turnId: string;
+  readonly ops: ReadonlyArray<unknown>;
+  readonly baseRevision: number;
+  readonly summary: string;
 }
 
 export interface Canvas {
@@ -66,6 +95,16 @@ export interface ProjectsShape {
   }) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
   readonly undo: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly redo: Effect.Effect<ProjectSnapshot, ProjectError>;
+  /** The open project with its edit log (no lock), for the agent service. */
+  readonly view: Effect.Effect<ProjectView | undefined>;
+  /**
+   * An agent edit (actor "agent", tagged with its turn) to the same opening of the project: the
+   * same validation and saving as a user edit, plus D6's refusal when the user changed what it
+   * touches (or used undo/redo/reload) after `baseRevision`. Not reachable over the RPC.
+   */
+  readonly agentEdit: (openId: number, input: AgentEditInput) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
+  /** Revert one turn's edits as one undoable step, keeping later edits (D7). */
+  readonly undoTurn: (openId: number, turnId: string, label: string) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
 }
 
 export class Projects extends Context.Service<Projects, ProjectsShape>()("uncut/Projects") {}
@@ -192,7 +231,20 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         // Revisions never go back, not even across opens within one server.
         const revision = lastRevision + 1;
-        current = { dir, openId: ++openCount, session: { project, revision, log: [] }, past: [], future: [], diskText };
+        current = {
+          dir,
+          openId: ++openCount,
+          session: { project, revision, log: [] },
+          past: [],
+          future: [],
+          diskText,
+          initial: project,
+          // Opening is a change the log doesn't hold: what happened to project.json while it was
+          // closed is unknown. The agent hears about it, and an agent edit planned against an
+          // earlier opening (a revision before this one) is refused.
+          unlogged: [{ revision, what: "The project was closed and opened again (it may have changed in between)" }],
+          pushedForTurn: undefined,
+        };
         yield* recents.touch(dir, project.name);
         yield* publish;
         return snapshot(current);
@@ -218,14 +270,21 @@ export const layer = Layer.effect(
           const restored = source.at(-1);
           if (!restored) return snapshot(p);
           // The earlier project comes back, under a new revision.
-          return yield* commit(p, { ...restored, revision: p.session.revision + 1 }, (previous) => {
+          const revision = p.session.revision + 1;
+          return yield* commit(p, { ...restored, revision }, (previous) => {
             source.pop();
             target.push(previous);
+            p.pushedForTurn = undefined;
+            p.unlogged.push({ revision, what: from === "past" ? "Used undo (⌘Z)" : "Used redo (⇧⌘Z)" });
           });
         }),
       );
 
-    const editUnlocked = (p: OpenProject, { ops, baseRevision, summary }: { ops: ReadonlyArray<unknown>; baseRevision?: number | undefined; summary?: string | undefined }) =>
+    const editUnlocked = (
+      p: OpenProject,
+      { ops, baseRevision, summary }: { ops: ReadonlyArray<unknown>; baseRevision?: number | undefined; summary?: string | undefined },
+      agent?: { readonly turnId: string },
+    ) =>
       Effect.gen(function* () {
         const opProblems = format.validateOps(ops);
         if (opProblems.length) return yield* refused("The edit is malformed", opProblems);
@@ -234,9 +293,23 @@ export const layer = Layer.effect(
             { code: "base-revision", path: "/baseRevision", message: "a revision from the future" },
           ]);
         }
+        // D6: undo, redo and reload aren't log entries, so the engine can't tell what they
+        // touched. Any agent edit planned before one of them is refused: read again first.
+        const unseen = agent && baseRevision !== undefined ? p.unlogged.filter((u) => u.revision > baseRevision) : [];
+        if (unseen.length) {
+          const what = unseen.map((u) => u.what).join("; ");
+          return yield* refused(`The project changed after revision ${baseRevision} (${what}). Read it again before editing.`, [
+            { code: "conflict", path: "/", message: what },
+          ]);
+        }
         const applied = yield* Effect.try({
           // validateOps above checked every op against the edit-ops schema.
-          try: () => applyEdit(p.session, { actor: "user", ops: ops as ReadonlyArray<Op>, baseRevision, summary }, format.validate),
+          try: () =>
+            applyEdit(
+              p.session,
+              { actor: agent ? "agent" : "user", ops: ops as ReadonlyArray<Op>, baseRevision, summary, ...(agent ? { turnId: agent.turnId } : {}) },
+              format.validate,
+            ),
           catch: (error) =>
             error instanceof EditError
               ? refused(error.message, toProblems(error))
@@ -257,10 +330,18 @@ export const layer = Layer.effect(
         const problems = format.validate(written);
         if (problems.length) return yield* refused("The edit would make the project invalid", problems);
         return yield* commit(p, { ...applied, project: written }, (previous) => {
-          p.past.push(previous);
+          // D7: a turn's later edits join its first one on the undo stack, so ⌘Z after a turn
+          // takes the whole turn back, as "Undo turn" does.
+          if (!agent || p.pushedForTurn !== agent.turnId) p.past.push(previous);
+          p.pushedForTurn = agent?.turnId;
           p.future = [];
         });
       });
+
+    const openingIs = (openId: number) =>
+      Effect.suspend(() =>
+        current && current.openId === openId ? Effect.succeed(current) : Effect.fail(projectError("no-project", "The project was closed before this finished.")),
+      );
 
     return Projects.of({
       create: ({ parentDir, name, canvas }) =>
@@ -335,6 +416,9 @@ export const layer = Layer.effect(
           p.past = [];
           p.future = [];
           p.diskText = text;
+          p.initial = project;
+          p.pushedForTurn = undefined;
+          p.unlogged.push({ revision: p.session.revision, what: "Reloaded project.json after it was changed outside Uncut" });
           if (renamed) yield* recents.touch(p.dir, project.name);
           yield* publish;
           return snapshot(p);
@@ -358,6 +442,36 @@ export const layer = Layer.effect(
 
       undo: step("past"),
       redo: step("future"),
+
+      view: Effect.sync(() =>
+        current ? { dir: current.dir, openId: current.openId, session: current.session, initial: current.initial, unlogged: [...current.unlogged] } : undefined,
+      ),
+
+      agentEdit: (openId, { turnId, ops, baseRevision, summary }) =>
+        lock.withPermits(1)(Effect.flatMap(openingIs(openId), (p) => editUnlocked(p, { ops, baseRevision, summary }, { turnId }))),
+
+      undoTurn: (openId, turnId, label) =>
+        lock.withPermits(1)(
+          Effect.gen(function* () {
+            const p = yield* openingIs(openId);
+            const next = yield* Effect.try({
+              try: () => undoTurn(p.initial, p.session, turnId, format.validate),
+              catch: (error) =>
+                error instanceof EditError
+                  ? refused(error.message, [{ code: error instanceof TurnDependency ? "depends" : "edit", path: "/", message: error.message }])
+                  : refused("The turn can't be undone", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
+            });
+            const written = JSON.parse(serialize(next.project)) as Session["project"];
+            const problems = format.validate(written);
+            if (problems.length) return yield* refused("Undoing the turn would make the project invalid", problems);
+            return yield* commit(p, { ...next, project: written }, (previous) => {
+              p.past.push(previous);
+              p.future = [];
+              p.pushedForTurn = undefined;
+              p.unlogged.push({ revision: next.revision, what: label });
+            });
+          }),
+        ),
     });
   }),
 );

@@ -7,6 +7,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer } from "effect/http";
 
+import * as Agent from "./agent.ts";
+import * as AgentBridge from "./agentBridge.ts";
 import * as Config from "./config.ts";
 import * as Format from "./format.ts";
 import * as Media from "./media.ts";
@@ -55,13 +57,14 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     host: config.host,
     port: config.port,
   });
-  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, MediaFiles.layer), { disableLogger: true, disableListenLog: true });
+  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, MediaFiles.layer, AgentBridge.layer), { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     Layer.provide(Media.layer),
+    Layer.provide(Agent.layer),
     Layer.provideMerge(MediaCore.layer),
     Layer.provide(Setup.layer),
     Layer.provide(Settings.layer),
-    Layer.provide(Projects.layer.pipe(Layer.provide(Format.layer), Layer.provideMerge(Recents.layer))),
+    Layer.provide(Projects.layer.pipe(Layer.provideMerge(Format.layer), Layer.provideMerge(Recents.layer))),
     Layer.provideMerge(layerHttpServer),
     Layer.provideMerge(Config.layer(config)),
     Layer.provideMerge(NodeServices.layer),

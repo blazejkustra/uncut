@@ -3,9 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "pnpm typecheck && node --test \"test/*.test.ts\" test/agent-ui.test.mjs",
+    "test": "pnpm typecheck && node --test \"test/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json && tsc -p packages/core && tsc -p packages/contracts && tsc -p apps/server && tsc -p apps/desktop && tsc -p apps/web && tsc -p test",
-    "editor": "electron spikes/editor/main.cjs",
     "demo": "node scripts/make-demo.ts",
     "dev": "node scripts/dev.ts",
     "build": "pnpm --filter @uncut/web build && pnpm --filter @uncut/server build && pnpm --filter @uncut/desktop build && node native/media/build-release.ts",
@@ -16,7 +15,6 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "electron": "44.6.0",
-    "lucide": "0.460.0",
     "puppeteer-core": "23.11.1",
     "typescript": "7.0.2"
   },

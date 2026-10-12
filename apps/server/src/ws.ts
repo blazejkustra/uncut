@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
+import { Agent } from "./agent.ts";
 import { ServerConfig } from "./config.ts";
 import { MediaLibrary } from "./media.ts";
 import { MediaCore } from "./mediaCore.ts";
@@ -32,10 +33,11 @@ interface Services {
   readonly setup: typeof Setup.Service;
   readonly settings: typeof Settings.Service;
   readonly library: typeof MediaLibrary.Service;
+  readonly agent: typeof Agent.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -60,6 +62,10 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.setupCheck]: () => setup.check,
     [RPC_METHODS.setupState]: () => Effect.map(settings.onboarded, (onboarded) => ({ onboarded })),
     [RPC_METHODS.setupComplete]: () => settings.setOnboarded,
+    [RPC_METHODS.agentSubscribe]: () => agent.changes,
+    [RPC_METHODS.agentSend]: (input) => agent.send(input),
+    [RPC_METHODS.agentCancel]: () => agent.cancel,
+    [RPC_METHODS.agentUndoTurn]: ({ turnId }) => agent.undoTurn(turnId),
   });
 
 export const layer = Layer.unwrap(
@@ -71,7 +77,8 @@ export const layer = Layer.unwrap(
     const setup = yield* Setup;
     const settings = yield* Settings;
     const library = yield* MediaLibrary;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library }).pipe(
+    const agent = yield* Agent;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

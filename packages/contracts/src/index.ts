@@ -25,6 +25,10 @@ export const RPC_METHODS = {
   setupCheck: "setup.check",
   setupState: "setup.state",
   setupComplete: "setup.complete",
+  agentSubscribe: "agent.subscribe",
+  agentSend: "agent.send",
+  agentCancel: "agent.cancel",
+  agentUndoTurn: "agent.undoTurn",
 } as const;
 
 // ---- server ----
@@ -146,6 +150,67 @@ export const SetupCheck = Schema.Struct({
 });
 export type SetupCheck = typeof SetupCheck.Type;
 
+// ---- agent (D40, D48) ----
+
+// The MCP server the agent CLI runs forwards tool calls to these routes (same port as the
+// WebSocket), authenticated by a token that lives only as long as one turn: GET <path>/tools,
+// POST <path>/call with { name, args }.
+export const AGENT_BRIDGE_PATH = "/agent";
+export const AGENT_TOKEN_HEADER = "x-uncut-agent-token";
+
+/** One thing in a turn, in order: a piece of the agent's reply, or a tool it used. */
+export const AgentItem = Schema.Struct({
+  kind: Schema.Literals(["text", "step"]),
+  // The reply text, or the step in words ("Read the timeline", the edit's summary).
+  text: Schema.String,
+  tool: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Literals(["running", "done", "error"])),
+});
+export type AgentItem = typeof AgentItem.Type;
+
+/** An edit the agent made in a turn: its summary and every op in words (core describeOp). */
+export const AgentEdit = Schema.Struct({ revision: Schema.Number, summary: Schema.String, lines: Schema.Array(Schema.String) });
+export type AgentEdit = typeof AgentEdit.Type;
+
+export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "cancelled"]);
+
+/** Whether "Undo turn" can run now, and why not when it can't. */
+export const AgentUndo = Schema.Struct({
+  state: Schema.Literals(["none", "available", "blocked", "unavailable", "undone"]),
+  reason: Schema.optional(Schema.String),
+});
+
+export const AgentTurn = Schema.Struct({
+  id: Schema.String,
+  prompt: Schema.String,
+  // The manual-edit note the agent got with this prompt (D6), shown on the card.
+  note: Schema.optional(Schema.String),
+  startedAt: Schema.String,
+  finishedAt: Schema.optional(Schema.String),
+  status: AgentTurnStatus,
+  items: Schema.Array(AgentItem),
+  edits: Schema.Array(AgentEdit),
+  error: Schema.optional(Schema.String),
+  seconds: Schema.optional(Schema.Number),
+  undoneAt: Schema.optional(Schema.String),
+  undo: AgentUndo,
+});
+export type AgentTurn = typeof AgentTurn.Type;
+
+/** The open project's agent: its turns (oldest first) and the one running, if any. */
+export const AgentState = Schema.Struct({
+  dir: Schema.String,
+  provider: Schema.String,
+  running: Schema.NullOr(Schema.String),
+  turns: Schema.Array(AgentTurn),
+});
+export type AgentState = typeof AgentState.Type;
+
+export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
+  reason: Schema.Literals(["no-project", "busy", "not-installed", "unknown-turn", "failed"]),
+  message: Schema.String,
+}) {}
+
 const Empty = Schema.Struct({});
 
 const ServerHelloRpc = Rpc.make(RPC_METHODS.serverHello, {
@@ -218,7 +283,37 @@ const SetupStateRpc = Rpc.make(RPC_METHODS.setupState, { payload: Empty, success
 // Onboarding was finished or skipped: don't show it on launch again.
 const SetupCompleteRpc = Rpc.make(RPC_METHODS.setupComplete, { payload: Empty });
 
+// The open project's agent now and on every change (null: nothing open). Like project.subscribe,
+// whole states, so a reconnect needs nothing else.
+const AgentSubscribeRpc = Rpc.make(RPC_METHODS.agentSubscribe, { payload: Empty, success: Schema.NullOr(AgentState), stream: true });
+
+// Starts a turn and returns its id; what happens arrives on agent.subscribe. One at a time.
+const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
+  payload: Schema.Struct({
+    prompt: Schema.String,
+    // Where the user is, for the prompt's editor context.
+    frame: Schema.optional(Schema.Int),
+    selected: Schema.optional(Schema.String),
+  }),
+  success: Schema.Struct({ turnId: Schema.String }),
+  error: AgentError,
+});
+
+// Stops the running turn (a no-op when none is running). Edits it already made stay.
+const AgentCancelRpc = Rpc.make(RPC_METHODS.agentCancel, { payload: Empty });
+
+// Reverts one turn's edits as one undoable step, keeping later edits (D7).
+const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
+  payload: Schema.Struct({ turnId: Schema.String }),
+  success: ProjectSnapshot,
+  error: Schema.Union([AgentError, EditRefused, ProjectError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
+  AgentSubscribeRpc,
+  AgentSendRpc,
+  AgentCancelRpc,
+  AgentUndoTurnRpc,
   MediaImportRpc,
   MediaJobsRpc,
   MediaThumbnailsRpc,
