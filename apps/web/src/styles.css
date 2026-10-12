@@ -359,3 +359,29 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .send { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; }
 .send svg.lucide { width: 15px; height: 15px; }
 .send:disabled { background: var(--raised); color: var(--dim); opacity: 1; }
+
+/* Timeline editing (phase 4 chunk 3) */
+.toolbar-sep { width: 1px; height: 16px; background: var(--border-strong); margin: 0 4px; }
+.icon-btn.on { color: var(--fg); }
+.bottom-toolbar .icon-btn[data-testid="snap-toggle"]:not(.on) { color: var(--dim); }
+.tl-head .icon-btn.on { color: var(--warn); }
+.clip .edge { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 2; cursor: ew-resize; }
+.clip .edge.start { left: 0; border-radius: 5px 0 0 5px; }
+.clip .edge.end { right: 0; border-radius: 0 5px 5px 0; }
+.clip:hover .edge, .clip.selected .edge { background: rgb(255 255 255 / 18%); }
+.clip.selected .edge { background: var(--select); }
+.clip.landing { opacity: 0.45; outline: 1px dashed var(--select); outline-offset: -1px; }
+.clip.trimming { border-color: var(--select); }
+.clip.dragging { pointer-events: none; opacity: 0.85; z-index: 3; box-shadow: 0 4px 14px rgb(0 0 0 / 50%); }
+.tl-lane.hidden .clip { opacity: 0.35; }
+.tl-lane.locked { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 3%) 6px 12px); }
+.tl-lane.locked .clip { cursor: not-allowed; }
+.snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn); z-index: 5; pointer-events: none; }
+.drag-tip { position: absolute; top: 4px; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: var(--raised); border: 1px solid var(--border-strong); font: 10px var(--mono); color: var(--fg); white-space: nowrap; z-index: 6; pointer-events: none; }
+.kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.kv-row:last-child { border-bottom: 0; }
+.kv-row .mono { text-align: right; }
+.side .hint { padding: 12px 14px; }
+.clip.refused { outline-color: var(--error); border-color: var(--error); }
+.clip.dragging.refused { opacity: 0.5; }
+.drag-tip.refused { color: var(--error); border-color: rgb(248 113 113 / 40%); white-space: normal; max-width: 280px; transform: none; }

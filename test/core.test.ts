@@ -127,3 +127,80 @@ test("esc and textHtml escape <>&\" in text and keep [[accent]] markup", () => {
   assert.match(styled, /font-weight:800;opacity:0\.5"/);
   assert.ok(!/<b>|"you"/.test(styled), "no raw markup or quotes from the text get through");
 });
+
+test("locked tracks and items refuse item edits from anyone; update_track still unlocks, hides and mutes (D52)", () => {
+  const locked: Project = {
+    ...project,
+    tracks: [
+      { ...project.tracks[0]!, locked: true },
+      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "c", type: "text", duration: 10, locked: true }] as Array<Item> },
+      { id: "free", kind: "text", name: "Free", items: [] },
+    ],
+  };
+  const s = createSession(locked);
+  const refused = (op: unknown, actor: "user" | "agent" = "user") =>
+    assert.throws(() => applyEdit(s, { actor, ops: [op as never] }), (e: unknown) => e instanceof EditError && /locked/.test((e as Error).message), JSON.stringify(op));
+  for (const actor of ["user", "agent"] as const) {
+    refused({ op: "trim_item", item: "hello", edge: "end", frames: 10 }, actor);
+    refused({ op: "move_item", item: "hello", start: 100 }, actor);
+    refused({ op: "split_item", item: "hello", at: 10, newId: "hello-2" }, actor);
+    refused({ op: "delete_item", item: "hello" }, actor);
+    refused({ op: "update_item", item: "hello", set: { text: "x" } }, actor);
+    refused({ op: "insert_item", track: "text", item: { id: "n", type: "text", start: 100, duration: 10 } }, actor);
+    refused({ op: "delete_track", track: "text" }, actor);
+    // An item that is locked itself (moves into a locked track: the next test).
+    refused({ op: "delete_item", item: "c" }, actor);
+  }
+  // Unlocking (and hiding, muting) a locked track works, and then it edits normally.
+  const unlocked = applyEdit(s, { actor: "user", ops: [{ op: "update_track", track: "text", set: { hidden: true } }, { op: "update_track", track: "text", set: { locked: null } }] });
+  const moved = applyEdit(unlocked, { actor: "agent", ops: [{ op: "move_item", item: "hello", start: 100 }] });
+  assert.equal(moved.project.tracks[0]!.items[0]!.start, 100);
+  assert.equal(applyEdit(s, { actor: "user", ops: [{ op: "update_item", item: "c", set: { locked: null } }] }).project.tracks[1]!.items[0]!.locked, undefined);
+});
+
+test("split_item refuses a split at the item's first frame", () => {
+  assert.throws(() => applyEdit(createSession(project), { actor: "user", ops: [{ op: "split_item", item: "hello", at: 0, newId: "h2" }] }), EditError);
+});
+
+test("lock bypasses are closed: move into a locked track, update_track items/id, delete_track with a locked item (D52)", () => {
+  const p: Project = {
+    ...project,
+    tracks: [
+      project.tracks[0]!,
+      { id: "main", kind: "video", role: "main", name: "Main", items: [] },
+      { id: "vault", kind: "text", name: "Vault", locked: true, items: [] },
+      { id: "keep", kind: "text", name: "Keep", items: [{ id: "k", type: "text", start: 0, duration: 10, locked: true }] as Array<Item> },
+    ],
+  };
+  const s = createSession(p);
+  const refused = (op: unknown, pattern: RegExp) => assert.throws(() => applyEdit(s, { actor: "agent", ops: [op as never] }), (e: unknown) => e instanceof EditError && pattern.test((e as Error).message), JSON.stringify(op));
+  refused({ op: "move_item", item: "hello", track: "vault", start: 100 }, /locked/);
+  refused({ op: "update_track", track: "vault", set: { items: [] } }, /items/);
+  refused({ op: "update_track", track: "keep", set: { items: [] } }, /items/);
+  refused({ op: "update_track", track: "text", set: { id: "other" } }, /id/);
+  refused({ op: "update_track", track: "vault", set: { kind: "audio" } }, /locked/);
+  refused({ op: "delete_track", track: "keep" }, /locked/);
+});
+
+test("trim and split: images keep in 0 and extend left; speed scales the source; split hands animations, fades and keys to their half", () => {
+  const p: Project = {
+    ...project,
+    media: [
+      { id: "img", kind: "image", name: "a.png", path: "/a.png" },
+      { id: "v", kind: "video", name: "v.mp4", path: "/v.mp4", probe: { frames: 300 } },
+    ],
+    tracks: [
+      { id: "text", kind: "text", name: "Text", items: [{ id: "t", type: "text", start: 0, duration: 60, animation: { in: { module: "move.fade", duration: 40 }, out: { module: "move.fade", duration: 40 } }, fadeIn: 5 }] as Array<Item> },
+      { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "i", type: "clip", media: "img", in: 0, duration: 30 }, { id: "f", type: "clip", media: "v", in: 10, duration: 40, speed: 2 }] as Array<Item> },
+    ],
+  };
+  let s = applyEdit(createSession(p), { actor: "user", ops: [{ op: "trim_item", item: "i", edge: "start", frames: -20 }] });
+  assert.deepEqual([s.project.tracks[1]!.items[0]!.in, s.project.tracks[1]!.items[0]!.duration], [0, 50]);
+  s = applyEdit(createSession(p), { actor: "user", ops: [{ op: "trim_item", item: "f", edge: "start", frames: 5 }, { op: "split_item", item: "f", at: 10, newId: "f2" }] });
+  assert.deepEqual(s.project.tracks[1]!.items.map((i) => i.in), [0, 20, 40]);
+  s = applyEdit(createSession(p), { actor: "user", ops: [{ op: "split_item", item: "t", at: 20, newId: "t2" }] });
+  const [a, b] = s.project.tracks[0]!.items;
+  assert.deepEqual(a!.animation, { in: { module: "move.fade", duration: 20 } }, "clamped to the half");
+  assert.deepEqual(b!.animation, { out: { module: "move.fade", duration: 40 } });
+  assert.deepEqual([a!.fadeIn, b!.fadeIn], [5, undefined]);
+});

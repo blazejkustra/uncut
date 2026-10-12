@@ -48,7 +48,7 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas">, starts: R
         const fadeIn = item.animation?.in?.module === "move.fade" ? item.animation.in.duration : 0;
         if (fadeIn) opacity = Math.min(1, Math.max(0, (f - start) / fadeIn));
       }
-      out.push({ item, track, opacity, source: item.media ? (item.in! + (f - start)) / fps : 0 });
+      out.push({ item, track, opacity, source: item.media ? ((item.in ?? 0) + (f - start) * (item.speed ?? 1)) / fps : 0 });
     });
   }
   return out;
