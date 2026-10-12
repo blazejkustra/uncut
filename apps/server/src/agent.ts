@@ -5,13 +5,15 @@
 // attributed to the agent and tagged with the turn, so a turn can be undone (D7). Before each
 // turn the agent is told what the user changed by hand since it last looked (D6).
 //
-// Turns are kept in <project>/agent/turns.json, with Claude Code's session id so the next turn
-// (also after reopening) continues the same conversation. Not in .cache/: wiping the cache must
-// not lose the history. history.db (D12) replaces this file when it lands.
+// Turns are kept in <project>/history.db (D71, history.ts), with Claude Code's session id so the
+// next turn (also after reopening) continues the same conversation, and the pending D6 note. Not in
+// .cache/: wiping the cache must not lose the history. An agent/turns.json from before (D51) is
+// moved in on first open and renamed agent/turns.migrated-<time>.json; one that can't be read is
+// left alone and turns are refused until it can be.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, realpath, rename } from "node:fs/promises";
+import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { readFile, realpath, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,10 +36,10 @@ import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
-import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
+import { withHistory, type TurnRecord } from "./history.ts";
 import { MediaLibrary, type MediaEntry } from "./media.ts";
 import { Projects, type ProjectView } from "./projects.ts";
 import { which } from "./setup.ts";
@@ -45,7 +47,6 @@ import type { VideoResult } from "./videoAnalysis.ts";
 import { DEFAULT_BEST_SECONDS, RANK_BY, rankValue, type RankBy } from "./videoScores.ts";
 
 export const PROVIDER = "Claude Code";
-const HISTORY_FORMAT = "uncut.agent-history/0";
 const KILL_AFTER_MS = 1500;
 
 /** An MCP tools/call result. */
@@ -116,6 +117,10 @@ interface Loaded {
   readError: string | undefined;
   // The agent's latest ui_show (D65), for the renderer to apply once. Not saved.
   ui: AgentUi | undefined;
+  // Each turn as last saved (JSON), so a save only writes the turns that changed.
+  readonly saved: Map<string, string>;
+  // The revisions a turn started and ended at (history.db's columns; not part of AgentTurn).
+  readonly bounds: Map<string, { start?: number; end?: number }>;
 }
 
 interface Running {
@@ -174,7 +179,7 @@ interface History {
   readonly readError?: string;
 }
 
-/** turns.json: none yet is an empty history; one that can't be read is an error, never "empty". */
+/** agent/turns.json (D51, before history.db): none is an empty history; one that can't be read is an error, never "empty". */
 export async function readHistory(dir: string): Promise<History> {
   let text: string;
   try {
@@ -198,6 +203,51 @@ export async function readHistory(dir: string): Promise<History> {
   }
 }
 
+const byStart = (a: StoredTurn, b: StoredTurn) => Date.parse(a.startedAt) - Date.parse(b.startedAt);
+
+/**
+ * The agent's history (D71): from history.db, after moving in an agent/turns.json left from before
+ * (its turns history.db doesn't have yet, its session and note when history.db has none), which is
+ * then renamed so it's read once. A turns.json that can't be read stops here (turns are refused, the
+ * file is left alone). A history in memory (history.db unusable) reads turns.json but keeps it.
+ */
+export async function loadAgentHistory(dir: string): Promise<History> {
+  const legacy = await readHistory(dir);
+  if (legacy.readError) return legacy;
+  return withHistory(dir, (db) => {
+    const stored = db.agent();
+    const turns = stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined);
+    if (!existsSync(historyFile(dir))) return { sessionId: stored.sessionId, turns, pendingNote: stored.pendingNote };
+    const known = new Set(turns.map((t) => t.id));
+    const merged = [...turns, ...legacy.turns.filter((t) => !known.has(t.id))].sort(byStart);
+    const sessionId = stored.sessionId ?? legacy.sessionId;
+    const pendingNote = stored.pendingNote ?? legacy.pendingNote;
+    if (db.persistent) {
+      db.saveAgent({ sessionId, pendingNote, turns: merged.map((t) => turnRecord(t)), migratedAt: new Date().toISOString() });
+      // The save can have moved the history to memory (the file failed): then turns.json stays.
+      if (db.persistent) {
+        try {
+          renameSync(historyFile(dir), join(dir, "agent", `turns.migrated-${Date.now()}.json`));
+        } catch (error) {
+          console.error(`[uncut] moved the agent history into history.db but couldn't rename agent/turns.json: ${(error as Error).message}`);
+        }
+      }
+    }
+    return { sessionId, turns: merged, pendingNote };
+  });
+}
+
+const turnRecord = (t: StoredTurn, bounds?: { start?: number; end?: number }): TurnRecord => ({
+  id: t.id,
+  prompt: t.prompt,
+  status: t.status,
+  startedAt: t.startedAt,
+  finishedAt: t.finishedAt,
+  startRevision: bounds?.start,
+  endRevision: bounds?.end,
+  data: t,
+});
+
 // ---- notes and undo states ----
 
 /**
@@ -205,7 +255,9 @@ export async function readHistory(dir: string): Promise<History> {
  * manualEditsNote); undo, redo, reload and undone turns aren't log entries, so they're listed too.
  */
 export function noteFor(view: ProjectView, since: number): string {
-  const base = manualEditsNote(view.session, since);
+  // The log goes back to earlier openings (history.db); what happened then reached the note that
+  // was carried over (pendingNote), so only this opening's edits count here.
+  const base = manualEditsNote(view.session, Math.max(since, view.openRevision));
   const extra = view.unlogged.filter((u) => u.revision > since).map((u) => `- ${u.what}`);
   if (!extra.length) return base;
   if (!base) {
@@ -227,9 +279,17 @@ const dryRuns = new WeakMap<Session, Map<string, UndoState>>();
 
 function undoState(turn: StoredTurn, view: ProjectView | undefined, openId: number, validate: (project: Project) => ReadonlyArray<{ readonly message: string }>): UndoState {
   if (turn.status === "running" || turn.edits.length === 0) return { state: "none" };
-  if (!view || view.openId !== openId || !view.session.log.some((e) => e.turnId === turn.id)) {
+  const logged = new Set(view && view.openId === openId ? view.session.log.filter((e) => e.turnId === turn.id).map((e) => e.revision) : []);
+  if (!view || !logged.size) {
     if (turn.undoneAt) return { state: "undone" };
-    return { state: "unavailable", reason: "Its edits aren't in this session's history any more: the project was reopened or reloaded, or they were undone with ⌘Z." };
+    return {
+      state: "unavailable",
+      reason: "Its edits aren't in the project's history any more: project.json was changed outside Uncut after it, an earlier version was restored from History, or they were undone with ⌘Z.",
+    };
+  }
+  // history.db keeps the last revisions only: a turn whose first edits are gone can't be taken back whole.
+  if (!turn.edits.every((e) => logged.has(e.revision))) {
+    return { state: "unavailable", reason: "Part of it is older than the history keeps, so it can't be undone as a whole any more." };
   }
   let cache = dryRuns.get(view.session);
   if (!cache) dryRuns.set(view.session, (cache = new Map()));
@@ -368,18 +428,24 @@ export const layer = Layer.effect(
     };
     const publish = () => Effect.runSync(SubscriptionRef.set(stateRef, stateNow()));
 
-    // Writes go out one at a time, each with the state as it was when it was asked for.
-    let writing: Promise<void> = Promise.resolve();
+    // Saved to history.db right away (node:sqlite is synchronous): only the turns that changed.
     const persist = (owner: Loaded) => {
-      // A history we couldn't read stays as it is: saving now would replace it with less.
+      // A turns.json we couldn't read stays as it is and nothing replaces it.
       if (owner.readError) return;
       const pendingNote = joinNotes(owner.carried, owner.pending) || undefined;
-      const text = `${JSON.stringify({ format: HISTORY_FORMAT, provider: "claude", sessionId: owner.sessionId, pendingNote, turns: owner.turns }, null, 2)}\n`;
-      const file = historyFile(owner.dir);
-      writing = writing
-        .then(() => mkdir(join(owner.dir, "agent"), { recursive: true }))
-        .then(() => Effect.runPromise(writeFileAtomic(file, text)))
-        .catch((error) => console.error(`[uncut] can't save the agent history to ${file}: ${(error as Error).message}`));
+      const changed: Array<[string, string]> = [];
+      const turns = owner.turns.flatMap((t) => {
+        const json = JSON.stringify(t);
+        if (owner.saved.get(t.id) === json) return [];
+        changed.push([t.id, json]);
+        return [turnRecord(t, owner.bounds.get(t.id))];
+      });
+      try {
+        withHistory(owner.dir, (db) => db.saveAgent({ sessionId: owner.sessionId, pendingNote, turns, order: owner.turns.map((t) => t.id) }));
+        for (const [id, json] of changed) owner.saved.set(id, json);
+      } catch (error) {
+        console.error(`[uncut] can't save the agent history of ${owner.dir}: ${(error as Error).message}`);
+      }
     };
 
     const killGroup = (child: ChildProcess, signal: NodeJS.Signals) => {
@@ -425,12 +491,13 @@ export const layer = Layer.effect(
           same.seen = new Set();
           same.agentSeen = Math.min(same.agentSeen, v.session.revision - 1);
           same.ui = undefined;
+          // The history this opening writes to may not hold what was saved before (an in-memory
+          // history from a locked history.db, now a healthy file): save every turn again.
+          same.saved.clear();
           loaded = same;
           return same;
         }
-        // Saves still on their way (another project's, or this one's from before) land first.
-        yield* Effect.promise(() => writing);
-        const history = yield* Effect.promise(() => readHistory(v.dir));
+        const history = yield* Effect.promise(() => loadAgentHistory(v.dir));
         loaded = {
           dir: v.dir,
           openId: v.openId,
@@ -444,6 +511,8 @@ export const layer = Layer.effect(
           pending: "",
           readError: history.readError,
           ui: undefined,
+          saved: new Map(history.turns.map((t) => [t.id, JSON.stringify(t)])),
+          bounds: new Map(),
         };
         return loaded;
       }),
@@ -1147,6 +1216,8 @@ export const layer = Layer.effect(
       if (r.turn.seconds === undefined) r.turn.seconds = Math.round((Date.now() - Date.parse(r.turn.startedAt)) / 100) / 10;
       const ok = patch.status === "done";
       for (const item of r.turn.items) if (item.status === "running") item.status = ok ? "done" : "error";
+      const now = view();
+      if (now && now.openId === r.openId) r.owner.bounds.set(r.turn.id, { ...r.owner.bounds.get(r.turn.id), end: now.session.revision });
       r.token = "";
       rmSync(r.mcpDir, { recursive: true, force: true });
       if (running === r) running = undefined;
@@ -1325,6 +1396,7 @@ export const layer = Layer.effect(
           catch: (error) => new AgentError({ reason: "failed", message: `Can't prepare the agent's tools: ${(error as Error).message}` }),
         });
         owner.turns.push(turn);
+        owner.bounds.set(turn.id, { start: v.session.revision });
         const r: Running = {
           turn,
           owner,
@@ -1358,6 +1430,9 @@ export const layer = Layer.effect(
           if (running) return yield* new AgentError({ reason: "busy", message: "Wait for the agent to finish, or stop it, before undoing a turn." });
           const turn = owner.turns.find((t) => t.id === turnId);
           if (!turn) return yield* new AgentError({ reason: "unknown-turn", message: "That turn isn't in this project's history." });
+          // Partly beyond what history.db keeps (or not in the history at all): say why, change nothing.
+          const state = undoState(turn, view(), owner.openId, format.validate);
+          if (state.state === "unavailable") return yield* new AgentError({ reason: "failed", message: `This turn can't be undone. ${state.reason}` });
           const label = `Undid your turn "${turn.prompt.length > 80 ? `${turn.prompt.slice(0, 77)}...` : turn.prompt}"`;
           const snapshot = yield* projects.undoTurn(owner.openId, turnId, label);
           turn.undoneAt = new Date().toISOString();

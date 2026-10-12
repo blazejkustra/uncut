@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -55,6 +55,8 @@ export interface AppStateShape {
   readonly thumbIds: ReadonlySet<string>;
   // The open project's agent (turns, the running one) from agent.subscribe.
   readonly agent: AgentState | null;
+  // The open project's history (D71) from history.subscribe, for the History tab.
+  readonly history: HistoryState | null;
   // Why the last agent action failed (not installed, busy…), shown in the Agent tab.
   readonly agentError?: string;
   // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
@@ -90,6 +92,7 @@ let state: AppStateShape = {
   jobs: [],
   thumbIds: new Set(),
   agent: null,
+  history: null,
   exportOpen: false,
   exportJobs: [],
   analysisJobs: [],
@@ -121,13 +124,14 @@ function syncShell() {
   document.title = state.snapshot ? projectOf(state.snapshot).name : "Uncut";
 }
 
-// The newest revision this window has shown. Revisions only go up on the server, so a
-// call result at or below it is old news (e.g. it arrived after a reconnect's refetch).
-let newestRevision = -1;
+// The newest revision this window has shown, per project. A project's revisions only go up on the
+// server (they're its own since D71, kept in history.db), so a call result at or below it is old
+// news (e.g. it arrived after a reconnect's refetch). The subscription is always applied; the mark only rises.
+const newestRevision = new Map<string, number>();
 
 /** From the subscription: authoritative, always applied. */
 function applyFromServer(snapshot: ProjectSnapshot | null) {
-  if (snapshot) newestRevision = Math.max(newestRevision, snapshot.revision);
+  if (snapshot) newestRevision.set(snapshot.dir, Math.max(newestRevision.get(snapshot.dir) ?? -1, snapshot.revision));
   const switched = snapshot?.dir !== state.snapshot?.dir;
   const mediaChanged = mediaKey(snapshot) !== mediaKey(state.snapshot);
   if (mediaChanged) void refreshThumbs();
@@ -155,7 +159,7 @@ async function refreshThumbs() {
 
 /** From a call result: applied only if it is newer than anything shown. */
 function applyFromCall(snapshot: ProjectSnapshot) {
-  if (snapshot.revision <= newestRevision) return;
+  if (snapshot.revision <= (newestRevision.get(snapshot.dir) ?? -1)) return;
   applyFromServer(snapshot);
 }
 
@@ -201,6 +205,7 @@ export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PAT
 let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
 let unsubscribeAgent: (() => void) | undefined;
+let unsubscribeHistory: (() => void) | undefined;
 let unsubscribeExports: (() => void) | undefined;
 let unsubscribeAnalysis: (() => void) | undefined;
 let unsubscribeTranscription: (() => void) | undefined;
@@ -345,6 +350,8 @@ export async function start() {
           applyAgentUi(agent);
         },
       );
+      unsubscribeHistory?.();
+      unsubscribeHistory = conn.subscribe((c) => c["history.subscribe"]({}), (history) => set({ history }));
       unsubscribe?.();
       unsubscribe = conn.subscribe(
         (c) => c["project.subscribe"]({}),
@@ -516,7 +523,8 @@ export const actions = {
     await refreshRecents();
   },
 
-  undo: () => (state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : undefined),
+  // ⌘Z with nothing left says why when that's news (D71: it stops at a change made outside Uncut).
+  undo: () => (state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : state.snapshot?.undoStop ? set({ notice: { text: state.snapshot.undoStop } }) : undefined),
   redo: () => (state.snapshot?.canRedo ? change((c) => c["project.redo"]({})) : undefined),
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
   addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
@@ -555,6 +563,14 @@ export const actions = {
   },
 
   showInFolder: (path: string) => bridge.showInFolder(path),
+
+  /** The project as it was at a revision (History's preview), or a sentence saying why not. */
+  async historyPreview(revision: number): Promise<{ readonly project: Project } | { readonly problem: string }> {
+    const result = await call((c) => c["history.preview"]({ revision }));
+    return result.ok ? { project: result.value.project as Project } : { problem: plainError(result.error) };
+  },
+  /** Bring back a revision's state as a new revision (History's Restore; one ⌘Z takes it back). */
+  historyJump: (revision: number) => change((c) => c["history.jump"]({ revision })),
 
   /**
    * Import files (from a drop) or, with no paths, ask with the native dialog. The server runs

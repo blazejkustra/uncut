@@ -1,13 +1,15 @@
 // The server owns the open project: it validates, applies edits through @uncut/core, keeps
 // the undo/redo stacks and saves project.json. One open project per server for now.
 //
-// D12 also puts history.db (SQLite: the edit log and agent-turn snapshots) in the project
-// folder. Not yet: the log and the undo stacks live in memory and start fresh on open.
-// When it lands, open/edit/undo below are where it is read and appended.
+// D71: every change is also a revision in <project>/history.db (history.ts): the undo/redo cursor,
+// the edit log Undo turn replays and the History tab survive closing the project and restarting
+// the app. project.json stays the source of truth: when it differs from the history's newest state
+// (changed outside Uncut while closed, or reloaded after a hand edit) that is an "external"
+// revision, and ⌘Z stops there (History can still go back past it, as a new revision).
 import { isAbsolute, join } from "node:path";
 
-import { EditRefused, ProjectError, type Problem, type ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, EditConflict, EditError, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
+import { EditRefused, ProjectError, type HistoryState, type Problem, type ProjectSnapshot } from "@uncut/contracts";
+import { applyEdit, describeOp, EditConflict, EditError, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -20,18 +22,24 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { ProjectFormat } from "./format.ts";
+import { HistoryDb, MAX_ROWS, type NewRow, type Row } from "./history.ts";
+import { sameJson } from "./jsonPatch.ts";
 import { Recents } from "./recents.ts";
 
 interface OpenProject {
   readonly dir: string;
   // Which opening of the project this is: a close and reopen (or another project) is a new one.
   readonly openId: number;
+  // The revision the project was opened at (revisions are the project's own, kept in history.db).
+  readonly openRevision: number;
   session: Session;
-  past: Array<Session>;
-  future: Array<Session>;
+  // The revisions ⌘Z and ⇧⌘Z go back to (one per undo step: a turn's edits are one, D7).
+  past: Array<number>;
+  future: Array<number>;
+  readonly history: HistoryDb;
   // project.json exactly as we last read or wrote it, to notice hand edits before saving.
   diskText: string;
-  // The project the session's log starts from (at open or reload): undoing a turn replays from it.
+  // The project the session's log starts from (the history's boundary): undoing a turn replays from it.
   initial: Project;
   // Changes that aren't log entries (undo, redo, reload, undoing a turn), for the agent's note and
   // its conflict check: an agent edit based on a revision before one of these is refused.
@@ -50,6 +58,8 @@ export interface UnloggedChange {
 export interface ProjectView {
   readonly dir: string;
   readonly openId: number;
+  // Log entries up to this revision are from earlier openings (the agent's carried note covers them).
+  readonly openRevision: number;
   readonly session: Session;
   readonly initial: Project;
   readonly unlogged: ReadonlyArray<UnloggedChange>;
@@ -108,7 +118,42 @@ export interface ProjectsShape {
   readonly agentEdit: (openId: number, input: AgentEditInput) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
   /** Revert one turn's edits as one undoable step, keeping later edits (D7). */
   readonly undoTurn: (openId: number, turnId: string, label: string) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
+  /** The open project's history for the History tab (null: nothing open), then every change. */
+  readonly historyChanges: Stream.Stream<HistoryState | null>;
+  /** The project as it was at a revision, for the History tab's preview. Changes nothing. */
+  readonly historyPreview: (revision: number) => Effect.Effect<{ revision: number; project: unknown }, ProjectError>;
+  /** Go back (or forward) to a revision's state as a new, undoable revision (D71). */
+  readonly historyJump: (revision: number) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
 }
+
+/** How many revisions history.subscribe sends (newest first; undo/redo steps aren't listed). */
+export const HISTORY_LISTED = 200;
+
+/** A change made outside Uncut in a few lines: items and media added, removed or changed. */
+export function externalLines(before: Project, after: Project): Array<string> {
+  const items = (p: Project) => new Map(p.tracks.flatMap((t) => t.items.map((i) => [i.id, i] as const)));
+  const a = items(before);
+  const b = items(after);
+  const list = (ids: Array<string>) => `${ids.slice(0, 5).join(", ")}${ids.length > 5 ? ` and ${ids.length - 5} more` : ""}`;
+  const added = [...b.keys()].filter((id) => !a.has(id));
+  const removed = [...a.keys()].filter((id) => !b.has(id));
+  const changed = [...b.keys()].filter((id) => a.has(id) && !sameJson(a.get(id), b.get(id)));
+  const mediaAdded = after.media.filter((m) => !before.media.some((x) => x.id === m.id)).map((m) => m.id);
+  const mediaRemoved = before.media.filter((m) => !after.media.some((x) => x.id === m.id)).map((m) => m.id);
+  const lines = [
+    added.length ? `Added ${list(added)}` : "",
+    removed.length ? `Removed ${list(removed)}` : "",
+    changed.length ? `Changed ${list(changed)}` : "",
+    mediaAdded.length ? `Added media ${list(mediaAdded)}` : "",
+    mediaRemoved.length ? `Removed media ${list(mediaRemoved)}` : "",
+    before.name !== after.name ? `Renamed the project to "${after.name}"` : "",
+  ].filter(Boolean);
+  return lines.length ? lines : ["Changed the project's settings or track order"];
+}
+
+const EXTERNAL_LABEL = "Changed outside Uncut";
+const EXTERNAL_STOP = "Undo stops at the change made to project.json outside Uncut, so it isn't lost by accident. To go back further, pick an earlier version in History.";
+const COMPACTED_STOP = `Older steps aren't kept: History keeps the last ${MAX_ROWS} changes.`;
 
 export class Projects extends Context.Service<Projects, ProjectsShape>()("uncut/Projects") {}
 
@@ -154,6 +199,9 @@ const toProblems = (error: EditError): Array<Problem> =>
 
 const serialize = (project: unknown) => `${JSON.stringify(project, null, 2)}\n`;
 
+/** The .gitignore a new project gets: the cache and the per-Mac undo history (D71) stay local. */
+export const GITIGNORE = ".cache/\nhistory.db\nhistory.db-wal\nhistory.db-shm\n";
+
 export const layer = Layer.effect(
   Projects,
   Effect.gen(function* () {
@@ -165,23 +213,91 @@ export const layer = Layer.effect(
     const lock = yield* Semaphore.make(1);
     let current: OpenProject | undefined;
     let openCount = 0;
+    // A stopping server closes the history, so its WAL is checkpointed into history.db.
+    yield* Effect.addFinalizer(() => Effect.sync(() => current?.history.close()));
     const updates = yield* SubscriptionRef.make<ProjectSnapshot | null>(null);
+    const historyUpdates = yield* SubscriptionRef.make<HistoryState | null>(null);
     // Tell subscribers what is open now. Called after every change, inside the same lock.
-    const publish = Effect.suspend(() => SubscriptionRef.set(updates, current ? snapshot(current) : null));
-    // The last revision this server handed out, so revisions keep going up across close/open.
-    let lastRevision = -1;
+    const publish = Effect.suspend(() =>
+      Effect.andThen(SubscriptionRef.set(updates, current ? snapshot(current) : null), SubscriptionRef.set(historyUpdates, current ? historyOf(current) : null)),
+    );
 
-    const snapshot = (p: OpenProject): ProjectSnapshot => {
-      lastRevision = Math.max(lastRevision, p.session.revision);
-      return snapshotOf(p);
+    // Why ⌘Z can't go further, when the reason is worth saying (not just "nothing done yet").
+    const undoStop = (p: OpenProject): string | undefined => {
+      if (p.past.length) return undefined;
+      try {
+        const start = p.history.boundaryOf(p.session.revision);
+        if (start.kind === "external") return EXTERNAL_STOP;
+        if (start.kind !== "initial") return COMPACTED_STOP;
+      } catch {}
+      return undefined;
     };
-    const snapshotOf = (p: OpenProject): ProjectSnapshot => ({
-      dir: p.dir,
-      project: p.session.project,
-      revision: p.session.revision,
-      canUndo: p.past.length > 0,
-      canRedo: p.future.length > 0,
-    });
+    // The highest revision this server has shown per folder: a history that starts over (no
+    // history.db, or one that fell back to memory) starts above it, so a folder's revisions never
+    // go back while the app runs (a late call result can't pass for news).
+    const shown = new Map<string, number>();
+    const snapshot = (p: OpenProject): ProjectSnapshot => {
+      shown.set(p.dir, Math.max(shown.get(p.dir) ?? -1, p.session.revision));
+      const stop = undoStop(p);
+      return {
+        dir: p.dir,
+        project: p.session.project,
+        revision: p.session.revision,
+        canUndo: p.past.length > 0,
+        canRedo: p.future.length > 0,
+        ...(stop ? { undoStop: stop } : {}),
+        ...(p.history.problem ? { historyProblem: p.history.problem } : {}),
+      };
+    };
+    const historyOf = (p: OpenProject): HistoryState => {
+      const { rows, total } = p.history.listed(HISTORY_LISTED);
+      let lineage: Set<number>;
+      try {
+        lineage = p.history.lineage(p.session.revision);
+      } catch {
+        lineage = new Set();
+      }
+      return {
+        dir: p.dir,
+        revision: p.session.revision,
+        persistent: p.history.persistent,
+        ...(p.history.problem ? { problem: p.history.problem } : {}),
+        total,
+        entries: rows.map((r) => ({
+          revision: r.revision,
+          at: r.at,
+          kind: r.kind,
+          author: r.author,
+          ...(r.turnId ? { turnId: r.turnId } : {}),
+          label: r.label,
+          lines: [...r.lines],
+          current: lineage.has(r.revision),
+        })),
+      };
+    };
+    /** Add a revision to the history and take the cursor it stored (compaction can trim it). */
+    const record = (p: OpenProject, row: NewRow) => {
+      try {
+        const stored = p.history.record(row, { past: p.past, future: p.future });
+        p.past = [...stored.past];
+        p.future = [...stored.future];
+      } catch (error) {
+        // project.json is saved; the history just misses this step. Undo stops before it.
+        console.error(`[uncut] history: couldn't record revision ${row.revision}: ${(error as Error).message}`);
+        p.past = [];
+        p.future = [];
+      }
+    };
+    /** A revision's state, its log and the project the log starts from, read from the history. */
+    const restoreFrom = (p: OpenProject, revision: number) =>
+      Effect.try({
+        try: () => {
+          const project = p.history.stateAt(revision);
+          const { log, initial } = p.history.logAt(revision);
+          return { project, log, initial: p.history.stateAt(initial) };
+        },
+        catch: (error) => projectError("io", `The history can't bring back revision ${revision}: ${(error as Error).message}`, p.dir),
+      });
     const requireOpen = Effect.suspend(() =>
       current ? Effect.succeed(current) : Effect.fail(projectError("no-project", "No project is open")),
     );
@@ -210,7 +326,7 @@ export const layer = Layer.effect(
      * client hanging up mid-save must not leave disk and memory disagreeing). Refuses if
      * project.json was edited by hand since we last read or wrote it.
      */
-    const commit = (p: OpenProject, next: Session, moveStacks: (previous: Session) => void) =>
+    const commit = (p: OpenProject, next: Session, moveStacks: (previous: Session) => void, row: NewRow) =>
       Effect.uninterruptible(
         Effect.gen(function* () {
           const onDisk = yield* readProjectFile(p.dir).pipe(Effect.catchTag("ProjectError", () => Effect.succeed(undefined)));
@@ -223,6 +339,7 @@ export const layer = Layer.effect(
           p.session = next;
           p.diskText = text;
           moveStacks(previous);
+          record(p, row);
           // Recents show the name the project has now, not the one it was opened with.
           if (next.project.name !== previous.project.name) yield* recents.touch(p.dir, next.project.name);
           yield* publish;
@@ -230,22 +347,61 @@ export const layer = Layer.effect(
         }),
       );
 
-    const setOpen = (dir: string, project: Session["project"], diskText: string) =>
+    /**
+     * Make `project` (just read or created) the open one, with its history. A history whose newest
+     * state isn't what project.json says gets an "external" revision: the file was changed outside
+     * Uncut while it was closed (git, another editor, a sync app), and ⌘Z stops there.
+     */
+    const setOpen = (dir: string, project: Session["project"], diskText: string, created: boolean) =>
       Effect.gen(function* () {
-        // Revisions never go back, not even across opens within one server.
-        const revision = lastRevision + 1;
+        if (current && current.dir !== dir) current.history.close();
+        const history = HistoryDb.open(dir);
+        let session: Session;
+        let initial: Project = project;
+        let cursor = { past: [] as ReadonlyArray<number>, future: [] as ReadonlyArray<number> };
+        let unlogged: UnloggedChange;
+        const start = (revision: number) => {
+          const label = created ? "Created the project" : "Opened project.json: the history starts here";
+          cursor = history.record({ kind: "initial", author: created ? "user" : "import", revision, label, project }, cursor);
+          session = { project, revision, log: [] };
+          unlogged = { revision, what: "The project was opened" };
+        };
+        try {
+          const head = history.head;
+          if (head === undefined || created) start(Math.max(head ?? -1, shown.get(dir) ?? -1) + 1);
+          else if (sameJson(history.stateAt(head), project)) {
+            const { log, initial: from } = history.logAt(head);
+            session = { project, revision: head, log };
+            initial = history.stateAt(from);
+            cursor = history.cursor;
+            // Nothing changed while it was closed; still, the agent re-reads before editing.
+            unlogged = { revision: head, what: "The project was closed and opened again (nothing changed in between)" };
+          } else {
+            const revision = head + 1;
+            const lines = externalLines(history.stateAt(head), project);
+            cursor = history.record({ kind: "external", author: "external", revision, label: EXTERNAL_LABEL, lines, project }, { past: [], future: [] });
+            session = { project, revision, log: [] };
+            unlogged = { revision, what: `The project was closed and opened again, and project.json had been changed outside Uncut (${lines.join("; ")})` };
+          }
+        } catch (error) {
+          // A history whose contents can't be used doesn't stop the project from opening.
+          console.error(`[uncut] history of ${dir} can't be used: ${(error as Error).message}`);
+          history.abandon(error);
+          initial = project;
+          cursor = { past: [], future: [] };
+          start((shown.get(dir) ?? -1) + 1);
+        }
         current = {
           dir,
           openId: ++openCount,
-          session: { project, revision, log: [] },
-          past: [],
-          future: [],
+          openRevision: session!.revision,
+          session: session!,
+          past: [...cursor.past],
+          future: [...cursor.future],
+          history,
           diskText,
-          initial: project,
-          // Opening is a change the log doesn't hold: what happened to project.json while it was
-          // closed is unknown. The agent hears about it, and an agent edit planned against an
-          // earlier opening (a revision before this one) is refused.
-          unlogged: [{ revision, what: "The project was closed and opened again (it may have changed in between)" }],
+          initial,
+          unlogged: [unlogged!],
           pushedForTurn: undefined,
         };
         yield* recents.touch(dir, project.name);
@@ -268,18 +424,24 @@ export const layer = Layer.effect(
       lock.withPermits(1)(
         Effect.gen(function* () {
           const p = yield* requireOpen;
-          const source = p[from];
-          const target = p[from === "past" ? "future" : "past"];
-          const restored = source.at(-1);
-          if (!restored) return snapshot(p);
+          const target = p[from].at(-1);
+          if (target === undefined) return snapshot(p);
           // The earlier project comes back, under a new revision.
+          const restored = yield* restoreFrom(p, target);
           const revision = p.session.revision + 1;
-          return yield* commit(p, { ...restored, revision }, (previous) => {
-            source.pop();
-            target.push(previous);
-            p.pushedForTurn = undefined;
-            p.unlogged.push({ revision, what: from === "past" ? "Used undo (⌘Z)" : "Used redo (⇧⌘Z)" });
-          });
+          const undo = from === "past";
+          return yield* commit(
+            p,
+            { project: restored.project, revision, log: restored.log },
+            (previous) => {
+              p[from].pop();
+              p[undo ? "future" : "past"].push(previous.revision);
+              p.initial = restored.initial;
+              p.pushedForTurn = undefined;
+              p.unlogged.push({ revision, what: undo ? "Used undo (⌘Z)" : "Used redo (⇧⌘Z)" });
+            },
+            { kind: undo ? "undo" : "redo", author: "user", revision, label: undo ? "Undo" : "Redo", target },
+          );
         }),
       );
 
@@ -332,13 +494,33 @@ export const layer = Layer.effect(
         }
         const problems = format.validate(written);
         if (problems.length) return yield* refused("The edit would make the project invalid", problems);
-        return yield* commit(p, { ...applied, project: written }, (previous) => {
-          // D7: a turn's later edits join its first one on the undo stack, so ⌘Z after a turn
-          // takes the whole turn back, as "Undo turn" does.
-          if (!agent || p.pushedForTurn !== agent.turnId) p.past.push(previous);
-          p.pushedForTurn = agent?.turnId;
-          p.future = [];
-        });
+        const entry = applied.log.at(-1)!;
+        const typed = ops as ReadonlyArray<Op>;
+        const lines = typed.map((op) => describeOp(op, written, summary));
+        const author = agent ? "agent" : typed.every((op) => op.op === "add_media") ? "import" : "user";
+        return yield* commit(
+          p,
+          { ...applied, project: written },
+          (previous) => {
+            // D7: a turn's later edits join its first one on the undo stack, so ⌘Z after a turn
+            // takes the whole turn back, as "Undo turn" does.
+            if (!agent || p.pushedForTurn !== agent.turnId) p.past.push(previous.revision);
+            p.pushedForTurn = agent?.turnId;
+            p.future = [];
+          },
+          {
+            kind: "edit",
+            author,
+            revision: applied.revision,
+            at: entry.at,
+            label: summary?.trim() || lines[0] || "Edit",
+            lines,
+            summary,
+            ops: typed,
+            turnId: agent?.turnId,
+            project: written,
+          },
+        );
       });
 
     const openingIs = (openId: number) =>
@@ -369,7 +551,8 @@ export const layer = Layer.effect(
                 yield* Effect.gen(function* () {
                   if (config.testFault === "create-after-mkdir") yield* Effect.fail(new Error("injected fault"));
                   for (const sub of ["graphics", "media", ".cache"]) yield* fs.makeDirectory(join(dir, sub));
-                  yield* fs.writeFileString(join(dir, ".gitignore"), ".cache/\n");
+                  // history.db (D71) is this Mac's undo history, not part of the shared project.
+                  yield* fs.writeFileString(join(dir, ".gitignore"), GITIGNORE);
                   yield* writeFileAtomic(join(dir, "project.json"), text);
                 }).pipe(
                   Effect.mapError(ioError(dir)),
@@ -377,7 +560,7 @@ export const layer = Layer.effect(
                 );
               }),
             );
-            return yield* setOpen(dir, project, text);
+            return yield* setOpen(dir, project, text, true);
           }),
         ),
 
@@ -387,7 +570,7 @@ export const layer = Layer.effect(
             const dir = yield* realDir(rawDir, "The project folder");
             const text = yield* readProjectFile(dir);
             const project = yield* parseProject(dir, text);
-            return yield* setOpen(dir, project, text);
+            return yield* setOpen(dir, project, text, false);
           }),
         ),
 
@@ -396,7 +579,7 @@ export const layer = Layer.effect(
 
       close: lock.withPermits(1)(
         Effect.suspend(() => {
-          if (current) lastRevision = Math.max(lastRevision, current.session.revision);
+          current?.history.close();
           current = undefined;
           return publish;
         }),
@@ -413,15 +596,25 @@ export const layer = Layer.effect(
           const text = yield* readProjectFile(p.dir);
           // An invalid file fails here and the current session stays as it was.
           const project = yield* parseProject(p.dir, text);
-          // The undo stacks describe the file before the hand edit, so they go.
+          // Only the formatting changed: nothing to record, saving works again.
+          if (sameJson(project, p.session.project)) {
+            p.diskText = text;
+            yield* publish;
+            return snapshot(p);
+          }
+          // An external revision (D71): the undo stacks describe the file before the hand edit, so
+          // ⌘Z stops here; History can still go back past it.
           const renamed = project.name !== p.session.project.name;
-          p.session = { project, revision: p.session.revision + 1, log: [] };
+          const lines = externalLines(p.session.project, project);
+          const revision = p.session.revision + 1;
+          p.session = { project, revision, log: [] };
           p.past = [];
           p.future = [];
           p.diskText = text;
           p.initial = project;
           p.pushedForTurn = undefined;
-          p.unlogged.push({ revision: p.session.revision, what: "Reloaded project.json after it was changed outside Uncut" });
+          p.unlogged.push({ revision, what: `Reloaded project.json after it was changed outside Uncut (${lines.join("; ")})` });
+          record(p, { kind: "external", author: "external", revision, label: EXTERNAL_LABEL, lines, project });
           if (renamed) yield* recents.touch(p.dir, project.name);
           yield* publish;
           return snapshot(p);
@@ -447,7 +640,9 @@ export const layer = Layer.effect(
       redo: step("future"),
 
       view: Effect.sync(() =>
-        current ? { dir: current.dir, openId: current.openId, session: current.session, initial: current.initial, unlogged: [...current.unlogged] } : undefined,
+        current
+          ? { dir: current.dir, openId: current.openId, openRevision: current.openRevision, session: current.session, initial: current.initial, unlogged: [...current.unlogged] }
+          : undefined,
       ),
 
       agentEdit: (openId, { turnId, ops, baseRevision, summary }) =>
@@ -467,12 +662,57 @@ export const layer = Layer.effect(
             const written = JSON.parse(serialize(next.project)) as Session["project"];
             const problems = format.validate(written);
             if (problems.length) return yield* refused("Undoing the turn would make the project invalid", problems);
-            return yield* commit(p, { ...next, project: written }, (previous) => {
-              p.past.push(previous);
-              p.future = [];
-              p.pushedForTurn = undefined;
-              p.unlogged.push({ revision: next.revision, what: label });
-            });
+            return yield* commit(
+              p,
+              { ...next, project: written },
+              (previous) => {
+                p.past.push(previous.revision);
+                p.future = [];
+                p.pushedForTurn = undefined;
+                p.unlogged.push({ revision: next.revision, what: label });
+              },
+              { kind: "undo-turn", author: "user", revision: next.revision, label, undoTurn: turnId, project: written },
+            );
+          }),
+        ),
+
+      historyChanges: SubscriptionRef.changes(historyUpdates),
+
+      historyPreview: (revision) =>
+        Effect.gen(function* () {
+          const p = yield* requireOpen;
+          if (!p.history.has(revision)) return yield* projectError("missing", `Revision ${revision} isn't in this project's history`, p.dir);
+          const restored = yield* restoreFrom(p, revision);
+          return { revision, project: restored.project };
+        }),
+
+      historyJump: (revision) =>
+        lock.withPermits(1)(
+          Effect.gen(function* () {
+            const p = yield* requireOpen;
+            if (!p.history.has(revision)) return yield* projectError("missing", `Revision ${revision} isn't in this project's history`, p.dir);
+            const row: Row = p.history.row(revision);
+            const target = p.history.resolve(revision);
+            if (target === p.history.resolve(p.session.revision)) return snapshot(p);
+            const restored = yield* restoreFrom(p, target);
+            const written = JSON.parse(serialize(restored.project)) as Session["project"];
+            const problems = format.validate(written);
+            if (problems.length) return yield* refused("That version can't be restored: it isn't a valid project any more", problems);
+            const next = p.session.revision + 1;
+            const when = new Date(row.at);
+            const label = `Went back to "${row.label}"`;
+            return yield* commit(
+              p,
+              { project: written, revision: next, log: restored.log },
+              (previous) => {
+                p.past.push(previous.revision);
+                p.future = [];
+                p.initial = restored.initial;
+                p.pushedForTurn = undefined;
+                p.unlogged.push({ revision: next, what: `Went back to an earlier version from History (revision ${revision}: ${row.label})` });
+              },
+              { kind: "jump", author: "user", revision: next, label, lines: [`Restored the project as it was at revision ${revision} (${when.toISOString()})`], target, project: written },
+            );
           }),
         ),
     });

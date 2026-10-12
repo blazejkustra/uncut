@@ -36,6 +36,9 @@ export const RPC_METHODS = {
   analysisJobs: "analysis.jobs",
   analysisCancel: "analysis.cancel",
   analysisCached: "analysis.cached",
+  historySubscribe: "history.subscribe",
+  historyPreview: "history.preview",
+  historyJump: "history.jump",
   transcriptionState: "transcription.state",
   transcriptionDownload: "transcription.download",
   transcriptionCancelDownload: "transcription.cancelDownload",
@@ -67,8 +70,43 @@ export const ProjectSnapshot = Schema.Struct({
   revision: Schema.Number,
   canUndo: Schema.Boolean,
   canRedo: Schema.Boolean,
+  // Why ⌘Z can't go further back when that's worth saying (D71: it stops at a change made to
+  // project.json outside Uncut; older steps than history.db keeps).
+  undoStop: Schema.optional(Schema.String),
+  // history.db can't be used (damaged, locked, read-only): the history is in memory only (D71).
+  historyProblem: Schema.optional(Schema.String),
 });
 export type ProjectSnapshot = typeof ProjectSnapshot.Type;
+
+// ---- history (D71) ----
+
+/**
+ * One revision in the History tab. Undo and redo steps aren't listed (they're the cursor moving).
+ * `current`: its change is in the project as it is now (false: undone, or left by a jump back).
+ */
+export const HistoryEntry = Schema.Struct({
+  revision: Schema.Number,
+  at: Schema.String,
+  kind: Schema.Literals(["initial", "edit", "undo-turn", "external", "jump"]),
+  author: Schema.Literals(["user", "agent", "external", "import"]),
+  turnId: Schema.optional(Schema.String),
+  label: Schema.String,
+  lines: Schema.Array(Schema.String),
+  current: Schema.Boolean,
+});
+export type HistoryEntry = typeof HistoryEntry.Type;
+
+/** The open project's history: the newest entries first (at most 200 of `total`). */
+export const HistoryState = Schema.Struct({
+  dir: Schema.String,
+  revision: Schema.Number,
+  // Saved in history.db (false: in memory only; `problem` says why).
+  persistent: Schema.Boolean,
+  problem: Schema.optional(Schema.String),
+  total: Schema.Number,
+  entries: Schema.Array(HistoryEntry),
+});
+export type HistoryState = typeof HistoryState.Type;
 
 /** One problem found by the validator (or the edit engine), e.g. { code: "overlap", path: "/tracks/t1/items/a", message }. */
 export const Problem = Schema.Struct({ code: Schema.String, path: Schema.String, message: Schema.String });
@@ -505,6 +543,21 @@ const AnalysisCachedRpc = Rpc.make(RPC_METHODS.analysisCached, {
   error: AnalysisError,
 });
 
+// The open project's history (D71) now and on every change (null: nothing open).
+const HistorySubscribeRpc = Rpc.make(RPC_METHODS.historySubscribe, { payload: Empty, success: Schema.NullOr(HistoryState), stream: true });
+// The project as it was at a revision (the History tab's preview); changes nothing.
+const HistoryPreviewRpc = Rpc.make(RPC_METHODS.historyPreview, {
+  payload: Schema.Struct({ revision: Schema.Int }),
+  success: Schema.Struct({ revision: Schema.Number, project: Schema.Unknown }),
+  error: ProjectError,
+});
+// Restores a revision's state as a new revision (one ⌘Z takes it back).
+const HistoryJumpRpc = Rpc.make(RPC_METHODS.historyJump, {
+  payload: Schema.Struct({ revision: Schema.Int }),
+  success: ProjectSnapshot,
+  error: Schema.Union([EditRefused, ProjectError]),
+});
+
 // The speech models and their downloads, now and on every change.
 const TranscriptionStateRpc = Rpc.make(RPC_METHODS.transcriptionState, { payload: Empty, success: TranscriptionState, stream: true });
 // Downloads a model (the chosen one when none is named); returns at once, progress on transcription.state.
@@ -515,6 +568,9 @@ const TranscriptionCancelDownloadRpc = Rpc.make(RPC_METHODS.transcriptionCancelD
 const TranscriptionSelectModelRpc = Rpc.make(RPC_METHODS.transcriptionSelectModel, { payload: Schema.Struct({ model: Schema.String }), error: TranscriptionError });
 
 export const WsRpcGroup = RpcGroup.make(
+  HistorySubscribeRpc,
+  HistoryPreviewRpc,
+  HistoryJumpRpc,
   TranscriptionStateRpc,
   TranscriptionDownloadRpc,
   TranscriptionCancelDownloadRpc,

@@ -43,9 +43,10 @@ test("create makes the D12 folder with a valid empty project and opens it", T, a
     const dir = join(root, "First.uncut");
     assert.equal(snap.dir, dir);
     assert.deepEqual({ revision: snap.revision, canUndo: snap.canUndo, canRedo: snap.canRedo }, { revision: 0, canUndo: false, canRedo: false });
-    assert.deepEqual(readdirSync(dir).sort(), [".cache", ".gitignore", "graphics", "media", "project.json"]);
+    // history.db (D71) and, while it's open, its WAL files.
+    assert.deepEqual(readdirSync(dir).sort(), [".cache", ".gitignore", "graphics", "history.db", "history.db-shm", "history.db-wal", "media", "project.json"]);
     for (const sub of [".cache", "graphics", "media"]) assert.ok(statSync(join(dir, sub)).isDirectory(), sub);
-    assert.equal(readFileSync(join(dir, ".gitignore"), "utf8"), ".cache/\n");
+    assert.equal(readFileSync(join(dir, ".gitignore"), "utf8"), ".cache/\nhistory.db\nhistory.db-wal\nhistory.db-shm\n");
     const project = onDisk(dir);
     assert.deepEqual(project, snap.project);
     assert.deepEqual(validateProject(project, modules), []);
@@ -110,19 +111,25 @@ test("edit saves atomically, survives a reopen, and undo/redo walk it back and f
   try {
     const reopened = await s.ok("project.open", { dir });
     assert.deepEqual(reopened.project.tracks[0].items, [title]);
-    assert.equal(reopened.canUndo, false);
+    // D71: the undo history is in history.db, so the first server's edit can still be undone.
+    assert.deepEqual([reopened.revision, reopened.canUndo, reopened.canRedo], [1, true, false]);
 
     const moved = await s.ok("project.edit", { ops: [{ op: "update_item", item: "hello", set: { text: "Hi" } }] });
     assert.equal(moved.project.tracks[0].items[0].text, "Hi");
     const undone = await s.ok("project.undo");
     assert.equal(undone.project.tracks[0].items[0].text, "Hello");
-    assert.deepEqual([undone.canUndo, undone.canRedo], [false, true]);
+    assert.deepEqual([undone.canUndo, undone.canRedo], [true, true]);
     assert.equal(onDisk(dir).tracks[0].items[0].text, "Hello");
     const redone = await s.ok("project.redo");
     assert.equal(redone.project.tracks[0].items[0].text, "Hi");
     assert.equal(onDisk(dir).tracks[0].items[0].text, "Hi");
     // Nothing more to redo: a no-op, not an error.
     assert.deepEqual(await s.ok("project.redo"), redone);
+    // Back past the restart: the title the first server added goes.
+    await s.ok("project.undo");
+    const first = await s.ok("project.undo");
+    assert.deepEqual([first.project.tracks[0].items, first.canUndo, first.canRedo], [[], false, true]);
+    assert.deepEqual(onDisk(dir).tracks[0].items, []);
   } finally {
     await s.end();
   }
@@ -274,8 +281,8 @@ test("revisions only go up: undo and redo get new numbers, a future baseRevision
     const future = await s.fail("project.edit", { ops: [{ op: "update_item", item: "hello", set: { text: "x" } }], baseRevision: 99 });
     assert.deepEqual([future._tag, future.details[0].code], ["EditRefused", "base-revision"]);
     assert.equal((await s.ok("project.edit", { ops: [{ op: "update_item", item: "hello", set: { text: "x" } }], baseRevision: 3 })).revision, 4);
-    // Opening another project doesn't reset the count either.
-    assert.ok((await s.ok("project.create", { parentDir: root, name: "Revisions2" })).revision > 4);
+    // Revisions are each project's own (D71: kept in its history.db), so another project starts at 0.
+    assert.equal((await s.ok("project.create", { parentDir: root, name: "Revisions2" })).revision, 0);
   } finally {
     await s.end();
   }
@@ -406,7 +413,7 @@ test("recents dedupe by real path and drop entries whose project.json is gone", 
   }
 });
 
-test("close goes back to no project, and revisions keep climbing after a close", T, async () => {
+test("close goes back to no project; reopening an unchanged project keeps its revision and undo", T, async () => {
   const s = await session();
   try {
     await s.ok("project.close"); // nothing open: a no-op
@@ -416,7 +423,7 @@ test("close goes back to no project, and revisions keep climbing after a close",
     assert.equal((await s.fail("project.get")).reason, "no-project");
     assert.equal((await s.fail("project.edit", { ops: [addTitle] })).reason, "no-project");
     const reopened = await s.ok("project.open", { dir: edited.dir });
-    assert.ok(reopened.revision > edited.revision, `${reopened.revision} after ${edited.revision}`);
+    assert.deepEqual([reopened.revision, reopened.canUndo], [edited.revision, true]);
   } finally {
     await s.end();
   }
