@@ -1,8 +1,11 @@
 // The preview and the transport under it. The preview draws the project at the playhead at the
 // canvas's aspect ratio: media through <video> (D37; <img> for stills), seeked to the source time
-// of the frame (D38), backgrounds (component.solid) between them in track order, text from
-// @uncut/core's textHtml on top (D39), the canvas colour where nothing is. The text can be
-// selected, dragged and edited in place (D53).
+// of the frame (D38), each in its box (D75: a wrapper at core's box that clips, rounds and fades
+// it, the picture inside at core's content rect), backgrounds (component.solid) between them in
+// track order, text from @uncut/core's textHtml on top (D39), the canvas colour where nothing is.
+// The text can be selected, dragged and edited in place (D53); a selected clip can be dragged
+// and resized by its corners (D75).
+import type { ClipBox } from "@uncut/core/box";
 import { visualsAt } from "@uncut/core/timeline";
 import { overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
@@ -16,6 +19,7 @@ import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playbac
 import { layoutOf, type Item, type ProjectModel } from "./project.ts";
 import { actions, getState, mediaUrl } from "./store.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
+import { clipState, planClipBox, resizeBox, type Corner } from "./clip.ts";
 
 /** Fits a w×h box inside its container, like object-fit: contain. */
 function useFit(width: number, height: number) {
@@ -84,6 +88,32 @@ function wipe(el: HTMLElement, shown: number | undefined) {
   if (el.style.clipPath !== clip) el.style.clipPath = clip;
 }
 
+const px = (n: number) => `${Math.round(n * 1000) / 1000}px`;
+const setStyle = (el: HTMLElement, key: "left" | "top" | "width" | "height" | "borderRadius" | "objectFit", value: string) => {
+  if (el.style[key] !== value) el.style[key] = value;
+};
+
+/**
+ * A clip's box (D75): the wrapper at core's box in canvas pixels (it clips the picture and rounds
+ * its corners), the picture inside at core's content rect (fit and zoom), and a wipe revealing the
+ * canvas from the left (the share of the canvas width shown, in the wrapper's own pixels).
+ */
+function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canvasWidth: number, shown: number | undefined) {
+  setStyle(wrap, "left", px(box.x));
+  setStyle(wrap, "top", px(box.y));
+  setStyle(wrap, "width", px(box.w));
+  setStyle(wrap, "height", px(box.h));
+  setStyle(wrap, "borderRadius", box.radius > 0 ? px(box.radius) : "");
+  setStyle(el, "left", px(box.content.x - box.x));
+  setStyle(el, "top", px(box.content.y - box.y));
+  setStyle(el, "width", px(box.content.w));
+  setStyle(el, "height", px(box.content.h));
+  setStyle(el, "objectFit", box.fit);
+  const hidden = shown === undefined ? 0 : Math.min(box.w, Math.max(0, box.x + box.w - canvasWidth * shown));
+  const clip = hidden > 0 ? `inset(0 ${px(hidden)} 0 0)` : "";
+  if (wrap.style.clipPath !== clip) wrap.style.clipPath = clip;
+}
+
 /**
  * Draws the project into the preview frame, imperatively: it runs on every playhead change
  * (60 times a second while playing) without going through React.
@@ -91,6 +121,8 @@ function wipe(el: HTMLElement, shown: number | undefined) {
 class Compositor {
   private project: ProjectModel | undefined;
   private readonly els = new Map<string, MediaEl>();
+  // Each media element sits in a box wrapper (D75), keyed like `els`.
+  private readonly boxes = new Map<string, HTMLDivElement>();
   private readonly solids = new Map<string, HTMLDivElement>();
   private textKey = "";
   // The text being edited in place: hidden while the editor sits over it.
@@ -151,8 +183,14 @@ class Compositor {
       el.load();
     }
     el.remove();
-    this.mediaLayer.querySelector(`[data-missing="${CSS.escape(id)}"]`)?.remove();
+    this.boxes.get(id)?.remove();
+    this.boxes.delete(id);
     this.els.delete(id);
+  }
+
+  /** The wrapper of a clip's media element (its box). */
+  boxOf(id: string) {
+    return this.boxes.get(id);
   }
 
   /** The element for a clip, made on first use; replaced if the clip now shows other media. */
@@ -190,20 +228,24 @@ class Compositor {
     // Something Chromium can't decode (HEIC stills, odd codecs) or a file that went missing: say
     // so on the canvas instead of showing black.
     const shown = el;
+    const wrap = document.createElement("div");
+    wrap.className = "pv-box";
+    wrap.dataset.item = item.id;
     shown.addEventListener("error", () => {
-      if (this.els.get(item.id) !== shown || this.mediaLayer.querySelector(`[data-missing="${CSS.escape(item.id)}"]`)) return;
+      if (this.els.get(item.id) !== shown || wrap.querySelector("[data-missing]")) return;
       shown.style.visibility = "hidden";
       const note = document.createElement("div");
       note.className = "pv-missing";
       note.dataset.missing = item.id;
       note.textContent = `Can't show ${media.name}`;
-      note.style.zIndex = shown.style.zIndex;
-      this.mediaLayer.append(note);
+      wrap.append(note);
     });
     el.src = src;
     if (el instanceof HTMLVideoElement && media.probe?.hasAudio) this.mix.attach(item.id, el);
     this.els.set(item.id, el);
-    this.mediaLayer.append(el);
+    this.boxes.set(item.id, wrap);
+    wrap.append(el);
+    this.mediaLayer.append(wrap);
     return el;
   }
 
@@ -286,18 +328,24 @@ class Compositor {
       const media = mediaKind(c.item)!;
       const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video");
       if (!el) return;
+      const wrap = this.boxes.get(c.item.id)!;
+      wrap.classList.toggle("sel-clip", c.item.id === selected);
+      // The opacity stays on the media element (the wrapper only places, clips and rounds it).
       el.style.opacity = String(c.opacity);
-      el.style.zIndex = String(z.get(c.item.id));
-      wipe(el, c.wipe);
+      wrap.style.zIndex = String(z.get(c.item.id));
+      if (c.box) placeBox(wrap, el, c.box, project.canvas.width, c.wipe);
       if (!(el instanceof HTMLVideoElement)) return;
+      // A looped clip's media starts over by itself; drive() reseeks only if it drifts (D75).
+      el.loop = c.item.loop === true;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       drive(el, c.source, playing, c.item.speed ?? 1);
     });
     if (ahead && !clips.some((c) => c.item.id === ahead.id)) {
       const el = this.elementFor(ahead, "video");
       if (el instanceof HTMLVideoElement) {
+        const wrap = this.boxes.get(ahead.id)!;
         el.style.opacity = "0";
-        el.style.zIndex = "0";
+        wrap.style.zIndex = "0";
         if (mediaKind(ahead)?.probe?.hasAudio) this.mix.attach(ahead.id, el);
         const from = starts.get(ahead.id)! - preroll(ahead);
         const speed = ahead.speed ?? 1;
@@ -350,6 +398,8 @@ class Compositor {
 
 interface CanvasDrag {
   readonly id: string;
+  /** A text move (D53), a clip move or a clip's corner (D75). */
+  readonly kind: "text" | "clip" | Corner;
   readonly pointer: number;
   readonly px: number;
   readonly py: number;
@@ -358,9 +408,11 @@ interface CanvasDrag {
   /** The box in canvas pixels, for snapping. */
   readonly w: number;
   readonly h: number;
+  /** The playhead when it began: a keyed clip changes its keys there. */
+  readonly frame: number;
   readonly revision: number;
   moved: boolean;
-  to?: { x: number; y: number };
+  to?: { x: number; y: number; w?: number; h?: number };
   draft?: PreviewDraft;
 }
 
@@ -421,28 +473,50 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     return { el, item: placed.item };
   };
 
+  /** A clip that can be moved or resized by hand (D75): selected, unlocked, drawn at the playhead. */
+  const editableClip = (id: string | undefined) => {
+    const placed = findItem(project, id);
+    if (!placed || placed.item.type !== "clip" || lockOf(placed)) return undefined;
+    const state = clipState(project, placed.item.id, getPlayback().frame);
+    return state?.inside ? state : undefined;
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // Presses in the in-place editor are its own (caret, selection).
     if (e.button !== 0 || (e.target as HTMLElement).closest(".pv-inline")) return;
-    playback.select((e.target as HTMLElement).closest<HTMLElement>("[data-item]")?.dataset.item);
-    const hit = editableText(e.target);
+    const target = e.target as HTMLElement;
+    const before = getPlayback().selected;
+    const corner = target.closest<HTMLElement>("[data-handle]")?.dataset.handle as Corner | undefined;
+    if (!corner) playback.select(target.closest<HTMLElement>("[data-item]")?.dataset.item);
     const snapshot = getState().snapshot;
-    if (!hit || editing || !snapshot || snapshot.dir !== dir) return;
+    if (editing || !snapshot || snapshot.dir !== dir) return;
+    const start = { pointer: e.pointerId, px: e.clientX, py: e.clientY, frame: Math.round(getPlayback().frame), revision: snapshot.revision, moved: false };
+    // A clip's corner handle, or a press on the clip that was already selected: move or resize it.
+    const clipId = corner ? before : target.closest<HTMLElement>(".pv-box[data-item]")?.dataset.item;
+    const clip = clipId !== undefined && clipId === before ? editableClip(clipId) : undefined;
+    if (clip) {
+      e.stopPropagation();
+      drag.current = { ...start, id: clip.item.id, kind: corner ?? "clip", x: clip.box.x, y: clip.box.y, w: clip.box.w, h: clip.box.h };
+      return;
+    }
+    const hit = editableText(e.target);
+    if (!hit) return;
     const box = textBox(hit.item, project.canvas);
     drag.current = {
+      ...start,
       id: hit.item.id,
-      pointer: e.pointerId,
-      px: e.clientX,
-      py: e.clientY,
+      kind: "text",
       x: box.x,
       y: box.y,
       // Laid out at canvas size, so its offset size is already in canvas pixels.
       w: hit.el.offsetWidth,
       h: hit.el.offsetHeight,
-      revision: snapshot.revision,
-      moved: false,
     };
   };
+
+  /** The edit a drag makes, planned on `p`. */
+  const dragPlan = (p: ProjectModel, d: CanvasDrag, to: NonNullable<CanvasDrag["to"]>) =>
+    d.kind === "text" ? planTransform(p, d.id, { x: to.x, y: to.y }) : d.kind === "clip" ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame, "Move clip") : planClipBox(p, d.id, to, d.frame, "Resize clip");
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -462,18 +536,24 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       e.currentTarget.setPointerCapture(e.pointerId);
     }
     d.moved = true;
-    let x = Math.round(d.x + dx * scale);
-    let y = Math.round(d.y + dy * scale);
     let shown: ReadonlyArray<Guide> = [];
-    if (!e.metaKey && getPlayback().snapping) {
-      const snapped = snapBox({ x, y, w: d.w, h: d.h }, project, SNAP_SCREEN_PX * scale);
-      ({ x, y } = snapped);
-      shown = snapped.guides;
+    if (d.kind === "text" || d.kind === "clip") {
+      let x = Math.round(d.x + dx * scale);
+      let y = Math.round(d.y + dy * scale);
+      if (!e.metaKey && getPlayback().snapping) {
+        const snapped = snapBox({ x, y, w: d.w, h: d.h }, project, SNAP_SCREEN_PX * scale);
+        ({ x, y } = snapped);
+        shown = snapped.guides;
+      }
+      d.to = { x, y };
+    } else {
+      // A corner (D75): the opposite corner stays, the box keeps its shape unless ⇧ is held.
+      const r = resizeBox({ x: d.x, y: d.y, w: d.w, h: d.h }, d.kind, dx * scale, dy * scale, e.shiftKey);
+      d.to = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) };
     }
-    d.to = { x, y };
     // Planned on the project as it is now: a snapshot that arrived mid-drag (an agent edit, a
     // save) becomes the base, so the preview keeps following the pointer.
-    const plan = planTransform(project, d.id, { x, y });
+    const plan = dragPlan(project, d, d.to);
     const draft = "ops" in plan ? draftOf(project, plan.ops) : undefined;
     if (draft && "project" in draft) {
       dropDraft(d.draft);
@@ -490,7 +570,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     setGuides([]);
     if (!commit || !d.moved || !d.to) return dropDraft(d.draft);
     const to = d.to;
-    void actions.itemEdit((p) => planTransform(p, d.id, to), { baseRevision: d.revision, dir }).finally(() => dropDraft(d.draft));
+    void actions.itemEdit((p) => dragPlan(p, d, to), { baseRevision: d.revision, dir }).finally(() => dropDraft(d.draft));
   };
 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -542,12 +622,43 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
               />
             ))}
             {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
+            <ClipSelection project={project} />
             </div>
           </div>
         </div>
       </div>
       <Transport project={project} />
     </main>
+  );
+}
+
+/**
+ * The selected clip's box on the canvas (D75): an outline and four corner handles (drag one to
+ * resize; the clip itself drags to move). Follows the playhead (keyed x / y) and drafts.
+ */
+function ClipSelection({ project }: { project: ProjectModel }) {
+  const selected = usePlayback((s) => s.selected);
+  const frame = usePlayback((s) => Math.round(s.frame));
+  const draft = usePlayback((s) => s.draft);
+  const shown = draft && draft.base === project ? draft.project : project;
+  const placed = findItem(shown, selected);
+  if (!placed || placed.item.type !== "clip" || lockOf(placed)) return null;
+  const state = clipState(shown, placed.item.id, frame);
+  if (!state?.inside) return null;
+  const { x, y, w, h } = state.box;
+  const corners: ReadonlyArray<readonly [Corner, number, number]> = [
+    ["nw", x, y],
+    ["ne", x + w, y],
+    ["sw", x, y + h],
+    ["se", x + w, y + h],
+  ];
+  return (
+    <>
+      <div className="pv-clip-sel" data-testid="clip-selection" data-item={placed.item.id} style={{ left: x, top: y, width: w, height: h }} />
+      {corners.map(([c, cx, cy]) => (
+        <div key={c} className="pv-handle" data-testid="clip-handle" data-handle={c} style={{ left: cx, top: cy }} />
+      ))}
+    </>
   );
 }
 

@@ -8,7 +8,8 @@ import { HistoryPanel } from "./History.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
-import { AudioEditor, BackgroundEditor, TextEditor, TransitionInspector } from "./ItemEditors.tsx";
+import { AudioEditor, BackgroundEditor, ClipBoxEditor, TextEditor, TransitionInspector } from "./ItemEditors.tsx";
+import { isBoxed } from "./clip.ts";
 import { useBeatsLoading } from "./beats.ts";
 import { hasSound } from "./sound.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
@@ -412,6 +413,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
       </div>
       {item.type === "text" && <TextEditor project={project} item={item} locked={locked} />}
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
+      {isBoxed(project, item) && <ClipBoxEditor project={project} item={item} locked={locked} />}
       {hasSound(project, item) && <AudioEditor project={project} item={item} locked={locked} />}
       <div className="group">
         <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />

@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality } from "@uncut/contracts";
-import { layout, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { baseBox, isPlainBox, layout, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -27,7 +27,9 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { sheetHtml, type SheetLayout } from "./agentFootage.ts";
 import { ServerConfig } from "./config.ts";
 import {
+  boxGraph,
   exportCommand,
+  placementOf,
   loudnessCommand,
   loudnormFilter,
   LOUDNESS_TARGET,
@@ -37,6 +39,7 @@ import {
   RASTER_CSS,
   sourceFramePick,
   graphFileArgs,
+  silentFailure,
   untaggedFilter,
   type Caps,
   type ExportPlan,
@@ -201,6 +204,27 @@ function run(bin: string, args: ReadonlyArray<string>, signal: AbortSignal | und
       resolvePromise({ code, stdout, stderr });
     });
   });
+}
+
+/**
+ * The project with the picture size of media whose probe lacks it read from the file (D75 review):
+ * a box fits the picture by its aspect, as the preview's object-fit does with the decoded size.
+ */
+async function withPictureSizes(ffmpeg: string, project: Project, mediaPath: (m: Media) => string, signal?: AbortSignal): Promise<Project> {
+  const ffprobe = join(dirname(ffmpeg), "ffprobe");
+  const media = await Promise.all(
+    project.media.map(async (m) => {
+      if (m.kind === "audio" || (m.probe?.width && m.probe?.height)) return m;
+      const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", mediaPath(m)], signal ?? new AbortController().signal).catch(() => undefined);
+      try {
+        const stream = r?.code === 0 ? (JSON.parse(r.stdout) as { streams?: Array<{ width?: number; height?: number }> }).streams?.[0] : undefined;
+        return stream?.width && stream.height ? { ...m, probe: { ...(m.probe ?? {}), width: stream.width, height: stream.height } } : m;
+      } catch {
+        return m;
+      }
+    }),
+  );
+  return { ...project, media };
 }
 
 /**
@@ -392,6 +416,8 @@ export const layer = Layer.effect(
         );
         if (r.code !== 0) throw new Error(`ffmpeg couldn't make the video: ${ffmpegError(r.stderr)}`);
         if (signal.aborted) throw new Cancelled();
+        const silent = silentFailure(r.stderr);
+        if (silent) throw new Error(`ffmpeg couldn't draw part of the video: ${silent}`);
         if (!job.output) throw new Error("no output");
         // The destination may have appeared while rendering; replace it only if allowed.
         if (!overwrite && (await exists(job.output))) throw new Error(`${basename(job.output)} appeared in that folder while exporting; the export wasn't moved there.`);
@@ -433,7 +459,9 @@ export const layer = Layer.effect(
         if (!input.overwrite && (yield* Effect.promise(() => exists(output)))) return yield* new ExportError({ reason: "exists", message: `${basename(output)} already exists in that folder.` });
         if (!(yield* Effect.promise(ffmpegBin))) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to export." });
         const size = outputSize(project.canvas, input.quality);
-        const plan = planExport(project, { mediaPath, ...size });
+        const bin = (yield* Effect.promise(ffmpegBin))!;
+        const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
+        const plan = planExport(sized, { mediaPath, ...size });
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
         if (missing) return yield* new ExportError({ reason: "missing-media", message: missing });
@@ -523,7 +551,8 @@ export const layer = Layer.effect(
  * visual at f in visualsAt order (footage at its source time, text and backgrounds drawn by
  * Chromium with the frame's opacity and motion), one ffmpeg run per frame.
  */
-async function renderFramesWith(bin: string, project: Project, mediaPath: (m: Media) => string, frames: ReadonlyArray<number>, width: number, signal: AbortSignal): Promise<Array<RenderedFrame>> {
+async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, frames: ReadonlyArray<number>, width: number, signal: AbortSignal): Promise<Array<RenderedFrame>> {
+  const project = await withPictureSizes(bin, unsized, mediaPath, signal);
   const { starts, duration } = layout(project);
   const W = Math.max(2, Math.round(width / 2) * 2);
   const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
@@ -565,11 +594,24 @@ async function renderFramesWith(bin: string, project: Project, mediaPath: (m: Me
         // A wipe transition shows the left X pixels (even, as the export's crop does).
         const shown = v.wipe === undefined ? W : 2 * Math.floor((W * v.wipe) / 2);
         if (shown <= 0) continue;
-        k++;
-        inputs.push(...input);
         const fade = v.item.type === "clip" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
         const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
         const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
+        if (v.box && media && !isPlainBox(v.box, project.canvas)) {
+          // A box (D75), made as the export makes it; the wipe reveals the canvas from the left.
+          const p = placementOf(v.box, W / cw, H / ch, baseBox(v.item, project.canvas, media.probe));
+          const visible = Math.min(p.w, shown - p.x);
+          if (visible <= 0) continue;
+          k++;
+          inputs.push(...input);
+          graph.push(`[${k}:v:0]${picked}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+          graph.push(`[r${k}]format=rgba${fade}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}[l${k}]`);
+          graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
+          base = `b${k}`;
+          continue;
+        }
+        k++;
+        inputs.push(...input);
         graph.push(`[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
         graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
         base = `b${k}`;

@@ -10,6 +10,7 @@
     "./apply-ops": "./src/apply-ops.ts",
     "./edit-log": "./src/edit-log.ts",
     "./timeline": "./src/timeline.ts",
+    "./box": "./src/box.ts",
     "./audio": "./src/audio.ts",
     "./render": "./src/render.ts",
     "./rules": "./src/rules.ts",
