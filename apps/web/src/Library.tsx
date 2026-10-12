@@ -1,15 +1,15 @@
 // The library panel on the left: the media in the project (import, drop, add to the timeline)
 // the Text tab's presets and the Elements tab's backgrounds. Which one shows is the rail's choice.
-import type { ImportJob } from "@uncut/contracts";
+import type { AnalysisJob, ImportJob } from "@uncut/contracts";
 import { solidBackground } from "@uncut/core/render";
-import { AudioLines, Film, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload } from "lucide-react";
+import { AudioLines, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
 import React, { useState, type ReactNode } from "react";
 
 import { bridge } from "./bridge.ts";
 import { timecode } from "./format.ts";
 import { TEXT_PRESETS } from "./project.ts";
 import { BACKGROUNDS } from "./text.ts";
-import { actions, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
+import { actions, activeAnalyses, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
 import { MEDIA_DRAG_TYPE } from "./Timeline.tsx";
 
 export type LibraryTab = "media" | "text" | "elements" | "audio";
@@ -208,6 +208,16 @@ function MediaLibrary({ project }: { project: Project }) {
           </div>
         </div>
       ))}
+      {app.analysisError && (
+        <div className="import-report" data-testid="analysis-error">
+          <div className="import-line error">
+            <span>{app.analysisError}</span>
+          </div>
+          <button className="link-btn" onClick={actions.dismissAnalysisError}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {importReport && (
         <div className="import-report" data-testid="import-report">
           {importReport.failed.map((f) => (
@@ -281,8 +291,18 @@ export function mediaMeta(m: MediaItem) {
   return [size, m.probe?.fps ? `${fpsLabel(m.probe.fps)} fps` : undefined].filter(Boolean).join(", ");
 }
 
+/** "Analysing the sound… 42%", or why it waits. */
+function analysisText(job: AnalysisJob) {
+  if (job.phase === "running") return `Analysing the sound… ${Math.round(job.progress * 100)}%`;
+  return job.waiting === "export" ? "Waiting for the export to finish" : "Waiting to analyse";
+}
+
 function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online: boolean }) {
-  const { thumbIds } = useApp();
+  const app = useApp();
+  const { thumbIds } = app;
+  // Analysis (D66) runs on demand: the Analyze button, or the agent's media_analyze.
+  const analysis = activeAnalyses(app, item.id)[0];
+  const hasSound = item.kind === "audio" || (item.kind === "video" && item.probe?.hasAudio !== false);
   const [broken, setBroken] = useState(false);
   const Icon = item.kind === "audio" ? AudioLines : item.kind === "image" ? ImageIcon : Film;
   const src = thumbIds.has(item.id) ? thumbUrl(item.id, item.path) : undefined;
@@ -301,7 +321,7 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
     >
       <div className="thumb">
         {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
-        {seconds !== undefined && (
+        {seconds !== undefined && !analysis && (
           <span className="dur" data-testid="duration">
             {timecode(Math.round(seconds * fps), fps).replace(/^00:/, "")}
           </span>
@@ -318,6 +338,31 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
         >
           <Plus />
         </button>
+        {hasSound && !analysis && (
+          <button
+            className="tile-analyze"
+            data-testid="analyze"
+            title="Analyse the sound: loudness and silences"
+            disabled={!online}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              void actions.analyzeMedia(item.id);
+            }}
+          >
+            <Gauge />
+          </button>
+        )}
+        {analysis && (
+          <div className="tile-analysis" data-testid="analysis-progress" data-phase={analysis.phase} title={analysisText(analysis)}>
+            <Gauge />
+            <div className="bar">
+              <span style={{ width: `${Math.round((analysis.phase === "running" ? analysis.progress : 0) * 100)}%` }} />
+            </div>
+            <button className="tile-analysis-cancel" data-testid="analysis-cancel" title="Stop the analysis" disabled={!online} onClick={() => void actions.cancelAnalysis(analysis.id)}>
+              <X />
+            </button>
+          </div>
+        )}
       </div>
       <div className="tile-name" data-testid="tile-name">
         {item.name}

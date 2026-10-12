@@ -300,6 +300,17 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .tile-add { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; opacity: 0; transition: opacity 0.1s; }
 .tile-add svg.lucide { width: 14px; height: 14px; stroke-width: 2.25; }
 .tile:hover .tile-add, .tile-add:focus-visible { opacity: 1; }
+/* Analysis (D66): an Analyze button beside +, then a bar with a stop button while it runs */
+.tile-analyze { position: absolute; right: 30px; top: 4px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--fg); opacity: 0; transition: opacity 0.1s; }
+.tile-analyze svg.lucide { width: 13px; height: 13px; }
+.tile:hover .tile-analyze, .tile-analyze:focus-visible { opacity: 1; }
+.tile-analysis { position: absolute; left: 4px; right: 4px; bottom: 4px; display: flex; align-items: center; gap: 4px; padding: 3px 3px 3px 6px; border-radius: 3px; background: rgb(0 0 0 / 60%); }
+.tile-analysis > svg.lucide { width: 11px; height: 11px; color: var(--muted); flex: none; }
+.tile-analysis .bar { flex: 1; height: 3px; background: var(--raised); border-radius: 2px; overflow: hidden; }
+.tile-analysis .bar span { display: block; height: 100%; background: var(--select); transition: width 0.2s; }
+.tile-analysis-cancel { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 50%; color: var(--fg); }
+.tile-analysis-cancel:hover { background: rgb(255 255 255 / 15%); }
+.tile-analysis-cancel svg.lucide { width: 11px; height: 11px; }
 
 /* Text presets */
 .text-tile { width: 100%; padding: 0; cursor: pointer; }

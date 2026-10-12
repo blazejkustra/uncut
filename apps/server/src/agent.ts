@@ -26,6 +26,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpServer } from "effect/http";
 
+import { Analysis, parseAnalyzers, targetOf, type LoudnessResult, type Outcome } from "./analysis.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { writeFileAtomic } from "./atomicWrite.ts";
@@ -241,6 +242,39 @@ function undoState(turn: StoredTurn, view: ProjectView | undefined, openId: numb
   return state;
 }
 
+/** media_analyze waits this long for its jobs before answering "running" (UNCUT_ANALYZE_WAIT_MS for tests). */
+const analyzeWaitMs = () => {
+  const n = Number(process.env.UNCUT_ANALYZE_WAIT_MS);
+  return Number.isFinite(n) && n >= 0 ? n : 55_000;
+};
+/** At most this many silences in one answer (a range narrows it down). */
+const MAX_SILENCES = 400;
+
+/** The loudness analyzer's result as media_analyze returns it: silences in project frames of the media too. */
+function loudnessOut(result: LoudnessResult, cached: boolean, frames: (seconds: number, round: (x: number) => number) => number, range: { start: number; end: number } | undefined) {
+  if (!result.hasAudio) return { state: "done", cached, hasAudio: false, note: "This media has no sound, so there's nothing to measure." };
+  const all = (result.silence?.ranges ?? [])
+    .map((r) => ({ start: frames(r.start, Math.ceil), end: frames(r.end, Math.floor), startSeconds: r.start, endSeconds: r.end }))
+    .filter((r) => r.end > r.start && (!range || (r.start < range.end && r.end > range.start)));
+  return {
+    state: "done",
+    cached,
+    hasAudio: true,
+    ...(result.seconds !== undefined ? { seconds: result.seconds } : {}),
+    integratedLufs: result.integratedLufs ?? null,
+    loudnessRangeLu: result.loudnessRangeLu ?? null,
+    truePeakDbtp: result.truePeakDbtp ?? null,
+    silence: {
+      thresholdDb: result.silence?.thresholdDb,
+      minSeconds: result.silence?.minSeconds,
+      count: all.length,
+      ...(range ? { range } : {}),
+      ranges: all.slice(0, MAX_SILENCES),
+      ...(all.length > MAX_SILENCES ? { truncated: `Only the first ${MAX_SILENCES} of ${all.length}; pass range for the rest.` } : {}),
+    },
+  };
+}
+
 /** contact_sheet: when the asked-for columns didn't fit the sheet, say what was used instead. */
 const columnsNote = (asked: number | undefined, used: number) => (asked !== undefined && asked !== used ? `${asked} columns didn't fit the sheet's size, so it has ${used}.` : "");
 const timecode = (frame: number, fps: number) => `${(frame / fps).toFixed(2)} s`;
@@ -299,6 +333,7 @@ export const layer = Layer.effect(
     const format = yield* ProjectFormat;
     const exporter = yield* Exporter;
     const media = yield* MediaLibrary;
+    const analysis = yield* Analysis;
     const config = yield* ServerConfig;
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
@@ -613,6 +648,61 @@ export const layer = Layer.effect(
         };
       });
 
+    // media_analyze (D66): starts (or joins) the analysis jobs, waits up to ANALYZE_WAIT_MS for them,
+    // and returns the results, or "running" with progress so the agent asks again. A cached
+    // result comes back at once without ffmpeg. Stopping the turn doesn't stop the jobs: their
+    // results land in the cache for the next ask.
+    const mediaAnalyze = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const project = v.session.project;
+        if (typeof args.media !== "string") return textResult("Pass media: a media id from project_read.", true);
+        const m = project.media.find((x) => x.id === args.media);
+        if (!m) return textResult(`There's no media "${args.media}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
+        const parsed = parseAnalyzers(args.analyzers);
+        if ("refused" in parsed) return textResult(parsed.refused, true);
+        const range = args.range as { start?: unknown; end?: unknown } | undefined;
+        if (range !== undefined && (typeof range !== "object" || !Number.isInteger(range.start) || !Number.isInteger(range.end) || (range.start as number) < 0 || (range.end as number) <= (range.start as number))) {
+          return textResult("range must be { start, end } in whole project frames of the media, start from 0 and before end.", true);
+        }
+        const fps = project.canvas.fps;
+        const length = m.probe?.frames;
+        const target = targetOf(v.dir, m, fps);
+        const waitMs = analyzeWaitMs();
+        const results = yield* Effect.promise(async () => {
+          const requested = await Promise.all(parsed.analyzers.map(async (analyzer) => ({ analyzer, r: await analysis.request(target, analyzer) })));
+          let timer: NodeJS.Timeout | undefined;
+          const deadline = new Promise<undefined>((r) => (timer = setTimeout(r, waitMs, undefined)));
+          timer?.unref();
+          try {
+            return await Promise.all(requested.map(async ({ analyzer, r }) => ({ analyzer, jobId: r.job?.id, outcome: (await Promise.race([r.done, deadline])) as Outcome | undefined })));
+          } finally {
+            clearTimeout(timer);
+          }
+        });
+        // Seconds to project frames of the media, rounded inwards (a hair of slack for float noise).
+        const frames = (seconds: number, round: (x: number) => number) => {
+          const f = round(seconds * fps + (round === Math.ceil ? -1e-6 : 1e-6));
+          return Math.max(0, length ? Math.min(length, f) : f);
+        };
+        const out: Record<string, unknown> = { media: m.id };
+        let pending = false;
+        for (const { analyzer, jobId, outcome } of results) {
+          if (!outcome) {
+            pending = true;
+            const job = jobId ? analysis.job(jobId) : undefined;
+            out[analyzer] = job?.phase === "queued" ? { state: "queued", ...(job.waiting ? { waitingFor: "an export to finish" } : {}) } : { state: "running", progress: job?.progress ?? 0 };
+            continue;
+          }
+          if (outcome.state === "failed") out[analyzer] = { state: "failed", error: outcome.error };
+          else if (outcome.state === "cancelled") out[analyzer] = { state: "cancelled", note: "The analysis was stopped (by the user, or the project closed) before it finished. Ask again to run it." };
+          else out[analyzer] = loudnessOut(outcome.result, outcome.cached, frames, range as { start: number; end: number } | undefined);
+        }
+        out.note = pending
+          ? `Still analysing after ${Math.round(waitMs / 1000)} s. Call media_analyze again with the same arguments to get the results; it joins the running job.`
+          : "Silences are where the sound stays below thresholdDb for at least minSeconds. start and end are project frames of the media (use them as in): start is the first silent frame, end the frame after the last, both inside the silence; startSeconds and endSeconds are media time. integratedLufs is the whole file's loudness (EBU R128; about −14 LUFS is usual for online video), loudnessRangeLu how much it varies, truePeakDbtp its loudest peak.";
+        return textResult(out);
+      });
+
     // ui_show (D65): the renderer moves the playhead, selects and opens a panel once per request.
     const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
       const project = v.session.project;
@@ -686,6 +776,8 @@ export const layer = Layer.effect(
             return yield* contactSheet(v, args);
           case "ui_show":
             return uiShow(r, v, args);
+          case "media_analyze":
+            return yield* mediaAnalyze(v, args);
           case "timeline_edit": {
             const { baseRevision, ops, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

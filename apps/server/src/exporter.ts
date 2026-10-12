@@ -64,6 +64,8 @@ export interface ExporterShape {
   readonly start: (input: ExportInput) => Effect.Effect<{ jobId: string }, ExportError>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
   readonly jobs: Stream.Stream<ReadonlyArray<ExportJob>>;
+  /** Whether an export is queued, preparing or rendering, now (analysis yields to it, D66). */
+  readonly busy: () => boolean;
   /** Frames of the open project as JPEGs, `width` px wide (the agent's render_frames). */
   readonly renderFrames: (frames: ReadonlyArray<number>, width: number) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
   /** contact_sheet (D65): the first video stream of `path` at each of `seconds`, `width` px wide, as JPEGs. */
@@ -511,7 +513,8 @@ export const layer = Layer.effect(
         catch: (error) => new ExportError({ reason: "source-media", message: `Couldn't draw the contact sheet: ${(error as Error).message}` }),
       });
 
-    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), renderFrames, mediaFrames, sheetImage });
+    const busy = () => Effect.runSync(SubscriptionRef.get(jobsRef)).some((j) => j.phase === "queued" || j.phase === "preparing" || j.phase === "rendering");
+    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), busy, renderFrames, mediaFrames, sheetImage });
   }),
 );
 
