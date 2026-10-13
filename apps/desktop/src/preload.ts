@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "ele
 import {
   APP_INFO_CHANNEL,
   APP_STATE_CHANNEL,
+  ASK_MEDIA_ACCESS_CHANNEL,
+  CAPTURE_SOURCES_CHANNEL,
+  CHOOSE_DISPLAY_SOURCE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
@@ -15,13 +18,16 @@ import {
   ENVIRONMENT_SWITCH_CHANNEL,
   ENVIRONMENT_TEST_CHANNEL,
   ENVIRONMENTS_CHANNEL,
+  MEDIA_ACCESS_CHANNEL,
   MENU_COMMAND_CHANNEL,
+  OPEN_PRIVACY_SETTINGS_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
   SHOW_IN_FOLDER_CHANNEL,
   SILENT_AUDIO_CHANNEL,
   type AppState,
   type FolderPurpose,
+  type MediaAccessKind,
   type MenuCommand,
 } from "./ipc.ts";
 
@@ -62,6 +68,12 @@ contextBridge.exposeInMainWorld("uncut", {
   environmentStatus: () => ipcRenderer.invoke(ENVIRONMENT_STATUS_CHANNEL),
   // A remote export, saved where the user picks on this Mac (D109).
   downloadExport: (jobId: string, name: string) => ipcRenderer.invoke(DOWNLOAD_EXPORT_CHANNEL, jobId, name),
+  // Recording on this Mac (D114).
+  mediaAccess: () => ipcRenderer.invoke(MEDIA_ACCESS_CHANNEL),
+  askMediaAccess: (kind: MediaAccessKind) => ipcRenderer.invoke(ASK_MEDIA_ACCESS_CHANNEL, kind),
+  openPrivacySettings: (kind: MediaAccessKind) => ipcRenderer.invoke(OPEN_PRIVACY_SETTINGS_CHANNEL, kind),
+  captureSources: () => ipcRenderer.invoke(CAPTURE_SOURCES_CHANNEL),
+  chooseDisplaySource: (id: string) => ipcRenderer.invoke(CHOOSE_DISPLAY_SOURCE_CHANNEL, id),
   // True only in a background test run: the preview's audio goes to no device.
   silentAudio: ipcRenderer.sendSync(SILENT_AUDIO_CHANNEL) === true,
 });

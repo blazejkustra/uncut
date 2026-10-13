@@ -1,12 +1,13 @@
 // The Capture tab (D98): Argent's devices with Record and Stop and a running timer; a stopped take
 // lands in the Library as one edit (⌘Z removes it). Devices Argent can't record yet say why;
-// without Argent the tab shows the command that installs it and "Check again". Screen and
-// Microphone come later.
+// without Argent the tab shows the command that installs it and "Check again". This Mac's
+// microphone, camera and screen are CaptureThisMac (D114).
 import type { CaptureDevice } from "@uncut/contracts";
-import { Check, CircleDot, Copy, Mic, Monitor, RefreshCw, Smartphone, Square, TabletSmartphone } from "lucide-react";
+import { Check, CircleDot, Copy, Monitor, RefreshCw, Smartphone, Square, TabletSmartphone } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 import { actions, useApp } from "../state/store.ts";
+import { CaptureThisMac } from "./CaptureThisMac.tsx";
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -90,19 +91,7 @@ export function CaptureLibrary() {
           </div>
         )}
       </div>
-      <div className="lib-section">
-        <div className="lib-label">This Mac</div>
-        <div className="capture-row later" data-testid="capture-screen">
-          <Monitor />
-          <span className="capture-name">Screen</span>
-          <span className="capture-note">Coming later</span>
-        </div>
-        <div className="capture-row later" data-testid="capture-mic">
-          <Mic />
-          <span className="capture-name">Microphone</span>
-          <span className="capture-note">Coming later</span>
-        </div>
-      </div>
+      <CaptureThisMac />
     </aside>
   );
 }

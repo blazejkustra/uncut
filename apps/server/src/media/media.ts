@@ -8,6 +8,7 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
 import { decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
+import { planPlaceTake, type TakePlacement } from "@uncut/core/place";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -60,6 +61,8 @@ export interface CaptureImportInput {
   readonly name?: string | undefined;
   readonly source: { readonly module: string; readonly [key: string]: unknown };
   readonly turnId?: string | undefined;
+  /** D114: also put it on the timeline at this frame, in the same edit (core planPlaceTake). */
+  readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
 }
 
 export interface ReplaceMediaInput {
@@ -99,6 +102,8 @@ export interface AgentImport {
   readonly failed: ReadonlyArray<{ readonly path: string; readonly message: string }>;
   /** D105: .srt / .vtt files read into a Subtitles text track. */
   readonly subtitles?: ReadonlyArray<ImportedSubtitles>;
+  /** D114: the timeline item a placed take got. */
+  readonly placed?: { readonly itemId: string; readonly trackId: string; readonly start: number };
 }
 
 export interface ImportedSubtitles {
@@ -313,6 +318,8 @@ export const layer = Layer.effect(
       readonly quiet?: boolean | undefined;
       /** Completed once the media is in the project (or the job failed before that). */
       readonly added?: Deferred.Deferred<AgentImport, string> | undefined;
+      /** D114: the (single) imported file also goes on the timeline, in the same edit. */
+      readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
     }
 
     const runJob = (jobId: string, openId: number, dir: string, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
@@ -379,6 +386,7 @@ export const layer = Layer.effect(
         // Ids, duplicates against the project and the edit itself happen under the project
         // lock, against the opening of the project the import was started in.
         let entries: Array<{ entry: MediaEntry; info: ProbeInfo }> = [];
+        let placed: AgentImport["placed"];
         const snapshot = yield* projects.editIn(openId, (raw, projectDir) =>
           Effect.gen(function* () {
             const project = raw as ProjectShape;
@@ -426,9 +434,18 @@ export const layer = Layer.effect(
             }
             const count = entries.length + subtitles.length;
             if (count === 0) return undefined;
+            // D114: a take recorded on this Mac goes on the timeline in the same edit.
+            const placeOps: Array<unknown> = [];
+            placed = undefined;
+            const first = entries[0]?.entry;
+            if (options.place && entries.length === 1 && first?.probe.frames) {
+              const plan = planPlaceTake(raw as Project, { mediaId: first.id, frames: first.probe.frames, frame: options.place.frame, placement: options.place.placement }, taken);
+              placeOps.push(...plan.ops);
+              placed = { itemId: plan.itemId, trackId: plan.trackId, start: plan.start };
+            }
             return {
-              ops: [...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps],
-              summary: count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
+              ops: [...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
+              summary: placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
             };
           }),
           options.agent,
@@ -437,7 +454,7 @@ export const layer = Layer.effect(
         // Imported subtitles files are never written over by an export (D105).
         if (snapshot && subtitles.length) yield* Effect.promise(() => recordSubtitleSources(dir, subtitles.map((x) => x.path)).catch(() => {}));
         const inOrder = <A extends { at: number }>(list: Array<A>) => [...list].sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);
-        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed), ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}) });
+        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed), ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}), ...(snapshot && placed ? { placed } : {}) });
 
         // Posters after the edit (tiles show an icon until theirs exists), into the folder of
         // the project they belong to.
@@ -496,7 +513,7 @@ export const layer = Layer.effect(
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 
-    const importCapture = ({ openId, dir, path, name, source, turnId }: CaptureImportInput) =>
+    const importCapture = ({ openId, dir, path, name, source, turnId, place }: CaptureImportInput) =>
       Effect.gen(function* () {
         const added = yield* Deferred.make<AgentImport, string>();
         yield* queueJob({ openId, dir }, [path], {
@@ -506,6 +523,7 @@ export const layer = Layer.effect(
           names: name ? new Map([[path, name]]) : undefined,
           sources: new Map([[path, source]]),
           added,
+          place,
         });
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });

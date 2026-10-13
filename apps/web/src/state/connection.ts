@@ -32,7 +32,8 @@ export interface CallError {
 const CALL_TIMEOUT = Duration.seconds(15);
 
 export interface Connection {
-  readonly call: <A>(f: (client: Client) => Effect.Effect<A, unknown>) => Promise<Result<A>>;
+  /** `timeoutMs`: how long to wait for the answer (15 s unless a call needs longer, e.g. a take's conversion, D114). */
+  readonly call: <A>(f: (client: Client) => Effect.Effect<A, unknown>, timeoutMs?: number) => Promise<Result<A>>;
   /** Run a streaming call, handing each value to `onValue`. Ends when the socket drops; returns a cancel. */
   readonly subscribe: <A>(f: (client: Client) => Stream.Stream<A, unknown>, onValue: (value: A) => void) => () => void;
 }
@@ -69,10 +70,10 @@ export function connect(
   const runtime = ManagedRuntime.make(Layer.effect(WsClient, makeClient).pipe(Layer.provide(protocol)));
 
   return {
-    call: async (f) => {
+    call: async (f, timeoutMs) => {
       const exit = await runtime.runPromiseExit(
         WsClient.use(f).pipe(
-          Effect.timeoutOrElse({ duration: CALL_TIMEOUT, orElse: () => Effect.fail({ _tag: "Timeout", message: "The server didn't answer" }) }),
+          Effect.timeoutOrElse({ duration: timeoutMs ? Duration.millis(timeoutMs) : CALL_TIMEOUT, orElse: () => Effect.fail({ _tag: "Timeout", message: "The server didn't answer" }) }),
         ),
       );
       if (Exit.isSuccess(exit)) return { ok: true, value: exit.value };
