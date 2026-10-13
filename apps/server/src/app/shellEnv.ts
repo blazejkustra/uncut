@@ -100,24 +100,25 @@ const isKeyName = (k: string) =>
   k === "REPLICATE_API_TOKEN" ||
   k === "HF_TOKEN";
 
+/** Names that look like secrets: *_KEY, *_TOKEN, *_SECRET, *_PASSWORD, cloud credentials. */
+const looksSecret = (k: string) => /(_KEY|_TOKEN|_SECRET|_PASSWORD)$/i.test(k) || /^(AWS|AZURE|GOOGLE_APPLICATION)_/i.test(k) || /^(GH|GITHUB|HF|NPM)_TOKEN$/i.test(k);
+
 /**
  * The agent's environment: the server's, minus anything that would bill an API account instead
  * of the user's Claude subscription (a stray ANTHROPIC_API_KEY did, once: "Credit balance is too
- * low"), the generators' keys (D97), and what would make claude think it runs inside another
+ * low"), the generators' keys (D97), anything else that looks like a secret (the agent runs with
+ * no tools of its own, so it needs none), and what would make claude think it runs inside another
  * Claude Code session.
  */
 export const agentEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) continue;
-    if (isKeyName(k) || k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) continue;
+    if (isKeyName(k) || looksSecret(k) || k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) continue;
     out[k] = v;
   }
   return out;
 };
-
-/** Names that look like secrets: *_KEY, *_TOKEN, *_SECRET, *_PASSWORD, cloud credentials. */
-const looksSecret = (k: string) => /(_KEY|_TOKEN|_SECRET|_PASSWORD)$/i.test(k) || /^(AWS|AZURE|GOOGLE_APPLICATION)_/i.test(k) || /^(GH|GITHUB|HF|NPM)_TOKEN$/i.test(k);
 
 /**
  * A plugin's environment (D97): the agent's, minus anything that looks like a secret (*_KEY,

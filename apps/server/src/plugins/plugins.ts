@@ -186,7 +186,8 @@ export async function discoverPlugins(
         toolOwner.set(tool.name, manifest.id);
         tools.push({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema });
       }
-      if (!declared.length) warnings.push("It has no agent tools, so the agent can't use it.");
+      // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent.
+      if (!declared.length && manifest.kind !== "analyzer") warnings.push("It has no agent tools, so the agent can't use it.");
       plugins.push({
         id: manifest.id,
         name: manifest.name,
@@ -284,6 +285,8 @@ export function pluginInfos(discovery: Discovery, approvals: Readonly<Record<str
 interface Pending {
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
+  /** MCP progress for this request (its progressToken is the request id). */
+  readonly onProgress?: ((progress: number, total: number | undefined) => void) | undefined;
 }
 
 /** Thrown when a call ran out of time (the process is then stopped). */
@@ -395,6 +398,13 @@ export class PluginProcess {
       if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
       const m = msg as { id?: unknown; result?: unknown; error?: unknown; method?: unknown };
       if (typeof m.method === "string") {
+        // MCP progress for a call that asked for it (D100: a transcript's progress).
+        if (m.method === "notifications/progress" && (m.id === undefined || m.id === null)) {
+          const params = (msg as { params?: { progressToken?: unknown; progress?: unknown; total?: unknown } }).params;
+          const p = typeof params?.progressToken === "number" ? this.pending.get(params.progressToken) : undefined;
+          if (p?.onProgress && typeof params!.progress === "number" && Number.isFinite(params!.progress)) p.onProgress(params!.progress, typeof params!.total === "number" && params!.total > 0 ? params!.total : undefined);
+          return;
+        }
         // A request from the plugin: ping is answered, nothing else is offered. Notifications need no answer.
         if (m.id === undefined || m.id === null || (typeof m.id !== "number" && typeof m.id !== "string")) return;
         if (m.method === "ping") this.write({ id: m.id, result: {} });
@@ -455,8 +465,12 @@ export class PluginProcess {
     if (this.alive) this.write({ method, ...(params === undefined ? {} : { params }) });
   }
 
-  /** One JSON-RPC request. Rejects with PluginTimeout after timeoutMs, or when `signal` aborts. */
-  request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+  /**
+   * One JSON-RPC request. Rejects with PluginTimeout after timeoutMs, or when `signal` aborts.
+   * With `onProgress`, the request carries `_meta.progressToken` (its id) and the plugin's
+   * notifications/progress for it are passed on.
+   */
+  request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal, onProgress?: (progress: number, total: number | undefined) => void): Promise<unknown> {
     if (!this.alive) return Promise.reject(new Error(`${this.spec.name} isn't running`));
     // A turn that ended before the call got here (during a cold start or a backoff wait).
     if (signal?.aborted) return Promise.reject(new PluginCancelled("The call was cancelled: the agent turn ended."));
@@ -480,8 +494,11 @@ export class PluginProcess {
       this.pending.set(id, {
         resolve: (value) => (cleanup(), resolve(value)),
         reject: (error) => (cleanup(), reject(error)),
+        onProgress,
       });
-      this.write({ id, method, ...(params === undefined ? {} : { params }) });
+      const withToken =
+        onProgress && params && typeof params === "object" ? { ...(params as Record<string, unknown>), _meta: { ...((params as { _meta?: Record<string, unknown> })._meta ?? {}), progressToken: id } } : params;
+      this.write({ id, method, ...(withToken === undefined ? {} : { params: withToken }) });
     });
   }
 
@@ -574,6 +591,12 @@ const declaredOf = (raw: unknown): Record<string, unknown> | undefined => {
   return uncut && typeof uncut === "object" && !Array.isArray(uncut) ? (uncut as Record<string, unknown>) : undefined;
 };
 
+/** Per call (Uncut's own calls, D100): its own time limit instead of the manifest's, and MCP progress. */
+export interface CallExtra {
+  readonly timeoutMs?: number | undefined;
+  readonly onProgress?: ((progress: number, total: number | undefined) => void) | undefined;
+}
+
 interface Slot {
   spec: ProcessSpec;
   proc: PluginProcess | undefined;
@@ -643,7 +666,7 @@ export class PluginHost {
    * `allowed` is asked again once the process is up, right before the call (it may have been
    * revoked meanwhile); `signal` is the agent turn's.
    */
-  async call(spec: ProcessSpec, tool: string, args: unknown, signal?: AbortSignal, allowed?: () => Promise<string | undefined>, context?: PluginContext): Promise<PluginResult> {
+  async call(spec: ProcessSpec, tool: string, args: unknown, signal?: AbortSignal, allowed?: () => Promise<string | undefined>, context?: PluginContext, extra: CallExtra = {}): Promise<PluginResult> {
     let slot = this.slots.get(spec.id);
     if (slot && !sameSpec(slot.spec, spec)) {
       await this.stop(spec.id);
@@ -664,7 +687,7 @@ export class PluginHost {
     const refusal = await allowed?.();
     if (refusal) return errorResult(refusal);
     try {
-      const raw = await proc.request("tools/call", { name: tool, arguments: args ?? {}, ...(context && Object.keys(context).length ? { _meta: context } : {}) }, spec.timeoutMs, signal);
+      const raw = await proc.request("tools/call", { name: tool, arguments: args ?? {}, ...(context && Object.keys(context).length ? { _meta: context } : {}) }, extra.timeoutMs ?? spec.timeoutMs, signal, extra.onProgress);
       const declared = declaredOf(raw);
       const structured = (raw as { structuredContent?: unknown } | null)?.structuredContent;
       return { ...toMcpResult(raw), ...(declared ? { declared } : {}), ...(structured !== undefined ? { structured } : {}) };
@@ -724,7 +747,7 @@ export interface PluginsShape {
    * Runs a tool of the plugin `id` for Uncut itself (the Capture tab): any tool the process serves,
    * also those it doesn't list for the agent. Refused (an error result) when it isn't allowed.
    */
-  readonly callPlugin: (id: string, tool: string, args: unknown, options?: { readonly projectDir?: string | undefined; readonly signal?: AbortSignal | undefined }) => Effect.Effect<PluginResult & { readonly plugin: PluginCaller | undefined }>;
+  readonly callPlugin: (id: string, tool: string, args: unknown, options?: { readonly projectDir?: string | undefined; readonly signal?: AbortSignal | undefined } & CallExtra) => Effect.Effect<PluginResult & { readonly plugin: PluginCaller | undefined }>;
   /** modules_list entries for the plugins (D97). */
   readonly modules: (kind?: string) => Effect.Effect<ReadonlyArray<Record<string, unknown>>>;
   /** The running process of a plugin (tests). */
@@ -862,7 +885,7 @@ export const layer = Layer.effect(
           if (refused) return { ...errorResult(`${plugin.name} isn't allowed to run yet: allow it in Settings, the Capture step.`), plugin: callerOf(plugin) };
           const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
           const context = yield* Effect.promise(() => pluginContext(plugin, options.projectDir).catch(() => ({})));
-          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context));
+          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, { timeoutMs: options.timeoutMs, onProgress: options.onProgress }));
           return { ...result, plugin: callerOf(plugin) };
         }),
       modules: (kind) =>

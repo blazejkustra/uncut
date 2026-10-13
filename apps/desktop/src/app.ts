@@ -50,6 +50,11 @@ if (!app.requestSingleInstanceLock()) {
 const testDialogs: Array<string | Array<string>> | undefined =
   process.env.UNCUT_CDP && process.env.UNCUT_TEST_DIALOG ? (JSON.parse(process.env.UNCUT_TEST_DIALOG) as Array<string | Array<string>>) : undefined;
 
+// Generator keys in tests (D101): with UNCUT_TEST_KEYS=standin, and only together with UNCUT_CDP,
+// keys are wrapped by a reversible stand-in instead of safeStorage, so a packaged-app test that saves
+// a key never creates or prompts for a Keychain item. A release user's app always uses safeStorage.
+const testKeys = Boolean(process.env.UNCUT_CDP) && process.env.UNCUT_TEST_KEYS === "standin";
+
 // Tests run in the background (UNCUT_TEST_BACKGROUND=1, only with UNCUT_CDP): no dock icon, and
 // the window is shown inactive and fully transparent, so test runs never steal focus or cover what
 // the user is doing. CDP screenshots read the page, not the screen, so they are unaffected.
@@ -238,16 +243,24 @@ app.whenReady().then(() => {
     onExit: (reason) => win?.webContents.send(SERVER_EXIT_CHANNEL, reason),
     // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
     // ciphertext reaches the server's keys.json.
-    keys: {
-      encrypt: (text) => {
-        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
-        return safeStorage.encryptString(text).toString("base64");
-      },
-      decrypt: (data) => {
-        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
-        return safeStorage.decryptString(Buffer.from(data, "base64"));
-      },
-    },
+    keys: testKeys
+      ? {
+          encrypt: (text) => `test-standin:${Buffer.from(text, "utf8").toString("base64")}`,
+          decrypt: (data) => {
+            if (!data.startsWith("test-standin:")) throw new Error("not a test key");
+            return Buffer.from(data.slice("test-standin:".length), "base64").toString("utf8");
+          },
+        }
+      : {
+          encrypt: (text) => {
+            if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
+            return safeStorage.encryptString(text).toString("base64");
+          },
+          decrypt: (data) => {
+            if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
+            return safeStorage.decryptString(Buffer.from(data, "base64"));
+          },
+        },
   });
   const handle = <A extends Array<unknown>, R>(channel: string, fn: (...args: A) => R) =>
     ipcMain.handle(channel, (event, ...args) => {

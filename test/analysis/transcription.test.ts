@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { AnalysisQueue, cacheFile, fingerprint, parseAnalyzers, spawnRunner, type AnalysisTarget, type Runner } from "../../apps/server/src/analysis/analysis.ts";
-import { fillersOf, isTranscriptResult, parseWhisperJson, pausesOf, sweepStaleTranscriptTemp, TEMP_PREFIX, type TranscriptResult } from "../../apps/server/src/analysis/transcription.ts";
+import { fillersOf, isTranscriptResult, parseWhisperJson, pausesOf, sweepStaleTranscriptTemp, TEMP_PREFIX, transcribeDirect, type TranscriptResult } from "../../apps/server/src/analysis/transcription.ts";
 import { transcriptOut, transcriptSummary } from "../../apps/server/src/agent/agentTranscript.ts";
 import { NO_WHISPER } from "../../apps/server/src/analysis/whisper.ts";
 import { SAY_TOKENS, whisperJson, type Token } from "../helpers/whisper-json.ts";
@@ -44,7 +44,7 @@ const whisperRuns = () => (existsSync(whisperLog()) ? readFileSync(whisperLog(),
 const target = (path: string, mediaId = "m-talk", extra: Partial<AnalysisTarget> = {}): AnalysisTarget => ({ dir: project, mediaId, path, kind: "video", hasAudio: true, seconds: 6, ...extra });
 const resolver = (bin = FAKE) => async () => ({ bin, model, modelId: "tiny.en" });
 const queue = (options: Partial<ConstructorParameters<typeof AnalysisQueue>[0]> = {}, jobs?: Array<ReadonlyArray<AnalysisJob>>) =>
-  new AnalysisQueue({ ffmpeg: async () => ffmpegPath, whisper: resolver(), tmpRoot: temps, onChange: (j) => jobs?.push(j), ...options });
+  new AnalysisQueue({ ffmpeg: async () => ffmpegPath, whisper: resolver(), transcribe: transcribeDirect, tmpRoot: temps, onChange: (j) => jobs?.push(j), ...options });
 const leftovers = () => readdirSync(temps).filter((f) => f.startsWith(TEMP_PREFIX));
 
 before(() => {

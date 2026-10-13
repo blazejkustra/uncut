@@ -4,20 +4,25 @@
   "kind": "analyzer",
   "name": "Whisper (on this Mac)",
   "version": "0.1.0",
-  "description": "Transcribes speech locally with word timings. No network, no API key.",
-  "author": "Community",
+  "description": "Transcribes speech locally with word timings, with whisper.cpp. No network, no API key: Uncut downloads the speech model once (Settings, Speech model).",
+  "author": "Uncut",
   "license": "MIT",
-  "runtime": { "type": "process", "command": "uncut-whisper" },
-  "capabilities": ["media:read"],
-  "requires": { "platforms": ["macos-arm64", "linux-x64", "windows-x64"] },
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
+  "requires": {
+    "binary": "whisper-cli",
+    "install": "brew install whisper-cpp",
+    "platforms": ["macos-arm64"]
+  },
+  "capabilities": ["media:read", "process:spawn", "gpu"],
   "analyzer": {
     "inputs": ["audio", "video"],
     "outputs": ["transcript"],
     "backend": "local-model",
     "model": {
-      "name": "whisper-large-v3-turbo",
-      "sizeMb": 1620,
-      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+      "name": "ggml-large-v3-turbo-q5_0",
+      "sizeMb": 574,
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+      "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
     }
   },
   "params": {

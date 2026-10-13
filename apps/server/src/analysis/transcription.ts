@@ -1,14 +1,17 @@
 // The transcript analyzer (D68): speech to words, on this Mac, with whisper.cpp (Homebrew's
 // whisper-cpp, binary whisper-cli). One job: ffmpeg writes the first audio stream (0:a:0) as a
-// 16 kHz mono WAV into a temp folder, whisper-cli transcribes it to full JSON (-ojf: segments with
-// their tokens, each token timed), and the tokens are joined into words. The temp folder goes
+// 16 kHz mono WAV into a temp folder, and the speech model turns it into words: the bundled
+// Whisper plugin (plugins/whisper-transcribe, D100) runs whisper-cli to full JSON (-ojf: segments
+// with their tokens, each token timed) and joins the tokens into words. The temp folder goes
 // whatever happens (done, failed, cancelled). Cached through the analysis queue (D66) as
 // <fp>/transcript.json. Fillers and pauses are derived from the words when they're read (pure,
 // so tuning the lists needs no re-run), pauses aligned to the loudness analyzer's silences when
 // those are cached.
-import { availableParallelism, tmpdir } from "node:os";
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+
+import { Stopped, transcribeWav, type Speech } from "../../../../plugins/whisper-transcribe/whisper.ts";
 
 import { Cancelled, ffmpegError, NO_AUDIO_STREAM, spawnRunner, type Runner } from "./analysisRunner.ts";
 
@@ -41,21 +44,8 @@ export async function sweepStaleTranscriptTemp(dir = tmpdir(), now = Date.now())
   );
 }
 
-export interface TranscriptWord {
-  readonly text: string;
-  /** Seconds of the file. */
-  readonly start: number;
-  readonly end: number;
-  /** whisper's confidence, 0–1 (the lowest of the word's pieces). */
-  readonly p: number;
-}
-export interface TranscriptSegment {
-  readonly start: number;
-  readonly end: number;
-  readonly text: string;
-  /** Its words: indices [first, end) into words. */
-  readonly words: readonly [number, number];
-}
+import type { TranscriptSegment, TranscriptWord } from "../../../../plugins/whisper-transcribe/whisper.ts";
+export type { Speech, TranscriptSegment, TranscriptWord };
 export interface TranscriptResult {
   readonly hasAudio: boolean;
   readonly seconds?: number;
@@ -101,113 +91,59 @@ export const extractArgs = (path: string, wav: string) => [
   wav,
 ];
 
-/** whisper-cli: full JSON (timed tokens), progress on stderr, Metal by default (whisper.cpp's default). */
-export const whisperArgs = (model: string, wav: string, out: string, language: string) => [
-  "-m",
-  model,
-  "-f",
-  wav,
-  "-ojf",
-  "-of",
-  out,
-  "-l",
-  language,
-  "-pp",
-  "-np",
-  "-t",
-  String(Math.max(1, Math.min(8, availableParallelism()))),
-];
+// ---- whisper's JSON into words: the plugin's (plugins/whisper-transcribe, D100) ----
 
-// ---- whisper's JSON into words ----
+export { parseWhisperJson, whisperArgs } from "../../../../plugins/whisper-transcribe/whisper.ts";
 
-interface WhisperToken {
-  readonly text: string;
-  readonly offsets: { readonly from: number; readonly to: number };
-  readonly p?: number;
-}
-interface WhisperSegment {
-  readonly offsets: { readonly from: number; readonly to: number };
-  readonly text: string;
-  readonly tokens?: ReadonlyArray<WhisperToken>;
-}
-
-/** Special tokens: [_BEG_], [_TT_123], [_SOT_]… */
-const SPECIAL = /^\[_[A-Za-z0-9_]*\]$/;
-/** Only ASCII punctuation and spaces (non-ASCII bytes count as letters: Polish letters are two bytes). */
-const PUNCT_ONLY = /^[\x20-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e]+$/;
-/** Annotations, not speech: [BLANK_AUDIO], (music), *laughs*, ♪. */
-const ANNOTATION = /^\s*(\[[^\]]*\]|\([^)]*\)|\*[^*]*\*|♪+)\s*$/;
-const OPENS = /^[[(*]/;
-const CLOSES = /[\])*]$/;
-
-/** whisper's token texts are raw bytes (a Polish letter can be split over two tokens): read as latin1, decoded once joined. */
-const utf8 = (bytes: string) => Buffer.from(bytes, "latin1").toString("utf8");
 const ms3 = (s: number) => Math.round(s * 1000) / 1000;
 
-/**
- * Parses whisper-cli's full JSON (read as latin1, so each char is one byte). A token starting with
- * a space starts a word; other tokens (word pieces, punctuation) join the word before. A word runs
- * from its first piece to the end of its last letter piece: punctuation is timed where the next
- * word starts, so it would swallow the pause after the word. Annotations and punctuation-only words
- * are dropped; times are made monotonic and kept within `seconds`.
- */
-export function parseWhisperJson(latin1: string, seconds?: number): { language?: string; segments: Array<TranscriptSegment>; words: Array<TranscriptWord> } {
-  let doc: { result?: { language?: unknown }; transcription?: ReadonlyArray<WhisperSegment> };
-  try {
-    // Raw control characters (a stray byte in a token) aren't valid JSON: drop them.
-    doc = JSON.parse(latin1.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ""));
-  } catch {
-    throw new Error("whisper-cli wrote a transcript Uncut can't read.");
-  }
-  const words: Array<TranscriptWord> = [];
-  const segments: Array<TranscriptSegment> = [];
-  const clamp = (s: number) => Math.max(0, seconds !== undefined ? Math.min(seconds, s) : s);
-  let lastStart = 0;
-  for (const seg of doc.transcription ?? []) {
-    const segText = utf8(seg.text ?? "").trim();
-    if (!segText || ANNOTATION.test(segText)) continue;
-    const first = words.length;
-    // Words of this segment, as byte strings with their times.
-    const raw: Array<{ text: string; start: number; end: number | undefined; p: number }> = [];
-    for (const t of seg.tokens ?? []) {
-      if (typeof t.text !== "string" || SPECIAL.test(t.text) || !t.offsets) continue;
-      const from = t.offsets.from / 1000;
-      const to = t.offsets.to / 1000;
-      const letters = !PUNCT_ONLY.test(t.text);
-      const p = typeof t.p === "number" ? t.p : 1;
-      const current = raw.at(-1);
-      if (!current || t.text.startsWith(" ")) raw.push({ text: t.text, start: from, end: letters ? to : undefined, p: letters ? p : 1 });
-      else {
-        current.text += t.text;
-        if (letters) {
-          current.end = to;
-          current.p = Math.min(current.p, p);
-        }
-      }
-    }
-    let skipping = false;
-    for (const w of raw) {
-      const text = utf8(w.text).trim();
-      if (!text) continue;
-      // An annotation spread over several words: from "[" or "(" to its closer.
-      if (skipping || (OPENS.test(text) && !/^\(?\d/.test(text))) {
-        skipping = !CLOSES.test(text);
-        continue;
-      }
-      if (PUNCT_ONLY.test(w.text) || text === "♪") continue;
-      const start = Math.max(lastStart, clamp(w.start));
-      const end = Math.max(start, clamp(w.end ?? w.start));
-      lastStart = start;
-      words.push({ text, start: ms3(start), end: ms3(end), p: Math.round(w.p * 1000) / 1000 });
-    }
-    if (words.length === first) continue;
-    segments.push({ start: ms3(clamp(seg.offsets.from / 1000)), end: ms3(clamp(seg.offsets.to / 1000)), text: segText, words: [first, words.length] });
-  }
-  const language = typeof doc.result?.language === "string" ? doc.result.language : undefined;
-  return { ...(language ? { language } : {}), segments, words };
-}
-
 // ---- running it ----
+
+/**
+ * A speech model, as Uncut sees it (D26, D100): given a 16 kHz mono WAV, the model file and a
+ * language, it answers words and segments. In the app it's the bundled Whisper plugin, called
+ * through the plugin host (`pluginTranscribe`); in-process tests use `transcribeDirect`.
+ */
+export interface SpeechRequest {
+  readonly audio: string;
+  readonly bin: string;
+  readonly model: string;
+  readonly modelId: string;
+  readonly language: string;
+  readonly seconds?: number | undefined;
+  readonly timeoutMs: number;
+}
+export type Transcribe = (request: SpeechRequest, options: { readonly signal: AbortSignal; readonly onProgress: (fraction: number) => void; readonly runner?: Runner | undefined }) => Promise<Speech>;
+
+/** whisper-cli run here, through the analysis runner (tests: they watch what's spawned). */
+export const transcribeDirect: Transcribe = (request, { signal, onProgress, runner }) =>
+  transcribeWav({ audio: request.audio, model: request.model, bin: request.bin, language: request.language, seconds: request.seconds }, { signal, onProgress, timeoutMs: request.timeoutMs, run: runner ?? spawnRunner });
+
+/** The bundled Whisper plugin's id and its one call. */
+export const WHISPER_PLUGIN = "whisper.transcribe";
+export const WHISPER_TOOL = "transcribe";
+
+type CallResult = { readonly isError?: boolean; readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>; readonly structured?: unknown };
+/**
+ * The plugin's answer as a Transcribe: `call` runs the plugin's tool (Plugins.callPlugin); an error
+ * result is thrown as its text, a cancelled call as Cancelled, and an answer without words and
+ * segments is refused.
+ */
+export const pluginTranscribe =
+  (call: (args: Record<string, unknown>, options: { readonly signal: AbortSignal; readonly timeoutMs: number; readonly onProgress: (progress: number, total: number | undefined) => void }) => Promise<CallResult>): Transcribe =>
+  async (request, { signal, onProgress }) => {
+    const result = await call(
+      { audio: request.audio, model: request.model, bin: request.bin, language: request.language, ...(request.seconds !== undefined ? { seconds: request.seconds } : {}), timeoutSeconds: Math.ceil(request.timeoutMs / 1000) },
+      // A little longer than whisper's own limit, so the plugin's "took too long" is what's said.
+      { signal, timeoutMs: request.timeoutMs + 30_000, onProgress: (progress, total) => onProgress(Math.min(1, Math.max(0, progress / (total ?? 100)))) },
+    );
+    if (signal.aborted) throw new Cancelled();
+    const text = result.content.map((c) => c.text ?? "").join(" ").trim();
+    if (result.isError) throw new Error(text || "The Whisper plugin couldn't transcribe it.");
+    const speech = result.structured as Speech | undefined;
+    if (!speech || !Array.isArray(speech.words) || !Array.isArray(speech.segments)) throw new Error("The Whisper plugin answered without words.");
+    return speech;
+  };
 
 export interface TranscribeOptions {
   readonly signal: AbortSignal;
@@ -219,9 +155,15 @@ export interface TranscribeOptions {
   readonly onProgress?: (fraction: number) => void;
   /** Where the temp folder goes (tests). */
   readonly tmpRoot?: string;
+  /** The speech model (the Whisper plugin in the app). */
+  readonly transcribe: Transcribe;
 }
 
-/** Transcribes the first audio stream of `path` with whisper-cli and `model` (a ggml file). */
+/**
+ * Transcribes the first audio stream of `path`: ffmpeg extracts it here (a temp folder Uncut
+ * owns and removes), the speech model (`options.transcribe`, with whisper-cli and `model`, a
+ * ggml file) turns it into words.
+ */
 export async function analyzeTranscript(ffmpeg: string, whisper: { readonly bin: string; readonly model: string; readonly modelId: string }, path: string, options: TranscribeOptions): Promise<TranscriptResult> {
   const runner = options.runner ?? spawnRunner;
   const language = options.language ?? "auto";
@@ -252,25 +194,13 @@ export async function analyzeTranscript(ffmpeg: string, whisper: { readonly bin:
     }
     if (options.signal.aborted) throw new Cancelled();
     const seconds = decoded > 0 ? decoded : (options.seconds ?? duration);
-    const out = join(dir, "transcript");
-    // whisper-cli exits non-zero when it can't load the model (3), find the audio (2) or decode it
-    // (11); the JSON file is the proof either way (and its error lines say why).
-    const run = await runner(whisper.bin, whisperArgs(whisper.model, wav, out, language), {
-      signal: options.signal,
-      timeoutMs,
-      onStderr: (line) => {
-        const m = /progress\s*=\s*(\d+)%/.exec(line);
-        if (m) options.onProgress?.(Math.min(0.99, 0.05 + 0.94 * (Number(m[1]) / 100)));
-      },
+    const parsed = await options.transcribe(
+      { audio: wav, bin: whisper.bin, model: whisper.model, modelId: whisper.modelId, language, seconds, timeoutMs },
+      { signal: options.signal, runner: options.runner, onProgress: (fraction) => options.onProgress?.(Math.min(0.99, 0.05 + 0.94 * fraction)) },
+    ).catch((error: unknown) => {
+      throw options.signal.aborted || error instanceof Stopped ? new Cancelled() : error;
     });
     if (options.signal.aborted) throw new Cancelled();
-    let json: string;
-    try {
-      json = (await readFile(`${out}.json`)).toString("latin1");
-    } catch {
-      throw new Error(`whisper-cli couldn't transcribe it: ${whisperError(run.stderrTail) || `it exited with ${run.code}`}`);
-    }
-    const parsed = parseWhisperJson(json, seconds);
     return {
       hasAudio: true,
       ...(seconds !== undefined ? { seconds: ms3(seconds) } : {}),
@@ -284,16 +214,6 @@ export async function analyzeTranscript(ffmpeg: string, whisper: { readonly bin:
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
-
-/** whisper's last error-looking lines (it logs a lot of model details). */
-const whisperError = (stderr: string) =>
-  stderr
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => /error|failed|cannot|can't|unable|invalid|not found/i.test(l))
-    .slice(-3)
-    .join(" ")
-    .slice(0, 400) || ffmpegError(stderr);
 
 // ---- the cache's shape ----
 
