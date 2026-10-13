@@ -194,6 +194,9 @@ function createWindow() {
   // A graphic item's sandboxed iframe (D78) can't reach anyone over WebRTC either: Chromium honours
   // no CSP webrtc directive, and without a proxy this keeps UDP (STUN) off. The app uses no WebRTC.
   contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
+  // A background test run is silent too (D83): the page's audio graph runs and meters as usual,
+  // but nothing reaches the speakers.
+  if (testBackground) contents.setAudioMuted(true);
   win.once("ready-to-show", () => {
     if (!testBackground) return win?.show();
     win?.setOpacity(0);

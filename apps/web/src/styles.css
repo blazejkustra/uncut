@@ -671,3 +671,51 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .tx-popover .seg { display: flex; flex-wrap: wrap; }
 .cap-hidden { font-size: 12px; padding: 2px 4px; border-radius: 4px; border: 1px dashed rgb(255 255 255 / 15%); color: rgb(255 255 255 / 40%); text-decoration: line-through; }
 .cap-hidden:hover { color: var(--fg); text-decoration: none; }
+
+/* The Mixer (D83): channel strips with pan, meter + fader, mute and solo; the master at the end. */
+.mixer-body { padding: 8px 10px; }
+.mixer-strips { display: flex; gap: 6px; height: 100%; min-height: 120px; }
+.mixer-gap { flex: 1; min-width: 8px; }
+.mixer-empty { padding: 4px 2px 8px; font-size: 12px; }
+.strip-ch { width: 88px; flex: none; display: flex; flex-direction: column; gap: 5px; padding: 6px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
+.strip-ch.master { width: 78px; border-color: var(--border-strong); }
+.strip-ch.muted .strip-body { opacity: 0.45; }
+.strip-name { font-size: 11px; font-weight: 500; color: var(--fg); text-align: center; }
+.pan-row { height: 14px; display: flex; align-items: center; gap: 4px; flex: none; }
+.pan { position: relative; flex: 1; height: 12px; cursor: ew-resize; touch-action: none; }
+.pan::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 2px; border-radius: 1px; background: var(--raised); }
+.pan-fill { position: absolute; top: 5px; height: 2px; background: var(--select); }
+.pan-centre { position: absolute; left: 50%; top: 2px; width: 1px; height: 8px; background: var(--dim); }
+.pan-thumb { position: absolute; top: 1px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--fg); }
+.pan.disabled, .fader.disabled { cursor: default; opacity: 0.5; }
+.pan-label { width: 24px; font-size: 9px; color: var(--muted); text-align: right; }
+.strip-body { flex: 1; min-height: 40px; display: flex; gap: 6px; justify-content: center; }
+.meter { position: relative; display: flex; gap: 2px; width: 12px; padding-top: 5px; }
+/* The over (clip) light: lit red for a moment when a peak reaches full scale. */
+.meter::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 1px; background: rgb(255 255 255 / 8%); }
+.meter.over::before { background: var(--error); }
+.meter-ch { position: relative; flex: 1; border-radius: 1px; background: rgb(255 255 255 / 5%); overflow: hidden; }
+/* On the faders' scale (levelY): red above 0 dBFS (top quarter), yellow from −6 dB, green below; clip-path shows the level. */
+.meter-rms { position: absolute; inset: 0; clip-path: inset(100% 0 0 0); background: linear-gradient(to bottom, #f06a5f 0%, #f06a5f 25%, #e6c34a 25%, #e6c34a 37.5%, #3fbf73 37.5%); }
+.meter-peak { position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: rgb(255 255 255 / 75%); }
+.meter-peak.over { background: var(--error); }
+.fader { position: relative; width: 22px; cursor: ns-resize; touch-action: none; }
+.fader-track { position: absolute; left: 10px; width: 2px; top: 0; bottom: 0; border-radius: 1px; background: var(--raised); }
+.fader-zero { position: absolute; left: 3px; right: 3px; height: 1px; background: var(--dim); }
+.fader-thumb { position: absolute; left: 1px; width: 20px; height: 10px; margin-top: -5px; border-radius: 3px; background: #d9d9d9; border: 1px solid rgb(0 0 0 / 50%); box-shadow: inset 0 -1px 0 rgb(0 0 0 / 25%); }
+.fader-thumb::after { content: ""; position: absolute; left: 3px; right: 3px; top: 4px; height: 1px; background: #444; }
+.strip-foot { display: flex; align-items: center; gap: 3px; height: 20px; flex: none; }
+.strip-db { flex: 1; font-size: 10px; color: var(--muted); }
+.ms-btn { width: 20px; height: 18px; border-radius: 4px; font-size: 10px; font-weight: 600; color: var(--muted); background: var(--raised); }
+.ms-btn:not(:disabled):hover { color: var(--fg); }
+.ms-btn.on.mute { background: #c2603f; color: #fff; }
+.ms-btn.on.solo { background: #d6b13a; color: #111; }
+.solo-note { color: var(--warn); }
+.master-note { font-size: 9px; color: var(--warn); text-align: center; line-height: 1.2; }
+
+/* Volume keys on the timeline (D83): the item's volume as a line over its waveform. */
+.clip .envelope { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: visible; }
+.clip .envelope .env-line { fill: none; stroke: #f3c96b; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.clip .envelope .env-hit { fill: none; stroke: transparent; stroke-width: 8; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: copy; }
+.clip .env-key { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: #f3c96b; border: 1px solid rgb(0 0 0 / 60%); z-index: 3; cursor: grab; }
+.clip .env-key.selected { background: #fff; box-shadow: 0 0 0 2px var(--select); }

@@ -17,6 +17,11 @@
 // - A muted track is silent (gain 0); if any track is soloed, only soloed tracks sound. A hidden
 //   track only hides the picture: its clips still sound (mute is the sound's switch).
 // - dB at or below SILENCE_DB is silence (the volume slider's "−∞").
+//
+// After the item gains (D83): each track's sum is panned (track mixer.pan, panGains below), the
+// tracks are summed (no normalising) and the sum goes through the master gain (project
+// master.gainDb, masterGain below; its own −60 dB cutoff). Both are linear, so the export pans each
+// item's layer by its track's pan and applies the master volume once after amix: the same sound.
 import { overlaps } from "./transitions.ts";
 import type { Item, Project, Track } from "./types.ts";
 
@@ -95,10 +100,74 @@ export function sourceAt(project: Pick<Project, "media" | "canvas">, item: Item,
   return frames / fps;
 }
 
-/** Whether a track sounds at all: not muted, and soloed if any track is. */
-export function trackAudible(project: Pick<Project, "tracks">, track: Track): boolean {
+/** Whether a track holds anything that can make sound (a clip with sound or an audio item). */
+export const trackHasSound = (project: Pick<Project, "media">, track: Track) => track.items.some((item) => soundMedia(project, item) !== undefined);
+
+/**
+ * Whether a track sounds at all: not muted, and soloed if any track that can sound is (anySolo).
+ * Mute wins: a soloed track that is also muted stays silent (and still silences the others). The export follows the same
+ * rule, so it is what the preview plays (D83).
+ */
+export function trackAudible(project: Pick<Project, "tracks" | "media">, track: Track): boolean {
   if (track.mixer?.mute) return false;
-  return !project.tracks.some((t) => t.mixer?.solo) || track.mixer?.solo === true;
+  return !anySolo(project) || track.mixer?.solo === true;
+}
+
+/**
+ * The pan law (D83), one law for every source after it is made stereo (mono plays at full level on
+ * both channels, as before): θ = (pan + 1)·π/4; the near side stays at 1 and the far side follows
+ * √2·cos θ (left) / √2·sin θ (right), so left = min(1, √2·cos θ), right = min(1, √2·sin θ). It never
+ * boosts: centre is exactly unity on both channels (a pan of 0 sounds exactly as before pan
+ * existed, and a pan can't push a full-scale source into clipping); −1 silences the right and keeps
+ * the left at 0 dB; ±0.5 takes the far side down 5.3 dB. On a mono source (L = R) the far side
+ * follows the equal-power curve with the near side held; on a stereo source it is a balance: each
+ * side keeps its own channel, the far one fading out (no folding of one side into the other).
+ */
+export function panGains(pan: number): { readonly left: number; readonly right: number } {
+  const p = Math.min(1, Math.max(-1, Number.isFinite(pan) ? pan : 0));
+  if (p === 0) return { left: 1, right: 1 };
+  const theta = ((p + 1) * Math.PI) / 4;
+  // Exact at the ends (cos(π/2) isn't quite 0 in floating point); the near side is exactly 1.
+  if (p < 0) return { left: 1, right: p === -1 ? 0 : Math.min(1, Math.SQRT2 * Math.sin(theta)) };
+  return { left: p === 1 ? 0 : Math.min(1, Math.SQRT2 * Math.cos(theta)), right: 1 };
+}
+
+/** A track's pan, −1 (left) … 1 (right); 0 when unset. */
+export const trackPan = (track: Pick<Track, "mixer">) => Math.min(1, Math.max(-1, track.mixer?.pan ?? 0));
+
+/** The master volume (D83): project master.gainDb as a linear factor, applied after the tracks are summed. */
+export const masterGain = (project: Pick<Project, "master">) => dbToGain(project.master?.gainDb ?? 0);
+
+/**
+ * Whether any track that can make sound is soloed (then only soloed, unmuted tracks sound:
+ * trackAudible). A solo on a track with nothing to play (a text track, an audio track whose items
+ * were deleted) is ignored, so it can't silence everything unseen.
+ */
+export const anySolo = (project: Pick<Project, "tracks" | "media">) => project.tracks.some((t) => t.mixer?.solo === true && trackHasSound(project, t));
+
+/** The tracks that are heard: they can make sound and trackAudible says so (mute, solo). */
+export const audibleTracks = (project: Pick<Project, "tracks" | "media">) => project.tracks.filter((t) => trackHasSound(project, t) && trackAudible(project, t));
+
+const names = (tracks: ReadonlyArray<Track>) => {
+  const list = tracks.map((t) => t.name);
+  return list.length <= 1 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`;
+};
+/**
+ * What the mixer's solo, mutes and master volume leave audible, as a sentence for the Mixer, the
+ * export dialog and the export plan's warnings (so export jobs and the agent see it too); undefined
+ * when nothing needs saying (no solo, something plays, the master isn't silent).
+ */
+export function mixNote(project: Pick<Project, "tracks" | "media" | "master">): string | undefined {
+  const sounding = project.tracks.filter((t) => trackHasSound(project, t));
+  if (!sounding.length) return undefined;
+  if (masterGain(project) === 0) return "Nothing will be heard: the master volume is at −∞.";
+  const audible = audibleTracks(project);
+  if (!audible.length) {
+    const soloed = sounding.filter((t) => t.mixer?.solo === true);
+    return soloed.length ? `Nothing will be heard: ${names(soloed)} ${soloed.length === 1 ? "is" : "are"} soloed but muted.` : "Nothing will be heard: every track with sound is muted.";
+  }
+  if (anySolo(project)) return `Solo is on: only ${names(audible)} will be heard, in the preview and the export.`;
+  return undefined;
 }
 
 /** An item's gain at `local` frames from its start (see the header), before mute and solo. */
@@ -129,4 +198,17 @@ export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">,
     });
   }
   return out;
+}
+
+/**
+ * The whole chain for one item at `local` frames from its start, per output channel (D83): item
+ * gain (volume, keys, fades, transitions, track volume) × the track's pan × the master volume, and
+ * 0 when the track is muted or another is soloed. What reaches the speakers (and the export's mix)
+ * for each channel of the item's sound, made stereo.
+ */
+export function outputGains(project: Pick<Project, "tracks" | "media" | "master">, track: Track, index: number, local: number): { readonly left: number; readonly right: number } {
+  if (!trackAudible(project, track)) return { left: 0, right: 0 };
+  const g = itemGain(track, index, local) * masterGain(project);
+  const pan = panGains(trackPan(track));
+  return { left: g * pan.left, right: g * pan.right };
 }

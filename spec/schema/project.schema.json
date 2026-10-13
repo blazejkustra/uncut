@@ -54,6 +54,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "gainDb": { "type": "number", "minimum": -60, "maximum": 12, "description": "Master volume in dB, applied after the tracks are summed; -60 is silence (D83)." },
         "loudness": {
           "type": "object",
           "required": ["targetLufs"],
@@ -133,9 +134,9 @@
           "additionalProperties": false,
           "properties": {
             "gainDb": { "type": "number", "minimum": -60, "maximum": 12 },
-            "pan": { "type": "number", "minimum": -1, "maximum": 1 },
+            "pan": { "type": "number", "minimum": -1, "maximum": 1, "description": "-1 left, 0 centre, 1 right (D83: the near side stays at 0 dB and the far side fades, never a boost; a balance for stereo)." },
             "mute": { "type": "boolean" },
-            "solo": { "type": "boolean" },
+            "solo": { "type": "boolean", "description": "If any track is soloed, only soloed tracks sound, in the preview and the export. Mute wins over solo." },
             "effects": { "type": "array", "items": { "$ref": "#/$defs/moduleUse" } }
           }
         },

@@ -28,7 +28,8 @@
 //   of the item keeps the plain chain.
 // - Sound: every item audibleAt would return, from its media at the same source time, with the
 //   gain of core itemGain (combined dB with the −60 dB cutoff, gainKeys, fades, transition
-//   crossfades) as one volume expression per item, mixed with amix normalize=0 (D54).
+//   crossfades) as one volume expression per item, panned by its track (D83), mixed with amix
+//   normalize=0 (D54), then the master volume (D83).
 // - A frame f is the moment f / fps (D38); a clip shows the source frame on screen at its source
 //   time, as the preview's <video> does (the last frame that starts at or before it).
 import {
@@ -68,6 +69,10 @@ import {
   sourceAt,
   textHtml,
   trackAudible,
+  mixNote,
+  masterGain,
+  panGains,
+  trackPan,
   type ExportQuality,
   type Item,
   type Span,
@@ -198,6 +203,8 @@ export interface AudioLayer {
    */
   readonly cycle?: { readonly samples: number; readonly offset: number };
   readonly gain: GainModel;
+  /** The track's pan as left / right factors on the stereo sound (core panGains, D83); 1/1 at centre. */
+  readonly pan: { readonly left: number; readonly right: number };
 }
 
 export interface ExportPlan {
@@ -212,6 +219,8 @@ export interface ExportPlan {
   readonly backgroundHtml: string;
   readonly visuals: ReadonlyArray<VisualLayer>;
   readonly audio: ReadonlyArray<AudioLayer>;
+  /** The master volume after the tracks are summed (core masterGain, D83), as a linear factor. */
+  readonly masterGain: number;
   /** Every media file the export reads. */
   readonly files: ReadonlyArray<{ readonly media: Media; readonly path: string }>;
   /** What the export draws differently from the preview (a capped animation), as sentences. */
@@ -729,6 +738,9 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
     }
   }
 
+  // Solo, mutes or a silent master that leave little or nothing audible (D83): the job says so.
+  const note = mixNote(project);
+  if (note) warnings.push(note);
   const audio: Array<AudioLayer> = [];
   for (const track of project.tracks) {
     if (!trackAudible(project, track)) continue;
@@ -752,7 +764,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       const source = Math.max(0, sourceAt(project, item, from - start));
       const length = item.loop ? media.probe?.frames : undefined;
       const cycle = length && (item.speed ?? 1) === 1 ? { cycle: { samples: Math.round((length * 48000) / fps), offset: Math.round(source * 48000) } } : {};
-      audio.push({ item, file: fileOf(media), from, to: span.to, source, speed: item.speed ?? 1, loop: item.loop === true, gain, ...cycle });
+      audio.push({ item, file: fileOf(media), from, to: span.to, source, speed: item.speed ?? 1, loop: item.loop === true, gain, pan: panGains(trackPan(track)), ...cycle });
     });
   }
 
@@ -765,6 +777,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
     backgroundHtml: `<div style="position:absolute;inset:0;background:${canvasBackground(project)}"></div>`,
     visuals,
     audio,
+    masterGain: masterGain(project),
     files: [...files.values()],
     warnings,
   };
@@ -838,6 +851,8 @@ export function audioGraph(plan: ExportPlan, first: number, loudnorm?: string): 
         // Mono plays at full level in both ears, as Web Audio up-mixes it in the preview.
         "pan=stereo|FL<FL+FC+BL+SL|FR<FR+FC+BR+SR",
         "aformat=sample_fmts=fltp:channel_layouts=stereo",
+        // The track's pan (D83): one factor per channel, the law in core panGains.
+        ...(layer.pan.left !== 1 || layer.pan.right !== 1 ? [`pan=stereo|c0=${n(layer.pan.left)}*c0|c1=${n(layer.pan.right)}*c1`] : []),
         ...(layer.cycle
           ? [
               // Exactly the media's length in project frames (padded if its sound is shorter), repeated.
@@ -859,7 +874,9 @@ export function audioGraph(plan: ExportPlan, first: number, loudnorm?: string): 
     labels.length === 1
       ? `[asil]anull`
       : `${labels.join("")}amix=inputs=${labels.length}:duration=first:dropout_transition=0:normalize=0`;
-  filters.push(`${mix},atrim=duration=${total}${loudnorm ? `,${loudnorm},aresample=48000` : ""},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`);
+  // The master volume after the sum (D83), before loudness normalising (which would undo it).
+  const master = plan.masterGain !== 1 && labels.length > 1 ? `,volume=${n(plan.masterGain)}` : "";
+  filters.push(`${mix}${master},atrim=duration=${total}${loudnorm ? `,${loudnorm},aresample=48000` : ""},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`);
   return { inputs, filters };
 }
 

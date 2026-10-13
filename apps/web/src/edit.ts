@@ -453,17 +453,22 @@ export function planSetTransition(project: ProjectModel, itemId: string, next: {
   return { ops: [{ op: "set_transition", item: itemId, transition }], summary };
 }
 
-export type TrackFlag = "hidden" | "locked" | "mute";
+export type TrackFlag = "hidden" | "locked" | "mute" | "solo";
 
-export const trackFlag = (track: Track, flag: TrackFlag) => (flag === "mute" ? track.mixer?.mute === true : track[flag] === true);
+export const trackFlag = (track: Track, flag: TrackFlag) => (flag === "mute" || flag === "solo" ? track.mixer?.[flag] === true : track[flag] === true);
 
-/** Hide, lock or mute a track (mute is stored in its mixer; it becomes audible in chunk 5). */
+/** Hide, lock, mute or solo a track (mute and solo are stored in its mixer, D54/D83). */
 export function planTrackFlag(project: ProjectModel, trackId: string, flag: TrackFlag): Plan | { readonly problem: string } {
   const track = project.tracks.find((t) => t.id === trackId);
   if (!track) return { problem: "That track isn't in the project any more." };
   const on = !trackFlag(track, flag);
+  // Off removes the flag (null), so project.json stays clean; mute and solo keep the rest of the mixer.
+  if (flag === "solo") {
+    const { solo: _, ...rest } = track.mixer ?? {};
+    const mixer = on ? { ...rest, solo: true } : rest;
+    return { ops: [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }], summary: `${on ? "Solo" : "Unsolo"} ${track.name}` };
+  }
   const verb = { hidden: on ? "Hide" : "Show", locked: on ? "Lock" : "Unlock", mute: on ? "Mute" : "Unmute" }[flag];
-  // Off removes the flag (null), so project.json stays clean; mute keeps the rest of the mixer.
   const set = flag === "mute" ? { mixer: { ...track.mixer, mute: on } } : { [flag]: on ? true : null };
   return { ops: [{ op: "update_track", track: track.id, set }], summary: `${verb} track ${track.name}` };
 }

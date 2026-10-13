@@ -15,6 +15,7 @@ import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit
 import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "./text.ts";
 import { planAddComponent } from "./components.ts";
+import { planRemoveGainKey } from "./sound.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
@@ -569,7 +570,13 @@ export const actions = {
       if (placed?.item.transitionIn) await timelineEdit(planSetTransition(projectOf(state.snapshot), cut, null));
       return;
     }
-    if (await timelineEdit(planDelete(projectOf(state.snapshot), getPlayback().selected))) playback.select(undefined);
+    // A selected volume key (D83): ⌫ removes the key, not its item.
+    const { selected, gainKey } = getPlayback();
+    if (selected !== undefined && gainKey !== undefined) {
+      if (await timelineEdit(planRemoveGainKey(projectOf(state.snapshot), selected, gainKey))) playback.selectGainKey(selected, undefined);
+      return;
+    }
+    if (await timelineEdit(planDelete(projectOf(state.snapshot), selected))) playback.select(undefined);
   },
   /**
    * Put a transition on a cut (D73): `cut` (the id of the clip after it), else the selected cut;
