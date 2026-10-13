@@ -32,3 +32,7 @@ export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOP
 export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./transcript.ts";
 export { activeWord, autoMaxChars, captionBox, captionSegments, checkCaptionLines, CAPTION_LINE_BOUNDS, CAPTION_MIN_S, CAPTION_BRIDGE_S, CAPTION_DEFAULTS, CAPTION_HOLD_S, CAPTION_MODE_NAMES, CAPTION_MODES, captionAt, captionCardAt, captionCardList, captionCards, captionExtent, captionMode, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, planMakeCaptions } from "./captions.ts";
 export type { CaptionCard, CaptionEdit, CaptionLines, CaptionMode, CaptionWord, MakeCaptionsPlan, MakeCaptionsRequest } from "./captions.ts";
+export { CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, planDisableCheck, projectChecks, readFrames, textLabel } from "./checks.ts";
+export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks.ts";
+export { filterMusic, libraryTrackOf, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./music.ts";
+export type { MusicTempo, MusicTrack } from "./music.ts";

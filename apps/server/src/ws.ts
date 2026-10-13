@@ -2,7 +2,7 @@
 // then run an RpcServer for that one socket.
 import { timingSafeEqual } from "node:crypto";
 
-import { RPC_METHODS, TOKEN_QUERY_PARAM, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import { ProjectError, RPC_METHODS, TOKEN_QUERY_PARAM, WS_PATH, WsRpcGroup } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -16,6 +16,7 @@ import { Exporter } from "./exporter.ts";
 import { graphicToken } from "./graphicToken.ts";
 import { MediaLibrary } from "./media.ts";
 import { MediaCore } from "./mediaCore.ts";
+import { copyLibraryTrack } from "./music.ts";
 import { Projects } from "./projects.ts";
 import { Recents } from "./recents.ts";
 import { Settings } from "./settings.ts";
@@ -67,6 +68,14 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.mediaImport]: ({ paths }) => library.startImport(paths),
     [RPC_METHODS.mediaJobs]: () => library.jobs,
     [RPC_METHODS.mediaThumbnails]: () => library.thumbnails,
+    [RPC_METHODS.musicAdd]: ({ track }) =>
+      Effect.gen(function* () {
+        const open = yield* projects.current;
+        if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
+        const copied = yield* Effect.promise(() => copyLibraryTrack(config.musicDir, open.dir, track));
+        if ("problem" in copied) return yield* new ProjectError({ reason: "io", message: copied.problem, details: [] });
+        return { path: copied.path };
+      }),
     [RPC_METHODS.setupCheck]: () => setup.check,
     [RPC_METHODS.setupState]: () => Effect.map(settings.onboarded, (onboarded) => ({ onboarded })),
     [RPC_METHODS.setupComplete]: () => settings.setOnboarded,

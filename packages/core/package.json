@@ -23,7 +23,9 @@
     "./textPlan": "./src/textPlan.ts",
     "./captions": "./src/captions.ts",
     "./effects": "./src/effects.ts",
-    "./ducking": "./src/ducking.ts"
+    "./ducking": "./src/ducking.ts",
+    "./checks": "./src/checks.ts",
+    "./music": "./src/music.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

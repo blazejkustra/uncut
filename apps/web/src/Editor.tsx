@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AgentPanel } from "./Agent.tsx";
 import { ExportDialog, exportRunning } from "./ExportDialog.tsx";
 import { HistoryPanel } from "./History.tsx";
+import { ChecksPanel, warningCount } from "./Checks.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
@@ -242,7 +243,8 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
 }
 
 function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
-  const [tab, setTab] = useState<"inspector" | "agent" | "history">("inspector");
+  const [tab, setTab] = useState<"inspector" | "agent" | "history" | "checks">("inspector");
+  const warnings = warningCount(project);
   const selected = findItem(project, usePlayback((s) => s.selected));
   // A selected cut (D73): only while the clip after it is still on the main track, after another clip.
   const cutId = usePlayback((s) => s.cut);
@@ -257,7 +259,7 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
   const { panelRequest } = useApp();
   useEffect(() => {
     const panel = panelRequest?.panel;
-    if (panel === "inspector" || panel === "agent") setTab(panel);
+    if (panel === "inspector" || panel === "agent" || panel === "checks") setTab(panel);
   }, [panelRequest]);
   return (
     <aside className="side">
@@ -271,6 +273,14 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
         <button className={tab === "history" ? "active" : ""} data-testid="tab-history" onClick={() => setTab("history")}>
           History
         </button>
+        <button className={tab === "checks" ? "active" : ""} data-testid="tab-checks" title={warnings ? `${warnings} check${warnings === 1 ? "" : "s"} to look at` : "Taste checks"} onClick={() => setTab("checks")}>
+          Checks
+          {warnings > 0 && (
+            <span className="tab-count" data-testid="checks-count">
+              {warnings}
+            </span>
+          )}
+        </button>
       </div>
       <div className="side-body">
         {tab === "inspector" && cutPlaced ? (
@@ -282,6 +292,8 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
           <Inspector key={snapshot.dir} snapshot={snapshot} project={project} online={online} />
         ) : tab === "agent" ? (
           <AgentPanel project={project} online={online} />
+        ) : tab === "checks" ? (
+          <ChecksPanel project={project} online={online} />
         ) : (
           <HistoryPanel key={snapshot.dir} snapshot={snapshot} online={online} />
         )}

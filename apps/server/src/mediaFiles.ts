@@ -3,9 +3,10 @@
 // references can be served, looked up by media id; the footage is streamed from where it is
 // (D12), never copied. Single byte ranges are honoured (206), which <video> needs to seek.
 import { open as openFile, type FileHandle } from "node:fs/promises";
-import { extname, isAbsolute, resolve } from "node:path";
+import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { MEDIA_FILE_PATH, TOKEN_QUERY_PARAM } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, MUSIC_FILE_PATH, TOKEN_QUERY_PARAM } from "@uncut/contracts";
+import { MUSIC_TRACKS } from "@uncut/core/music";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -77,27 +78,9 @@ export function parseRange(header: string | undefined, size: number): { start: n
   return { start, end };
 }
 
-export const layer = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* ServerConfig;
-    const projects = yield* Projects;
-    return HttpRouter.add(
-      "GET",
-      `${MEDIA_FILE_PATH}/*`,
+/** A file streamed with Range support (see the header), or 403/404 when it can't be opened. */
+const serveFile = (request: HttpServerRequest.HttpServerRequest, path: string) =>
       Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const url = HttpServerRequest.toURL(request);
-        if (Option.isNone(url) || !tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), config.token)) {
-          return HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
-        }
-        const id = decode(url.value.pathname.slice(MEDIA_FILE_PATH.length + 1));
-        const open = yield* projects.current;
-        if (!open || !id || !MEDIA_ID.test(id)) return notFound();
-        // Only a file the open project references, found by its media id.
-        const media = (open.project as { media?: ReadonlyArray<{ id: string; path: string }> }).media ?? [];
-        const entry = media.find((m) => m.id === id);
-        if (!entry || typeof entry.path !== "string") return notFound();
-        const path = isAbsolute(entry.path) ? entry.path : resolve(open.dir, entry.path);
         // Opened before any header goes out, so an unreadable file is a clean 403/404, not a
         // connection reset halfway through a response.
         const opened = yield* Effect.promise(async (): Promise<{ file: FileHandle; size: number } | "forbidden" | undefined> => {
@@ -145,7 +128,49 @@ export const layer = Layer.unwrap(
             ...(range ? { "content-range": `bytes ${start}-${end}/${size}` } : {}),
           },
         });
-      }),
+      });
+
+export const layer = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const projects = yield* Projects;
+    const authorised = (request: HttpServerRequest.HttpServerRequest) => {
+      const url = HttpServerRequest.toURL(request);
+      return Option.isSome(url) && tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), config.token) ? url.value : undefined;
+    };
+    const unauthorized = () => HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
+    return Layer.mergeAll(
+      HttpRouter.add(
+        "GET",
+        `${MEDIA_FILE_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const id = decode(url.pathname.slice(MEDIA_FILE_PATH.length + 1));
+          const open = yield* projects.current;
+          if (!open || !id || !MEDIA_ID.test(id)) return notFound();
+          // Only a file the open project references, found by its media id.
+          const media = (open.project as { media?: ReadonlyArray<{ id: string; path: string }> }).media ?? [];
+          const entry = media.find((m) => m.id === id);
+          if (!entry || typeof entry.path !== "string") return notFound();
+          return yield* serveFile(request, isAbsolute(entry.path) ? entry.path : resolve(open.dir, entry.path));
+        }),
+      ),
+      // The bundled music library (D91), for the Audio tab's preview: only the files it lists.
+      HttpRouter.add(
+        "GET",
+        `${MUSIC_FILE_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const file = decode(url.pathname.slice(MUSIC_FILE_PATH.length + 1));
+          const track = MUSIC_TRACKS.find((t) => t.file === file);
+          if (!track) return notFound();
+          return yield* serveFile(request, join(config.musicDir, track.file));
+        }),
+      ),
     );
   }),
 );

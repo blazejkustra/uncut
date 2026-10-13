@@ -476,8 +476,6 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .audio-row svg.lucide { width: 14px; height: 14px; color: var(--muted); flex: none; }
 .audio-row .audio-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .audio-row .audio-dur { font: 11px var(--mono); color: var(--dim); }
-.lib-soon { margin: 4px 14px 14px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--muted); font-size: 12px; line-height: 1.5; }
-.lib-soon svg.lucide { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
 
 /* Export (D34) */
 .export-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
@@ -753,3 +751,44 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .fx-menu-item:hover { background: var(--raised); }
 .fx-popover select.v { background: var(--raised); color: var(--fg); border: 0; border-radius: 4px; height: 22px; }
 .duck-note-text { color: var(--warn); }
+
+/* Checks (D90): the side tab's count, findings grouped by severity, Fix and Turn off. */
+.tabs button:has(.tab-count) { white-space: nowrap; }
+.tabs button .tab-count { display: inline-block; min-width: 16px; height: 16px; margin-left: 4px; padding: 0 4px; border-radius: 8px; background: var(--raised); color: var(--warn); font-size: 10px; line-height: 16px; font-variant-numeric: tabular-nums; vertical-align: 1px; }
+.tabs button.active .tab-count { background: var(--panel-2); }
+.checks { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.checks-list { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px; overscroll-behavior: contain; }
+.checks-group { padding: 8px 6px 4px; }
+.checks-empty { padding: 10px 6px; line-height: 1.5; }
+.check { border-radius: var(--radius-sm); padding-bottom: 4px; }
+.check:hover { background: var(--panel-2); }
+.check-row { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 6px 6px 2px; text-align: left; border-radius: var(--radius-sm); }
+.check-row > svg.lucide { width: 13px; height: 13px; flex: none; margin-top: 2px; color: var(--muted); }
+.check.warn .check-row > svg.lucide { color: var(--warn); }
+.check-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.check-title { font-size: 11px; color: var(--muted); }
+.check-message { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.check-hint { font-size: 11px; color: var(--dim); line-height: 1.4; }
+.check-actions { display: flex; gap: 4px; padding: 2px 6px 0 27px; }
+.check-actions svg.lucide { width: 12px; height: 12px; }
+.checks-off { margin-top: 6px; }
+.checks-off-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; font-size: 12px; color: var(--muted); }
+.checks-off-row .grow { flex: 1; min-width: 0; }
+.export-checks { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.export-checks svg.lucide { width: 13px; height: 13px; color: var(--warn); flex: none; }
+
+/* The music library (D91) in the Audio tab: search, mood and tempo filters, rows with play and +. */
+.music-filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.music-filters .input { height: 26px; }
+.music-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.music-chip { height: 22px; padding: 0 8px; border-radius: 11px; border: 1px solid var(--border-strong); color: var(--muted); font-size: 11px; }
+.music-chip:not(:disabled):hover { color: var(--fg); }
+.music-chip.active { background: var(--select-soft); border-color: var(--select); color: var(--fg); }
+.music-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: var(--radius-sm); }
+.music-row:hover { background: var(--raised); }
+.music-row .music-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.music-row .music-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.music-row .music-meta { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.music-row .icon-btn svg.lucide { width: 14px; height: 14px; }
+.music-row .icon-btn.playing { color: var(--select); }
+.music-licence { margin: 4px 0 0; font-size: 11px; color: var(--dim); line-height: 1.45; }

@@ -250,7 +250,7 @@
           "id": "title-5",
           "type": "text",
           "start": 30615,
-          "duration": 105,
+          "duration": 108,
           "text": "What's next",
           "transform": {
             "x": 160,
@@ -542,6 +542,7 @@
           "start": 0,
           "in": 0,
           "duration": 900,
+          "fadeIn": 30,
           "fadeOut": 90
         },
         {

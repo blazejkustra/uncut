@@ -19,7 +19,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { captionCardList, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { captionCardList, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -35,7 +35,8 @@ import type { BeatsResult } from "./beats.ts";
 import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { checksOut, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { copyLibraryTrack } from "./music.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
@@ -1247,6 +1248,48 @@ export const layer = Layer.effect(
         return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
       });
 
+    /**
+     * music_add (D91): a library track copied into the project's media/ (copyLibraryTrack) and
+     * added as audio media, an edit on the turn (Undo turn removes the media; the copy stays, and a
+     * later add reuses it). A track already in the project answers with its media id.
+     */
+    const musicAdd = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const track = typeof args.id === "string" ? musicTrack(args.id) : undefined;
+        if (!track) return textResult(`id must be a library track id from music_list${typeof args.id === "string" ? ` ("${args.id}" isn't one)` : ""}.`, true);
+        const fps = v.session.project.canvas.fps;
+        const already = musicInProject(v.session.project, track);
+        if (already) return textResult({ media: already.id, frames: already.probe?.frames, seconds: Number(((already.probe?.frames ?? 0) / fps).toFixed(2)), revision: v.session.revision, note: `${track.title} is already in the project as ${already.id}: put it on an audio track with timeline_edit.` });
+        const copied = yield* Effect.promise(() => copyLibraryTrack(config.musicDir, v.dir, track.id));
+        if ("problem" in copied) return textResult(copied.problem, true);
+        const fresh = view();
+        if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
+        const media = musicMedia(track, copied.path, fps, projectIds(fresh.session.project));
+        const summary = `Added ${track.title} from the music library`;
+        const outcome = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops: [{ op: "add_media", media }], baseRevision: fresh.session.revision, summary }).pipe(
+          Effect.map((snapshot) => ({ ok: true as const, snapshot })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+        );
+        if (!outcome.ok) return textResult({ refused: outcome.error.message, details: outcome.error.details }, true);
+        const { snapshot } = outcome;
+        r.turn.edits.push({ revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media }, snapshot.project as Project)] });
+        persist(r.owner);
+        publish();
+        r.owner.seen.add(snapshot.revision);
+        const now = view();
+        const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+        const frames = media.probe!.frames!;
+        return textResult({
+          media: media.id,
+          path: media.path,
+          frames,
+          seconds: track.seconds,
+          revision: snapshot.revision,
+          next: `Put it on an audio track that is free for that stretch with timeline_edit (when a voice is on the only audio track, add one first: {"op":"add_track","track":{"id":"music","kind":"audio","name":"Music"}}), e.g. {"op":"insert_item","track":"music","item":{"id":"music-1","type":"audio","media":"${media.id}","in":0,"start":0,"duration":<from start to the video's end, at most ${frames}>,"fadeIn":${fps},"fadeOut":${2 * fps}}}, then duck it under the voice.`,
+          ...(userChanges ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
+        });
+      });
+
     const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
       const project = v.session.project;
       const said: Array<string> = [];
@@ -1321,6 +1364,20 @@ export const layer = Layer.effect(
             return yield* contactSheet(v, args);
           case "ui_show":
             return uiShow(r, v, args);
+          case "project_check": {
+            const rules = Array.isArray(args.rules) ? args.rules.filter((x): x is string => typeof x === "string") : undefined;
+            if (args.severity !== undefined && args.severity !== "warn" && args.severity !== "info") return textResult('severity must be "warn" or "info".', true);
+            // Its fixes are planned on this revision, so it may be passed back as baseRevision (the
+            // user's edits stay news for the next note: agentSeen doesn't move).
+            r.owner.seen.add(v.session.revision);
+            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }));
+          }
+          case "music_list": {
+            if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
+            return textResult(musicOut(v.session.project as Project, { mood: typeof args.mood === "string" ? args.mood : undefined, tempo: args.tempo as MusicTempo | undefined, query: typeof args.query === "string" ? args.query : undefined }));
+          }
+          case "music_add":
+            return yield* musicAdd(r, v, args);
           case "graphic_write":
             return yield* graphicWrite(v, args);
           case "media_analyze":
