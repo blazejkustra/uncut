@@ -24,7 +24,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { projectChecks, type Project } from "../../packages/core/src/index.ts";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { probe } from "../helpers/phase6-fixture.ts";
 import { DEVICE, FLOW, FLOW_YAML, makeFiles, PICTURE_PROMPT, placeSteps, recordSteps } from "../helpers/phase7-fixture.ts";
 
@@ -237,7 +237,7 @@ async function exitCheck() {
   t0 = Date.now();
   const saveAs = join(root, "out", "Phase 7.mp4");
   await launch([join(root, "projects"), saveAs]);
-  await waitFor("[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=new-project]");
   await waitFor("[data-testid=new-project-form]");
   await page.click("[data-testid=choose-folder]");

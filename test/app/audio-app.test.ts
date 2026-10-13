@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -140,7 +140,7 @@ test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and
   const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
   const music = () => onDisk().tracks.find((t: { id: string }) => t.id === "audio").items[0];
   try {
-    await waitFor(page, "[data-testid=welcome]");
+    await waitForWelcome(page);
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     // The clip's own sound (660 Hz at half scale: RMS ≈ 0.354), drawn as a compact waveform.
@@ -314,7 +314,7 @@ test("a hidden track's clip still sounds; muting is what silences it", { skip, t
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data-hidden"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   apps.add(app);
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor(page, "[data-testid=editor]");
   await page.click("[data-testid=timeline]");
@@ -383,7 +383,7 @@ test("no dropouts: a hard cut between split clips, hiding and showing a track wh
   const { page } = app;
   const steady = 0.354;
   try {
-    await waitFor(page, "[data-testid=welcome]");
+    await waitForWelcome(page);
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     await page.click("[data-testid=timeline]");
@@ -453,7 +453,7 @@ test("a clip at 2× speed plays its sound at that rate without re-seeking; a loo
   apps.add(app);
   const { page } = app;
   const steady = 0.354;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor(page, "[data-testid=editor]");
   await page.click("[data-testid=timeline]");

@@ -1,0 +1,42 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "example.template",
+  "kind": "pack",
+  "name": "Example template",
+  "version": "0.1.0",
+  "description": "A starting point for a plugin: one tool the agent can call (it counts the words on screen) and one text look.",
+  "author": "Your name",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"] },
+  "capabilities": ["project:read"],
+  "agentTools": [
+    {
+      "name": "example_template_word_count",
+      "description": "Count the words of every text in the open project: the total, per text, and the longest one. Use it to keep titles short.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    }
+  ],
+  "contributes": {
+    "looks": [
+      {
+        "id": "example.template.headline",
+        "name": "Headline",
+        "description": "A big bold line, centred, fading in.",
+        "look": {
+          "size": 0.08,
+          "weight": 800,
+          "tracking": -0.02,
+          "lineHeight": 1.05,
+          "color": "#FFFFFF",
+          "align": "center",
+          "w": 0.8,
+          "x": 0.1,
+          "y": 0.42,
+          "text": "Headline",
+          "animation": { "in": { "module": "move.fade", "seconds": 0.3 } }
+        }
+      }
+    ]
+  }
+}

@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -111,7 +111,7 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
   apps.add(app);
   const { page } = app;
   try {
-    await waitFor(page, "[data-testid=welcome]");
+    await waitForWelcome(page);
     await page.click("[data-testid=new-project]");
     await waitFor(page, "[data-testid=new-project-form]");
     await page.click("[data-testid=choose-folder]");
@@ -481,7 +481,7 @@ test("the preview stacks text and backgrounds in track order, as export will (D3
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data-order"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   apps.add(app);
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor(page, '.pv-text[data-item="title-1"]');
   await waitFor(page, '.pv-solid[data-item="red"]');

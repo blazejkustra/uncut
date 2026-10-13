@@ -10,7 +10,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSyn
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const which = (name: string) => {
@@ -58,7 +58,7 @@ test("Analyze on a media tile: progress while it runs, Stop leaves nothing in th
     env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_SHELL_ENV: "off", PATH: `${shimDir}:${dirname(FFMPEG!)}:${process.env.PATH}`, UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects"), [join(root, "Talk.mp4"), join(root, "Still.mp4")]]) },
   });
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=new-project]");
   await page.click("[data-testid=choose-folder]");
   await page.waitForFunction((dir: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === dir, {}, join(root, "projects"));

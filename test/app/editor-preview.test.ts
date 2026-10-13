@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, waitForWelcome } from "../helpers/app.ts";
 import { demoProject, skipDemo } from "../helpers/demo.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -95,7 +95,7 @@ test("an empty project gets a title and a lower third, plays them at their frame
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([projects]) } });
   apps.add(app);
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=new-project]");
   await waitFor(page, "[data-testid=new-project-form]");
   await page.click("[data-testid=choose-folder]");
@@ -285,7 +285,7 @@ test("the DJI clip added to main plays, scrubs to f / fps, and drops onto the ti
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data-clip"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   apps.add(app);
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor(page, "[data-testid=media-tile]");
 
@@ -473,7 +473,7 @@ test("a relinked file and another project with the same media ids show their own
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data-relink"), UNCUT_TEST_DIALOG: JSON.stringify([one, two]) } });
   apps.add(app);
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor(page, "video[data-item]");
   await settle(page);

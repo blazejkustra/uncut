@@ -26,7 +26,7 @@ import type { Page } from "puppeteer-core";
 
 import { projectChecks, type Project } from "../../packages/core/src/index.ts";
 import { levelY } from "../../apps/web/src/audio/sound.ts";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import {
   buildTurn,
   compareSheet,
@@ -182,7 +182,7 @@ async function exitCheck() {
   const saveAs = join(root, "out", "Argent promo.mp4");
   app = await launchApp({ command: APP, env: env([join(root, "projects"), saveAs]) });
   page = app.page;
-  await waitFor("[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=new-project]");
   await waitFor("[data-testid=new-project-form]");
   await page.click("[data-testid=choose-folder]");

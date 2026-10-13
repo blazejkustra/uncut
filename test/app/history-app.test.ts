@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = !existsSync(APP) ? `packaged app not built: run pnpm dist to create ${APP}` : false;
@@ -68,7 +68,7 @@ after(async () => {
 test("⌘Z works after quitting and reopening; the History tab lists, previews and restores", { skip, timeout: 180000 }, async () => {
   app = await launchApp({ command: APP, env: env() });
   page = app.page;
-  await waitFor("[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor("[data-testid=editor]");
   await page.click("[data-testid=rail-text]");

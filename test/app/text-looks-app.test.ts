@@ -16,7 +16,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { TEXT_PRESETS, type Item, type Project } from "../../packages/core/src/index.ts";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -107,7 +107,7 @@ test("text looks: the grid, click and drag in, the Style tab (outline, shadow, b
   const saveAs = join(root, "out", "Text looks.mp4");
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
   page = app.page;
-  await page.waitForSelector("[data-testid=welcome]", { timeout: 15000 });
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 

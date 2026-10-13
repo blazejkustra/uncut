@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { MUSIC_TRACKS, projectChecks, type Project } from "../../packages/core/src/index.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -96,7 +96,7 @@ test("Checks tab, Fix + undo, turning a rule off, the export dialog's note; the 
   const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
   const title = () => onDisk().tracks.find((t) => t.id === "text")!.items.find((i) => i.id === "title")!;
   try {
-    await waitFor(page, "[data-testid=welcome]");
+    await waitForWelcome(page);
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     let rev = await revision(page);
