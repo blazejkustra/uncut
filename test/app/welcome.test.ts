@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { KeyInput, Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -84,7 +84,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   const { page } = app;
 
   // Welcome, nothing recent yet.
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   assert.equal(await page.title(), "Uncut");
   await waitFor(page, "[data-testid=no-recents]");
   await shot(app, "welcome-empty");
@@ -158,7 +158,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   // ⌘W: back to welcome, and the project is in the recents.
   await page.click("[data-testid=timeline]");
   await meta(page, "KeyW");
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   assert.equal(await page.title(), "Uncut");
   await waitFor(page, "[data-testid=recent]");
   assert.deepEqual(await page.$$eval("[data-testid=recent] .wiz-name", (e) => (e as Array<HTMLElement>).map((x) => x.textContent)), ["Edited By Hand"]);
@@ -169,7 +169,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   await waitFor(page, "[data-testid=editor]");
   assert.equal(await text(page, "project-title"), "Edited By Hand");
   await page.click("[data-testid=close-project]");
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
 
   // A vertical project gets a 9:16 preview.
   await createThroughForm(page, "Tall", "vertical");
@@ -179,7 +179,7 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   assert.ok(Math.abs((await frameRatio(page)) - 9 / 16) < 0.02, `frame ratio ${await frameRatio(page)}`);
   await shot(app, "editor-9x16");
   await meta(page, "KeyW");
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
 
   // Open… an invalid project: a readable error, and we stay on the welcome screen.
   await page.click("[data-testid=open-project]");

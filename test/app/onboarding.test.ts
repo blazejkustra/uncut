@@ -10,7 +10,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -144,7 +144,7 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   await shot(app, "3-first-video");
   await page.click("[data-testid=wizard-skip]");
   await page.waitForFunction(() => !document.querySelector("[data-testid=onboarding]"));
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   const onboarded = () => existsSync(join(data, "settings.json")) && JSON.parse(readFileSync(join(data, "settings.json"), "utf8")).onboarded === true;
   for (let i = 0; i < 20 && !onboarded(); i++) await sleep(100);
   assert.equal(JSON.parse(readFileSync(join(data, "settings.json"), "utf8")).onboarded, true);
@@ -154,7 +154,7 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   // Second launch: straight to welcome.
   app = await launch();
   page = app.page;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await sleep(500);
   assert.equal(await page.$("[data-testid=onboarding]"), null);
 

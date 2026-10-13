@@ -116,7 +116,7 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "catalog", "whisper-transcribe"]);
   // The catalog (D103): every plugin in plugins/catalog, as in the repo, off until enabled.
   const catalog = join(installed, "Contents/Resources/plugins/catalog");
-  assert.deepEqual(readdirSync(catalog).sort(), readdirSync(resolve("plugins/catalog")).filter((n) => !n.startsWith(".")).sort());
+  assert.deepEqual(readdirSync(catalog).sort(), readdirSync(resolve("plugins/catalog")).filter((n) => !n.startsWith(".") && !n.startsWith("_")).sort());
   for (const name of readdirSync(catalog)) for (const f of readdirSync(join(catalog, name))) assert.ok(readFileSync(join(catalog, name, f)).equals(readFileSync(resolve("plugins/catalog", name, f))), `${name}/${f}`);
   // The plugin SDK (D102): plugins on the app's Node import "@uncut/plugin-sdk" from here.
   const sdk = join(installed, "Contents/Resources/plugin-sdk");

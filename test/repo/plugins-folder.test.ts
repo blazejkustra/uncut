@@ -7,81 +7,109 @@
 // - contributions without a single warning (namespaced, no collisions, no script in templates);
 // - only regular files at the folder's top level (what the app ships: no subfolders, no symlinks,
 //   nothing hidden), only .json and .ts, at most 40 files and 512 KB;
-// - a data plugin is its manifest alone (no code); a process plugin's node entry is in its folder.
+// - a data plugin is its manifest alone (no code); a process plugin's node entry is in its folder;
+// - code imports only node: built-ins, @uncut/plugin-sdk and its own files; tool names unique.
+// The checks live in scripts/plugin-gate.ts (D104), shared with `pnpm plugin:check <folder>`; the
+// catalog's _template passes them too (all but the folder name), and `pnpm plugin:new` makes plugins that do.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { API_VERSION } from "../../packages/plugin-sdk/src/index.ts";
-import { loadModules, readContributions, type ModuleManifest } from "../../packages/core/src/index.ts";
-import { checkManifest, MANIFEST_FILE } from "../../apps/server/src/plugins/plugins.ts";
+import { checkPluginFolder, gateContext, pluginDirs, REPO, TEMPLATE_DIR } from "../../scripts/plugin-gate.ts";
 
-const MAX_FILES = 40;
-const MAX_BYTES = 512 * 1024;
-const modules = await loadModules("spec/modules/builtin");
-const builtinIds = new Set(modules.keys());
-const moves = new Set([...modules.values()].filter((m) => m.kind === "move").map((m) => m.id));
-
-const dirsIn = (root: string) => readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && d.name !== "catalog").map((d) => join(root, d.name));
-const bundled = dirsIn("plugins");
-const catalog = existsSync("plugins/catalog") ? dirsIn("plugins/catalog") : [];
-
-/** Every file under dir (lstat: a symlink is reported, never followed). */
-function walk(dir: string, out: Array<{ path: string; kind: string; bytes: number }> = []) {
-  for (const name of readdirSync(dir)) {
-    if (name === ".DS_Store") continue; // Finder's, gitignored: never in a PR
-    const path = join(dir, name);
-    const st = lstatSync(path);
-    if (st.isDirectory()) walk(path, out);
-    else out.push({ path, kind: st.isSymbolicLink() ? "symlink" : st.isFile() ? "file" : "other", bytes: st.size });
-  }
-  return out;
-}
+const { bundled, catalog } = pluginDirs();
 
 test("the repo has bundled plugins and a catalog with the example", () => {
   assert.deepEqual(bundled.map((d) => d.split("/").at(-1)).sort(), ["argent-capture", "whisper-transcribe"]);
   assert.ok(catalog.some((d) => d.endsWith("taste-extra")));
+  assert.ok(!catalog.some((d) => d.endsWith("_template")), "the template isn't a catalog plugin");
 });
 
-test("every plugin under plugins/ passes the contribution rules", () => {
-  const ids = new Map<string, string>();
-  const taken = new Set<string>();
-  for (const dir of [...bundled, ...catalog]) {
-    const where = dir;
-    const files = walk(dir);
-    for (const f of files) {
-      assert.equal(f.kind, "file", `${f.path}: only regular files (no symlinks, pipes or devices)`);
-      assert.ok(!f.path.slice(dir.length + 1).split("/").some((part) => part.startsWith(".")), `${f.path}: no hidden files`);
-      assert.match(f.path, /\.(json|ts)$/, `${f.path}: only .json and .ts files`);
-      assert.ok(!f.path.slice(dir.length + 1).includes("/"), `${f.path}: files sit at the plugin's top level (the app ships */*.ts only)`);
-      assert.doesNotMatch(f.path, /node_modules/, `${f.path}: no node_modules (plugins import only the SDK)`);
-    }
-    assert.ok(files.length <= MAX_FILES, `${where}: at most ${MAX_FILES} files`);
-    assert.ok(files.reduce((n, f) => n + f.bytes, 0) <= MAX_BYTES, `${where}: at most ${MAX_BYTES / 1024} KB`);
+test("every plugin under plugins/ passes the contribution rules, and so does the template", async () => {
+  const ctx = await gateContext();
+  for (const dir of [...bundled, ...catalog]) assert.deepEqual(checkPluginFolder(dir, ctx), [], dir);
+  assert.deepEqual(checkPluginFolder(TEMPLATE_DIR, await gateContext(), { template: true }), []);
+});
 
-    const raw = JSON.parse(readFileSync(join(dir, MANIFEST_FILE), "utf8"));
-    const checked = checkManifest(raw, builtinIds);
-    assert.ok("manifest" in checked, `${where}: ${"problem" in checked ? checked.problem : ""}`);
-    const manifest = raw as ModuleManifest;
-    assert.equal(manifest.apiVersion, API_VERSION, `${where}: declares apiVersion ${API_VERSION}`);
-    assert.equal(dir.split("/").at(-1), manifest.id.replaceAll(".", "-"), `${where}: the folder is named after the id`);
-    assert.ok(!ids.has(manifest.id), `${where}: id ${manifest.id} is also ${ids.get(manifest.id)}`);
-    ids.set(manifest.id, dir);
-    assert.equal(manifest.builtin, undefined, `${where}: plugins aren't built-in modules`);
-
-    const { warnings } = readContributions(manifest, { reserved: builtinIds, moves, taken });
-    assert.deepEqual(warnings, [], `${where}: contributions load without warnings`);
-
-    const runtime = manifest.runtime as { type: string; command?: string; args?: Array<string> };
-    if (runtime.type === "data") {
-      assert.deepEqual(files.map((f) => f.path.slice(dir.length + 1)), [MANIFEST_FILE], `${where}: a data plugin is its manifest alone, no code`);
-    } else {
-      assert.equal(runtime.type, "process");
-      if (runtime.command === "node") {
-        const entry = (runtime.args ?? []).find((a) => a.endsWith(".ts"));
-        assert.ok(entry && existsSync(join(dir, entry)), `${where}: its node entry is in the folder`);
-      }
-    }
+test("the gate catches what a pull request must not do", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-gate-")));
+  try {
+    const dir = join(root, "plugins", "catalog", "acme-bad");
+    cpSync(TEMPLATE_DIR, dir, { recursive: true });
+    const manifest = JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8"));
+    writeFileSync(join(dir, "uncut.module.json"), JSON.stringify({ ...manifest, id: "acme.bad", apiVersion: undefined, agentTools: [{ ...manifest.agentTools[0], name: "argent_record" }] }));
+    writeFileSync(join(dir, "extra.ts"), 'import lodash from "lodash";\n');
+    writeFileSync(join(dir, "notes.txt"), "hi");
+    const ctx = await gateContext();
+    for (const d of bundled) checkPluginFolder(d, ctx);
+    const problems = checkPluginFolder(dir, ctx).join("\n");
+    assert.match(problems, /declare "apiVersion"/);
+    assert.match(problems, /argent_record is taken by argent\.capture/);
+    assert.match(problems, /extra\.ts imports lodash/);
+    assert.match(problems, /notes\.txt: only \.json and \.ts/);
+    assert.match(problems, /example\.template\.headline/, "a contribution id that isn't the plugin's");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("pnpm plugin:new makes a plugin that passes plugin:check and answers its tool", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-plugin-new-")));
+  try {
+    const plugins = join(root, "plugins");
+    const out = execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "acme.promo", "--plugins", plugins], { encoding: "utf8" });
+    assert.match(out, /plugins\/catalog\/acme-promo/);
+    const dir = join(plugins, "catalog", "acme-promo");
+    const manifest = JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8"));
+    assert.equal(manifest.id, "acme.promo");
+    assert.equal(manifest.name, "Acme promo");
+    assert.deepEqual(manifest.agentTools.map((t: { name: string }) => t.name), ["acme_promo_word_count"]);
+    assert.deepEqual(manifest.contributes.looks.map((l: { id: string }) => l.id), ["acme.promo.headline"]);
+    assert.ok(!readFileSync(join(dir, "server.ts"), "utf8").includes("example_template"));
+    assert.match(execFileSync(process.execPath, [join(REPO, "scripts/plugin-check.ts"), dir], { encoding: "utf8" }), /acme\.promo passes/);
+    // Twice: refused, the first copy kept.
+    assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "acme.promo", "--plugins", plugins], { stdio: "pipe" }), /already/);
+    // A bad id, and an id the repo has.
+    assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "Acme", "--plugins", plugins], { stdio: "pipe" }), /lowercase/);
+    assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-new.ts"), "taste.extra", "--plugins", plugins], { stdio: "pipe" }), /taken/);
+    // A broken folder fails plugin:check with its sentence.
+    writeFileSync(join(dir, "notes.txt"), "hi");
+    assert.throws(() => execFileSync(process.execPath, [join(REPO, "scripts/plugin-check.ts"), dir], { stdio: "pipe" }), /notes\.txt: only \.json and \.ts/);
+    rmSync(join(dir, "notes.txt"));
+
+    // It runs: the SDK's register hook (as Uncut starts it) answers tools/list and the tool.
+    const project = join(root, "P.uncut");
+    execFileSync("mkdir", ["-p", project]);
+    writeFileSync(join(project, "project.json"), JSON.stringify({ tracks: [{ items: [{ id: "t1", text: "Ship it [[today]]" }, { id: "c1", media: "m" }] }] }));
+    const requests = [
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+      { jsonrpc: "2.0", id: 2, method: "tools/list" },
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "acme_promo_word_count", arguments: {}, _meta: { "uncut/projectDir": project } } },
+    ];
+    // stdin stays open until the three answers are in (a closed stdin means Uncut is done: it exits).
+    const child = spawn(process.execPath, ["--import", join(REPO, "packages/plugin-sdk/src/register.ts"), "server.ts"], { cwd: dir, stdio: ["pipe", "pipe", "inherit"] });
+    let answer = "";
+    await new Promise<void>((done, fail) => {
+      const timer = setTimeout(() => fail(new Error(`no answers in 10 s: ${answer}`)), 10000);
+      child.stdout.on("data", (d) => {
+        answer += d;
+        if (answer.trim().split("\n").length >= 3) {
+          clearTimeout(timer);
+          done();
+        }
+      });
+      child.stdin.write(requests.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    });
+    child.stdin.end();
+    const replies = answer.trim().split("\n").map((l) => JSON.parse(l));
+    assert.equal(replies[0].result.serverInfo.name, "acme.promo");
+    assert.deepEqual(replies[1].result.tools.map((t: { name: string }) => t.name), ["acme_promo_word_count"]);
+    assert.deepEqual(replies[2].result.structuredContent, { texts: 1, words: 3, perText: [{ id: "t1", words: 3 }], longest: { id: "t1", words: 3 } });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+  assert.ok(!existsSync(join(REPO, "plugins/catalog/acme-promo")), "nothing written into the repo");
 });

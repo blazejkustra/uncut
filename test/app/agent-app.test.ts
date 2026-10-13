@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -33,7 +33,7 @@ const turnCount = (page: Page) => page.$$eval("[data-testid=agent-turn]", (els) 
 
 async function newProject(app: LaunchedApp) {
   const { page } = app;
-  await waitFor(page, "[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=new-project]");
   await waitFor(page, "[data-testid=new-project-form]");
   await page.click("[data-testid=choose-folder]");

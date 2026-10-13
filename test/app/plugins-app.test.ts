@@ -10,7 +10,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE_CLAUDE = resolve("test/helpers/fake-claude.ts");
@@ -90,7 +90,7 @@ test("a plugin is allowed in Settings, then the agent calls its tool in the pack
 
     // Close onboarding, make a project, and let the agent use the plugin.
     await page.keyboard.press("Escape");
-    await waitFor(page, "[data-testid=welcome]");
+    await waitForWelcome(page);
     await page.click("[data-testid=new-project]");
     await waitFor(page, "[data-testid=new-project-form]");
     await page.click("[data-testid=choose-folder]");

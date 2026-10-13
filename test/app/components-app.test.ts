@@ -19,7 +19,7 @@ import type { Page } from "puppeteer-core";
 
 import { RENDER_CSS, textHtml, type Item, type Project } from "../../packages/core/src/index.ts";
 import { rasterizerCommand, startRasterizer } from "../../apps/server/src/export/rasterizer.ts";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -140,7 +140,7 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
   const saveAs = join(root, "out", "Components.mp4");
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
   page = app.page;
-  await page.waitForSelector("[data-testid=welcome]", { timeout: 15000 });
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 

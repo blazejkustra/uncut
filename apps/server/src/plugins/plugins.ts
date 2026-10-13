@@ -161,7 +161,8 @@ export async function discoverPlugins(
     seenRoots.add(rootDir);
     let names: Array<string>;
     try {
-      names = (await readdir(rootDir)).filter((n) => !n.startsWith(".")).sort();
+      // Hidden folders and "_" ones (the catalog's _template, D104) are never plugins.
+      names = (await readdir(rootDir)).filter((n) => !n.startsWith(".") && !n.startsWith("_")).sort();
     } catch (error) {
       broken.push({ source: root.source, dir: rootDir, id: undefined, name: undefined, problem: `Uncut can't read this plugin folder (${messageOf(error)}).` });
       continue;
