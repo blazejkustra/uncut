@@ -123,11 +123,14 @@ test("text looks: the grid, click and drag in, the Style tab (outline, shadow, b
         range.selectNodeContents(t);
         return range.getBoundingClientRect();
       });
-      // The text is drawn inside its tile, at a readable size.
-      const inside = texts.length > 0 && texts.every((r) => r.width > 20 && r.height > 6 && r.left >= thumb.left - 1 && r.right <= thumb.right + 1);
+      // The text is drawn inside its tile, at a readable size: glyphs over 6 px tall and about 5 px or more per
+      // character (a flat 20 px failed the boxed label's 3-letter "New", 19.5 px wide in DM Sans at the tile's scale).
+      const lengths = [...e.querySelectorAll<HTMLElement>(".tt-text")].map((t) => (t.textContent ?? "").trim().length);
+      const inside = texts.length > 0 && texts.every((r, i) => r.width > Math.min(20, 5 * lengths[i]!) && r.height > 6 && r.left >= thumb.left - 1 && r.right <= thumb.right + 1);
       return [(e as HTMLElement).dataset.module, inside];
     }),
   );
+  console.log("DEBUG", await page.$eval('[data-testid=text-preset][data-module="text.boxed-label"]', (e) => JSON.stringify({ thumb: e.querySelector("[data-testid=text-thumb]")!.getBoundingClientRect(), texts: [...e.querySelectorAll<HTMLElement>(".tt-text")].map((t) => { const r = document.createRange(); r.selectNodeContents(t); return [r.getBoundingClientRect(), t.textContent, getComputedStyle(t).fontSize, getComputedStyle(t).fontFamily]; }), inner: (e.querySelector(".text-thumb-inner") as HTMLElement).style.transform, win: [innerWidth, innerHeight] })));
   assert.deepEqual(tiles, TEXT_PRESETS.map((p) => [p.module, true]));
   assert.equal(await page.$$eval(".pv-text", (els) => els.length), 0, "tiles don't use the preview's text class");
   await page.screenshot({ path: out("text-presets.png") });

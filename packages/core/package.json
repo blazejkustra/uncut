@@ -21,7 +21,9 @@
     "./graphics": "./src/graphics.ts",
     "./looks": "./src/looks.ts",
     "./textPlan": "./src/textPlan.ts",
-    "./captions": "./src/captions.ts"
+    "./captions": "./src/captions.ts",
+    "./effects": "./src/effects.ts",
+    "./ducking": "./src/ducking.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

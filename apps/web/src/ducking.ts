@@ -1,0 +1,117 @@
+// Ducking in the editor (D85): the loudness envelopes (D74) of the media on the key tracks of every
+// ducked track, read from the server's analysis cache (analysis.cached), and the duck curves core
+// computes from them (ducking.ts duckCurves) for the preview's mix (audio.ts adds the curve to each
+// item's gain, as the export does) and the timeline (the duck line on the ducked track's items).
+// A key media that hasn't been analysed gets its loudness analysis started once (the Library's
+// Analyze job, on demand like D66, here because ducking asked for it), and is read again when that
+// job finishes; meanwhile the Mixer says the ducking waits for it.
+import { duckCurves, duckMediaIds, type DuckCurve } from "@uncut/core/ducking";
+import { decodeEnvelope, type SpeechEnvelope } from "@uncut/core/transcript";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+
+import type { ProjectModel } from "./project.ts";
+import { actions, useApp } from "./store.ts";
+
+export interface DuckState {
+  readonly dir: string | undefined;
+  /** By media id: the envelope, null when analysed without sound. Missing: not known (yet). */
+  readonly envelopes: ReadonlyMap<string, SpeechEnvelope | null>;
+  /** Media whose loudness analysis this session started for ducking (each once). */
+  readonly measuring: ReadonlySet<string>;
+}
+
+let state: DuckState = { dir: undefined, envelopes: new Map(), measuring: new Set() };
+const listeners = new Set<() => void>();
+const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
+const emit = () => {
+  for (const l of listeners) l();
+};
+export const useDuckState = <T>(select: (s: DuckState) => T): T => useSyncExternalStore(subscribe, () => select(state));
+export const getDuckState = () => state;
+
+// The curves of the last project asked for, by its object and the envelopes: the preview asks every
+// frame with the same object. A draft (a drag) is a new object and recomputes, which is cheap (about a
+// millisecond per minute of key audio: a 10 ms grid).
+let memo: { project: ProjectModel; envelopes: ReadonlyMap<string, SpeechEnvelope | null>; curves: Map<string, DuckCurve> } | undefined;
+const NONE = new Map<string, DuckCurve>();
+/** Every ducked track's curve for a project (memoised on the project object and the envelopes; empty at once when nothing ducks). */
+export function duckCurvesOf(project: ProjectModel): Map<string, DuckCurve> {
+  if (memo && memo.project === project && memo.envelopes === state.envelopes) return memo.curves;
+  if (!project.tracks.some((t) => t.mixer?.effects?.some((fx) => fx.module === "audio.duck"))) return NONE;
+  const curves = duckCurves(project, state.envelopes);
+  memo = { project, envelopes: state.envelopes, curves };
+  return curves;
+}
+/** The same for components: recomputed when the project or the envelopes change. */
+export function useDuckCurves(project: ProjectModel): Map<string, DuckCurve> {
+  useDuckState((s) => s.envelopes);
+  return duckCurvesOf(project);
+}
+
+function forProject(dir: string) {
+  if (dir === state.dir) return;
+  state = { dir, envelopes: new Map(), measuring: new Set() };
+  memo = undefined;
+  emit();
+}
+
+const reading = new Set<string>();
+/** Reads that failed ("dir\0media"), retried on the next chance. */
+const failed = new Set<string>();
+/** Read a media's loudness from the cache; start its analysis once when there's none. */
+async function load(dir: string, mediaId: string, measure: boolean) {
+  const key = `${dir}\0${mediaId}`;
+  if (reading.has(key)) return;
+  reading.add(key);
+  let result: { hasAudio?: boolean; envelope?: unknown } | null | undefined;
+  try {
+    result = (await actions.analysisCached(mediaId, "loudness")) as typeof result;
+  } finally {
+    reading.delete(key);
+  }
+  if (dir !== state.dir) return;
+  // The call failed (offline, a server error): read again on the next chance (reconnect, a job, an export).
+  if (result === undefined) return void failed.add(key);
+  failed.delete(key);
+  if (result === null) {
+    // Not analysed yet: queue it (D85, "measure loudness first" as cuts by text do), once a session.
+    if (measure && !state.measuring.has(mediaId)) {
+      state = { ...state, measuring: new Set([...state.measuring, mediaId]) };
+      emit();
+      void actions.analyzeMedia(mediaId);
+    }
+    return;
+  }
+  const envelopes = new Map(state.envelopes);
+  envelopes.set(mediaId, result.hasAudio ? (decodeEnvelope(result.envelope) ?? null) : null);
+  state = { ...state, envelopes };
+  emit();
+}
+
+/** Keeps the envelopes ducking needs loaded for the open project (mounted by the Editor). */
+export function useDuckLoading(project: ProjectModel, dir: string) {
+  const { analysisJobs, exportJobs, connection } = useApp();
+  const online = connection === "connected";
+  const media = duckMediaIds(project);
+  const key = media.join(",");
+  const seen = useRef(new Set<string>());
+  useEffect(() => forProject(dir), [dir]);
+  useEffect(() => {
+    if (!online || state.dir !== dir) return;
+    for (const id of media) if (!state.envelopes.has(id)) void load(dir, id, true);
+  }, [online, dir, key]);
+  useEffect(() => {
+    for (const job of analysisJobs) {
+      if (job.projectDir !== dir || job.analyzer !== "loudness" || job.phase !== "done" || seen.current.has(job.id)) continue;
+      seen.current.add(job.id);
+      for (const id of new Set([job.mediaId, ...job.mediaIds])) if (media.includes(id) || state.envelopes.has(id)) void load(dir, id, false);
+    }
+  }, [analysisJobs, dir, key]);
+  // An export measures missing envelopes itself (D85: the analysis queue waits for exports) and caches
+  // them without a loudness job: when one of this project's exports ends, read the missing ones again.
+  const exportsEnded = exportJobs.filter((j) => j.projectDir === dir && (j.phase === "done" || j.phase === "failed" || j.phase === "cancelled")).map((j) => j.id).join(",");
+  useEffect(() => {
+    if (!online || state.dir !== dir || !exportsEnded) return;
+    for (const id of media) if (!state.envelopes.has(id)) void load(dir, id, false);
+  }, [exportsEnded, online, dir, key]);
+}

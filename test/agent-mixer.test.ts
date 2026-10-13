@@ -157,7 +157,7 @@ test("the system prompt: pan, solo and the master volume are heard, with an exam
   assert.match(SYSTEM_PROMPT, /mixer\.pan places it from -1 \(left\)/);
   assert.match(SYSTEM_PROMPT, /mixer\.solo: if any track is soloed, only soloed tracks sound, in the preview and in the export/);
   assert.match(SYSTEM_PROMPT, /"op":"update_project","set":\{"master":\{"gainDb":-3\}\}/);
-  assert.match(SYSTEM_PROMPT, /track volume, pan, mute and solo and the master volume/);
+  assert.match(SYSTEM_PROMPT, /track volume, pan, mute and solo, track effects \(EQ, compressor, voice\), ducking, the master volume and the master limiter/);
   const prompt = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!);
   assert.match(prompt.system ?? "", /mixer\.pan/, "the CLI gets it");
 });

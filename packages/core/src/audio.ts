@@ -18,6 +18,11 @@
 //   track only hides the picture: its clips still sound (mute is the sound's switch).
 // - dB at or below SILENCE_DB is silence (the volume slider's "−∞").
 //
+// Ducking (D85, ducking.ts) is a dB curve per track in project frames, added to each item's dB.
+// Track effects (D84, effects.ts) process each track's sum before its pan; the master limiter
+// (D86) comes after the master volume. Those are nonlinear and live in the preview's graph and the
+// export's filters; the gains here stay linear.
+//
 // After the item gains (D83): each track's sum is panned (track mixer.pan, panGains below), the
 // tracks are summed (no normalising) and the sum goes through the master gain (project
 // master.gainDb, masterGain below; its own −60 dB cutoff). Both are linear, so the export pans each
@@ -170,11 +175,15 @@ export function mixNote(project: Pick<Project, "tracks" | "media" | "master">): 
   return undefined;
 }
 
-/** An item's gain at `local` frames from its start (see the header), before mute and solo. */
-export function itemGain(track: Track, index: number, local: number): number {
+/**
+ * An item's gain at `local` frames from its start (see the header), before mute and solo.
+ * `duckDb` is the track's ducking at that moment (D85, ducking.ts duckDbAt), added to the combined
+ * dB like a volume key (so the −60 dB cutoff covers it too).
+ */
+export function itemGain(track: Track, index: number, local: number, duckDb = 0): number {
   const item = track.items[index]!;
   const { half, nextHalf, dipIn, dipOut } = audioSpan(track, index, 0);
-  const db = (item.gainDb ?? 0) + keyDbAt(item.gainKeys, Math.min(item.duration, Math.max(0, local))) + (track.mixer?.gainDb ?? 0);
+  const db = (item.gainDb ?? 0) + keyDbAt(item.gainKeys, Math.min(item.duration, Math.max(0, local))) + (track.mixer?.gainDb ?? 0) + duckDb;
   let gain = dbToGain(db) * fadeAt(item, local, { skipIn: half > 0 || dipIn > 0, skipOut: nextHalf > 0 || dipOut > 0 });
   if (dipIn > 0) gain *= clamp01(local / dipIn);
   if (dipOut > 0) gain *= clamp01((item.duration - local) / dipOut);
@@ -183,8 +192,11 @@ export function itemGain(track: Track, index: number, local: number): number {
   return gain;
 }
 
-/** Everything that sounds at frame f, with its gain and source time, in track order. */
-export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">, starts: ReadonlyMap<string, number>, f: number): Array<Audible> {
+/** A track's duck curve's dB at a project frame (D85); the preview and the export pass ducking.ts's. */
+export type DuckAt = (trackId: string, frame: number) => number;
+
+/** Everything that sounds at frame f, with its gain and source time, in track order. `duck`: the ducking (D85). */
+export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">, starts: ReadonlyMap<string, number>, f: number, duck?: DuckAt): Array<Audible> {
   const out: Array<Audible> = [];
   for (const track of project.tracks) {
     const on = trackAudible(project, track);
@@ -194,7 +206,7 @@ export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">,
       const { from, to } = audioSpan(track, index, start);
       if (f < from || f >= to) return;
       const local = f - start;
-      out.push({ item, track, gain: on ? itemGain(track, index, local) : 0, source: sourceAt(project, item, local), muted: !on });
+      out.push({ item, track, gain: on ? itemGain(track, index, local, duck?.(track.id, f) ?? 0) : 0, source: sourceAt(project, item, local), muted: !on });
     });
   }
   return out;
@@ -206,9 +218,9 @@ export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">,
  * 0 when the track is muted or another is soloed. What reaches the speakers (and the export's mix)
  * for each channel of the item's sound, made stereo.
  */
-export function outputGains(project: Pick<Project, "tracks" | "media" | "master">, track: Track, index: number, local: number): { readonly left: number; readonly right: number } {
+export function outputGains(project: Pick<Project, "tracks" | "media" | "master">, track: Track, index: number, local: number, duckDb = 0): { readonly left: number; readonly right: number } {
   if (!trackAudible(project, track)) return { left: 0, right: 0 };
-  const g = itemGain(track, index, local) * masterGain(project);
+  const g = itemGain(track, index, local, duckDb) * masterGain(project);
   const pan = panGains(trackPan(track));
   return { left: g * pan.left, right: g * pan.right };
 }
