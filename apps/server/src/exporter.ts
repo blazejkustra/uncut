@@ -740,7 +740,7 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         const media = v.item.media ? project.media.find((m) => m.id === v.item.media) : undefined;
         let input: Array<string> | undefined;
         // The source frame on screen at that moment, picked like the export picks it (exportPlan.ts).
-        const pick = sourceFramePick(v.source, project.canvas.fps);
+        const pick = sourceFramePick(v.source, project.canvas.fps, v.item.type === "clip" && v.item.hold === true && !v.item.loop);
         const local = f - (starts.get(v.item.id) ?? 0);
         const svg = v.item.type === "clip" && isSvg(media) && !!v.box;
         if (v.item.type === "clip" && media && media.kind === "video") input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];

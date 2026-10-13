@@ -5,7 +5,7 @@ export { resolveStarts, projectDuration, timelineProblems } from "./rules.ts";
 export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn } from "./apply-ops.ts";
 export { describeOp, effectsWords, manualEditsNote } from "./edit-log.ts";
 export { animationAt, moveFades, wordProgress, zoomScale, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline.ts";
-export { alignScreen, bezelSvg, COMPONENT_IMAGE, COMPONENTS, componentBox, componentDefaults, componentRest, componentHtml, componentInfo, componentParts, wrapComponent, componentScale, deviceSpec, DEVICES, DRAWN_COMPONENTS, FRAME_COLOR, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenRect, screenTransform, terminalState, UNDRAWN_COMPONENTS } from "./components.ts";
+export { alignScreen, bezelSvg, COMPONENT_IMAGE, COMPONENTS, componentBox, componentDefaults, componentRest, componentHtml, componentInfo, componentParts, wrapComponent, componentScale, deviceSpec, DEVICES, DRAWN_COMPONENTS, FRAME_COLOR, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenRect, screenTransform, terminalState, agentLogState, UNDRAWN_COMPONENTS } from "./components.ts";
 export type { ComponentBlock, ComponentInfo, Device, DeviceFrameRequest, TerminalLine } from "./components.ts";
 export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_SRC, graphicDocument, graphicInfo, MAX_GRAPHIC_BYTES, MAX_RASTER_STATES } from "./graphics.ts";
 export type { GraphicInfo } from "./graphics.ts";
@@ -13,7 +13,7 @@ export { baseBox, canvasBox, clipBox, EASES, fitRect, FITS, hasKeys, isPlainBox,
 export type { ClipBox, Ease, Fit, KeyProp, Rect } from "./box.ts";
 export { CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, DRAWN_TRANSITIONS, fadesIn, handleAfter, handleBefore, incomingFx, IRIS, irisRadius, movesOutgoing, outgoingFx, overlaps, PUSH_LEFT, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE, ZOOM, ZOOM_SCALE } from "./transitions.ts";
 export type { Cut, TransitionFx, TransitionInfo, TransitionLimits } from "./transitions.ts";
-export { anySolo, audibleAt, audibleTracks, mixNote, trackHasSound, audioSpan, dbToGain, fadeAt, gainToDb, itemGain, keyDbAt, masterGain, MAX_DB, outputGains, panGains, SILENCE_DB, soundMedia, sourceAt, trackAudible, trackPan } from "./audio.ts";
+export { anySolo, audibleAt, audibleTracks, mixNote, trackHasSound, audioSpan, dbToGain, fadeAt, gainToDb, heldPast, itemGain, keyDbAt, masterGain, MAX_DB, outputGains, panGains, SILENCE_DB, soundMedia, sourceAt, trackAudible, trackPan } from "./audio.ts";
 export type { Audible, DuckAt } from "./audio.ts";
 export { amountOf, BUTTERWORTH_Q, biquadCoefficients, biquadResponseDb, choiceOfTarget, COMPRESSOR, COMPRESSOR_DEFAULTS, compressorCurveDb, compressorParams, DEFAULT_TARGET_LUFS, DENOISE, DENOISE_DEFAULTS, DENOISE_FLOOR_DB, denoiseMediaIds, noiseFloorDb, DUCK, EFFECT_NAMES, effectName, effectStages, effectSummary, EQ, EQ_DEFAULTS, eqParams, EXPORT_ONLY_EFFECTS, hasExportOnly, HEARD_EFFECTS, LIMITER, LIMITER_CEILING_DB, LIMITER_MARGIN_DB, LOUDNESS_PRESETS, makeupCompensationDb, masterLimiter, projectTargetLufs, stagesResponseDb, TARGET_LUFS_RANGE, targetOfChoice, targetWords, TRACK_EFFECTS, trackStages, VOICE, VOICE_DEFAULTS, VOICE_PRESET, voiceStages } from "./effects.ts";
 export type { Biquad, BiquadType, LoudnessChoice, Stage } from "./effects.ts";

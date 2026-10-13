@@ -150,6 +150,8 @@ export interface Item {
   readonly fadeOut?: Frame;
   /** The media starts over when the item is longer than it (clip: D75). */
   readonly loop?: boolean;
+  /** Clips (D94): the media's last frame stays on screen when the clip is longer than it (a freeze); loop wins. */
+  readonly hold?: boolean;
   readonly gainKeys?: ReadonlyArray<{ readonly frame: Frame; readonly db: number }>;
 }
 

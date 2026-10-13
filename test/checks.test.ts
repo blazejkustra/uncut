@@ -131,6 +131,13 @@ test("crowded text, typefaces, small text and the safe area", () => {
   const c = only(three, "crowded-text")[0]!;
   assert.equal(c.itemIds!.length, 3);
   assert.equal(c.frame, 45);
+  // A footnote in the Footnote look (the disclosure line) doesn't count toward crowding (D96); a third text of any other look does.
+  const withFootnote = (preset: string) => ({ ...three, tracks: three.tracks.map((t) => (t.id === "text-3" ? { ...t, items: t.items.map((i) => ({ ...i, style: { preset, size: 28 } })) } : t)) });
+  assert.deepEqual(only(withFootnote("text.footnote"), "crowded-text"), []);
+  assert.equal(only(withFootnote("text.caption"), "crowded-text").length, 1);
+  // A "footnote" blown up past the look's own size (3 % of the canvas height) is a headline again: it counts.
+  const big = { ...three, tracks: three.tracks.map((t) => (t.id === "text-3" ? { ...t, items: t.items.map((i) => ({ ...i, style: { preset: "text.footnote", size: 80 } })) } : t)) };
+  assert.equal(only(big, "crowded-text").length, 1);
 
   // The built-in looks mix the system sans and DM Sans: one family for the rule (D90). Another family isn't.
   assert.deepEqual(only(make({ texts: [{ text: "Sans", style: { preset: "text.title", size: 96, font: "DM Sans" } }, { text: "System", start: 150, style: { preset: "text.title", size: 96 } }] }), "one-typeface"), []);

@@ -144,7 +144,7 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 
-  // The Components grid: five tiles, each with its real HTML as the thumbnail.
+  // The Components grid: seven tiles, each with its real HTML as the thumbnail.
   await page.click("[data-testid=rail-elements]");
   await page.waitForSelector("[data-testid=components-grid]");
   const tiles = await page.$$eval("[data-testid=component-tile]", (els) => els.map((e) => [(e as HTMLElement).dataset.component, !!e.querySelector("[data-testid=component-thumb] .pv-comp")]));
@@ -154,6 +154,8 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
     ["component.code-block", true],
     ["component.terminal", true],
     ["component.chart", true],
+    ["component.agent-log", true],
+    ["component.compare-table", true],
   ]);
   await page.screenshot({ path: out("components-panel.png") });
 

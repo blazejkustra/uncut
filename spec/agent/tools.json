@@ -338,7 +338,8 @@
         "frameId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "clipId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "color": { "type": "string", "description": "The frame's colour (a theme token or CSS colour)." },
-        "url": { "type": "string", "description": "browser: the address in its bar." }
+        "url": { "type": "string", "description": "browser: the address in its bar." },
+        "hold": { "type": "boolean", "description": "Footage shorter than the frame holds its last frame (a freeze) instead of looping." }
       }
     },
     "range": {

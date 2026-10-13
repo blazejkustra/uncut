@@ -71,6 +71,7 @@ import {
   SOLID,
   solidHtml,
   soundMedia,
+  heldPast,
   sourceAt,
   textHtml,
   trackAudible,
@@ -166,6 +167,8 @@ export type VisualLayer =
        * are decoded once and repeated (ffmpeg's loop filter), frame f0 showing frame `offset` of them.
        */
       readonly cycle?: { readonly length: number; readonly offset: number };
+      /** A held clip (D94): the source time (s) of its media's last frame, where its source stops. */
+      readonly last?: number;
     })
   | (LayerBase & { readonly kind: "image"; readonly file: string; readonly fills: boolean })
   | (LayerBase & {
@@ -324,7 +327,7 @@ function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, s
   if (layer.kind === "raster") return { ...layer, ...common, ...compactStates(layer.states, layer.frames.slice(a, b)) };
   if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
   if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
-  if (layer.kind === "video") return { ...layer, ...common, source: source ?? layer.source + (a * layer.speed) / fps };
+  if (layer.kind === "video") return { ...layer, ...common, source: Math.min(source ?? layer.source + (a * layer.speed) / fps, layer.last ?? Infinity) };
   return { ...layer, ...common };
 }
 
@@ -747,7 +750,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const layer: VisualLayer =
           media.kind === "image"
             ? { ...base, ...alpha, kind: "image", file: path, fills: fills(media), ...geometry }
-            : { ...base, ...alpha, kind: "video", file: path, source: sourceAt(project, item, f0 - start), speed: item.speed ?? 1, fills: fills(media), ...geometry };
+            : { ...base, ...alpha, kind: "video", file: path, source: sourceAt(project, item, f0 - start), speed: item.speed ?? 1, fills: fills(media), ...geometry, ...(item.hold && !item.loop && media.probe?.frames ? { last: (media.probe.frames - 1) / fps } : {}) };
         // Cut at the transitions first, then each piece into passes through its media (D79 review): a
         // long looped run keeps one looped input (the loop filter) and a transition's few frames seek.
         for (const piece of split(layer, (f) => plainAt[f - f0]!)) visuals.push(...splitLoop(piece, project, start, { width, height }));
@@ -830,6 +833,8 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         fadeOut: span.dipOut > 0 ? span.dipOut : (item.fadeOut ?? 0),
       };
       if (constantGain(gain) === 0) return;
+      // A held clip (D94) is silent past its media's end: a piece lying wholly there has no sound.
+      if (heldPast(project, item, Math.max(0, span.from) - start)) return;
       const from = Math.max(0, span.from);
       const source = Math.max(0, sourceAt(project, item, from - start));
       const length = item.loop ? media.probe?.frames : undefined;
@@ -1061,11 +1066,13 @@ export interface CommandOptions {
  * timestamps so the moment is 0, and let fps (round=up) pick, then keep the first frame. Shared by
  * render_frames and contact sheets of media (D65); the export's own chain does the same per layer.
  */
-export function sourceFramePick(source: number, fps: number): { readonly seekArgs: ReadonlyArray<string>; readonly filter: string } {
-  const pre = Math.min(1, Math.max(0, source));
+export function sourceFramePick(source: number, fps: number, hold = false): { readonly seekArgs: ReadonlyArray<string>; readonly filter: string } {
+  // A held clip (D94) seeks up to 2 s early and clones its last decoded frame, so the frame at or past
+  // the stream's end (even when the probe overstates its length) is the last one, as the export shows.
+  const pre = Math.min(hold ? 2 : 1, Math.max(0, source));
   return {
     seekArgs: ["-ss", n(source - pre), "-t", n(pre + 0.5)],
-    filter: `setpts=PTS-${n(pre + 0.0001)}/TB,fps=${fps}:start_time=0:round=up,trim=end_frame=1,setpts=0`,
+    filter: `${hold ? `tpad=stop_mode=clone:stop_duration=${n(pre + 1)},` : ""}setpts=PTS-${n(pre + 0.0001)}/TB,fps=${fps}:start_time=0:round=up,trim=end_frame=1,setpts=0`,
   };
 }
 
@@ -1182,11 +1189,16 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     if (layer.kind === "video") {
       // Seek a second early and let fps pick, for each frame, the last source frame that starts at
       // or before its source time (round=up), like the preview's <video> (D38).
-      const pre = layer.cycle ? 0 : Math.min(1, layer.source);
+      // A held clip (D94) seeks up to 2 s early, so a probe that overstates the stream still leaves frames to clone.
+      const pre = layer.cycle ? 0 : Math.min(layer.last !== undefined ? 2 : 1, layer.source);
       const length = layer.cycle ? layer.cycle.length / fps + 1 : pre + (frames / fps) * layer.speed + 1;
       inputs.push(...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...(layer.cycle ? [] : ["-ss", n(layer.source - pre)]), "-t", n(length), "-i", layer.file);
       const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
-      let picked = [decoded, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${frames}`];
+      // A held clip (D94) shows its media's last frame for the rest of its length: the decoded frames
+      // are padded with clones of the last one (before fps picks, so even a slice that starts at or
+      // past the stream's end has a frame to show).
+      const hold = layer.last !== undefined && !layer.cycle ? [`tpad=stop_mode=clone:stop_duration=${n(pre + (frames / fps) * layer.speed + 1)}`] : [];
+      let picked = [decoded, ...hold, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${frames}`];
       if (layer.cycle) {
         // The media's frames once, made only as large as they're drawn, then repeated from `offset`.
         const { length: L, offset } = layer.cycle;

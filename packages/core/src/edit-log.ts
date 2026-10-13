@@ -148,6 +148,7 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
           : "no keys",
       );
     } else if (key === "loop") parts.push(value === true ? "looped" : "not looped");
+    else if (key === "hold") parts.push(value === true ? "holding its last frame" : "not holding its last frame");
     else if (key === "animation") {
       const a = (value ?? {}) as Record<string, { module?: string; duration?: number } | undefined>;
       const one = (k: "in" | "out") => (a[k]?.module ? `${MOVE_NAMES[a[k]!.module!] ?? a[k]!.module} ${k} ${secs(a[k]!.duration ?? 0, fps)}` : `no ${k} animation`);

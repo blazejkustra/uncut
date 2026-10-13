@@ -23,8 +23,10 @@ import endCardJson from "../../../spec/modules/builtin/component.end-card.json" 
 import codeBlockJson from "../../../spec/modules/builtin/component.code-block.json" with { type: "json" };
 import chartJson from "../../../spec/modules/builtin/component.chart.json" with { type: "json" };
 import terminalJson from "../../../spec/modules/builtin/component.terminal.json" with { type: "json" };
+import agentLogJson from "../../../spec/modules/builtin/component.agent-log.json" with { type: "json" };
+import compareTableJson from "../../../spec/modules/builtin/component.compare-table.json" with { type: "json" };
 
-import { baseBox, clipBox, type ClipBox, type Rect } from "./box.ts";
+import { baseBox, clipBox, EASES, type ClipBox, type Rect } from "./box.ts";
 import { DEFAULT_THEME, DM_MONO, DM_SANS, esc, markup, num, resolveColor, SOLID, type Motion, type RenderTarget } from "./render.ts";
 import type { Canvas, FieldSet, Item, Media, ModuleManifest, Op, Project, Track } from "./types.ts";
 
@@ -298,6 +300,134 @@ function drawTerminal({ props, w, h, local, fps, target }: Draw) {
   );
 }
 
+// ---- agent log (D95) ----
+
+const numOr = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** "2:41": minutes and whole seconds. */
+const clockLabel = (s: number) => {
+  const r = Math.round(s);
+  return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`;
+};
+/** DM Sans has no tabular figures: each character in a cell of fixed width, so a changing number never moves its neighbours. */
+const cells = (text: string) => [...text].map((c) => `<span style="display:inline-block;text-align:center;width:${/[0-9]/.test(c) ? "0.57em" : "0.27em"}">${esc(c)}</span>`).join("");
+
+/**
+ * What an agent log shows at `local` frames: the source second (srcAt + seconds × speed), the run's
+ * clock (from runStart, stopping at durationMs), the token count reached, the lines in, and whether
+ * the run is done.
+ */
+export function agentLogState(props: { readonly [key: string]: unknown }, local: number, fps: number): { src: number; clock: number; tokens: number; lines: number; done: boolean } {
+  const speed = numOr(props.speed, 1) > 0 ? numOr(props.speed, 1) : 1;
+  const src = Math.max(0, numOr(props.srcAt, 0)) + (Math.max(0, local) / fps) * speed;
+  const runStart = numOr(props.runStart, 0);
+  const length = Math.max(0, numOr(props.durationMs, Infinity)) / 1000;
+  const clock = clamp(src - runStart, 0, length);
+  let tokens = 0;
+  for (const k of Array.isArray(props.tokens) ? props.tokens : []) {
+    const t = k && typeof k === "object" ? (k as { t?: unknown; cum?: unknown }) : {};
+    if (typeof t.t === "number" && typeof t.cum === "number" && t.t <= src) tokens = t.cum;
+  }
+  const lines = (Array.isArray(props.lines) ? props.lines : []).filter((l) => !!l && typeof l === "object" && typeof (l as { t?: unknown }).t === "number" && (l as { t: number }).t <= src).length;
+  return { src, clock, tokens, lines, done: Number.isFinite(length) && src >= runStart + length };
+}
+
+function drawAgentLog({ props, w, h, local, fps, target }: Draw) {
+  const k = Math.min(w / 470, h / 739);
+  const size = numOr(props.size, 19) * k;
+  const state = agentLogState(props, local, fps);
+  const title = str(props.title);
+  const list = (Array.isArray(props.lines) ? props.lines : []).filter((l): l is { t: number; tool?: string; text: string } => !!l && typeof l === "object" && typeof (l as { t?: unknown }).t === "number" && typeof (l as { text?: unknown }).text === "string");
+  // Only the lines that can be on screen: the log is bottom-anchored and clipped above, and a line
+  // takes at least one row (size × 1.45 + its 12 px gap), so the last ceil(area ÷ row) + 1 are all
+  // that can show (a long log stays a few KB of HTML a frame).
+  const area = Math.max(0, h - 256 * k);
+  const fit = Math.ceil(area / (size * 1.45 + 12 * k)) + 1;
+  const reached = list.filter((l) => l.t <= state.src);
+  const shown = reached.slice(Math.max(0, reached.length - fit));
+  const rows = shown
+    .map((l) =>
+      typeof l.tool === "string" && l.tool
+        ? `<div style="margin-top:${px(12 * k)}"><span style="font-family:${DM_MONO};font-size:${px(size - 2 * k)};color:#7D7D85">${esc(l.tool)}</span> <span style="color:#B9B9C0">${esc(l.text)}</span></div>`
+        : `<div style="margin-top:${px(12 * k)};color:#ECECEE">${esc(l.text)}</div>`,
+    )
+    .join("");
+  const dots = ["#FF5F57", "#FEBC2E", "#28C840"].map((c) => `<i style="display:block;width:${px(12 * k)};height:${px(12 * k)};border-radius:50%;background:${c}"></i>`).join("");
+  const label = str(props.tokenLabel)
+    .split("\n")
+    .map((part) => esc(part))
+    .join("<br>");
+  return (
+    `<div style="position:absolute;inset:0;display:flex;flex-direction:column;border-radius:${px(18 * k)};background:rgb(16 17 20 / 94%);box-shadow:0 0 0 ${px(Math.max(1, k))} rgb(255 255 255 / 8%);overflow:hidden;color:#ECECEE;font-family:${DM_SANS};font-weight:400;font-size:${px(size)};line-height:1.45">` +
+    `<div style="height:${px(44 * k)};flex:none;display:flex;align-items:center;gap:${px(8 * k)};padding:0 ${px(16 * k)};background:#1D1E22;border-bottom:${px(Math.max(1, k))} solid #000">${dots}` +
+    `<span style="flex:1;text-align:center;margin-right:${px(52 * k)};white-space:nowrap;overflow:hidden;font-family:${DM_MONO};font-weight:500;font-size:${px(15 * k)};color:#8D8D94">${esc(title)}</span></div>` +
+    `<div style="padding:${px(26 * k)} ${px(30 * k)} ${px(20 * k)};flex:none;border-bottom:${px(Math.max(1, k))} solid #26262B">` +
+    `<div style="font-weight:600;font-size:${px(40 * k)};line-height:1;letter-spacing:-0.01em">${esc(str(props.model))}</div>` +
+    `<div style="display:flex;align-items:baseline;gap:${px(28 * k)};margin-top:${px(20 * k)}">` +
+    `<span style="font-weight:500;font-size:${px(64 * k)};line-height:1;white-space:nowrap">${cells(clockLabel(state.clock))}</span>` +
+    `<span style="color:#8D8D94;font-size:${px(22 * k)};line-height:1.2"><span style="color:#ECECEE">${cells(Math.round(state.tokens).toLocaleString("en-US"))}</span><br>${label}</span></div>` +
+    `<div style="margin-top:${px(14 * k)};font-weight:500;font-size:${px(22 * k)};line-height:1.25;color:${accent(target)};height:${px(28 * k)};white-space:nowrap">${state.done ? esc(str(props.doneLabel)) : ""}</div></div>` +
+    `<div style="position:relative;flex:1;overflow:hidden;padding:0 ${px(30 * k)};-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 ${px(70 * k)});mask-image:linear-gradient(to bottom,transparent 0,#000 ${px(70 * k)})">` +
+    `<div style="position:absolute;left:${px(30 * k)};right:${px(30 * k)};bottom:${px(22 * k)}">${rows}</div></div></div>`
+  );
+}
+
+// ---- compare table (D95) ----
+
+interface CompareRow {
+  readonly label: string;
+  readonly values: ReadonlyArray<number>;
+  readonly text: ReadonlyArray<string>;
+}
+const compareRows = (v: unknown): Array<CompareRow> =>
+  (Array.isArray(v) ? v : [])
+    .filter((r): r is { label?: unknown; values?: unknown; text?: unknown } => !!r && typeof r === "object")
+    .map((r) => {
+      const values = (Array.isArray(r.values) ? r.values : []).map((x) => (typeof x === "number" && Number.isFinite(x) ? Math.max(0, x) : 0));
+      const text = Array.isArray(r.text) ? r.text.map((x) => str(x)) : [];
+      return { label: str(r.label), values, text };
+    });
+
+function drawCompareTable({ props, w, h, local, fps }: Draw) {
+  const k = Math.min(w / 1400, h / 600);
+  const size = numOr(props.size, 24) * k;
+  const names = (Array.isArray(props.names) ? props.names : []).map((n) => str(n));
+  const rows = compareRows(props.rows);
+  const t = Math.max(0, local) / fps;
+  const start = numOr(props.start, 0.35);
+  const step = numOr(props.step, 0.55);
+  const grow = Math.max(0, numOr(props.grow, 0.7));
+  const lin = (x: number, a: number, b: number) => (b <= a ? (x >= b ? 1 : 0) : clamp((x - a) / (b - a), 0, 1));
+  const out = EASES.out;
+  const body = rows
+    .map((r, i) => {
+      const t0 = start + i * step;
+      const kr = out(lin(t, t0, t0 + 0.35));
+      const kb = out(lin(t, t0 + 0.15, t0 + 0.15 + grow));
+      const kv = out(lin(t, t0 + 0.15 + grow * 0.6, t0 + 0.15 + grow));
+      const max = Math.max(...r.values, 0) || 1;
+      const bars = names
+        .map((n, j) => {
+          const v = r.values[j] ?? 0;
+          const shown = r.text[j] ?? numberLabel(v);
+          return (
+            `<div style="display:flex;align-items:center;gap:${px(20 * k)}">` +
+            `<span style="width:${px(130 * k)};flex:none;color:#A9A9B0;white-space:nowrap">${esc(n)}</span>` +
+            `<span style="flex:1;height:${px(14 * k)};border-radius:${px(7 * k)};background:rgb(255 255 255 / 6%);overflow:hidden"><i style="display:block;height:100%;width:${num((v / max) * 100 * kb)}%;border-radius:${px(7 * k)};background:#ECECEE"></i></span>` +
+            `<b style="width:${px(170 * k)};flex:none;text-align:right;font-weight:500;font-size:${px(40 * k)};line-height:1;white-space:nowrap;opacity:${num(kv)}">${esc(shown)}</b></div>`
+          );
+        })
+        .join("");
+      return (
+        `<div style="display:flex;align-items:center;gap:${px(40 * k)};padding:${px(22 * k)} 0;${i ? `border-top:${px(Math.max(1, k))} solid rgb(255 255 255 / 12%);` : ""}opacity:${num(kr)};transform:translateY(${px((1 - kr) * 18 * k)})">` +
+        `<div style="width:${px(300 * k)};flex:none;color:#A9A9B0;font-size:${px(28 * k)}">${esc(r.label)}</div>` +
+        `<div style="flex:1;display:flex;flex-direction:column;gap:${px(14 * k)}">${bars}</div></div>`
+      );
+    })
+    .join("");
+  return `<div style="position:absolute;inset:0;box-sizing:border-box;padding:${px(34 * k)} ${px(56 * k)};border-radius:${px(22 * k)};background:rgb(16 17 20 / 94%);box-shadow:0 0 0 ${px(Math.max(1, k))} rgb(255 255 255 / 8%);color:#ECECEE;font-family:${DM_SANS};font-weight:400;font-size:${px(size)};line-height:1.2">${body}</div>`;
+}
+
 // ---- the registry ----
 
 const info = (json: unknown, render: ComponentInfo["render"]): ComponentInfo => {
@@ -312,6 +442,8 @@ export const COMPONENTS: ReadonlyArray<ComponentInfo> = [
   info(codeBlockJson, drawCodeBlock),
   info(terminalJson, drawTerminal),
   info(chartJson, drawChart),
+  info(agentLogJson, drawAgentLog),
+  info(compareTableJson, drawCompareTable),
 ];
 const BY_ID = new Map(COMPONENTS.map((c) => [c.id, c]));
 export const componentInfo = (id: unknown) => (typeof id === "string" ? BY_ID.get(id) : undefined);
@@ -423,6 +555,8 @@ export interface DeviceFrameRequest {
   readonly clipId?: string | undefined;
   readonly color?: string | undefined;
   readonly url?: string | undefined;
+  /** Footage shorter than the frame holds its last frame (D94) instead of looping. */
+  readonly hold?: boolean | undefined;
 }
 
 type Problem = { readonly problem: string };
@@ -536,7 +670,7 @@ export function planDeviceFrame(project: Pick<Project, "canvas" | "media" | "tra
     start: req.start,
     duration: req.duration,
     ...(media.kind === "video" ? { in: from } : {}),
-    ...(loop ? { loop: true } : {}),
+    ...(loop ? (req.hold ? { hold: true } : { loop: true }) : {}),
     transform: t,
   };
   const clipSpot = region.find(({ t }) => free(t));
