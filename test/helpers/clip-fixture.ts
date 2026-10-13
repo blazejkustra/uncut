@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { layout, visualsAt } from "../../packages/core/src/index.ts";
-import type { Project } from "../../packages/core/src/types.ts";
+import type { Project } from "../../packages/core/src/timeline/types.ts";
 import type { Rgb } from "./transition-fixture.ts";
 
 export const GREY: Rgb = [128, 128, 128];

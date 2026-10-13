@@ -1,5 +1,5 @@
 // Phase 5 exit check, the real-claude half (D72): the same generated footage as
-// test/phase5-exit.test.ts (a minute of `say` speech with an "um", an "uh" and long pauses, plus a
+// test/app/phase5-exit.test.ts (a minute of `say` speech with an "um", an "uh" and long pauses, plus a
 // smooth, a jittered and a blurred 6 s take), driven by the REAL agent instead of the scripted one.
 // Not part of `pnpm test`: it uses your Claude subscription (claude CLI, signed in; Uncut strips
 // ANTHROPIC_API_KEY from the agent's environment, D41) and real whisper.cpp transcription.
@@ -14,7 +14,7 @@
 //                                                       (~/Documents/devrel/drone/croatia-day-1-kuba/*_MASTER.MP4)
 //                                                       in the prompt, by path. They're only referenced:
 //                                                       media_import adds them by path and never copies or
-//                                                       changes them (test/agent-footage.test.ts checks hashes,
+//                                                       changes them (test/agent/agent-footage.test.ts checks hashes,
 //                                                       mtimes and an empty media/ folder); this script also
 //                                                       records their size and mtime and compares them after --run.
 //   ... --model tiny.en                                 the speech model (default: the app's, large-v3-turbo-q5_0,

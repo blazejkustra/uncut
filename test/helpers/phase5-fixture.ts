@@ -1,11 +1,11 @@
-// The Phase 5 exit check's footage (test/phase5-exit.test.ts, scripts/phase5-manual-check.ts), made
+// The Phase 5 exit check's footage (test/app/phase5-exit.test.ts, scripts/phase5-manual-check.ts), made
 // on this Mac with macOS `say` and ffmpeg, never taken from ~/Documents/devrel/drone:
 // - Talk.mp4: about a minute of real speech (13 sentences, an "um" and an "uh") over SMPTE bars,
 //   built from known pieces: each `say` clip trimmed of its own leading and trailing quiet, then
 //   joined with silences of known length (short ones that stay, long ones ≥ 1 s to cut). The layout
 //   (every piece's start and end in seconds) is returned, so a test knows where every word is.
 // - Smooth.mp4, Jittered.mp4, Blurred.mp4: 6 s "drone takes" of the same pan over a still, as in
-//   test/video-analysis.test.ts: steady; with a few pixels of per-frame shake; steady but blurred.
+//   test/analysis/video-analysis.test.ts: steady; with a few pixels of per-frame shake; steady but blurred.
 // talkTranscript() turns the layout into the transcript whisper would give (each sentence's words
 // spread over its spoken span by length), for the analysis cache.
 import { execFileSync } from "node:child_process";

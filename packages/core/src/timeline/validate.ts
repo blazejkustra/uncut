@@ -1,0 +1,234 @@
+// Reference validator for the Uncut project format and module manifests.
+// Schema checks catch shape errors; the rules below catch what a schema can't:
+// references, overlaps, ranges and module kinds.
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import Ajv2020Module from "ajv/dist/2020.js";
+import type { ErrorObject, ValidateFunction } from "ajv";
+// The schemas stay in spec/schema (they're the published spec). Importing them, rather than
+// reading them at run time, lets the server bundle carry them.
+import projectSchemaJson from "../../../../spec/schema/project.schema.json" with { type: "json" };
+import moduleSchemaJson from "../../../../spec/schema/module.schema.json" with { type: "json" };
+import editOpsSchemaJson from "../../../../spec/schema/edit-ops.schema.json" with { type: "json" };
+import { projectDuration, resolveStarts, timelineProblems } from "./rules.ts";
+import type { Media, ModuleKind, ModuleManifest, Modules, Problem, Project } from "./types.ts";
+
+export { projectDuration, resolveStarts, timelineProblems };
+
+// ajv is CommonJS: Node hands over module.exports (the class, which also carries .default) and
+// TypeScript sees the module object, so take .default, which is the class either way.
+const Ajv2020 = Ajv2020Module.default;
+
+const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+const projectSchema = ajv.compile(projectSchemaJson);
+const moduleSchema = ajv.compile(moduleSchemaJson);
+ajv.addSchema(editOpsSchemaJson);
+// One validator per op kind, so a bad op gets that kind's errors, not every oneOf branch's.
+const opSchemas = new Map<unknown, ValidateFunction>(
+  editOpsSchemaJson.$defs.op.oneOf.map((branch, i) => [branch.properties.op.const, ajv.compile({ $ref: `${editOpsSchemaJson.$id}#/$defs/op/oneOf/${i}` })]),
+);
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const paramsCache = new Map<string, ValidateFunction>();
+
+/** ajv's extra detail for "additional/unevaluated property" errors. */
+const extra = (e: ErrorObject, key: "additionalProperty" | "unevaluatedProperty") => {
+  const value = (e.params as Record<string, unknown> | undefined)?.[key];
+  return value ? `: ${value}` : "";
+};
+
+/** Load every *.json manifest in the given directories into a Map by id. */
+export async function loadModules(...dirs: ReadonlyArray<string>): Promise<Map<string, ModuleManifest>> {
+  const modules = new Map<string, ModuleManifest>();
+  for (const dir of dirs) {
+    for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
+      const manifest = (await readJson(join(dir, file))) as ModuleManifest;
+      modules.set(manifest.id, manifest);
+    }
+  }
+  return modules;
+}
+
+export function validateModule(manifest: unknown): Array<Problem> {
+  const ok = moduleSchema(manifest);
+  return ok ? [] : moduleSchema.errors!.map((e) => err("schema", e.instancePath || "/", `${e.message}${extra(e, "additionalProperty")}`));
+}
+
+/**
+ * Check a list of edit ops against spec/schema/edit-ops.schema.json, plus what the schema
+ * can't say: no prototype keys anywhere and no renaming an item through update_item.
+ * Returns problems ({ code, path, message }); empty when the ops are well-formed.
+ */
+export function validateOps(ops: unknown): Array<Problem> {
+  if (!Array.isArray(ops) || ops.length === 0) return [err("ops", "/", "an edit needs at least one op")];
+  const errors: Array<Problem> = [];
+  const findUnsafe = (value: unknown, path: string) => {
+    if (!value || typeof value !== "object") return;
+    for (const key of Object.keys(value)) {
+      if (UNSAFE_KEYS.has(key)) errors.push(err("unsafe-key", `${path}/${key}`, `"${key}" is not allowed`));
+      else findUnsafe((value as Record<string, unknown>)[key], `${path}/${key}`);
+    }
+  };
+  ops.forEach((op: { op?: unknown; set?: unknown } | null | undefined, i) => {
+    const path = `/${i}`;
+    findUnsafe(op, path);
+    const check = opSchemas.get(op?.op);
+    if (!check) return errors.push(err("unknown-op", `${path}/op`, `unknown op ${JSON.stringify(op?.op)}`));
+    if (!(check(op) as boolean)) {
+      for (const e of check.errors!) errors.push(err("schema", path + (e.instancePath || ""), `${op!.op}: ${e.message}${extra(e, "additionalProperty")}`));
+    }
+    if (op!.op === "update_item" && op!.set && typeof op!.set === "object" && "id" in op!.set) {
+      errors.push(err("rename", `${path}/set/id`, "an item's id can't be changed"));
+    }
+  });
+  return errors;
+}
+
+function err(code: string, path: string, message: string): Problem {
+  return { code, path, message };
+}
+
+export function validateProject(input: unknown, modules: Modules): Array<Problem> {
+  if (!projectSchema(input)) {
+    return projectSchema.errors!.map((e) => err("schema", e.instancePath || "/", `${e.message}${extra(e, "additionalProperty")}${extra(e, "unevaluatedProperty")}`));
+  }
+  const project = input as unknown as Project;
+  const errors: Array<Problem> = [];
+  const media = new Map<string, Media>(project.media.map((m) => [m.id, m]));
+  const trackIds = new Set(project.tracks.map((t) => t.id));
+  const duration = projectDuration(project);
+
+  // Unique ids across media, tracks, items and scenes.
+  const seen = new Set<string>();
+  const ids: Array<[string, string]> = [
+    ...project.media.map((m): [string, string] => [m.id, `/media/${m.id}`]),
+    ...project.tracks.map((t): [string, string] => [t.id, `/tracks/${t.id}`]),
+    ...project.tracks.flatMap((t) => t.items.map((i): [string, string] => [i.id, `/tracks/${t.id}/items/${i.id}`])),
+    ...(project.scenes ?? []).map((s): [string, string] => [s.id, `/scenes/${s.id}`]),
+  ];
+  for (const [id, path] of ids) {
+    if (seen.has(id)) errors.push(err("duplicate-id", path, `id "${id}" is used more than once`));
+    seen.add(id);
+  }
+
+  const mains = project.tracks.filter((t) => t.role === "main");
+  if (mains.length !== 1) errors.push(err("main-track-count", "/tracks", `expected exactly one main track, found ${mains.length}`));
+
+  const useModule = (id: string, kinds: ReadonlyArray<ModuleKind>, path: string) => {
+    const m = modules.get(id);
+    if (!m) errors.push(err("unknown-module", path, `module "${id}" is not installed`));
+    else if (!kinds.includes(m.kind)) errors.push(err("module-kind", path, `module "${id}" is a ${m.kind}, expected ${kinds.join(" or ")}`));
+    return m;
+  };
+  const checkParams = (manifest: ModuleManifest | undefined, value: unknown, path: string) => {
+    if (!manifest?.params) return;
+    if (!paramsCache.has(manifest.id)) paramsCache.set(manifest.id, ajv.compile(manifest.params));
+    const check = paramsCache.get(manifest.id)!;
+    if (!check(value ?? {})) {
+      for (const e of check.errors!) errors.push(err("params", path + e.instancePath, `${manifest.id}: ${e.message}${extra(e, "additionalProperty")}`));
+    }
+  };
+  const checkMediaRefs = (value: unknown, path: string) => {
+    if (value && typeof value === "object") {
+      const ref = value as { media?: unknown };
+      if (typeof ref.media === "string" && Object.keys(value).length === 1 && !media.has(ref.media)) {
+        errors.push(err("unknown-media", path, `media "${ref.media}" does not exist`));
+      }
+      for (const [k, v] of Object.entries(value)) checkMediaRefs(v, `${path}/${k}`);
+    }
+  };
+
+  for (const m of project.media) {
+    if (m.source) useModule(m.source.module, ["capture-source", "generator"], `/media/${m.id}/source`);
+  }
+
+  for (const track of project.tracks) {
+    const tpath = `/tracks/${track.id}`;
+    const main = track.role === "main";
+    if (main && track.kind !== "video") errors.push(err("main-track-kind", tpath, "the main track must be a video track"));
+    for (const fx of track.mixer?.effects ?? []) {
+      const m = useModule(fx.module, ["audio-processor"], `${tpath}/mixer`);
+      checkParams(m, fx.params, `${tpath}/mixer/${fx.module}`);
+      for (const under of (fx.params?.under as ReadonlyArray<string> | undefined) ?? []) {
+        // D85: a deleted key track would leave the duck pointing at nothing; say which track ducks under it.
+        if (!trackIds.has(under)) errors.push(err("unknown-track", `${tpath}/mixer`, `track "${track.name}" (${track.id}) ducks under track "${under}", which doesn't exist: remove or retarget its audio.duck entry (in the same edit, to delete "${under}")`));
+      }
+    }
+
+    track.items.forEach((item, index) => {
+      const ipath = `${tpath}/items/${item.id}`;
+      if (item.type === "component") {
+        const m = useModule(item.component!, ["component"], ipath);
+        checkParams(m, item.props, `${ipath}/props`);
+      }
+      if (item.props) checkMediaRefs(item.props, `${ipath}/props`);
+      if (item.type === "text" && item.style?.preset) useModule(item.style.preset, ["text-style"], `${ipath}/style`);
+      if (item.type === "captions" && item.style?.preset) useModule(item.style.preset, ["text-style"], `${ipath}/style`);
+      for (const [k, a] of Object.entries(item.animation ?? {})) {
+        // A move's params (word-by-word style, zoom scale and ease; D81) are checked against its manifest.
+        const m = useModule(a.module, ["move"], `${ipath}/animation/${k}`);
+        if (a.params !== undefined) checkParams(m, a.params, `${ipath}/animation/${k}/params`);
+      }
+      for (const fx of item.effects ?? []) {
+        const kinds: ReadonlyArray<ModuleKind> = track.kind === "audio" ? ["audio-processor"] : ["effect"];
+        const m = useModule(fx.module, kinds, `${ipath}/effects`);
+        checkParams(m, fx.params, `${ipath}/effects/${fx.module}`);
+      }
+      // The transition's own limits (its module manifest); the timeline rules are in rules.ts.
+      if (item.transitionIn) {
+        const tr = item.transitionIn;
+        const limits = useModule(tr.module, ["transition"], `${ipath}/transitionIn`)?.transition;
+        if (main && index > 0 && limits && (tr.duration < (limits.minFrames ?? 1) || tr.duration > (limits.maxFrames ?? Infinity))) {
+          errors.push(err("transition-length", ipath, `${tr.module} takes ${limits.minFrames} to ${limits.maxFrames} frames`));
+        }
+      }
+    });
+  }
+  errors.push(...timelineProblems(project));
+
+  // Scenes and markers sit inside the video, scenes don't overlap.
+  const scenes = [...(project.scenes ?? [])].sort((a, b) => a.start - b.start);
+  scenes.forEach((s, i) => {
+    if (s.end <= s.start) errors.push(err("scene-range", `/scenes/${s.id}`, "a scene must end after it starts"));
+    if (s.end > duration) errors.push(err("scene-range", `/scenes/${s.id}`, `ends at ${s.end}, after the video ends (${duration})`));
+    if (i > 0 && s.start < scenes[i - 1]!.end) errors.push(err("scene-overlap", `/scenes/${s.id}`, `overlaps "${scenes[i - 1]!.id}"`));
+  });
+  for (const mk of project.markers ?? []) {
+    if (mk.frame > duration) errors.push(err("marker-range", "/markers", `marker at ${mk.frame} is after the video ends (${duration})`));
+  }
+  for (const fx of project.master?.effects ?? []) {
+    const m = useModule(fx.module, ["audio-processor"], "/master/effects");
+    checkParams(m, fx.params, `/master/effects/${fx.module}`);
+  }
+  return errors;
+}
+
+/**
+ * What the module schema can't check across manifests (D80): every text-style look's moves are
+ * installed move modules whose params validate against that move's manifest, and every look in
+ * its `with` is an installed text style. Returns the problems (none for the built-ins: tested).
+ */
+export function lookProblems(modules: Modules): Array<Problem> {
+  const errors: Array<Problem> = [];
+  for (const m of modules.values()) {
+    const look = (m as { look?: { animation?: Record<string, { module?: string; params?: unknown }>; with?: Array<{ look?: string }> } }).look;
+    if (!look) continue;
+    for (const [slot, move] of Object.entries(look.animation ?? {})) {
+      const path = `/${m.id}/look/animation/${slot}`;
+      const target = move?.module ? modules.get(move.module) : undefined;
+      if (!target) errors.push(err("unknown-module", path, `move "${move?.module}" is not installed`));
+      else if (target.kind !== "move") errors.push(err("module-kind", path, `module "${target.id}" is a ${target.kind}, expected move`));
+      else if (target.params && move.params !== undefined) {
+        if (!paramsCache.has(target.id)) paramsCache.set(target.id, ajv.compile(target.params));
+        const check = paramsCache.get(target.id)!;
+        if (!check(move.params)) for (const e of check.errors!) errors.push(err("params", `${path}/params${e.instancePath}`, `${target.id}: ${e.message}`));
+      }
+    }
+    (look.with ?? []).forEach((w, i) => {
+      const other = w.look ? modules.get(w.look) : undefined;
+      if (!other || other.kind !== "text-style") errors.push(err("unknown-module", `/${m.id}/look/with/${i}`, `text style "${w.look}" is not installed`));
+    });
+  }
+  return errors;
+}
