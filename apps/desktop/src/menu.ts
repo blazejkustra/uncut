@@ -39,7 +39,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
       submenu: [
         { role: "about" },
         { type: "separator" },
-        item("Settings…", "CmdOrCtrl+,", { type: "open-setup" }),
+        item("Settings…", "CmdOrCtrl+,", { type: "open-settings" }),
+        item("Agents and Setup…", undefined, { type: "open-setup" }),
         item("Environments…", undefined, { type: "open-environments" }),
         { type: "separator" },
         { role: "services" },
@@ -83,6 +84,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
     {
       role: "help",
       submenu: [
+        item("Keyboard Shortcuts", undefined, { type: "shortcuts" }),
+        { type: "separator" },
         { label: "Uncut on GitHub", click: () => void shell.openExternal(REPO_URL) },
         { label: "Report an Issue…", click: () => void shell.openExternal(`${REPO_URL}/issues/new/choose`) },
         { type: "separator" },

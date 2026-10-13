@@ -193,7 +193,7 @@ export function buildTurn(paths: { logo: string }): Array<Step> {
     ]),
     { tool: "project_check", args: {} },
     { tool: "ui_show", args: { frame: 300, select: ["sticker"], panel: "checks" } },
-    { text: "Built the promo: title card, the race with both recordings held on their last frame, the summary table and the end card, with cozy-3 at a −16 LUFS target. Three texts are under 28 px; see the Checks tab." },
+    { text: "Built the promo: title card, the race with both recordings held on their last frame, the summary table and the end card, with cozy-3 at a −16 LUFS target. Three texts are under 28 px; project_check lists them." },
   ];
 }
 

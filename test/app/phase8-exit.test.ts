@@ -153,6 +153,10 @@ async function openSettingsPlugins() {
   await page.keyboard.down("Meta");
   await page.keyboard.press("Comma");
   await page.keyboard.up("Meta");
+  // ⌘, opens Settings (G8, D119); the agents, capture and plugins setup is one click in.
+  await waitFor("[data-testid=settings]");
+  await page.click("[data-testid=settings-nav-app]");
+  await page.click("[data-testid=settings-setup]");
   await waitFor("[data-testid=onboarding]");
   await page.click("[data-testid=wizard-step-1]");
   await waitFor("[data-testid=plugins]");
@@ -285,11 +289,8 @@ async function exitCheck() {
   assert.deepEqual({ texts: count.texts, words: count.words }, { texts: 1, words: 7 });
   step("turn done: look, tool, both plugins' checks");
 
-  // The editor with the Checks tab: both plugins' rules, by their plugins' names.
-  await page.click("[data-testid=tab-checks]");
-  await waitFor(`[data-testid=check][data-rule='${RULE}']`);
-  await waitFor("[data-testid=check][data-rule='taste.extra.banned-phrases']");
-  assert.equal(await text(`[data-testid=check][data-rule='${RULE}'] [data-testid=check-source]`), "Acme promo");
+  // K1 (D121): the plugins' rules reach the agent's project_check (above); the editor has no Checks tab.
+  assert.equal(await page.$("[data-testid=tab-checks]"), null);
   await page.click("[data-testid=timeline]");
   await page.keyboard.press("Home");
   // Past the headline's fade-in.
@@ -331,10 +332,6 @@ async function exitCheck() {
   await page.click("[data-testid=recent]");
   await waitFor("[data-testid=editor]");
   assert.deepEqual(onDisk(), p1, "it opens unchanged");
-  assert.equal(await page.$(`[data-testid=check][data-rule='${RULE}']`), null);
-  await page.click("[data-testid=tab-checks]");
-  await sleep(500);
-  assert.equal(await page.$(`[data-testid=check][data-rule='${RULE}']`), null, "the removed plugin's rule is gone");
   await exportTo("Phase 8 again.mp4");
   const second = probe(again);
   assert.deepEqual({ ...second, duration: 0 }, { ...first, duration: 0 });

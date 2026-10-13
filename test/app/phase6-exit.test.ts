@@ -7,9 +7,9 @@
 //   frames whose footage holds its last frame, two agent logs, the wordmark, task line, footnote and a
 //   callout; the compare table; the end card wiping in, the music, a −16 LUFS target), project_check
 //   (three texts under 28 px), ui_show.
-// - By hand: the Checks tab's Fix on the task line, the title's letter spacing in the Style tab, the
+// - By hand: the title's letter spacing in the Style tab, the
 //   music's fader in the Mixer.
-// - Turn 2: the remaining checks fixed (the footnotes at 28 px, the long one moved up), project_check: 0.
+// - Turn 2: the checks fixed (the task line and the footnotes at 28 px, the long one moved up), project_check: 0 (K1: no Checks tab).
 // - Export (Standard, Quieter −16 LUFS) vs the reference: length, format, the scene at a dozen times,
 //   SSIM per scene, the phone screens against their source recordings, the held last frames, loudness.
 // - Quit, start again, reopen: ⌘Z takes turn 2 back, ⇧⌘Z redoes it, Undo turn restores the project before it.
@@ -224,18 +224,12 @@ async function exitCheck() {
   assert.equal(itemOf(p1, "end-url")!.text, END_URL);
   assert.ok(!JSON.stringify(p1).includes("argent.example.com"), "the reference's URL is nowhere in the project");
   assert.equal(p1.master?.loudness?.targetLufs, -16);
-  await page.click("[data-testid=tab-checks]");
-  await waitFor("[data-testid=checks-panel]");
-  assert.equal(await page.$eval("[data-testid=checks-count]", (el) => el.textContent), "3");
+  // K1 (D121): no Checks tab; the three warnings are what core projectChecks finds on disk too.
+  assert.equal(projectChecks(onDisk()).filter((c) => c.severity === "warn").length, 3);
+  assert.equal(await page.$("[data-testid=tab-checks]"), null);
 
   step("turn 1 checked");
-  // By hand 1: the Checks tab's Fix on the task line (26 → 28 px).
-  await page.click('[data-testid=check][data-key="small-text:task"] [data-testid=check-fix]');
-  await until(() => itemOf(onDisk(), "task")!.style!.size === 28, "the Checks Fix on the task line");
-  await page.waitForFunction(() => document.querySelector("[data-testid=checks-count]")?.textContent === "2", { timeout: 10000 });
-
-  step("Checks Fix done");
-  // By hand 2: the title's letter spacing in the Style tab (−0.015 em, the reference's tracking).
+  // By hand 1: the title's letter spacing in the Style tab (−0.015 em, the reference's tracking).
   await page.click("[data-testid=bottom-timeline]");
   const tb = (await (await page.$('[data-testid=timeline-item][data-item="title"]'))!.boundingBox())!;
   await page.mouse.click(tb.x + tb.width / 2, tb.y + tb.height / 2);
@@ -248,7 +242,7 @@ async function exitCheck() {
   await until(() => itemOf(onDisk(), "title")!.style!.tracking === -0.015, "the title's letter spacing from the Style tab");
 
   step("Style tab done");
-  // By hand 3: the music's fader in the Mixer, down to about −2 dB (the reference's volume 0.8).
+  // By hand 2: the music's fader in the Mixer, down to about −2 dB (the reference's volume 0.8).
   await page.click("[data-testid=bottom-mixer]");
   await waitFor("[data-testid=mixer-panel]");
   const fader = '[data-testid=mixer-strip][data-track="audio"] [data-testid=mixer-fader]';
@@ -265,9 +259,9 @@ async function exitCheck() {
   const pUi = onDisk();
 
   step("Mixer done");
-  // Turn 2: the checks left (the footnotes), from what project_check says.
+  // Turn 2: the checks left (the task line and the footnotes; the Checks tab's Fix is gone, K1), from what project_check says.
   const left = projectChecks(pUi).filter((c) => c.severity === "warn");
-  assert.deepEqual(left.map((c) => c.key).sort(), ["small-text:footnote", "small-text:sum-note"]);
+  assert.deepEqual(left.map((c) => c.key).sort(), ["small-text:footnote", "small-text:sum-note", "small-text:task"]);
   nextTurn(fixTurn(left.map((c) => ({ rule: c.id, items: [...(c.itemIds ?? [])], fix: c.fix }))));
   const before2 = results().length;
   const t2 = await send("Fix the remaining checks");
@@ -279,8 +273,7 @@ async function exitCheck() {
   assert.equal(check2.warnings, 0, JSON.stringify(check2.checks));
   const p2 = onDisk();
   assert.equal(projectChecks(p2).filter((c) => c.severity === "warn").length, 0);
-  assert.deepEqual([itemOf(p2, "footnote")!.style!.size, itemOf(p2, "sum-note")!.style!.size], [28, 28]);
-  await page.waitForFunction(() => !document.querySelector("[data-testid=checks-count]"), { timeout: 10000 });
+  assert.deepEqual([itemOf(p2, "task")!.style!.size, itemOf(p2, "footnote")!.style!.size, itemOf(p2, "sum-note")!.style!.size], [28, 28, 28]);
   await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame) === 840, { timeout: 10000 });
   // The race on screen for the editor's screenshot.
   await page.click("[data-testid=tab-agent]");

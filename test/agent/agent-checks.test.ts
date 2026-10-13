@@ -230,7 +230,8 @@ test("the tools, their labels and the system prompt's taste and music notes", { 
   assert.match(SYSTEM_PROMPT, /never ·, • or \* between words/);
   assert.match(SYSTEM_PROMPT, /music_add copies one into the project's media/);
   assert.match(SYSTEM_PROMPT, /-16 LUFS/);
-  assert.match(SYSTEM_PROMPT, /ui_show panel "checks"/);
+  // K1 (D121): there is no Checks tab to point the user at.
+  assert.doesNotMatch(SYSTEM_PROMPT, /Checks tab/);
   assert.doesNotMatch(SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf("- Taste")), /swmansion/);
   const prompt = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!);
   assert.match(prompt.system ?? "", /project_check/, "the CLI gets it");
