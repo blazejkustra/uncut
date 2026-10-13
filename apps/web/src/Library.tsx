@@ -268,7 +268,7 @@ function MusicLibrary({ project, online }: { project: Project; online: boolean }
 const clockOf = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 
 /** The frame a component's thumbnail shows (a terminal mid-way, its line typed). */
-const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45 };
+const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45, "component.agent-log": 150, "component.compare-table": 75 };
 
 /**
  * A component's thumbnail (D76): its real HTML (core componentHtml with its default props) laid out

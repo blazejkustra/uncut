@@ -100,9 +100,16 @@ export function audioSpan(track: Track, index: number, start: number): { from: n
 export function sourceAt(project: Pick<Project, "media" | "canvas">, item: Item, local: number): number {
   const fps = project.canvas.fps;
   let frames = (item.in ?? 0) + local * (item.speed ?? 1);
-  const length = item.loop ? project.media.find((m) => m.id === item.media)?.probe?.frames : undefined;
-  if (length && length > 0 && frames >= length) frames %= length;
+  const length = item.loop || item.hold ? project.media.find((m) => m.id === item.media)?.probe?.frames : undefined;
+  if (length && length > 0 && frames >= length) frames = item.loop ? frames % length : length - 1;
   return frames / fps;
+}
+
+/** A held clip (D94) past its media's end: its picture is the last frame and it makes no sound. */
+export function heldPast(project: Pick<Project, "media">, item: Item, local: number): boolean {
+  if (!item.hold || item.loop || item.type !== "clip") return false;
+  const length = project.media.find((m) => m.id === item.media)?.probe?.frames;
+  return !!length && (item.in ?? 0) + local * (item.speed ?? 1) >= length;
 }
 
 /** Whether a track holds anything that can make sound (a clip with sound or an audio item). */
@@ -206,6 +213,8 @@ export function audibleAt(project: Pick<Project, "tracks" | "media" | "canvas">,
       const { from, to } = audioSpan(track, index, start);
       if (f < from || f >= to) return;
       const local = f - start;
+      // A held clip (D94) past its media's end makes no sound (the preview stops its element).
+      if (heldPast(project, item, local)) return;
       out.push({ item, track, gain: on ? itemGain(track, index, local, duck?.(track.id, f) ?? 0) : 0, source: sourceAt(project, item, local), muted: !on });
     });
   }
