@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -825,7 +825,7 @@ export const actions = {
   closeExport: () => set({ exportOpen: false }),
   chooseExportPath: (defaultPath: string) => bridge.chooseSavePath(defaultPath),
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
-  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     revealWhenDone.add(result.value.jobId);
@@ -833,6 +833,13 @@ export const actions = {
     return undefined;
   },
   cancelExport: (jobId: string) => call((c) => c["export.cancel"]({ jobId })),
+  /** D105: just the subtitles as a .srt / .vtt file; the saved file, or the server's refusal. */
+  async exportSubtitles(input: { output: string; overwrite?: boolean }): Promise<{ readonly path: string; readonly cues: number } | { readonly reason?: string; readonly message: string }> {
+    const result = await call((c) => c["export.subtitles"](input));
+    if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
+    set({ exportFolder: input.output.slice(0, input.output.lastIndexOf("/")) || "/" });
+    return result.value;
+  },
 
   /** The Library's Analyze button (D66): loudness and silences of a media item, on demand. */
   async analyzeMedia(mediaId: string) {

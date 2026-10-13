@@ -2,13 +2,16 @@
 // words, "Opens in Finder when it's done". The export itself is a server job (D55): this shows its
 // progress with a Cancel, and closing the dialog doesn't stop it (the top bar keeps the percentage).
 // Without ffmpeg there's nothing to export with, so the dialog shows how to install it instead.
-import type { ExportJob, ExportLoudness, ExportQuality } from "@uncut/contracts";
+// Subtitles (D105), when the project has captions or a Subtitles track: burn them in (default, as
+// before), a .srt / .vtt next to the video, a soft subtitle track, or just the file.
+import type { ExportJob, ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
 import { outputSize } from "@uncut/core/export";
 import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
+import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
 import { FolderOpen, ListChecks, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { warningCount } from "./Checks.tsx";
 import { shortPath } from "../state/format.ts";
@@ -59,8 +62,16 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const LOUDNESS = loudnessCards(target);
   const [name, setName] = useState(fileName(project.name));
   const [folder, setFolder] = useState(exportFolder ?? appInfo.defaultParentDir);
-  const [error, setError] = useState<{ reason?: string | undefined; message: string } | undefined>();
+  const [error, setError] = useState<{ reason?: string | undefined; message: string; subtitles?: boolean } | undefined>();
   const [busy, setBusy] = useState(false);
+  // Subtitles (D105): what the project's captions and Subtitles tracks would export as.
+  const cueCount = useMemo(() => subtitleCues(project as Parameters<typeof subtitleCues>[0]).length, [project]);
+  const [burn, setBurn] = useState(true);
+  const [subFile, setSubFile] = useState(false);
+  const [subTrack, setSubTrack] = useState(false);
+  const [subFormat, setSubFormat] = useState<SubtitleFormat>("srt");
+  const [language, setLanguage] = useState("en");
+  const [savedSubs, setSavedSubs] = useState<string | undefined>();
   // A path the native save panel returned: it already asked before replacing a file there.
   const [confirmed, setConfirmed] = useState<string | undefined>();
   // A finished job stays on screen until "Export again" or the dialog closes.
@@ -85,12 +96,24 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const start = async (overwrite = false) => {
     setBusy(true);
     setError(undefined);
-    const refused = await actions.startExport({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed });
+    const subtitles: ExportSubtitles | undefined = cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
+    const refused = await actions.startExport({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}) });
     setBusy(false);
     if (refused) {
       setError(refused);
       if (refused.reason === "no-ffmpeg") void actions.checkSetup();
     }
+  };
+  /** Subtitles only (D105): the file, named like the video, in the chosen folder; no video. */
+  const subtitlesOnly = async (overwrite = false) => {
+    setBusy(true);
+    setError(undefined);
+    setSavedSubs(undefined);
+    const path = output.replace(/\.mp4$/i, `.${subFormat}`);
+    const result = await actions.exportSubtitles({ output: path, overwrite });
+    setBusy(false);
+    if ("message" in result) setError({ ...result, subtitles: true });
+    else setSavedSubs(`Saved ${baseName(result.path)} (${result.cues} cue${result.cues === 1 ? "" : "s"}).`);
   };
   const change = async () => {
     const chosen = await actions.chooseExportPath(output);
@@ -136,6 +159,15 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <p className="wiz-lead">
           <b className="mono">{baseName(job.output)}</b> in {shortPath(dirName(job.output), appInfo.homeDir)}, {job.width}×{job.height}, {job.seconds.toFixed(1)} s
         </p>
+        {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
+          <p className="wiz-meta" data-testid="export-job-subtitles">
+            {[job.subtitlesFile ? `Subtitles in ${baseName(job.subtitlesFile)}` : "", job.subtitleTrack ? `a soft subtitle track (${SUBTITLE_LANGUAGES.find((l) => l.tag === job.subtitleTrack)?.name ?? job.subtitleTrack})` : "", job.burnCaptions === false ? "captions not drawn into the picture" : ""]
+              .filter(Boolean)
+              .join(", ")
+              .replace(/^a/, "A")}
+            .
+          </p>
+        )}
         <div className="export-status" data-testid="export-status">
           {status}
           {job.phase === "rendering" && <span className="muted">{eta(job.etaSeconds)}</span>}
@@ -251,6 +283,56 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             The master volume ({dbWords(masterDb)}) is heard in the editor and in As mixed; {look.label} evens the loudness out after it.
           </p>
         )}
+        {cueCount > 0 && (
+          <>
+            <div className="group-label export-label">Captions and subtitles</div>
+            <div className="export-subs" data-testid="export-subtitles">
+              <label className="export-sub-row">
+                <input type="checkbox" data-testid="export-burn" checked={burn} onChange={(e) => setBurn(e.target.checked)} />
+                <span>Burn in captions</span>
+                <span className="muted">Drawn into the picture, as in the preview</span>
+              </label>
+              <label className="export-sub-row">
+                <input type="checkbox" data-testid="export-sub-file" checked={subFile} onChange={(e) => setSubFile(e.target.checked)} />
+                <span>Subtitles file (.srt / .vtt) next to the video</span>
+              </label>
+              <label className="export-sub-row">
+                <input type="checkbox" data-testid="export-sub-track" checked={subTrack} onChange={(e) => setSubTrack(e.target.checked)} />
+                <span>Soft subtitle track in the video</span>
+                <select data-testid="export-sub-language" value={language} disabled={!subTrack} onChange={(e) => setLanguage(e.target.value)} title="The track's language">
+                  {SUBTITLE_LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="export-sub-row">
+                <span className="muted">File format</span>
+                <div className="seg" data-testid="export-sub-format">
+                  {(["srt", "vtt"] as const).map((f) => (
+                    <button type="button" key={f} className={f === subFormat ? "active" : ""} data-testid={`export-sub-format-${f}`} data-active={f === subFormat} onClick={() => setSubFormat(f)}>
+                      {f === "srt" ? "SRT" : "WebVTT"}
+                    </button>
+                  ))}
+                </div>
+                <span className="muted" data-testid="export-sub-count">
+                  {cueCount} cue{cueCount === 1 ? "" : "s"}, in the edit's time
+                </span>
+              </div>
+            </div>
+            {!burn && !subFile && !subTrack && (
+              <p className="wiz-meta" data-testid="export-no-captions-note">
+                The video will have no captions: pick a subtitles file or a soft track to keep them.
+              </p>
+            )}
+            {savedSubs && (
+              <p className="wiz-meta" data-testid="export-subtitles-saved">
+                {savedSubs}
+              </p>
+            )}
+          </>
+        )}
         {checks > 0 && (
           // D90: the taste checks never block the export; this only says there's something to look at.
           <p className="wiz-meta export-checks" data-testid="export-checks">
@@ -276,7 +358,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           <div className="inline-error" role="alert" data-testid="export-refused" data-reason={error.reason}>
             {error.message}
             {error.reason === "exists" && (
-              <button type="button" className="btn export-replace" data-testid="export-replace" disabled={busy} onClick={() => void start(true)}>
+              <button type="button" className="btn export-replace" data-testid="export-replace" disabled={busy} onClick={() => void (error.subtitles ? subtitlesOnly(true) : start(true))}>
                 Replace it
               </button>
             )}
@@ -287,6 +369,11 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           <button type="button" className="btn ghost" onClick={actions.closeExport}>
             Cancel
           </button>
+          {cueCount > 0 && (
+            <button type="button" className="btn" data-testid="export-subtitles-only" disabled={busy || !name.trim()} onClick={() => void subtitlesOnly()} title={`Just the subtitles as a .${subFormat} file, no video`}>
+              Subtitles only
+            </button>
+          )}
           <button type="submit" className="btn primary" data-testid="export-start" disabled={busy || !name.trim()}>
             Export
           </button>

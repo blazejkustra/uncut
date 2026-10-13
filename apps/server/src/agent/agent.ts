@@ -14,11 +14,11 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { captionCardList, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -38,6 +38,7 @@ import { checksOut, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRA
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
 import { Exporter } from "../export/exporter.ts";
+import { canonicalPath } from "../export/subtitleSources.ts";
 import { ProjectFormat } from "../project/format.ts";
 import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
@@ -626,9 +627,14 @@ export const layer = Layer.effect(
           media.importForAgent({ openId: r.openId, dir: v.dir, turnId: r.turn.id, paths: plan.files, names: name ? new Map([[plan.files[0]!, name]]) : undefined }).pipe(
             Effect.map((value) => {
               const { snapshot, entries } = value;
+              const subs = value.subtitles ?? [];
               if (snapshot) {
-                const lines = entries.map((entry) => describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project));
-                r.turn.edits.push({ revision: snapshot.revision, summary: entries.length === 1 ? `Imported ${entries[0]!.name}` : `Imported ${entries.length} files`, lines });
+                const lines = [
+                  ...entries.map((entry) => describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)),
+                  ...subs.map((s) => `Imported ${s.cues} subtitle cue${s.cues === 1 ? "" : "s"} from ${basename(s.path)} as track ${s.track}`),
+                ];
+                const count = entries.length + subs.length;
+                r.turn.edits.push({ revision: snapshot.revision, summary: count === 1 ? (entries.length ? `Imported ${entries[0]!.name}` : `Imported subtitles ${basename(subs[0]!.path)}`) : `Imported ${count} files`, lines });
                 persist(r.owner);
                 publish();
                 // The agent may edit from the revision it gets back: user edits made since its last
@@ -655,6 +661,8 @@ export const layer = Layer.effect(
         return textResult({
           ...(snapshot ? { revision: snapshot.revision } : {}),
           imported: entries.map((e) => entryInfo(e, project.canvas.fps)),
+          // Subtitles (D105): a Subtitles text track of plain text items, one per cue, at the edit's frames.
+          ...(outcome.value.subtitles?.length ? { subtitles: outcome.value.subtitles.map((s) => ({ ...s, note: `Text items on track ${s.track}, one per cue; subtitles_export writes them (with any captions) as .srt or .vtt.` })) } : {}),
           ...capSkipped(skippedOut),
           failed,
           ...(entries.length ? { note: "Frames, in and duration are project frames; probe frames is each file's length in them." } : {}),
@@ -1078,6 +1086,46 @@ export const layer = Layer.effect(
     // captions_make (D82): captions from a media's transcript (core planMakeCaptions, the Transcript
     // panel's planner), the words stored where they're heard (the loudness pass, as transcript_edit),
     // as one agent edit on the turn. Gets the transcript like transcript_read.
+    // subtitles_export (D105): the project's subtitles (captions cards and Subtitles tracks, merged
+    // by time) as a .srt or .vtt file; next to project.json unless a path is given. No video.
+    const subtitlesExport = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        if (args.format !== undefined && args.format !== "srt" && args.format !== "vtt") return textResult('format must be "srt" or "vtt".', true);
+        if (args.path !== undefined && (typeof args.path !== "string" || !args.path.trim())) return textResult("path must be an absolute path to a .srt or .vtt file.", true);
+        if (args.overwrite !== undefined && typeof args.overwrite !== "boolean") return textResult("overwrite must be true or false.", true);
+        const project = v.session.project as Project;
+        let path = typeof args.path === "string" ? args.path.trim().replace(/^~(?=\/|$)/, homedir()) : undefined;
+        if (path !== undefined && !isAbsolute(path)) return textResult(`"${args.path}" isn't an absolute path. Pass the full path, like /Users/you/Movies/talk.srt.`, true);
+        const byName = path ? subtitleFormatOf(path) : undefined;
+        if (path && !byName && /\.[^./]+$/.test(basename(path))) return textResult("path must end in .srt or .vtt.", true);
+        if (byName && args.format !== undefined && byName !== args.format) return textResult(`path ends in .${byName} but format is ${String(args.format)}: pass one or make them agree.`, true);
+        const format = byName ?? (args.format as "srt" | "vtt" | undefined) ?? "srt";
+        if (!path) path = join(v.dir, `${project.name.replace(/[/:\\]/g, "-").trim() || "Subtitles"}.${format}`);
+        else if (!byName) path = `${path}.${format}`;
+        // The agent writes inside the project folder only (real paths, as graphic_write); elsewhere is the user's Export dialog.
+        const target = path;
+        const inside = yield* Effect.promise(async () => {
+          const project = await realpath(v.dir).catch(() => v.dir);
+          const real = await canonicalPath(target);
+          return real.startsWith(`${project}${sep}`);
+        });
+        if (!inside) return textResult(`subtitles_export saves inside the project folder only (${v.dir}). Pass a path in it, or leave path out; the user can save the subtitles anywhere from the Export dialog (Subtitles only).`, true);
+        const saved = yield* exporter.saveSubtitles({ output: path, overwrite: args.overwrite === true }).pipe(
+          Effect.map((value) => ({ ok: true as const, value })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+        );
+        if (!saved.ok) return textResult({ refused: saved.error.message, ...(saved.error.reason === "exists" ? { note: "Pass overwrite: true to replace it, or another path." } : {}) }, true);
+        const fps = project.canvas.fps;
+        const cues = subtitleCues(project);
+        return textResult({
+          path: saved.value.path,
+          format: saved.value.format,
+          cues: saved.value.cues,
+          first: cues.slice(0, 5).map((c) => ({ from: c.from, to: c.to, time: `${subtitleTime(c.from, fps, format)} --> ${subtitleTime(c.to, fps, format)}`, text: c.text })),
+          note: "Cue times are the edit's (after cuts), from the captions' cards and Subtitles tracks; the video export can also write this file next to the video or add a soft subtitle track.",
+        });
+      });
+
     const captionsMake = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         const project = v.session.project;
@@ -1502,6 +1550,8 @@ export const layer = Layer.effect(
             return yield* transcriptEdit(r, v, args);
           case "captions_make":
             return yield* captionsMake(r, v, args);
+          case "subtitles_export":
+            return yield* subtitlesExport(v, args);
           case "timeline_edit": {
             const { baseRevision, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

@@ -32,6 +32,8 @@ export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOP
 export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./text/transcript.ts";
 export { activeWord, autoMaxChars, captionBox, captionSegments, checkCaptionLines, CAPTION_LINE_BOUNDS, CAPTION_MIN_S, CAPTION_BRIDGE_S, CAPTION_DEFAULTS, CAPTION_HOLD_S, CAPTION_MODE_NAMES, CAPTION_MODES, captionAt, captionCardAt, captionCardList, captionCards, captionExtent, captionMode, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, planMakeCaptions } from "./text/captions.ts";
 export type { CaptionCard, CaptionEdit, CaptionLines, CaptionMode, CaptionWord, MakeCaptionsPlan, MakeCaptionsRequest } from "./text/captions.ts";
+export { decodeSubtitleBytes, flattenCues, isPlainCue, isSubtitleTrack, MAX_SUBTITLE_CUES, parseSubtitles, planImportSubtitles, SUBTITLE_FORMATS, SUBTITLE_LANGUAGES, subtitleCues, subtitleFormatOf, subtitleLanguageTag, subtitleTime, writeSrt, writeSubtitles, writeVtt } from "./text/subtitles.ts";
+export type { ImportSubtitlesPlan, ParsedCue, SubtitleCue, SubtitleFormat } from "./text/subtitles.ts";
 export { CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, planDisableCheck, projectChecks, readFrames, textLabel } from "./checks/checks.ts";
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
 export { filterMusic, libraryTrackOf, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";

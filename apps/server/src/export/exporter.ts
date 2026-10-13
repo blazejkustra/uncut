@@ -16,8 +16,8 @@ import { access, copyFile, link, mkdir, mkdtemp, readdir, readFile, realpath, re
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
-import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality } from "@uncut/contracts";
-import { decodeEnvelope, denoiseMediaIds, duckMediaIds, targetOfChoice, type SpeechEnvelope } from "@uncut/core";
+import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles } from "@uncut/contracts";
+import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
 import { baseBox, canvasBox, componentHtml, irisRadius, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -52,6 +52,7 @@ import { analyzeLoudness, cachedFor, fingerprint, targetOf, writeCached, type Lo
 import { Projects } from "../project/projects.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "./rasterizer.ts";
 import { which } from "../app/setup.ts";
+import { overwritesImported } from "./subtitleSources.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
 
 export interface ExportInput {
@@ -61,6 +62,10 @@ export interface ExportInput {
   /** With loudness "target": the LUFS (D87). */
   readonly targetLufs?: number | undefined;
   readonly overwrite?: boolean | undefined;
+  /** D105: a subtitles file next to the video and / or a soft track in it. */
+  readonly subtitles?: ExportSubtitles | undefined;
+  /** D105: draw captions and Subtitles tracks into the picture (default true). */
+  readonly burnCaptions?: boolean | undefined;
 }
 
 /** How long an export waits to measure a ducking key's loudness that isn't cached (D85). */
@@ -85,6 +90,55 @@ export interface ExporterShape {
   readonly mediaFrames: (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) => Effect.Effect<ReadonlyArray<MediaFrame>, ExportError>;
   /** contact_sheet (D65): the cells in a grid with their captions, drawn by the rasteriser, as one JPEG. */
   readonly sheetImage: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
+  /** D105: the open project's subtitles as a .srt or .vtt file (the format by the extension), no video. */
+  readonly saveSubtitles: (input: { readonly output: string; readonly overwrite?: boolean | undefined }) => Effect.Effect<SavedSubtitles, ExportError>;
+}
+
+export interface SavedSubtitles {
+  readonly path: string;
+  readonly format: SubtitleFormat;
+  readonly cues: number;
+}
+
+/** Said when there is nothing to put in a subtitles file. */
+export const NO_SUBTITLES = "There are no captions or subtitles to export: make captions (Transcript, Make captions) or import a .srt or .vtt file first.";
+
+/** Write a file into place without leaving half of it: a sibling temp file, then a rename. */
+async function writeInto(path: string, text: string) {
+  const staging = join(dirname(path), `.${basename(path)}.uncut-${randomUUID().slice(0, 8)}`);
+  try {
+    await writeFile(staging, text);
+    await rename(staging, path);
+  } finally {
+    await rm(staging, { force: true });
+  }
+}
+
+/**
+ * D105: the open project's subtitles (core subtitleCues: captions cards and Subtitles tracks, merged
+ * by time) written to `output` (.srt or .vtt), or why not: the same path checks as a video export.
+ */
+export async function saveSubtitlesFile(project: Project, projectDir: string, mediaPath: (m: Media) => string, output: string, overwrite = false): Promise<SavedSubtitles | { readonly reason: "invalid-path" | "exists" | "empty" | "source-media"; readonly message: string }> {
+  const path = output.trim();
+  const format = subtitleFormatOf(path);
+  if (!isAbsolute(path) || !format) return { reason: "invalid-path", message: "Choose where to save the subtitles: a .srt or .vtt file." };
+  const folder = await stat(dirname(path)).then((s) => s.isDirectory(), () => false);
+  if (!folder) return { reason: "invalid-path", message: `The folder ${dirname(path)} doesn't exist.` };
+  const writable = await access(dirname(path), constants.W_OK).then(() => undefined, (error: unknown) => error);
+  if (writable) return { reason: "invalid-path", message: plainFsError(writable, dirname(path)) };
+  const target = await canonical(path);
+  for (const m of project.media) if ((await canonical(mediaPath(m))) === target) return { reason: "source-media", message: `Saving as ${basename(path)} would replace a file this project uses. Choose another name or folder.` };
+  const imported = await overwritesImported(projectDir, path);
+  if (imported) return { reason: "source-media", message: imported };
+  if (!overwrite && (await exists(path))) return { reason: "exists", message: `${basename(path)} already exists in that folder.` };
+  const cues = subtitleCues(project);
+  if (!cues.length) return { reason: "empty", message: NO_SUBTITLES };
+  try {
+    await writeInto(path, writeSubtitles(cues, project.canvas.fps, format));
+  } catch (error) {
+    return { reason: "invalid-path", message: plainFsError(error, dirname(path)) };
+  }
+  return { path, format, cues: cues.length };
 }
 
 export class Exporter extends Context.Service<Exporter, ExporterShape>()("uncut/Exporter") {}
@@ -538,7 +592,16 @@ export const layer = Layer.effect(
 
         const partial = join(temp, "export.mp4");
         const untagged = await untaggedFiles(bin, plan, signal);
-        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, loudness, output: partial });
+        // Subtitles (D105): the cues of the project as it was when the export started, in the edit's time.
+        const cues = job.subtitleTrack || job.subtitlesFile ? subtitleCues(project) : [];
+        let subtitles: { file: string; language: string; show: boolean } | undefined;
+        if (job.subtitleTrack) {
+          // On by default only when the picture has no captions of its own (else players would show them twice).
+          subtitles = { file: join(temp, "subtitles.srt"), language: job.subtitleTrack, show: job.burnCaptions === false };
+          // One cue at a time in an mp4 (mov_text): overlapping cues stacked into one.
+          await writeFile(subtitles.file, writeSubtitles(flattenCues(cues), plan.fps, "srt"));
+        }
+        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, loudness, output: partial, subtitles });
         const graphFile = join(temp, "graph.txt");
         await writeFile(graphFile, cmd.graph);
         const total = plan.frames / plan.fps;
@@ -568,8 +631,19 @@ export const layer = Layer.effect(
         // The destination may have appeared while rendering; replace it only if allowed.
         if (!overwrite && (await exists(job.output))) throw new Error(`${basename(job.output)} appeared in that folder while exporting; the export wasn't moved there.`);
         if (await replacesMedia(job.output, plan)) throw new Error(`Saving as ${basename(job.output)} would replace footage this project uses. Choose another name or folder.`);
+        if (job.subtitlesFile) {
+          const imported = await overwritesImported(job.projectDir, job.subtitlesFile);
+          if (imported) throw new Error(imported);
+        }
+        if (job.subtitlesFile && !overwrite && (await exists(job.subtitlesFile))) throw new Error(`${basename(job.subtitlesFile)} appeared in that folder while exporting; the export wasn't moved there.`);
+        let sidecar: string | undefined;
+        if (job.subtitlesFile) {
+          sidecar = join(temp, basename(job.subtitlesFile));
+          await writeFile(sidecar, writeSubtitles(cues, plan.fps, subtitleFormatOf(job.subtitlesFile) ?? "srt"));
+        }
         try {
           await moveInto(partial, job.output);
+          if (sidecar && job.subtitlesFile) await moveInto(sidecar, job.subtitlesFile);
         } catch (error) {
           throw new Error(plainFsError(error, dirname(job.output)));
         }
@@ -603,6 +677,16 @@ export const layer = Layer.effect(
         });
         if (busy) return yield* new ExportError({ reason: "busy", message: `Another export is already saving to ${basename(output)}. Wait for it, or choose another name.` });
         if (!input.overwrite && (yield* Effect.promise(() => exists(output)))) return yield* new ExportError({ reason: "exists", message: `${basename(output)} already exists in that folder.` });
+        // Subtitles (D105): a file next to the video (same name, .srt / .vtt) and / or a soft track.
+        const subtitlesFile = input.subtitles?.file ? output.replace(/\.mp4$/i, `.${input.subtitles.file}`) : undefined;
+        if ((subtitlesFile || input.subtitles?.track) && !subtitleCues(project).length) return yield* new ExportError({ reason: "empty", message: NO_SUBTITLES });
+        if (subtitlesFile) {
+          const sideTarget = yield* Effect.promise(() => canonical(subtitlesFile));
+          if (media.includes(sideTarget)) return yield* new ExportError({ reason: "source-media", message: `Saving as ${basename(subtitlesFile)} would replace a file this project uses. Choose another name or folder.` });
+          const imported = yield* Effect.promise(() => overwritesImported(dir, subtitlesFile));
+          if (imported) return yield* new ExportError({ reason: "source-media", message: imported });
+          if (!input.overwrite && (yield* Effect.promise(() => exists(subtitlesFile)))) return yield* new ExportError({ reason: "exists", message: `${basename(subtitlesFile)} already exists in that folder.` });
+        }
         if (!(yield* Effect.promise(ffmpegBin))) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to export." });
         const size = outputSize(project.canvas, input.quality);
         const bin = (yield* Effect.promise(ffmpegBin))!;
@@ -611,7 +695,8 @@ export const layer = Layer.effect(
         // Ducking (D85) needs the key media's loudness envelopes, noise removal (D88) its track's:
         // the cached ones now; the job measures the rest before rendering (one quick ffmpeg pass each).
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
-        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) => planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all });
+        const burnCaptions = input.burnCaptions !== false;
+        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) => planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions });
         const plan = replan(envelopes);
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
@@ -634,6 +719,9 @@ export const layer = Layer.effect(
           seconds: Math.round((plan.frames / plan.fps) * 100) / 100,
           startedAt: new Date().toISOString(),
           ...(plan.warnings.length ? { warnings: plan.warnings } : {}),
+          ...(subtitlesFile ? { subtitlesFile } : {}),
+          ...(input.subtitles?.track ? { subtitleTrack: subtitleLanguageTag(input.subtitles.language) } : {}),
+          ...(burnCaptions ? {} : { burnCaptions: false }),
         };
         const controller = new AbortController();
         controllers.set(id, controller);
@@ -695,8 +783,16 @@ export const layer = Layer.effect(
         catch: (error) => new ExportError({ reason: "source-media", message: `Couldn't draw the contact sheet: ${(error as Error).message}` }),
       });
 
+    const saveSubtitles = ({ output, overwrite }: { readonly output: string; readonly overwrite?: boolean | undefined }) =>
+      Effect.gen(function* () {
+        const { dir, project, mediaPath } = yield* current;
+        const saved = yield* Effect.promise(() => saveSubtitlesFile(project, dir, mediaPath, output, overwrite === true));
+        if ("reason" in saved) return yield* new ExportError({ reason: saved.reason, message: saved.message });
+        return saved;
+      });
+
     const busy = () => Effect.runSync(SubscriptionRef.get(jobsRef)).some((j) => j.phase === "queued" || j.phase === "preparing" || j.phase === "rendering");
-    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), busy, renderFrames, mediaFrames, sheetImage });
+    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), busy, renderFrames, mediaFrames, sheetImage, saveSubtitles });
   }),
 );
 

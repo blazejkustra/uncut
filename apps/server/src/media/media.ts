@@ -3,11 +3,11 @@
 // open when the import started, then make poster thumbnails. Footage is referenced by path,
 // never copied (D12). Jobs run one at a time and aren't tied to the request that started them.
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
-import { planReshoot, type Overrun, type Project } from "@uncut/core";
+import { decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -23,6 +23,7 @@ import { probeSvg } from "../export/svg.ts";
 import { runProbe } from "./probe.ts";
 import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
+import { recordSubtitleSources } from "../export/subtitleSources.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
 
 export interface MediaLibraryShape {
@@ -96,6 +97,30 @@ export interface AgentImport {
   readonly entries: ReadonlyArray<MediaEntry>;
   readonly skipped: ReadonlyArray<{ readonly path: string; readonly reason: string }>;
   readonly failed: ReadonlyArray<{ readonly path: string; readonly message: string }>;
+  /** D105: .srt / .vtt files read into a Subtitles text track. */
+  readonly subtitles?: ReadonlyArray<ImportedSubtitles>;
+}
+
+export interface ImportedSubtitles {
+  readonly path: string;
+  readonly track: string;
+  readonly cues: number;
+}
+
+/** A subtitles file bigger than this isn't read (an hour of dense subtitles is ~100 kB). */
+export const MAX_SUBTITLE_BYTES = 10 * 1024 * 1024;
+
+/** A .srt / .vtt file's cues, or why it can't be imported (a sentence). */
+export async function readSubtitleFile(path: string): Promise<{ readonly cues: ReadonlyArray<ParsedCue> } | { readonly problem: string }> {
+  const name = basename(path);
+  try {
+    const s = await stat(path);
+    if (s.size > MAX_SUBTITLE_BYTES) return { problem: `${name} is too big for a subtitles file (over ${MAX_SUBTITLE_BYTES / 1024 / 1024} MB).` };
+    const parsed = parseSubtitles(decodeSubtitleBytes(await readFile(path)), name);
+    return "problem" in parsed ? parsed : { cues: parsed.cues };
+  } catch {
+    return { problem: `${name} couldn't be read.` };
+  }
 }
 
 export class MediaLibrary extends Context.Service<MediaLibrary, MediaLibraryShape>()("uncut/MediaLibrary") {}
@@ -295,6 +320,8 @@ export const layer = Layer.effect(
         const skipped: Array<{ path: string; reason: string; at: number }> = [];
         const failed: Array<{ path: string; message: string; at: number }> = [];
         const todo: Array<{ path: string; real: string; at: number }> = [];
+        const subtitleFiles: Array<{ path: string; at: number; cues: ReadonlyArray<ParsedCue> }> = [];
+        const subtitles: Array<ImportedSubtitles & { at: number }> = [];
         const seen = new Set<string>();
         for (const [at, path] of paths.entries()) {
           const problem = yield* precheck(path);
@@ -308,6 +335,13 @@ export const layer = Layer.effect(
             continue;
           }
           seen.add(real);
+          // Subtitles (D105) aren't media: read here, added as a Subtitles text track in the same edit.
+          if (subtitleFormatOf(path)) {
+            const read = yield* Effect.promise(() => readSubtitleFile(path));
+            if ("problem" in read) failed.push({ path, message: read.problem, at });
+            else subtitleFiles.push({ path, at, cues: read.cues });
+            continue;
+          }
           todo.push({ path, real, at });
         }
 
@@ -374,17 +408,36 @@ export const layer = Layer.effect(
                 },
               });
             }
-            if (entries.length === 0) return undefined;
+            // Subtitles files (D105): each a new Subtitles track (core planImportSubtitles), planned on the
+            // project as it will be (the tracks planned before it count), in the same edit as the media.
+            subtitles.length = 0;
+            const subtitleOps: Array<unknown> = [];
+            let view = raw as Project;
+            for (const f of subtitleFiles) {
+              const plan = planImportSubtitles(view, f.cues, basename(f.path), taken);
+              if ("problem" in plan) {
+                if (!failed.some((x) => x.path === f.path)) failed.push({ path: f.path, message: plan.problem, at: f.at });
+                continue;
+              }
+              subtitleOps.push(...plan.ops);
+              subtitles.push({ path: f.path, track: plan.trackId, cues: plan.cues, at: f.at });
+              const added = plan.ops[0] as { track: Project["tracks"][number] };
+              view = { ...view, tracks: [{ ...added.track, items: [] }, ...view.tracks] };
+            }
+            const count = entries.length + subtitles.length;
+            if (count === 0) return undefined;
             return {
-              ops: entries.map(({ entry }) => ({ op: "add_media", media: entry })),
-              summary: entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import ${entries.length} files`,
+              ops: [...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps],
+              summary: count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
             };
           }),
           options.agent,
         );
 
+        // Imported subtitles files are never written over by an export (D105).
+        if (snapshot && subtitles.length) yield* Effect.promise(() => recordSubtitleSources(dir, subtitles.map((x) => x.path)).catch(() => {}));
         const inOrder = <A extends { at: number }>(list: Array<A>) => [...list].sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);
-        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed) });
+        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed), ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}) });
 
         // Posters after the edit (tiles show an icon until theirs exists), into the folder of
         // the project they belong to.
@@ -401,6 +454,7 @@ export const layer = Layer.effect(
 
         const result: MediaImportResult = {
           imported: entries.map(({ entry, info }) => ({ path: entry.path, id: entry.id, name: entry.name, via: info.via })),
+          ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}),
           skipped: inOrder(skipped),
           failed: inOrder(failed),
         };

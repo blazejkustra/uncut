@@ -118,7 +118,7 @@ const appInfo: AppInfo = {
 
 const sendMenuCommand = (command: MenuCommand) => win?.webContents.send(MENU_COMMAND_CHANNEL, command);
 
-const MEDIA_EXTENSIONS = ["mp4", "mov", "m4v", "m4a", "mp3", "wav", "aac", "aif", "aiff", "flac", "png", "jpg", "jpeg", "heic", "gif", "webp"];
+const MEDIA_EXTENSIONS = ["mp4", "mov", "m4v", "m4a", "mp3", "wav", "aac", "aif", "aiff", "flac", "png", "jpg", "jpeg", "heic", "gif", "webp", "srt", "vtt"];
 
 /** Native multi-select for footage, music and images; [] when cancelled. */
 async function chooseMedia(): Promise<Array<string>> {
@@ -133,7 +133,7 @@ async function chooseMedia(): Promise<Array<string>> {
     defaultPath: appInfo.defaultParentDir,
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Video, audio and images", extensions: MEDIA_EXTENSIONS },
+      { name: "Video, audio, images and subtitles", extensions: MEDIA_EXTENSIONS },
       { name: "All files", extensions: ["*"] },
     ],
   });

@@ -34,6 +34,7 @@ export const RPC_METHODS = {
   exportStart: "export.start",
   exportJobs: "export.jobs",
   exportCancel: "export.cancel",
+  exportSubtitles: "export.subtitles",
   analysisStart: "analysis.start",
   analysisJobs: "analysis.jobs",
   analysisCancel: "analysis.cancel",
@@ -202,6 +203,8 @@ export interface Waveform {
 /** What an import did, file by file. The project change itself arrives as a snapshot. */
 export const MediaImportResult = Schema.Struct({
   imported: Schema.Array(Schema.Struct({ path: Schema.String, id: Schema.String, name: Schema.String, via: Schema.String })),
+  /** D105: .srt / .vtt files read into a Subtitles text track (no media is added for them). */
+  subtitles: Schema.optional(Schema.Array(Schema.Struct({ path: Schema.String, track: Schema.String, cues: Schema.Number }))),
   skipped: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
   failed: Schema.Array(Schema.Struct({ path: Schema.String, message: Schema.String })),
 });
@@ -563,8 +566,18 @@ export const ExportJob = Schema.Struct({
   error: Schema.optional(Schema.String),
   /** What the export draws differently from the preview (an animation past the frame cap, a graphic it couldn't read), as sentences (D76). */
   warnings: Schema.optional(Schema.Array(Schema.String)),
+  /** D105: the subtitles file written next to the video (.srt or .vtt). */
+  subtitlesFile: Schema.optional(Schema.String),
+  /** D105: the video carries a soft subtitle track (mov_text) with this ISO 639-2 language tag. */
+  subtitleTrack: Schema.optional(Schema.String),
+  /** D105: false when captions and Subtitles tracks aren't drawn into the picture. */
+  burnCaptions: Schema.optional(Schema.Boolean),
 });
 export type ExportJob = typeof ExportJob.Type;
+
+/** D105: subtitles with an export: a file next to the video, a soft track in it (with its language: en, pl, eng...). */
+export const ExportSubtitles = Schema.Struct({ file: Schema.optional(Schema.Literals(["srt", "vtt"])), track: Schema.optional(Schema.Boolean), language: Schema.optional(Schema.String) });
+export type ExportSubtitles = typeof ExportSubtitles.Type;
 
 export class ExportError extends Schema.TaggedError<ExportError>()("ExportError", {
   reason: Schema.Literals(["no-project", "no-ffmpeg", "exists", "invalid-path", "empty", "missing-media", "source-media", "busy", "unknown-job"]),
@@ -762,7 +775,7 @@ const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, { payload: Schema.Str
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
 const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
-  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean) }),
+  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
 });
@@ -770,6 +783,12 @@ const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
 const ExportJobsRpc = Rpc.make(RPC_METHODS.exportJobs, { payload: Empty, success: Schema.Array(ExportJob), stream: true });
 // Stops a queued or running export; its temp files and partial output are removed.
 const ExportCancelRpc = Rpc.make(RPC_METHODS.exportCancel, { payload: Schema.Struct({ jobId: Schema.String }) });
+/** D105: just the subtitles, as a .srt or .vtt file (the format by its extension); no video. */
+const ExportSubtitlesRpc = Rpc.make(RPC_METHODS.exportSubtitles, {
+  payload: Schema.Struct({ output: Schema.String, overwrite: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ path: Schema.String, format: Schema.Literals(["srt", "vtt"]), cues: Schema.Number }),
+  error: ExportError,
+});
 
 // Analyses a media item of the open project (all analyzers when none are named). A cached result
 // or a file without sound is "done" at once; otherwise a job is queued (or an equal one joined).
@@ -904,6 +923,7 @@ export const WsRpcGroup = RpcGroup.make(
   ExportStartRpc,
   ExportJobsRpc,
   ExportCancelRpc,
+  ExportSubtitlesRpc,
   AgentSubscribeRpc,
   AgentSendRpc,
   AgentCancelRpc,
