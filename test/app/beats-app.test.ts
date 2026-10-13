@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { clickTrack, writeWav } from "../helpers/beats-audio.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -73,7 +73,7 @@ after(async () => {
 test("Find beats in the inspector, ticks on the audio item, a dragged title and the playhead snap to beats", { skip, timeout: 180000 }, async () => {
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   page = app.page;
-  await waitFor("[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor("[data-testid=editor]");
   await waitFor('[data-item="song"]');

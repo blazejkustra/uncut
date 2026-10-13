@@ -10,7 +10,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE_CLAUDE = resolve("test/helpers/fake-claude.ts");
@@ -87,7 +87,7 @@ test("Add plugin from a folder, allow it in the dialog, then the agent sees and 
 
     // A project, and a turn: the agent's tools/list has the plugin's tools, and it calls one.
     await page.keyboard.press("Escape");
-    await waitFor(page, "[data-testid=welcome]");
+    await waitForWelcome(page);
     await page.click("[data-testid=new-project]");
     await waitFor(page, "[data-testid=new-project-form]");
     await page.click("[data-testid=choose-folder]");

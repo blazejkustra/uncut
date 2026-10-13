@@ -11,6 +11,13 @@
 // (<project>/media/captures, where takes are written) and uncut/flowsDir (<project>/flows). A
 // finished take is declared for Uncut to import in structuredContent.uncut ({ media } or, for a
 // re-shoot, { replace }); the plugin itself never edits the project.
+//
+// The reference process plugin (D104): read it with the contract next to it,
+// packages/plugin-sdk/src/index.ts (serve, ToolContext, ToolResult, ToolError, UncutDeclaration).
+// The file's parts, top to bottom: running argent (helpers, one process group per call), the
+// devices, recording, flows, the tools the agent sees (argent_list_devices, argent_record,
+// argent_reshoot) and the Capture tab's own (argent_capture_*), then serve(). A new plugin starts
+// from plugins/catalog/_template (`pnpm plugin:new <id>`), not from this file.
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat } from "node:fs/promises";

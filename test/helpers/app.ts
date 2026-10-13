@@ -1,7 +1,7 @@
 // Launches an Uncut desktop build with DevTools exposed and connects puppeteer to its window.
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 
@@ -179,9 +179,37 @@ class LaunchFailure extends Error {
   }
 }
 
+/**
+ * Waits (up to 10 s) until Electron's single-instance lock in a profile (userData: SingletonLock, a
+ * symlink to "<host>-<pid>") is gone or names a process that's gone. An app that just exited can
+ * leave it for a moment, and a launch that finds it held quits at once.
+ */
+export async function lockReleased(profile: string, timeoutMs = 10000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    let target: string;
+    try {
+      target = readlinkSync(join(profile, "SingletonLock"));
+    } catch {
+      return; // no lock
+    }
+    const pid = Number(/-(\d+)$/.exec(target)?.[1]);
+    if (!Number.isInteger(pid) || !alive(pid)) return;
+    await sleep(100);
+  }
+}
+
 // How long the app may take to open its DevTools port: a loaded machine (a full test run, an
 // export in another test) can take well over the old 20 s.
 const CONNECT_TIMEOUT_MS = Number(process.env.UNCUT_TEST_LAUNCH_MS ?? 60000);
+
+// How long the window may take to be ready, and then to show its first screen (Welcome waits for
+// the server's Recents): under a full test run this is well past the 10 s a single test needs.
+const READY_TIMEOUT_MS = 45000;
+export const WELCOME_TIMEOUT_MS = Number(process.env.UNCUT_TEST_LAUNCH_MS ?? 60000);
+
+/** Waits for the Welcome screen with the launch tolerance (not a test's usual 10-15 s). */
+export const waitForWelcome = (page: Page, timeout = WELCOME_TIMEOUT_MS) => page.waitForSelector("[data-testid=welcome]", { timeout });
 
 /**
  * Starts the packaged app and attaches to its window. When it fails, the error says why: the exit
@@ -241,6 +269,8 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
     const timer = setTimeout(() => proc.kill("SIGKILL"), 10000);
     if (!spawnError) await exited;
     clearTimeout(timer);
+    // The next launch on this data dir must not find the single-instance lock still held.
+    if (extra.UNCUT_DATA_DIR) await lockReleased(join(extra.UNCUT_DATA_DIR, "electron"));
   };
   const printed = () => {
     const text = output.trim();
@@ -277,7 +307,7 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
     const errors: Array<string> = [];
     page.on("pageerror", (e) => errors.push((e as Error).message));
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-    await page.waitForFunction(() => document.body.dataset.ready, { timeout: 45000 });
+    await page.waitForFunction(() => document.body.dataset.ready, { timeout: READY_TIMEOUT_MS });
     return { page, browser, proc, errors, close: kill, exited, output: () => output };
   } catch (error) {
     await kill();

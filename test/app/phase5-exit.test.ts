@@ -27,7 +27,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { fingerprint, writeCached } from "../../apps/server/src/analysis/analysis.ts";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { CUT_SENTENCE, expectedCuts, FPS, makeFixture, talkTranscript, type Fixture } from "../helpers/phase5-fixture.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -204,7 +204,7 @@ async function exitCheck() {
   const saveAs = join(root, "out", "Talk cut.mp4");
   app = await launchApp({ command: APP, env: env([join(root, "projects"), saveAs]) });
   page = app.page;
-  await waitFor("[data-testid=welcome]");
+  await waitForWelcome(page);
   await page.click("[data-testid=new-project]");
   await waitFor("[data-testid=new-project-form]");
   await page.click("[data-testid=choose-folder]");
