@@ -244,7 +244,7 @@
             "media": "m-argent-logo"
           },
             "title": "Argent",
-            "url": "argent.swmansion.com"
+            "url": "argent.example.com"
           },
           "transitionIn": {
             "module": "transition.crossfade",

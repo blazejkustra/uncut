@@ -1,0 +1,33 @@
+# On a v* tag: build the unsigned (ad-hoc signed) dmg, keep it as an artifact and attach it to a
+# draft release. Developer ID signing and notarization come later.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # publish never: electron-builder doesn't upload anything itself; the steps below do.
+      - run: pnpm --filter @uncut/desktop exec electron-builder --config electron-builder.yml --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Uncut-dmg
+          path: dist/*.dmg
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes

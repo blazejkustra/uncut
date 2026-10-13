@@ -222,7 +222,7 @@ async function exitCheck() {
   assert.equal((itemOf(p1, "log-45")!.props!.lines as Array<unknown>).length, ref.get("log-opus")!.props!.lines.length);
   assert.deepEqual(itemOf(p1, "table")!.props!.rows, ref.get("sum-table")!.props!.rows);
   assert.equal(itemOf(p1, "end-url")!.text, END_URL);
-  assert.ok(!JSON.stringify(p1).includes("swmansion.com"), "no swmansion.com anywhere in the project");
+  assert.ok(!JSON.stringify(p1).includes("argent.example.com"), "the reference's URL is nowhere in the project");
   assert.equal(p1.master?.loudness?.targetLufs, -16);
   await page.click("[data-testid=tab-checks]");
   await waitFor("[data-testid=checks-panel]");

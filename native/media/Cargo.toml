@@ -3,6 +3,9 @@ name = "uncut-media"
 version = "0.0.1"
 edition = "2021"
 publish = false
+license = "MIT"
+description = "Uncut's media core: probing and frame access for the editor."
+repository = "https://github.com/blazejkustra/uncut"
 
 [[bin]]
 name = "uncut-media"

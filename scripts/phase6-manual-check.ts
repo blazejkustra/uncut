@@ -146,7 +146,7 @@ try {
   checks.push(["a comparison table or chart", items.some((i) => i.component === "component.compare-table" || i.component === "component.chart")]);
   const texts = items.filter((i) => i.type === "text").map((i) => i.text ?? "");
   const shown = [...texts, ...items.filter((i) => i.type === "component").map((i) => JSON.stringify(i.props ?? {}))];
-  checks.push([`a text says ${END_URL}, and nothing on screen says swmansion.com`, texts.some((t) => t.includes(END_URL)) && !shown.some((t) => /swmansion\.com/.test(t))]);
+  checks.push([`a text says ${END_URL}, and nothing on screen says argent.example.com`, texts.some((t) => t.includes(END_URL)) && !shown.some((t) => /argent\.example\.com/.test(t))]);
   checks.push(["library music with fades", items.some((i) => i.type === "audio" && (i.fadeIn ?? 0) > 0 && (i.fadeOut ?? 0) > 0)]);
 
   // Export: Standard, the project's −16 LUFS target.

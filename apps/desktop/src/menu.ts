@@ -1,8 +1,23 @@
 // The macOS menu. Main doesn't talk to the server, so the renderer reports what's on screen
 // (AppState) and the menu is rebuilt from it; menu picks go back to the renderer as commands.
-import { app, Menu, type MenuItemConstructorOptions } from "electron";
+import path from "node:path";
+
+import { app, Menu, shell, type MenuItemConstructorOptions } from "electron";
 
 import type { AppState, MenuCommand } from "./ipc.ts";
+
+export const REPO_URL = "https://github.com/blazejkustra/uncut";
+
+/**
+ * Help › Licence and Third-Party Notices (D112): the copies shipped in Resources when packaged
+ * (as .txt so they open in a text viewer), the repository's on GitHub in dev.
+ */
+const openLegal = (name: "LICENSE" | "THIRD_PARTY_NOTICES") => {
+  if (!app.isPackaged) return void shell.openExternal(`${REPO_URL}/blob/main/${name}`);
+  void shell.openPath(path.join(process.resourcesPath, `${name}.txt`)).then((error) => {
+    if (error) void shell.openExternal(`${REPO_URL}/blob/main/${name}`);
+  });
+};
 
 export function setAppMenu(state: AppState, send: (command: MenuCommand) => void) {
   // The shortcut is shown but not registered: the renderer handles these keys itself (it
@@ -65,6 +80,23 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
     },
     ...(app.isPackaged ? [] : [{ role: "viewMenu" } as MenuItemConstructorOptions]),
     { role: "windowMenu" },
+    {
+      role: "help",
+      submenu: [
+        { label: "Uncut on GitHub", click: () => void shell.openExternal(REPO_URL) },
+        { label: "Report an Issue…", click: () => void shell.openExternal(`${REPO_URL}/issues/new/choose`) },
+        { type: "separator" },
+        { label: "Licence", click: () => openLegal("LICENSE") },
+        { label: "Third-Party Notices", click: () => openLegal("THIRD_PARTY_NOTICES") },
+      ],
+    },
   ];
+  app.setAboutPanelOptions({
+    applicationName: "Uncut",
+    applicationVersion: app.getVersion(),
+    copyright: "Copyright 2026 Błażej Kustra and Uncut contributors. MIT licence.",
+    credits: "github.com/blazejkustra/uncut",
+    website: REPO_URL,
+  });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
