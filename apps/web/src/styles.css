@@ -147,7 +147,7 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 /* A clip's box (D75): the wrapper clips and rounds the picture; core places both per frame (full frame by default). */
 .pv-box { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; }
 .pv-box > video, .pv-box > img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; max-width: none; }
-.pv-box.sel-clip { cursor: move; }
+.pv-box.sel-clip, .pv-comp.sel-clip { cursor: move; }
 .pv-clip-sel { position: absolute; outline: calc(1px / var(--pv-scale)) solid var(--select); pointer-events: none; }
 .pv-handle { position: absolute; width: calc(10px / var(--pv-scale)); height: calc(10px / var(--pv-scale)); margin: calc(-5px / var(--pv-scale)) 0 0 calc(-5px / var(--pv-scale)); background: #fff; border: calc(1px / var(--pv-scale)) solid var(--select); border-radius: 2px; pointer-events: auto; box-sizing: border-box; }
 .pv-handle[data-handle=nw], .pv-handle[data-handle=se] { cursor: nwse-resize; }
@@ -302,6 +302,8 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .clip .strip { position: absolute; inset: 0; background-repeat: repeat-x; background-size: auto 100%; opacity: 0.85; }
 .clip.text { background: #3b2f5c; border-color: #5a4a8a; }
 .clip.audio { background: #17352a; border-color: #24503a; }
+.clip.component { background: #1d3049; border-color: #2c4a70; }
+.clip.graphic { background: #46301c; border-color: #6a4a2c; }
 .clip.selected { border-color: var(--select); box-shadow: inset 0 0 0 1px var(--select); }
 
 /* Add to timeline: a button on the tile's thumbnail, shown on hover. */
@@ -609,3 +611,20 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .key-btn.on svg { fill: currentColor; }
 .seg.fit { margin-top: 8px; }
 .seg.fit button { flex: 1; }
+
+/* Components in the Elements tab (D76): the real HTML, scaled into the tile. */
+.comp-thumb { background: linear-gradient(135deg, #2b2e36, #17181c); }
+.comp-thumb-inner { position: absolute; left: 50%; top: 50%; transform-origin: 50% 50%; pointer-events: none; }
+.comp-thumb-inner > div { position: absolute; inset: 0; }
+.comp-thumb-screen { position: absolute; background: linear-gradient(160deg, #3d6fd8, #8a4fd1 60%, #e07a5f); }
+.comp-tile .tile-name { padding-bottom: 6px; }
+/* Graphic items in the preview (D78): the sandboxed document, clicks go to the wrapper. */
+.pv-graphic { position: absolute; inset: 0; }
+.pv-graphic iframe { position: absolute; left: 0; top: 0; border: 0; background: transparent; pointer-events: none; color-scheme: normal; }
+.export-warnings { margin: 8px 0; padding: 6px 8px; border-radius: var(--radius-sm); background: rgb(245 194 107 / 10%); color: #e9c47e; line-height: 1.4; }
+.param-list { display: flex; flex-direction: column; gap: 6px; }
+.param-row { display: flex; gap: 4px; align-items: center; }
+.param-row .field.input { min-width: 0; flex: 1; }
+.param-row .num-field { flex: 0 0 76px; }
+.param-row .check-row { flex: none; font-size: 11px; }
+.mono-area { font-family: var(--mono); font-size: 12px; }

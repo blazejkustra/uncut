@@ -198,9 +198,12 @@
           "duration": 150,
           "props": {
             "title": "claude",
-            "prompt": "test the login flow on iOS",
+            "prompt": ">",
             "typeFrom": 10,
-            "typeTo": 70
+            "speed": 13,
+            "lines": [
+              { "text": "test the login flow on iOS", "kind": "input" }
+            ]
           },
           "transitionIn": {
             "module": "transition.push-left",
@@ -215,7 +218,7 @@
           "in": 30,
           "duration": 360,
           "props": {
-            "device": "iphone-16-pro"
+            "device": "phone"
           },
           "transitionIn": {
             "module": "transition.crossfade",
@@ -240,7 +243,7 @@
             "logo": {
             "media": "m-argent-logo"
           },
-            "line": "Argent",
+            "title": "Argent",
             "url": "argent.swmansion.com"
           },
           "transitionIn": {

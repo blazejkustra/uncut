@@ -38,9 +38,14 @@ export function rasterizerCommand(
   return { bin, args: [entry, "--uncut-render"] };
 }
 
+/** Draw `html` (with `css`) on a transparent width×height page, or a frame of a graphic's document (D78: render(t, info) called), and save it to `out`. */
+export type RasterJob =
+  | { readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string }
+  | { readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string };
+
 export interface Rasterizer {
-  /** Draw `html` (with `css`) on a transparent width×height page and save it to `out` as a PNG. */
-  readonly render: (job: { width: number; height: number; css: string; html: string; out: string }) => Promise<void>;
+  /** Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). */
+  readonly render: (job: RasterJob) => Promise<void>;
   /** Stop it (SIGKILL if it doesn't go within a second). Resolves once it's gone. */
   readonly close: () => Promise<void>;
   readonly pid: number | undefined;

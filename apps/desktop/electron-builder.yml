@@ -15,6 +15,9 @@ extraResources:
     to: server/mcp.mjs
   - from: ../../native/media/target/release/uncut-media
     to: bin/uncut-media
+  # The bundled DM Sans / DM Mono are inlined in the renderer and rasteriser (D77); their licence ships with them.
+  - from: ../../assets/fonts/OFL.txt
+    to: fonts/OFL.txt
   # The server validates projects against these; schemas are bundled into server.mjs.
   - from: ../../spec/modules/builtin
     to: modules/builtin

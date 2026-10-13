@@ -14,10 +14,10 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, copyFile, link, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality } from "@uncut/contracts";
-import { baseBox, isPlainBox, layout, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { baseBox, componentHtml, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -39,7 +39,10 @@ import {
   RASTER_CSS,
   sourceFramePick,
   graphFileArgs,
+  MEDIA_TOKEN,
+  mediaToken,
   silentFailure,
+  svgClipHtml,
   untaggedFilter,
   type Caps,
   type ExportPlan,
@@ -61,6 +64,8 @@ export interface ExportInput {
 export interface RenderedFrame {
   readonly frame: number;
   readonly jpeg: Buffer;
+  /** What this frame leaves out (a graphic whose file couldn't be read), as sentences. */
+  readonly notes?: ReadonlyArray<string>;
 }
 
 export interface ExporterShape {
@@ -132,6 +137,55 @@ export function plainFsError(error: unknown, where: string): string {
     default:
       return (error as Error)?.message || "The export stopped unexpectedly.";
   }
+}
+
+/**
+ * A project's graphic files (D78), read once: src → its HTML. Only files inside the project's
+ * graphics/ folder (by realpath, so a symlink can't reach out), named as the format says, at most
+ * MAX_GRAPHIC_BYTES; anything else is left out (the plan then warns that it isn't drawn).
+ */
+export async function readGraphics(dir: string, project: Project): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const srcs = new Set(project.tracks.flatMap((t) => t.items).filter((i) => i.type === "graphic" && typeof i.src === "string").map((i) => i.src!));
+  if (!srcs.size) return out;
+  const folder = await realpath(join(dir, "graphics")).catch(() => undefined);
+  const home = await realpath(dir).catch(() => undefined);
+  // A graphics folder that is a symlink out of the project is no source of graphics.
+  if (!folder || !home || !folder.startsWith(`${home}/`)) return out;
+  for (const src of srcs) {
+    if (!GRAPHIC_SRC.test(src)) continue;
+    try {
+      const real = await realpath(resolve(dir, src));
+      if (!real.startsWith(`${folder}/`)) continue;
+      const s = await stat(real);
+      if (!s.isFile() || s.size > MAX_GRAPHIC_BYTES) continue;
+      out.set(src, await readFile(real, "utf8"));
+    } catch {}
+  }
+  return out;
+}
+
+/** Images a component can show (as data: URLs in the rasteriser): what Chromium decodes. TIFF and HEIC it doesn't, so the Inspector doesn't offer them (core COMPONENT_IMAGE). */
+const IMAGE_MIME: Readonly<Record<string, string>> = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp" };
+const BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const TOKEN = new RegExp(`${MEDIA_TOKEN}([a-z0-9][a-z0-9-]*)`, "g");
+
+/**
+ * HTML from the plan with each media placeholder (a component's logo, an SVG clip) replaced by the
+ * file as a data: URL, which is all the rasteriser page may load. A file it can't read (or a kind
+ * Chromium can't show) becomes a transparent pixel. `cache` keeps each file's URL for the run.
+ */
+async function withMedia(html: string, project: Project, mediaPath: (m: Media) => string, cache: Map<string, string>): Promise<string> {
+  const ids = [...new Set([...html.matchAll(TOKEN)].map((m) => m[1]!))];
+  for (const id of ids) {
+    if (cache.has(id)) continue;
+    const media = project.media.find((m) => m.id === id);
+    const mime = media ? IMAGE_MIME[extname(media.path).toLowerCase()] : undefined;
+    let url = BLANK_PIXEL;
+    if (media && mime) url = await readFile(mediaPath(media)).then((b) => `data:${mime};base64,${b.toString("base64")}`, () => BLANK_PIXEL);
+    cache.set(id, url);
+  }
+  return html.replace(TOKEN, (_, id: string) => cache.get(id) ?? BLANK_PIXEL);
 }
 
 /** A path as the file system knows it (symlinks resolved), the parent's when it doesn't exist yet. */
@@ -326,19 +380,38 @@ export const layer = Layer.effect(
     };
 
     /** Draw every raster layer (and the canvas colour) with the rasteriser, into `dir`. */
-    const rasterise = async (r: Rasterizer, plan: ExportPlan, dir: string, signal: AbortSignal) => {
+    const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal) => {
       const { width, height } = plan.canvas;
       const background = join(dir, "background.png");
       await r.render({ width, height, css: RASTER_CSS, html: plan.backgroundHtml, out: background });
       const rasters = new Map<VisualLayer, RasterOutput>();
+      const urls = new Map<string, string>();
       for (const [k, layer] of plan.visuals.entries()) {
         if (signal.aborted) throw new Cancelled();
-        if (layer.kind !== "raster") continue;
+        if (layer.kind !== "raster" && layer.kind !== "graphic") continue;
         const states: Array<string> = [];
-        for (const [j, html] of layer.states.entries()) {
-          const out = join(dir, `l${k}-s${j}.png`);
-          await r.render({ width, height, css: RASTER_CSS, html, out });
-          states.push(out);
+        let frames: ReadonlyArray<number> = [];
+        if (layer.kind === "graphic") {
+          // A graphic (D78): each frame it shows drawn once, render(t) called with t in seconds from its start.
+          const drawn = new Map<number, number>();
+          for (const local of layer.frames) {
+            if (drawn.has(local)) continue;
+            if (signal.aborted) throw new Cancelled();
+            const out = join(dir, `l${k}-g${local}.png`);
+            await r.render({ kind: "graphic", width, height, doc: layer.doc, t: local / plan.fps, info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local), out, name: `"${layer.item.name ?? layer.item.id}" (${layer.item.src})` }).catch((error: Error) => {
+              throw new Error(`The graphic "${layer.item.name ?? layer.item.id}" (${layer.item.src}) couldn't be drawn at ${(local / plan.fps).toFixed(2)} s: ${error.message.replace(/^The text renderer failed: /, "")}`);
+            });
+            drawn.set(local, states.length);
+            states.push(out);
+          }
+          frames = layer.frames.map((local) => drawn.get(local)!);
+        } else {
+          for (const [j, html] of layer.states.entries()) {
+            const out = join(dir, `l${k}-s${j}.png`);
+            await r.render({ width, height, css: RASTER_CSS, html: await withMedia(html, project, mediaPath, urls), out });
+            states.push(out);
+          }
+          frames = layer.frames;
         }
         if (states.length === 1) {
           rasters.set(layer, { kind: "still", png: states[0]! });
@@ -347,13 +420,13 @@ export const layer = Layer.effect(
         // One file per frame, each a hard link to its look: exact at every animation frame.
         const folder = join(dir, `l${k}`);
         await mkdir(folder);
-        for (const [i, s] of layer.frames.entries()) await link(states[s]!, join(folder, `${String(i).padStart(6, "0")}.png`));
+        for (const [i, s] of frames.entries()) await link(states[s]!, join(folder, `${String(i).padStart(6, "0")}.png`));
         rasters.set(layer, { kind: "sequence", pattern: join(folder, "%06d.png") });
       }
       return { background, rasters };
     };
 
-    const runJob = async (job: ExportJob, plan: ExportPlan, overwrite: boolean, signal: AbortSignal) => {
+    const runJob = async (job: ExportJob, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, overwrite: boolean, signal: AbortSignal) => {
       const started = Date.now();
       let temp: string | undefined;
       let rasterizer: Rasterizer | undefined;
@@ -372,7 +445,7 @@ export const layer = Layer.effect(
         rasterizer = await startRasterizer(command);
         const onAbort = () => void rasterizer?.close();
         signal.addEventListener("abort", onAbort, { once: true });
-        const { background, rasters } = await rasterise(rasterizer, plan, temp, signal);
+        const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal);
         signal.removeEventListener("abort", onAbort);
         await rasterizer.close();
         rasterizer = undefined;
@@ -461,7 +534,8 @@ export const layer = Layer.effect(
         const size = outputSize(project.canvas, input.quality);
         const bin = (yield* Effect.promise(ffmpegBin))!;
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
-        const plan = planExport(sized, { mediaPath, ...size });
+        const graphics = yield* Effect.promise(() => readGraphics(dir, project));
+        const plan = planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src) });
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
         if (missing) return yield* new ExportError({ reason: "missing-media", message: missing });
@@ -480,6 +554,7 @@ export const layer = Layer.effect(
           fps: project.canvas.fps,
           seconds: Math.round((plan.frames / plan.fps) * 100) / 100,
           startedAt: new Date().toISOString(),
+          ...(plan.warnings.length ? { warnings: plan.warnings } : {}),
         };
         const controller = new AbortController();
         controllers.set(id, controller);
@@ -492,7 +567,7 @@ export const layer = Layer.effect(
           if (controller.signal.aborted) return; // cancelled while queued: already marked
           // Out of "queued" before anything async, so a cancel from now on waits for the cleanup.
           patch(id, { phase: "preparing", startedAt: new Date().toISOString() });
-          running = runJob(job, plan, input.overwrite === true, controller.signal);
+          running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal);
           await running;
           running = undefined;
         }).finally(() => controllers.delete(id));
@@ -513,11 +588,11 @@ export const layer = Layer.effect(
 
     const renderFrames = (frames: ReadonlyArray<number>, width: number) =>
       Effect.gen(function* () {
-        const { project, mediaPath } = yield* current;
+        const { dir, project, mediaPath } = yield* current;
         const bin = yield* Effect.promise(ffmpegBin);
         if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
         return yield* Effect.tryPromise({
-          try: (signal) => renderFramesWith(bin, project, mediaPath, frames, width, signal),
+          try: async (signal) => renderFramesWith(bin, project, mediaPath, await readGraphics(dir, project), frames, width, signal),
           catch: (error) => new ExportError({ reason: "missing-media", message: (error as Error).message }),
         });
       });
@@ -551,7 +626,7 @@ export const layer = Layer.effect(
  * visual at f in visualsAt order (footage at its source time, text and backgrounds drawn by
  * Chromium with the frame's opacity and motion), one ffmpeg run per frame.
  */
-async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, frames: ReadonlyArray<number>, width: number, signal: AbortSignal): Promise<Array<RenderedFrame>> {
+async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, frames: ReadonlyArray<number>, width: number, signal: AbortSignal): Promise<Array<RenderedFrame>> {
   const project = await withPictureSizes(bin, unsized, mediaPath, signal);
   const { starts, duration } = layout(project);
   const W = Math.max(2, Math.round(width / 2) * 2);
@@ -567,12 +642,17 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
     raster = await startRasterizer(command);
     const { width: cw, height: ch } = project.canvas;
     const background = join(temp, "bg.png");
-    const plan = planExport(project, { mediaPath, width: W, height: H });
+    const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src) });
+    const urls = new Map<string, string>();
+    // Components' media references as placeholders, swapped for data: URLs before drawing (as the export does).
+    const target = { ...project, mediaUrl: (id: string) => (project.media.find((m) => m.id === id)?.kind === "image" ? mediaToken(id) : undefined) };
+    const draw = async (html: string, png: string) => raster!.render({ width: cw, height: ch, css: RASTER_CSS, html: await withMedia(html, project, mediaPath, urls), out: png });
     await raster.render({ width: cw, height: ch, css: RASTER_CSS, html: "problem" in plan ? "" : plan.backgroundHtml, out: background });
     const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
     const out: Array<RenderedFrame> = [];
     for (const requested of frames) {
       const f = Math.max(0, Math.min(duration - 1, Math.floor(requested)));
+      const notes: Array<string> = [];
       const inputs: Array<string> = ["-i", background];
       const graph: Array<string> = [`[0:v]scale=${W}:${H},format=rgba[b0]`];
       let base = "b0";
@@ -582,22 +662,45 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         let input: Array<string> | undefined;
         // The source frame on screen at that moment, picked like the export picks it (exportPlan.ts).
         const pick = sourceFramePick(v.source, project.canvas.fps);
+        const local = f - (starts.get(v.item.id) ?? 0);
+        const svg = v.item.type === "clip" && isSvg(media) && !!v.box;
         if (v.item.type === "clip" && media && media.kind === "video") input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];
-        else if (v.item.type === "clip" && media && media.kind === "image") input = ["-f", "image2", "-pattern_type", "none", "-i", mediaPath(media)];
-        else if ((v.item.type === "text" && typeof v.item.text === "string") || (v.item.type === "component" && v.item.component === SOLID)) {
+        else if (svg) {
+          // An SVG (D76): drawn by Chromium in its box, as the export does.
           const png = join(temp, `f${f}-${k}.png`);
-          const html = v.item.type === "text" ? textHtml(v.item, project, { opacity: v.opacity, motion: v.motion }) : solidHtml(v.item, project, { opacity: v.opacity });
-          await raster.render({ width: cw, height: ch, css: RASTER_CSS, html, out: png });
+          await draw(svgClipHtml(v.item, v.box!, mediaToken(media!.id), v.opacity), png);
+          input = ["-f", "image2", "-pattern_type", "none", "-i", png];
+        } else if (v.item.type === "clip" && media && media.kind === "image") input = ["-f", "image2", "-pattern_type", "none", "-i", mediaPath(media)];
+        else if ((v.item.type === "text" && typeof v.item.text === "string") || (v.item.type === "component" && v.item.component === SOLID) || isDrawnComponent(v.item)) {
+          const png = join(temp, `f${f}-${k}.png`);
+          const html =
+            v.item.type === "text"
+              ? textHtml(v.item, project, { opacity: v.opacity, motion: v.motion })
+              : v.item.component === SOLID
+                ? solidHtml(v.item, project, { opacity: v.opacity })
+                : componentHtml(v.item, target, local, { opacity: v.opacity, motion: v.motion, fps: project.canvas.fps });
+          await draw(html, png);
+          input = ["-f", "image2", "-pattern_type", "none", "-i", png];
+        } else if (v.item.type === "graphic" && typeof v.item.src === "string") {
+          // A graphic (D78) at this frame; its opacity goes on below, like a clip's.
+          const html = graphics.get(v.item.src);
+          if (html === undefined) {
+            notes.push(`the graphic "${v.item.name ?? v.item.id}" isn't drawn: ${v.item.src} couldn't be read (missing, outside graphics/, over ${MAX_GRAPHIC_BYTES / 1024} KB or a name it doesn't take)`);
+            continue;
+          }
+          const png = join(temp, `f${f}-${k}-g.png`);
+          const at = Math.max(0, Math.min(v.item.duration - 1, local));
+          await raster.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})` });
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }
         if (!input) continue;
         // A wipe transition shows the left X pixels (even, as the export's crop does).
         const shown = v.wipe === undefined ? W : 2 * Math.floor((W * v.wipe) / 2);
         if (shown <= 0) continue;
-        const fade = v.item.type === "clip" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
+        const fade = (v.item.type === "clip" && !svg) || v.item.type === "graphic" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
         const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
         const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
-        if (v.box && media && !isPlainBox(v.box, project.canvas)) {
+        if (v.box && media && !svg && !isPlainBox(v.box, project.canvas)) {
           // A box (D75), made as the export makes it; the wipe reveals the canvas from the left.
           const p = placementOf(v.box, W / cw, H / ch, baseBox(v.item, project.canvas, media.probe));
           const visible = Math.min(p.w, shown - p.x);
@@ -620,7 +723,7 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
       const file = join(temp, `frame-${f}.jpg`);
       const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
-      out.push({ frame: f, jpeg: await readFile(file) });
+      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}) });
     }
     return out;
   } finally {

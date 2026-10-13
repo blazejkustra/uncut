@@ -16,6 +16,8 @@ await build({
   format: "cjs",
   target: "node22",
   external: ["electron"],
+  // The rasteriser's bundled fonts (D77) go in as data: URLs.
+  loader: { ".woff2": "dataurl" },
   logLevel: "warning",
 });
 

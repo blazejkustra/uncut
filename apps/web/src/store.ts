@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -14,6 +14,7 @@ import { getPlayback, playback } from "./playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "./edit.ts";
 import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "./text.ts";
+import { planAddComponent } from "./components.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
@@ -202,6 +203,18 @@ export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id,
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
 /** The peaks of a media item's sound, made and cached by the server (D54). */
 export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PATH, id, path);
+/** A graphic item's document (D78), by its src ("graphics/x.html"), for the preview's sandboxed iframe. */
+// Its URL carries the graphic-only secret from server.hello, never the server token: the graphic's
+// script can read its own URL. No secret yet (hello not answered): no URL.
+export const graphicUrl = (src: string) => {
+  const secret = state.hello?.graphicToken;
+  if (!src.startsWith("graphics/") || !secret) return undefined;
+  const url = serverUrl(GRAPHIC_PATH, src.slice("graphics/".length), src);
+  if (!url) return undefined;
+  const u = new URL(url);
+  u.searchParams.set(TOKEN_QUERY_PARAM, secret);
+  return u.href;
+};
 let unsubscribe: (() => void) | undefined;
 let unsubscribeJobs: (() => void) | undefined;
 let unsubscribeAgent: (() => void) | undefined;
@@ -534,6 +547,9 @@ export const actions = {
   timelineEdit,
   /** A text or background change from the Inspector or the preview (see text.ts). */
   itemEdit,
+  /** Elements tab → a component at the playhead, or where it was dropped (see planAddComponent, D76). */
+  addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number } = {}) =>
+    addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, opts.at ? { at: opts.at } : {})),
   /** Elements tab → a full-frame background (see planAddBackground). */
   addBackground: (props: BackgroundProps) => addPlanned((project) => planAddBackground(project, props, getPlayback().frame, getPlayback().selected)),
   /** S: split at the playhead (see planSplit); the part after the playhead is selected. */

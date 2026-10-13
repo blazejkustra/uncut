@@ -8,8 +8,16 @@ const ENTITIES: Readonly<Record<string, string>> = { "&": "&amp;", "<": "&lt;", 
 export const esc = (s: unknown): string => String(s).replace(/[&<>"]/g, (c) => ENTITIES[c]!);
 
 type Theme = NonNullable<Project["theme"]>;
-/** What the renderer needs of a project: its canvas and its theme (optional in the format). */
-export type RenderTarget = { readonly canvas: Pick<Canvas, "width" | "height" | "background">; readonly theme?: Theme | undefined };
+/**
+ * What the renderer needs of a project: its canvas and its theme (optional in the format), and how
+ * a component's `{ media }` reference becomes an image URL there (D76): the preview's
+ * /media/file URL, the export's data: URL. Without it, media references draw nothing.
+ */
+export type RenderTarget = {
+  readonly canvas: Pick<Canvas, "width" | "height" | "background">;
+  readonly theme?: Theme | undefined;
+  readonly mediaUrl?: ((mediaId: string) => string | undefined) | undefined;
+};
 
 /**
  * The theme a project without one (or without some tokens) falls back to. New projects have no
@@ -23,6 +31,27 @@ export const DEFAULT_THEME = {
 /** The system font stacks the preview and export both use when a theme names no font. */
 const SANS = `-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", sans-serif`;
 const MONO = `"SF Mono", ui-monospace, Menlo, monospace`;
+
+/**
+ * The fonts Uncut bundles (D77, SIL OFL 1.1, assets/fonts/OFL.txt): DM Sans (variable, weights
+ * 100–1000) and DM Mono 400 / 500. The preview and the export rasteriser both load them from data:
+ * URLs with the same @font-face rules (fontFaceCss), so text measures the same in both. Text items
+ * use them by name (style.font "DM Sans"); components use them by default.
+ */
+export const FONT_FACES = [
+  { family: "DM Sans", file: "DMSans-Variable.woff2", weight: "100 1000" },
+  { family: "DM Mono", file: "DMMono-Regular.woff2", weight: "400" },
+  { family: "DM Mono", file: "DMMono-Medium.woff2", weight: "500" },
+] as const;
+export type FontFile = (typeof FONT_FACES)[number]["file"];
+
+/** @font-face rules for the bundled fonts, given each file's URL (no font-display: they block until loaded). */
+export const fontFaceCss = (url: (file: FontFile) => string) =>
+  FONT_FACES.map((f) => `@font-face{font-family:"${f.family}";font-style:normal;font-weight:${f.weight};src:url(${url(f.file)}) format("woff2")}`).join("\n");
+
+/** The bundled fonts' stacks (components draw with these; D77). */
+export const DM_SANS = `'DM Sans', ${SANS.replace(/"/g, "'")}`;
+export const DM_MONO = `'DM Mono', ${MONO.replace(/"/g, "'")}`;
 
 /** Theme colours by token: the project's own over the defaults. */
 export function themeColors(target: Pick<RenderTarget, "theme">): Record<string, string> {
@@ -94,10 +123,14 @@ export const RENDER_CSS = [
   ".pv-text b{font-weight:800}",
   ".pv-text code{font-family:var(--mono);font-size:0.9em}",
   ".pv-solid{position:absolute;inset:0}",
+  ".pv-comp{position:absolute;box-sizing:border-box;user-select:none;cursor:default}",
+  ".pv-comp *{box-sizing:border-box}",
+  ".pv-comp .accent{color:var(--accent)}",
+  ".pv-comp b{font-weight:800}",
 ].join("\n");
 
 /** Markup → HTML, after escaping: [[accent]], **bold**, `mono`. */
-const markup = (text: string) =>
+export const markup = (text: string) =>
   esc(text)
     .replace(/\[\[(.*?)\]\]/gs, '<span class="accent">$1</span>')
     .replace(/\*\*(.+?)\*\*/gs, "<b>$1</b>")
@@ -112,7 +145,7 @@ export interface Motion {
   readonly reveal?: number;
 }
 
-const num = (n: number) => String(Math.round(n * 10000) / 10000);
+export const num = (n: number) => String(Math.round(n * 10000) / 10000);
 
 /**
  * A text item as HTML. transform (x, y) is the box's top-left corner and transform.w its width in

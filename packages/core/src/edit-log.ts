@@ -1,6 +1,7 @@
 // Turns the user's manual edits since the agent's last turn into the short note
 // the agent gets before its next turn (D6). The same entries feed the
 // "You made N edits by hand" line in the Agent tab.
+import { componentInfo } from "./components.ts";
 import type { Id, Op, Project, Session } from "./types.ts";
 
 const secs = (frames: number, fps: number) => `${(Math.abs(frames) / fps).toFixed(1)}s`;
@@ -10,7 +11,7 @@ function label(project: Project, id: Id) {
     const item = t.items.find((i) => i.id === id);
     if (item) {
       const media = item.media && project.media.find((m) => m.id === item.media);
-      const name = item.name ?? (item.text ? `text "${item.text.replace(/\n/g, " ")}"` : (media || undefined)?.name ?? (item.component === "component.solid" ? "background" : item.component) ?? id);
+      const name = item.name ?? (item.text ? `text "${item.text.replace(/\n/g, " ")}"` : (media || undefined)?.name ?? (item.component === "component.solid" ? "background" : (componentInfo(item.component)?.name.toLowerCase() ?? item.component)) ?? (item.type === "graphic" ? `graphic ${item.src ?? ""}`.trim() : undefined) ?? id);
       return `${name} (${id})`;
     }
   }
@@ -110,7 +111,11 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
       parts.push(`${one("in")}, ${one("out")}`);
     } else if (key === "props" && value && typeof value === "object") {
       const p = value as Record<string, unknown>;
-      parts.push(p.to !== undefined ? `colour ${p.color} to ${p.to} (gradient)` : p.color !== undefined ? `colour ${p.color}` : `props ${Object.keys(p).join(", ")}`);
+      const item = project.tracks.flatMap((tr) => tr.items).find((i) => i.id === id);
+      if (item && componentInfo(item.component)) {
+        // A component's props (D76), in words: text values quoted, the rest by name.
+        parts.push(Object.entries(p).map(([k, v]) => (typeof v === "string" ? `${k} ${quote(v, 40)}` : k)).join(", ") || "no props");
+      } else parts.push(p.to !== undefined ? `colour ${p.color} to ${p.to} (gradient)` : p.color !== undefined ? `colour ${p.color}` : `props ${Object.keys(p).join(", ")}`);
     } else rest.push(key);
   }
   if (!parts.length) return `Changed ${keys.join(", ")} on ${it(id)}`;
@@ -163,6 +168,8 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         const p = op.item.props ?? {};
         return `Added background ${op.item.id} (${p.to !== undefined ? `gradient ${p.color} to ${p.to}` : String(p.color ?? "default colour")}) on track ${op.track}`;
       }
+      if (op.item.type === "component" && componentInfo(op.item.component)) return `Added ${componentInfo(op.item.component)!.name.toLowerCase()} ${op.item.id} on track ${op.track}`;
+      if (op.item.type === "graphic") return `Added graphic ${op.item.id} (${op.item.src ?? "no file"}) on track ${op.track}`;
       return `Added ${op.item.type} ${op.item.id} on track ${op.track}`;
     case "set_transition":
       return op.transition ? `Set ${op.transition.module} into ${it(op.item)}` : `Removed the transition into ${it(op.item)}`;

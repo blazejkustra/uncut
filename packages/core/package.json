@@ -16,7 +16,9 @@
     "./rules": "./src/rules.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/transcript.ts",
-    "./transitions": "./src/transitions.ts"
+    "./transitions": "./src/transitions.ts",
+    "./components": "./src/components.ts",
+    "./graphics": "./src/graphics.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

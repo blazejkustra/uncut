@@ -39,6 +39,7 @@ const TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".heic": "image/heic",
+  ".svg": "image/svg+xml",
 };
 // The DJI clips are ".MP4": the lookup is by lowercased extension.
 const contentType = (path: string) => TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
@@ -118,7 +119,9 @@ export const layer = Layer.unwrap(
         // CORS (D54): the preview routes the sound through Web Audio, which needs the file fetched
         // in CORS mode (crossOrigin="anonymous") from the file:// renderer, an opaque origin. The
         // token in the URL protects the route, so any origin may read it.
-        const headers = { "accept-ranges": "bytes", "cache-control": "no-store", ...CORS };
+        // An SVG opened as a document (not as the preview's <img>) runs nothing and loads nothing.
+        const sandbox = extname(path).toLowerCase() === ".svg" ? { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox" } : {};
+        const headers = { "accept-ranges": "bytes", "cache-control": "no-store", ...CORS, ...sandbox };
         const range = parseRange(request.headers["range"], size);
         if (range === "unsatisfiable") {
           yield* Effect.promise(() => file.close().catch(() => {}));

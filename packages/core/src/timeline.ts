@@ -5,6 +5,7 @@
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "./audio.ts";
 import { clipBox, type ClipBox } from "./box.ts";
+import { componentBox } from "./components.ts";
 import { SOLID, type Motion } from "./render.ts";
 import { overlaps, WIPE } from "./transitions.ts";
 import type { Canvas, Item, Media, Project, Track } from "./types.ts";
@@ -20,11 +21,15 @@ export interface Visual {
   /** Source time in seconds (0 for items without media); a looped clip wraps at its media's end. */
   readonly source: number;
   /**
-   * A clip of video or still media: its box at this frame (D75, box.ts). Its opacity is already in
-   * `opacity`. A wipe reveals the canvas from the left, whatever the box.
+   * A clip of video or still media, or a drawn component (D76): its box at this frame (D75,
+   * box.ts). Its opacity is already in `opacity`. A wipe reveals the canvas from the left, whatever
+   * the box.
    */
   readonly box?: ClipBox;
 }
+
+/** An SVG image (D76): drawn by Chromium at its box's size in the export (ffmpeg can't decode SVG), as an <img> in the preview. */
+export const isSvg = (media: Pick<Media, "kind" | "path"> | undefined) => !!media && media.kind === "image" && /\.svg$/i.test(media.path);
 
 /** The media a clip draws (video or still), if any. */
 export function pictureMedia(project: Partial<Pick<Project, "media">>, item: Item): Media | undefined {
@@ -119,8 +124,10 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
       opacity *= anim.opacity;
       const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
       const media = pictureMedia(project, item);
-      const box = media ? clipBox(item, project.canvas, media.probe, f - start) : undefined;
+      const box = media ? clipBox(item, project.canvas, media.probe, f - start) : componentBox(item, project.canvas, f - start);
       if (box) opacity *= box.opacity;
+      // A graphic (D78) has no box: transform.opacity alone applies.
+      if (item.type === "graphic" && typeof item.transform?.opacity === "number") opacity *= Math.min(1, Math.max(0, item.transform.opacity));
       out.push({ item, track, opacity, motion: anim.motion, source, ...(span.wipe && p < 1 ? { wipe: p } : {}), ...(box ? { box } : {}) });
     });
     // Dips to black: a black layer over the main track's clips, under the tracks above it.
