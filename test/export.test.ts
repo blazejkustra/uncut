@@ -16,12 +16,12 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { audibleAt, baseBox, isDrawnComponent, isPlainBox, layout, textHtml, visualsAt } from "../packages/core/src/index.ts";
+import { audibleAt, baseBox, canvasBox, irisRadius, componentBox, componentHtml, isDrawnComponent, isPlainBox, layout, moveBox, textHtml, visualsAt } from "../packages/core/src/index.ts";
 import type { Item, Project } from "../packages/core/src/types.ts";
 import type { Visual } from "../packages/core/src/timeline.ts";
-import { alphaAt, AUDIO_BLOCK, exportCommand, silentFailure, frameLookup, gainAt, gainExpr, graphFileArgs, outputSize, placementOf, planExport, rampsAt, wipeAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
+import { alphaAt, AUDIO_BLOCK, exportCommand, rasterLooks, silentFailure, frameLookup, gainAt, gainExpr, graphFileArgs, irisAt, outputSize, placementOf, planExport, rampsAt, wipeAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
 import { CLIP_POINTS, expectedClipColour, makeClipMedia, splitProject } from "./helpers/clip-fixture.ts";
-import { close as closeColour, COLOUR_CHECKS, expectedColour, makeTransitionMedia, rampWipeProject, transitionProject, type Rgb } from "./helpers/transition-fixture.ts";
+import { close as closeColour, COLOUR_CHECKS, expectedAt, expectedColour, makeTransitionMedia, MOVE_CHECKS, movesProject, rampWipeProject, transitionProject, type Rgb } from "./helpers/transition-fixture.ts";
 import { rasterizerCommand } from "../apps/server/src/rasterizer.ts";
 import { sweepStaleTemp } from "../apps/server/src/exporter.ts";
 import { demoProject, FOOTAGE, skipDemo } from "./helpers/demo.ts";
@@ -138,11 +138,40 @@ function boxesProject(): Project {
   return { ...p, tracks };
 }
 
+/**
+ * Iris, push and zoom (D79) into and out of every kind of item: a plain clip pushed out by a boxed
+ * one, an iris into a background, the background zoomed out under a clip, a clip pushed out by a
+ * text, an iris into a component, the component zoomed out, an iris into a looped clip; odd
+ * lengths and an odd output scale.
+ */
+function movesPlanProject(): Project {
+  const p = exportProject("/nowhere");
+  const tracks = p.tracks.map((t) =>
+    t.id === "main"
+      ? {
+          ...t,
+          items: [
+            { id: "a1", type: "clip" as const, media: "m-a", in: 0, duration: 40 },
+            { id: "b", type: "clip" as const, media: "m-b", in: 20, duration: 40, transform: { x: 101, y: 51, w: 640, radius: 12 }, transitionIn: { module: "transition.push-left", duration: 20 } },
+            { id: "card", type: "component" as const, component: "component.solid", duration: 30, props: { color: "#123" }, transitionIn: { module: "transition.iris", duration: 15 } },
+            { id: "a2", type: "clip" as const, media: "m-a", in: 120, duration: 30, transitionIn: { module: "transition.zoom", duration: 11 } },
+            { id: "t", type: "text" as const, text: "Pushed", duration: 30, transitionIn: { module: "transition.push-left", duration: 9 } },
+            { id: "end", type: "component" as const, component: "component.end-card", duration: 30, transitionIn: { module: "transition.iris", duration: 12 } },
+            { id: "a3", type: "clip" as const, media: "m-a", in: 200, duration: 30, transitionIn: { module: "transition.zoom", duration: 10 } },
+            { id: "c", type: "clip" as const, media: "m-c", in: 10, duration: 150, loop: true, transitionIn: { module: "transition.iris", duration: 7 } },
+          ],
+        }
+      : t,
+  );
+  return { ...p, tracks };
+}
+
 for (const [name, project, size] of [
   ["fixture", exportProject("/nowhere"), [1920, 1080]],
   ["tricky", trickyProject(), [1920, 1080]],
   ["transitions", transitionsProject(), [1920, 1080]],
   ["boxes", boxesProject(), [1278, 718]],
+  ["moves", movesPlanProject(), [1278, 718]],
 ] as const) {
   test(`export plan (${name}): layers, opacity, source time, motion and boxes are visualsAt's, in its order`, () => {
     const [width, height] = size;
@@ -162,15 +191,28 @@ for (const [name, project, size] of [
         const v = seen[i]!;
         const opacity = rampsAt(l.ramps, f) * alphaAt(l, f);
         assert.ok(Math.abs(opacity - v.opacity) < 1e-9, `${l.item.id} at ${f}: opacity ${opacity} vs ${v.opacity}`);
+        const kx = width / project.canvas.width;
+        const ky = height / project.canvas.height;
         if (l.kind === "video" || l.kind === "image") {
-          // The box (D75): a layer without geometry is the plain full frame; one with it is core's box in output pixels.
+          // The box (D75; moved by a push or zoom, D79): a layer without geometry is the plain full frame; one with it is core's box in output pixels.
           if (!l.geometry) assert.ok(isPlainBox(v.box!, project.canvas), `${l.item.id} at ${f}: drawn plain but core has a box`);
           else {
             const media = project.media.find((m) => m.id === l.item.media)!;
-            assert.deepEqual(l.geometry.frames[f - l.f0], placementOf(v.box!, width / project.canvas.width, height / project.canvas.height, baseBox(l.item, project.canvas, media.probe)), `${l.item.id} at ${f}: box`);
+            assert.deepEqual(l.geometry.frames[f - l.f0], placementOf(v.box!, kx, ky, baseBox(l.item, project.canvas, media.probe)), `${l.item.id} at ${f}: box`);
           }
+        } else if (isDrawnComponent(l.item) && l.kind === "raster") {
+          // A component's box (pushed or zoomed, D79) is drawn into its HTML, as the preview draws it.
+          assert.equal(l.geometry, undefined);
+          const own = componentBox(l.item, project.canvas, f - layout(project).starts.get(l.item.id)!)!;
+          assert.equal(l.states[l.frames[f - l.f0]!], componentHtml(l.item, project, f - layout(project).starts.get(l.item.id)!, { opacity: own.opacity, motion: v.motion, fps: FPS, box: v.box! }), `${l.item.id} at ${f}: look`);
+        } else {
+          // Text, backgrounds and graphics: a push or zoom moves the canvas (D79).
+          const moved = v.shift !== undefined || v.zoom !== undefined;
+          if (!l.geometry) assert.ok(!moved, `${l.item.id} at ${f}: core moves it, the plan doesn't`);
+          else assert.deepEqual(l.geometry.frames[f - l.f0], placementOf(moveBox(canvasBox(project.canvas), v.shift, v.zoom), kx, ky, canvasBox(project.canvas)), `${l.item.id} at ${f}: moved canvas`);
         }
         assert.ok(Math.abs(wipeAt(l.wipe, f) - (v.wipe ?? 1)) < 1e-9, `${l.item.id} at ${f}: wipe ${wipeAt(l.wipe, f)} vs ${v.wipe}`);
+        assert.ok(Math.abs(irisAt(l.iris, f) - (v.iris ?? 1)) < 1e-9, `${l.item.id} at ${f}: iris ${irisAt(l.iris, f)} vs ${v.iris}`);
         if (l.kind === "video") assert.ok(Math.abs(l.source + ((f - l.f0) * l.speed) / FPS - v.source) < 1e-9, `${l.item.id} at ${f}: source time`);
         if (l.kind === "raster" && l.item.type === "text") assert.equal(l.states[l.frames[f - l.f0]!], textHtml(l.item, project, { motion: v.motion }), `${l.item.id} at ${f}: look`);
       }
@@ -229,6 +271,52 @@ test("export plan (boxes): keyed boxes, loops in passes, the wipe on a box, and 
 });
 
 /** Evaluates the subset of ffmpeg's expression language frameLookup writes (st, ld, if, lt, numbers). */
+test("export plan (D79 review): slices keep only their own looks (one look: a still), looks are drawn once across layers, a long loop stays one looped input, a boxed push isn't cut", () => {
+  const p = exportProject("/nowhere");
+  const main = (items: Array<Item>): Project => ({ ...p, media: [...p.media, { id: "m-short", kind: "video", name: "Short.mp4", path: "/short.mp4", probe: { frames: 150, fps: 30, width: 640, height: 360, hasAudio: false } }], tracks: p.tracks.map((t) => (t.id === "main" ? { ...t, items } : t)) });
+  const project = main([
+    { id: "a1", type: "clip", media: "m-a", in: 30, duration: 60 },
+    // A terminal typing, revealed by an iris and pushed out: cut at the iris's end only (its box is in its HTML).
+    { id: "term", type: "component", component: "component.terminal", duration: 90, transitionIn: { module: "transition.iris", duration: 20 } },
+    // A text pushed in and out: the canvas moves, so three slices; its look never changes.
+    { id: "t", type: "text", text: "Pushed", duration: 60, transitionIn: { module: "transition.push-left", duration: 20 } },
+    // A boxed clip pushed in and zoomed out: its geometry is needed throughout, so it isn't cut.
+    { id: "b", type: "clip", media: "m-b", in: 30, duration: 60, transform: { x: 100, y: 50, w: 640 }, transitionIn: { module: "transition.push-left", duration: 20 } },
+    // 150 frames of media looped over 3000 frames, pushed in and zoomed out.
+    { id: "loop", type: "clip", media: "m-short", in: 0, duration: 3000, loop: true, transitionIn: { module: "transition.zoom", duration: 20 } },
+    { id: "a2", type: "clip", media: "m-a", in: 30, duration: 60, transitionIn: { module: "transition.zoom", duration: 20 } },
+  ]);
+  const withPush = main(project.tracks.find((t) => t.id === "main")!.items.map((i) => (i.id === "loop" ? { ...i, transitionIn: { module: "transition.push-left", duration: 20 } } : i)));
+  for (const proj of [project, withPush]) {
+    const plan = planExport(proj, { mediaPath: (m) => m.path, width: 1920, height: 1080 });
+    if ("problem" in plan) throw new Error(plan.problem);
+    // Every raster slice's looks are exactly the ones its frames use; one look is drawn as a still.
+    for (const l of plan.visuals) {
+      if (l.kind !== "raster") continue;
+      assert.equal(new Set(l.frames).size, l.states.length, `${l.item.id} ${l.f0}–${l.f1}: unused looks`);
+      assert.deepEqual([...new Set(l.frames)].sort((x, y) => x - y), l.states.map((_, i) => i));
+      assert.equal(new Set(l.states).size, l.states.length, `${l.item.id}: a look twice`);
+    }
+    const term = plan.visuals.filter((l) => l.item.id === "term");
+    assert.deepEqual(term.map((l) => [l.f0, l.f1, !!l.iris]), [[50, 70, true], [70, 160, false]]);
+    const text = plan.visuals.filter((l) => l.item.id === "t");
+    assert.deepEqual(text.map((l) => [l.f0, l.f1, !!l.geometry, l.kind === "raster" ? l.states.length : -1]), [[140, 160, true, 1], [160, 200, false, 1], [200, 220, true, 1]]);
+    // The rasteriser draws each distinct look once: the terminal's typing, the text, the backgrounds.
+    const looks = rasterLooks(plan);
+    const all = plan.visuals.flatMap((l) => (l.kind === "raster" ? l.states : []));
+    assert.equal(looks.length, new Set(all).size);
+    assert.ok(looks.length < all.length, `${looks.length} looks drawn for ${all.length} slice states`);
+    // The boxed push: one layer with its geometry, not cut at the push's end or the zoom's start.
+    assert.deepEqual(plan.visuals.filter((l) => l.item.id === "b").map((l) => [l.f0, l.f1, !!l.geometry]), [[200, 280, true]]);
+    // The long loop: one looped input for its long middle; the transitions' frames seek.
+    const loop = plan.visuals.filter((l) => l.item.id === "loop");
+    const cycled = loop.filter((l) => l.kind === "video" && l.cycle);
+    assert.equal(cycled.length, 1, JSON.stringify(loop.map((l) => [l.f0, l.f1, l.kind === "video" && !!l.cycle])));
+    assert.ok(cycled[0]!.f1 - cycled[0]!.f0 > 2900);
+    assert.ok(loop.every((l) => (l.kind === "video" && l.cycle) || l.f1 - l.f0 <= 20), "only short seeked pieces besides the looped one");
+  }
+});
+
 function evalLookup(expr: string, frame: number): number {
   const slots = new Map<number, number>();
   let i = 0;
@@ -724,6 +812,63 @@ test("export: a wipe keeps the incoming picture in place, up to its edge, and cr
   assert.ok(closeColour(pixelOf(output, 55, 0.3), [255, 0, 0]));
 });
 
+test("export: iris, push and zoom between solid colours and a background draw as core says; render_frames agrees (D79)", { skip: skipServer, timeout: 180000 }, async () => {
+  const media = join(root, "solids");
+  if (!existsSync(join(media, "Red.mp4"))) makeTransitionMedia(media);
+  const project = movesProject(media);
+  await open("Moves", project);
+  const output = join(root, "out", "Moves.mp4");
+  const { jobId } = await client.ok("export.start", { output, quality: "standard", loudness: "off" });
+  const done = await finished(jobId);
+  assert.equal(done.phase, "done", done.error);
+  const v = probe(output).streams.find((s) => s.codec_type === "video")!;
+  assert.equal(Number(v.nb_frames), 360);
+  // An 8×8 average at (x, y) as fractions of the frame.
+  const colourAt = (file: string, n: number, x: number, y: number): Rgb => {
+    const cx = Math.max(0, Math.min(632, Math.round(x * 640) - 4));
+    const cy = Math.max(0, Math.min(352, Math.round(y * 360) - 4));
+    const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n}),crop=8:8:${cx}:${cy},scale=1:1:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+    return [raw[0]!, raw[1]!, raw[2]!];
+  };
+  for (const [f, x, y, what] of MOVE_CHECKS) {
+    const got = colourAt(output, f, x, y);
+    const want = expectedAt(project, f, x, y);
+    console.log(`  frame ${f} at (${x}, ${y}) (${what}): export ${got.join(",")}, core ${want.join(",")}`);
+    assert.ok(closeColour(got, want), `frame ${f} at (${x}, ${y}) (${what}): ${got} vs ${want}`);
+  }
+  // The reference itself, not just agreement.
+  assert.deepEqual(expectedAt(project, 60, 0.5, 0.5), [0, 0, 255]);
+  assert.deepEqual(expectedAt(project, 60, 0.02, 0.04), [255, 0, 0]);
+  assert.deepEqual(expectedAt(project, 120, 0.45, 0.5), [0, 0, 255]);
+  assert.deepEqual(expectedAt(project, 120, 0.55, 0.5), [255, 0, 0]);
+  assert.deepEqual(expectedAt(project, 180, 0.55, 0.5), [0, 255, 0]);
+  assert.deepEqual(expectedAt(project, 240, 0.5, 0.5), [0, 128, 128]);
+  // render_frames (the agent's view) draws the same mid-transition frames.
+  rmSync(join(root, "plan.json.turn"), { force: true });
+  const frames = [60, 120, 180, 240, 300];
+  writeFileSync(join(root, "plan.json"), JSON.stringify([[{ tool: "render_frames", args: { frames, scale: 1 } }]]));
+  const before = readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean).length;
+  const agent = client.subscribe("agent.subscribe");
+  const { turnId } = await client.ok("agent.send", { prompt: "Look at the transitions" });
+  await agent.until((st) => st?.turns.some((t: any) => t.id === turnId && t.status !== "running"), 60000);
+  const result = JSON.parse(readFileSync(resultLog(), "utf8").trim().split("\n").filter(Boolean)[before]!) as { result: { isError?: boolean; content: Array<{ type: string; data?: string }> } };
+  assert.ok(!result.result.isError, JSON.stringify(result.result).slice(0, 300));
+  for (const [i, f] of frames.entries()) {
+    const jpg = join(root, `moves-agent-${f}.jpg`);
+    writeFileSync(jpg, Buffer.from(result.result.content.filter((c) => c.type === "image")[i]!.data!, "base64"));
+    const score = ssim(jpg, frameOf(output, f, join(root, `moves-exported-${f}.png`)));
+    console.log(`  render_frames ${f} vs export: SSIM ${score.toFixed(4)}`);
+    // render_frames' RGB path draws red ~231 (D75, known), which flat red/blue frames weigh heavily
+    // in a grey SSIM (0.92 where the shapes are identical); the colour checks below hold the shapes.
+    assert.ok(score > 0.9, `frame ${f}: SSIM ${score}`);
+    for (const [cf, x, y, what] of MOVE_CHECKS.filter((c) => c[0] === f)) {
+      const got = colourAt(jpg, 0, x, y);
+      const want = expectedAt(project, cf, x, y);
+      assert.ok(closeColour(got, want, 32), `render_frames ${f} at (${x}, ${y}) (${what}): ${got} vs ${want}`);
+    }
+  }
+});
+
 test("export: a boxed split clip, cover, zooming 1 → 1.2 by a key, matches core's box pixel for pixel (D75)", { skip: skipServer, timeout: 120000 }, async () => {
   const media = join(root, "boxes");
   makeClipMedia(media);
@@ -906,6 +1051,151 @@ test("ffmpeg boxes: a 1 s clip looped for 200 s is one input, keeps its picture 
     for (let i = 0; i < s.length; i++) if (Math.abs(s[i]!) > 0.1) (i - last > 24000 && onsets.push(i / 48000), (last = i));
     assert.ok(onsets.length >= 199, `${onsets.length} beeps`);
     for (const t of onsets) assert.ok(Math.abs(t - Math.round(t)) < 0.01, `beep at ${t.toFixed(4)} s, core says on the second`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- iris, push and zoom through ffmpeg (D79): exportCommand run directly on solid colours, a ramp
+// and a still, at 640×360, checked against core's geometry at the start, middle and end. ----
+
+/** Red / Blue / Ramp clips (the transition fixture), a white 4:3 still and a black background, at 640×360. */
+const movesMedia = () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "uncut-moves-ffmpeg-")));
+  makeTransitionMedia(dir);
+  const v = (args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
+  v(["-f", "lavfi", "-i", "color=c=white:s=480x360", "-frames:v", "1", join(dir, "white.png")]);
+  v(["-f", "lavfi", "-i", "color=c=black:s=640x360", "-frames:v", "1", join(dir, "bg.png")]);
+  return dir;
+};
+const SOLID_PROBE = { frames: 300, fps: 30, width: 640, height: 360, hasAudio: false };
+/** Two main clips meeting at frame 60 through `module` (20 frames: frames 50–69). */
+const movesPair = (dir: string, a: Item, b: Item, module: string): Project => ({
+  format: "uncut/0",
+  name: "Moves",
+  canvas: { width: 640, height: 360, fps: 30 },
+  media: [
+    { id: "m-red", kind: "video", name: "Red.mp4", path: join(dir, "Red.mp4"), probe: SOLID_PROBE },
+    { id: "m-blue", kind: "video", name: "Blue.mp4", path: join(dir, "Blue.mp4"), probe: SOLID_PROBE },
+    { id: "m-ramp", kind: "video", name: "Ramp.mp4", path: join(dir, "Ramp.mp4"), probe: SOLID_PROBE },
+    { id: "m-white", kind: "image", name: "white.png", path: join(dir, "white.png"), probe: { width: 480, height: 360 } },
+  ],
+  tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [a, { ...b, transitionIn: { module, duration: 20 } }] }],
+});
+/** Frame n of an export as 8-bit RGB rows (640×360). */
+const rgbFrame = (file: string, n: number) => {
+  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `select=eq(n\\,${n}),format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+  return (x: number, y: number): Rgb => [raw[(y * 640 + x) * 3]!, raw[(y * 640 + x) * 3 + 1]!, raw[(y * 640 + x) * 3 + 2]!];
+};
+const isRed = (c: Rgb) => c[0] > 200 && c[1] < 50 && c[2] < 50;
+const isBlue = (c: Rgb) => c[0] < 50 && c[1] < 50 && c[2] > 200;
+
+test("ffmpeg transitions: an iris opens the incoming clip in a circle from the centre, radius as core says (D79)", { skip: skipFfmpeg, timeout: 120000 }, () => {
+  const dir = movesMedia();
+  try {
+    const project = movesPair(dir, { id: "a", type: "clip", media: "m-red", in: 30, duration: 60 }, { id: "b", type: "clip", media: "m-blue", in: 30, duration: 60 }, "transition.iris");
+    const { out, plan } = runPlan(dir, project, "iris", { width: 640, height: 360 });
+    // Only the iris's frames are masked: b is a masked layer 50–69, then a plain one.
+    assert.deepEqual(plan.visuals.filter((l) => l.item.id === "b").map((l) => [l.f0, l.f1, !!l.iris]), [[50, 70, true], [70, 120, false]]);
+    const at = (f: number) => visualsAt(project, layout(project).starts, f).find((v) => v.item.id === "b")?.iris;
+    // The start: all red (radius 0). The end: all blue.
+    const start = rgbFrame(out, 50);
+    for (const [x, y] of [[320, 180], [0, 0], [639, 359]] as const) assert.ok(isRed(start(x, y)), `frame 50 (${x}, ${y}): ${start(x, y)}`);
+    const end = rgbFrame(out, 70);
+    for (const [x, y] of [[320, 180], [0, 0], [639, 359]] as const) assert.ok(isBlue(end(x, y)), `frame 70 (${x}, ${y}): ${end(x, y)}`);
+    // Mid-way (frame 60, share 0.5): radius 183.6 px. The centre is blue, the corners red, and along
+    // the middle row the edge is where core puts it (within a pixel).
+    for (const f of [55, 60, 65, 69]) {
+      const r = irisRadius(at(f)!, project.canvas);
+      const px = rgbFrame(out, f);
+      assert.ok(isBlue(px(320, 180)), `frame ${f}: centre ${px(320, 180)}`);
+      for (const [x, y] of [[2, 2], [637, 2], [2, 357], [637, 357]] as const) assert.ok(isRed(px(x, y)), `frame ${f}: corner (${x}, ${y}) ${px(x, y)}`);
+      let edge = 320;
+      while (edge < 639 && px(edge + 1, 180)[2] > 128) edge++;
+      console.log(`  iris frame ${f}: radius ${r.toFixed(1)} px (core), edge on the middle row at x ${edge} (${(edge + 1 - 320).toFixed(0)} px from the centre)`);
+      // (Past the canvas's half width the middle row is all blue.)
+      if (r < 318) assert.ok(Math.abs(edge + 1 - 320 - r) <= 1.5, `frame ${f}: edge ${edge} vs radius ${r}`);
+      else assert.equal(edge, 639);
+      // Up the vertical too: a circle, not an ellipse.
+      if (r < 175) {
+        let top = 180;
+        while (top > 0 && px(320, top - 1)[2] > 128) top--;
+        assert.ok(Math.abs(180 - top - r) <= 1.5, `frame ${f}: top edge ${top} vs radius ${r}`);
+      }
+    }
+    // Into a boxed clip (100, 50, 440 × 247.5): the circle is the canvas's, cut to the box.
+    const boxed = movesPair(dir, { id: "a", type: "clip", media: "m-red", in: 30, duration: 60 }, { id: "b", type: "clip", media: "m-blue", in: 30, duration: 60, transform: { x: 100, y: 50, w: 440 } }, "transition.iris");
+    const inBox = runPlan(dir, boxed, "iris-boxed", { width: 640, height: 360 });
+    const mid = rgbFrame(inBox.out, 60);
+    assert.ok(isBlue(mid(320, 180)), `boxed mid-iris: centre ${mid(320, 180)}`);
+    assert.ok(isRed(mid(130, 180)), `boxed mid-iris: in the box, outside the circle (190 px out) ${mid(130, 180)}`);
+    const late = rgbFrame(inBox.out, 65);
+    assert.ok(isBlue(late(130, 180)), `boxed late iris: in the box and the circle ${late(130, 180)}`);
+    assert.ok(isRed(late(320, 320)), `boxed late iris: in the circle, below the box ${late(320, 320)}`);
+    assert.ok(isRed(late(5, 5)), `boxed late iris: corner ${late(5, 5)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ffmpeg transitions: a push slides both clips left by the share of the width, the incoming picture moving with its edge (D79)", { skip: skipFfmpeg, timeout: 120000 }, () => {
+  const dir = movesMedia();
+  try {
+    const project = movesPair(dir, { id: "a", type: "clip", media: "m-red", in: 30, duration: 60 }, { id: "b", type: "clip", media: "m-ramp", in: 30, duration: 60 }, "transition.push-left");
+    const { out, plan } = runPlan(dir, project, "push", { width: 640, height: 360 });
+    // Geometry only over the push: a's last frames and b's first.
+    assert.deepEqual(plan.visuals.map((l) => [l.item.id, l.f0, l.f1, !!l.geometry]), [["a", 0, 50, false], ["a", 50, 70, true], ["b", 50, 70, true], ["b", 70, 120, false]]);
+    const after = rgbFrame(out, 80);
+    for (const [f, share] of [[50, 0], [55, 0.25], [60, 0.5], [65, 0.75]] as const) {
+      const v = visualsAt(project, layout(project).starts, f).find((x) => x.item.id === "b")!;
+      const left = Math.round(v.shift!);
+      assert.equal(left, Math.round((1 - share) * 640));
+      const px = rgbFrame(out, f);
+      // B's left edge: red up to it, the ramp from it (red's R is high, the ramp's 0).
+      let edge = 0;
+      while (edge < 640 && px(edge, 180)[0] > 128) edge++;
+      console.log(`  push frame ${f}: B's left edge at x ${edge}, core ${left}`);
+      assert.ok(Math.abs(edge - left) <= 1, `frame ${f}: edge ${edge} vs ${left}`);
+      // The picture moves with its edge: the ramp at x is the ramp at x − left once it's in place.
+      for (const k of [20, 100, 150]) if (left + k < 640) assert.ok(closeColour(px(left + k, 180), after(k, 180), 6), `frame ${f}: ramp at +${k}: ${px(left + k, 180)} vs ${after(k, 180)}`);
+    }
+    // The end: all ramp, in place.
+    const end = rgbFrame(out, 70);
+    for (const x of [5, 320, 630]) assert.ok(closeColour(end(x, 180), after(x, 180), 6), `frame 70 at ${x}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ffmpeg transitions: a zoom grows the outgoing picture about the centre while the incoming one fades in over it (D79)", { skip: skipFfmpeg, timeout: 120000 }, () => {
+  const dir = movesMedia();
+  try {
+    // A white 4:3 still contained on the 16:9 canvas (black bars), zooming out into blue.
+    const project = movesPair(dir, { id: "a", type: "clip", media: "m-white", duration: 60 }, { id: "b", type: "clip", media: "m-blue", in: 30, duration: 60 }, "transition.zoom");
+    const { out } = runPlan(dir, project, "zoom", { width: 640, height: 360 });
+    for (const f of [50, 55, 60, 65, 69]) {
+      const [a, b] = ["a", "b"].map((id) => visualsAt(project, layout(project).starts, f).find((v) => v.item.id === id)!);
+      const zoom = a!.zoom ?? 1;
+      const lit = a!.box!.content;
+      const px = rgbFrame(out, f);
+      // The white picture's left and right edges on the middle row: where core's zoomed box puts them
+      // (while enough of it shows through the incoming clip to find them).
+      const find = b!.opacity <= 0.75;
+      let x0 = 0;
+      while (x0 < 320 && px(x0, 180)[1] < 128 * (1 - b!.opacity) + 20) x0++;
+      let x1 = 639;
+      while (x1 > 320 && px(x1, 180)[1] < 128 * (1 - b!.opacity) + 20) x1--;
+      console.log(`  zoom frame ${f}: scale ${zoom.toFixed(3)}, incoming opacity ${b!.opacity.toFixed(3)}; white from x ${x0} to ${x1 + 1}, core ${lit.x.toFixed(1)} to ${(lit.x + lit.w).toFixed(1)}`);
+      if (find) assert.ok(Math.abs(x0 - lit.x) <= 1.5 && Math.abs(x1 + 1 - (lit.x + lit.w)) <= 1.5, `frame ${f}: ${x0}–${x1 + 1} vs ${lit.x}–${lit.x + lit.w}`);
+      // Opacity: white under blue at b's opacity in the picture, black under blue in the bars.
+      const want = (under: number): Rgb => [Math.round(under * (1 - b!.opacity)), Math.round(under * (1 - b!.opacity)), Math.round(under * (1 - b!.opacity) + 255 * b!.opacity)];
+      assert.ok(closeColour(px(320, 180), want(255), 8), `frame ${f}: centre ${px(320, 180)} vs ${want(255)}`);
+      if (lit.x > 6) assert.ok(closeColour(px(2, 180), want(0), 8), `frame ${f}: bar ${px(2, 180)} vs ${want(0)}`);
+    }
+    // At the midpoint exactly: 1.1× (white from 56 to 584) and half blue.
+    const mid = visualsAt(project, layout(project).starts, 60);
+    assert.ok(Math.abs(mid.find((v) => v.item.id === "a")!.zoom! - 1.1) < 1e-9);
+    assert.ok(Math.abs(mid.find((v) => v.item.id === "b")!.opacity - 0.5) < 1e-9);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -320,8 +320,8 @@ export const componentInfo = (id: unknown) => (typeof id === "string" ? BY_ID.ge
 export const DRAWN_COMPONENTS: ReadonlyArray<string> = [SOLID, ...COMPONENTS.map((c) => c.id)];
 
 /**
- * Built-in component manifests that are valid in project.json but not drawn yet (like iris and push
- * transitions, D73): saved, shown to the agent with showsInPreview false, not offered in the panel.
+ * Built-in component manifests that are valid in project.json but not drawn yet (as transition.cut
+ * isn't): saved, shown to the agent with showsInPreview false, not offered in the panel.
  */
 export const UNDRAWN_COMPONENTS: Readonly<Record<string, string>> = {
   "component.callout": "not drawn yet",
@@ -378,7 +378,7 @@ export const componentDefaults = (id: string) => structuredClone((componentInfo(
  * Deterministic: the same item, target and frame give the same string, so the export draws one PNG
  * per distinct look.
  */
-export function componentHtml(item: Item, target: RenderTarget, local: number, opts: { opacity?: number; motion?: Motion; fps?: number } = {}): string {
+export function componentHtml(item: Item, target: RenderTarget, local: number, opts: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {}): string {
   const parts = componentParts(item, target, local, opts);
   return parts ? wrapComponent(parts.wrapper, parts.body) : "";
 }
@@ -387,11 +387,12 @@ export function componentHtml(item: Item, target: RenderTarget, local: number, o
  * componentHtml in two parts (D76 review): the wrapper (the box's position, size, opacity, scale,
  * the move's offset and reveal) and the body (what the component looks like inside its box). The
  * export caps how many distinct bodies it draws (an animation), never the wrapper's motion, so a
- * keyed box moves on every frame however long it is.
+ * keyed box moves on every frame however long it is. `box` is the box to draw it in when a
+ * transition moves it (D79: visualsAt's), else its own at `local`.
  */
-export function componentParts(item: Item, target: RenderTarget, local: number, { opacity = 1, motion, fps = 30 }: { opacity?: number; motion?: Motion; fps?: number } = {}): { wrapper: string; body: string } | undefined {
+export function componentParts(item: Item, target: RenderTarget, local: number, { opacity = 1, motion, fps = 30, box: moved }: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {}): { wrapper: string; body: string } | undefined {
   const c = componentInfo(item.component);
-  const box = componentBox(item, target.canvas, local);
+  const box = moved && isDrawnComponent(item) ? moved : componentBox(item, target.canvas, local);
   if (!c || !box) return undefined;
   const body = c.render({ item, props: item.props ?? {}, w: box.w, h: box.h, local, fps, target });
   const css = [`left:${px(box.x)}`, `top:${px(box.y)}`, `width:${px(box.w)}`, `height:${px(box.h)}`, `opacity:${num(opacity)}`];

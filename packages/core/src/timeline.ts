@@ -1,13 +1,13 @@
 // Timeline maths shared by the preview, export and the agent's frame renders.
 // Frame f means the moment f / fps. A main-track transition sits on its cut (transitions.ts says
-// how each draws): an overlapping one (crossfade, wipe) has the outgoing clip run half the
+// how each draws): an overlapping one (crossfade, wipe, iris, push, zoom) has the outgoing clip run half the
 // transition past its end and the incoming one start half before its start, on top; a dip to
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "./audio.ts";
-import { clipBox, type ClipBox } from "./box.ts";
+import { clipBox, moveBox, type ClipBox } from "./box.ts";
 import { componentBox } from "./components.ts";
 import { SOLID, type Motion } from "./render.ts";
-import { overlaps, WIPE } from "./transitions.ts";
+import { incomingFx, outgoingFx, overlaps, WIPE, type TransitionFx } from "./transitions.ts";
 import type { Canvas, Item, Media, Project, Track } from "./types.ts";
 
 export interface Visual {
@@ -18,6 +18,15 @@ export interface Visual {
   readonly motion: Motion;
   /** A wipe transition into it: the share of its width shown, from the left edge (0–1). Absent when whole. */
   readonly wipe?: number;
+  /** An iris transition into it (D79): the share of the canvas's half diagonal a circle at its centre shows (0–1; transitions.ts irisRadius). Absent when whole. */
+  readonly iris?: number;
+  /**
+   * A push or zoom transition moving it (D79): `shift` canvas px to the right, `zoom` its picture
+   * scaled about its box's centre. Already in `box` when it has one; an item without one (text, a
+   * background, a graphic) moves as the whole canvas. Absent when not moved.
+   */
+  readonly shift?: number;
+  readonly zoom?: number;
   /** Source time in seconds (0 for items without media); a looped clip wraps at its media's end. */
   readonly source: number;
   /**
@@ -53,6 +62,9 @@ export interface Span {
   readonly skipOut: boolean;
   /** The transition into it is a wipe (it is revealed from the left over [from, from + 2·half)). */
   readonly wipe: boolean;
+  /** The overlapping transitions' modules at its cuts: into it (when half > 0) and out of it (when nextHalf > 0). */
+  readonly into?: string;
+  readonly next?: string;
 }
 
 export function spanOf(track: Track, index: number, start: number): Span {
@@ -62,7 +74,41 @@ export function spanOf(track: Track, index: number, start: number): Span {
   const out = main ? track.items[index + 1]?.transitionIn : undefined;
   const half = into && overlaps(into.module) ? into.duration / 2 : 0;
   const nextHalf = out && overlaps(out.module) ? out.duration / 2 : 0;
-  return { from: start - half, to: start + item.duration + nextHalf, half, nextHalf, skipIn: !!into, skipOut: !!out, wipe: half > 0 && into!.module === WIPE };
+  return {
+    from: start - half,
+    to: start + item.duration + nextHalf,
+    half,
+    nextHalf,
+    skipIn: !!into,
+    skipOut: !!out,
+    wipe: half > 0 && into!.module === WIPE,
+    ...(half > 0 ? { into: into!.module } : {}),
+    ...(nextHalf > 0 ? { next: out!.module } : {}),
+  };
+}
+
+/** The share done of the transition into an item (`side` "in") or out of it at frame f: 0 → 1 over its frames, linear. */
+export function transitionShare(span: Pick<Span, "from" | "to" | "half" | "nextHalf">, f: number, side: "in" | "out"): number {
+  const clamp = (p: number) => Math.min(1, Math.max(0, p));
+  return side === "in" ? clamp((f - span.from) / (2 * span.half)) : clamp((f - (span.to - 2 * span.nextHalf)) / (2 * span.nextHalf));
+}
+
+/**
+ * What the overlapping transitions at an item's cuts do to it at frame f (D79; transitions.ts
+ * incomingFx / outgoingFx): opacity, a wipe or iris reveal, a push shift or a zoom. Nothing on
+ * frames outside them.
+ */
+export function transitionAt(span: Span, f: number, canvas: { readonly width: number }): TransitionFx {
+  let fx: TransitionFx = { opacity: 1 };
+  if (span.half > 0) {
+    const p = transitionShare(span, f, "in");
+    if (p < 1) fx = incomingFx(span.into!, p, canvas);
+  }
+  if (span.nextHalf > 0) {
+    const p = transitionShare(span, f, "out");
+    if (p > 0) fx = { ...outgoingFx(span.next!, p, canvas), opacity: fx.opacity };
+  }
+  return fx;
 }
 
 /** The id of the black layer a dip to black into `itemId` draws (not a valid item id, so it can't collide). */
@@ -115,20 +161,22 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
       const start = starts.get(item.id)!;
       const span = spanOf(track, i, start);
       if (f < span.from || f >= span.to) return;
-      const { half } = span;
-      // An overlapping transition in: a crossfade ramps the opacity, a wipe reveals from the left.
-      const p = half ? Math.min(1, Math.max(0, (f - span.from) / (2 * half))) : 1;
-      let opacity = span.wipe ? 1 : p;
+      // The overlapping transitions at its cuts: a crossfade ramps the opacity, a wipe or an iris
+      // reveals, a push or zoom moves it (D73, D79).
+      const fx = transitionAt(span, f, project.canvas);
+      let opacity = fx.opacity;
       // A main-track transition owns the blend at its cut: the in/out animation on that side is skipped.
       const anim = animationAt(item, f - start, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut });
       opacity *= anim.opacity;
       const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
       const media = pictureMedia(project, item);
-      const box = media ? clipBox(item, project.canvas, media.probe, f - start) : componentBox(item, project.canvas, f - start);
+      const own = media ? clipBox(item, project.canvas, media.probe, f - start) : componentBox(item, project.canvas, f - start);
+      const box = own && moveBox(own, fx.shift, fx.zoom);
       if (box) opacity *= box.opacity;
       // A graphic (D78) has no box: transform.opacity alone applies.
       if (item.type === "graphic" && typeof item.transform?.opacity === "number") opacity *= Math.min(1, Math.max(0, item.transform.opacity));
-      out.push({ item, track, opacity, motion: anim.motion, source, ...(span.wipe && p < 1 ? { wipe: p } : {}), ...(box ? { box } : {}) });
+      const moved = { ...(fx.shift ? { shift: fx.shift } : {}), ...(fx.zoom !== undefined && fx.zoom !== 1 ? { zoom: fx.zoom } : {}) };
+      out.push({ item, track, opacity, motion: anim.motion, source, ...(fx.wipe !== undefined ? { wipe: fx.wipe } : {}), ...(fx.iris !== undefined ? { iris: fx.iris } : {}), ...moved, ...(box ? { box } : {}) });
     });
     // Dips to black: a black layer over the main track's clips, under the tracks above it.
     for (const dip of dipsOf(track, starts)) {

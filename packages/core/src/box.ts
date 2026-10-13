@@ -130,3 +130,22 @@ export const isPlainBox = (box: ClipBox, canvas: Pick<Canvas, "width" | "height"
 
 /** Whether an item has anything the box model draws differently from a plain clip at some frame. */
 export const hasKeys = (item: Pick<Item, "keys">, prop?: KeyProp) => (prop ? keysOf(item.keys, prop).length > 0 : KEY_PROPS.some((p) => keysOf(item.keys, p).length > 0));
+
+/** The whole canvas as a box (fill, scale 1): what a transition moves for an item without a box of its own (text, backgrounds, graphics). */
+export const canvasBox = (canvas: Pick<Canvas, "width" | "height">): ClipBox => {
+  const r = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  return { ...r, fit: "fill", scale: 1, opacity: 1, radius: 0, content: r };
+};
+
+/**
+ * A box moved by a transition (D79): `shift` canvas px to the right (push), the picture `zoom`
+ * times larger about the box's centre (zoom: like a scale key, the box clips it). Size, radius and
+ * opacity unchanged. The same box with no move.
+ */
+export function moveBox(box: ClipBox, shift = 0, zoom = 1): ClipBox {
+  if (!shift && zoom === 1) return box;
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  const c = box.content;
+  return { ...box, x: box.x + shift, scale: box.scale * zoom, content: { x: cx + (c.x - cx) * zoom + shift, y: cy + (c.y - cy) * zoom, w: c.w * zoom, h: c.h * zoom } };
+}

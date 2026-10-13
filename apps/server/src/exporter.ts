@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality } from "@uncut/contracts";
-import { baseBox, componentHtml, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { baseBox, canvasBox, componentHtml, irisRadius, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -36,6 +36,7 @@ import {
   outputSize,
   parseLoudness,
   planExport,
+  rasterLooks,
   RASTER_CSS,
   sourceFramePick,
   graphFileArgs,
@@ -386,6 +387,14 @@ export const layer = Layer.effect(
       await r.render({ width, height, css: RASTER_CSS, html: plan.backgroundHtml, out: background });
       const rasters = new Map<VisualLayer, RasterOutput>();
       const urls = new Map<string, string>();
+      // Every distinct look drawn once (D79 review: slices and layers share looks), then linked per layer.
+      const drawnLooks = new Map<string, string>();
+      for (const [j, html] of rasterLooks(plan).entries()) {
+        if (signal.aborted) throw new Cancelled();
+        const out = join(dir, `look-${j}.png`);
+        await r.render({ width, height, css: RASTER_CSS, html: await withMedia(html, project, mediaPath, urls), out });
+        drawnLooks.set(html, out);
+      }
       for (const [k, layer] of plan.visuals.entries()) {
         if (signal.aborted) throw new Cancelled();
         if (layer.kind !== "raster" && layer.kind !== "graphic") continue;
@@ -397,20 +406,24 @@ export const layer = Layer.effect(
           for (const local of layer.frames) {
             if (drawn.has(local)) continue;
             if (signal.aborted) throw new Cancelled();
+            // The same document at the same frame in another slice of the item: drawn already.
+            const seen = drawnLooks.get(`graphic:${local}:${layer.doc}`);
+            if (seen) {
+              drawn.set(local, states.length);
+              states.push(seen);
+              continue;
+            }
             const out = join(dir, `l${k}-g${local}.png`);
             await r.render({ kind: "graphic", width, height, doc: layer.doc, t: local / plan.fps, info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local), out, name: `"${layer.item.name ?? layer.item.id}" (${layer.item.src})` }).catch((error: Error) => {
               throw new Error(`The graphic "${layer.item.name ?? layer.item.id}" (${layer.item.src}) couldn't be drawn at ${(local / plan.fps).toFixed(2)} s: ${error.message.replace(/^The text renderer failed: /, "")}`);
             });
             drawn.set(local, states.length);
             states.push(out);
+            drawnLooks.set(`graphic:${local}:${layer.doc}`, out);
           }
           frames = layer.frames.map((local) => drawn.get(local)!);
         } else {
-          for (const [j, html] of layer.states.entries()) {
-            const out = join(dir, `l${k}-s${j}.png`);
-            await r.render({ width, height, css: RASTER_CSS, html: await withMedia(html, project, mediaPath, urls), out });
-            states.push(out);
-          }
+          for (const html of layer.states) states.push(drawnLooks.get(html)!);
           frames = layer.frames;
         }
         if (states.length === 1) {
@@ -678,7 +691,7 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
               ? textHtml(v.item, project, { opacity: v.opacity, motion: v.motion })
               : v.item.component === SOLID
                 ? solidHtml(v.item, project, { opacity: v.opacity })
-                : componentHtml(v.item, target, local, { opacity: v.opacity, motion: v.motion, fps: project.canvas.fps });
+                : componentHtml(v.item, target, local, { opacity: v.opacity, motion: v.motion, fps: project.canvas.fps, ...(v.box ? { box: v.box } : {}) });
           await draw(html, png);
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         } else if (v.item.type === "graphic" && typeof v.item.src === "string") {
@@ -700,22 +713,35 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         const fade = (v.item.type === "clip" && !svg) || v.item.type === "graphic" ? `,colorchannelmixer=aa=${v.opacity.toFixed(4)}` : "";
         const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
         const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
+        // An iris (D79): alpha times the disc at the canvas's centre, for a layer whose top-left is at (ox, oy).
+        const iris = (ox: number, oy: number) =>
+          v.iris === undefined ? "" : `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${irisRadius(v.iris, { width: W, height: H }).toFixed(4)}-hypot(X+${ox + 0.5}-${W / 2},Y+${oy + 0.5}-${H / 2})+0.5,0,1)'`;
         if (v.box && media && !svg && !isPlainBox(v.box, project.canvas)) {
-          // A box (D75), made as the export makes it; the wipe reveals the canvas from the left.
+          // A box (D75; moved by a push or zoom, D79), made as the export makes it; a wipe or iris reveals the canvas.
           const p = placementOf(v.box, W / cw, H / ch, baseBox(v.item, project.canvas, media.probe));
           const visible = Math.min(p.w, shown - p.x);
           if (visible <= 0) continue;
           k++;
           inputs.push(...input);
           graph.push(`[${k}:v:0]${picked}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
-          graph.push(`[r${k}]format=rgba${fade}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}[l${k}]`);
+          graph.push(`[r${k}]format=rgba${fade}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
           graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
           base = `b${k}`;
           continue;
         }
         k++;
         inputs.push(...input);
-        graph.push(`[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
+        const full = `[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}`;
+        if (!v.box && (v.shift !== undefined || v.zoom !== undefined)) {
+          // Text, a background or a graphic pushed or zoomed (D79): the canvas as its box, moved.
+          const p = placementOf(moveBox(canvasBox(project.canvas), v.shift, v.zoom), W / cw, H / ch, canvasBox(project.canvas));
+          graph.push(`${full}[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+          graph.push(`[r${k}]format=rgba[l${k}]`);
+          graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
+          base = `b${k}`;
+          continue;
+        }
+        graph.push(`${full}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
         graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
         base = `b${k}`;
       }
