@@ -1,5 +1,5 @@
-import type { SetupCheck } from "@uncut/contracts";
-import { ArrowRight, AudioLines, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
+import type { PluginInfo, SetupCheck } from "@uncut/contracts";
+import { ArrowRight, AudioLines, Blocks, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { actions, useApp } from "./store.ts";
@@ -94,6 +94,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
           {row("ffmpeg")}
           {row("whisper")}
           {byId.whisper && <SpeechModelRow />}
+          <PluginRows />
           {failure}
           {ffmpegMissing && (
             <div className="wiz-note error" data-testid="ffmpeg-callout">
@@ -176,8 +177,8 @@ export function CheckRow({ check }: { check: SetupCheck }) {
   const chip = CHIP[check.status];
   const ChipIcon = chip.icon;
   const found = check.status !== "missing" && check.path !== undefined;
-  const version = check.version ? `v${check.version}` : found ? "version unknown" : undefined;
-  const sub = [version, check.detail].filter(Boolean).join(" · ");
+  const version = check.version ? `Version ${check.version}.` : found ? "Version unknown." : undefined;
+  const sub = [version, check.detail].filter(Boolean).join(" ");
   return (
     <div className="wiz-check" data-testid={`check-${check.id}`} data-status={check.status}>
       <div className="wiz-row">
@@ -229,7 +230,7 @@ export function SpeechModelRow() {
   const fraction = downloading && total ? Math.min(1, download.received / total) : 0;
   const offline = connection !== "connected";
   const sub = model.installed
-    ? `Downloaded · ${mb(model.bytes)} · ${model.multilingual ? "Polish, English and many more languages" : "English only"}`
+    ? `Downloaded (${mb(model.bytes)}). ${model.multilingual ? "Polish, English and many more languages." : "English only."}`
     : downloading
       ? `Downloading… ${Math.round(fraction * 100)}% (${mb(download.received)} of ${mb(total)})`
       : download?.phase === "failed"
@@ -256,7 +257,7 @@ export function SpeechModelRow() {
         <select className="wiz-select" data-testid="whisper-model-select" value={model.id} disabled={downloading || offline} onChange={(e) => void actions.selectModel(e.target.value)} title="The model transcripts use: bigger is more accurate, smaller downloads faster">
           {choices.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.name} · {mb(m.bytes)}
+              {m.name} ({mb(m.bytes)})
             </option>
           ))}
         </select>
@@ -291,6 +292,79 @@ function PendingRow() {
     <div className="wiz-row pending">
       <RefreshCw className="spin" />
       <div className="grow wiz-sub">Checking…</div>
+    </div>
+  );
+}
+
+/**
+ * The plugin folders Uncut found (D97), only when there are any: each one's status, what allowing
+ * it means, and Allow. The full plugin manager comes later (Phase 8).
+ */
+export function PluginRows() {
+  const { plugins, pluginError, connection } = useApp();
+  if (!plugins?.length) return null;
+  const offline = connection !== "connected";
+  return (
+    <div className="wiz-plugins" data-testid="plugins">
+      <div className="wiz-section">Plugins</div>
+      {plugins.map((p) => (
+        <PluginRow key={`${p.source}:${p.dir}`} plugin={p} offline={offline} />
+      ))}
+      {pluginError && (
+        <div className="wiz-note error" data-testid="plugin-error">
+          <TriangleAlert />
+          {pluginError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
+  const tools = p.tools.length ? `Gives the agent ${p.tools.join(", ")}` : "No agent tools";
+  const sub = p.status === "broken" ? "Skipped" : `${p.version ? `Version ${p.version}. ` : ""}${tools}. ${p.source === "bundled" ? "Ships with Uncut." : `From ${p.dir}`}`;
+  return (
+    <div className="wiz-check" data-testid={p.status === "broken" ? `plugin-skipped-${p.id}` : `plugin-${p.id}`} data-status={p.status}>
+      <div className="wiz-row">
+        <Blocks />
+        <div className="grow">
+          <div className="wiz-name">{p.name}</div>
+          <div className="wiz-sub" title={p.dir}>
+            {sub}
+          </div>
+        </div>
+        {p.status === "ready" ? (
+          <span className="wiz-chip ok" data-testid={`plugin-chip-${p.id}`}>
+            <Check />
+            Allowed
+          </span>
+        ) : p.status === "broken" ? (
+          <span className="wiz-chip error" data-testid={`plugin-chip-${p.id}`}>
+            <CircleAlert />
+            Not loaded
+          </span>
+        ) : (
+          <button className="btn primary" data-testid={`plugin-allow-${p.id}`} disabled={offline} onClick={() => void actions.approvePlugin(p)}>
+            Allow
+          </button>
+        )}
+      </div>
+      {(p.status === "needs-approval" || p.problem || p.warnings.length > 0) && (
+        <div className="wiz-fix" data-testid={`plugin-detail-${p.id}`}>
+          {p.problem && <span>{p.problem}</span>}
+          {p.status === "needs-approval" && p.asks.map((line) => <span key={line}>{line}</span>)}
+          {p.warnings.map((w) => (
+            <span key={w}>{w}</span>
+          ))}
+        </div>
+      )}
+      {p.status === "ready" && p.source === "user" && (
+        <div className="wiz-fix">
+          <button className="link-btn" data-testid={`plugin-revoke-${p.id}`} disabled={offline} onClick={() => void actions.revokePlugin(p.id)}>
+            Stop allowing it
+          </button>
+        </div>
+      )}
     </div>
   );
 }

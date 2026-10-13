@@ -32,6 +32,8 @@ export interface UncutBridge {
   // The disk path of a dropped File ("" if it isn't a file on disk).
   readonly pathForFile: (file: File) => string;
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
+  // Background test runs: the preview plays to no output device (AudioContext sinkId "none").
+  readonly silentAudio?: boolean;
 }
 
 declare global {

@@ -61,7 +61,7 @@ async function typeInto(page: Page, selector: string, value: string) {
 const dB = (x: number) => 20 * Math.log10(Math.max(x, 1e-12));
 type AudioHook = {
   startCapture(): boolean;
-  stopCapture(): { sampleRate: number; t0: number; left: string; right: string; marks: Array<{ t: number; frame: number }> } | undefined;
+  stopCapture(): { sampleRate: number; t0: number; left: string; right: string; marks: Array<{ t: number; frame: number }>; latency: number; sink: string } | undefined;
   biquadResponse(stage: Stage, freqs: ReadonlyArray<number>, sampleRate?: number): Array<number>;
   offlineTone(o: { stages?: ReadonlyArray<Stage>; ceilingDb?: number; amp: number; freq?: number; seconds?: number }): Promise<{ rms: number; peak: number }>;
   levels(): { limiter: number };
@@ -279,6 +279,7 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
       }
       await sleep(300);
       const cap = (await page.evaluate((h) => (globalThis as unknown as Record<string, AudioHook>)[h]!.stopCapture(), H))!;
+      assert.equal(cap.sink, "none", "the preview plays to no output device in a test run");
       assert.ok(cap, "captured");
       const f32 = (s: string) => {
         const b = Buffer.from(s, "base64");
@@ -298,7 +299,7 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
       const inter = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4);
       const ex = { left: new Float32Array(inter.length / 2), right: new Float32Array(inter.length / 2) };
       for (let i = 0; i < ex.left.length; i++) (ex.left[i] = inter[2 * i]!, (ex.right[i] = inter[2 * i + 1]!));
-      // Alignment as in the mixer test (D83): the clock's offset from the drawn frames, refined by ±0.25 s of 50 ms levels.
+      // Alignment as in the mixer test (D83): the clock's offset from the drawn frames, refined by ±0.6 s of 50 ms levels (an output device's latency fits).
       const playingMarks = cap.marks.filter((m, i) => i > 3 && m.frame > 3 && m.frame < SECONDS * 30 - 10);
       const offs = playingMarks.map((m) => m.frame / 30 - m.t).sort((a, b) => a - b);
       const clockOffset = offs[Math.floor(offs.length / 2)]!;
@@ -310,7 +311,7 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
       };
       const W = Math.round(0.05 * sr);
       let best = { lag: 0, err: Infinity };
-      for (let lag = -0.25; lag <= 0.25; lag += 0.005) {
+      for (let lag = -0.6; lag <= 0.6; lag += 0.005) {
         const s0 = startIndex(lag);
         let err = 0;
         for (let k = Math.round(0.5 / 0.05); k < Math.round(8.25 / 0.05); k++) {
@@ -319,7 +320,7 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
         }
         if (err < best.err) best = { lag, err };
       }
-      assert.ok(Math.abs(best.lag) < 0.25 - 0.005, `the alignment search hit its limit (lag ${best.lag.toFixed(3)} s)`);
+      assert.ok(Math.abs(best.lag) < 0.6 - 0.005, `the alignment search hit its limit (lag ${best.lag.toFixed(3)} s)`);
       const s0 = startIndex(best.lag);
       assert.ok(s0 + 0.5 * sr >= 0 && s0 + 8.25 * sr <= pre.left.length, `the recording covers 0.5–8.25 s (start ${s0}, ${pre.left.length} samples)`);
       const worst = { d: 0, at: "" };
@@ -357,7 +358,7 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
       const lPre = lufs(pre.left.subarray(s0 + a, s0 + b), pre.right.subarray(s0 + a, s0 + b), `${name}-pre`);
       const lExp = lufs(ex.left.subarray(a, b), ex.right.subarray(a, b), `${name}-exp`);
       assert.ok(skipped <= 10, `${skipped} of 31 windows are next to an onset`);
-      console.log(`${name}: worst 0.25 s window ${worst.d.toFixed(2)} dB (${worst.at}; ${skipped} of 31 windows next to an onset left out), LUFS preview ${lPre} vs export ${lExp}, limiter gain reduction down to ${gr.toFixed(1)} dB (median while working ${grs.length ? grs.sort((x, y) => x - y)[Math.floor(grs.length / 2)]!.toFixed(1) : "0"} dB, ${grs.length} readings), lag ${best.lag.toFixed(3)} s`);
+      console.log(`${name}: worst 0.25 s window ${worst.d.toFixed(2)} dB (${worst.at}; ${skipped} of 31 windows next to an onset left out), LUFS preview ${lPre} vs export ${lExp}, limiter gain reduction down to ${gr.toFixed(1)} dB (median while working ${grs.length ? grs.sort((x, y) => x - y)[Math.floor(grs.length / 2)]!.toFixed(1) : "0"} dB, ${grs.length} readings), lag ${best.lag.toFixed(3)} s, sink ${cap.sink}, output latency ${cap.latency.toFixed(3)} s`);
       return { worst, lPre, lExp, gr, voiceLight };
     };
     const main = await compare("eq-duck-limiter");

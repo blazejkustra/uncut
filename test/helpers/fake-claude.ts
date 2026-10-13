@@ -12,6 +12,7 @@
 //   { await: path } wait (up to 5 min) for the JSON file at path, an array of steps, and play them
 //                   next: the test decides them from the results so far, like claude would
 // Every run appends { prompt, resume, env (variable names only), pid, mcpPid, mcpToken, ... } to $FAKE_PROMPT_LOG,
+// with $FAKE_TOOLS_LOG the tool names tools/list gave (one JSON array per turn),
 // and, with $FAKE_RESULT_LOG, every tool result ({ tool, result }) to that file.
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -69,6 +70,7 @@ const rpc = (method: string, params?: unknown) =>
 await rpc("initialize", { protocolVersion: "2025-06-18" });
 const listed = await rpc("tools/list");
 const tools = (listed.result?.tools ?? []) as Array<{ name: string }>;
+if (process.env.FAKE_TOOLS_LOG) appendFileSync(process.env.FAKE_TOOLS_LOG, `${JSON.stringify(tools.map((t) => t.name))}\n`);
 out({
   type: "system",
   subtype: "init",

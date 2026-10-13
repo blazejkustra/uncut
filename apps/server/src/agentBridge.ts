@@ -38,7 +38,7 @@ export const layer = Layer.unwrap(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const token = tokenOf(request);
         // Check the token before reading the body: strangers get nothing parsed.
-        if (!(yield* agent.tools(token))) return unauthorized();
+        if (!(yield* agent.authorized(token))) return unauthorized();
         const body = yield* request.json.pipe(Effect.orElseSucceed(() => undefined));
         if (!body || typeof body !== "object") return HttpServerResponse.text("Bad request", { status: 400 });
         const { name, args } = body as { name?: unknown; args?: unknown };

@@ -71,8 +71,8 @@ export function NewProject() {
         </div>
       </div>
       <p className="wiz-meta">
-        Creates <span className="mono">{name.trim() || "…"}.uncut</span> in that folder ·{" "}
-        {canvasLabel(CANVAS_PRESETS.find((p) => p.id === preset)!.canvas)}
+        Creates <span className="mono">{name.trim() || "…"}.uncut</span> in that folder, as{" "}
+        {canvasLabel(CANVAS_PRESETS.find((p) => p.id === preset)!.canvas)}.
       </p>
       {error && (
         <div className="inline-error" role="alert" data-testid="form-error">

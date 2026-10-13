@@ -1,0 +1,34 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "fake.capture",
+  "kind": "capture-source",
+  "name": "Fake capture",
+  "version": "0.1.0",
+  "description": "A stand-in plugin for tests: echoes, reports its environment, crashes or hangs on request.",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts", "--from-manifest"] },
+  "capabilities": ["process:spawn", "media:write"],
+  "capture": { "targets": ["desktop-screen"] },
+  "agentTools": [
+    {
+      "name": "fake_echo",
+      "description": "Echoes the text back, with a tiny picture.",
+      "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "additionalProperties": false }
+    },
+    {
+      "name": "fake_env",
+      "description": "Reports the plugin process's pid, arguments, folder and environment variable names.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "fake_crash",
+      "description": "Exits without answering.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "fake_sleep",
+      "description": "Answers after ms milliseconds.",
+      "inputSchema": { "type": "object", "properties": { "ms": { "type": "number" } }, "additionalProperties": false }
+    }
+  ]
+}
