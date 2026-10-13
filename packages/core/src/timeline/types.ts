@@ -263,7 +263,7 @@ export interface Problem {
   readonly message: string;
 }
 
-export type ModuleKind = "transition" | "move" | "text-style" | "component" | "effect" | "audio-processor" | "analyzer" | "generator" | "capture-source";
+export type ModuleKind = "transition" | "move" | "text-style" | "component" | "effect" | "audio-processor" | "analyzer" | "generator" | "capture-source" | "pack";
 
 /** A module manifest (*.json in a modules directory). Kind-specific blocks are left open. */
 export interface ModuleManifest {

@@ -107,7 +107,7 @@ test("install from a folder: copied into <dataDir>/plugins/<id>; the refusals", 
   await refused(installPlugin({ source: notJson }, ctx), /isn't valid JSON/);
   await refused(installPlugin({ source: folder({ apiVersion: "uncut.module/2" }) }, ctx), /written for the plugin format uncut.module\/2, which is newer than this Uncut understands/);
   await refused(installPlugin({ source: folder({ id: "transition.crossfade" }) }, ctx), /belongs to a built-in module/);
-  await refused(installPlugin({ source: folder({ runtime: { type: "html" } }) }, ctx), /only "process" plugins/);
+  await refused(installPlugin({ source: folder({ runtime: { type: "html" } }) }, ctx), /only "process" and "data" plugins/);
   await refused(installPlugin({ source: folder({ id: "whisper.transcribe" }) }, ctx), /like Whisper \(on this Mac\), which ships with Uncut/, "replaces-bundled");
   const replaced = await installPlugin({ source: folder({ id: "whisper.transcribe" }), replaceBundled: true }, ctx);
   assert.equal(replaced.id, "whisper.transcribe");

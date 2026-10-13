@@ -1,5 +1,5 @@
 import type { KeyInfo, PluginInfo, SetupCheck } from "@uncut/contracts";
-import { ArrowRight, AudioLines, Blocks, KeyRound, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, FolderOpen, GitBranch, Plus, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, AudioLines, Blocks, KeyRound, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, FolderOpen, GitBranch, Plus, RefreshCw, Search, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -399,19 +399,29 @@ function PendingRow() {
 export function PluginRows() {
   const { plugins, pluginError, pluginInstallNote, connection, pluginDialog } = useApp();
   const [adding, setAdding] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const offline = connection !== "connected";
   const dialog = pluginDialog ? plugins?.find((p) => p.id === pluginDialog && p.status !== "broken") : undefined;
   return (
     <div className="wiz-plugins" data-testid="plugins">
       <div className="wiz-section-row">
         <div className="wiz-section">Plugins</div>
-        {!adding && (
-          <button className="btn ghost" data-testid="plugin-add" disabled={offline} onClick={() => setAdding(true)}>
-            <Plus />
-            Add plugin…
-          </button>
-        )}
+        <div className="wiz-btns">
+          {!browsing && (
+            <button className="btn ghost" data-testid="plugin-browse" disabled={offline} onClick={() => setBrowsing(true)}>
+              <Search />
+              Browse…
+            </button>
+          )}
+          {!adding && (
+            <button className="btn ghost" data-testid="plugin-add" disabled={offline} onClick={() => setAdding(true)}>
+              <Plus />
+              Add plugin…
+            </button>
+          )}
+        </div>
       </div>
+      {browsing && <BrowsePlugins offline={offline} onClose={() => setBrowsing(false)} />}
       {adding && <AddPlugin offline={offline} onClose={() => setAdding(false)} />}
       {!plugins?.length && !adding && <div className="wiz-sub">No plugins yet. A plugin adds tools for the agent, like a capture source or a generator.</div>}
       {plugins?.map((p) => (
@@ -430,6 +440,61 @@ export function PluginRows() {
         </div>
       )}
       {dialog && <PluginApproval plugin={dialog} offline={offline} />}
+    </div>
+  );
+}
+
+/**
+ * Browse… (D103): Uncut's plugin catalog (plugins/catalog in the repo, shipped with the app, off
+ * by default), searchable. Enable copies one in and opens the approval dialog; Disable removes it.
+ */
+function BrowsePlugins({ offline, onClose }: { offline: boolean; onClose: () => void }) {
+  const { pluginCatalog, pluginInstalling, plugins } = useApp();
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    void actions.loadCatalog();
+  }, [plugins]);
+  const q = query.trim().toLowerCase();
+  const all = pluginCatalog?.plugins ?? [];
+  const shown = all.filter((e) => !q || [e.id, e.name, e.description, e.kind, ...(e.contributes ? [...e.contributes.looks, ...e.contributes.components, ...e.contributes.rules] : [])].some((v) => v.toLowerCase().includes(q)));
+  const busy = offline || !!pluginInstalling;
+  return (
+    <div className="wiz-check plugin-browse" data-testid="plugin-browse-panel">
+      <div className="wiz-sub">Plugins that come with Uncut and are off until you enable them. Each one asks before it's allowed.</div>
+      {all.length > 0 && <input className="field input" data-testid="plugin-catalog-search" placeholder="Search plugins" value={query} onChange={(e) => setQuery(e.target.value)} />}
+      {pluginCatalog && !all.length && <div className="wiz-sub">No plugins in the catalog yet.</div>}
+      {shown.map((e) => (
+        <div className="plugin-browse-row" key={e.id} data-testid="plugin-catalog-entry" data-id={e.id} data-enabled={e.enabled ? "true" : "false"}>
+          <Blocks />
+          <div className="grow">
+            <div className="wiz-name">{e.name}</div>
+            {e.description && <div className="wiz-sub">{e.description}</div>}
+            <div className="plugin-browse-tags">
+              {[e.contributes ? addsLine(e.contributes) : "", e.tools.length ? `Gives the agent ${e.tools.join(", ")}` : "", e.runs ? "Runs as a program" : "Runs no program"].filter(Boolean).join(". ")}
+            </div>
+          </div>
+          {e.enabled ? (
+            <button className="btn ghost" data-testid="plugin-catalog-disable" disabled={busy} onClick={() => void actions.disablePlugin(e.id)}>
+              Disable
+            </button>
+          ) : (
+            <button className="btn" data-testid="plugin-catalog-enable" disabled={busy} onClick={() => void actions.enablePlugin(e.id)}>
+              Enable…
+            </button>
+          )}
+        </div>
+      ))}
+      {q && all.length > 0 && !shown.length && <div className="wiz-sub">No plugin matches that.</div>}
+      {pluginCatalog?.problems.map((p) => (
+        <div key={p} className="wiz-sub error">
+          {p}
+        </div>
+      ))}
+      <div className="wiz-btns">
+        <button className="link-btn" data-testid="plugin-browse-close" onClick={onClose}>
+          Close
+        </button>
+      </div>
     </div>
   );
 }
@@ -513,10 +578,15 @@ function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void
   );
 }
 
+/** What a plugin adds (D103), in words: "Text looks: Soft card. Components: Corner sticker. Checks: …". */
+const addsLine = (c: NonNullable<PluginInfo["contributes"]>) =>
+  [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : ""].filter(Boolean).join(". ");
+
 /** Where a plugin came from, in words (the approval dialog and the row's tooltip). */
 const originLines = (p: PluginInfo): Array<[string, string]> => {
   if (p.source === "bundled") return [["Source", "Ships with Uncut"]];
   if (p.origin?.kind === "git") return [["Source", p.origin.source], ...(p.origin.ref ? [["Branch or tag", p.origin.ref] as [string, string]] : []), ["Commit", p.origin.commit ?? "unknown"]];
+  if (p.origin?.kind === "catalog") return [["Source", "Uncut's plugin catalog"]];
   if (p.origin?.kind === "folder") return [["Source", `Copied from ${p.origin.source}`]];
   return [["Source", `The folder ${p.dir}`]];
 };
@@ -530,7 +600,7 @@ function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; offline: b
       <div className="modal plugin-approval" role="dialog" aria-label={`Allow ${p.name}?`}>
         <h2>Allow {p.name}?</h2>
         <div className="plugin-facts">
-          {[...originLines(p), ["Id", p.id] as [string, string], ...(p.version ? [["Version", p.version] as [string, string]] : []), ["Tools for the agent", p.tools.length ? p.tools.join(", ") : "None"] as [string, string]].map(([k, v]) => (
+          {[...originLines(p), ["Id", p.id] as [string, string], ...(p.version ? [["Version", p.version] as [string, string]] : []), ["Tools for the agent", p.tools.length ? p.tools.join(", ") : "None"] as [string, string], ...(p.contributes ? [["Adds", addsLine(p.contributes)] as [string, string]] : [])].map(([k, v]) => (
             <div className="plugin-fact" key={k} data-testid={`plugin-dialog-${k.toLowerCase().replace(/\W+/g, "-")}`}>
               <span className="k">{k}</span>
               <span className="v">{v}</span>
@@ -564,8 +634,8 @@ function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; offline: b
 }
 
 function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
-  const tools = p.tools.length ? `Gives the agent ${p.tools.join(", ")}` : "No agent tools";
-  const from = p.source === "bundled" ? "Ships with Uncut." : p.origin?.kind === "git" ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}` : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
+  const tools = p.tools.length ? `Gives the agent ${p.tools.join(", ")}` : p.contributes ? addsLine(p.contributes) : "No agent tools";
+  const from = p.source === "bundled" ? "Ships with Uncut." : p.origin?.kind === "git" ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}` : p.origin?.kind === "catalog" ? "From Uncut's catalog." : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
   const sub = p.status === "broken" ? "Skipped" : `${p.version ? `Version ${p.version}. ` : ""}${tools}. ${from}`;
   return (
     <div className="wiz-check" data-testid={p.status === "broken" ? `plugin-skipped-${p.id}` : `plugin-${p.id}`} data-status={p.status}>

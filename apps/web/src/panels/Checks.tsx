@@ -6,22 +6,34 @@ import { checkRule, disabledChecks, projectChecks, type Check } from "@uncut/cor
 import { CircleAlert, Info, ListChecks, Wand2, EyeOff } from "lucide-react";
 
 import { playback } from "../preview/playback.ts";
-import { actions, type Project } from "../state/store.ts";
+import { actions, getState, pluginRuleList, pluginRules, useApp, type Project } from "../state/store.ts";
 
-// Snapshots are immutable: one list per project object.
-const memo = new WeakMap<Project, ReadonlyArray<Check>>();
+// Snapshots are immutable: one list per project object (and per plugin rules and findings, D103).
+const memo = new WeakMap<Project, { rules: unknown; found: unknown; list: ReadonlyArray<Check> }>();
 export function checksOf(project: Project): ReadonlyArray<Check> {
-  let list = memo.get(project);
-  if (!list) {
-    list = projectChecks(project);
-    memo.set(project, list);
+  const rules = pluginRules();
+  const found = getState().pluginFindings;
+  let m = memo.get(project);
+  if (!m || m.rules !== rules || m.found !== found) {
+    // The allowed plugins' data rules run with the built-ins; process plugins' findings (the server's last answer) are added.
+    const off = new Set(disabledChecks(project));
+    const rank = (c: Check) => (c.severity === "warn" ? 0 : 1);
+    const list = [...projectChecks(project, { rules }), ...(found?.checks ?? []).filter((c) => !off.has(c.id))].sort((a, b) => rank(a) - rank(b) || (a.frame ?? Infinity) - (b.frame ?? Infinity));
+    m = { rules, found, list };
+    memo.set(project, m);
   }
-  return list;
+  return m.list;
 }
+
+/** A rule's registry entry: built-in, or an allowed plugin's (with its plugin's name). */
+const ruleOf = (id: string) => checkRule(id, pluginRuleList());
+const pluginOf = (id: string) => (getState().contributions?.rules as ReadonlyArray<{ id: string; pluginName: string }> | undefined)?.find((r) => r.id === id)?.pluginName;
 /** How many warnings the project has (the tab's and the export dialog's count). */
 export const warningCount = (project: Project) => checksOf(project).filter((c) => c.severity === "warn").length;
 
 export function ChecksPanel({ project, online }: { project: Project; online: boolean }) {
+  // Re-read when plugins' rules or findings change (D103).
+  const { pluginFindings } = useApp();
   const checks = checksOf(project);
   const warnings = checks.filter((c) => c.severity === "warn");
   const notes = checks.filter((c) => c.severity === "info");
@@ -50,7 +62,7 @@ export function ChecksPanel({ project, online }: { project: Project; online: boo
             <div className="lib-label checks-group">Turned off for this project</div>
             {off.map((id) => (
               <div key={id} className="checks-off-row" data-testid="check-off" data-rule={id}>
-                <span className="grow">{checkRule(id)?.title ?? id}</span>
+                <span className="grow">{ruleOf(id)?.title ?? id}</span>
                 <button className="btn ghost small-btn" data-testid="check-enable" disabled={!online} onClick={() => void actions.setCheckDisabled(id, false)}>
                   Turn on
                 </button>
@@ -58,6 +70,11 @@ export function ChecksPanel({ project, online }: { project: Project; online: boo
             ))}
           </div>
         )}
+        {pluginFindings?.notes.map((n) => (
+          <div key={n} className="hint muted small" data-testid="check-plugin-note">
+            {n}
+          </div>
+        ))}
         <div className="hint muted small">Checks follow the house style for short product videos. They're suggestions: the export never waits on them.</div>
       </div>
     </div>
@@ -65,7 +82,8 @@ export function ChecksPanel({ project, online }: { project: Project; online: boo
 }
 
 function Finding({ check, online }: { check: Check; online: boolean }) {
-  const rule = checkRule(check.id);
+  const rule = ruleOf(check.id);
+  const from = pluginOf(check.id);
   const show = () => {
     playback.pause();
     playback.select(check.itemIds?.[0]);
@@ -76,7 +94,14 @@ function Finding({ check, online }: { check: Check; online: boolean }) {
       <button className="check-row" data-testid="check-show" title={check.frame !== undefined ? "Show it on the timeline" : undefined} onClick={show}>
         {check.severity === "warn" ? <CircleAlert /> : <Info />}
         <span className="check-label">
-          <span className="check-title">{rule?.title ?? check.id}</span>
+          <span className="check-title">
+            {rule?.title ?? check.id}
+            {from && (
+              <span className="source-label" data-testid="check-source">
+                {from}
+              </span>
+            )}
+          </span>
           <span className="check-message" data-testid="check-message">
             {check.message}
           </span>

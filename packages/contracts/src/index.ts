@@ -50,6 +50,12 @@ export const RPC_METHODS = {
   pluginsRevoke: "plugins.revoke",
   pluginsInstall: "plugins.install",
   pluginsUninstall: "plugins.uninstall",
+  pluginsContributions: "plugins.contributions",
+  pluginsCheck: "plugins.check",
+  pluginsAddComponent: "plugins.addComponent",
+  pluginsCatalog: "plugins.catalog",
+  pluginsEnable: "plugins.enable",
+  pluginsDisable: "plugins.disable",
   captureDevices: "capture.devices",
   captureStart: "capture.start",
   captureStop: "capture.stop",
@@ -260,11 +266,45 @@ export const PluginInfo = Schema.Struct({
   warnings: Schema.Array(Schema.String),
   problem: Schema.optional(Schema.String),
   // Installed by Uncut (D102): where from ("folder" path, or git URL with the ref asked for and the commit cloned).
-  origin: Schema.optional(Schema.Struct({ kind: Schema.Literals(["folder", "git"]), source: Schema.String, ref: Schema.optional(Schema.String), commit: Schema.optional(Schema.String) })),
+  origin: Schema.optional(Schema.Struct({ kind: Schema.Literals(["folder", "git", "catalog"]), source: Schema.String, ref: Schema.optional(Schema.String), commit: Schema.optional(Schema.String) })),
   // In Uncut's own plugins folder, so Remove can delete it.
   removable: Schema.optional(Schema.Boolean),
+  // What it adds as data (D103), by name: text looks, components, checks.
+  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String) })),
 });
 export type PluginInfo = typeof PluginInfo.Type;
+
+/**
+ * The allowed plugins' contributions (D103) for the renderer: looks are core TextLooks (+ plugin,
+ * pluginName), rules core PluginRules; components without their template (it only ever runs in
+ * the graphics sandbox, after plugins.addComponent copies it into the project).
+ */
+export const PluginContributions = Schema.Struct({
+  looks: Schema.Array(Schema.Unknown),
+  components: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, params: Schema.Unknown, defaults: Schema.Unknown })),
+  rules: Schema.Array(Schema.Unknown),
+});
+export type PluginContributions = typeof PluginContributions.Type;
+
+/**
+ * One plugin in Uncut's catalog (D103): plugins/catalog in the repo, shipped with the app, off
+ * until the user enables one (copied like a folder install, then the approval dialog).
+ */
+export const CatalogEntry = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  description: Schema.String,
+  version: Schema.String,
+  kind: Schema.String,
+  capabilities: Schema.Array(Schema.String),
+  tools: Schema.Array(Schema.String),
+  // Whether it runs a program (a "process" plugin) or only adds data.
+  runs: Schema.Boolean,
+  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String) })),
+  // Enabled: a copy is in Uncut's plugins folder (it may still need allowing).
+  enabled: Schema.Boolean,
+});
+export type CatalogEntry = typeof CatalogEntry.Type;
 
 export class PluginError extends Schema.TaggedError<PluginError>()("PluginError", {
   // D102: "invalid" (an install refused, in one sentence), "replaces-bundled" (its id is a bundled
@@ -788,6 +828,20 @@ const PluginsInstallRpc = Rpc.make(RPC_METHODS.pluginsInstall, {
   error: PluginError,
 });
 const PluginsUninstallRpc = Rpc.make(RPC_METHODS.pluginsUninstall, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+// D103: the allowed plugins' looks, components and check rules; the open project's findings from
+// process plugins' own checks (Checks are core Check objects); a plugin component copied into the
+// open project's graphics/ (the renderer then inserts a graphic item with the props); the catalog.
+const PluginsContributionsRpc = Rpc.make(RPC_METHODS.pluginsContributions, { payload: Empty, success: PluginContributions });
+const PluginsCheckRpc = Rpc.make(RPC_METHODS.pluginsCheck, { payload: Empty, success: Schema.Struct({ checks: Schema.Array(Schema.Unknown), notes: Schema.Array(Schema.String) }) });
+const PluginsAddComponentRpc = Rpc.make(RPC_METHODS.pluginsAddComponent, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Struct({ src: Schema.String, name: Schema.String, props: Schema.Unknown }), error: PluginError });
+const PluginsCatalogRpc = Rpc.make(RPC_METHODS.pluginsCatalog, { payload: Empty, success: Schema.Struct({ plugins: Schema.Array(CatalogEntry), problems: Schema.Array(Schema.String) }) });
+// Enabling a catalog plugin copies it into <dataDir>/plugins (D102's folder install); it still needs allowing. Disable removes only such a copy.
+const PluginsDisableRpc = Rpc.make(RPC_METHODS.pluginsDisable, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+const PluginsEnableRpc = Rpc.make(RPC_METHODS.pluginsEnable, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ id: Schema.String, note: Schema.optional(Schema.String), plugins: Schema.Array(PluginInfo) }),
+  error: PluginError,
+});
 
 // The Capture tab (D98): Argent's devices (asks the plugin each time), start and stop a recording.
 // Stop imports the take into the open project as one user edit and returns its media id.
@@ -830,6 +884,12 @@ export const WsRpcGroup = RpcGroup.make(
   PluginsRevokeRpc,
   PluginsInstallRpc,
   PluginsUninstallRpc,
+  PluginsContributionsRpc,
+  PluginsCheckRpc,
+  PluginsAddComponentRpc,
+  PluginsCatalogRpc,
+  PluginsEnableRpc,
+  PluginsDisableRpc,
   HistorySubscribeRpc,
   HistoryPreviewRpc,
   HistoryJumpRpc,

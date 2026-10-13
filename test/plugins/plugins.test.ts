@@ -124,7 +124,7 @@ test("discovery: folder order, the first id wins, broken manifests and tool coll
   assert.deepEqual(Object.keys(problems).sort(), ["bad-schema", "builtin-id", "fake-copy", "html", "no-command", "not-json"]);
   assert.match(problems["not-json"]!, /^Its uncut\.module\.json isn't valid JSON/);
   assert.match(problems["bad-schema"]!, /doesn't match the module format: \/id must match pattern/);
-  assert.match(problems.html!, /only "process" plugins run/);
+  assert.match(problems.html!, /only "process" and "data" plugins load/);
   assert.equal(problems["no-command"], "Its runtime has no command, so Uncut can't start it.");
   assert.equal(problems["builtin-id"], "Its id transition.crossfade belongs to a built-in module.");
   assert.equal(problems["fake-copy"], `Another plugin with the id fake.capture comes first (${fake}), so this one is skipped.`);

@@ -26,10 +26,10 @@ import { draftOf, findItem, fitsTrack, lockOf, planMove, planSetTransition, plan
 import { frameTimecode, rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
 import { SOLID, solidBackground } from "@uncut/core/render";
-import { displayTracks, itemLabel, layoutOf, TEXT_PRESETS, type Item, type ProjectModel, type Track } from "../state/project.ts";
+import { displayTracks, itemLabel, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { NumberField, Slider } from "../panels/ItemEditors.tsx";
 import { dbLabel, envelopeDbAt, hasSound, keyIndexAt, levelY, planAddGainKey, planFade, planMoveGainKey, planRemoveGainKey, planTrackGain, soundTrack, yLevel } from "../audio/sound.ts";
-import { actions, getState, projectOf, thumbUrl, useApp } from "../state/store.ts";
+import { actions, getState, projectOf, textPresets, thumbUrl, useApp } from "../state/store.ts";
 import { ItemWaveform } from "./Waveform.tsx";
 import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
@@ -436,7 +436,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       return;
     }
     // A Text tab preset (D80): added at the time it's dropped on.
-    const preset = TEXT_PRESETS.find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
+    const preset = textPresets().find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
     if (preset) {
       e.preventDefault();
       void actions.addText(preset, { frame: Math.max(0, Math.round(frameAt(e.clientX))) });

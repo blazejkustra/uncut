@@ -2,7 +2,7 @@
 // then run an RpcServer for that one socket.
 import { timingSafeEqual } from "node:crypto";
 
-import { ProjectError, RPC_METHODS, TOKEN_QUERY_PARAM, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import { PluginError, ProjectError, RPC_METHODS, TOKEN_QUERY_PARAM, WS_PATH, WsRpcGroup } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -18,6 +18,7 @@ import { MediaLibrary } from "../media/media.ts";
 import { MediaCore } from "../media/mediaCore.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { Plugins } from "../plugins/plugins.ts";
+import { copyComponent } from "../plugins/contributions.ts";
 import { Capture } from "../capture/capture.ts";
 import { Generator } from "../generate/generate.ts";
 import { Keys } from "../generate/keys.ts";
@@ -111,6 +112,31 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.pluginsRevoke]: ({ id }) => plugins.revoke(id),
     [RPC_METHODS.pluginsInstall]: (input) => plugins.install(input),
     [RPC_METHODS.pluginsUninstall]: ({ id }) => plugins.uninstall(id),
+    [RPC_METHODS.pluginsContributions]: () =>
+      Effect.map(Effect.andThen(plugins.refresh, plugins.contributions), (c) => ({
+        looks: c.looks,
+        components: c.components.map(({ id, name, description, plugin, pluginName, params, defaults }) => ({ id, name, description, plugin, pluginName, params, defaults })),
+        rules: c.rules,
+      })),
+    [RPC_METHODS.pluginsCheck]: () =>
+      Effect.gen(function* () {
+        const open = yield* projects.current;
+        if (!open) return { checks: [], notes: [] };
+        return yield* plugins.processChecks(open.project, open.dir);
+      }),
+    [RPC_METHODS.pluginsAddComponent]: ({ id }) =>
+      Effect.gen(function* () {
+        const component = (yield* plugins.contributions).components.find((c) => c.id === id);
+        if (!component) return yield* new PluginError({ reason: "unknown-plugin", message: `There's no component ${id} from an allowed plugin.` });
+        const open = yield* projects.current;
+        if (!open) return yield* new PluginError({ reason: "io", message: "Open a project first." });
+        const copied = yield* Effect.tryPromise({ try: () => copyComponent(open.dir, component), catch: (error) => new PluginError({ reason: "io", message: `Couldn't copy ${component.name} into the project: ${(error as Error).message}` }) });
+        if ("problem" in copied) return yield* new PluginError({ reason: "io", message: copied.problem });
+        return { src: copied.src, name: component.name, props: component.defaults };
+      }),
+    [RPC_METHODS.pluginsCatalog]: () => plugins.catalog,
+    [RPC_METHODS.pluginsEnable]: ({ id }) => plugins.enable(id),
+    [RPC_METHODS.pluginsDisable]: ({ id }) => plugins.disable(id),
     [RPC_METHODS.captureDevices]: () => capture.state,
     [RPC_METHODS.captureStart]: ({ device, showTouches }) => capture.start(device, showTouches),
     [RPC_METHODS.captureStop]: ({ device }) => capture.stop(device),

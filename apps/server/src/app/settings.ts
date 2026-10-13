@@ -31,7 +31,8 @@ export interface SettingsShape {
 export interface PluginInstall {
   readonly dir: string;
   readonly source: string;
-  readonly kind: "folder" | "git";
+  // "catalog": enabled from the plugins that ship with Uncut but aren't on by default (D103).
+  readonly kind: "folder" | "git" | "catalog";
   readonly ref?: string;
   readonly commit?: string;
   readonly installedAt: string;
@@ -39,7 +40,7 @@ export interface PluginInstall {
 
 const isInstall = (x: unknown): x is PluginInstall => {
   const a = x as PluginInstall | null;
-  return !!a && typeof a === "object" && typeof a.dir === "string" && typeof a.source === "string" && (a.kind === "folder" || a.kind === "git") && (a.ref === undefined || typeof a.ref === "string") && (a.commit === undefined || typeof a.commit === "string") && typeof a.installedAt === "string";
+  return !!a && typeof a === "object" && typeof a.dir === "string" && typeof a.source === "string" && (a.kind === "folder" || a.kind === "git" || a.kind === "catalog") && (a.ref === undefined || typeof a.ref === "string") && (a.commit === undefined || typeof a.commit === "string") && typeof a.installedAt === "string";
 };
 
 const installsOf = (settings: Record<string, unknown>): Record<string, PluginInstall> => {

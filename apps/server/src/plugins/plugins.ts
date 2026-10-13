@@ -15,8 +15,10 @@ import { mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { PluginError, type PluginInfo } from "@uncut/contracts";
-import { validateModule, type ModuleManifest } from "@uncut/core";
+import { PluginError, type CatalogEntry, type PluginInfo } from "@uncut/contracts";
+import { parseFindings, CHECK_TIMEOUT_MS } from "./contributions.ts";
+import type { Check } from "@uncut/core";
+import { mergeContributions, NO_CONTRIBUTIONS, readContributions, validateModule, type Contributions, type ModuleManifest } from "@uncut/core";
 import { API_VERSION, API_VERSIONS } from "@uncut/plugin-sdk";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -75,7 +77,12 @@ export interface FoundPlugin {
   readonly capabilities: ReadonlyArray<string>;
   readonly tools: ReadonlyArray<McpTool>;
   readonly warnings: ReadonlyArray<string>;
+  /** How to start it; command "" for a data plugin (D103), which never runs. */
   readonly spec: ProcessSpec;
+  /** Whether it runs a program (runtime "process"); a "data" plugin only contributes (D103). */
+  readonly runs: boolean;
+  /** Its looks, components and check rules (D103), shown only once it's allowed. */
+  readonly contributions: Contributions;
 }
 
 export interface BrokenPlugin {
@@ -114,8 +121,15 @@ export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { 
   }
   const manifest = raw as ModuleManifest;
   const runtime = manifest.runtime as { type: string; command?: string };
-  if (runtime.type !== "process") return fail(`It's a "${runtime.type}" module; only "process" plugins run from a plugin folder for now.`);
-  if (!runtime.command) return fail(`Its runtime has no command, so Uncut can't start it.`);
+  if (runtime.type === "data") {
+    // A data plugin (D103): nothing runs, so it has no tools and needs something to contribute.
+    const c = (manifest.contributes ?? {}) as { looks?: Array<unknown>; components?: Array<unknown>; rules?: Array<unknown> };
+    if ((manifest.agentTools as Array<unknown> | undefined)?.length) return fail(`It's a "data" plugin with agent tools; tools need a "process" plugin that runs a program.`);
+    if (!c.looks?.length && !c.components?.length && !c.rules?.length) return fail(`It's a "data" plugin that contributes nothing (no looks, components or rules).`);
+  } else {
+    if (runtime.type !== "process") return fail(`It's a "${runtime.type}" module; only "process" and "data" plugins load from a plugin folder.`);
+    if (!runtime.command) return fail(`Its runtime has no command, so Uncut can't start it.`);
+  }
   if (builtinIds.has(manifest.id)) return fail(`Its id ${manifest.id} belongs to a built-in module.`);
   return { manifest };
 }
@@ -128,9 +142,10 @@ export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { 
  */
 export async function discoverPlugins(
   roots: ReadonlyArray<{ readonly source: PluginSource; readonly dir: string }>,
-  reserved: { readonly moduleIds: ReadonlySet<string>; readonly toolNames: ReadonlySet<string> },
+  reserved: { readonly moduleIds: ReadonlySet<string>; readonly toolNames: ReadonlySet<string>; readonly moves?: ReadonlySet<string> },
 ): Promise<Discovery> {
   const plugins: Array<FoundPlugin> = [];
+  const moves = reserved.moves ?? new Set([...reserved.moduleIds].filter((id) => id.startsWith("move.")));
   const broken: Array<BrokenPlugin> = [];
   const seenRoots = new Set<string>();
   const byId = new Map<string, string>();
@@ -202,8 +217,14 @@ export async function discoverPlugins(
         toolOwner.set(tool.name, manifest.id);
         tools.push({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema });
       }
-      // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent.
-      if (!declared.length && manifest.kind !== "analyzer") warnings.push("It has no agent tools, so the agent can't use it.");
+      const runs = runtime.type === "process";
+      // Ids are checked per plugin here; across plugins only allowed ones claim ids (mergeContributions).
+      const read = readContributions(manifest, { reserved: reserved.moduleIds, moves });
+      warnings.push(...read.warnings);
+      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length > 0;
+      // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent; a
+      // plugin that contributes looks, components or checks (D103) is used without tools.
+      if (!declared.length && manifest.kind !== "analyzer" && !contributes) warnings.push("It has no agent tools, so the agent can't use it.");
       plugins.push({
         id: manifest.id,
         name: manifest.name,
@@ -220,10 +241,12 @@ export async function discoverPlugins(
           id: manifest.id,
           name: manifest.name,
           dir,
-          command: runtime.command!,
-          args: runtime.args ?? [],
+          command: runs ? runtime.command! : "",
+          args: runs ? (runtime.args ?? []) : [],
           timeoutMs: Math.round((runtime.timeoutSeconds ?? DEFAULT_TIMEOUT_S) * 1000),
         },
+        runs,
+        contributions: read.contributions,
       });
     }
   }
@@ -246,7 +269,12 @@ const CAPABILITY_WORDS: Record<string, string> = {
 };
 
 /** What allowing a plugin means, in plain sentences (shown before the user allows it). */
-export function pluginAsks(plugin: Pick<FoundPlugin, "capabilities" | "source">): Array<string> {
+export function pluginAsks(plugin: Pick<FoundPlugin, "capabilities" | "source"> & { readonly runs?: boolean }): Array<string> {
+  if (plugin.runs === false) {
+    // A data plugin (D103): looks and checks are numbers and rules Uncut reads; components are
+    // templates drawn in the graphics sandbox. Still the user's call, as it changes what they see.
+    return ["It doesn't run a program: it only adds text looks, components and checks, and its components are drawn in a sandbox with no network. Allow it if you want them in Uncut."];
+  }
   const asks = [
     plugin.source === "bundled"
       ? "It ships with Uncut and runs as a program on this Mac."
@@ -265,6 +293,17 @@ export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabil
     approval.command === plugin.spec.command &&
     JSON.stringify(approval.args) === JSON.stringify(plugin.spec.args) &&
     plugin.capabilities.every((c) => approval.capabilities.includes(c)));
+
+/** A plugin's contributions in words for Settings (names), or undefined when it has none. */
+const contributesOf = (c: Contributions) =>
+  c.looks.length || c.components.length || c.rules.length ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title) } : undefined;
+
+/** A plugin's contributions for the agent's modules_list (ids, names and what each is). */
+const contributesFor = (c: Contributions) => ({
+  looks: c.looks.map((l) => ({ id: l.id, name: l.name, description: l.description })),
+  components: c.components.map((x) => ({ id: x.id, name: x.name, description: x.description, params: x.params })),
+  checks: c.rules.map((r) => ({ id: r.id, title: r.title, description: r.description, severity: r.severity })),
+});
 
 export function pluginInfos(
   discovery: Discovery,
@@ -289,6 +328,7 @@ export function pluginInfos(
       asks: pluginAsks(p),
       tools: p.tools.map((t) => t.name),
       warnings: [...p.warnings],
+      ...(contributesOf(p.contributions) ? { contributes: contributesOf(p.contributions)! } : {}),
       ...originOf(p.id, p.dir),
       ...(removable.has(p.dir) ? { removable: true } : {}),
     })),
@@ -788,7 +828,7 @@ export interface PluginsShape {
   readonly approve: (input: { readonly id: string; readonly dir: string; readonly capabilities: ReadonlyArray<string> }) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   readonly revoke: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   /** Installs a plugin from a folder or git URL into <dataDir>/plugins/<id> (D102); it needs allowing afterwards. */
-  readonly install: (input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined }) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
+  readonly install: (input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined; readonly catalog?: boolean }) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
   /** Stops and removes a plugin Uncut installed (one in <dataDir>/plugins), with its approval. */
   readonly uninstall: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   /** The allowed plugins' agent tools, from the last scan. */
@@ -807,6 +847,20 @@ export interface PluginsShape {
   readonly callPlugin: (id: string, tool: string, args: unknown, options?: { readonly projectDir?: string | undefined; readonly signal?: AbortSignal | undefined } & CallExtra) => Effect.Effect<PluginResult & { readonly plugin: PluginCaller | undefined }>;
   /** modules_list entries for the plugins (D97). */
   readonly modules: (kind?: string) => Effect.Effect<ReadonlyArray<Record<string, unknown>>>;
+  /** The allowed plugins' looks, components and check rules (D103), from the last scan; an unallowed plugin's never show. */
+  readonly contributions: Effect.Effect<Contributions>;
+  /** Uncut's catalog (D103): the plugins in config.pluginCatalogDir, each with whether it's enabled (copied in). */
+  readonly catalog: Effect.Effect<{ readonly plugins: ReadonlyArray<CatalogEntry>; readonly problems: ReadonlyArray<string> }>;
+  /** Enables a catalog plugin: a folder install of its catalog folder (D102), recorded as "catalog"; it still needs allowing. */
+  /** Disables a catalog plugin (D103): uninstall, but only a copy Uncut made from the catalog (install kind "catalog"). */
+  readonly disable: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
+  readonly enable: (id: string) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
+  /**
+   * The allowed process plugins' own checks (D103): each one with "process" rules gets its
+   * `check` tool called with the project (in parallel, CHECK_TIMEOUT_MS each); findings for rules
+   * it declared become Checks. A plugin that fails or is too slow adds a note instead.
+   */
+  readonly processChecks: (project: unknown, projectDir: string | undefined) => Effect.Effect<{ readonly checks: ReadonlyArray<Check>; readonly notes: ReadonlyArray<string> }>;
   /** The running process of a plugin (tests). */
   readonly host: PluginHost;
 }
@@ -845,7 +899,7 @@ export const layer = Layer.effect(
         discovery = yield* Effect.promise(() => discoverPlugins(config.pluginDirs, reserved));
         const approvals = yield* settings.pluginApprovals;
         // Plugins that went away, changed how they start or lost their approval stop now.
-        const keep = new Map(discovery.plugins.filter((p) => isApproved(p, approvals[p.id])).map((p) => [p.id, p.spec]));
+        const keep = new Map(discovery.plugins.filter((p) => p.runs && isApproved(p, approvals[p.id])).map((p) => [p.id, p.spec]));
         yield* Effect.promise(() => host.retain(keep));
         // stderr: stdout carries the ready line. Each problem once, not on every scan.
         for (const b of discovery.broken) {
@@ -898,7 +952,7 @@ export const layer = Layer.effect(
         ? undefined
         : `${plugin.name} (${plugin.id}) isn't allowed to run yet.${approval ? " It changed since the user allowed it (another folder or command, or it asks for more), so it needs allowing again." : ""} The user has to allow it first: Uncut > Settings…, the Capture step, Plugins, Allow. Ask them to, and say it runs as a program on their Mac with their rights. Don't retry until they have.`;
 
-    return Plugins.of({
+    const self: PluginsShape = Plugins.of({
       host,
       refresh,
       list,
@@ -949,7 +1003,7 @@ export const layer = Layer.effect(
           }).pipe(Effect.ensuring(Effect.sync(() => swapping && installing.delete(swapping))));
           // A new copy: the user allows it again (D97), whatever was allowed before.
           yield* settings
-            .setPluginInstall(installed.id, { dir: installed.dir, source: installed.source, kind: installed.kind, ...(installed.ref ? { ref: installed.ref } : {}), ...(installed.commit ? { commit: installed.commit } : {}), installedAt: new Date().toISOString() })
+            .setPluginInstall(installed.id, { dir: installed.dir, source: installed.source, kind: input.catalog ? "catalog" : installed.kind, ...(installed.ref ? { ref: installed.ref } : {}), ...(installed.commit ? { commit: installed.commit } : {}), installedAt: new Date().toISOString() })
             .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `${installed.name} was copied, but Uncut couldn't record where it came from: ${error.message}` })));
           yield* refresh;
           const winner = discovery.plugins.find((p) => p.id === installed.id);
@@ -1005,6 +1059,7 @@ export const layer = Layer.effect(
             const broken = discovery.broken.find((b) => b.id === id);
             return { ...errorResult(broken ? `The plugin ${id} can't be used: ${broken.problem}` : `There's no plugin ${id}.`), plugin: undefined };
           }
+          if (!plugin.runs) return { ...errorResult(`${plugin.name} doesn't run a program, so it has no tools to call.`), plugin: callerOf(plugin) };
           const installingNow = busy(plugin.id);
           if (installingNow) return { ...errorResult(installingNow), plugin: callerOf(plugin) };
           const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
@@ -1013,6 +1068,64 @@ export const layer = Layer.effect(
           const context = yield* Effect.promise(() => pluginContext(plugin, options.projectDir).catch(() => ({})));
           const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, { timeoutMs: options.timeoutMs, onProgress: options.onProgress }));
           return { ...result, plugin: callerOf(plugin) };
+        }),
+      catalog: Effect.gen(function* () {
+        yield* refresh;
+        const installs = yield* settings.pluginInstalls;
+        // Enabled: the plugin in use under that id is the copy Uncut made from the catalog (a
+        // same-id plugin from git or a folder doesn't count).
+        const fromCatalog = (id: string) => installs[id]?.kind === "catalog" && discovery.plugins.some((d) => d.id === id && d.source === "user" && d.dir === installs[id]!.dir);
+        const found = yield* Effect.promise(() => discoverPlugins([{ source: "user", dir: config.pluginCatalogDir }], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
+        return {
+          plugins: found.plugins.map((p): CatalogEntry => ({
+            id: p.id,
+            name: p.name,
+            description: p.description ?? "",
+            version: p.version,
+            kind: p.kind,
+            capabilities: [...p.capabilities],
+            tools: p.tools.map((t) => t.name),
+            runs: p.runs,
+            ...(contributesOf(p.contributions) ? { contributes: contributesOf(p.contributions)! } : {}),
+            enabled: fromCatalog(p.id),
+          })),
+          problems: found.broken.map((b) => `${b.id ?? b.dir}: ${b.problem}`),
+        };
+      }),
+      disable: (id) =>
+        Effect.gen(function* () {
+          const install = (yield* settings.pluginInstalls)[id];
+          if (install?.kind !== "catalog") return yield* new PluginError({ reason: "not-removable", message: `${id} wasn't enabled from Uncut's catalog, so Disable doesn't remove it (Remove does, in its row).` });
+          return yield* self.uninstall(id);
+        }),
+      enable: (id) =>
+        Effect.gen(function* () {
+          const found = yield* Effect.promise(() => discoverPlugins([{ source: "user", dir: config.pluginCatalogDir }], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
+          const entry = found.plugins.find((p) => p.id === id);
+          if (!entry) return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id} in Uncut's catalog.` });
+          return yield* self.install({ source: entry.dir, catalog: true });
+        }),
+      contributions: Effect.map(settings.pluginApprovals, (approvals) => {
+        const allowed = discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id));
+        return allowed.length ? mergeContributions(allowed.map((p) => p.contributions)) : NO_CONTRIBUTIONS;
+      }),
+      processChecks: (project, projectDir) =>
+        Effect.gen(function* () {
+          const approvals = yield* settings.pluginApprovals;
+          const askers = discovery.plugins.filter((p) => p.runs && isApproved(p, approvals[p.id]) && p.contributions.rules.some((r) => r.rule.type === "process"));
+          if (!askers.length) return { checks: [], notes: [] };
+          const results = yield* Effect.forEach(
+            askers,
+            (plugin) =>
+              Effect.gen(function* () {
+                const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (now) => busy(plugin.id) ?? (refusal(plugin, now[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
+                const context = yield* Effect.promise(() => pluginContext(plugin, projectDir).catch(() => ({})));
+                const result = yield* Effect.promise((signal) => host.call(plugin.spec, "check", { project }, signal, allowed, context, { timeoutMs: CHECK_TIMEOUT_MS }));
+                return parseFindings(plugin, result);
+              }),
+            { concurrency: "unbounded" },
+          );
+          return { checks: results.flatMap((r) => r.checks), notes: results.flatMap((r) => r.notes) };
         }),
       modules: (kind) =>
         Effect.map(settings.pluginApprovals, (approvals) => [
@@ -1031,14 +1144,24 @@ export const layer = Layer.effect(
                     approved: true,
                     capabilities: p.capabilities,
                     tools: p.tools.map((t) => t.name),
+                    ...(contributesOf(p.contributions) ? { contributes: contributesFor(p.contributions) } : {}),
                     ...(p.warnings.length ? { warnings: p.warnings } : {}),
                   }
                 : { id: p.id, kind: p.kind, name: p.name.slice(0, 80), source: p.source, plugin: true, approved: false, note: "Installed, but the user hasn't allowed it yet: its tools aren't available until they do (Uncut > Settings…, the Capture step, Plugins)." },
+            ),
+          // An allowed plugin's looks and components among the built-ins of that kind (D103).
+          ...discovery.plugins
+            .filter((p) => (kind === "text-style" || kind === "component") && isApproved(p, approvals[p.id]))
+            .flatMap((p): Array<Record<string, unknown>> =>
+              kind === "text-style"
+                ? p.contributions.looks.map((l) => ({ id: l.id, kind, name: l.name, description: l.description, source: p.source, plugin: p.id, note: `From the plugin ${p.name}: insert_text with look ${l.id}; the text carries the whole look, so it keeps drawing if the plugin goes.` }))
+                : p.contributions.components.map((c) => ({ id: c.id, kind, name: c.name, description: c.description, source: p.source, plugin: p.id, params: c.params, note: `From the plugin ${p.name}: the user adds it from the Elements tab (it becomes a graphic item whose props are these params; you can change them with update_item).` })),
             ),
           ...(!kind || kind === "plugin"
             ? discovery.broken.map((b) => ({ id: (b.id ?? b.dir.split("/").at(-1))?.slice(0, 80), source: b.source, plugin: true, skipped: true, warnings: [b.problem.slice(0, 300)] }))
             : []),
         ]),
     });
+    return self;
   }),
 );

@@ -214,10 +214,10 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
   const duration = TEXT_SECONDS * project.canvas.fps;
   // Dropped on the canvas: its first line centred on the drop point's height; a look that spans
   // the safe area keeps its x and width, others start at the drop point.
-  const look = TEXT_STYLES[preset.module];
+  const look = TEXT_STYLES[preset.module] ?? preset.look;
   const y = at && look ? Math.round(at.y - (project.canvas.height * look.size * look.lineHeight) / 2) : undefined;
   const transform = at && look ? (look.span ? { y: y! } : { x: Math.round(at.x), y: y! }) : undefined;
-  const plan = planInsertText(project, { look: preset.module, text: preset.text, start, duration, idBase: preset.id, ...(transform ? { transform } : {}) });
+  const plan = planInsertText(project, { look: preset.module, text: preset.text, start, duration, idBase: preset.look ? preset.id.split(".").at(-1)! : preset.id, ...(transform ? { transform } : {}) }, preset.look ? { [preset.module]: preset.look } : {});
   if ("problem" in plan) return plan;
   return { ops: plan.ops, summary: `Add ${preset.label.toLowerCase()}`, itemId: plan.itemId, start };
 }
