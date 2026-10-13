@@ -114,6 +114,10 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.deepEqual(readdirSync(whisper).sort(), ["server.ts", "uncut.module.json", "whisper.ts"]);
   for (const f of readdirSync(whisper)) assert.ok(readFileSync(join(whisper, f)).equals(readFileSync(resolve("plugins/whisper-transcribe", f))), f);
   assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "whisper-transcribe"]);
+  // The plugin SDK (D102): plugins on the app's Node import "@uncut/plugin-sdk" from here.
+  const sdk = join(installed, "Contents/Resources/plugin-sdk");
+  assert.deepEqual(readdirSync(sdk).sort(), ["index.ts", "register.ts"]);
+  for (const f of readdirSync(sdk)) assert.ok(readFileSync(join(sdk, f)).equals(readFileSync(resolve("packages/plugin-sdk/src", f))), f);
 
   const data = join(root, "data");
   const projects = join(root, "Projects");

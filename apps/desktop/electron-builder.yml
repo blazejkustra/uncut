@@ -30,6 +30,10 @@ extraResources:
   - from: ../../plugins
     to: plugins
     filter: ["*/uncut.module.json", "*/*.ts", "!**/*.test.ts", "!**/*.md"]
+  # The plugin SDK (D102): plugins on the app's Node import "@uncut/plugin-sdk" from here.
+  - from: ../../packages/plugin-sdk/src
+    to: plugin-sdk
+    filter: ["*.ts"]
 # Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
 afterSign: scripts/after-sign.ts
 mac:

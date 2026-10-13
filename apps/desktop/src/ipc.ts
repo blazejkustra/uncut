@@ -13,7 +13,7 @@ export const COPY_TEXT_CHANNEL = "uncut:copy-text";
 export const CHOOSE_MEDIA_CHANNEL = "uncut:choose-media";
 export const CHOOSE_SAVE_PATH_CHANNEL = "uncut:choose-save-path";
 
-export type FolderPurpose = "parent" | "project";
+export type FolderPurpose = "parent" | "project" | "plugin";
 
 export interface AppInfo {
   readonly homeDir: string;

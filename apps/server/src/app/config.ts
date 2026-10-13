@@ -28,6 +28,8 @@ export interface ServerConfigShape {
   // Plugin folders, searched in this order (D97): UNCUT_PLUGINS_DIR (tests, development), the
   // user's <dataDir>/plugins, then the plugins shipped with the app (Resources/plugins; dev: plugins/).
   readonly pluginDirs: ReadonlyArray<{ readonly source: "user" | "bundled"; readonly dir: string }>;
+  /** The plugin SDK plugins on Uncut's Node import (D102): its index.ts and register.ts. */
+  readonly pluginSdkDir: string;
   // ANTHROPIC_API_KEY was in our environment at startup (D41: it is removed and never passed on).
   readonly apiKeyInEnv: boolean;
   // The login shell's environment, once resolved (undefined when UNCUT_SHELL_ENV=off).
@@ -99,6 +101,7 @@ export const readConfig = (
       { source: "user" as const, dir: join(env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"), "plugins") },
       { source: "bundled" as const, dir: env.UNCUT_BUNDLED_PLUGINS_DIR || besideServer("../../../plugins") },
     ],
+    pluginSdkDir: env.UNCUT_PLUGIN_SDK_DIR || besideServer("../../../packages/plugin-sdk/src"),
     testFault: env.UNCUT_TEST_FAULT || undefined,
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
     apiKeyInEnv: shell.apiKeyInEnv,

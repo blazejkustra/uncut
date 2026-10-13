@@ -97,7 +97,7 @@ test("the plugin: list, a timed take, a flow take, refusals, cancel and exit sto
   const plugin = startPlugin({ ARGENT_BIN: FAKE_ARGENT, FAKE_ARGENT_LOG: s.log });
   try {
     const init = await plugin.request("initialize", { protocolVersion: "2025-06-18", capabilities: {} });
-    assert.equal(init.result.serverInfo.name, "uncut-argent-capture");
+    assert.equal(init.result.serverInfo.name, "argent.capture");
 
     // The list: Argent's version, every device with recordable and a reason.
     const list = await plugin.call("argent_list_devices", {});

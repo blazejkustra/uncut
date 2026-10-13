@@ -48,6 +48,8 @@ export const RPC_METHODS = {
   pluginsList: "plugins.list",
   pluginsApprove: "plugins.approve",
   pluginsRevoke: "plugins.revoke",
+  pluginsInstall: "plugins.install",
+  pluginsUninstall: "plugins.uninstall",
   captureDevices: "capture.devices",
   captureStart: "capture.start",
   captureStop: "capture.stop",
@@ -257,11 +259,17 @@ export const PluginInfo = Schema.Struct({
   tools: Schema.Array(Schema.String),
   warnings: Schema.Array(Schema.String),
   problem: Schema.optional(Schema.String),
+  // Installed by Uncut (D102): where from ("folder" path, or git URL with the ref asked for and the commit cloned).
+  origin: Schema.optional(Schema.Struct({ kind: Schema.Literals(["folder", "git"]), source: Schema.String, ref: Schema.optional(Schema.String), commit: Schema.optional(Schema.String) })),
+  // In Uncut's own plugins folder, so Remove can delete it.
+  removable: Schema.optional(Schema.Boolean),
 });
 export type PluginInfo = typeof PluginInfo.Type;
 
 export class PluginError extends Schema.TaggedError<PluginError>()("PluginError", {
-  reason: Schema.Literals(["unknown-plugin", "broken", "bundled", "changed", "io"]),
+  // D102: "invalid" (an install refused, in one sentence), "replaces-bundled" (its id is a bundled
+  // plugin's: install again with replaceBundled to do it on purpose), "not-removable".
+  reason: Schema.Literals(["unknown-plugin", "broken", "bundled", "changed", "io", "invalid", "replaces-bundled", "not-removable"]),
   message: Schema.String,
 }) {}
 
@@ -773,6 +781,13 @@ const PluginsListRpc = Rpc.make(RPC_METHODS.pluginsList, { payload: Empty, succe
 // The approval names what the user saw (folder and capabilities): a plugin that changed since is refused.
 const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, { payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String) }), success: Schema.Array(PluginInfo), error: PluginError });
 const PluginsRevokeRpc = Rpc.make(RPC_METHODS.pluginsRevoke, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+// Installs a plugin from a folder or a git URL (D102) into <dataDir>/plugins/<id>; it still needs allowing.
+const PluginsInstallRpc = Rpc.make(RPC_METHODS.pluginsInstall, {
+  payload: Schema.Struct({ source: Schema.String, ref: Schema.optional(Schema.String), replaceBundled: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ id: Schema.String, note: Schema.optional(Schema.String), plugins: Schema.Array(PluginInfo) }),
+  error: PluginError,
+});
+const PluginsUninstallRpc = Rpc.make(RPC_METHODS.pluginsUninstall, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
 
 // The Capture tab (D98): Argent's devices (asks the plugin each time), start and stop a recording.
 // Stop imports the take into the open project as one user edit and returns its media id.
@@ -813,6 +828,8 @@ export const WsRpcGroup = RpcGroup.make(
   PluginsListRpc,
   PluginsApproveRpc,
   PluginsRevokeRpc,
+  PluginsInstallRpc,
+  PluginsUninstallRpc,
   HistorySubscribeRpc,
   HistoryPreviewRpc,
   HistoryJumpRpc,

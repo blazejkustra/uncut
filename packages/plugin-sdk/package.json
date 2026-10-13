@@ -1,0 +1,11 @@
+{
+  "name": "@uncut/plugin-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Uncut plugin protocol (uncut.module/1) as TypeScript types, and a small helper to write a plugin's stdio server. No dependencies.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./register": "./src/register.ts"
+  }
+}

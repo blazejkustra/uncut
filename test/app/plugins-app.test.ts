@@ -74,7 +74,11 @@ test("a plugin is allowed in Settings, then the agent calls its tool in the pack
     await page.$eval("[data-testid=plugins]", (el) => el.scrollIntoView());
     await page.screenshot({ path: "test-output/plugins-ask.png" });
 
+    // Allow… opens the approval dialog (D102): where it's from, what it asks, then Allow.
     await page.click("[data-testid='plugin-allow-fake.capture']");
+    await waitFor(page, "[data-testid=plugin-dialog]");
+    assert.match(await text(page, "[data-testid=plugin-dialog-source]"), new RegExp(`The folder ${realpathSync(join(root, "plugins", "fake"))}`));
+    await page.click("[data-testid=plugin-dialog-allow]");
     await waitFor(page, `${row}[data-status=ready]`);
     assert.equal(await text(page, "[data-testid='plugin-chip-fake.capture']"), "Allowed");
     await page.$eval("[data-testid=plugins]", (el) => el.scrollIntoView());
