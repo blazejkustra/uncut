@@ -20,7 +20,7 @@ import * as readline from "node:readline";
 
 import { app, BrowserWindow, session } from "electron";
 
-import { fontFaceCss, type FontFile } from "../../../packages/core/src/render.ts";
+import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
 import dmMonoRegular from "../../../assets/fonts/DMMono-Regular.woff2";
 import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";

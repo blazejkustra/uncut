@@ -1,5 +1,5 @@
 // IPC between the desktop shell and the renderer. Payload types live in @uncut/contracts'
-// neighbour, apps/web/src/bridge.ts, which is the renderer's view of the same bridge.
+// neighbour, apps/web/src/state/bridge.ts, which is the renderer's view of the same bridge.
 export const SERVER_CONNECTION_CHANNEL = "uncut:server-connection";
 export const SERVER_EXIT_CHANNEL = "uncut:server-exit";
 export const APP_INFO_CHANNEL = "uncut:app-info";

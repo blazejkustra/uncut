@@ -6,7 +6,7 @@ const root = new URL("..", import.meta.url);
 const { version } = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
 
 await build({
-  entryPoints: [new URL("src/bin.ts", root).pathname],
+  entryPoints: [new URL("src/app/bin.ts", root).pathname],
   outfile: new URL("dist/server.mjs", root).pathname,
   bundle: true,
   platform: "node",
@@ -26,7 +26,7 @@ await build({
 // The agent's MCP server (D40): a separate small entry, shipped next to server.mjs, which the
 // server finds as ./mcp.mjs and claude starts per turn.
 await build({
-  entryPoints: [new URL("src/mcp.ts", root).pathname],
+  entryPoints: [new URL("src/agent/mcp.ts", root).pathname],
   outfile: new URL("dist/mcp.mjs", root).pathname,
   bundle: true,
   platform: "node",

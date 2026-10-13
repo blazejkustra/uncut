@@ -1,5 +1,5 @@
 // Phase 6 exit check (D93): the Argent promo "Haiku 4.5 vs Haiku 5.5 on the same Argent test",
-// rebuilt in Uncut from the reference video's own files. Shared by test/phase6-exit.test.ts (the
+// rebuilt in Uncut from the reference video's own files. Shared by test/app/phase6-exit.test.ts (the
 // scripted claude) and scripts/phase6-manual-check.ts (the real one).
 //
 // The reference (~/Documents/devrel/video-editor/argent-haiku45-vs-haiku55, or $UNCUT_ARGENT_REF) is

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
-import type { Item, MediaProbe, Project } from "../packages/core/src/types.ts";
+import type { Item, MediaProbe, Project } from "../packages/core/src/timeline/types.ts";
 
 const FPS = 60;
 const src = resolve(process.argv[2] ?? "../drone/DJI_20261010132228_0005_D.MP4");

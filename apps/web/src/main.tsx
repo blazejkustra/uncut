@@ -1,9 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { App } from "./App.tsx";
-import { loadFonts } from "./fonts.ts";
-import { start } from "./store.ts";
+import { App } from "./editor/App.tsx";
+import { loadFonts } from "./preview/fonts.ts";
+import { start } from "./state/store.ts";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(

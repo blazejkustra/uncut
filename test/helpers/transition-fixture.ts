@@ -11,7 +11,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { layout, visualsAt } from "../../packages/core/src/index.ts";
-import type { Project } from "../../packages/core/src/types.ts";
+import type { Project } from "../../packages/core/src/timeline/types.ts";
 
 export const RED: Rgb = [255, 0, 0];
 export const BLUE: Rgb = [0, 0, 255];

@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { Project } from "../../packages/core/src/types.ts";
+import type { Project } from "../../packages/core/src/timeline/types.ts";
 
 export const FPS = 30;
 
