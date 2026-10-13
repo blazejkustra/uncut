@@ -11,6 +11,8 @@ import {
   layout,
   MAX_RASTER_STATES,
   planDeviceFrame,
+  planInsertText,
+  WORD_STYLES,
   TEXT_STYLES,
   TRANSITIONS,
   UNDRAWN_COMPONENTS,
@@ -61,8 +63,8 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
     .filter((t) => (TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
     .map((t) => {
       const schema = structuredClone(t.inputSchema);
-      // timeline_edit's ops: the edit ops, or the device-frame convenience op the server expands (D76).
-      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }] } };
+      // timeline_edit's ops: the edit ops, or the convenience ops the server expands (insert_device_frame D76, insert_text D80).
+      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }] } };
       schema.$defs = { ...toolsSpec.$defs, ...editOpsSchema.$defs };
       return { name: t.name, description: t.description, inputSchema: schema };
     });
@@ -198,11 +200,15 @@ export function projectSummary(project: Project, revision: number, range?: { sta
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
 const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || DRAWN_TRANSITIONS.includes(m.id) || DRAWN_COMPONENTS.includes(m.id);
 
-/** A built-in text style's look (core TEXT_STYLES), in canvas fractions, for the agent. */
+/**
+ * A built-in text style's look (D80, from its manifest via core TEXT_STYLES) for the agent: every
+ * field, with the units spelled out.
+ */
 const textStyleLook = (id: string) => {
   const look = TEXT_STYLES[id];
   if (!look) return undefined;
-  return { size: `${look.size} × canvas height`, weight: look.weight, font: look.font, color: look.color, ...(look.align ? { align: look.align } : {}), position: `x ${look.x} × width, y ${look.y} × height` };
+  const { id: _id, name: _name, description: _description, ...rest } = look;
+  return { ...rest, units: "size and y: share of the canvas height; x and w: share of its width; span: x = safe margin, w = width minus twice it; stroke, shadow and background lengths: em of the font size (an item's own style fields are canvas px)" };
 };
 
 export function modulesList(modules: Modules, kind?: string) {
@@ -291,6 +297,59 @@ export function expandDeviceFrames(project: Project, ops: ReadonlyArray<unknown>
   return { ops: out };
 }
 
+const INSERT_TEXT_KEYS = new Set(["op", "look", "text", "start", "duration", "id", "track", "style", "transform", "animation", "alone"]);
+
+/**
+ * timeline_edit's ops with each insert_text (D80) expanded into the edit ops that make it (core
+ * planInsertText: the look's size, weight, position and moves, the looks it comes with, free or new
+ * text tracks), planned against the project as the ops before it leave it. Other ops pass through.
+ */
+export function expandTextLooks(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
+  if (!ops.some((op) => (op as { op?: unknown })?.op === "insert_text")) return { ops: [...ops] };
+  const out: Array<unknown> = [];
+  for (const [i, raw] of ops.entries()) {
+    const op = raw as Record<string, unknown>;
+    if (op?.op !== "insert_text") {
+      out.push(raw);
+      continue;
+    }
+    const where = `ops[${i}] (insert_text)`;
+    const extra = Object.keys(op).filter((k) => !INSERT_TEXT_KEYS.has(k));
+    if (extra.length) return { problem: `${where}: unknown field ${extra.join(", ")}.` };
+    if (typeof op.look !== "string") return { problem: `${where}: look must be a text-style module id, e.g. text.big-title (modules_list kind "text-style").` };
+    if (typeof op.start !== "number" || typeof op.duration !== "number") return { problem: `${where}: start and duration are required (frames).` };
+    if (op.text !== undefined && typeof op.text !== "string") return { problem: `${where}: text must be a string.` };
+    if (op.id !== undefined && typeof op.id !== "string") return { problem: `${where}: id must be a string.` };
+    for (const k of ["style", "transform"] as const) if (op[k] !== undefined && (typeof op[k] !== "object" || op[k] === null || Array.isArray(op[k]))) return { problem: `${where}: ${k} must be an object.` };
+    if (op.animation !== undefined && op.animation !== null && (typeof op.animation !== "object" || Array.isArray(op.animation))) return { problem: `${where}: animation must be {in?, out?} or null.` };
+    if (op.track !== undefined) return { problem: `${where}: track isn't taken: insert_text picks a free text track (or adds one). Use insert_item to put text on a given track.` };
+    let now: Project = project;
+    try {
+      if (out.length) now = applyEdit(createSession(project), { actor: "agent", ops: out as ReadonlyArray<Op> }).project;
+    } catch {}
+    const plan = planInsertText(now, {
+      look: op.look,
+      start: op.start,
+      duration: op.duration,
+      ...(typeof op.text === "string" ? { text: op.text } : {}),
+      ...(typeof op.id === "string" ? { id: op.id } : {}),
+      ...(op.style ? { style: op.style as Record<string, never> } : {}),
+      ...(op.transform ? { transform: op.transform as { x?: number; y?: number; w?: number } } : {}),
+      ...(op.animation !== undefined ? { animation: op.animation as null } : {}),
+      ...(op.alone === true ? { alone: true } : {}),
+    });
+    if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
+    out.push(...plan.ops);
+  }
+  return { ops: out };
+}
+
+/** The text looks for the system prompt (D80). */
+const LOOK_DOCS = Object.values(TEXT_STYLES)
+  .filter((l) => !l.legacyShadow)
+  .map((l) => `${l.id} (${l.name.toLowerCase()})`)
+  .join(", ");
+
 /** The drawn transitions for the system prompt: id, what it does, frame limits. */
 const TRANSITION_DOCS = TRANSITIONS.map((t) => `${t.id} (${t.name.toLowerCase()}, ${t.minFrames}–${t.maxFrames} frames)`).join(", ");
 /** The drawn components for the system prompt (D76). */
@@ -305,8 +364,8 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - If the message lists edits the user made by hand, they are intentional: keep them and build on them.
 - A project can start empty, with no media. Text needs none. Add a text item to a text track (project_read lists the tracks), for example on a 1920x1080 canvas at 30 fps:
   {"op":"insert_item","track":"text","item":{"id":"title-1","type":"text","start":0,"duration":150,"text":"Kraków from above","transform":{"x":154,"y":410},"style":{"preset":"text.title","size":130,"weight":700}}}
-  transform x and y are the text box's top-left corner in canvas pixels, transform.w its width (omit it and the box fits the text); style.size is the font size in canvas pixels; scale them to the canvas. style.align (left, center, right) aligns the lines inside the box: to centre a title, set x to the safe margin (theme.margin, else the shorter canvas side / 15), w to canvas width minus twice that, and align "center". style.color is a theme token (fg, bg, mute, accent; a project without a theme still has these) or a CSS colour like "#0B1D3A"; style.weight 100–900. Text styles: modules_list with kind "text-style" (text.title, text.header, text.lower-third, ...) lists each one's look. [[word]] accents a word, **bold**, \\n breaks a line. Items on one free track can't overlap: put more text on another time or a new track (add_track with kind "text", index 0 puts it on top).
-  Animations: "animation":{"in":{"module":"move.fade","duration":9},"out":{"module":"move.fade","duration":9}}; move.fade, move.rise, move.slide-left and move.wipe draw; a duration can't be longer than the item.
+  transform x and y are the text box's top-left corner in canvas pixels, transform.w its width (omit it and the box fits the text); style.size is the font size in canvas pixels; scale them to the canvas. style.align (left, center, right) aligns the lines inside the box: to centre a title, set x to the safe margin (theme.margin, else the shorter canvas side / 15), w to canvas width minus twice that, and align "center". style.color is a theme token (fg, bg, mute, accent; a project without a theme still has these) or a CSS colour like "#0B1D3A"; style.weight 100–900. Text styles (looks, D80): modules_list with kind "text-style" lists each one's look (size, position, font, stroke, shadow, box, placeholder text, moves). The curated ones: ${LOOK_DOCS}; older ones (text.title, text.header, text.lower-third, text.footnote, text.mono-label, text.captions) draw a soft shadow only in projects made before text looks (no "textLooks" field in project.json); in newer ones no text has a shadow unless its style sets one. Easiest: {"op":"insert_text","look":"text.big-title","text":"Your words","start":0,"duration":90} inside timeline_edit's ops gives the item that look (its size, weight, position and moves, plus the looks it comes with, e.g. a kicker), on a free text track (a new one if needed); optional id, style and transform (canvas px, over the look's), animation ({in, out} or null for none), alone (skip the looks it comes with). Style fields on any text item (canvas px): stroke {width, color} (an outline; paint goes under the fill), shadow {x, y, blur, color, opacity 0–1}, background {color, opacity 0–1, padding (the sides; top and bottom get half), radius, wrap "box" (one box around the text box) or "lines" (a box behind each line, subtitle-style)}, uppercase true, tracking (em), lineHeight; false for stroke, shadow or background removes the look's; leaving a field out uses the look's. update_item replaces style whole: send the fields you keep. [[word]] accents a word, **bold**, \\n breaks a line. Items on one free track can't overlap: put more text on another time or a new track (add_track with kind "text", index 0 puts it on top).
+  Animations: "animation":{"in":{"module":"move.fade","duration":9},"out":{"module":"move.fade","duration":9}}; move.fade, move.rise, move.slide-left and move.wipe draw; on text also move.word-by-word (the words appear one after another over the duration; out: they leave first to last; params {"style": ${WORD_STYLES.map((w) => `"${w}"`).join(" | ")}}) and move.zoom (scales from params.scale to full size in, or to it out, about the text's centre; params {"scale": 0.7, "ease": "linear" | "in" | "out" | "inOut", "fade": true}), e.g. "in":{"module":"move.word-by-word","duration":24,"params":{"style":"rise"}}. A duration can't be longer than the item.
   The video is as long as its last item, so a 5 s title card on an empty project makes a 5 s video.
 - Backgrounds are component.solid items on a video track: props.color (a theme token or CSS colour), or a gradient with props.to and props.angle (degrees, 180 = top to bottom). A title card on an empty project is a background on the main track plus the text over it, same length, e.g. a dark blue 5 s card:
   {"op":"insert_item","track":"main","item":{"id":"background-1","type":"component","component":"component.solid","duration":150,"props":{"color":"#0B1D3A"}}}
@@ -322,7 +381,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
   A device frame shows footage on a phone or browser: the footage is a clip under the frame, its box on the frame's screen. One op does both: {"op":"insert_device_frame","media":"m-recording","device":"phone","start":0,"duration":150,"in":0} (optional box {x, y, h}, frameId, clipId; it adds the video tracks it needs, above main and under the text). Move the frame and its clip together (the clip's box is the frame's screen: modules_list's component.screens gives the rect per device). Animated components (a terminal typing) are drawn frame by frame in the export, up to ${MAX_RASTER_STATES} distinct looks per item; past that it holds frames.
 - Graphics are the escape hatch for motion the components can't do: write the HTML with graphic_write (it defines render(t, info), t in seconds from the item's start; full canvas, transparent, no network, system fonts), then insert {"type":"graphic","src":"graphics/<name>","start":…,"duration":…} on a video track. Prefer components and text; keep graphics simple.
 - Images can be SVG (a logo): they're stills like PNGs, drawn sharp at their box's size.
-- What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop), backgrounds (component.solid), the components above, graphic items, the transitions above, and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components (${UNDRAWN_DOCS}) and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
+- What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop), backgrounds (component.solid), the components above, graphic items, the transitions above, and text with its position, box width, size, weight, colour, alignment, font, letter spacing, line height, case, outline, shadow, box and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components (${UNDRAWN_DOCS}) and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, components, graphics, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" (with media) shows one frame per shot, from the video analysis.

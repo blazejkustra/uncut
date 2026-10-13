@@ -18,7 +18,9 @@
     "./transcript": "./src/transcript.ts",
     "./transitions": "./src/transitions.ts",
     "./components": "./src/components.ts",
-    "./graphics": "./src/graphics.ts"
+    "./graphics": "./src/graphics.ts",
+    "./looks": "./src/looks.ts",
+    "./textPlan": "./src/textPlan.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

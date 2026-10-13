@@ -542,7 +542,8 @@ export const actions = {
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
   addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
   /** Text tab preset → a text item at the playhead (see planAddText). */
-  addText: (preset: TextPreset) => addPlanned((project) => planAddText(project, preset, getPlayback().frame)),
+  /** Text tab → a preset at the playhead (or the dropped frame), placed where it was dropped on the canvas (D80). */
+  addText: (preset: TextPreset, opts: { at?: { x: number; y: number }; frame?: number } = {}) => addPlanned((project) => planAddText(project, preset, opts.frame ?? getPlayback().frame, opts.at)),
   /** A planned move or trim from the timeline (see edit.ts). */
   timelineEdit,
   /** A text or background change from the Inspector or the preview (see text.ts). */

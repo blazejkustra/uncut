@@ -23,12 +23,12 @@ import { draftOf, findItem, fitsTrack, lockOf, planMove, planSetTransition, plan
 import { frameTimecode, rulerLabel } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { SOLID, solidBackground } from "@uncut/core/render";
-import { displayTracks, itemLabel, layoutOf, type Item, type ProjectModel, type Track } from "./project.ts";
+import { displayTracks, itemLabel, layoutOf, TEXT_PRESETS, type Item, type ProjectModel, type Track } from "./project.ts";
 import { NumberField, Slider } from "./ItemEditors.tsx";
 import { dbLabel, hasSound, planFade, planTrackGain, soundTrack } from "./sound.ts";
 import { actions, getState, projectOf, thumbUrl, useApp } from "./store.ts";
 import { ItemWaveform } from "./Waveform.tsx";
-import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent } from "./components.ts";
+import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 
 /** Timeline | Transcript | Mixer (D32): the bottom panel's modes. Mixer comes later. */
@@ -412,7 +412,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       if (over !== dropCut) setDropCut(over);
       return;
     }
-    if (!online || (![...e.dataTransfer.types].includes(MEDIA_DRAG_TYPE) && ![...e.dataTransfer.types].includes(COMPONENT_DRAG_TYPE))) return;
+    if (!online || ![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => [...e.dataTransfer.types].includes(t))) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDropping(true);
@@ -426,6 +426,13 @@ export function Timeline({ project }: { project: ProjectModel }) {
       setDropCut(undefined);
       setDraggedTransition(undefined);
       if (cut) void actions.applyTransition(module, { cut: cut.item.id });
+      return;
+    }
+    // A Text tab preset (D80): added at the time it's dropped on.
+    const preset = TEXT_PRESETS.find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
+    if (preset) {
+      e.preventDefault();
+      void actions.addText(preset, { frame: Math.max(0, Math.round(frameAt(e.clientX))) });
       return;
     }
     // A component from Elements (D76): added at the time it's dropped on.

@@ -3,6 +3,7 @@
   "id": "text.header",
   "kind": "text-style",
   "name": "Header",
+  "description": "A plain line of text.",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -12,5 +13,17 @@
   },
   "ui": {
     "panel": "text"
+  },
+  "look": {
+    "size": 0.06,
+    "weight": 500,
+    "font": "sans",
+    "tracking": -0.02,
+    "lineHeight": 1.1,
+    "color": "fg",
+    "x": 0.08,
+    "y": 0.46,
+    "legacyShadow": true,
+    "text": "Text"
   }
 }

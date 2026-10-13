@@ -9,7 +9,7 @@
 //   overlaid at the box's position; per-frame sizes (keyed scale) and positions (keyed x / y) are
 //   lookups on the frame number, and keyed opacity is sent to colorchannelmixer frame by frame
 //   (sendcmd), all from core's boxes. A looped clip is one layer per pass through its media. Text and backgrounds are PNGs Chromium drew from core's textHtml / solidHtml with
-//   RENDER_CSS; a text whose position moves (rise, slide, wipe) gets one PNG per distinct state.
+//   RENDER_CSS; a text whose look moves (rise, slide, wipe, word by word, zoom: D81) gets one PNG per distinct state, capped like a component's.
 //   Components (D76) are PNGs of core's componentHtml, one per distinct look (an animated one, a
 //   terminal typing, gets one per frame its look changes; past MAX_RASTER_STATES looks it holds
 //   frames, with a warning), their box's opacity baked into the HTML. SVG images are drawn by
@@ -30,6 +30,7 @@
 //   time, as the preview's <video> does (the last frame that starts at or before it).
 import {
   animationAt,
+  moveFades,
   audioSpan,
   baseBox,
   canvasBox,
@@ -218,20 +219,19 @@ export const RASTER_CSS = RENDER_CSS;
 
 // ---- opacity ----
 
-const OPACITY_MOVES = new Set(["move.fade", "move.rise", "move.slide-left"]);
 
 /**
  * The opacity ramps of an item as visualsAt computes its opacity: a crossfade's (0 at `from` → 1
- * at start + half, a zoom's too; a wipe, iris or push changes no opacity), then the in and out animations (fade, rise and
- * slide-left change opacity; wipe doesn't), skipped on a side where a main-track transition blends.
+ * at start + half, a zoom's too; a wipe, iris or push changes no opacity), then the in and out animations (core
+ * moveFades: fade, rise, slide-left and a fading text zoom change opacity; wipe and word by word don't), skipped on a side where a main-track transition blends.
  */
 export function opacityRamps(item: Item, start: number, span: Pick<Span, "half" | "skipIn" | "skipOut" | "into">): Array<Ramp> {
   const ramps: Array<Ramp> = [];
   // A crossfade or zoom fades the incoming clip in; a wipe, iris or push doesn't (core incomingFx).
   if (span.half > 0 && fadesIn(span.into ?? "")) ramps.push({ type: "in", st: start - span.half, d: 2 * span.half });
   const a = item.animation;
-  if (!span.skipIn && a?.in && a.in.duration > 0 && OPACITY_MOVES.has(a.in.module)) ramps.push({ type: "in", st: start, d: a.in.duration });
-  if (!span.skipOut && a?.out && a.out.duration > 0 && OPACITY_MOVES.has(a.out.module)) ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
+  if (!span.skipIn && a?.in && a.in.duration > 0 && moveFades(item, a.in)) ramps.push({ type: "in", st: start, d: a.in.duration });
+  if (!span.skipOut && a?.out && a.out.duration > 0 && moveFades(item, a.out)) ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
   return ramps;
 }
 
@@ -645,7 +645,9 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const bodies = capped(item, looks, "changes its look");
         html = wrappers.map((w, i) => wrapComponent(w, bodies.states[bodies.frames[i]!]!));
       }
-      const { states, frames } = capStates(html, Infinity);
+      // Text's looks (its moves: rise, slide, wipe, word by word, zoom; D81) are capped like a
+      // component's body: past MAX_RASTER_STATES distinct looks, frames are held (with a warning).
+      const { states, frames } = isText ? capped(item, html, "changes its look") : capStates(html, Infinity);
       visuals.push(...split({ ...base, ...(isComponent ? {} : canvasGeometry), kind: "raster", states, frames }, canvasStill));
     });
     // Dips to black: core's black layer over the main track, fading in to the cut and out after it.

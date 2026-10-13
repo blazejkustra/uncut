@@ -410,7 +410,7 @@ test("the agent: modules_list shows components with params and placement, truthf
   // The MCP schema offers the op; graphic_write is listed with its label.
   const tools = mcpTools();
   const edit = tools.find((t) => t.name === "timeline_edit")!;
-  assert.deepEqual((edit.inputSchema.properties as { ops: { items: unknown } }).ops.items, { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }] });
+  assert.deepEqual((edit.inputSchema.properties as { ops: { items: unknown } }).ops.items, { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }] }, "insert_text joined in D80");
   assert.ok((edit.inputSchema.$defs as Record<string, unknown>).insertDeviceFrame);
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("graphic_write") && tools.some((t) => t.name === "graphic_write"));
   assert.equal(stepLabel("graphic_write", { name: "counter.html" }), "Wrote the graphic counter.html");
