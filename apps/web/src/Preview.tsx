@@ -8,10 +8,10 @@
 // The text can be selected, dragged and edited in place (D53); a selected clip or component can be
 // dragged and resized by its corners (D75); a component dropped from Elements lands where it's dropped.
 import type { ClipBox } from "@uncut/core/box";
-import { visualsAt } from "@uncut/core/timeline";
+import { visualsAt, type Visual } from "@uncut/core/timeline";
 import { componentHtml, isDrawnComponent } from "@uncut/core/components";
 import { graphicInfo } from "@uncut/core/graphics";
-import { overlaps } from "@uncut/core/transitions";
+import { irisRadius, overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
 import { Maximize2, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -87,23 +87,36 @@ function drive(el: HTMLVideoElement, source: number, playing: boolean, speed: nu
   }
 }
 
-/** A wipe transition: show the left share of the element (core's `wipe`), or all of it. */
-function wipe(el: HTMLElement, shown: number | undefined) {
-  const clip = shown === undefined ? "" : `inset(0 ${((1 - shown) * 100).toFixed(4)}% 0 0)`;
-  if (el.style.clipPath !== clip) el.style.clipPath = clip;
-}
-
 const px = (n: number) => `${Math.round(n * 1000) / 1000}px`;
+type Canvas = { readonly width: number; readonly height: number };
+
+/** An iris transition (D79): the circle core's `iris` shows, centred on the canvas, in an element's own px (its top-left at `left`, `top` on the canvas). */
+const irisClip = (iris: number, canvas: Canvas, left = 0, top = 0) => `circle(${px(irisRadius(iris, canvas))} at ${px(canvas.width / 2 - left)} ${px(canvas.height / 2 - top)})`;
+
+/**
+ * A full-canvas element (a background, a graphic) through a transition: a wipe shows the left share
+ * of it (core's `wipe`), an iris the circle at the centre (D79), and a push or zoom moves it as the
+ * canvas (D79: shift right, zoom about the canvas's centre, its own transform-origin).
+ */
+function transitionCanvas(el: HTMLElement, v: Pick<Visual, "wipe" | "iris" | "shift" | "zoom">, canvas: Canvas) {
+  const clip = v.wipe !== undefined ? `inset(0 ${((1 - v.wipe) * 100).toFixed(4)}% 0 0)` : v.iris !== undefined ? irisClip(v.iris, canvas) : "";
+  if (el.style.clipPath !== clip) el.style.clipPath = clip;
+  const translate = v.shift ? `${px(v.shift)} 0px` : "";
+  const scale = v.zoom !== undefined ? String(v.zoom) : "";
+  if (el.style.translate !== translate) el.style.translate = translate;
+  if (el.style.scale !== scale) el.style.scale = scale;
+}
 const setStyle = (el: HTMLElement, key: "left" | "top" | "width" | "height" | "borderRadius" | "objectFit", value: string) => {
   if (el.style[key] !== value) el.style[key] = value;
 };
 
 /**
  * A clip's box (D75): the wrapper at core's box in canvas pixels (it clips the picture and rounds
- * its corners), the picture inside at core's content rect (fit and zoom), and a wipe revealing the
- * canvas from the left (the share of the canvas width shown, in the wrapper's own pixels).
+ * its corners), the picture inside at core's content rect (fit and zoom; a push or zoom transition
+ * is already in the box, D79), and a wipe revealing the canvas from the left (the share of the
+ * canvas width shown, in the wrapper's own pixels) or an iris the circle at the canvas's centre.
  */
-function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canvasWidth: number, shown: number | undefined) {
+function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canvas: Canvas, shown: number | undefined, iris: number | undefined) {
   setStyle(wrap, "left", px(box.x));
   setStyle(wrap, "top", px(box.y));
   setStyle(wrap, "width", px(box.w));
@@ -114,8 +127,8 @@ function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canvasWidth:
   setStyle(el, "width", px(box.content.w));
   setStyle(el, "height", px(box.content.h));
   setStyle(el, "objectFit", box.fit);
-  const hidden = shown === undefined ? 0 : Math.min(box.w, Math.max(0, box.x + box.w - canvasWidth * shown));
-  const clip = hidden > 0 ? `inset(0 ${px(hidden)} 0 0)` : "";
+  const hidden = shown === undefined ? 0 : Math.min(box.w, Math.max(0, box.x + box.w - canvas.width * shown));
+  const clip = hidden > 0 ? `inset(0 ${px(hidden)} 0 0)` : iris !== undefined ? irisClip(iris, canvas, box.x, box.y) : "";
   if (wrap.style.clipPath !== clip) wrap.style.clipPath = clip;
 }
 
@@ -348,7 +361,7 @@ class Compositor {
       }
       el.style.opacity = String(v.opacity);
       el.style.zIndex = String(z.get(v.item.id));
-      wipe(el, v.wipe);
+      transitionCanvas(el, v, project.canvas);
     }
 
     // Components (D76): core's HTML at this frame, remade only when it changes (a terminal typing,
@@ -368,8 +381,11 @@ class Compositor {
     }
     const whole = Math.floor(frame);
     for (const v of comps) {
-      const html = componentHtml(v.item, target, whole - starts.get(v.item.id)!, { opacity: v.opacity, motion: v.motion, fps });
-      const key = `${html}|${v.wipe ?? ""}`;
+      // A push or zoom transition is in its box (D79), drawn into the HTML.
+      // Only a moved one gets visualsAt's box (taken at the fractional playhead): otherwise its own at the
+      // whole frame, so a keyed component isn't rebuilt on every animation frame while playing.
+      const html = componentHtml(v.item, target, whole - starts.get(v.item.id)!, { opacity: v.opacity, motion: v.motion, fps, ...(v.box && (v.shift !== undefined || v.zoom !== undefined) ? { box: v.box } : {}) });
+      const key = `${html}|${v.wipe ?? ""}|${v.iris ?? ""}`;
       let c = this.comps.get(v.item.id);
       if (!c || c.key !== key) {
         const holder = document.createElement("div");
@@ -386,6 +402,13 @@ class Compositor {
           const reveal = v.motion.reveal;
           const right = Math.min(b.w, Math.max(0, b.w - edge, reveal !== undefined && reveal < 1 ? (1 - reveal) * b.w : 0));
           el.style.clipPath = reveal !== undefined && reveal < 1 ? `inset(${px(-0.2 * b.h)} ${px(right)} ${px(-0.2 * b.h)} ${px(-0.05 * b.w)})` : `inset(0 ${px(right)} 0 0)`;
+        } else if (v.iris !== undefined && v.box) {
+          // An iris (D79): the canvas's circle in the element's own pixels, through its scale about the box's centre and the move's offset.
+          const b = v.box;
+          const ox = b.x + b.w / 2 + (v.motion.dx ?? 0);
+          const oy = b.y + b.h / 2 + (v.motion.dy ?? 0);
+          const r = irisRadius(v.iris, project.canvas) / b.scale;
+          el.style.clipPath = `circle(${px(r)} at ${px(b.w / 2 + (project.canvas.width / 2 - ox) / b.scale)} ${px(b.h / 2 + (project.canvas.height / 2 - oy) / b.scale)})`;
         }
         if (c) c.el.replaceWith(el);
         else this.mediaLayer.append(el);
@@ -399,8 +422,10 @@ class Compositor {
     // Graphics (D78): the server's document in a sandboxed iframe; render(t) by postMessage. One
     // starting within two seconds is loaded ahead, out of sight at its first frame, so it doesn't
     // start blank (like the next clip's warm-up).
-    type Shown = { item: Item; opacity: number; wipe?: number; visible: boolean };
-    const graphics: Array<Shown> = drawn.filter((v) => v.item.type === "graphic" && typeof v.item.src === "string").map((v) => ({ item: v.item, opacity: v.opacity, ...(v.wipe !== undefined ? { wipe: v.wipe } : {}), visible: true }));
+    type Shown = { item: Item; opacity: number; wipe?: number; iris?: number; shift?: number; zoom?: number; visible: boolean };
+    const graphics: Array<Shown> = drawn
+      .filter((v) => v.item.type === "graphic" && typeof v.item.src === "string")
+      .map((v) => ({ item: v.item, opacity: v.opacity, ...(v.wipe !== undefined ? { wipe: v.wipe } : {}), ...(v.iris !== undefined ? { iris: v.iris } : {}), ...(v.shift !== undefined ? { shift: v.shift } : {}), ...(v.zoom !== undefined ? { zoom: v.zoom } : {}), visible: true }));
     for (const track of project.tracks) {
       if (track.hidden || track.kind !== "video") continue;
       for (const it of track.items) {
@@ -457,7 +482,7 @@ class Compositor {
       g.wrap.style.opacity = String(v.opacity);
       g.wrap.style.zIndex = v.visible ? String(z.get(v.item.id)) : "0";
       g.wrap.style.visibility = v.visible ? "" : "hidden";
-      wipe(g.wrap, v.wipe);
+      transitionCanvas(g.wrap, v, project.canvas);
       if (g.loaded) {
         const local = Math.max(0, Math.min(v.item.duration - 1, whole - starts.get(v.item.id)!));
         const info = graphicInfo(v.item, project.canvas, local);
@@ -479,7 +504,7 @@ class Compositor {
       // The opacity stays on the media element (the wrapper only places, clips and rounds it).
       el.style.opacity = String(c.opacity);
       wrap.style.zIndex = String(z.get(c.item.id));
-      if (c.box) placeBox(wrap, el, c.box, project.canvas.width, c.wipe);
+      if (c.box) placeBox(wrap, el, c.box, project.canvas, c.wipe, c.iris);
       if (!(el instanceof HTMLVideoElement)) return;
       // A looped clip's media starts over by itself; drive() reseeks only if it drifts (D75).
       el.loop = c.item.loop === true;
@@ -517,9 +542,33 @@ class Compositor {
       this.textLayer.innerHTML = html;
       if (this.editing) this.textLayer.querySelector<HTMLElement>(`[data-item="${CSS.escape(this.editing)}"]`)?.style.setProperty("visibility", "hidden");
     }
-    for (const el of this.textLayer.children) {
-      const zi = String(z.get((el as HTMLElement).dataset.item ?? "") ?? 0);
-      if ((el as HTMLElement).style.zIndex !== zi) (el as HTMLElement).style.zIndex = zi;
+    const texts = new Map(visible.filter((v) => v.item.type === "text").map((v) => [v.item.id, v]));
+    for (const child of this.textLayer.children) {
+      const el = child as HTMLElement;
+      const zi = String(z.get(el.dataset.item ?? "") ?? 0);
+      if (el.style.zIndex !== zi) el.style.zIndex = zi;
+      // A text on the main track through an iris, push or zoom (D79): as the canvas, like the
+      // export's raster. Its own transform-origin is its centre, so a zoom about the canvas's
+      // centre is that scale plus a shift; the iris's circle is in its own pixels.
+      const v = texts.get(el.dataset.item ?? "");
+      const zoom = v?.zoom ?? 1;
+      const moved = !!v && (!!v.shift || zoom !== 1);
+      // Layout is read only while one is moved (not on every frame of every text).
+      const ox = moved ? el.offsetLeft + el.offsetWidth / 2 : 0;
+      const oy = moved ? el.offsetTop + el.offsetHeight / 2 : 0;
+      const translate = moved ? `${px((v!.shift ?? 0) + (1 - zoom) * (project.canvas.width / 2 - ox))} ${px((1 - zoom) * (project.canvas.height / 2 - oy))}` : "";
+      if (el.style.translate !== translate) el.style.translate = translate;
+      const scale = zoom !== 1 ? String(zoom) : "";
+      if (el.style.scale !== scale) el.style.scale = scale;
+      // The text's own clip-path (an in/out wipe move) is kept aside while an iris replaces it.
+      if (v?.iris !== undefined) {
+        if (el.dataset.clip === undefined) el.dataset.clip = el.style.clipPath;
+        // Its own pixels: the layout box moved by the in/out move's translate (motion), as for components.
+        el.style.clipPath = irisClip(v.iris, project.canvas, el.offsetLeft + (v.motion.dx ?? 0), el.offsetTop + (v.motion.dy ?? 0));
+      } else if (el.dataset.clip !== undefined) {
+        el.style.clipPath = el.dataset.clip;
+        delete el.dataset.clip;
+      }
     }
     // Sound after picture: the mix uses the <video> elements made above.
     this.mix.render(project, frame, playing);

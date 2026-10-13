@@ -1,6 +1,6 @@
 // Transitions UI (D73) on the packaged app (background window): four solid-colour clips on main
 // (red | blue | red | blue, cuts at 60, 120, 180; test/helpers/transition-fixture.ts).
-// - The Transitions rail tab is on: three tiles (crossfade, dip to black, wipe) with defaults.
+// - The Transitions rail tab is on: six tiles (crossfade, dip to black, wipe, iris, push, zoom) with defaults.
 // - Dragging the crossfade tile over the timeline highlights the cuts it fits; dropping it on the
 //   cut at 60 adds a 15-frame crossfade (one edit, "Added crossfade" in history.db); the marker
 //   straddles the cut and the Inspector shows it.
@@ -111,7 +111,7 @@ test("transitions: the panel, drag onto a cut, the marker and Inspector, length 
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 
-  // The panel: three tiles, each with its default length.
+  // The panel: six tiles, each with its default length.
   await page.click("[data-testid=rail-transitions]");
   await page.waitForSelector("[data-testid=transitions-library]");
   const tiles = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => [(e as HTMLElement).dataset.module, e.querySelector(".tile-name")!.textContent, e.querySelector("[data-testid=transition-default]")!.textContent]));
@@ -119,6 +119,9 @@ test("transitions: the panel, drag onto a cut, the marker and Inspector, length 
     ["transition.crossfade", "Crossfade", "0.5 s"],
     ["transition.dip-to-black", "Dip to black", "0.8 s"],
     ["transition.wipe", "Wipe", "0.5 s"],
+    ["transition.iris", "Iris", "0.5 s"],
+    ["transition.push-left", "Push", "0.5 s"],
+    ["transition.zoom", "Zoom", "0.5 s"],
   ]);
   assert.equal(await page.$$eval("[data-testid=cut-point]", (els) => els.map((e) => Number((e as HTMLElement).dataset.frame)).join()), "60,120,180");
   await page.screenshot({ path: out("transitions-panel.png") });

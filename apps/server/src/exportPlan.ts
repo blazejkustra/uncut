@@ -18,7 +18,11 @@
 //   Opacity (a transition's crossfade, fade/rise/slide in and out) is linear in frames, so it is
 //   ffmpeg's fade on the layer's alpha, evaluated at the same frames (time mode). A dip to black
 //   is core's black layer over the main track (a raster with two ramps); a wipe crops the
-//   incoming layer from the left at the same frames (pad + crop + overlay x, per frame).
+//   incoming layer from the left at the same frames (pad + crop + overlay x, per frame); an iris
+//   multiplies a growing disc (a per-frame geq mask) into its alpha (D79). A push or zoom moves the
+//   item's box (core moveBox: per-frame boxes as for keys); text, backgrounds and graphics get the
+//   canvas as a box. The frames a transition reveals or moves are a layer of their own, so the rest
+//   of the item keeps the plain chain.
 // - Sound: every item audibleAt would return, from its media at the same source time, with the
 //   gain of core itemGain (combined dB with the −60 dB cutoff, gainKeys, fades, transition
 //   crossfades) as one volume expression per item, mixed with amix normalize=0 (D54).
@@ -28,7 +32,13 @@ import {
   animationAt,
   audioSpan,
   baseBox,
+  canvasBox,
   clipBox,
+  fadesIn,
+  IRIS,
+  moveBox,
+  movesOutgoing,
+  transitionAt,
   isPlainBox,
   type ClipBox,
   type Rect,
@@ -102,6 +112,13 @@ interface LayerBase {
   readonly ramps: ReadonlyArray<Ramp>;
   /** A wipe transition into it: shown from the left edge, 0 at frame `st` to the whole width at st + d. */
   readonly wipe?: { readonly st: number; readonly d: number };
+  /** An iris transition into it (D79): shown inside a circle at the canvas's centre, radius 0 at frame `st` to the half diagonal at st + d. */
+  readonly iris?: { readonly st: number; readonly d: number };
+  /**
+   * Its box for each frame from f0 (D75): a clip's (absent: the plain full frame, drawn as before
+   * D75), or the canvas moved by a push or zoom for text, backgrounds and graphics (D79).
+   */
+  readonly geometry?: Geometry;
   /** The box's opacity (transform.opacity, opacity keys) for each frame from f0; absent when always 1. */
   readonly alpha?: ReadonlyArray<number>;
 }
@@ -120,14 +137,13 @@ export type VisualLayer =
       readonly speed: number;
       /** The picture fills the canvas exactly (same aspect), so it needs no bars. */
       readonly fills: boolean;
-      readonly geometry?: Geometry;
       /**
        * A looped clip played from one input (D75 review): the media's first `length` project frames
        * are decoded once and repeated (ffmpeg's loop filter), frame f0 showing frame `offset` of them.
        */
       readonly cycle?: { readonly length: number; readonly offset: number };
     })
-  | (LayerBase & { readonly kind: "image"; readonly file: string; readonly fills: boolean; readonly geometry?: Geometry })
+  | (LayerBase & { readonly kind: "image"; readonly file: string; readonly fills: boolean })
   | (LayerBase & {
       readonly kind: "raster";
       /** HTML of each distinct look, at canvas size. */
@@ -206,12 +222,13 @@ const OPACITY_MOVES = new Set(["move.fade", "move.rise", "move.slide-left"]);
 
 /**
  * The opacity ramps of an item as visualsAt computes its opacity: a crossfade's (0 at `from` → 1
- * at start + half; a wipe changes no opacity), then the in and out animations (fade, rise and
+ * at start + half, a zoom's too; a wipe, iris or push changes no opacity), then the in and out animations (fade, rise and
  * slide-left change opacity; wipe doesn't), skipped on a side where a main-track transition blends.
  */
-export function opacityRamps(item: Item, start: number, span: Pick<Span, "half" | "skipIn" | "skipOut" | "wipe">): Array<Ramp> {
+export function opacityRamps(item: Item, start: number, span: Pick<Span, "half" | "skipIn" | "skipOut" | "into">): Array<Ramp> {
   const ramps: Array<Ramp> = [];
-  if (span.half > 0 && !span.wipe) ramps.push({ type: "in", st: start - span.half, d: 2 * span.half });
+  // A crossfade or zoom fades the incoming clip in; a wipe, iris or push doesn't (core incomingFx).
+  if (span.half > 0 && fadesIn(span.into ?? "")) ramps.push({ type: "in", st: start - span.half, d: 2 * span.half });
   const a = item.animation;
   if (!span.skipIn && a?.in && a.in.duration > 0 && OPACITY_MOVES.has(a.in.module)) ramps.push({ type: "in", st: start, d: a.in.duration });
   if (!span.skipOut && a?.out && a.out.duration > 0 && OPACITY_MOVES.has(a.out.module)) ramps.push({ type: "out", st: start + item.duration - 1 - a.out.duration, d: a.out.duration });
@@ -245,6 +262,12 @@ export function placementOf(box: ClipBox, kx: number, ky: number, base: Rect = b
 /** The share of a wiped layer shown at frame f (core visualsAt's `wipe`; 1 when whole). */
 export const wipeAt = (wipe: VisualLayer["wipe"], f: number) => (wipe ? Math.min(1, Math.max(0, (f - wipe.st) / wipe.d)) : 1);
 
+/** An iris's mask is computed at 1/this of the output size, then scaled up (D79 review: geq per pixel is costly). */
+export const IRIS_MASK_STEP = 4;
+
+/** The share of the half diagonal an iris shows at frame f (core visualsAt's `iris`; 1 when whole). */
+export const irisAt = (iris: VisualLayer["iris"], f: number) => (iris ? Math.min(1, Math.max(0, (f - iris.st) / iris.d)) : 1);
+
 /** The ramps' opacity at frame f, as ffmpeg's fade computes it (the tests compare it with visualsAt). */
 export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
   ramps.reduce((o, r) => {
@@ -259,26 +282,87 @@ export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
 function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, source?: number): VisualLayer {
   const a = from - layer.f0;
   const b = to - layer.f0;
-  const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}) };
-  if (layer.kind === "raster") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
+  const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}), ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}) };
+  if (layer.kind === "raster") return { ...layer, ...common, ...compactStates(layer.states, layer.frames.slice(a, b)) };
   if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
-  const geometry = layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {};
-  if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, ...geometry, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
-  if (layer.kind === "video") return { ...layer, ...common, ...geometry, source: source ?? layer.source + (a * layer.speed) / fps };
-  return { ...layer, ...common, ...geometry };
+  if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
+  if (layer.kind === "video") return { ...layer, ...common, source: source ?? layer.source + (a * layer.speed) / fps };
+  return { ...layer, ...common };
 }
 
+/** A slice's looks: only the ones its frames use (in first-use order), the frames renumbered (D79 review). */
+export function compactStates(states: ReadonlyArray<string>, frames: ReadonlyArray<number>): { states: Array<string>; frames: Array<number> } {
+  const index = new Map<number, number>();
+  const kept: Array<string> = [];
+  const renumbered = frames.map((k) => {
+    let j = index.get(k);
+    if (j === undefined) {
+      j = kept.length;
+      index.set(k, j);
+      kept.push(states[k]!);
+    }
+    return j;
+  });
+  return { states: kept, frames: renumbered };
+}
+
+/** The distinct looks the rasteriser draws for a plan: each raster state once, however many layers or slices share it. */
+export const rasterLooks = (plan: Pick<ExportPlan, "visuals">) => [...new Set(plan.visuals.flatMap((l) => (l.kind === "raster" ? l.states : [])))];
+
 /**
- * A wiped layer as two: the wipe's frames (cropped per frame, so with alpha) and the rest of the
- * item as a plain layer, so the pad/crop/overlay work runs only over the wipe.
+ * Where an item's layer is cut so a transition's frames are a layer of their own (D73, D79): the
+ * end of a wipe or iris into it (`revealEnd`: the reveal is dropped after it; always cut) and the
+ * end of a push into it or the start of a push or zoom out of it (`moves`: cut only where the
+ * geometry stops or starts being needed, so a boxed clip isn't cut for nothing). The
+ * pad/crop/mask/box work runs only over those frames.
  */
-function splitWipe(layer: VisualLayer, fps: number): Array<VisualLayer> {
-  if (!layer.wipe) return [layer];
-  const end = Math.min(layer.f1, Math.max(layer.f0, Math.ceil(layer.wipe.st + layer.wipe.d)));
-  const { wipe, ...plain } = layer;
-  if (end <= layer.f0) return [plain as VisualLayer];
-  if (end >= layer.f1) return [layer];
-  return [sliceLayer(layer, layer.f0, end, fps), sliceLayer(plain as VisualLayer, end, layer.f1, fps)];
+interface Cuts {
+  readonly revealEnd?: number;
+  readonly moves: ReadonlyArray<number>;
+  /** The item's frames whose box is plain (no geometry needed), when it has geometry. */
+  readonly plain?: (f: number) => boolean;
+}
+
+function splitAt(layer: VisualLayer, cuts: Cuts, fps: number): Array<VisualLayer> {
+  const allPlain = (a: number, b: number) => {
+    for (let f = a; f < b; f++) if (!cuts.plain!(f)) return false;
+    return true;
+  };
+  const inside = (c: number) => c > layer.f0 && c < layer.f1;
+  const reveal = cuts.revealEnd !== undefined && inside(cuts.revealEnd) && (layer.wipe || layer.iris) ? [cuts.revealEnd] : [];
+  const candidates = [...new Set([...reveal, ...cuts.moves.filter(inside)])].sort((a, b) => a - b);
+  // A move's cut is kept only where the frames on its two sides differ in needing geometry.
+  const kept: Array<number> = [];
+  for (const [i, c] of candidates.entries()) {
+    if (reveal.includes(c)) {
+      kept.push(c);
+      continue;
+    }
+    if (!layer.geometry || !cuts.plain) continue;
+    const before = kept.at(-1) ?? layer.f0;
+    const after = candidates[i + 1] ?? layer.f1;
+    if (allPlain(before, c) !== allPlain(c, after)) kept.push(c);
+  }
+  const points = [layer.f0, ...kept, layer.f1];
+  const out: Array<VisualLayer> = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const [a, b] = [points[i]!, points[i + 1]!];
+    let slice = points.length === 2 ? layer : sliceLayer(layer, a, b, fps);
+    if (cuts.revealEnd !== undefined && a >= cuts.revealEnd && (slice.wipe || slice.iris)) {
+      const { wipe, iris, ...rest } = slice;
+      slice = rest as VisualLayer;
+    }
+    if (slice.geometry && cuts.plain) {
+      let plain = true;
+      for (let f = a; f < b && plain; f++) plain = cuts.plain(f);
+      if (plain) {
+        const { geometry, ...rest } = slice;
+        slice = rest as VisualLayer;
+      }
+    }
+    out.push(slice);
+  }
+  return out;
 }
 
 /**
@@ -473,18 +557,36 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       const f1 = Math.min(duration, Math.ceil(span.to));
       if (f1 <= f0) return;
       const ramps = opacityRamps(item, start, span);
-      const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: { st: span.from, d: 2 * span.half } } : {}) };
+      const reveal = { st: span.from, d: 2 * span.half };
+      const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: reveal } : {}), ...(span.into === IRIS ? { iris: reveal } : {}) };
+      // The transitions at its cuts (D79): what they do at each frame, and where its layer is cut.
+      const fxAt = (f: number) => transitionAt(span, f, project.canvas);
+      const revealEnd = span.half > 0 && !fadesIn(span.into!) ? Math.ceil(span.from + 2 * span.half) : undefined;
+      const outStart = span.nextHalf > 0 && movesOutgoing(span.next!) ? Math.ceil(span.to - 2 * span.nextHalf) : undefined;
+      const pushIn = span.half > 0 && span.into !== IRIS && !span.wipe && revealEnd !== undefined ? revealEnd : undefined;
+      const moves = [pushIn, outStart].filter((c): c is number => c !== undefined);
+      const split = (layer: VisualLayer, plain?: (f: number) => boolean) => splitAt(layer, { moves, ...(revealEnd !== undefined && pushIn === undefined ? { revealEnd } : {}), ...(plain ? { plain } : {}) }, fps);
+      // Text, backgrounds and graphics have no box: a push or zoom moves the canvas (core canvasBox).
+      const kx = width / project.canvas.width;
+      const ky = height / project.canvas.height;
+      const canvasMoves = Array.from({ length: f1 - f0 }, (_, k) => {
+        const fx = fxAt(f0 + k);
+        return fx.shift || (fx.zoom !== undefined && fx.zoom !== 1) ? moveBox(canvasBox(project.canvas), fx.shift, fx.zoom) : undefined;
+      });
+      const canvasGeometry = canvasMoves.some(Boolean) ? { geometry: { frames: canvasMoves.map((b) => placementOf(b ?? canvasBox(project.canvas), kx, ky, canvasBox(project.canvas))) } } : {};
+      const canvasStill = (f: number) => !canvasMoves[f - f0];
       if (isMedia && isSvg(media)) {
         // An SVG (D76): Chromium draws it in its box, one PNG per distinct box (keys).
         fileOf(media);
         const looks: Array<string> = [];
         for (let f = f0; f < f1; f++) {
-          const box = clipBox(item, project.canvas, media.probe, f - start);
+          const fx = fxAt(f);
+          const box = moveBox(clipBox(item, project.canvas, media.probe, f - start), fx.shift, fx.zoom);
           looks.push(svgClipHtml(item, box, mediaToken(media.id), box.opacity));
         }
         // Only its box changes (keys): drawn on every frame, like a clip's, never capped.
         const { states, frames } = capStates(looks, Infinity);
-        visuals.push(...splitWipe({ ...base, kind: "raster", states, frames }, fps));
+        visuals.push(...split({ ...base, kind: "raster", states, frames }));
         return;
       }
       if (isGraphic) {
@@ -496,22 +598,28 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const looks = Array.from({ length: f1 - f0 }, (_, k) => String(Math.max(0, Math.min(item.duration - 1, f0 + k - start))));
         const { states, frames } = capped(item, looks, "is drawn");
         const opacity = typeof item.transform?.opacity === "number" ? Math.min(1, Math.max(0, item.transform.opacity)) : 1;
-        visuals.push(...splitWipe({ ...base, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames: frames.map((k) => Number(states[k])) }, fps));
+        visuals.push(...split({ ...base, ...canvasGeometry, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames: frames.map((k) => Number(states[k])) }, canvasStill));
         return;
       }
       if (isMedia) {
         const path = fileOf(media);
-        // The box at every frame (D75): a plain one (no transform) keeps the full-frame chain.
-        const boxes = Array.from({ length: f1 - f0 }, (_, k) => clipBox(item, project.canvas, media.probe, f0 + k - start));
-        const plain = boxes.every((b) => isPlainBox(b, project.canvas));
+        // The box at every frame (D75), moved by a push or zoom (D79): plain frames (no transform,
+        // no move) keep the full-frame chain.
+        const boxes = Array.from({ length: f1 - f0 }, (_, k) => {
+          const fx = fxAt(f0 + k);
+          return moveBox(clipBox(item, project.canvas, media.probe, f0 + k - start), fx.shift, fx.zoom);
+        });
+        const plainAt = boxes.map((b) => isPlainBox(b, project.canvas));
         const rest = baseBox(item, project.canvas, media.probe);
-        const geometry = plain ? {} : { geometry: { frames: boxes.map((b) => placementOf(b, width / project.canvas.width, height / project.canvas.height, rest)) } };
+        const geometry = plainAt.every(Boolean) ? {} : { geometry: { frames: boxes.map((b) => placementOf(b, kx, ky, rest)) } };
         const alpha = boxes.some((b) => b.opacity !== 1) ? { alpha: boxes.map((b) => b.opacity) } : {};
         const layer: VisualLayer =
           media.kind === "image"
             ? { ...base, ...alpha, kind: "image", file: path, fills: fills(media), ...geometry }
             : { ...base, ...alpha, kind: "video", file: path, source: sourceAt(project, item, f0 - start), speed: item.speed ?? 1, fills: fills(media), ...geometry };
-        for (const pass of splitLoop(layer, project, start, { width, height })) visuals.push(...splitWipe(pass, fps));
+        // Cut at the transitions first, then each piece into passes through its media (D79 review): a
+        // long looped run keeps one looped input (the loop filter) and a transition's few frames seek.
+        for (const piece of split(layer, (f) => plainAt[f - f0]!)) visuals.push(...splitLoop(piece, project, start, { width, height }));
         return;
       }
       // Text moves (rise, slide, wipe) are drawn by Chromium frame by frame; opacity is a ramp.
@@ -524,7 +632,10 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const local = f - start;
         const motion = isText || isComponent ? animationAt(item, local, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut }).motion : {};
         if (isComponent) {
-          const parts = componentParts(item, target, local, { opacity: componentBox(item, project.canvas, local)?.opacity ?? 1, motion, fps })!;
+          // Its box moved by a push or zoom (D79), drawn into the HTML like its keys.
+          const own = componentBox(item, project.canvas, local);
+          const fx = fxAt(f);
+          const parts = componentParts(item, target, local, { opacity: own?.opacity ?? 1, motion, fps, ...(own ? { box: moveBox(own, fx.shift, fx.zoom) } : {}) })!;
           wrappers.push(parts.wrapper);
           looks.push(parts.body);
         } else looks.push(isText ? textHtml(item, project, { motion }) : solidHtml(item, project));
@@ -535,7 +646,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         html = wrappers.map((w, i) => wrapComponent(w, bodies.states[bodies.frames[i]!]!));
       }
       const { states, frames } = capStates(html, Infinity);
-      visuals.push(...splitWipe({ ...base, kind: "raster", states, frames }, fps));
+      visuals.push(...split({ ...base, ...(isComponent ? {} : canvasGeometry), kind: "raster", states, frames }, canvasStill));
     });
     // Dips to black: core's black layer over the main track, fading in to the cut and out after it.
     for (const dip of dipsOf(track, starts)) {
@@ -829,7 +940,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // at 0) starts at 0 instead, a frame's worth off.
     const fades = fadeFilters(layer.ramps, fps);
     const opacity = alphaFilters(layer, k, fps);
-    const geo = layer.kind === "video" || layer.kind === "image" ? layer.geometry?.frames : undefined;
+    const geo = layer.geometry?.frames;
     let chain: Array<string>;
     if (layer.kind === "video") {
       // Seek a second early and let fps pick, for each frame, the last source frame that starts at
@@ -852,7 +963,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         graph.push(`${picked.join(",")}[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else {
-        const alpha = !layer.fills || fades.length > 0 || !!layer.wipe || opacity.length > 0;
+        const alpha = !layer.fills || fades.length > 0 || !!layer.wipe || !!layer.iris || opacity.length > 0;
         chain = [
           ...picked,
           `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2:out_color_matrix=bt709:out_range=tv`,
@@ -889,13 +1000,19 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       // Rasters (text, backgrounds, components, SVG) and graphics: PNGs the rasteriser drew.
       const raster = opts.rasters.get(layer);
       if (!raster) throw new Error(`no raster for ${layer.item.id}`);
+      let source: Array<string>;
       if (raster.kind === "still") {
         inputs.push("-f", "image2", "-pattern_type", "none", "-i", raster.png);
-        chain = [`[${index}:v:0]${toYuv(true)}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades, ...opacity];
+        source = [`[${index}:v:0]${toYuv(true)}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`];
       } else {
         inputs.push("-f", "image2", "-framerate", String(fps), "-start_number", "0", "-i", raster.pattern);
-        chain = [`[${index}:v:0]${toYuv(true)}`, `trim=end_frame=${frames}`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades, ...opacity];
+        source = [`[${index}:v:0]${toYuv(true)}`, `trim=end_frame=${frames}`, `settb=1/${fps}`];
       }
+      if (geo) {
+        // Pushed or zoomed (D79): the canvas-size picture made into its moved box, then placed.
+        graph.push(`${source.join(",")},setpts=N[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
+      } else chain = [...source, `setpts=N+${layer.f0}`, ...fades, ...opacity];
     }
     // A wipe: the layer shows only its left X pixels (X even, the chroma grid): padded with W
     // transparent pixels on the left, a W-wide window at X holds the hidden part then the shown
@@ -903,8 +1020,8 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // expressions see the same frame time, so they agree on X.
     let at = "";
     let fmt = "auto";
-    if (geo && layer.wipe) {
-      // A boxed layer is put on a transparent canvas first: a wipe reveals the canvas from the left.
+    if (geo && (layer.wipe || layer.iris)) {
+      // A boxed layer is put on a transparent canvas first: a wipe or iris reveals the canvas.
       const place = placeAt(layer, geo, fps);
       graph.push(`${chain.join(",")}[x${k}]`);
       graph.push(`color=c=black@0:s=${W}x${H}:r=${fps},format=yuva444p,trim=end_frame=${frames},setpts=N+${layer.f0}[c${k}]`);
@@ -915,6 +1032,26 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       // Overlaid in 4:4:4: on 4:2:0 an odd x or y would snap to even (2-pixel steps on a slow pan).
       at = `:x=${place.x}:y=${place.y}`;
       fmt = "yuv444";
+    }
+    if (layer.iris) {
+      // An iris (D79): a disc at the canvas's centre, radius share · half diagonal (output px; edge
+      // pixels by coverage, as the preview's clip-path antialiases), multiplied into the alpha. The
+      // mask's frames carry the layer's times, so geq's T is the project frame's moment.
+      const { st, d } = layer.iris;
+      const r = `${n(Math.hypot(W, H) / 2)}*clip((T*${fps}+0.0001-${n(st)})/${n(d)},0,1)`;
+      graph.push(`${chain.join(",")},split=2[ic${k}][ia${k}]`);
+      // Computed at 1/IRIS_MASK_STEP of the size (geq is costly per pixel: ~16× less work), a soft
+      // edge one coarse pixel wide around the radius, then scaled up bilinearly on the same grid
+      // (coarse pixel i covers output pixels [i·s, (i+1)·s)) and cropped: the half-covered contour
+      // stays on the radius.
+      const step = IRIS_MASK_STEP;
+      const mw = Math.ceil(W / step);
+      const mh = Math.ceil(H / step);
+      graph.push(
+        `color=c=black:s=${mw}x${mh}:r=${fps},format=gray,trim=end_frame=${frames},settb=1/${fps},setpts=N+${layer.f0},geq=lum='255*clip((${r}-hypot((X+0.5)*${step}-${n(W / 2)},(Y+0.5)*${step}-${n(H / 2)}))/${step}+0.5,0,1)',scale=w=${mw * step}:h=${mh * step}:flags=bilinear,crop=w=${W}:h=${H}:x=0:y=0[im${k}]`,
+      );
+      graph.push(`[ia${k}]alphaextract[ie${k}]`, `[ie${k}][im${k}]blend=all_mode=multiply[ik${k}]`, `[ic${k}][ik${k}]alphamerge[ir${k}]`);
+      chain = [`[ir${k}]null`];
     }
     if (layer.wipe) {
       const x = `2*floor(${W}*clip((t*${fps}+0.0001-${n(layer.wipe.st)})/${n(layer.wipe.d)},0,1)/2)`;
