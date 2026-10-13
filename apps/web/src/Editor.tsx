@@ -13,6 +13,7 @@ import { isBoxed } from "./clip.ts";
 import { ComponentEditor } from "./ComponentEditor.tsx";
 import { componentInfo, isDrawnComponent } from "@uncut/core/components";
 import { useBeatsLoading } from "./beats.ts";
+import { useDuckLoading } from "./ducking.ts";
 import { hasSound } from "./sound.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
 import { NewProject } from "./NewProject.tsx";
@@ -94,6 +95,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   }, [panelRequest]);
   useEditorKeys(project.canvas.fps);
   useBeatsLoading(project, snapshot.dir);
+  useDuckLoading(project, snapshot.dir);
   return (
     <div className="app" data-testid="editor">
       <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} />

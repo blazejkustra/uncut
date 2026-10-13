@@ -3,7 +3,8 @@
   "id": "audio.denoise",
   "kind": "audio-processor",
   "name": "Noise removal",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "Noise removal (D88), export only: ffmpeg afftdn (FFT noise reduction) on the track, starting from the noise floor measured in the track media's loudness analysis (a fixed floor per track, −40 dBFS when unmeasured). The preview plays the track as recorded and marks it \"applied on export\".",
   "author": "Uncut",
   "license": "MIT",
   "builtin": true,
@@ -17,7 +18,9 @@
       "amount": {
         "type": "number",
         "minimum": 0,
-        "maximum": 1
+        "maximum": 1,
+        "default": 0.5,
+        "description": "0 = light (6 dB of reduction) … 1 = strong (30 dB)."
       }
     }
   }

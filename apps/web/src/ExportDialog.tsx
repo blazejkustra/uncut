@@ -6,6 +6,7 @@ import type { ExportJob, ExportLoudness, ExportQuality } from "@uncut/contracts"
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
 import { outputSize } from "@uncut/core/export";
+import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
 import { FolderOpen, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -19,11 +20,21 @@ const QUALITIES: ReadonlyArray<{ readonly id: ExportQuality; readonly label: str
   { id: "high", label: "High", hint: "Full size, the best copy" },
 ];
 
-const LOUDNESS: ReadonlyArray<{ readonly id: ExportLoudness; readonly label: string; readonly sub: string; readonly hint: string }> = [
-  { id: "normal", label: "Normal", sub: "−14 LUFS", hint: "Evens out the volume so it plays as loud as other videos on YouTube, Instagram and TikTok." },
-  { id: "quiet", label: "Quieter", sub: "−16 LUFS", hint: "A little quieter, as podcasts and Apple Music expect." },
-  { id: "off", label: "As mixed", sub: "No change", hint: "Keeps your levels exactly as they sound in the editor." },
-];
+type LoudnessCard = { readonly id: ExportLoudness; readonly label: string; readonly sub: string; readonly hint: string };
+const lufsText = (lufs: number) => `${lufs < 0 ? "−" : ""}${Math.abs(lufs)} LUFS`;
+/** The loudness cards (D87): the presets, the project's own target when it isn't one, and As mixed. */
+function loudnessCards(target: number): ReadonlyArray<LoudnessCard> {
+  const hints: Readonly<Record<string, string>> = {
+    normal: "Evens out the volume so it plays as loud as other videos on YouTube, Instagram and TikTok.",
+    quiet: "A little quieter, as podcasts and Apple Music expect.",
+    broadcast: "The TV level (EBU R128): quieter, with more room for peaks.",
+  };
+  return [
+    ...LOUDNESS_PRESETS.map((p) => ({ id: p.id, label: p.name, sub: lufsText(p.lufs), hint: hints[p.id]! })),
+    ...(choiceOfTarget(target) === "target" ? [{ id: "target" as const, label: "Project", sub: lufsText(target), hint: `The project's own loudness target (${targetWords(target)}), set in the Mixer.` }] : []),
+    { id: "off", label: "As mixed", sub: "No change", hint: "Keeps your levels exactly as they sound in the editor." },
+  ];
+}
 
 const ACTIVE = new Set(["queued", "preparing", "rendering"]);
 export const exportRunning = (job: ExportJob | undefined) => job !== undefined && ACTIVE.has(job.phase);
@@ -41,7 +52,10 @@ const eta = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `About $
 export function ExportDialog({ project, dir }: { project: Project; dir: string }) {
   const { appInfo, exportJobs, exportJobId, exportFolder, setupChecks, setupChecking } = useApp();
   const [quality, setQuality] = useState<ExportQuality>("standard");
-  const [loudness, setLoudness] = useState<ExportLoudness>("normal");
+  // The default comes from the project's loudness target (D87: master.loudness.targetLufs, −14 when unset).
+  const target = projectTargetLufs(project);
+  const [loudness, setLoudness] = useState<ExportLoudness>(() => choiceOfTarget(target));
+  const LOUDNESS = loudnessCards(target);
   const [name, setName] = useState(fileName(project.name));
   const [folder, setFolder] = useState(exportFolder ?? appInfo.defaultParentDir);
   const [error, setError] = useState<{ reason?: string | undefined; message: string } | undefined>();
@@ -70,7 +84,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const start = async (overwrite = false) => {
     setBusy(true);
     setError(undefined);
-    const refused = await actions.startExport({ output, quality, loudness, overwrite: overwrite || output === confirmed });
+    const refused = await actions.startExport({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed });
     setBusy(false);
     if (refused) {
       setError(refused);
@@ -170,7 +184,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
       </div>
     );
   } else {
-    const look = LOUDNESS.find((l) => l.id === loudness)!;
+    const look = LOUDNESS.find((l) => l.id === loudness) ?? LOUDNESS[0]!;
+    const limiter = masterLimiter(project);
     const note = mixNote(project);
     const masterDb = project.master?.gainDb ?? 0;
     body = (
@@ -221,6 +236,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         </div>
         <p className="wiz-meta" data-testid="loudness-hint">
           {look.hint}
+          {limiter ? ` Peaks stay under ${limiter.ceilingDb < 0 ? "−" : ""}${Math.abs(limiter.ceilingDb)} dBTP (the master limiter).` : " The master limiter is off: loud peaks can clip."}
         </p>
         {note && (
           // D83: the export mixes what the preview plays, so a solo left on exports only those tracks.

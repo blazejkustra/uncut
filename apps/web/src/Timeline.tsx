@@ -20,6 +20,8 @@ import { cutsOf, transitionName } from "@uncut/core/transitions";
 import { captionCards, captionExtent, type CaptionCard } from "@uncut/core/captions";
 
 import { getBeats, useBeats } from "./beats.ts";
+import { useDuckCurves } from "./ducking.ts";
+import { duckDbAt, duckKeysIn, type DuckKey } from "@uncut/core/ducking";
 import { draftOf, findItem, fitsTrack, lockOf, planMove, planSetTransition, planTrim, secondsLabel, SNAP_PX, snapPlayhead, snapTargets, trackFlag, trimSnapTargets, visibleBeats, type Plan } from "./edit.ts";
 import { frameTimecode, rulerLabel } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
@@ -43,7 +45,7 @@ export function BottomTabs() {
       <button className={bottom === "transcript" ? "active" : ""} data-testid="bottom-transcript" title="What's said on the main track: cut by deleting words" onClick={() => playback.setBottom("transcript")}>
         Transcript
       </button>
-      <button className={bottom === "mixer" ? "active" : ""} data-testid="bottom-mixer" title="Volume, pan, mute and solo per track, the master volume and live meters" onClick={() => playback.setBottom("mixer")}>
+      <button className={bottom === "mixer" ? "active" : ""} data-testid="bottom-mixer" title="Volume, pan, effects, ducking, mute and solo per track; the master volume, limiter and loudness target; live meters" onClick={() => playback.setBottom("mixer")}>
         Mixer
       </button>
     </div>
@@ -141,6 +143,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
   const empty = end === 0;
   // While dragging, the lanes draw the planned result; data-start/data-duration stay the server's.
   const view = drag?.view ?? project;
+  // Ducked tracks' curves (D85), drawn on their items.
+  const ducks = useDuckCurves(view);
   const viewStarts = layoutOf(view).starts;
   // The main track's cuts as drawn (a drag's planned result included).
   const cuts = cutsOf(view.tracks.find((t) => t.role === "main"));
@@ -618,6 +622,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
                         edges={editable && item.type !== "captions"}
                         envelope={item.id === selected && editable && !dragged ? "edit" : "show"}
+                        duck={ducks.get(track.id)?.keys}
                         {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
                         onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
                       />
@@ -720,6 +725,7 @@ function ItemBox({
   labelInset = 0,
   cards,
   envelope = "none",
+  duck,
 }: {
   project: ProjectModel;
   item: Item;
@@ -739,6 +745,8 @@ function ItemBox({
   cards?: ReadonlyArray<CaptionCard>;
   /** The volume line (D83) on items with sound: drawn, or drawn with keys to click and drag (the selected item). */
   envelope?: "none" | "show" | "edit";
+  /** Its track's duck curve (D85, project frames): drawn as a second, dashed line under the volume line. */
+  duck?: ReadonlyArray<DuckKey> | undefined;
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
@@ -783,7 +791,7 @@ function ItemBox({
           {fadeOut > 0 && <path d={`M${px} 0 L${px - fadeOut} 0 L${px} 100 Z`} />}
         </svg>
       )}
-      {sound && envelope !== "none" && <Envelope project={project} item={item} px={px} ppf={ppf} edit={envelope === "edit"} />}
+      {sound && envelope !== "none" && <Envelope project={project} item={item} px={px} ppf={ppf} edit={envelope === "edit"} duck={duck} start={start} />}
       <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
         {label}
       </span>
@@ -815,7 +823,7 @@ function ItemBox({
  * in frame order. The trim edges and fade handles sit above the line, so they keep their presses.
  */
 const ENVELOPE_MIN_PX = 40;
-function Envelope({ project, item, px, ppf, edit: editable }: { project: ProjectModel; item: Item; px: number; ppf: number; edit: boolean }) {
+function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { project: ProjectModel; item: Item; px: number; ppf: number; edit: boolean; duck?: ReadonlyArray<DuckKey> | undefined; start: number }) {
   const edit = editable && px >= ENVELOPE_MIN_PX;
   const selectedKey = usePlayback((s) => (s.selected === item.id ? s.gainKey : undefined));
   // While a key is dragged: the item as it would be (from the plan's gainKeys).
@@ -835,6 +843,17 @@ function Envelope({ project, item, px, ppf, edit: editable }: { project: Project
   for (let f = 0; f < view.duration; f += step) frames.add(f);
   const pts = [...frames].sort((a, b) => a - b).map((f) => `${(f * ppf).toFixed(1)},${(levelY(envelopeDbAt(view, f)) * 100).toFixed(2)}`);
   const d = `M${pts.join("L")}`;
+  // The ducking (D85): the volume line with the duck curve added, where the curve dips inside the item.
+  const duckKeys = duck ? duckKeysIn(duck, start, start + view.duration) : [];
+  let duckPath: string | undefined;
+  if (duckKeys.length) {
+    const df = new Set(frames);
+    for (const k of duckKeys) if (k.frame - start > 0 && k.frame - start < view.duration) df.add(k.frame - start);
+    duckPath = `M${[...df]
+      .sort((a, b) => a - b)
+      .map((f) => `${(f * ppf).toFixed(1)},${(levelY(envelopeDbAt(view, f) + duckDbAt(duck, start + f)) * 100).toFixed(2)}`)
+      .join("L")}`;
+  }
 
   /** Frame (from the item's start) and the item's dB at a pointer position. */
   const at = (ev: { clientX: number; clientY: number }) => {
@@ -917,6 +936,7 @@ function Envelope({ project, item, px, ppf, edit: editable }: { project: Project
   return (
     <>
       <svg className="envelope" data-testid="envelope" data-keys={keys.length} viewBox={`0 0 ${px} 100`} preserveAspectRatio="none" ref={ref}>
+        {duckPath && <path className="env-duck" data-testid="duck-line" data-keys={duckKeys.length} d={duckPath} />}
         <path className="env-line" d={d} />
         {edit && <path className="env-hit" data-testid="envelope-line" d={d} onPointerDown={(e) => press(e)} />}
       </svg>

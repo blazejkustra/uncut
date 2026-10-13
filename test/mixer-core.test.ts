@@ -215,7 +215,8 @@ test("Mixer planners: pan (hundredths, centre removes it), solo, master volume; 
   assert.equal(describeOp({ op: "update_track", track: "voice", set: { mixer: { pan: 0.4, solo: true } } }, p), "Set mixer of track voice: panned 40 % right, soloed");
   assert.equal(describeOp({ op: "update_track", track: "voice", set: { mixer: { gainDb: -8, pan: -1 } } }, p), "Set volume of track voice to −8 dB, panned 100 % left");
   assert.equal(describeOp({ op: "update_project", set: { master: { gainDb: -2 } } }, p), "Set master volume to −2 dB");
-  assert.equal(describeOp({ op: "update_project", set: { master: { loudness: { targetLufs: -16 } } } }, p), "Changed project master");
+  // D87: the loudness target is said too.
+  assert.equal(describeOp({ op: "update_project", set: { master: { loudness: { targetLufs: -16 } } } }, p), "Set the master: loudness target Quieter (−16 LUFS)");
 });
 
 test("volume keys on the timeline: add at the line's value or a dB, move between neighbours, remove; the level scale", () => {

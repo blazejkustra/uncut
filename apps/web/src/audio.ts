@@ -19,10 +19,25 @@
 // frame towards the value one ramp ahead, so volume and fades follow smoothly and a cut starts or
 // stops with a ~17 ms ramp instead of a click. Paused or scrubbing: silent.
 //
+// Track effects (D84): each bus runs its track's stages (core trackStages, the preview's: noise
+// removal is export-only, D88) between its input and its pan, as the export filters each track's
+// sum: BiquadFilterNodes for the EQ (the cookbook curves core biquadResponseDb states; Web Audio
+// takes a high-/low-pass Q in dB) and a DynamicsCompressorNode with a gain after it that cancels
+// its built-in make-up gain (core makeupCompensationDb) and adds the effect's own. Ducking (D85) is
+// core's duck curve added to each item's gain on the ducked track (ducking.ts duckCurvesOf), the
+// export's numbers. The master limiter (D86) follows the master volume: a hard-knee
+// DynamicsCompressor (ratio 20, compensated) working LIMITER_MARGIN_DB under the ceiling, as the
+// export's alimiter does, and a clip at the ceiling, so the preview never goes over it either;
+// the meters, level() and the capture read after it.
+//
 // The file:// renderer can only hear an element through Web Audio if the media was fetched in
 // CORS mode: elements get crossOrigin="anonymous" before their src, and the server's /media/file
 // route allows it.
 import { audibleAt, audioSpan, itemGain, masterGain, panGains, soundMedia, sourceAt, trackPan } from "@uncut/core/audio";
+import { duckDbAt } from "@uncut/core/ducking";
+import { LIMITER_MARGIN_DB, makeupCompensationDb, masterLimiter, trackStages, type Stage } from "@uncut/core/effects";
+
+import { duckCurvesOf } from "./ducking.ts";
 
 import { layoutOf, type Item, type ProjectModel } from "./project.ts";
 import { mediaUrl } from "./store.ts";
@@ -52,14 +67,148 @@ interface Route {
 /** A reroute or a dropped bus first ramps to silence over this long, so it doesn't click. */
 const UNWIRE_S = 0.01;
 
-/** A track's bus (D83): stereo up-mix → pan (a gain per channel) → master, with a meter per channel. */
+/** A track's bus (D83): stereo up-mix → its effects (D84) → pan (a gain per channel) → master, with a meter per channel. */
 interface Bus {
   readonly input: GainNode;
+  /** The effect stages' nodes between input and splitter (empty: input feeds the splitter). */
+  chain: StageChain;
   readonly splitter: ChannelSplitterNode;
   readonly left: GainNode;
   readonly right: GainNode;
   readonly merger: ChannelMergerNode;
   readonly meters: readonly [AnalyserNode, AnalyserNode];
+}
+
+/** dB → linear (no cutoff: for node parameters). */
+const lin = (db: number) => 10 ** (db / 20);
+
+/** The nodes of a chain of effect stages, and how to set their parameters without rebuilding. */
+export interface StageChain {
+  /** Kinds and types in order: a chain with the same shape is updated in place. */
+  readonly shape: string;
+  readonly first: AudioNode | undefined;
+  readonly last: AudioNode | undefined;
+  readonly nodes: ReadonlyArray<AudioNode>;
+  /** Set every parameter from `stages` (same shape), gliding over `ramp` seconds (0: at once). */
+  readonly set: (stages: ReadonlyArray<Stage>, ramp: number) => void;
+  /** Compressors' gain reduction now (dB, ≤ 0), the deepest. */
+  readonly reduction: () => number;
+}
+export const stageShape = (stages: ReadonlyArray<Stage>) => stages.map((s) => (s.kind === "biquad" ? s.type : s.kind)).join(",");
+
+/**
+ * Web Audio nodes for effect stages (D84), in order, connected one to the next. Noise removal has
+ * no preview node (D88: export only; trackStages leaves it out for the preview). Works on any
+ * context (the live mix, and the app tests' OfflineAudioContext checks).
+ */
+export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>): StageChain {
+  type Part = { readonly stage: Stage["kind"]; readonly nodes: ReadonlyArray<AudioNode>; readonly set: (s: Stage, at: (p: AudioParam, v: number) => void) => void };
+  const parts: Array<Part> = [];
+  for (const stage of stages) {
+    if (stage.kind === "biquad") {
+      const f = ctx.createBiquadFilter();
+      f.type = stage.type;
+      parts.push({
+        stage: "biquad",
+        nodes: [f],
+        set: (s, at) => {
+          if (s.kind !== "biquad") return;
+          at(f.frequency, s.freq);
+          // Web Audio: a high-/low-pass's Q is in dB (20·log10 of the cookbook's Q); a peak's is linear; shelves ignore it (slope 1).
+          at(f.Q, s.type === "highpass" || s.type === "lowpass" ? 20 * Math.log10(s.q) : s.q);
+          at(f.gain, s.gainDb);
+        },
+      });
+    } else if (stage.kind === "compressor") {
+      const c = ctx.createDynamicsCompressor();
+      const g = ctx.createGain();
+      c.knee.value = 0;
+      c.connect(g);
+      parts.push({
+        stage: "compressor",
+        nodes: [c, g],
+        set: (s, at) => {
+          if (s.kind !== "compressor") return;
+          at(c.threshold, s.thresholdDb);
+          at(c.ratio, s.ratio);
+          at(c.attack, s.attackMs / 1000);
+          at(c.release, s.releaseMs / 1000);
+          at(g.gain, lin(s.makeupDb - makeupCompensationDb(s.thresholdDb, s.ratio)));
+        },
+      });
+    }
+  }
+  for (let i = 1; i < parts.length; i++) parts[i - 1]!.nodes.at(-1)!.connect(parts[i]!.nodes[0]!);
+  const apply = (list: ReadonlyArray<Stage>, ramp: number) => {
+    const shown = list.filter((s) => s.kind !== "denoise");
+    const now = ctx.currentTime;
+    const at = (p: AudioParam, v: number) => {
+      if (ramp <= 0) {
+        p.cancelScheduledValues(now);
+        p.value = v;
+        return;
+      }
+      p.cancelScheduledValues(now);
+      p.setValueAtTime(p.value, now);
+      p.linearRampToValueAtTime(v, now + ramp);
+    };
+    shown.forEach((s, i) => parts[i]?.set(s, at));
+  };
+  apply(stages, 0);
+  const compressors = parts.filter((p) => p.stage === "compressor").map((p) => p.nodes[0] as DynamicsCompressorNode);
+  return {
+    shape: stageShape(stages.filter((s) => s.kind !== "denoise")),
+    first: parts[0]?.nodes[0],
+    last: parts.at(-1)?.nodes.at(-1),
+    nodes: parts.flatMap((p) => p.nodes),
+    set: apply,
+    reduction: () => compressors.reduce((m, c) => Math.min(m, c.reduction), 0),
+  };
+}
+
+/** The limiter's release (s) and attack (s): close to the export's alimiter (50 ms; its 5 ms lookahead is an attack here). */
+const LIMITER_RELEASE_S = 0.05;
+const LIMITER_ATTACK_S = 0.001;
+/** A hard clip at ±ceiling (linear), as a WaveShaper curve: identity inside, flat outside (input past ±1 maps to the ends). */
+function clipCurve(ceiling: number): Float32Array<ArrayBuffer> {
+  const n = 4097;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.max(-ceiling, Math.min(ceiling, x));
+  }
+  return curve;
+}
+
+/** The master limiter's nodes (D86): compressor → compensation gain → clip. */
+export interface LimiterNodes {
+  readonly input: DynamicsCompressorNode;
+  readonly gain: GainNode;
+  readonly clip: WaveShaperNode;
+  ceilingDb: number;
+}
+export function buildLimiter(ctx: BaseAudioContext, ceilingDb: number): LimiterNodes {
+  const input = ctx.createDynamicsCompressor();
+  input.knee.value = 0;
+  input.ratio.value = 20;
+  input.attack.value = LIMITER_ATTACK_S;
+  input.release.value = LIMITER_RELEASE_S;
+  const gain = ctx.createGain();
+  const clip = ctx.createWaveShaper();
+  clip.oversample = "none";
+  input.connect(gain);
+  gain.connect(clip);
+  const nodes: LimiterNodes = { input, gain, clip, ceilingDb };
+  setLimiter(nodes, ceilingDb);
+  return nodes;
+}
+/** The compressor works LIMITER_MARGIN_DB under the ceiling, as the export's alimiter does; the clip is at the ceiling itself. */
+function setLimiter(l: LimiterNodes, ceilingDb: number) {
+  l.ceilingDb = ceilingDb;
+  const threshold = ceilingDb - LIMITER_MARGIN_DB;
+  l.input.threshold.value = threshold;
+  l.gain.gain.value = lin(-makeupCompensationDb(threshold, 20));
+  l.clip.curve = clipCurve(lin(ceilingDb));
 }
 
 /** A channel's level over the analyser's window: RMS and peak, linear (1 = full scale). */
@@ -75,6 +224,10 @@ export interface StereoLevel {
 export interface Levels {
   readonly master: StereoLevel;
   readonly tracks: Readonly<Record<string, StereoLevel>>;
+  /** The master limiter's gain reduction now (dB, ≤ 0; 0 when off or idle), D86. */
+  readonly limiter: number;
+  /** Each bus's compressors' gain reduction now (dB, ≤ 0), D84. */
+  readonly reduction: Readonly<Record<string, number>>;
 }
 const SILENT: StereoLevel = { left: { rms: 0, peak: 0 }, right: { rms: 0, peak: 0 } };
 
@@ -101,7 +254,15 @@ export class Mix {
   private readonly buses = new Map<string, Bus>();
   /** The pan factors and master gain last asked for (ramped towards). */
   private readonly panTarget = new WeakMap<Bus, { left: number; right: number }>();
+  /** The stages each bus was last set to (JSON), so unchanged ones are skipped. */
+  private readonly stageKeys = new WeakMap<Bus, string>();
   private masterTarget = 1;
+  /** After the limiter: what the speakers, meters and capture get. */
+  private post: GainNode | undefined;
+  private limiter: LimiterNodes | undefined;
+  /** Whether the master feeds the limiter (it is wired) and what the project asks for. */
+  private limiterOn = false;
+  private limiterTarget: { readonly ceilingDb: number } | undefined = { ceilingDb: -1 };
   /** Test-only capture of the master output (see capture()). */
   private tap: Capture | undefined;
   private marks: Array<{ t: number; frame: number }> = [];
@@ -125,18 +286,26 @@ export class Mix {
         const ctx = new AudioContext({ latencyHint: "interactive" });
         const master = ctx.createGain();
         master.gain.value = this.masterTarget;
+        // After the master volume: the limiter (D86, wired by mixer()), then `post`, what is heard and metered.
+        const post = ctx.createGain();
+        const limiter = buildLimiter(ctx, this.limiterTarget?.ceilingDb ?? -1);
+        limiter.clip.connect(post);
+        master.connect(this.limiterTarget ? limiter.input : post);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
-        master.connect(analyser);
+        post.connect(analyser);
         analyser.connect(ctx.destination);
         // The master strip's meters: the output split into its two channels.
         const split = ctx.createChannelSplitter(2);
         const meters = [ctx.createAnalyser(), ctx.createAnalyser()] as const;
         for (const m of meters) m.fftSize = 2048;
-        master.connect(split);
+        post.connect(split);
         split.connect(meters[0], 0);
         split.connect(meters[1], 1);
         this.ctx = ctx;
+        this.post = post;
+        this.limiter = limiter;
+        this.limiterOn = this.limiterTarget !== undefined;
         this.master = master;
         this.analyser = analyser;
         this.masterMeters = meters;
@@ -217,7 +386,7 @@ export class Mix {
     left.connect(meters[0]);
     right.connect(meters[1]);
     merger.connect(g.master);
-    const bus = { input, splitter, left, right, merger, meters };
+    const bus: Bus = { input, chain: buildStages(ctx, []), splitter, left, right, merger, meters };
     this.buses.set(trackId, bus);
     return bus;
   }
@@ -226,7 +395,7 @@ export class Mix {
     const bus = this.buses.get(trackId);
     if (!bus) return;
     this.buses.delete(trackId);
-    const nodes = [bus.input, bus.splitter, bus.left, bus.right, bus.merger];
+    const nodes = [bus.input, ...bus.chain.nodes, bus.splitter, bus.left, bus.right, bus.merger];
     const ctx = this.ctx;
     if (!ctx || ctx.state !== "running") return nodes.forEach((n) => n.disconnect());
     // Ramp its output down first, then let go of it.
@@ -269,15 +438,18 @@ export class Mix {
 
   /** Pan every sounding track's bus and set the master volume (D83); drop buses of tracks that went. */
   private mixer(project: ProjectModel) {
+    this.limiterTarget = masterLimiter(project);
     if (!this.ctx) {
       this.masterTarget = masterGain(project);
       return;
     }
+    this.wireLimiter();
     const ids = new Set(project.tracks.map((t) => t.id));
     for (const id of [...this.buses.keys()]) if (!ids.has(id)) this.dropBus(id);
     for (const track of project.tracks) {
       const bus = this.buses.get(track.id);
       if (!bus) continue;
+      this.effects(bus, trackStages(track, { preview: true }));
       const want = panGains(trackPan(track));
       const had = this.panTarget.get(bus);
       if (had && had.left === want.left && had.right === want.right) continue;
@@ -295,6 +467,39 @@ export class Mix {
       this.masterTarget = master;
       this.glide(this.master.gain, master);
     }
+  }
+
+  /** A bus's effect chain to `stages` (D84): parameters glide when its shape is the same, else it is rebuilt between input and splitter. */
+  private effects(bus: Bus, stages: ReadonlyArray<Stage>) {
+    const key = JSON.stringify(stages);
+    if (this.stageKeys.get(bus) === key) return;
+    const had = this.stageKeys.has(bus);
+    this.stageKeys.set(bus, key);
+    if (bus.chain.shape === stageShape(stages)) {
+      bus.chain.set(stages, had ? RAMP_S : 0);
+      return;
+    }
+    const old = bus.chain;
+    const chain = buildStages(this.ctx!, stages);
+    bus.input.disconnect();
+    for (const n of old.nodes) n.disconnect();
+    if (chain.first && chain.last) {
+      bus.input.connect(chain.first);
+      chain.last.connect(bus.splitter);
+    } else bus.input.connect(bus.splitter);
+    bus.chain = chain;
+  }
+
+  /** Wire the master limiter in or out (D86) and set its ceiling. */
+  private wireLimiter() {
+    const want = this.limiterTarget;
+    const l = this.limiter;
+    if (!l || !this.master || !this.post) return;
+    if (want && want.ceilingDb !== l.ceilingDb) setLimiter(l, want.ceilingDb);
+    if ((want !== undefined) === this.limiterOn) return;
+    this.master.disconnect(want ? this.post : l.input);
+    this.master.connect(want ? l.input : this.post);
+    this.limiterOn = want !== undefined;
   }
 
   private ramp(route: Route, target: number) {
@@ -393,6 +598,8 @@ export class Mix {
     const g = playing ? this.graph() : this.ctx ? { ctx: this.ctx } : undefined;
     if (playing && g?.ctx.state === "suspended") void g.ctx.resume().catch(() => {});
     const audible = audibleAt(project, starts, frame);
+    // Ducking (D85): each ducked track's curve, added to its items' gain like the export's expression.
+    const ducks = duckCurvesOf(project);
     const audibleIds = new Set(audible.map((a) => a.item.id));
     const keepOwn = new Set<string>();
     const items: Array<{ id: string; gain: number; playing: boolean; own: boolean }> = [];
@@ -413,7 +620,7 @@ export class Mix {
       const index = a.track.items.indexOf(a.item);
       const start = starts.get(id) ?? 0;
       const local = Math.min(ahead, audioSpan(a.track, index, start).to - 1e-6) - start;
-      const gain = a.muted ? 0 : itemGain(a.track, index, local);
+      const gain = a.muted ? 0 : itemGain(a.track, index, local, duckDbAt(ducks.get(a.track.id)?.keys, start + local));
       const video = this.shown.get(id);
       const preferred: HTMLMediaElement | undefined = video ?? this.ownElement(a.item, project);
       if (!preferred) continue;
@@ -541,8 +748,12 @@ export class Mix {
   levels(): Levels {
     const read = (meters: readonly [AnalyserNode, AnalyserNode] | undefined): StereoLevel => (meters ? { left: levelOf(meters[0]), right: levelOf(meters[1]) } : SILENT);
     const tracks: Record<string, StereoLevel> = {};
-    for (const [id, bus] of this.buses) tracks[id] = read(bus.meters);
-    return { master: read(this.masterMeters), tracks };
+    const reduction: Record<string, number> = {};
+    for (const [id, bus] of this.buses) {
+      tracks[id] = read(bus.meters);
+      reduction[id] = bus.chain.reduction();
+    }
+    return { master: read(this.masterMeters), tracks, limiter: this.limiterOn && this.limiter ? this.limiter.input.reduction : 0, reduction };
   }
 
   /**
@@ -560,14 +771,16 @@ export class Mix {
     node.onaudioprocess = (e) => {
       tap.blocks.push({ t: e.playbackTime, left: e.inputBuffer.getChannelData(0).slice(), right: e.inputBuffer.getChannelData(1).slice() });
     };
-    g.master.connect(node);
+    // After the limiter (D86): what is heard.
+    const out = this.post ?? g.master;
+    out.connect(node);
     node.connect(sink);
     sink.connect(g.ctx.destination);
     this.tap = tap;
     this.marks = [];
     return {
       stop: () => {
-        g.master.disconnect(node);
+        out.disconnect(node);
         node.disconnect();
         sink.disconnect();
         node.onaudioprocess = null;
@@ -625,13 +838,56 @@ const b64 = (a: Float32Array) => {
 };
 (globalThis as { __uncutAudio?: unknown }).__uncutAudio = {
   level: () => current?.level() ?? { rms: 0, peak: 0 },
-  levels: () => current?.levels() ?? { master: SILENT, tracks: {} },
+  levels: () => current?.levels() ?? { master: SILENT, tracks: {}, limiter: 0, reduction: {} },
   state: () => current?.state() ?? { state: "none", items: [] },
   // Test-only (D83): record the master output; stop returns the samples (float32, base64 per
   // channel), the context time of the first one, and the frame drawn at each context time.
   startCapture: () => {
     capturing = current?.capture();
     return capturing !== undefined;
+  },
+  // Test-only (D84, D86): the preview's own node builders on an OfflineAudioContext. biquadResponse:
+  // a biquad stage's magnitude response (dB) at `freqs` from BiquadFilterNode.getFrequencyResponse;
+  // offlineTone: a sine of amplitude `amp` through `stages` (and the limiter at `ceilingDb`), the
+  // output's RMS and peak over its second half.
+  biquadResponse: (stage: Stage, freqs: ReadonlyArray<number>, sampleRate = 48000) => {
+    const ctx = new OfflineAudioContext(1, 128, sampleRate);
+    const node = buildStages(ctx, [stage]).first as BiquadFilterNode;
+    const f = Float32Array.from(freqs);
+    const mag = new Float32Array(f.length);
+    node.getFrequencyResponse(f, mag, new Float32Array(f.length));
+    return [...mag].map((m) => 20 * Math.log10(m));
+  },
+  offlineTone: async ({ stages = [], ceilingDb, amp, freq = 1000, seconds = 2, sampleRate = 48000 }: { stages?: ReadonlyArray<Stage>; ceilingDb?: number; amp: number; freq?: number; seconds?: number; sampleRate?: number }) => {
+    const ctx = new OfflineAudioContext(2, Math.round(seconds * sampleRate), sampleRate);
+    const osc = ctx.createOscillator();
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.value = amp;
+    osc.connect(g);
+    let out: AudioNode = g;
+    const chain = buildStages(ctx, stages);
+    if (chain.first && chain.last) {
+      out.connect(chain.first);
+      out = chain.last;
+    }
+    if (ceilingDb !== undefined) {
+      const l = buildLimiter(ctx, ceilingDb);
+      out.connect(l.input);
+      out = l.clip;
+    }
+    out.connect(ctx.destination);
+    osc.start();
+    const buf = await ctx.startRendering();
+    const data = buf.getChannelData(0);
+    let sum = 0;
+    let peak = 0;
+    const from = Math.floor(data.length / 2);
+    for (let i = from; i < data.length; i++) {
+      sum += data[i]! ** 2;
+      peak = Math.max(peak, Math.abs(data[i]!));
+    }
+    return { rms: Math.sqrt(sum / (data.length - from)), peak };
   },
   stopCapture: () => {
     const r = capturing?.stop();

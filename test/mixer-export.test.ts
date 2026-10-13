@@ -138,8 +138,9 @@ test("pan: −1 is all left at 0 dB (right below −40 dB), 0 is unchanged, ±0.
   const st = astats(mix(mixProject([{ id: "st", kind: "audio", name: "Stereo", mixer: { pan: -0.5 }, items: [audioItem("s", "m-stereo")] }]), "stereo"), 0.5, 3.5);
   within(st.left, dB(0.2 / Math.SQRT2), 0.5, "stereo left unchanged");
   within(st.right, dB(0.1 / Math.SQRT2) + dB(panGains(-0.5).right), 0.5, "stereo right −5.3 dB");
-  // A full-scale source panned hard stays at full scale (no boost, no clipping).
-  const peak = Number(/Peak level dB: (-?[\d.]+)/.exec(spawnSync("ffmpeg", ["-hide_banner", "-i", mix(mixProject([{ id: "voice", kind: "audio", name: "Voice", mixer: { pan: -1, gainDb: 12 }, items: [audioItem("v", "m-voice")] }]), "loud"), "-af", "astats=measure_perchannel=none", "-f", "null", "-"], { encoding: "utf8" }).stderr)?.[1]);
+  // A full-scale source panned hard stays at full scale (no boost, no clipping). The master limiter (D86) is bypassed
+  // here: this is about the pan law (effects-export.test.ts checks the limiter).
+  const peak = Number(/Peak level dB: (-?[\d.]+)/.exec(spawnSync("ffmpeg", ["-hide_banner", "-i", mix(mixProject([{ id: "voice", kind: "audio", name: "Voice", mixer: { pan: -1, gainDb: 12 }, items: [audioItem("v", "m-voice")] }], { effects: [{ module: "audio.limiter", bypass: true }] }), "loud"), "-af", "astats=measure_perchannel=none", "-f", "null", "-"], { encoding: "utf8" }).stderr)?.[1]);
   within(peak, dB(0.25) + 12, 0.1, "+12 dB and hard left: the peak is the gain's, nothing more");
 });
 

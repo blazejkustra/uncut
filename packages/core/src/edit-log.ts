@@ -2,6 +2,7 @@
 // the agent gets before its next turn (D6). The same entries feed the
 // "You made N edits by hand" line in the Agent tab.
 import { componentInfo } from "./components.ts";
+import { DUCK, effectName, effectSummary, LIMITER, targetWords } from "./effects.ts";
 import type { Id, Op, Project, Session } from "./types.ts";
 
 const secs = (frames: number, fps: number) => `${(Math.abs(frames) / fps).toFixed(1)}s`;
@@ -29,6 +30,25 @@ export const dbWords = (db: unknown) => {
 /** A pan in words (D83): "centre", "30 % left", "100 % right". */
 export const panWords = (pan: unknown) => (typeof pan !== "number" || pan === 0 ? "centre" : `${Math.round(Math.abs(pan) * 100)} % ${pan < 0 ? "left" : "right"}`);
 
+/** A planner's summary for an effect change (D84–D87), in the past tense: "Added EQ to Music", "Ducked Music under Voice by −12 dB". */
+const EFFECT_HINT = /^(Add|Remove|Move|Bypass|Turn on|Turn off|Set (EQ|Compressor|Voice|Noise removal|the master limiter|the loudness target)|Duck|Stop ducking)\b/;
+const PAST: ReadonlyArray<[RegExp, string]> = [
+  [/^Add\b/, "Added"],
+  [/^Remove\b/, "Removed"],
+  [/^Move\b/, "Moved"],
+  [/^Bypass\b/, "Bypassed"],
+  [/^Turn on\b/, "Turned on"],
+  [/^Turn off\b/, "Turned off"],
+  [/^Duck\b/, "Ducked"],
+  [/^Stop ducking\b/, "Stopped ducking"],
+];
+const past = (hint: string) => PAST.reduce((s, [re, word]) => s.replace(re, word), hint);
+/** A track's effects in words (an agent's update_track, which has no summary): "EQ (low cut 80 Hz), ducking under voice by −12 dB". */
+export function effectsWords(effects: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }>): string {
+  if (!effects.length) return "none";
+  return effects.map((fx) => (fx.module === DUCK ? `ducking ${effectSummary(fx)}` : `${effectName(fx.module)} (${effectSummary(fx)})`) + (fx.bypass ? " bypassed" : "")).join(", ");
+}
+
 /**
  * Hide, lock, mute and volume in words (the timeline's track buttons); undefined for anything
  * else. update_track replaces the mixer whole, so a mute toggle on a track with a volume and a
@@ -42,7 +62,13 @@ function trackFlag(track: Id, set: { readonly [key: string]: unknown }, hint?: s
   if (keys[0] === "hidden") return `${on(set.hidden) ? "Hid" : "Showed"} track ${track}`;
   if (keys[0] === "locked") return `${on(set.locked) ? "Locked" : "Unlocked"} track ${track}`;
   if (keys[0] === "mixer") {
-    const mixer = (set.mixer ?? {}) as { readonly mute?: unknown; readonly gainDb?: unknown; readonly pan?: unknown; readonly solo?: unknown };
+    const mixer = (set.mixer ?? {}) as { readonly mute?: unknown; readonly gainDb?: unknown; readonly pan?: unknown; readonly solo?: unknown; readonly effects?: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }> };
+    // Effects and ducking (D84, D85): the Mixer's summary says what changed; an agent's edit lists the chain.
+    if (hint && EFFECT_HINT.test(hint)) return past(hint);
+    if (!hint && Array.isArray(mixer.effects) && mixer.effects.length) {
+      const rest = [typeof mixer.gainDb === "number" ? `volume ${dbWords(mixer.gainDb)}` : "", typeof mixer.pan === "number" && mixer.pan !== 0 ? `panned ${panWords(mixer.pan)}` : "", mixer.mute === true ? "muted" : "", mixer.solo === true ? "soloed" : ""].filter(Boolean);
+      return `Set effects of track ${track}: ${effectsWords(mixer.effects)}${rest.length ? `; ${rest.join(", ")}` : ""}`;
+    }
     // The Mixer's pan and solo (D83): the summary says which field the gesture changed.
     if (hint && /^pan\b/i.test(hint)) return `Panned track ${track} ${panWords(mixer.pan)}`;
     if (hint && /^(un)?solo\b/i.test(hint)) return `${mixer.solo === true ? "Soloed" : "Unsoloed"} track ${track}`;
@@ -226,8 +252,19 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       // The master volume (D83); update_project replaces master whole.
       const keys = Object.keys(op.set);
       if (keys.length === 1 && keys[0] === "master") {
-        const m = (op.set.master ?? {}) as { readonly gainDb?: unknown };
-        if (typeof m.gainDb === "number" || hint?.startsWith("Set master volume")) return `Set master volume to ${dbWords(m.gainDb)}`;
+        const m = (op.set.master ?? {}) as { readonly gainDb?: unknown; readonly loudness?: { readonly targetLufs?: unknown }; readonly effects?: ReadonlyArray<{ readonly module: string; readonly params?: { readonly [key: string]: unknown }; readonly bypass?: boolean }> };
+        // The loudness target and the limiter (D86, D87): the Mixer's summary, else what the master now says.
+        if (hint && EFFECT_HINT.test(hint)) return past(hint);
+        if (hint?.startsWith("Set master volume")) return `Set master volume to ${dbWords(m.gainDb)}`;
+        // update_project replaces master whole: say every part it now has (volume, target, limiter).
+        const limiter = m.effects?.find((fx) => fx.module === LIMITER);
+        const parts = [
+          typeof m.gainDb === "number" ? `volume ${dbWords(m.gainDb)}` : "",
+          typeof m.loudness?.targetLufs === "number" ? `loudness target ${targetWords(m.loudness.targetLufs)}` : "",
+          limiter ? (limiter.bypass ? "limiter off" : `limiter ${effectSummary(limiter)}`) : "",
+        ].filter(Boolean);
+        if (parts.length === 1 && typeof m.gainDb === "number") return `Set master volume to ${dbWords(m.gainDb)}`;
+        if (parts.length) return `Set the master: ${parts.join(", ")}`;
       }
       return `Changed project ${keys.join(", ")}`;
     }
