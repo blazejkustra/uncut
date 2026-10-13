@@ -9,7 +9,7 @@
     "start": "node dist/server.mjs"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.2",
+    "@effect/platform-node": "4.0.3",
     "@uncut/contracts": "workspace:*",
     "@uncut/core": "workspace:*",
     "@uncut/plugin-sdk": "workspace:*",
