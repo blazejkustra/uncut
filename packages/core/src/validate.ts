@@ -164,7 +164,11 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
       if (item.props) checkMediaRefs(item.props, `${ipath}/props`);
       if (item.type === "text" && item.style?.preset) useModule(item.style.preset, ["text-style"], `${ipath}/style`);
       if (item.type === "captions" && item.style?.preset) useModule(item.style.preset, ["text-style"], `${ipath}/style`);
-      for (const [k, a] of Object.entries(item.animation ?? {})) useModule(a.module, ["move"], `${ipath}/animation/${k}`);
+      for (const [k, a] of Object.entries(item.animation ?? {})) {
+        // A move's params (word-by-word style, zoom scale and ease; D81) are checked against its manifest.
+        const m = useModule(a.module, ["move"], `${ipath}/animation/${k}`);
+        if (a.params !== undefined) checkParams(m, a.params, `${ipath}/animation/${k}/params`);
+      }
       for (const fx of item.effects ?? []) {
         const kinds: ReadonlyArray<ModuleKind> = track.kind === "audio" ? ["audio-processor"] : ["effect"];
         const m = useModule(fx.module, kinds, `${ipath}/effects`);
@@ -195,6 +199,35 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
   for (const fx of project.master?.effects ?? []) {
     const m = useModule(fx.module, ["audio-processor"], "/master/effects");
     checkParams(m, fx.params, `/master/effects/${fx.module}`);
+  }
+  return errors;
+}
+
+/**
+ * What the module schema can't check across manifests (D80): every text-style look's moves are
+ * installed move modules whose params validate against that move's manifest, and every look in
+ * its `with` is an installed text style. Returns the problems (none for the built-ins: tested).
+ */
+export function lookProblems(modules: Modules): Array<Problem> {
+  const errors: Array<Problem> = [];
+  for (const m of modules.values()) {
+    const look = (m as { look?: { animation?: Record<string, { module?: string; params?: unknown }>; with?: Array<{ look?: string }> } }).look;
+    if (!look) continue;
+    for (const [slot, move] of Object.entries(look.animation ?? {})) {
+      const path = `/${m.id}/look/animation/${slot}`;
+      const target = move?.module ? modules.get(move.module) : undefined;
+      if (!target) errors.push(err("unknown-module", path, `move "${move?.module}" is not installed`));
+      else if (target.kind !== "move") errors.push(err("module-kind", path, `module "${target.id}" is a ${target.kind}, expected move`));
+      else if (target.params && move.params !== undefined) {
+        if (!paramsCache.has(target.id)) paramsCache.set(target.id, ajv.compile(target.params));
+        const check = paramsCache.get(target.id)!;
+        if (!check(move.params)) for (const e of check.errors!) errors.push(err("params", `${path}/params${e.instancePath}`, `${target.id}: ${e.message}`));
+      }
+    }
+    (look.with ?? []).forEach((w, i) => {
+      const other = w.look ? modules.get(w.look) : undefined;
+      if (!other || other.kind !== "text-style") errors.push(err("unknown-module", `/${m.id}/look/with/${i}`, `text style "${w.look}" is not installed`));
+    });
   }
   return errors;
 }

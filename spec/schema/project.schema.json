@@ -29,6 +29,7 @@
         "margin": { "type": "integer", "minimum": 0 }
       }
     },
+    "textLooks": { "const": 1, "description": "Stamped on projects created from D80 on: text in the six older looks (title, header, lower third, footnote, mono label, captions) or with no preset draws no soft shadow by default. Absent (projects made before): it does, as it always did." },
     "media": { "type": "array", "items": { "$ref": "#/$defs/media" } },
     "tracks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/track" } },
     "scenes": {
@@ -245,9 +246,28 @@
                 "lineHeight": { "type": "number" },
                 "color": { "$ref": "#/$defs/color" },
                 "align": { "enum": ["left", "center", "right"] },
-                "stroke": { "type": "object" },
-                "shadow": { "type": "object" },
-                "background": { "type": "object" }
+                "uppercase": { "type": "boolean" },
+                "stroke": {
+                  "description": "An outline (D80): width in canvas px (without a width it is ignored; other keys are kept but not drawn, so files saved before D80 still open). false = none, even when the preset's look has one; absent = the look's.",
+                  "oneOf": [
+                    { "const": false },
+                    { "type": "object", "properties": { "width": { "type": "number", "minimum": 0 }, "color": { "$ref": "#/$defs/color" } } }
+                  ]
+                },
+                "shadow": {
+                  "description": "A drop shadow (D80): x, y, blur in canvas px, opacity 0-1 ({} counts as absent; unknown keys are kept, not drawn). false = none; absent = the look's (the six styles from before D80 draw a soft shadow).",
+                  "oneOf": [
+                    { "const": false },
+                    { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "blur": { "type": "number", "minimum": 0 }, "color": { "$ref": "#/$defs/color" }, "opacity": { "type": "number", "minimum": 0, "maximum": 1 } } }
+                  ]
+                },
+                "background": {
+                  "description": "A box behind the text (D80): wrap box = one box around the text box, lines = one behind each line; padding (the sides; top and bottom get half) and radius in canvas px, opacity 0-1. false = none; absent = the look's.",
+                  "oneOf": [
+                    { "const": false },
+                    { "type": "object", "properties": { "color": { "$ref": "#/$defs/color" }, "opacity": { "type": "number", "minimum": 0, "maximum": 1 }, "padding": { "type": "number", "minimum": 0 }, "radius": { "type": "number", "minimum": 0 }, "wrap": { "enum": ["box", "lines"] } } }
+                  ]
+                }
               }
             }
           },

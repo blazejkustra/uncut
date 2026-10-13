@@ -164,6 +164,8 @@ export const emptyProject = (name: string, canvas: Canvas = DEFAULT_CANVAS): Pro
   format: "uncut/0",
   name,
   canvas: { width: canvas.width, height: canvas.height, fps: canvas.fps },
+  // D80: made after text looks landed, so the older looks' soft shadow isn't a default here.
+  textLooks: 1,
   media: [],
   tracks: [
     { id: "text", kind: "text", name: "Text", items: [] },

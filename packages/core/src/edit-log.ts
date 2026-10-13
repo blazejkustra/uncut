@@ -53,7 +53,7 @@ const quote = (text: string, max = 60) => {
   return `"${flat.length > max ? `${flat.slice(0, max - 1)}…` : flat}"`;
 };
 const round = (n: unknown) => (typeof n === "number" ? String(Math.round(n)) : String(n));
-const MOVE_NAMES: Readonly<Record<string, string>> = { "move.fade": "fade", "move.rise": "rise", "move.slide-left": "slide left", "move.wipe": "wipe", "move.word-by-word": "word by word" };
+const MOVE_NAMES: Readonly<Record<string, string>> = { "move.fade": "fade", "move.rise": "rise", "move.slide-left": "slide left", "move.wipe": "wipe", "move.word-by-word": "word by word", "move.zoom": "zoom" };
 const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
   preset: (v) => `style ${v}`,
   size: (v) => `size ${round(v)}`,
@@ -63,6 +63,11 @@ const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
   font: (v) => `font ${v}`,
   tracking: (v) => `tracking ${v}`,
   lineHeight: (v) => `line height ${v}`,
+  uppercase: (v) => (v ? "capitals" : "normal case"),
+  // D80: outline, shadow and box in words; false = removed.
+  stroke: (v) => (v === false ? "no outline" : v && typeof v === "object" ? `outline ${round((v as { width?: unknown }).width)} px${(v as { color?: unknown }).color ? ` ${(v as { color?: unknown }).color}` : ""}` : "outline"),
+  shadow: (v) => (v === false ? "no shadow" : v && typeof v === "object" ? `shadow blur ${round((v as { blur?: unknown }).blur ?? 0)}` : "shadow"),
+  background: (v) => (v === false ? "no box" : v && typeof v === "object" ? `${(v as { wrap?: unknown }).wrap === "lines" ? "a box per line" : "a box"} ${(v as { color?: unknown }).color ?? ""}`.trim() : "box"),
 };
 
 /**

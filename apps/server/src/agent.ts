@@ -35,7 +35,7 @@ import type { BeatsResult } from "./beats.ts";
 import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { expandDeviceFrames, FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
@@ -1209,7 +1209,10 @@ export const layer = Layer.effect(
             // insert_device_frame (D76) becomes the edit ops that make it (tracks, the screen clip, the frame).
             const expanded = expandDeviceFrames(v.session.project as Project, args.ops);
             if ("problem" in expanded) return textResult({ refused: expanded.problem, revision: v.session.revision }, true);
-            const ops = expanded.ops;
+            // insert_text (D80) becomes the inserts (and text tracks) of a text in a look.
+            const texts = expandTextLooks(v.session.project as Project, expanded.ops);
+            if ("problem" in texts) return textResult({ refused: texts.problem, revision: v.session.revision }, true);
+            const ops = texts.ops;
             if (!r.owner.seen.has(baseRevision)) {
               return textResult(
                 { refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`, revision: v.session.revision },

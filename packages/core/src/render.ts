@@ -2,7 +2,8 @@
 // an exported frame shows exactly what the editor showed (D39). Everything that decides how an
 // item looks is inline on its element; RENDER_CSS holds only the few rules both need, and both
 // inject it as is.
-import type { Canvas, Item, Project } from "./types.ts";
+import { textLook, type TextLook, type WordStyle } from "./looks.ts";
+import type { Canvas, Item, Project, TextBackground, TextShadow, TextStroke } from "./types.ts";
 
 const ENTITIES: Readonly<Record<string, string>> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 export const esc = (s: unknown): string => String(s).replace(/[&<>"]/g, (c) => ENTITIES[c]!);
@@ -17,6 +18,11 @@ export type RenderTarget = {
   readonly canvas: Pick<Canvas, "width" | "height" | "background">;
   readonly theme?: Theme | undefined;
   readonly mediaUrl?: ((mediaId: string) => string | undefined) | undefined;
+  /**
+   * The project's `textLooks` marker (D80): stamped on projects created from D80 on. With it, the
+   * older looks' soft shadow (legacyShadow) isn't drawn; without it (projects made before), it is.
+   */
+  readonly textLooks?: number | undefined;
 };
 
 /**
@@ -81,34 +87,10 @@ export function resolveFont(target: Pick<RenderTarget, "theme">, value: unknown)
   return family && SAFE_FONT.test(family) ? `"${family}", ${stack}` : stack;
 }
 
-/**
- * How each built-in text style (spec/modules/builtin/text.*.json) looks: the defaults a text item
- * with that preset gets when it's added or restyled, and the fallbacks for the fields it doesn't
- * set. Sizes and positions are fractions of the canvas height/width, so they fit any canvas.
- */
-export interface TextLook {
-  readonly name: string;
-  readonly size: number;
-  readonly weight: number;
-  readonly font: "sans" | "mono";
-  readonly tracking: number;
-  readonly lineHeight: number;
-  readonly color: string;
-  readonly align?: "left" | "center" | "right";
-  readonly x: number;
-  readonly y: number;
-}
-export const TEXT_STYLES: Readonly<Record<string, TextLook>> = {
-  "text.title": { name: "Title", size: 0.12, weight: 700, font: "sans", tracking: -0.02, lineHeight: 1.05, color: "fg", x: 0.08, y: 0.38 },
-  "text.header": { name: "Header", size: 0.06, weight: 500, font: "sans", tracking: -0.02, lineHeight: 1.1, color: "fg", x: 0.08, y: 0.46 },
-  "text.lower-third": { name: "Lower third", size: 0.05, weight: 600, font: "sans", tracking: -0.01, lineHeight: 1.1, color: "fg", x: 0.0625, y: 0.8 },
-  "text.footnote": { name: "Footnote", size: 0.03, weight: 400, font: "sans", tracking: 0, lineHeight: 1.25, color: "mute", x: 0.0625, y: 0.9 },
-  "text.mono-label": { name: "Mono label", size: 0.035, weight: 500, font: "mono", tracking: 0, lineHeight: 1.2, color: "fg", x: 0.0625, y: 0.1 },
-  "text.captions": { name: "Captions", size: 0.05, weight: 600, font: "sans", tracking: -0.01, lineHeight: 1.15, color: "fg", align: "center", x: 0.1, y: 0.78 },
-};
-/** Fallbacks for a text item with no preset (or one that isn't built in). */
-const PLAIN: TextLook = { name: "Text", size: 0.08, weight: 600, font: "sans", tracking: -0.02, lineHeight: 1.05, color: "fg", x: 0.08, y: 0.42 };
-export const textLook = (preset: unknown): TextLook => (typeof preset === "string" && TEXT_STYLES[preset]) || PLAIN;
+// The looks (size, position, weight, font, stroke, shadow, box…) live in the text-style manifests
+// (D80, looks.ts); textHtml uses them as fallbacks for the fields an item doesn't set.
+export { LEGACY_LOOKS, PLAIN_LOOK, TEXT_STYLES, textLook } from "./looks.ts";
+export type { TextLook } from "./looks.ts";
 
 /** The safe margin in canvas pixels: the theme's, else 1/15 of the shorter side (72 px at 1080p). */
 export const safeMargin = (target: RenderTarget) => target.theme?.margin ?? Math.round(Math.min(target.canvas.width, target.canvas.height) / 15);
@@ -118,7 +100,9 @@ export const canvasBackground = (target: RenderTarget) => resolveColor(target, t
 
 /** Rules the preview and export inject; everything per item is inline. */
 export const RENDER_CSS = [
-  ".pv-text{position:absolute;white-space:pre-wrap;overflow-wrap:break-word;text-shadow:0 2px 18px rgb(0 0 0 / 45%);cursor:default;user-select:none;box-sizing:border-box}",
+  ".pv-text{position:absolute;white-space:pre-wrap;overflow-wrap:break-word;cursor:default;user-select:none;box-sizing:border-box}",
+  ".pv-text .pv-w{display:inline-block}",
+  ".pv-text .pv-line{-webkit-box-decoration-break:clone;box-decoration-break:clone}",
   ".pv-text .accent{color:var(--accent)}",
   ".pv-text b{font-weight:800}",
   ".pv-text code{font-family:var(--mono);font-size:0.9em}",
@@ -143,24 +127,153 @@ export interface Motion {
   readonly dy?: number;
   /** How much of a wipe is revealed, 0–1 (1 = all of it). */
   readonly reveal?: number;
+  /** A zoom move (D81): the text's scale about its box's centre. */
+  readonly scale?: number;
+  /** A word-by-word move (D81): each word's progress, 0 (not there yet) → 1 (arrived), and how it arrives. */
+  readonly words?: ReadonlyArray<number>;
+  readonly wordStyle?: WordStyle;
 }
 
 export const num = (n: number) => String(Math.round(n * 10000) / 10000);
+
+/** The soft shadow every text had before D80 (it was in RENDER_CSS); legacy looks keep it. */
+export const LEGACY_SHADOW_CSS = "0 2px 18px rgb(0 0 0 / 45%)";
+
+/** A colour at an opacity: hex as rgb(r g b / a%), anything else mixed with transparent. */
+export function withAlpha(color: string, opacity: number): string {
+  const a = Math.min(1, Math.max(0, opacity));
+  if (a >= 1) return color;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color)?.[1];
+  if (hex) {
+    const full = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+    return `rgb(${r} ${g} ${b} / ${num(a * 100)}%)`;
+  }
+  return `color-mix(in srgb, ${color} ${num(a * 100)}%, transparent)`;
+}
+
+/**
+ * A text item's stroke, shadow and background box as it draws (D80): the item's own (canvas px),
+ * else its look's (em of the font size, so in px at this size); `false` on the item = none, even
+ * when the look has one. A legacy look without a shadow on the item keeps the pre-D80 soft shadow
+ * (`legacy`). Shared by textHtml and the Inspector (which shows what is drawn).
+ */
+export function textDecor(item: Pick<Item, "style">, look: TextLook, size: number, target: Pick<RenderTarget, "textLooks"> = {}): { stroke?: Required<Pick<TextStroke, "width">> & TextStroke; shadow?: TextShadow; legacyShadow: boolean; background?: TextBackground } {
+  // Saved objects that say nothing usable (shadow {}, a stroke without a width, a box without a
+  // colour: the format allowed any object before D80) count as absent, so the look's applies.
+  const raw = item.style ?? {};
+  const usable = (v: unknown, need: (o: Record<string, unknown>) => boolean) => (v === false ? false : v && typeof v === "object" && need(v as Record<string, unknown>) ? v : undefined);
+  const s = {
+    stroke: usable(raw.stroke, (o) => typeof o.width === "number") as TextStroke | false | undefined,
+    shadow: usable(raw.shadow, (o) => ["x", "y", "blur", "color", "opacity"].some((k) => o[k] !== undefined)) as TextShadow | false | undefined,
+    background: usable(raw.background, (o) => typeof o.color === "string") as TextBackground | false | undefined,
+  };
+  const em = (v: number | undefined) => (v === undefined ? undefined : v * size);
+  const stroke = s.stroke === false ? undefined : s.stroke ?? (look.stroke ? { width: em(look.stroke.width)!, ...(look.stroke.color ? { color: look.stroke.color } : {}) } : undefined);
+  const lookShadow = look.shadow ? { ...look.shadow, x: em(look.shadow.x), y: em(look.shadow.y), blur: em(look.shadow.blur) } : undefined;
+  const shadow = s.shadow === false ? undefined : s.shadow ?? lookShadow;
+  const lb = look.background;
+  const background = s.background === false ? undefined : s.background ?? (lb ? { ...lb, ...(lb.padding !== undefined ? { padding: em(lb.padding) } : {}), ...(lb.radius !== undefined ? { radius: em(lb.radius) } : {}) } : undefined);
+  const clean = <T extends object>(o: T | undefined) => (o ? (Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T) : undefined);
+  return {
+    ...(stroke && stroke.width > 0 ? { stroke: clean(stroke)! } : {}),
+    ...(shadow ? { shadow: clean(shadow)! } : {}),
+    legacyShadow: s.shadow === undefined && !shadow && !!look.legacyShadow && !target.textLooks,
+    ...(background ? { background: clean(background)! } : {}),
+  };
+}
+
+/** A background box's padding: the number is the sides', top and bottom get half (labels and caption lines read better wider). */
+const padCss = (p: number) => `${num(p / 2)}px ${num(p)}px`;
+
+/**
+ * Wraps every word of markup HTML (markup()'s output) in a span with style(i), i counting the
+ * words of the visible text (runs of non-space between whitespace; a word cut by a tag keeps one
+ * index). Whitespace and line breaks stay text, so the lines wrap and break as without the spans.
+ * style(i) null leaves word i out, with the whitespace that would separate it (the words left out
+ * are always a run at one end, D81), so what's left reads as if it were the whole text.
+ */
+function wrapWords(html: string, style: (i: number) => string | null, leavesOut = false): { html: string; count: number } {
+  let i = -1;
+  let inWord = false;
+  let out = "";
+  let pending = "";
+  let shown = false;
+  for (const [, tag, text] of html.matchAll(/(<[^>]+>)|([^<]+)/g)) {
+    if (tag) {
+      out += tag;
+      continue;
+    }
+    for (const piece of text!.split(/(\s+)/)) {
+      if (!piece) continue;
+      if (/^\s+$/.test(piece)) {
+        inWord = false;
+        // Only held back when words may be left out (otherwise exactly where markup put it).
+        if (leavesOut) pending += piece;
+        else out += piece;
+        continue;
+      }
+      if (!inWord) i++;
+      const css = style(i);
+      if (css !== null) {
+        if (shown) out += pending;
+        shown = true;
+        out += `<span class="pv-w"${css ? ` style="${css}"` : ""}>${piece}</span>`;
+      }
+      pending = "";
+      inWord = true;
+    }
+  }
+  return { html: out, count: i + 1 };
+}
+
+/** How many words a text's markup shows (what a word-by-word move counts, D81). */
+export const wordCount = (text: string) => wrapWords(markup(text), () => "").count;
+
+const backOut = (p: number) => {
+  const c1 = 1.70158;
+  return 1 + (c1 + 1) * (p - 1) ** 3 + c1 * (p - 1) ** 2;
+};
+
+/** One word's look at progress p (0 → 1) of a word-by-word move. */
+export function wordCss(p: number, style: WordStyle = "pop"): string {
+  if (p >= 1) return "";
+  const q = Math.max(0, p);
+  if (style === "fade") return `opacity:${num(q)}`;
+  if (style === "rise") return `opacity:${num(q)};transform:translateY(${num((1 - (1 - (1 - q) ** 3)) * 0.4)}em)`;
+  return `opacity:${num(Math.min(1, q * 2))};transform:scale(${num(0.6 + 0.4 * backOut(q))})`;
+}
+
+/**
+ * Where a text item is drawn (canvas px), the one rule textHtml and the Inspector/drag share
+ * (D80): transform x / y, else the look's (a spanning look: the safe margin); transform.w, else —
+ * only when the item has no x of its own — the look's width (span: the safe area between the
+ * margins); no w = as wide as its text. size = style.size, else the look's.
+ */
+export function textPlacement(item: Pick<Item, "transform" | "style">, target: Pick<RenderTarget, "canvas" | "theme">): { x: number; y: number; w: number | undefined; size: number } {
+  const { width, height } = target.canvas;
+  const look = textLook(item.style?.preset);
+  const margin = safeMargin(target as RenderTarget);
+  const x = item.transform?.x ?? (look.span ? margin : width * look.x);
+  const y = item.transform?.y ?? height * look.y;
+  const w = item.transform?.w ?? (item.transform?.x === undefined ? (look.span ? width - 2 * margin : look.w !== undefined ? width * look.w : undefined) : undefined);
+  return { x, y, w, size: item.style?.size ?? height * look.size };
+}
 
 /**
  * A text item as HTML. transform (x, y) is the box's top-left corner and transform.w its width in
  * canvas pixels (no w: as wide as its longest line, wrapping at the canvas edge); style.align
  * aligns the lines inside the box. A text item without transform or size (the format allows it,
  * and the agent can write one) falls back to its preset's look instead of breaking the preview.
+ * Stroke, shadow and background box (D80) come from the item, else its look; the word-by-word and
+ * zoom moves (D81) come in `motion`.
  */
 export function textHtml(item: Item, target: RenderTarget, { opacity = 1, selected = false, motion }: { opacity?: number; selected?: boolean; motion?: Motion } = {}): string {
   const { width, height } = target.canvas;
   const look = textLook(item.style?.preset);
   const s = item.style ?? {};
-  const x = item.transform?.x ?? width * look.x;
-  const y = item.transform?.y ?? height * look.y;
-  const w = item.transform?.w;
-  const size = s.size ?? height * look.size;
+  const { x, y, w, size } = textPlacement(item, target);
+  const decor = textDecor(item, look, size, target);
   const css = [
     `left:${num((x / width) * 100)}%`,
     `top:${num((y / height) * 100)}%`,
@@ -176,9 +289,30 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
     `--mono:${resolveFont(target, "mono").replace(/"/g, "'")}`,
     `opacity:${num(opacity)}`,
   ];
-  if (motion?.dx || motion?.dy) css.push(`transform:translate(${num(((motion.dx ?? 0) / width) * 100)}cqw,${num(((motion.dy ?? 0) / height) * 100)}cqh)`);
+  if (decor.legacyShadow) css.push(`text-shadow:${LEGACY_SHADOW_CSS}`);
+  else if (decor.shadow) {
+    const sh = decor.shadow;
+    css.push(`text-shadow:${num(sh.x ?? 0)}px ${num(sh.y ?? 0)}px ${num(Math.max(0, sh.blur ?? 0))}px ${withAlpha(resolveColor(target, sh.color, "#000000"), sh.opacity ?? 1)}`);
+  }
+  if (decor.stroke) css.push(`-webkit-text-stroke:${num(decor.stroke.width)}px ${resolveColor(target, decor.stroke.color, "#000000")};paint-order:stroke fill`);
+  if (s.uppercase ?? look.uppercase) css.push("text-transform:uppercase");
+  const bg = decor.background;
+  const bgFill = bg ? withAlpha(resolveColor(target, bg.color, "#000000"), bg.opacity ?? 1) : undefined;
+  if (bg && bg.wrap !== "lines") css.push(`background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px`);
+  const moved = !!(motion?.dx || motion?.dy);
+  const scaled = motion?.scale !== undefined && motion.scale !== 1;
+  if (moved || scaled) css.push(`transform:${moved ? `translate(${num(((motion!.dx ?? 0) / width) * 100)}cqw,${num(((motion!.dy ?? 0) / height) * 100)}cqh)` : ""}${moved && scaled ? " " : ""}${scaled ? `scale(${num(motion!.scale!)})` : ""}`);
   if (motion?.reveal !== undefined && motion.reveal < 1) css.push(`clip-path:inset(-20% ${num((1 - motion.reveal) * 100)}% -20% -5%)`);
-  return `<div class="pv-text${selected ? " sel-box" : ""}" data-item="${esc(item.id)}" style="${css.join(";")}">${markup(item.text ?? "")}</div>`;
+  let body = markup(item.text ?? "");
+  if (motion?.words) {
+    const words = motion.words;
+    // With a box (one box or one per line), words that haven't arrived (or have left) are left
+    // out, so the box grows with the words instead of showing empty first (D81).
+    const hide = !!bg && words.some((w) => w <= 0);
+    body = wrapWords(body, (i) => (hide && (words[i] ?? 1) <= 0 ? null : wordCss(words[i] ?? 1, motion.wordStyle)), hide).html;
+  }
+  if (bg && bg.wrap === "lines") body = `<span class="pv-line" style="background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px">${body}</span>`;
+  return `<div class="pv-text${selected ? " sel-box" : ""}" data-item="${esc(item.id)}" style="${css.join(";")}">${body}</div>`;
 }
 
 /** The built-in full-frame background (component.solid): a colour, or a gradient to `to`. */

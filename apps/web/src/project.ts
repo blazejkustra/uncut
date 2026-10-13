@@ -1,7 +1,9 @@
 // The project as the renderer reads it, the timeline maths it borrows from @uncut/core (D39: the
 // preview, export and agent share one implementation), and the edit ops the editor sends for
 // "add to timeline". The ops go through project.edit, so the server validates them and they undo.
-import { SOLID, textLook } from "@uncut/core/render";
+import { SOLID } from "@uncut/core/render";
+import { TEXT_STYLES, type TextPreset } from "@uncut/core/looks";
+import { planInsertText } from "@uncut/core/textPlan";
 import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
 
@@ -104,54 +106,31 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0):
 }
 
 /**
- * The Text tab's presets: built-in text-style modules (spec/modules/builtin/text.*.json). Their
- * size, weight and position come from core TEXT_STYLES, the same looks the renderer falls back to.
+ * The Text tab's presets (D80): core TEXT_PRESETS, built-in text-style looks from their manifests
+ * (the three from before first, same ids), the same looks the renderer falls back to.
  */
-export const TEXT_PRESETS = [
-  { id: "title", module: "text.title", label: "Title", text: "Title" },
-  { id: "text", module: "text.header", label: "Text", text: "Text" },
-  { id: "lower-third", module: "text.lower-third", label: "Lower third", text: "Lower third" },
-] as const;
-export type TextPreset = (typeof TEXT_PRESETS)[number];
+export { TEXT_PRESETS } from "@uncut/core/looks";
+export type { TextPreset } from "@uncut/core/looks";
 
 const TEXT_SECONDS = 3;
 
 /**
- * A text item at the playhead, 3 s long, on the top-most text track that is free for that whole
- * stretch. If none is, a new text track goes on top (above every other track). One edit either
+ * A text item in a preset's look at the playhead, 3 s long, on the top-most text track that is
+ * free for that whole stretch (core planInsertText; the looks it comes with on the next free
+ * ones). If none is, a new text track goes on top (above every other track). One edit either
  * way, so one undo removes it all.
  */
-export function planAddText(project: ProjectModel, preset: TextPreset, frame: number): Planned {
-  const { width, height, fps } = project.canvas;
+export function planAddText(project: ProjectModel, preset: TextPreset, frame: number, at?: { readonly x: number; readonly y: number }): Planned {
   const start = Math.max(0, Math.floor(frame));
-  const duration = TEXT_SECONDS * fps;
-  const free = (t: Track) => t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
-  const ops: Array<unknown> = [];
-  const taken = new Set<string>();
-  let track = displayTracks(project).find((t) => t.kind === "text" && !t.locked && free(t));
-  if (!track) {
-    const id = uniqueId(project, "text", taken);
-    taken.add(id);
-    const name = `Text ${project.tracks.filter((t) => t.kind === "text").length + 1}`;
-    ops.push({ op: "add_track", index: 0, track: { id, kind: "text", name } });
-    track = { id, kind: "text", name, items: [] };
-  }
-  const itemId = uniqueId(project, preset.id, taken);
-  const look = textLook(preset.module);
-  ops.push({
-    op: "insert_item",
-    track: track.id,
-    item: {
-      id: itemId,
-      type: "text",
-      start,
-      duration,
-      text: preset.text,
-      transform: { x: Math.round(width * look.x), y: Math.round(height * look.y) },
-      style: { preset: preset.module, size: Math.round(height * look.size), weight: look.weight },
-    },
-  });
-  return { ops, summary: `Add ${preset.label.toLowerCase()}`, itemId, start };
+  const duration = TEXT_SECONDS * project.canvas.fps;
+  // Dropped on the canvas: its first line centred on the drop point's height; a look that spans
+  // the safe area keeps its x and width, others start at the drop point.
+  const look = TEXT_STYLES[preset.module];
+  const y = at && look ? Math.round(at.y - (project.canvas.height * look.size * look.lineHeight) / 2) : undefined;
+  const transform = at && look ? (look.span ? { y: y! } : { x: Math.round(at.x), y: y! }) : undefined;
+  const plan = planInsertText(project, { look: preset.module, text: preset.text, start, duration, idBase: preset.id, ...(transform ? { transform } : {}) });
+  if ("problem" in plan) return plan;
+  return { ops: plan.ops, summary: `Add ${preset.label.toLowerCase()}`, itemId: plan.itemId, start };
 }
 
 /** A background's colours in words: "Background #0B1D3A", "Gradient #0B1D3A → #3B1E54". */

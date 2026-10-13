@@ -9,5 +9,20 @@
   "builtin": true,
   "runtime": {
     "type": "html"
+  },
+  "description": "Text: the words appear one after another over the move's length (in), or leave in the same order (out).",
+  "params": {
+    "type": "object",
+    "properties": {
+      "style": {
+        "enum": [
+          "pop",
+          "fade",
+          "rise"
+        ],
+        "default": "pop",
+        "description": "How each word arrives: pop (grows from 60 % with a little overshoot), fade, or rise (fades in moving up)."
+      }
+    }
   }
 }

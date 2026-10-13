@@ -19,7 +19,8 @@ import { useBeats } from "./beats.ts";
 import { analysisText } from "./analysisText.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "./store.ts";
 import { dbLabel, planFade, planGain } from "./sound.ts";
-import { MOVES, planAnimation, planBackground, planCentre, planPreset, planStyle, planText, planTransform, swatches, textBox, toggleAccent, type AnimationSlot } from "./text.ts";
+import { MOVES, planAnimation, planBackground, planCentre, planPreset, planResetLook, planShadow, planStroke, planStyle, planText, planTextBox, planTransform, swatches, textBox, textDecorOf, toggleAccent, type AnimationSlot } from "./text.ts";
+import { WORD_STYLES, ZOOM_DEFAULTS } from "@uncut/core/looks";
 
 /** How long typing has to pause before it's saved (it's also saved on blur and ⌘Enter). */
 export const TYPING_PAUSE_MS = 800;
@@ -338,7 +339,7 @@ const ALIGNS = [
 ] as const;
 
 function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item: Item; disabled: boolean }) {
-  const box = textBox(item, project.canvas);
+  const box = textBox(item, project);
   const settle = useSettle(400);
   const colorDraft = useRef<PreviewDraft | undefined>(undefined);
   const maxSize = Math.round(project.canvas.height * 0.4);
@@ -348,11 +349,14 @@ function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item
       <Group label="Style">
         <div className="presets">
           {Object.entries(TEXT_STYLES).map(([id, look]) => (
-            <button key={id} className={`preset ${item.style?.preset === id ? "active" : ""}`} data-testid="insp-preset" data-preset={id} disabled={disabled} onClick={() => send((p) => planPreset(p, item.id, id))}>
+            <button key={id} className={`preset ${item.style?.preset === id ? "active" : ""}`} data-testid="insp-preset" data-preset={id} title={look.description || `Apply ${look.name}`} disabled={disabled} onClick={() => send((p) => planPreset(p, item.id, id))}>
               {look.name}
             </button>
           ))}
         </div>
+        <button className="link-btn small" data-testid="insp-reset-look" disabled={disabled || !TEXT_STYLES[item.style?.preset ?? ""]} title="Put the preset's whole look back: size, weight, font, outline, shadow, box and position" onClick={() => send((p) => planResetLook(p, item.id))}>
+          <RotateCcw /> Reset to preset
+        </button>
       </Group>
       <Group label="Size and weight">
         <div className="slider-row">
@@ -416,6 +420,7 @@ function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item
           }}
         />
       </Group>
+      <TextDecorGroups project={project} item={item} disabled={disabled} />
       <Group label="Alignment and position">
         <div className="seg align" role="group">
           {ALIGNS.map(([align, Icon]) => (
@@ -439,12 +444,114 @@ function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item
   );
 }
 
+/** A colour that commits on a swatch at once and on the custom picker once it settles (like the text colour). */
+function SettledColor({ project, value, testId, disabled, onCommit }: { project: ProjectModel; value: string | undefined; testId: string; disabled: boolean; onCommit: (color: string) => void }) {
+  const settle = useSettle(400);
+  return <ColorPicker project={project} testId={testId} value={value} disabled={disabled} onPick={(color, final) => (final ? onCommit(color) : settle(() => onCommit(color)))} />;
+}
+
+/**
+ * Spacing, outline, shadow and box (D80): what the text draws now (its look's where it sets
+ * none), each change one edit (planStroke / planShadow / planTextBox). None writes false, so a
+ * look's outline, shadow or box goes too.
+ */
+function TextDecorGroups({ project, item, disabled }: { project: ProjectModel; item: Item; disabled: boolean }) {
+  const d = textDecorOf(item, project);
+  const pct = (v: number | undefined) => (v === undefined ? undefined : Math.round(v * 100));
+  const wrap = d.background ? (d.background.wrap ?? "box") : "none";
+  return (
+    <>
+      <Group label="Spacing and case">
+        <div className="field-row three">
+          <NumberField label="Tracking em" testId="insp-tracking" value={Math.round(d.tracking * 1000) / 1000} step={0.01} min={-0.5} max={2} disabled={disabled} onCommit={(v) => send((p) => planStyle(p, item.id, { tracking: v ?? null }, v === undefined ? "Use the preset's letter spacing" : `Set letter spacing to ${v} em`))} />
+          <NumberField label="Line" testId="insp-line-height" value={Math.round(d.lineHeight * 100) / 100} step={0.05} min={0.5} max={4} disabled={disabled} onCommit={(v) => send((p) => planStyle(p, item.id, { lineHeight: v ?? null }, v === undefined ? "Use the preset's line height" : `Set line height to ${v}`))} />
+          <button className={`btn small-btn ${d.uppercase ? "active" : ""}`} data-testid="insp-uppercase" aria-pressed={d.uppercase} title="Capital letters" disabled={disabled} onClick={() => send((p) => planStyle(p, item.id, { uppercase: !d.uppercase }, d.uppercase ? "Use normal case" : "Set text in capitals"))}>
+            AA
+          </button>
+        </div>
+      </Group>
+      <Group label="Outline">
+        <div className="seg" role="group">
+          <button className={!d.stroke ? "active" : ""} data-testid="insp-stroke-none" disabled={disabled} onClick={() => d.stroke && send((p) => planStroke(p, item.id, false))}>
+            None
+          </button>
+          <button className={d.stroke ? "active" : ""} data-testid="insp-stroke-on" disabled={disabled} onClick={() => !d.stroke && send((p) => planStroke(p, item.id, {}))}>
+            Outline
+          </button>
+        </div>
+        {d.stroke && (
+          <>
+            <NumberField label="Width" testId="insp-stroke-width" value={d.stroke.width} step={1} min={0} max={200} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planStroke(p, item.id, { width: v }))} />
+            <SettledColor project={project} testId="insp-stroke-color" value={d.stroke.color ?? "#000000"} disabled={disabled} onCommit={(color) => send((p) => planStroke(p, item.id, { color }))} />
+          </>
+        )}
+      </Group>
+      <Group label="Shadow">
+        <div className="seg" role="group">
+          <button className={!d.shadow ? "active" : ""} data-testid="insp-shadow-none" disabled={disabled} onClick={() => d.shadow && send((p) => planShadow(p, item.id, false))}>
+            None
+          </button>
+          <button className={d.shadow ? "active" : ""} data-testid="insp-shadow-on" disabled={disabled} onClick={() => !d.shadow && send((p) => planShadow(p, item.id, {}))}>
+            Shadow
+          </button>
+        </div>
+        {d.shadow && (
+          <>
+            <div className="field-row three">
+              <NumberField label="X" testId="insp-shadow-x" value={d.shadow.x ?? 0} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planShadow(p, item.id, { x: v }))} />
+              <NumberField label="Y" testId="insp-shadow-y" value={d.shadow.y ?? 0} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planShadow(p, item.id, { y: v }))} />
+              <NumberField label="Blur" testId="insp-shadow-blur" value={d.shadow.blur ?? 0} min={0} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planShadow(p, item.id, { blur: v }))} />
+            </div>
+            <NumberField label="Opacity" testId="insp-shadow-opacity" value={pct(d.shadow.opacity ?? 1)} min={0} max={100} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planShadow(p, item.id, { opacity: v / 100 }))} />
+            <SettledColor project={project} testId="insp-shadow-color" value={d.shadow.color ?? "#000000"} disabled={disabled} onCommit={(color) => send((p) => planShadow(p, item.id, { color }))} />
+          </>
+        )}
+      </Group>
+      <Group label="Box">
+        <div className="seg" role="group">
+          {(
+            [
+              ["none", "None"],
+              ["box", "Box"],
+              ["lines", "Per line"],
+            ] as const
+          ).map(([w, label]) => (
+            <button key={w} className={wrap === w ? "active" : ""} data-testid="insp-box" data-wrap={w} disabled={disabled} onClick={() => wrap !== w && send((p) => planTextBox(p, item.id, w === "none" ? false : { wrap: w }))}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {d.background && (
+          <>
+            <div className="field-row three">
+              <NumberField label="Padding" testId="insp-box-padding" value={d.background.padding ?? 0} min={0} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planTextBox(p, item.id, { padding: v }))} />
+              <NumberField label="Radius" testId="insp-box-radius" value={d.background.radius ?? 0} min={0} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planTextBox(p, item.id, { radius: v }))} />
+              <NumberField label="Opacity" testId="insp-box-opacity" value={pct(d.background.opacity ?? 1)} min={0} max={100} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planTextBox(p, item.id, { opacity: v / 100 }))} />
+            </div>
+            <SettledColor project={project} testId="insp-box-color" value={d.background.color ?? "#000000"} disabled={disabled} onCommit={(color) => send((p) => planTextBox(p, item.id, { color }))} />
+          </>
+        )}
+      </Group>
+    </>
+  );
+}
+
+const EASE_NAMES = [
+  ["linear", "Linear"],
+  ["out", "Ease out"],
+  ["in", "Ease in"],
+  ["inOut", "Ease in and out"],
+] as const;
+
 function AnimationRow({ project, item, slot, disabled }: { project: ProjectModel; item: Item; slot: AnimationSlot; disabled: boolean }) {
   const fps = project.canvas.fps;
   const current = item.animation?.[slot];
   const module = current?.module ?? "";
   const frames = current?.duration ?? Math.min(item.duration, Math.round(fps / 3));
-  const set = (next: string, duration: number) => send((p) => planAnimation(p, item.id, slot, next ? { module: next, duration } : null));
+  const params = current?.params ?? {};
+  const set = (next: string, duration: number, nextParams: { readonly [key: string]: unknown } = next === module ? params : {}) =>
+    send((p) => planAnimation(p, item.id, slot, next ? { module: next, duration, params: nextParams } : null));
+  const setParam = (key: string, value: unknown) => set(module, frames, { ...params, [key]: value });
   return (
     <Group label={slot === "in" ? "In" : "Out"}>
       <div className="field-row">
@@ -466,6 +573,36 @@ function AnimationRow({ project, item, slot, disabled }: { project: ProjectModel
           onCommit={(v) => v !== undefined && set(module, Math.round(v * fps))}
         />
       </div>
+      {module === "move.word-by-word" && (
+        <div className="seg" role="group" data-testid={`insp-anim-${slot}-words`}>
+          {WORD_STYLES.map((w) => (
+            <button key={w} className={(params.style ?? "pop") === w ? "active" : ""} data-testid={`insp-anim-${slot}-word-style`} data-style={w} disabled={disabled} onClick={() => setParam("style", w)}>
+              {w[0]!.toUpperCase() + w.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+      {module === "move.zoom" && (
+        <div className="field-row">
+          <NumberField
+            label={slot === "in" ? "From %" : "To %"}
+            testId={`insp-anim-${slot}-zoom-scale`}
+            value={Math.round((typeof params.scale === "number" ? params.scale : ZOOM_DEFAULTS.scale) * 100)}
+            min={5}
+            max={400}
+            step={5}
+            disabled={disabled}
+            onCommit={(v) => v !== undefined && setParam("scale", v / 100)}
+          />
+          <select className="field input" data-testid={`insp-anim-${slot}-zoom-ease`} value={typeof params.ease === "string" ? params.ease : ZOOM_DEFAULTS.ease} disabled={disabled} onChange={(e) => setParam("ease", e.target.value)}>
+            {EASE_NAMES.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </Group>
   );
 }
