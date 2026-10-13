@@ -36,7 +36,8 @@ export function resolveStarts(project: Pick<Project, "tracks">): Map<string, num
 export function projectDuration(project: Pick<Project, "tracks">): number {
   const starts = resolveStarts(project);
   let end = 0;
-  for (const track of project.tracks) for (const item of track.items) end = Math.max(end, starts.get(item.id)! + item.duration);
+  // Captions (D82) draw only where their speech plays: their window doesn't make the video longer.
+  for (const track of project.tracks) for (const item of track.items) if (item.type !== "captions") end = Math.max(end, starts.get(item.id)! + item.duration);
   return end;
 }
 

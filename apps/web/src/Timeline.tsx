@@ -17,6 +17,7 @@
 import { AudioLines, Eye, EyeOff, Film, Layers, Lock, LockOpen, Magnet, Maximize2, Scissors, SlidersHorizontal, Trash2, Type, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cutsOf, transitionName } from "@uncut/core/transitions";
+import { captionCards, captionExtent, type CaptionCard } from "@uncut/core/captions";
 
 import { getBeats, useBeats } from "./beats.ts";
 import { draftOf, findItem, fitsTrack, lockOf, planMove, planSetTransition, planTrim, secondsLabel, SNAP_PX, snapPlayhead, snapTargets, trackFlag, trimSnapTargets, visibleBeats, type Plan } from "./edit.ts";
@@ -164,6 +165,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
     if (e.button !== 0) return;
     e.stopPropagation();
     playback.select(item.id);
+    // Captions (D82) follow the speech on the main track: selected here, edited in the Inspector.
+    if (item.type === "captions") return;
     const found = findItem(project, item.id);
     const press = found && { ...found, base: project };
     const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
@@ -595,8 +598,10 @@ export function Timeline({ project }: { project: ProjectModel }) {
                   {items.map((item) => {
                     const dragged = drag?.itemId === item.id;
                     const ghost = dragged ? drag.ghost : undefined;
-                    const start = ghost?.start ?? viewStarts.get(item.id) ?? 0;
-                    const duration = ghost?.duration ?? item.duration;
+                    // Captions (D82) are drawn where their cards are, not over their whole window.
+                    const extent = item.type === "captions" ? (captionExtent(view, item) ?? { from: viewStarts.get(item.id) ?? 0, to: (viewStarts.get(item.id) ?? 0) + 1 }) : undefined;
+                    const start = ghost?.start ?? extent?.from ?? viewStarts.get(item.id) ?? 0;
+                    const duration = ghost?.duration ?? (extent ? extent.to - extent.from : item.duration);
                     const server = findItem(project, item.id);
                     return (
                       <ItemBox
@@ -611,7 +616,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         className={`${item.id === selected ? "selected" : ""} ${dragged && drag.mode === "move" ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
                         data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
                         labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
-                        edges={editable}
+                        edges={editable && item.type !== "captions"}
+                        {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
                         onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
                       />
                     );
@@ -711,6 +717,7 @@ function ItemBox({
   edges,
   onPointerDown,
   labelInset = 0,
+  cards,
 }: {
   project: ProjectModel;
   item: Item;
@@ -726,6 +733,8 @@ function ItemBox({
   onPointerDown?: (e: React.PointerEvent) => void;
   /** Pixels the name starts in from the left (a transition marker sits over the start). */
   labelInset?: number;
+  /** A captions item's cards (D82), drawn as blocks with their words. */
+  cards?: ReadonlyArray<CaptionCard>;
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
@@ -747,6 +756,15 @@ function ItemBox({
       onPointerDown={onPointerDown}
     >
       {poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />}
+      {cards && (
+        <div className="caption-cards" data-testid="caption-cards" data-count={cards.length}>
+          {cards.map((c) => (
+            <div key={`${c.from}-${c.words[0]!.index}`} className="caption-card" data-testid="caption-card" data-from={c.from} data-to={c.to} title={c.words.map((w) => w.text).join(" ")} style={{ left: (c.from - start) * ppf, width: Math.max(2, (c.to - c.from) * ppf - 1) }}>
+              {c.words.map((w) => w.text).join(" ")}
+            </div>
+          ))}
+        </div>
+      )}
       {item.type === "component" && item.component === SOLID && <div className="strip solid-fill" data-testid="solid-fill" style={{ background: solidBackground(item, project) }} />}
       {sound && <ItemWaveform item={item} media={sound} fps={project.canvas.fps} width={px} compact={item.type !== "audio"} />}
       {ticks.length > 0 && (

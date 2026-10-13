@@ -3,12 +3,15 @@
 // clicking a word goes there (and selects it); dragging or ⇧-clicking selects more, and ⌫/Delete
 // cuts the selection through core planTextCut as one undoable edit. "Remove pauses" (threshold)
 // and "Remove fillers" (hesitations only; "maybe" ones are only marked) do the same for the whole
-// edit, with the count they'd cut on the button. Media without a transcript can be transcribed
+// edit, with the count they'd cut on the button. "Make captions" (D82) makes captions from the
+// transcripts that follow the cuts (mode and look picked in a small popover). Media without a transcript can be transcribed
 // here (the Library's analysis job, with its progress); a missing whisper.cpp or speech model
 // points to Setup.
 import { decodeEnvelope, DEFAULT_PAUSE_MIN_S, fillersOf, pausesOf, type EditWord, type Filler, type Pause } from "@uncut/core/transcript";
 import { Captions, Scissors, Settings, X } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { CAPTION_DEFAULTS, CAPTION_MODE_NAMES, CAPTION_MODES, type CaptionMode } from "@uncut/core/captions";
+import { TEXT_STYLES } from "@uncut/core/looks";
 
 import type { Plan } from "./edit.ts";
 import { frameTimecode, timecode } from "./format.ts";
@@ -21,6 +24,7 @@ import {
   doneTranscripts,
   getTranscripts,
   mediaOnMain,
+  planCaptions,
   planCutWords,
   planRemoveFillers,
   planRemovePauses,
@@ -178,6 +182,28 @@ async function cutSelected() {
   const selected = selectedWords(wordsOfEdit(project, transcripts), anchor, focus);
   if (!selected.length) return false;
   return sendCut(planCutWords(project, transcripts, selected));
+}
+
+/** The last mode and look picked for "Make captions" (kept for the session). */
+let captionChoice: { mode: CaptionMode; look: string } = { mode: CAPTION_DEFAULTS.mode, look: CAPTION_DEFAULTS.look };
+
+/**
+ * "Make captions" (D82): measured like a cut (the loudness pass, so words sit where they're heard),
+ * then core planMakeCaptions for each transcribed media on main, one edit; the new captions are
+ * selected so the Inspector shows them.
+ */
+export const makeCaptions = (mode: CaptionMode, look: string) => oneCut(() => makeAll(mode, look));
+async function makeAll(mode: CaptionMode, look: string) {
+  captionChoice = { mode, look };
+  const first = getState().snapshot;
+  if (!first) return false;
+  await withLoudness(mediaOnMain(projectOf(first)));
+  const snapshot = getState().snapshot;
+  if (!snapshot) return false;
+  const plan = planCaptions(projectOf(snapshot), doneTranscripts(getTranscripts().entries), { mode, look });
+  const applied = await actions.timelineEdit(plan);
+  if (applied && !("problem" in plan)) playback.select(plan.items[0]);
+  return applied;
 }
 
 /** Remove pauses / fillers: planned when clicked, on the project as it is then (not the render's). */
@@ -412,6 +438,8 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         >
           Remove pauses{pauseCount ? <span className="tx-count">{pauseCount}</span> : null}
         </button>
+        <div className="toolbar-sep" />
+        <CaptionsButton project={project} disabled={!online || busy || !anyDone} />
       </div>
       <div
         className="bottom-body tx-body"
@@ -442,6 +470,60 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         <PlayheadWord words={words} container={bodyRef} />
       </div>
     </section>
+  );
+}
+
+/** "Make captions" with its choices: how they show and the look (a small popover under the button). */
+function CaptionsButton({ project, disabled }: { project: ProjectModel; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<CaptionMode>(captionChoice.mode);
+  const [look, setLook] = useState(captionChoice.look);
+  const media = mediaOnMain(project);
+  const existing = project.tracks.some((t) => t.items.some((i) => i.type === "captions" && media.includes(i.source ?? "")));
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [open]);
+  return (
+    <div className="tx-captions">
+      <button className={`btn ${open ? "active" : ""}`} data-testid="make-captions" disabled={disabled} title={disabled ? "Transcribe the speech first: captions are made from the transcript" : "Captions from the transcript: they follow your cuts"} onClick={() => setOpen(!open)}>
+        <Captions />
+        {existing ? "Captions" : "Make captions"}
+      </button>
+      {open && !disabled && (
+        <div className="tx-popover" data-testid="captions-menu">
+          <div className="small muted">Show</div>
+          <div className="seg" role="group">
+            {CAPTION_MODES.map((m) => (
+              <button key={m} className={mode === m ? "active" : ""} data-testid={`captions-mode-${m}`} onClick={() => setMode(m)}>
+                {CAPTION_MODE_NAMES[m]}
+              </button>
+            ))}
+          </div>
+          <div className="small muted">Look</div>
+          <select className="field input" data-testid="captions-look" value={look} onChange={(e) => setLook(e.target.value)}>
+            {Object.values(TEXT_STYLES).map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn primary"
+            data-testid="captions-make"
+            onClick={() => {
+              setOpen(false);
+              void makeCaptions(mode, look);
+            }}
+          >
+            {existing ? "Remake captions" : "Make captions"}
+          </button>
+          {existing && <div className="small muted">Remaking keeps your fixes when the transcript is the same.</div>}
+        </div>
+      )}
+    </div>
   );
 }
 

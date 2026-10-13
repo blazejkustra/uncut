@@ -5,6 +5,7 @@
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "./audio.ts";
 import { clipBox, EASES, moveBox, type ClipBox, type Ease } from "./box.ts";
+import { captionAt } from "./captions.ts";
 import { componentBox } from "./components.ts";
 import { WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "./looks.ts";
 import { SOLID, wordCount, type Motion } from "./render.ts";
@@ -147,18 +148,25 @@ export function layout(project: Pick<Project, "tracks">): { starts: Map<string, 
       const start = track.role === "main" ? t : item.start!;
       if (track.role === "main") t += item.duration;
       starts.set(item.id, start);
-      duration = Math.max(duration, start + item.duration);
+      // Captions (D82) draw only where their speech plays: their window doesn't make the video longer.
+      if (item.type !== "captions") duration = Math.max(duration, start + item.duration);
     }
   }
   return { starts, duration };
 }
 
 /** Everything visible at frame f, bottom layer first, with opacity and source time in seconds. */
-export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "media">>, starts: ReadonlyMap<string, number>, f: number): Array<Visual> {
+export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "media" | "theme">>, starts: ReadonlyMap<string, number>, f: number): Array<Visual> {
   const out: Array<Visual> = [];
   for (const track of [...project.tracks].reverse()) {
     if (track.hidden || track.kind === "audio") continue;
     track.items.forEach((item, i) => {
+      // Captions (D82): the card at this frame, as the text item core textHtml draws.
+      if (item.type === "captions") {
+        const text = captionAt(project, item, f);
+        if (text) out.push({ item: text, track, opacity: 1, motion: {}, source: 0 });
+        return;
+      }
       const start = starts.get(item.id)!;
       const span = spanOf(track, i, start);
       if (f < span.from || f >= span.to) return;

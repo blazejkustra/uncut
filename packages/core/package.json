@@ -20,7 +20,8 @@
     "./components": "./src/components.ts",
     "./graphics": "./src/graphics.ts",
     "./looks": "./src/looks.ts",
-    "./textPlan": "./src/textPlan.ts"
+    "./textPlan": "./src/textPlan.ts",
+    "./captions": "./src/captions.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

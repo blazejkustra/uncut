@@ -276,7 +276,7 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
   const decor = textDecor(item, look, size, target);
   const css = [
     `left:${num((x / width) * 100)}%`,
-    `top:${num((y / height) * 100)}%`,
+    item.anchor === "bottom" ? `bottom:${num((1 - y / height) * 100)}%` : `top:${num((y / height) * 100)}%`,
     w && w > 0 ? `width:${num((w / width) * 100)}%` : `width:max-content;max-width:${num(Math.max(5, 100 - (x / width) * 100))}%`,
     `font-size:${num((size / height) * 100)}cqh`,
     `font-weight:${s.weight ?? look.weight}`,

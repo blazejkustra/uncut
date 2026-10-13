@@ -276,14 +276,39 @@
         {
           "properties": {
             "type": { "const": "captions" },
-            "source": { "$ref": "#/$defs/id", "description": "Media whose transcript (in .cache) supplies the words and timings." },
-            "style": { "type": "object" },
-            "mode": { "enum": ["line", "word"] },
+            "source": { "$ref": "#/$defs/id", "description": "Media whose speech the captions show: they follow the main-track clips that play it (D82)." },
+            "style": { "type": "object", "description": "A text style (preset = a text-style look, size, weight, colour, stroke, shadow, background...), as on text items." },
+            "mode": { "enum": ["line", "word", "single"], "description": "line: a card of 1-2 lines at a time; word: the card with the speaking word accented (karaoke); single: one word at a time. Default line." },
+            "words": {
+              "type": "array",
+              "description": "D82: a snapshot of the source's transcript taken when the captions were made: each word's text and where it's heard, in seconds of the media file. Index = transcript_read's word id. Without it nothing is drawn.",
+              "items": {
+                "type": "object",
+                "required": ["text", "start", "end"],
+                "additionalProperties": false,
+                "properties": { "text": { "type": "string" }, "start": { "type": "number", "minimum": 0 }, "end": { "type": "number", "minimum": 0 }, "filler": { "type": "boolean", "description": "A hesitation (um, uh); hidden with hideFillers." } }
+              }
+            },
             "edits": {
               "type": "array",
-              "description": "Text corrections on top of the transcript, keyed by word index.",
+              "description": "Text corrections on top of the words, keyed by word index (\"\" hides the word).",
               "items": { "type": "object", "required": ["word", "text"], "properties": { "word": { "type": "integer", "minimum": 0 }, "text": { "type": "string" } } }
-            }
+            },
+            "breaks": { "type": "array", "description": "Word indices where a new card starts.", "items": { "type": "integer", "minimum": 0 } },
+            "lines": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "How words are grouped into cards (defaults: 32 characters per line, 2 lines, 3 s, a new card after a 0.3 s pause).",
+              "properties": {
+                "maxChars": { "type": "integer", "minimum": 4, "maximum": 200 },
+                "maxLines": { "enum": [1, 2] },
+                "maxSeconds": { "type": "number", "minimum": 0.1, "maximum": 30 },
+                "maxWords": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                "pause": { "type": "number", "minimum": 0, "maximum": 10 }
+              }
+            },
+            "hideFillers": { "type": "boolean", "description": "Leave hesitations (um, uh, yyy) out of the captions." },
+            "coversMain": { "type": "boolean", "description": "Draw wherever the source plays on the main track, whatever start and duration say (Make captions sets it); without it the captions draw only inside [start, start + duration)." }
           },
           "required": ["source"]
         },
