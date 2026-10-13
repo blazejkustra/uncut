@@ -5,7 +5,8 @@
 //   model exits 3, a missing or unreadable audio file 2, with no JSON; otherwise it prints
 //   progress lines on stderr and copies $FAKE_WHISPER_JSON to <out>.json (result.language set to
 //   -l when that isn't auto).
-// $FAKE_WHISPER_LOG: every run's arguments, one JSON line each. $FAKE_WHISPER_SLEEP_MS: take that
+// $FAKE_WHISPER_LOG: every run's arguments, one JSON line each (with how many UNCUT_* variables it
+// got: none when the Whisper plugin started it, D100, since plugins don't get Uncut's own). $FAKE_WHISPER_SLEEP_MS: take that
 // long (with progress meanwhile), so a test can cancel mid-run.
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
@@ -18,7 +19,7 @@ const opt = (name: string) => {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : undefined;
 };
-if (process.env.FAKE_WHISPER_LOG) appendFileSync(process.env.FAKE_WHISPER_LOG, `${JSON.stringify({ argv, pid: process.pid, env: Object.keys(process.env).filter((k) => k.startsWith("ANTHROPIC")) })}\n`);
+if (process.env.FAKE_WHISPER_LOG) appendFileSync(process.env.FAKE_WHISPER_LOG, `${JSON.stringify({ argv, pid: process.pid, env: Object.keys(process.env).filter((k) => k.startsWith("ANTHROPIC")), uncutEnv: Object.keys(process.env).filter((k) => k.startsWith("UNCUT_")).length })}\n`);
 const model = opt("-m");
 const wav = opt("-f");
 const out = opt("-of");

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { AnalysisQueue, type AnalysisTarget } from "../../apps/server/src/analysis/analysis.ts";
-import { fillersOf, pausesOf, type TranscriptResult } from "../../apps/server/src/analysis/transcription.ts";
+import { fillersOf, pausesOf, transcribeDirect, type TranscriptResult } from "../../apps/server/src/analysis/transcription.ts";
 import { DEFAULT_MODEL_URL, downloadFile, modelInfo } from "../../apps/server/src/analysis/whisperModels.ts";
 
 const which = (name: string) => {
@@ -51,7 +51,7 @@ test("real speech: whisper-cli hears the sentence, words in order within the cli
   execFileSync(FFMPEG!, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=gray:size=320x180:rate=30", "-i", join(root, "speech.aiff"), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip]);
   const project = join(root, "Test.uncut");
   mkdirSync(project);
-  const q = new AnalysisQueue({ ffmpeg: async () => FFMPEG, whisper: async () => ({ bin: WHISPER!, model, modelId: "tiny.en" }) });
+  const q = new AnalysisQueue({ ffmpeg: async () => FFMPEG, whisper: async () => ({ bin: WHISPER!, model, modelId: "tiny.en" }), transcribe: transcribeDirect });
   const target: AnalysisTarget = { dir: project, mediaId: "m-talk", path: clip, kind: "video", hasAudio: true };
   const t0 = Date.now();
   const r = await q.request(target, "transcript");
