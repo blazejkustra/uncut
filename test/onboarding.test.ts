@@ -95,7 +95,7 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   const claude = await attr(page, "check-claude", "data-status");
   if (existsSync(join(homedir(), ".local/bin/claude"))) {
     assert.ok(["ready", "needs-login"].includes(claude!), `Claude Code: ${claude} (${await text(page, "check-claude")})`);
-    assert.match(await text(page, "check-claude"), /v\d+\.\d+/);
+    assert.match(await text(page, "check-claude"), /Version \d+\.\d+/);
   }
   assert.equal(await attr(page, "check-codex", "data-status"), "missing");
   assert.equal(await text(page, "chip-codex"), "Not installed");

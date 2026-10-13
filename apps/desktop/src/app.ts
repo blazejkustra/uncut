@@ -16,6 +16,7 @@ import {
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
   SHOW_IN_FOLDER_CHANNEL,
+  SILENT_AUDIO_CHANNEL,
   type AppInfo,
   type AppState,
   type FolderPurpose,
@@ -68,6 +69,8 @@ const resources = app.isPackaged
       mediaBin: path.join(process.resourcesPath, "bin", "uncut-media"),
       modulesDir: path.join(process.resourcesPath, "modules", "builtin"),
       musicDir: path.join(process.resourcesPath, "music"),
+      // Plugins shipped with the app (D97); none yet, so the folder may be missing.
+      bundledPluginsDir: path.join(process.resourcesPath, "plugins"),
       renderEntry: undefined,
     }
   : {
@@ -75,6 +78,7 @@ const resources = app.isPackaged
       mediaBin: path.join(repoRoot, "native/media/target/release/uncut-media"),
       modulesDir: path.join(repoRoot, "spec/modules/builtin"),
       musicDir: path.join(repoRoot, "assets/music"),
+      bundledPluginsDir: path.join(repoRoot, "plugins"),
       // Under `pnpm dev` the binary is a bare Electron: it needs this bundle to be the rasteriser.
       renderEntry: path.join(__dirname, "main.cjs"),
     };
@@ -256,6 +260,11 @@ app.whenReady().then(() => {
     // Tests shouldn't overwrite the clipboard of whoever runs them.
     if (testDialogs) console.log(`[test] copied ${text}`);
     else clipboard.writeText(text);
+  });
+  // A background test window plays its preview to no output device (sinkId "none"): no sound, and
+  // no device latency (Bluetooth headphones add ~0.25 s) between the clock and what is captured.
+  ipcMain.on(SILENT_AUDIO_CHANNEL, (event) => {
+    event.returnValue = fromAppWindow(event) && testBackground;
   });
   ipcMain.on(APP_STATE_CHANNEL, (event, state: AppState) => {
     if (fromAppWindow(event)) setAppMenu(state, sendMenuCommand);

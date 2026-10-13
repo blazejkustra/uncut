@@ -30,8 +30,9 @@
       "properties": {
         "type": { "enum": ["html", "wasm", "native", "process", "agent"] },
         "entry": { "type": "string" },
-        "command": { "type": "string" },
-        "args": { "type": "array", "items": { "type": "string" } }
+        "command": { "type": "string", "minLength": 1, "description": "process: the program to start (a plugin folder needs one; built-in process modules run inside Uncut). \"node\" is Uncut's own Node runtime; a path with a slash is relative to the plugin's folder; a bare name is looked up on PATH." },
+        "args": { "type": "array", "items": { "type": "string" }, "description": "process: its arguments. It starts in the plugin's folder, so relative paths are the folder's." },
+        "timeoutSeconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 1800, "description": "process: how long one tool call may take (default 120 s)." }
       }
     },
     "params": {

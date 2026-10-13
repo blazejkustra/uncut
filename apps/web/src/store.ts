@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -52,6 +52,10 @@ export interface AppStateShape {
   readonly setupChecking: boolean;
   // The last setup.check failed as a whole (server unreachable): shown with Check again.
   readonly setupError?: string;
+  // Plugin folders found (D97), with whether each is allowed; read with the setup check.
+  readonly plugins?: ReadonlyArray<PluginInfo>;
+  // Why allowing (or revoking) a plugin failed.
+  readonly pluginError?: string;
   // Import jobs on the server (running and recent); the library shows the open project's.
   readonly jobs: ReadonlyArray<ImportJob>;
   readonly importReport?: { readonly failed: MediaImportResult["failed"]; readonly skipped: MediaImportResult["skipped"] };
@@ -763,9 +767,27 @@ export const actions = {
   },
   async checkSetup() {
     set({ setupChecking: true, setupError: undefined });
+    void actions.listPlugins();
     const result = await call((c) => c["setup.check"]({}));
     if (result.ok) set({ setupChecking: false, setupChecks: result.value });
     else set({ setupChecking: false, setupError: `Couldn't check this Mac. ${plainError(result.error)}` });
+  },
+  async listPlugins() {
+    const result = await call((c) => c["plugins.list"]({}));
+    if (result.ok) set({ plugins: result.value });
+  },
+  /** Allows a plugin to run (D97); its capabilities were shown next to the button. */
+  async approvePlugin(plugin: Pick<PluginInfo, "id" | "dir" | "capabilities">) {
+    set({ pluginError: undefined });
+    const result = await call((c) => c["plugins.approve"]({ id: plugin.id, dir: plugin.dir, capabilities: [...plugin.capabilities] }));
+    if (result.ok) set({ plugins: result.value });
+    else set({ pluginError: plainError(result.error) });
+  },
+  async revokePlugin(id: string) {
+    set({ pluginError: undefined });
+    const result = await call((c) => c["plugins.revoke"]({ id }));
+    if (result.ok) set({ plugins: result.value });
+    else set({ pluginError: plainError(result.error) });
   },
   copy: (text: string) => bridge.copyText(text),
   /** Finish (or skip) onboarding; it won't open on launch again. */

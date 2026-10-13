@@ -3,6 +3,8 @@
 export const SERVER_CONNECTION_CHANNEL = "uncut:server-connection";
 export const SERVER_EXIT_CHANNEL = "uncut:server-exit";
 export const APP_INFO_CHANNEL = "uncut:app-info";
+// Sync, read once by the preload: whether the preview plays to no output device (test background runs).
+export const SILENT_AUDIO_CHANNEL = "uncut:silent-audio";
 export const CHOOSE_FOLDER_CHANNEL = "uncut:choose-folder";
 export const SHOW_IN_FOLDER_CHANNEL = "uncut:show-in-folder";
 export const APP_STATE_CHANNEL = "uncut:app-state";

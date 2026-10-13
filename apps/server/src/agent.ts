@@ -42,8 +42,10 @@ import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
 import { withHistory, type TurnRecord } from "./history.ts";
 import { MediaLibrary, type MediaEntry } from "./media.ts";
+import { Plugins } from "./plugins.ts";
 import { Projects, type ProjectView } from "./projects.ts";
 import { which } from "./setup.ts";
+import { agentEnv } from "./shellEnv.ts";
 import type { VideoResult } from "./videoAnalysis.ts";
 import { DEFAULT_BEST_SECONDS, RANK_BY, rankValue, type RankBy } from "./videoScores.ts";
 
@@ -64,6 +66,8 @@ export interface AgentShape {
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
   /** For the bridge: the tool list, or undefined when `token` isn't the running turn's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
+  /** For the bridge: whether `token` is the running turn's (no rescan, unlike tools). */
+  readonly authorized: (token: string | null) => Effect.Effect<boolean>;
   /** For the bridge: run a tool call of the running turn, or undefined when `token` isn't its. */
   readonly call: (token: string | null, name: unknown, args: unknown) => Effect.Effect<McpResult | undefined>;
 }
@@ -72,20 +76,8 @@ export class Agent extends Context.Service<Agent, AgentShape>()("uncut/Agent") {
 
 // ---- environment (D41) ----
 
-/**
- * The agent's environment: the server's, minus anything that would bill an API account instead
- * of the user's Claude subscription (a stray ANTHROPIC_API_KEY did, once: "Credit balance is too
- * low") or make claude think it runs inside another Claude Code session.
- */
-export const agentEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) {
-    if (v === undefined) continue;
-    if (k === "ANTHROPIC_API_KEY" || k === "ANTHROPIC_AUTH_TOKEN" || k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) continue;
-    out[k] = v;
-  }
-  return out;
-};
+// The agent's environment (D41): shellEnv.ts's agentEnv, kept importable from here.
+export { agentEnv };
 
 /** The claude binary: UNCUT_CLAUDE (tests, or a custom install), else the first on PATH. */
 export const findClaude = async (env: NodeJS.ProcessEnv = process.env) => env.UNCUT_CLAUDE || (await which("claude", env.PATH ?? ""));
@@ -131,6 +123,8 @@ interface Running {
   token: string;
   child: ChildProcess | undefined;
   readonly mcpDir: string;
+  // Aborted when the turn stops or ends: a plugin call still running is cancelled (D97).
+  readonly abort: AbortController;
   cancelled: boolean;
   killTimer: NodeJS.Timeout | undefined;
   // tool_use id → index into turn.items
@@ -405,6 +399,7 @@ export const layer = Layer.effect(
     const media = yield* MediaLibrary;
     const analysis = yield* Analysis;
     const config = yield* ServerConfig;
+    const plugins = yield* Plugins;
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
@@ -467,6 +462,7 @@ export const layer = Layer.effect(
       r.cancelled = true;
       r.stopReason = reason;
       r.token = "";
+      r.abort.abort();
       if (!r.child) return;
       killGroup(r.child, "SIGINT");
       r.killTimer = setTimeout(() => r.child && killGroup(r.child, "SIGKILL"), KILL_AFTER_MS);
@@ -1333,8 +1329,11 @@ export const layer = Layer.effect(
             const range = args.range as { start: number; end: number } | undefined;
             return textResult(args.detail === "full" ? { revision: v.session.revision, project: v.session.project } : projectSummary(v.session.project, v.session.revision, range));
           }
-          case "modules_list":
-            return textResult(modulesList(format.modules, typeof args.kind === "string" ? args.kind : undefined));
+          case "modules_list": {
+            const kind = typeof args.kind === "string" ? args.kind : undefined;
+            // The built-in modules, then the plugins (D97) with their source, approval and warnings.
+            return textResult([...modulesList(format.modules, kind), ...(yield* plugins.modules(kind))]);
+          }
           case "render_frames": {
             const frames = Array.isArray(args.frames) ? args.frames : [];
             if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0)) return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
@@ -1458,8 +1457,11 @@ export const layer = Layer.effect(
               ...(userChanges ? { userChanges, note: "The user changed the project since your read. project_read before your next edit." } : {}),
             });
           }
-          default:
-            return textResult(`Unknown tool ${name}`, true);
+          default: {
+            // A plugin's tool (D97): forwarded to its process; it returns data, never edits.
+            const result = yield* plugins.call(name, args, r.abort.signal);
+            return result ?? textResult(`Unknown tool ${name}`, true);
+          }
         }
       });
 
@@ -1467,6 +1469,7 @@ export const layer = Layer.effect(
 
     const finish = (r: Running, patch: Partial<StoredTurn>) => {
       if (r.turn.status !== "running") return;
+      r.abort.abort();
       clearTimeout(r.killTimer);
       Object.assign(r.turn, patch, { finishedAt: new Date().toISOString() });
       if (r.turn.seconds === undefined) r.turn.seconds = Math.round((Date.now() - Date.parse(r.turn.startedAt)) / 100) / 10;
@@ -1552,7 +1555,7 @@ export const layer = Layer.effect(
             if (c.type === "tool_use" && isString(c.name)) {
               const tool = c.name.replace(/^mcp__uncut__/, "");
               r.steps.set(String(c.id), r.turn.items.length);
-              r.turn.items.push({ kind: "step", tool, text: stepLabel(tool, c.input), status: "running" });
+              r.turn.items.push({ kind: "step", tool, text: stepLabel(tool, c.input, plugins.owner(tool)?.name), status: "running" });
             }
           }
           publish();
@@ -1660,6 +1663,7 @@ export const layer = Layer.effect(
           token: randomBytes(24).toString("base64url"),
           child: undefined,
           mcpDir,
+          abort: new AbortController(),
           cancelled: false,
           killTimer: undefined,
           steps: new Map(),
@@ -1696,7 +1700,13 @@ export const layer = Layer.effect(
           publish();
           return snapshot;
         }),
-      tools: (token) => Effect.sync(() => (tokenOk(token, running) ? mcpTools() : undefined)),
+      // The built-in tools, then the plugins' (D97; the folders are scanned again for each turn's list).
+      tools: (token) =>
+        Effect.suspend(() => {
+          if (!tokenOk(token, running)) return Effect.succeed(undefined);
+          return Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => [...mcpTools(), ...extra]));
+        }),
+      authorized: (token) => Effect.sync(() => tokenOk(token, running)),
       call: (token, name, args) =>
         Effect.suspend(() => {
           const r = running;

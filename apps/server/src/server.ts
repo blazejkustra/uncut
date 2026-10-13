@@ -21,6 +21,7 @@ import * as Waveforms from "./waveforms.ts";
 import * as MediaCore from "./mediaCore.ts";
 import * as Projects from "./projects.ts";
 import * as Recents from "./recents.ts";
+import * as Plugins from "./plugins.ts";
 import * as Settings from "./settings.ts";
 import * as Setup from "./setup.ts";
 import * as Whisper from "./whisper.ts";
@@ -74,6 +75,8 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     Layer.provide(Exporter.layer),
     Layer.provideMerge(MediaCore.layer),
     Layer.provide(Setup.layer),
+    // Plugin folders, approvals and processes (D97), for the agent and the plugins.* RPCs.
+    Layer.provideMerge(Plugins.layer),
     Layer.provide(Settings.layer),
     Layer.provide(Projects.layer.pipe(Layer.provideMerge(Format.layer), Layer.provideMerge(Recents.layer))),
     Layer.provideMerge(layerHttpServer),

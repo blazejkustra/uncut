@@ -11,6 +11,7 @@ import {
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
   SHOW_IN_FOLDER_CHANNEL,
+  SILENT_AUDIO_CHANNEL,
   type AppState,
   type FolderPurpose,
   type MenuCommand,
@@ -43,4 +44,6 @@ contextBridge.exposeInMainWorld("uncut", {
     }
   },
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
+  // True only in a background test run: the preview's audio goes to no device.
+  silentAudio: ipcRenderer.sendSync(SILENT_AUDIO_CHANNEL) === true,
 });

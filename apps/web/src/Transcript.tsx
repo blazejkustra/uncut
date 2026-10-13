@@ -401,7 +401,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
       <div className="bottom-toolbar">
         <BottomTabs />
         <span className="muted small" data-testid="tx-status">
-          {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected · ⌫ cuts ${selected.length === 1 ? "it" : "them"}` : anyDone ? "Click a word to go there; drag or ⇧-click to select" : ""}
+          {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected. ⌫ cuts ${selected.length === 1 ? "it" : "them"}` : anyDone ? "Click a word to go there; drag or ⇧-click to select" : ""}
         </span>
         <div className="toolbar-spacer" />
         {selected.length > 0 && (
