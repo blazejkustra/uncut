@@ -23,7 +23,7 @@ export type { Dip, Span, Visual } from "./timeline/timeline.ts";
 export { canvasBackground, DEFAULT_THEME, DM_MONO, DM_SANS, esc, FONT_FACES, fontFaceCss, markup, RENDER_CSS, resolveColor, resolveFont, safeMargin, SOLID, solidBackground, solidHtml, LEGACY_SHADOW_CSS, textDecor, textPlacement, TEXT_STYLES, textHtml, textLook, themeColors, withAlpha, wordCount, wordCss } from "./visual/render.ts";
 export { LEGACY_LOOKS, PLAIN_LOOK, TEXT_PRESETS, WORD_BY_WORD, WORD_STYLES, ZOOM_DEFAULTS, ZOOM_MOVE } from "./text/looks.ts";
 export type { LookBackground, LookMove, LookShadow, LookStroke, TextPreset, WordStyle } from "./text/looks.ts";
-export { lookItem, planInsertText, resetLookFields } from "./text/textPlan.ts";
+export { lookItem, lookSnapshot, planInsertText, resetLookFields } from "./text/textPlan.ts";
 export type { InsertTextPlan, InsertTextRequest } from "./text/textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./visual/render.ts";
 export { outputSize } from "./export.ts";
@@ -38,3 +38,5 @@ export { filterMusic, libraryTrackOf, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, m
 export type { MusicTempo, MusicTrack } from "./audio/music.ts";
 export { planReshoot } from "./timeline/reshoot.ts";
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
+export { BUILTIN_CONTRIBUTION_IDS, componentGraphicHtml, componentGraphicName, componentProblem, mergeContributions, NO_CONTRIBUTIONS, pluginCheckRules, pluginRuleEntries, readContributions } from "./plugins/contributions.ts";
+export type { Contributions, FromPlugin, PluginComponent, PluginLook, PluginRule, RuleSpec } from "./plugins/contributions.ts";

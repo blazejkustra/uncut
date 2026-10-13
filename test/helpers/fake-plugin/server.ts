@@ -7,7 +7,7 @@
 // *_orphan (starts `sleep 300`, answers with its pid, then exits with code 3), *_junk (prints
 // null, [], 5, {"id":null}, a ping and an unknown request to the host before answering, and logs
 // the host's replies), *_flood (prints 17 MB with no newline), *_images (a GIF, an SVG and a 6 MB
-// PNG). Every notifications/cancelled is logged too ({ cancelled: requestId }).
+// PNG), *_check (D103, see below). Every notifications/cancelled is logged too ({ cancelled: requestId }).
 // It exits when its stdin closes, as an MCP stdio server should.
 import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
@@ -32,6 +32,13 @@ const server = serve({
         return { content: [{ type: "text", text: `${name}: ${String(args.text ?? "")}` }, { type: "image", data: PNG, mimeType: "image/png" }] };
       case "env":
         return json(facts());
+      case "check": {
+        // A process plugin's own check (D103): one finding for its rule, one for a rule it doesn't
+        // own and one without a message (both dropped by Uncut); a project named "Slow…" never answers.
+        const project = (args.project ?? {}) as { name?: string; tracks?: Array<unknown> };
+        if (String(project.name).startsWith("Slow")) return never();
+        return { content: [{ type: "text", text: "findings" }], structuredContent: { findings: [{ rule: "proc.checks.house", message: `${project.tracks?.length ?? 0} tracks, checked by the house rule.`, frame: 0, hint: "Keep it." }, { rule: "taste.extra.end-card", message: "Not this plugin's rule." }, { rule: "proc.checks.house" }] } };
+      }
       case "crash":
         process.exit(3);
       case "sleep":

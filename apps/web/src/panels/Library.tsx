@@ -8,14 +8,14 @@ import type { Item } from "@uncut/core/types";
 import { COMPONENTS, componentDefaults, componentHtml, naturalSize, screenRect, type ComponentInfo } from "@uncut/core/components";
 import { defaultFrames, TRANSITIONS, type TransitionInfo } from "@uncut/core/transitions";
 import { filterMusic, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicTempo, type MusicTempo, type MusicTrack } from "@uncut/core/music";
-import { AudioLines, Blend, Film, Gauge, Image as ImageIcon, Layers, Music, Play, Plus, RefreshCw, Square, Type, Upload, X } from "lucide-react";
+import { AudioLines, Blend, Blocks, Film, Gauge, Image as ImageIcon, Layers, Music, Play, Plus, RefreshCw, Square, Type, Upload, X } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { bridge } from "../state/bridge.ts";
 import { timecode } from "../state/format.ts";
 import { TEXT_PRESETS, type TextPreset } from "../state/project.ts";
 import { BACKGROUNDS } from "../preview/text.ts";
-import { actions, activeAnalyses, activeJobs, mediaUrl, musicUrl, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
+import { actions, activeAnalyses, activeJobs, mediaUrl, musicUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
 import { COMPONENT_DRAG_TYPE, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../timeline/Timeline.tsx";
 import { secondsLabel } from "../timeline/edit.ts";
@@ -317,7 +317,7 @@ function ComponentThumb({ info, project }: { info: ComponentInfo; project: Proje
  * spans that text (a title card); otherwise 3 s at the playhead.
  */
 function ElementsLibrary({ project }: { project: Project }) {
-  const { connection } = useApp();
+  const { connection, contributions } = useApp();
   const online = connection === "connected";
   const [custom, setCustom] = useState("#1E3A5F");
   return (
@@ -357,6 +357,29 @@ function ElementsLibrary({ project }: { project: Project }) {
               </button>
               <div className="tile-name">{c.name}</div>
             </div>
+          ))}
+          {/* A plugin's components (D103): a named tile, never its template here (it only runs in the graphics sandbox once added). */}
+          {contributions?.components.map((c) => (
+            <button
+              key={c.id}
+              className="tile text-tile plugin-comp-tile"
+              data-testid="plugin-component-tile"
+              data-component={c.id}
+              disabled={!online}
+              title={`${c.name}${c.description ? `: ${c.description}` : ""} Adds it at the playhead.`}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                void actions.addPluginComponent(c.id);
+              }}
+            >
+              <div className="thumb plugin-comp-thumb">
+                <Blocks />
+              </div>
+              <div className="tile-name">{c.name}</div>
+              <div className="source-label" data-testid="component-source" title={`From the plugin ${c.pluginName}`}>
+                {c.pluginName}
+              </div>
+            </button>
           ))}
         </div>
       </div>
@@ -414,7 +437,7 @@ function TextThumb({ preset, project }: { preset: TextPreset; project: Project }
   // Tiles show text as new projects draw it (D80: no soft shadow by default).
   const target = { canvas: THUMB_CANVAS, theme: project.theme, textLooks: 1 };
   const empty = { canvas: THUMB_CANVAS, theme: project.theme, media: [], tracks: [] };
-  const plan = planInsertText(empty, { look: preset.module, text: preset.text, start: 0, duration: 90, animation: null });
+  const plan = planInsertText(empty, { look: preset.module, text: preset.text, start: 0, duration: 90, animation: null }, preset.look ? { [preset.module]: preset.look } : {});
   const items = "ops" in plan ? plan.ops.flatMap((op) => (op.op === "insert_item" ? [op.item as Item] : [])) : [];
   // Renamed (class tt-text, no data-item) so the preview's text queries never find a tile's.
   const html = items.map((item) => textHtml(item, target).replace(/^<div class="pv-text" data-item="[^"]*"/, '<div class="tt-text"')).join("");
@@ -477,7 +500,9 @@ const THUMB_CSS = RENDER_CSS.split("\n")
  * onto the preview (placed where it lands) or the timeline (at that time).
  */
 function TextLibrary({ project }: { project: Project }) {
-  const { connection } = useApp();
+  // Subscribed to contributions: an allowed plugin's looks follow the built-ins (D103).
+  const { connection, contributions } = useApp();
+  const presets: ReadonlyArray<TextPreset> = contributions ? textPresets() : TEXT_PRESETS;
   const online = connection === "connected";
   return (
     <aside className="library" data-testid="text-library">
@@ -486,13 +511,14 @@ function TextLibrary({ project }: { project: Project }) {
       <div className="lib-section">
         <div className="lib-label">Click to add at the playhead, or drag</div>
         <div className="grid2" data-testid="text-grid">
-          {TEXT_PRESETS.map((preset) => (
+          {presets.map((preset) => (
             <button
               key={preset.id}
               className="tile text-tile"
               data-testid="text-preset"
               data-preset={preset.id}
               data-module={preset.module}
+              {...(preset.source ? { "data-plugin": preset.source } : {})}
               disabled={!online}
               draggable={online}
               title={`Add ${preset.label.toLowerCase()} at the playhead`}
@@ -507,6 +533,11 @@ function TextLibrary({ project }: { project: Project }) {
             >
               <TextThumb preset={preset} project={project} />
               <div className="tile-name">{preset.label}</div>
+              {preset.source && (
+                <div className="source-label" data-testid="text-preset-source" title={`From the plugin ${preset.source}`}>
+                  {preset.source}
+                </div>
+              )}
             </button>
           ))}
         </div>

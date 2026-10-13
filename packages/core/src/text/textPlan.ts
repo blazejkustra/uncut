@@ -4,7 +4,7 @@
 // its `with` (a kicker above a title) on their own free text tracks. One edit, so one undo.
 // Browser-safe.
 import { TEXT_STYLES, type TextLook } from "./looks.ts";
-import { safeMargin } from "../visual/render.ts";
+import { safeMargin, textDecor } from "../visual/render.ts";
 import type { FieldSet, Item, Op, Project, TextStyle, TimedModule, Track } from "../timeline/types.ts";
 
 export interface InsertTextRequest {
@@ -35,6 +35,30 @@ function freeId(project: Pick<Project, "media" | "tracks" | "scenes">, base: str
   for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 
+/**
+ * Every field of a look as an item's own style (canvas px), for a look that isn't built in (a
+ * plugin's, D103): what textHtml would otherwise take from the look, with stroke, shadow and box
+ * converted from em, and false where the look has none, so nothing falls back to PLAIN_LOOK.
+ */
+export function lookSnapshot(look: TextLook, size: number): TextStyle {
+  const decor = textDecor({}, look, size, { textLooks: 1 });
+  const round = <T extends object>(o: T | undefined): T | false =>
+    o ? (Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "number" ? Math.round(v * 100) / 100 : v])) as T) : false;
+  return {
+    size,
+    weight: look.weight,
+    font: look.font,
+    tracking: look.tracking,
+    lineHeight: look.lineHeight,
+    color: look.color,
+    ...(look.align ? { align: look.align } : {}),
+    ...(look.uppercase ? { uppercase: true } : {}),
+    stroke: round(decor.stroke),
+    shadow: round(decor.shadow),
+    background: round(decor.background),
+  };
+}
+
 /** A look's item fields on this canvas: transform, the style the item stores and its moves (frames). */
 export function lookItem(look: TextLook, project: Pick<Project, "canvas" | "theme">, duration: number) {
   const { width, height, fps } = project.canvas;
@@ -42,7 +66,10 @@ export function lookItem(look: TextLook, project: Pick<Project, "canvas" | "them
   const transform = look.span
     ? { x: margin, y: Math.round(height * look.y), w: width - 2 * margin }
     : { x: Math.round(width * look.x), y: Math.round(height * look.y), ...(look.w !== undefined ? { w: Math.round(width * look.w) } : {}) };
-  const style = { preset: look.id, size: Math.round(height * look.size), weight: look.weight };
+  const size = Math.round(height * look.size);
+  // A plugin's look (D103) isn't a module the project can name, and the plugin may be removed
+  // later: the item carries the whole look (a snapshot), so it draws the same without it.
+  const style = Object.hasOwn(TEXT_STYLES, look.id) ? { preset: look.id, size, weight: look.weight } : lookSnapshot(look, size);
   const move = (m: { module: string; seconds: number; params?: { readonly [key: string]: unknown } } | undefined): TimedModule | undefined =>
     m ? { module: m.module, duration: Math.max(1, Math.min(duration, Math.round(m.seconds * fps))), ...(m.params ? { params: m.params } : {}) } : undefined;
   const inMove = move(look.animation?.in);
@@ -56,8 +83,9 @@ export function lookItem(look: TextLook, project: Pick<Project, "canvas" | "them
  * stretch (tracks top to bottom as the timeline shows them), else a new text track on top. The
  * looks in its `with` follow, each on the next free (or a new) text track.
  */
-export function planInsertText(project: Pick<Project, "canvas" | "theme" | "tracks" | "media" | "scenes">, req: InsertTextRequest): InsertTextPlan {
-  const look = TEXT_STYLES[req.look];
+export function planInsertText(project: Pick<Project, "canvas" | "theme" | "tracks" | "media" | "scenes">, req: InsertTextRequest, extraLooks: Readonly<Record<string, TextLook>> = {}): InsertTextPlan {
+  const lookOf = (id: string): TextLook | undefined => (Object.hasOwn(TEXT_STYLES, id) ? TEXT_STYLES[id] : undefined) ?? (Object.hasOwn(extraLooks, id) ? extraLooks[id] : undefined);
+  const look = lookOf(req.look);
   if (!look) return { problem: `There's no text look called ${req.look}. modules_list with kind "text-style" lists them.` };
   if (!Number.isInteger(req.start) || req.start < 0 || !Number.isInteger(req.duration) || req.duration < 1) return { problem: "start must be a frame (0 or more) and duration at least 1 frame." };
   const { start, duration } = req;
@@ -93,21 +121,21 @@ export function planInsertText(project: Pick<Project, "canvas" | "theme" | "trac
   const style = { ...base.style, ...(req.style ?? {}) };
   const animation = req.animation === null ? undefined : req.animation ?? base.animation;
   const trackId = place();
-  const itemId = req.id ?? freeId(project, req.idBase ?? req.look.replace(/^text\./, ""), taken);
+  const itemId = req.id ?? freeId(project, req.idBase ?? (Object.hasOwn(TEXT_STYLES, req.look) ? req.look.replace(/^text\./, "") : req.look.split(".").at(-1)!), taken);
   taken.add(itemId);
   const item: Item = { id: itemId, type: "text", start, duration, text: req.text ?? look.text, transform, style: style as Item["style"], ...(animation ? { animation } : {}) };
   ops.push({ op: "insert_item", track: trackId, item } as Op);
   const itemIds = [itemId];
   if (!req.alone) {
     for (const extra of look.with ?? []) {
-      const other = TEXT_STYLES[extra.look];
+      const other = lookOf(extra.look);
       if (!other) continue;
       const fields = lookItem(other, project, duration);
-      const id = freeId(project, extra.look.replace(/^text\./, ""), taken);
+      const id = freeId(project, Object.hasOwn(TEXT_STYLES, extra.look) ? extra.look.replace(/^text\./, "") : extra.look.split(".").at(-1)!, taken);
       taken.add(id);
       const y = Math.round(transform.y + (extra.dy ?? 0) * project.canvas.height);
       const t = other.span ? { ...fields.transform, y } : { ...fields.transform, x: transform.x, y };
-      const companion: Item = { id, type: "text", start, duration, text: extra.text, transform: t, style: fields.style, ...(animation ? { animation } : req.animation !== null && fields.animation ? { animation: fields.animation } : {}) };
+      const companion: Item = { id, type: "text", start, duration, text: extra.text, transform: t, style: fields.style as Item["style"], ...(animation ? { animation } : req.animation !== null && fields.animation ? { animation: fields.animation } : {}) };
       ops.push({ op: "insert_item", track: place(), item: companion } as Op);
       itemIds.push(id);
     }

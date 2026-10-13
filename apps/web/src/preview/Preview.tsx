@@ -21,8 +21,8 @@ import { Mix, PREROLL_S, setCurrentMix } from "../audio/audio.ts";
 import { draftOf, findItem, lockOf } from "../timeline/edit.ts";
 import { canvasLabel, frameTimecode } from "../state/format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
-import { layoutOf, TEXT_PRESETS, type Item, type ProjectModel } from "../state/project.ts";
-import { actions, getState, graphicUrl, mediaUrl } from "../state/store.ts";
+import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
+import { actions, getState, graphicUrl, mediaUrl, textPresets } from "../state/store.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 import { clipState, planClipBox, resizeBox, type Corner } from "../timeline/clip.ts";
@@ -796,7 +796,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     const rect = frameRef.current!.getBoundingClientRect();
     const at = { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale };
     // A Text tab preset (D80): added at the playhead, where it's dropped.
-    const preset = TEXT_PRESETS.find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
+    const preset = textPresets().find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
     if (preset) {
       e.preventDefault();
       void actions.addText(preset, { at });

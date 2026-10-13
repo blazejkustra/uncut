@@ -120,7 +120,8 @@ export const TEXT_PRESETS = [
     return { id: module.replace(/^text\./, ""), module, label: look.name, text: look.text };
   }),
 ] as const satisfies ReadonlyArray<{ id: string; module: string; label: string; text: string }>;
-export type TextPreset = { readonly id: string; readonly module: string; readonly label: string; readonly text: string };
+/** A Text tab tile: a built-in look by module id, or a plugin's look (D103) carried whole, with its plugin's name. */
+export type TextPreset = { readonly id: string; readonly module: string; readonly label: string; readonly text: string; readonly look?: TextLook; readonly source?: string };
 
 // ---- text moves (D81) ----
 
