@@ -16,8 +16,9 @@ import { sweepStaleTranscriptTemp } from "./transcription.ts";
 import { which } from "../app/setup.ts";
 import { DEFAULT_MODEL, modelInfo, modelsDir, ModelStore } from "./whisperModels.ts";
 
-export const WHISPER_BIN = "whisper-cli";
-export const NO_WHISPER = "whisper.cpp isn't installed. Uncut transcribes speech on this Mac with it: brew install whisper-cpp (then ask again).";
+// The binary's name and the missing-binary sentence are the plugin's (plugins/whisper-transcribe, D100).
+import { NO_WHISPER, WHISPER_BIN } from "../../../../plugins/whisper-transcribe/whisper.ts";
+export { NO_WHISPER, WHISPER_BIN };
 
 /** What a transcript needs: the binary and the model file (downloaded now if needed). */
 export type ResolveWhisper = (options: { readonly signal: AbortSignal; readonly onDownload?: (fraction: number) => void }) => Promise<{ readonly bin: string; readonly model: string; readonly modelId: string }>;

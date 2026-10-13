@@ -38,6 +38,8 @@ test("Argent (D20) and a local Whisper (D26) fit the manifest", async () => {
   const whisper: any = modules.get("whisper.transcribe");
   assert.equal(whisper.analyzer.backend, "local-model");
   assert.ok(whisper.analyzer.outputs.includes("transcript"));
+  // The example is the bundled plugin's manifest (plugins/whisper-transcribe, D100).
+  assert.deepEqual(await read("../../plugins/whisper-transcribe/uncut.module.json"), whisper);
 });
 
 test("manifest schema rejects bad manifests", () => {

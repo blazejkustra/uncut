@@ -109,6 +109,11 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.deepEqual(readFileSync(join(shipped, "uncut.module.json")), readFileSync(resolve("plugins/argent-capture/uncut.module.json")));
   assert.ok(readFileSync(join(shipped, "server.ts")).equals(readFileSync(resolve("plugins/argent-capture/server.ts"))));
   assert.deepEqual(readdirSync(shipped).sort(), ["server.ts", "uncut.module.json"]);
+  // So does the Whisper plugin (D100): manifest, server and its whisper.ts.
+  const whisper = join(installed, "Contents/Resources/plugins/whisper-transcribe");
+  assert.deepEqual(readdirSync(whisper).sort(), ["server.ts", "uncut.module.json", "whisper.ts"]);
+  for (const f of readdirSync(whisper)) assert.ok(readFileSync(join(whisper, f)).equals(readFileSync(resolve("plugins/whisper-transcribe", f))), f);
+  assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "whisper-transcribe"]);
 
   const data = join(root, "data");
   const projects = join(root, "Projects");

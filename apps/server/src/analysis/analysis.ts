@@ -12,7 +12,7 @@
 // the same pass the speech envelope (RMS every 10 ms, D74) from a 16 kHz mono decode on stdout.
 // The second, "video" (videoAnalysis.ts, D67), is one pass over the first video stream: cuts,
 // shake, blur, brightness and frozen stretches per second of the file.
-// The third, "transcript" (transcription.ts, D68), transcribes the speech with whisper.cpp; at most
+// The third, "transcript" (transcription.ts, D68), transcribes the speech with whisper.cpp (through the bundled Whisper plugin, D100); at most
 // one runs at a time (it keeps the GPU busy), after its speech model is there (downloaded first).
 // The fourth, "beats" (beats.ts, D70), finds the tempo, beats and onsets of the first audio stream
 // in TypeScript on PCM decoded like the waveform's.
@@ -35,7 +35,8 @@ import { Exporter } from "../export/exporter.ts";
 import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { decodeEnvelope, encodeEnvelope, ENVELOPE_RATE, type StoredEnvelope } from "@uncut/core/transcript";
-import { analyzeTranscript, isTranscriptResult, NO_SPEECH_AUDIO, TRANSCRIPT_VERSION, type TranscriptResult } from "./transcription.ts";
+import { analyzeTranscript, isTranscriptResult, NO_SPEECH_AUDIO, pluginTranscribe, TRANSCRIPT_VERSION, WHISPER_PLUGIN, WHISPER_TOOL, type Transcribe, type TranscriptResult } from "./transcription.ts";
+import { Plugins } from "../plugins/plugins.ts";
 import { analyzeVideo, isVideoResult, NO_VIDEO, VIDEO_VERSION, type VideoResult } from "./videoAnalysis.ts";
 import { Whisper, type ResolveWhisper } from "./whisper.ts";
 
@@ -434,6 +435,8 @@ export interface QueueOptions {
   readonly isOpen?: (dir: string) => boolean;
   /** whisper-cli and the speech model for transcripts (undefined: transcription isn't set up here). */
   readonly whisper?: ResolveWhisper;
+  /** The speech model that turns the WAV into words: the Whisper plugin in the app (D100), transcribeDirect in tests. */
+  readonly transcribe?: Transcribe;
   /** Where transcripts' temp folders go (tests). */
   readonly tmpRoot?: string;
 }
@@ -632,7 +635,7 @@ export class AnalysisQueue {
       };
       let result: AnalysisResult;
       if (transcript) {
-        if (!this.options.whisper) throw new Error("Transcription isn't set up in this build.");
+        if (!this.options.whisper || !this.options.transcribe) throw new Error("Transcription isn't set up in this build.");
         // The model may need downloading first: the job shows that download's progress meanwhile.
         let lastDownload = 0;
         const whisper = await this.options.whisper({
@@ -646,7 +649,7 @@ export class AnalysisQueue {
         });
         if (signal.aborted) throw new Cancelled();
         if (e.job.stage) this.patch(e, { stage: undefined, progress: 0 });
-        result = await analyzeTranscript(bin, whisper, e.target.path, { ...options, language: e.options?.language, ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}) });
+        result = await analyzeTranscript(bin, whisper, e.target.path, { ...options, transcribe: this.options.transcribe, language: e.options?.language, ...(this.options.tmpRoot ? { tmpRoot: this.options.tmpRoot } : {}) });
       } else if (e.job.analyzer === "video") result = await analyzeVideo(bin, e.target.path, options);
       else if (e.job.analyzer === "beats") result = await analyzeBeats(bin, e.target.path, options);
       else result = await analyzeLoudness(bin, e.target.path, options);
@@ -699,6 +702,7 @@ export const layer = Layer.effect(
     const projects = yield* Projects;
     const exporter = yield* Exporter;
     const whisper = yield* Whisper;
+    const plugins = yield* Plugins;
     const jobsRef = yield* SubscriptionRef.make<ReadonlyArray<AnalysisJob>>([]);
     const queue = new AnalysisQueue({
       ffmpeg: async () => {
@@ -710,6 +714,9 @@ export const layer = Layer.effect(
       exportBusy: exporter.busy,
       isOpen: (dir) => Effect.runSync(projects.currentDir) === dir,
       whisper: whisper.resolve,
+      // Speech to words through the bundled Whisper plugin (D26, D100), with the job's own signal:
+      // a transcript outlives the agent turn that asked for it.
+      transcribe: pluginTranscribe((args, { signal, timeoutMs, onProgress }) => Effect.runPromise(plugins.callPlugin(WHISPER_PLUGIN, WHISPER_TOOL, args, { signal, timeoutMs, onProgress }))),
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => queue.shutdown()));
     // Exports come first (D55): no analysis starts while one is queued or running.
