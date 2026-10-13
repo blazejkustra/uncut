@@ -197,6 +197,8 @@ export interface Project {
   readonly markers?: ReadonlyArray<Marker>;
   /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
   readonly master?: { readonly gainDb?: number; readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
+  /** D90: taste checks the project turned off (rule ids from core checks.ts). */
+  readonly checks?: { readonly disabled?: ReadonlyArray<string>; readonly [key: string]: unknown };
 }
 
 /** Fields an op sets; a null value removes the field. */

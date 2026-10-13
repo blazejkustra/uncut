@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -12,7 +12,9 @@ import { connect, isTransportError, type CallError, type Connection, type Result
 import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "./playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "./edit.ts";
-import { layoutOf, planAddMedia, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
+import { musicInProject, musicTrack } from "@uncut/core/music";
+import { planDisableCheck, projectChecks, type Check } from "@uncut/core/checks";
+import { layoutOf, planAddMedia, planAddMusic, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "./text.ts";
 import { planAddComponent } from "./components.ts";
 import { planRemoveGainKey } from "./sound.ts";
@@ -202,6 +204,8 @@ const serverUrl = (route: string, id: string, path?: string) => {
 export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id, path);
 /** The original file of a media item, streamed by the server with byte ranges (never file://). */
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
+/** A track of the bundled music library (D91), for the Audio tab's preview. */
+export const musicUrl = (file: string) => serverUrl(MUSIC_FILE_PATH, file);
 /** The peaks of a media item's sound, made and cached by the server (D54). */
 export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PATH, id, path);
 /** A graphic item's document (D78), by its src ("graphics/x.html"), for the preview's sandboxed iframe. */
@@ -415,6 +419,9 @@ async function change(run: Parameters<Connection["call"]>[0], { inline = false }
 // One add at a time: a double click must not plan two edits against the same project (they'd
 // pick the same new id, and the second would be refused). Clicks while one is in flight are dropped.
 let adding = false;
+// A library track being copied and added (D91).
+let musicAdding = false;
+
 async function addPlanned(plan: (project: ProjectModel) => Planned | { readonly problem: string }) {
   if (adding || !state.snapshot || !online()) return;
   const planned = plan(projectOf(state.snapshot));
@@ -542,6 +549,37 @@ export const actions = {
   redo: () => (state.snapshot?.canRedo ? change((c) => c["project.redo"]({})) : undefined),
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
   addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
+  /**
+   * Audio tab library → the track on the timeline (D91): the server copies it into the project's
+   * media/ (unless it's there already), then the media and the item go in as one edit.
+   */
+  async addMusic(trackId: string) {
+    const track = musicTrack(trackId);
+    // One add at a time, from the copy until the edit is in: a double click adds once.
+    if (!track || !state.snapshot || !online() || adding || musicAdding) return;
+    musicAdding = true;
+    try {
+      let path: string | undefined;
+      if (!musicInProject(projectOf(state.snapshot), track)) {
+        const result = await call((c) => c["music.add"]({ track: track.id }));
+        if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });
+        path = result.value.path;
+      }
+      await addPlanned((project) => planAddMusic(project, track, path, getPlayback().frame));
+    } finally {
+      musicAdding = false;
+    }
+  },
+  /** Open a panel as the agent's ui_show does (the Checks tab from the export dialog, D90). */
+  openPanel: (panel: AgentUiPanel) => set({ panelRequest: { panel, seq: ++panelSeq } }),
+  /** A check's fix (D90), planned again on the project as it is now: one undoable edit with the fix's History label. */
+  applyCheckFix: (check: Pick<Check, "key">) =>
+    itemEdit((project) => {
+      const now = projectChecks(project).find((c) => c.key === check.key);
+      return now?.fix ? { ops: now.fix.ops, summary: now.fix.summary } : { problem: "That check doesn't apply any more." };
+    }),
+  /** Turn a check rule off (or back on) for this project (checks.disabled, D90). */
+  setCheckDisabled: (id: string, off: boolean) => itemEdit((project) => planDisableCheck(project, id, off)),
   /** Text tab preset → a text item at the playhead (see planAddText). */
   /** Text tab → a preset at the playhead (or the dropped frame), placed where it was dropped on the canvas (D80). */
   addText: (preset: TextPreset, opts: { at?: { x: number; y: number }; frame?: number } = {}) => addPlanned((project) => planAddText(project, preset, opts.frame ?? getPlayback().frame, opts.at)),

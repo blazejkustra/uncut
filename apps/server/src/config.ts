@@ -21,6 +21,8 @@ export interface ServerConfigShape {
   readonly mediaBin: string;
   // Built-in module manifests (spec/modules/builtin). The packaged app ships a copy in Resources.
   readonly modulesDir: string;
+  // The bundled music library (assets/music, D91). The packaged app ships it in Resources/music.
+  readonly musicDir: string;
   // Where app state lives (recents.json). The desktop passes Electron's userData path.
   readonly dataDir: string;
   // ANTHROPIC_API_KEY was in our environment at startup (D41: it is removed and never passed on).
@@ -59,7 +61,7 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
   return { bootstrapToken, exitWithStdin: argv.includes("--exit-with-stdin") };
 };
 
-// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_DATA_DIR
+// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_MUSIC_DIR / UNCUT_DATA_DIR
 // and the token over the bootstrap fd. Dev fallbacks assume the bundle in apps/server/dist.
 // Run by hand, the server picks a free port and a fresh token (or takes UNCUT_TOKEN) and
 // prints the port, plus any token it generated, on its ready line.
@@ -80,6 +82,7 @@ export const readConfig = (
       env.UNCUT_MEDIA_BIN ||
       fileURLToPath(new URL("../../../native/media/target/release/uncut-media", import.meta.url)),
     modulesDir: env.UNCUT_MODULES_DIR || fileURLToPath(new URL("../../../spec/modules/builtin", import.meta.url)),
+    musicDir: env.UNCUT_MUSIC_DIR || fileURLToPath(new URL("../../../assets/music", import.meta.url)),
     dataDir: env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"),
     testFault: env.UNCUT_TEST_FAULT || undefined,
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,

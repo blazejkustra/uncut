@@ -101,7 +101,7 @@
         },
         {
           "type": "object",
-          "description": "Change project-level fields: name, canvas, theme, scenes, markers or master. master is replaced whole: gainDb is the master volume (-60..12 dB, after the tracks are summed, D83), loudness {targetLufs} (the export dialog's default target, D87: -14 Normal, -16 Quieter, -23 Broadcast or another number), effects ([{module: audio.limiter, params: {ceilingDb}}] changes the master limiter, on by default at -1 dBTP; {bypass: true} turns it off, D86).",
+          "description": "Change project-level fields: name, canvas, theme, scenes, markers or master. master is replaced whole: gainDb is the master volume (-60..12 dB, after the tracks are summed, D83), loudness {targetLufs} (the export dialog's default target, D87: -14 Normal, -16 Quieter, -23 Broadcast or another number), effects ([{module: audio.limiter, params: {ceilingDb}}] changes the master limiter, on by default at -1 dBTP; {bypass: true} turns it off, D86). checks {disabled: [rule ids]} turns taste checks off for the project (D90; replaced whole, null removes it).",
           "required": ["op", "set"],
           "additionalProperties": false,
           "properties": {
@@ -109,7 +109,7 @@
             "set": {
               "type": "object",
               "minProperties": 1,
-              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "master"] }
+              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "master", "checks"] }
             }
           }
         }

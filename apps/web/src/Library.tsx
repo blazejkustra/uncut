@@ -7,14 +7,15 @@ import { planInsertText } from "@uncut/core/textPlan";
 import type { Item } from "@uncut/core/types";
 import { COMPONENTS, componentDefaults, componentHtml, naturalSize, screenRect, type ComponentInfo } from "@uncut/core/components";
 import { defaultFrames, TRANSITIONS, type TransitionInfo } from "@uncut/core/transitions";
-import { AudioLines, Blend, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
-import React, { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { filterMusic, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicTempo, type MusicTempo, type MusicTrack } from "@uncut/core/music";
+import { AudioLines, Blend, Film, Gauge, Image as ImageIcon, Layers, Music, Play, Plus, RefreshCw, Square, Type, Upload, X } from "lucide-react";
+import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { bridge } from "./bridge.ts";
 import { timecode } from "./format.ts";
 import { TEXT_PRESETS, type TextPreset } from "./project.ts";
 import { BACKGROUNDS } from "./text.ts";
-import { actions, activeAnalyses, activeJobs, mediaUrl, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
+import { actions, activeAnalyses, activeJobs, mediaUrl, musicUrl, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
 import { COMPONENT_DRAG_TYPE, setDraggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./Timeline.tsx";
 import { secondsLabel } from "./edit.ts";
@@ -119,7 +120,7 @@ function TransitionsLibrary({ project }: { project: Project }) {
 /**
  * The Audio tab (D33, D54): the project's sound files (music, voiceover, effects) with + to put one
  * on the first audio track, at the playhead if it's free there, else after the last sound (a track
- * is made if there is none). The free CC0 library comes later.
+ * is made if there is none), and the bundled CC0 music library (D91).
  */
 function AudioLibrary({ project }: { project: Project }) {
   const app = useApp();
@@ -165,12 +166,106 @@ function AudioLibrary({ project }: { project: Project }) {
           </div>
         )}
       </div>
-      <div className="lib-soon" data-testid="audio-library-soon">
-        <Music /> Free music and sound effects (CC0, searchable by mood and tempo) are coming in a later version.
-      </div>
+      <MusicLibrary project={project} online={online} />
     </aside>
   );
 }
+
+const TEMPO_NAMES: Readonly<Record<MusicTempo, string>> = { slow: "Slow", medium: "Medium", fast: "Fast", free: "Free tempo" };
+
+/**
+ * The bundled music library (D91): cozy CC0 tracks (core MUSIC_TRACKS) with a search, mood and
+ * tempo filters, a play button to listen (one at a time, from the server's library route) and +
+ * to put a track on the timeline: copied into the project's media/ folder, then placed like any
+ * sound (D50 revised), as long as the video at most, with fades.
+ */
+function MusicLibrary({ project, online }: { project: Project; online: boolean }) {
+  const [query, setQuery] = useState("");
+  const [mood, setMood] = useState<string | undefined>();
+  const [tempo, setTempo] = useState<MusicTempo | undefined>();
+  const [playing, setPlaying] = useState<string | undefined>();
+  const audio = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => () => audio.current?.pause(), []);
+  const tracks = filterMusic({ query, mood, tempo });
+  const toggle = (track: MusicTrack) => {
+    if (playing === track.id) {
+      audio.current?.pause();
+      return setPlaying(undefined);
+    }
+    const url = musicUrl(track.file);
+    if (!url) return;
+    audio.current?.pause();
+    const el = new Audio(url);
+    el.onended = () => setPlaying((p) => (p === track.id ? undefined : p));
+    audio.current = el;
+    setPlaying(track.id);
+    el.play().catch(() => setPlaying((p) => (p === track.id ? undefined : p)));
+  };
+  const tempos = MUSIC_TEMPOS.filter((t) => MUSIC_TRACKS.some((m) => musicTempo(m.bpm) === t));
+  return (
+    <div className="lib-section" data-testid="music-library">
+      <div className="lib-label">Music library</div>
+      <div className="music-filters">
+        <input className="field input" data-testid="music-search" placeholder="Search music" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+        <div className="music-chips" data-testid="music-moods">
+          {MUSIC_MOODS.map((m) => (
+            <button key={m} className={`music-chip${mood === m ? " active" : ""}`} data-testid="music-mood" data-mood={m} aria-pressed={mood === m} onClick={() => setMood(mood === m ? undefined : m)}>
+              {m}
+            </button>
+          ))}
+        </div>
+        <div className="music-chips" data-testid="music-tempos">
+          {tempos.map((t) => (
+            <button key={t} className={`music-chip${tempo === t ? " active" : ""}`} data-testid="music-tempo" data-tempo={t} aria-pressed={tempo === t} onClick={() => setTempo(tempo === t ? undefined : t)}>
+              {TEMPO_NAMES[t]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div data-testid="music-list">
+        {tracks.length === 0 && (
+          <div className="muted small" data-testid="music-empty">
+            No track matches. Clear a filter to see more.
+          </div>
+        )}
+        {tracks.map((t) => {
+          const added = musicInProject(project, t);
+          return (
+            <div key={t.id} className="music-row" data-testid="music-row" data-id={t.id} title={`${t.title} by ${t.author} (${t.moods.join(", ")}), CC0: ${t.source}`}>
+              <button className={`icon-btn${playing === t.id ? " playing" : ""}`} data-testid="music-play" data-playing={playing === t.id} title={playing === t.id ? "Stop" : "Listen"} onClick={() => toggle(t)}>
+                {playing === t.id ? <Square /> : <Play />}
+              </button>
+              <span className="music-text">
+                <span className="music-title">{t.title}</span>
+                <span className="music-meta">
+                  {[t.bpm ? `${t.bpm} bpm` : TEMPO_NAMES.free.toLowerCase(), clockOf(t.seconds), ...(added ? ["in the project"] : [])].join(", ")}
+                </span>
+              </span>
+              <button
+                className="icon-btn"
+                data-testid="music-add"
+                disabled={!online}
+                title="Add to the audio track at the playhead (as long as the video, with fades)"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  void actions.addMusic(t.id);
+                }}
+              >
+                <Plus />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="music-licence">
+        <Music /> Every track is CC0 (public domain): use it anywhere, no credit needed. Adding one copies it into the project's media folder.
+      </div>
+    </div>
+  );
+}
+
+/** 115.8 → "1:56". */
+const clockOf = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 
 /** The frame a component's thumbnail shows (a terminal mid-way, its line typed). */
 const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45 };

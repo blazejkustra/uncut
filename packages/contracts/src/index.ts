@@ -22,6 +22,7 @@ export const RPC_METHODS = {
   mediaImport: "media.import",
   mediaThumbnails: "media.thumbnails",
   mediaJobs: "media.jobs",
+  musicAdd: "music.add",
   setupCheck: "setup.check",
   setupState: "setup.state",
   setupComplete: "setup.complete",
@@ -165,6 +166,9 @@ export const WAVEFORM_PATH = "/media/waveform";
 // sandboxed iframe: the open project's graphics/<file name>, only if one of its graphic items uses
 // it, wrapped by core graphicDocument and served with its strict CSP (inline script, no network).
 export const GRAPHIC_PATH = "/media/graphic";
+// GET /media/library/<file>?token=…: a track of the bundled music library (D91), for the Audio
+// tab's preview; only the files core MUSIC_TRACKS lists.
+export const MUSIC_FILE_PATH = "/media/library";
 export interface Waveform {
   readonly version: 1;
   /** Peaks per second. */
@@ -266,7 +270,7 @@ export const AgentTurn = Schema.Struct({
 export type AgentTurn = typeof AgentTurn.Type;
 
 /** The editor panels the agent's ui_show can open (D65): the library rail's tabs and the side tabs. */
-export const AGENT_UI_PANELS = ["media", "text", "elements", "audio", "inspector", "agent"] as const;
+export const AGENT_UI_PANELS = ["media", "text", "elements", "audio", "inspector", "agent", "checks"] as const;
 export const AgentUiPanel = Schema.Literals(AGENT_UI_PANELS);
 export type AgentUiPanel = typeof AgentUiPanel.Type;
 
@@ -487,6 +491,15 @@ const MediaImportRpc = Rpc.make(RPC_METHODS.mediaImport, {
   error: ProjectError,
 });
 
+// A track of the bundled music library (D91) copied into the open project's media/ folder (an
+// identical copy already there is reused); returns its path relative to the project. The renderer
+// adds the media and the timeline item in one edit.
+const MusicAddRpc = Rpc.make(RPC_METHODS.musicAdd, {
+  payload: Schema.Struct({ track: Schema.String }),
+  success: Schema.Struct({ path: Schema.String }),
+  error: ProjectError,
+});
+
 // Recent import jobs, now and on every change.
 const MediaJobsRpc = Rpc.make(RPC_METHODS.mediaJobs, { payload: Empty, success: Schema.Array(ImportJob), stream: true });
 
@@ -603,6 +616,7 @@ export const WsRpcGroup = RpcGroup.make(
   MediaImportRpc,
   MediaJobsRpc,
   MediaThumbnailsRpc,
+  MusicAddRpc,
   SetupCheckRpc,
   SetupStateRpc,
   SetupCompleteRpc,

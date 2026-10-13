@@ -266,6 +266,14 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         if (parts.length === 1 && typeof m.gainDb === "number") return `Set master volume to ${dbWords(m.gainDb)}`;
         if (parts.length) return `Set the master: ${parts.join(", ")}`;
       }
+      // Taste checks turned off (D90): checks is replaced whole.
+      if (keys.length === 1 && keys[0] === "checks") {
+        // The editor's summary names the one rule switched ("Turn off the check …"); otherwise the
+        // op only says the whole list now, so say that rather than guess what changed.
+        if (hint && /^Turn (off|on) the check /.test(hint)) return past(hint);
+        const off = (op.set.checks as { readonly disabled?: unknown } | null)?.disabled;
+        return Array.isArray(off) && off.length ? `Set the checks turned off to ${off.join(", ")}` : "Turned every check back on";
+      }
       return `Changed project ${keys.join(", ")}`;
     }
     default:
