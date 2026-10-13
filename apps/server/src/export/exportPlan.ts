@@ -56,6 +56,8 @@ import {
   spanOf,
   canvasBackground,
   captionSegments,
+  isPlainCue,
+  isSubtitleTrack,
   componentBox,
   componentParts,
   wrapComponent,
@@ -549,6 +551,8 @@ export interface PlanOptions {
    * analysed, no sound). A key media missing here ducks nothing, with a warning.
    */
   readonly envelopes?: ReadonlyMap<string, SpeechEnvelope | null> | undefined;
+  /** Draw captions and Subtitles tracks into the picture (D105; default true). Off: a soft track or a file carries them instead. */
+  readonly burnCaptions?: boolean | undefined;
 }
 
 /**
@@ -600,7 +604,42 @@ const CAPTION_LOOKS_PER_S = 25;
  * card has at most its words + 1 looks.
  */
 export function captionLayers(project: Project, item: Item, track: Track, duration: number, warnings: Array<string>): Array<VisualLayer> {
-  const segs = captionSegments(project, item)
+  return segmentLayers(project, item, track, captionSegments(project, item), duration, warnings);
+}
+
+/**
+ * A Subtitles track's plain text items (D105: an imported .srt / .vtt, one item per cue) as the
+ * same few layers as captions: each cue a still look over its frames, touching cues one run.
+ * Drawn exactly as each text item alone would be (no motion, keys or opacity of their own), without
+ * an ffmpeg input per cue.
+ */
+export function subtitleLayers(project: Project, track: Track, items: ReadonlyArray<Item>, starts: ReadonlyMap<string, number>, duration: number, warnings: Array<string>): Array<VisualLayer> {
+  if (!items.length) return [];
+  const segs = items.map((it) => ({ from: starts.get(it.id) ?? it.start ?? 0, to: (starts.get(it.id) ?? it.start ?? 0) + it.duration, text: it })).sort((a, b) => a.from - b.from);
+  return segmentLayers(project, { ...items[0]!, name: track.name }, track, segs, duration, warnings);
+}
+
+/**
+ * A Subtitles track's cues that can share layers: plain ones that overlap no other item on the track.
+ * Overlapping cues (a user dragged one onto another) each take the normal text path, so both draw, as in the preview.
+ */
+export function mergeableCues(track: Track, starts: ReadonlyMap<string, number>): Array<Item> {
+  const spans = track.items.map((it) => ({ it, from: starts.get(it.id) ?? it.start ?? 0 })).map((x) => ({ ...x, to: x.from + x.it.duration })).sort((a, b) => a.from - b.from);
+  const overlapping = new Set<Item>();
+  let last: (typeof spans)[number] | undefined;
+  for (const x of spans) {
+    if (last && x.from < last.to) {
+      overlapping.add(x.it);
+      overlapping.add(last.it);
+    }
+    if (!last || x.to > last.to) last = x;
+  }
+  return track.items.filter((it) => isPlainCue(it) && !overlapping.has(it));
+}
+
+/** Stretches of one look each (a card, a speaking word, a cue) as raster layers: touching stretches one run, at most MAX_CAPTION_LAYERS runs. */
+function segmentLayers(project: Project, item: Item, track: Track, all: ReadonlyArray<{ readonly from: number; readonly to: number; readonly text: Item }>, duration: number, warnings: Array<string>): Array<VisualLayer> {
+  const segs = all
     .map((s) => ({ from: Math.max(0, s.from), to: Math.min(duration, s.to), text: s.text }))
     .filter((s) => s.to > s.from);
   if (!segs.length) return [];
@@ -641,7 +680,7 @@ export function captionLayers(project: Project, item: Item, track: Track, durati
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
-export function planExport(project: Project, { mediaPath, width, height, graphic, envelopes }: PlanOptions): ExportPlan | { readonly problem: string } {
+export function planExport(project: Project, { mediaPath, width, height, graphic, envelopes, burnCaptions = true }: PlanOptions): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
   if (!project.tracks.some((t) => t.items.length)) return { problem: "The timeline is empty: there's nothing to export yet." };
@@ -673,6 +712,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
   const visuals: Array<VisualLayer> = [];
   for (const track of [...project.tracks].reverse()) {
     if (track.hidden || track.kind === "audio") continue;
+    const subtitles = isSubtitleTrack(track) ? mergeableCues(track, starts) : undefined;
     track.items.forEach((item, i) => {
       const media = mediaOf(item);
       const isMedia = item.type === "clip" && media && media.kind !== "audio";
@@ -681,7 +721,12 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       const isComponent = isDrawnComponent(item);
       const isGraphic = item.type === "graphic" && typeof item.src === "string";
       if (item.type === "captions") {
-        visuals.push(...captionLayers(project, item, track, duration, warnings));
+        if (burnCaptions) visuals.push(...captionLayers(project, item, track, duration, warnings));
+        return;
+      }
+      // A Subtitles track's cues (D105): its plain ones drawn together (below), all of them off without burn-in.
+      if (subtitles && (!burnCaptions || subtitles.includes(item))) {
+        if (burnCaptions && item === subtitles[0]) visuals.push(...subtitleLayers(project, track, subtitles, starts, duration, warnings));
         return;
       }
       if (!isMedia && !isSolid && !isText && !isComponent && !isGraphic) return;
@@ -1058,6 +1103,8 @@ export interface CommandOptions {
   readonly loudnorm?: string | undefined;
   readonly loudness?: AudioOptions | undefined;
   readonly output: string;
+  /** A soft subtitle track (D105): an .srt file muxed as mov_text with an ISO 639-2 language tag. */
+  readonly subtitles?: { readonly file: string; readonly language: string; /** Shown by default (when the captions aren't burned in). */ readonly show?: boolean | undefined } | undefined;
 }
 
 /**
@@ -1316,11 +1363,15 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   const audio = audioGraph(plan, plan.visuals.length + 1, opts.loudness ?? opts.loudnorm);
   inputs.push(...audio.inputs);
   graph.push(...audio.filters);
+  // The soft subtitle track (D105): the last input, its own stream (cue times are the edit's).
+  const subtitleInput = inputs.filter((a) => a === "-i").length;
+  if (opts.subtitles) inputs.push("-f", "srt", "-i", opts.subtitles.file);
   const outputArgs = [
     "-map",
     "[vout]",
     "-map",
     "[aout]",
+    ...(opts.subtitles ? ["-map", `${subtitleInput}:s:0`, "-c:s", "mov_text", "-metadata:s:s:0", `language=${opts.subtitles.language}`, "-disposition:s:0", opts.subtitles.show ? "default" : "0"] : []),
     ...videoCodec(opts.quality, opts.caps, plan, fps),
     "-pix_fmt",
     "yuv420p",

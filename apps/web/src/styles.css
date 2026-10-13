@@ -893,3 +893,9 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .wiz-plugins > * { flex-shrink: 0; }
 .plugin-browse-row { display: flex; gap: 8px; align-items: flex-start; }
 .plugin-browse-tags { font-size: 10px; color: var(--muted); }
+/* Export dialog: captions and subtitles (D105). */
+.export-subs { display: grid; gap: 2px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.export-sub-row { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; }
+.export-sub-row .muted { font-size: 12px; }
+.export-sub-row select { margin-left: auto; height: 26px; font-size: 12px; }
+.export-sub-row .seg + .muted { margin-left: auto; }
