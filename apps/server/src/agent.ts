@@ -19,7 +19,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { captionCardList, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { captionCardList, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -691,6 +691,50 @@ export const layer = Layer.effect(
         clearTimeout(timer);
       }
     };
+    /**
+     * Ducking's key media without a loudness analysis (D85): started together and waited for up to
+     * SILENCES_WAIT_MS. A sentence for timeline_edit's answer saying, per media, measured (heard now),
+     * no sound (nothing to duck under), couldn't be measured, or still measuring; undefined when all
+     * were measured already.
+     */
+    const duckAnalysis = async (dir: string, project: Project): Promise<string | undefined> => {
+      const fps = project.canvas.fps;
+      const pending = [];
+      for (const id of duckMediaIds(project)) {
+        const m = project.media.find((x) => x.id === id);
+        if (!m) continue;
+        const target = targetOf(dir, m, fps);
+        if (await cachedFor(target, "loudness")) continue;
+        pending.push({ name: m.name ?? id, target });
+      }
+      if (!pending.length) return undefined;
+      let timer: NodeJS.Timeout | undefined;
+      const deadline = new Promise<"waiting">((r) => (timer = setTimeout(() => r("waiting"), Math.min(SILENCES_WAIT_MS, analyzeWaitMs()))));
+      timer?.unref();
+      try {
+        const outcomes = await Promise.all(
+          pending.map(async (p) => {
+            const { done } = await analysis.request(p.target, "loudness");
+            const o = await Promise.race([done, deadline]);
+            if (o === "waiting") return { name: p.name, kind: "waiting" as const };
+            if (o.state === "done") return { name: p.name, kind: (o.result as LoudnessResult).hasAudio ? ("measured" as const) : ("silent" as const) };
+            return { name: p.name, kind: "failed" as const, why: o.state === "failed" ? o.error : "it was stopped" };
+          }),
+        );
+        const of = (kind: string) => outcomes.filter((o) => o.kind === kind);
+        const list = (xs: ReadonlyArray<{ name: string }>) => xs.map((x) => x.name).join(", ");
+        return [
+          of("measured").length ? `Measured the loudness of ${list(of("measured"))} for ducking: it's heard now.` : "",
+          of("silent").length ? `${list(of("silent"))} has no sound, so nothing ducks under it.` : "",
+          ...of("failed").map((o) => `The loudness of ${o.name} couldn't be measured (${"why" in o ? o.why : ""}), so nothing ducks under it; media_analyze loudness tries again.`),
+          of("waiting").length ? `Still measuring the loudness of ${list(of("waiting"))} for ducking; nothing ducks under it until that's done (media_analyze loudness follows it).` : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+      } finally {
+        clearTimeout(timer);
+      }
+    };
     const cancelledNote = "The analysis was stopped (by the user, or the project closed) before it finished. Ask again to run it.";
 
     // contact_sheet (D65): frames of a media file (pulled from the original, 0:v:0) or of the edit
@@ -1345,11 +1389,15 @@ export const layer = Layer.effect(
             const userChanges = now ? noteFor(now, baseRevision) : "";
             if (!userChanges) r.owner.seen.add(snapshot.revision);
             const end = projectSummary(project, snapshot.revision).duration;
+            // Ducking (D85) needs its key media's loudness: a mixer change starts the analysis
+            // where it's missing (waits up to SILENCES_WAIT_MS, as transcript_edit) and says so.
+            const ducking = (ops as ReadonlyArray<Op>).some((op) => op.op === "update_track" && "mixer" in op.set) ? yield* Effect.promise(() => duckAnalysis(v.dir, project)) : undefined;
             return textResult({
               ok: true,
               revision: snapshot.revision,
               duration: end,
               seconds: Number((end / project.canvas.fps).toFixed(2)),
+              ...(ducking ? { ducking } : {}),
               ...(userChanges ? { userChanges, note: "The user changed the project since your read. project_read before your next edit." } : {}),
             });
           }

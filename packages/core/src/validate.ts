@@ -151,7 +151,8 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
       const m = useModule(fx.module, ["audio-processor"], `${tpath}/mixer`);
       checkParams(m, fx.params, `${tpath}/mixer/${fx.module}`);
       for (const under of (fx.params?.under as ReadonlyArray<string> | undefined) ?? []) {
-        if (!trackIds.has(under)) errors.push(err("unknown-track", `${tpath}/mixer`, `duck target track "${under}" does not exist`));
+        // D85: a deleted key track would leave the duck pointing at nothing; say which track ducks under it.
+        if (!trackIds.has(under)) errors.push(err("unknown-track", `${tpath}/mixer`, `track "${track.name}" (${track.id}) ducks under track "${under}", which doesn't exist: remove or retarget its audio.duck entry (in the same edit, to delete "${under}")`));
       }
     }
 

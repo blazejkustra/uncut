@@ -677,10 +677,10 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .mixer-strips { display: flex; gap: 6px; height: 100%; min-height: 120px; }
 .mixer-gap { flex: 1; min-width: 8px; }
 .mixer-empty { padding: 4px 2px 8px; font-size: 12px; }
-.strip-ch { width: 88px; flex: none; display: flex; flex-direction: column; gap: 5px; padding: 6px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
-.strip-ch.master { width: 78px; border-color: var(--border-strong); }
+.strip-ch { width: 104px; flex: none; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 6px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
+.strip-ch.master { width: 96px; border-color: var(--border-strong); }
 .strip-ch.muted .strip-body { opacity: 0.45; }
-.strip-name { font-size: 11px; font-weight: 500; color: var(--fg); text-align: center; }
+.strip-name { flex: none; font-size: 11px; font-weight: 500; color: var(--fg); text-align: center; }
 .pan-row { height: 14px; display: flex; align-items: center; gap: 4px; flex: none; }
 .pan { position: relative; flex: 1; height: 12px; cursor: ew-resize; touch-action: none; }
 .pan::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 2px; border-radius: 1px; background: var(--raised); }
@@ -689,7 +689,7 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .pan-thumb { position: absolute; top: 1px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--fg); }
 .pan.disabled, .fader.disabled { cursor: default; opacity: 0.5; }
 .pan-label { width: 24px; font-size: 9px; color: var(--muted); text-align: right; }
-.strip-body { flex: 1; min-height: 40px; display: flex; gap: 6px; justify-content: center; }
+.strip-body { flex: 1; min-height: 32px; display: flex; gap: 6px; justify-content: center; }
 .meter { position: relative; display: flex; gap: 2px; width: 12px; padding-top: 5px; }
 /* The over (clip) light: lit red for a moment when a peak reaches full scale. */
 .meter::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 1px; background: rgb(255 255 255 / 8%); }
@@ -716,6 +716,40 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 /* Volume keys on the timeline (D83): the item's volume as a line over its waveform. */
 .clip .envelope { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: visible; }
 .clip .envelope .env-line { fill: none; stroke: #f3c96b; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.clip .envelope .env-duck { fill: none; stroke: #5ec8e5; stroke-width: 2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
 .clip .envelope .env-hit { fill: none; stroke: transparent; stroke-width: 8; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: copy; }
 .clip .env-key { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: #f3c96b; border: 1px solid rgb(0 0 0 / 60%); z-index: 3; cursor: grab; }
 .clip .env-key.selected { background: #fff; box-shadow: 0 0 0 2px var(--select); }
+
+/* Mixer effects, ducking, limiter and target (D84–D88). */
+.fx-list { display: flex; flex-direction: column; gap: 3px; flex: none; }
+.fx-slots { display: flex; flex-direction: column; gap: 3px; max-height: 39px; overflow-y: auto; scrollbar-width: thin; }
+.fx-slots:empty { display: none; }
+.fx-slot { display: flex; align-items: center; gap: 4px; height: 18px; padding: 0 5px; border-radius: 4px; font-size: 10px; color: var(--fg); background: var(--raised); text-align: left; min-width: 0; }
+.fx-slot:not(:disabled):hover { background: #262626; }
+.fx-slot.open { outline: 1px solid var(--select); }
+.fx-slot .fx-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--ok); }
+.fx-slot.bypassed { color: var(--dim); }
+.fx-slot.bypassed .fx-dot { background: var(--dim); }
+.fx-slot.target { color: var(--muted); justify-content: center; }
+.fx-badge { margin-left: auto; padding: 0 3px; border-radius: 3px; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: #111; background: var(--warn); flex: none; }
+.fx-foot { display: flex; align-items: center; gap: 4px; }
+.fx-foot .fx-slot { flex: 1; }
+.fx-add { flex: 1; height: 16px; border-radius: 4px; font-size: 9px; color: var(--muted); border: 1px dashed var(--border-strong); }
+.fx-add:not(:disabled):hover { color: var(--fg); }
+.gr { position: relative; width: 6px; height: 16px; flex: none; border-radius: 1px; background: rgb(255 255 255 / 6%); overflow: hidden; }
+.gr-bar { position: absolute; left: 0; right: 0; top: 0; height: 0; background: #e8a33d; }
+.duck-row { flex: none; }
+.duck-btn { display: flex; align-items: center; gap: 3px; width: 100%; height: 16px; padding: 0 5px; border-radius: 4px; font-size: 9px; color: var(--muted); background: rgb(94 200 229 / 6%); border: 1px solid rgb(94 200 229 / 18%); }
+.duck-btn.on { color: #5ec8e5; border-color: rgb(94 200 229 / 45%); }
+.duck-wait { margin-left: auto; color: var(--warn); }
+.fx-popover { position: fixed; z-index: 40; width: 260px; max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border-strong); box-shadow: 0 10px 30px rgb(0 0 0 / 45%); }
+.fx-pop-title { font-size: 12px; font-weight: 600; }
+.fx-pop-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.fx-pop-actions .btn { height: 24px; padding: 0 8px; }
+.fx-pop-actions .btn.on { color: var(--warn); }
+.fx-fields { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.fx-menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 8px; border-radius: 6px; text-align: left; }
+.fx-menu-item:hover { background: var(--raised); }
+.fx-popover select.v { background: var(--raised); color: var(--fg); border: 0; border-radius: 4px; height: 22px; }
+.duck-note-text { color: var(--warn); }

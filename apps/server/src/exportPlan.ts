@@ -29,7 +29,12 @@
 // - Sound: every item audibleAt would return, from its media at the same source time, with the
 //   gain of core itemGain (combined dB with the −60 dB cutoff, gainKeys, fades, transition
 //   crossfades) as one volume expression per item, panned by its track (D83), mixed with amix
-//   normalize=0 (D54), then the master volume (D83).
+//   normalize=0 (D54), then the master volume (D83). Ducking (D85) is core's duck curve folded into
+//   each item's volume expression on the ducked track (the same dB the preview adds). A track with
+//   effects (D84: EQ, compressor, voice, noise removal) is summed on its own first (amix over a
+//   silent base), run through its stages in list order (core trackStages → stageFilter) and panned
+//   after them; then the tracks are summed. After the master volume: the loudness gain (D87) and
+//   the master limiter last (D86: alimiter at 4× oversampling, a small true-peak margin).
 // - A frame f is the moment f / fps (D38); a clip shows the source frame on screen at its source
 //   time, as the preview's <video> does (the last frame that starts at or before it).
 import {
@@ -75,6 +80,18 @@ import {
   trackPan,
   type ExportQuality,
   type Item,
+  duckCurves,
+  duckKeysIn,
+  pwlAt,
+  duckNote,
+  masterLimiter,
+  LIMITER_MARGIN_DB,
+  noiseFloorDb,
+  trackStages,
+  DENOISE_FLOOR_DB,
+  type DuckKey,
+  type SpeechEnvelope,
+  type Stage,
   type Span,
   type Media,
   type Project,
@@ -83,10 +100,7 @@ import {
 
 export type Quality = ExportQuality;
 export { outputSize };
-export type Loudness = "off" | "normal" | "quiet";
 
-/** Integrated loudness targets (LUFS) of the loudness choices. */
-export const LOUDNESS_TARGET: Readonly<Record<Exclude<Loudness, "off">, number>> = { normal: -14, quiet: -16 };
 
 /** A linear opacity ramp on a layer, in project frames: fade in from 0 at `st` to 1 at st + d, or out. */
 export interface Ramp {
@@ -183,10 +197,14 @@ export interface GainModel {
   readonly nextHalf: number;
   readonly fadeIn: number;
   readonly fadeOut: number;
+  /** The track's ducking over this item (D85): core's duck keys, frames from the item's start; absent when none. */
+  readonly duck?: ReadonlyArray<DuckKey>;
 }
 
 export interface AudioLayer {
   readonly item: Item;
+  /** The item's track id (a track with effects is summed on its own bus first). */
+  readonly track: string;
   readonly file: string;
   /** The span it sounds over, in (possibly fractional) project frames. */
   readonly from: number;
@@ -221,6 +239,13 @@ export interface ExportPlan {
   readonly audio: ReadonlyArray<AudioLayer>;
   /** The master volume after the tracks are summed (core masterGain, D83), as a linear factor. */
   readonly masterGain: number;
+  /**
+   * Tracks with effects (D84): their items are summed first, run through `stages` in order, then
+   * panned (`pan`, as each item would have been). Other tracks' items go straight into the mix.
+   */
+  readonly buses: ReadonlyArray<{ readonly track: string; readonly stages: ReadonlyArray<Stage>; readonly pan: { readonly left: number; readonly right: number } }>;
+  /** The master limiter (D86), last in the chain; absent when bypassed. */
+  readonly limiter?: { readonly ceilingDb: number } | undefined;
   /** Every media file the export reads. */
   readonly files: ReadonlyArray<{ readonly media: Media; readonly path: string }>;
   /** What the export draws differently from the preview (a capped animation), as sentences. */
@@ -426,9 +451,12 @@ const keyDb = (keys: GainModel["keys"], local: number) => {
   return keys.at(-1)!.db;
 };
 
+/** core duckDbAt on keys local to the item, held at the first / last key (whose dB is 0 at the curve's real ends): core pwlAt. */
+const duckDb = (keys: ReadonlyArray<DuckKey>, local: number) => pwlAt(keys, local);
+
 /** The model's gain at `local` frames from the item's start: core itemGain, restated so it can be turned into an expression. */
 export function gainAt(m: GainModel, local: number): number {
-  const db = m.baseDb + keyDb(m.keys, Math.min(m.duration, Math.max(0, local)));
+  const db = m.baseDb + keyDb(m.keys, Math.min(m.duration, Math.max(0, local))) + (m.duck?.length ? duckDb(m.duck, local) : 0);
   let g = db <= SILENCE_DB ? 0 : 10 ** (db / 20);
   if (!(m.half > 0) && m.fadeIn > 0) g *= clamp01(local / m.fadeIn);
   if (!(m.nextHalf > 0) && m.fadeOut > 0) g *= clamp01((m.duration - local) / m.fadeOut);
@@ -439,7 +467,7 @@ export function gainAt(m: GainModel, local: number): number {
 
 /** The gain when it never changes over the item (no keys, fades or transitions), else undefined. */
 export function constantGain(m: GainModel): number | undefined {
-  if (m.keys.length > 1 || m.half > 0 || m.nextHalf > 0 || m.fadeIn > 0 || m.fadeOut > 0) return undefined;
+  if (m.keys.length > 1 || m.half > 0 || m.nextHalf > 0 || m.fadeIn > 0 || m.fadeOut > 0 || m.duck?.length) return undefined;
   const db = m.baseDb + (m.keys[0]?.db ?? 0);
   return db <= SILENCE_DB ? 0 : 10 ** (db / 20);
 }
@@ -473,12 +501,35 @@ export function gainExpr(m: GainModel, fps: number): string {
   if (!(m.nextHalf > 0) && m.fadeOut > 0) parts.push(`clip((${n(m.duration)}-ld(0))/${n(m.fadeOut)},0,1)`);
   if (m.half > 0) parts.push(`clip((ld(0)+${n(m.half)})/${n(2 * m.half)},0,1)`);
   if (m.nextHalf > 0) parts.push(`clip((${n(m.duration + m.nextHalf)}-ld(0))/${n(2 * m.nextHalf)},0,1)`);
+  // The duck curve (D85) on the unclamped local frame, as a balanced tree so a long curve stays shallow.
+  const duck = m.duck?.length ? `+${pwlExpr(m.duck, "ld(0)")}` : "";
   return [
     `st(0,(t+${n(AUDIO_BLOCK / 2 / 48000)})*${fps}-${n(m.half)})`,
     `st(1,clip(ld(0),0,${n(m.duration)}))`,
-    `st(2,${n(m.baseDb)}+${keys})`,
+    `st(2,${n(m.baseDb)}+${keys}${duck})`,
     parts.join("*"),
   ].join(";");
+}
+
+/**
+ * A piecewise-linear curve (keys sorted by frame, held at both ends; a step where two keys share a
+ * frame, the later one winning from that frame on, as core duckDbAt) as an ffmpeg expression of `x`,
+ * nested as a balanced tree of comparisons (depth log2 of the keys).
+ */
+export function pwlExpr(keys: ReadonlyArray<DuckKey>, x: string): string {
+  if (!keys.length) return "0";
+  if (keys.length === 1) return n(keys[0]!.db);
+  const seg = (i: number) => {
+    const a = keys[i]!;
+    const b = keys[i + 1]!;
+    return b.frame === a.frame || b.db === a.db ? n(b.db) : `(${n(a.db)}+(${n(b.db - a.db)})*(${x}-${n(a.frame)})/${n(b.frame - a.frame)})`;
+  };
+  const tree = (lo: number, hi: number): string => {
+    if (lo === hi) return seg(lo);
+    const mid = (lo + hi) >> 1;
+    return `if(lt(${x},${n(keys[mid + 1]!.frame)}),${tree(lo, mid)},${tree(mid + 1, hi)})`;
+  };
+  return `if(lt(${x},${n(keys[0]!.frame)}),${n(keys[0]!.db)},if(gte(${x},${n(keys.at(-1)!.frame)}),${n(keys.at(-1)!.db)},${tree(0, keys.length - 2)}))`;
 }
 
 // ---- the plan ----
@@ -490,6 +541,11 @@ export interface PlanOptions {
   readonly height: number;
   /** A graphic item's file contents (D78), by its src; undefined when it can't be read. */
   readonly graphic?: ((src: string) => string | undefined) | undefined;
+  /**
+   * The loudness envelopes (D74) of the media on ducking key tracks (D85), by media id (null:
+   * analysed, no sound). A key media missing here ducks nothing, with a warning.
+   */
+  readonly envelopes?: ReadonlyMap<string, SpeechEnvelope | null> | undefined;
 }
 
 /**
@@ -582,7 +638,7 @@ export function captionLayers(project: Project, item: Item, track: Track, durati
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
-export function planExport(project: Project, { mediaPath, width, height, graphic }: PlanOptions): ExportPlan | { readonly problem: string } {
+export function planExport(project: Project, { mediaPath, width, height, graphic, envelopes }: PlanOptions): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
   if (!project.tracks.some((t) => t.items.length)) return { problem: "The timeline is empty: there's nothing to export yet." };
@@ -742,14 +798,28 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
   const note = mixNote(project);
   if (note) warnings.push(note);
   const audio: Array<AudioLayer> = [];
+  const ducks = duckCurves(project, envelopes ?? new Map());
+  const buses: Array<ExportPlan["buses"][number]> = [];
   for (const track of project.tracks) {
     if (!trackAudible(project, track)) continue;
+    const curve = ducks.get(track.id);
+    const duckWarning = duckNote(project, track, curve);
+    if (duckWarning && track.items.some((i) => soundMedia(project, i))) warnings.push(duckWarning.replace("waits for", "isn't applied: it needs"));
+    // Noise removal (D88) starts from the track's measured noise floor: the quietest of its media's.
+    const floors = track.items.flatMap((i) => {
+      const env = i.media && soundMedia(project, i) ? envelopes?.get(i.media) : undefined;
+      return env ? [noiseFloorDb(env)] : [];
+    });
+    const stages = trackStages(track).map((st) => (st.kind === "denoise" ? { ...st, floorDb: floors.length ? Math.min(...floors) : DENOISE_FLOOR_DB } : st));
+    if (stages.length && track.items.some((i) => soundMedia(project, i))) buses.push({ track: track.id, stages, pan: panGains(trackPan(track)) });
     track.items.forEach((item, index) => {
       const media = soundMedia(project, item);
       if (!media) return;
       const start = starts.get(item.id) ?? 0;
       const span = audioSpan(track, index, start);
+      const duck = curve ? duckKeysIn(curve.keys, span.from, span.to).map((k) => ({ frame: k.frame - start, db: k.db })) : [];
       const gain: GainModel = {
+        ...(duck.length ? { duck } : {}),
         baseDb: (item.gainDb ?? 0) + (track.mixer?.gainDb ?? 0),
         keys: [...(item.gainKeys ?? [])].sort((a, b) => a.frame - b.frame),
         duration: item.duration,
@@ -764,7 +834,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       const source = Math.max(0, sourceAt(project, item, from - start));
       const length = item.loop ? media.probe?.frames : undefined;
       const cycle = length && (item.speed ?? 1) === 1 ? { cycle: { samples: Math.round((length * 48000) / fps), offset: Math.round(source * 48000) } } : {};
-      audio.push({ item, file: fileOf(media), from, to: span.to, source, speed: item.speed ?? 1, loop: item.loop === true, gain, pan: panGains(trackPan(track)), ...cycle });
+      audio.push({ item, track: track.id, file: fileOf(media), from, to: span.to, source, speed: item.speed ?? 1, loop: item.loop === true, gain, pan: panGains(trackPan(track)), ...cycle });
     });
   }
 
@@ -778,6 +848,8 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
     visuals,
     audio,
     masterGain: masterGain(project),
+    buses,
+    limiter: masterLimiter(project),
     files: [...files.values()],
     warnings,
   };
@@ -831,12 +903,68 @@ export interface AudioGraph {
   readonly filters: Array<string>;
 }
 
-/** The audio half of the graph. `loudnorm` is appended to the mix when given. */
-export function audioGraph(plan: ExportPlan, first: number, loudnorm?: string): AudioGraph {
+/** What follows the mix (D86, D87): a loudness filter or gain, the limiter, a measuring filter at the very end. */
+export interface AudioOptions {
+  /** A loudnorm filter (the measuring pass's, or the second pass's when the limiter is bypassed). */
+  readonly loudnorm?: string | undefined;
+  /** The loudness gain in dB (the second pass with the limiter on). */
+  readonly gainDb?: number | undefined;
+  /** Leave the limiter out (the first measuring pass measures the mix as it goes into it). */
+  readonly noLimiter?: boolean | undefined;
+  /** A filter after everything (a measuring pass's loudnorm print or ebur128). */
+  readonly tail?: string | undefined;
+}
+
+/** True-peak margin (dB) under the ceiling the limiter works to (core, shared with the preview's limiter, D86). */
+export { LIMITER_MARGIN_DB };
+/** The limiter's lookahead / attack and release (ms): alimiter's defaults. */
+export const LIMITER_ATTACK_MS = 5;
+export const LIMITER_RELEASE_MS = 50;
+
+/**
+ * The master limiter as ffmpeg filters (D86): alimiter at 4× (192 kHz, so inter-sample peaks are
+ * seen: "true-peak-ish") with the limit LIMITER_MARGIN_DB under the ceiling, auto-level off and
+ * its lookahead delay compensated, then back to 48 kHz.
+ */
+export const limiterFilter = (ceilingDb: number) =>
+  `aresample=192000,alimiter=limit=${n(Math.max(0.0625, 10 ** ((ceilingDb - LIMITER_MARGIN_DB) / 20)))}:attack=${LIMITER_ATTACK_MS}:release=${LIMITER_RELEASE_MS}:level=0:latency=1,aresample=48000`;
+
+const lin = (db: number) => 10 ** (db / 20);
+/** One effect stage as an ffmpeg filter (D84; the curves core biquadResponseDb states, the compressor's static curve). */
+export function stageFilter(stage: Stage): string {
+  switch (stage.kind) {
+    case "biquad":
+      switch (stage.type) {
+        case "highpass":
+        case "lowpass":
+          return `${stage.type}=f=${n(stage.freq)}:p=2:t=q:w=${n(stage.q)}`;
+        case "peaking":
+          return `equalizer=f=${n(stage.freq)}:t=q:w=${n(stage.q)}:g=${n(stage.gainDb)}`;
+        case "lowshelf":
+        case "highshelf":
+          return `${stage.type}=f=${n(stage.freq)}:t=s:w=1:g=${n(stage.gainDb)}`;
+      }
+      break;
+    case "compressor":
+      return `acompressor=threshold=${n(Math.max(0.000976563, lin(stage.thresholdDb)))}:ratio=${n(stage.ratio)}:attack=${n(stage.attackMs)}:release=${n(stage.releaseMs)}:makeup=${n(lin(stage.makeupDb))}:knee=1:link=maximum:detection=peak`;
+    case "denoise":
+      return `afftdn=nr=${n(6 + 24 * stage.amount)}:nf=${n(Math.min(-20, Math.max(-80, stage.floorDb ?? DENOISE_FLOOR_DB)))}`;
+  }
+  return "anull";
+}
+
+/**
+ * The audio half of the graph. A string is a loudnorm filter appended to the mix (as before D86);
+ * options say what follows the mix (AudioOptions).
+ */
+export function audioGraph(plan: ExportPlan, first: number, options?: string | AudioOptions): AudioGraph {
+  const opts: AudioOptions = typeof options === "string" ? { loudnorm: options } : (options ?? {});
   const total = n(plan.frames / plan.fps);
   const inputs: Array<string> = [];
   const filters: Array<string> = [`anullsrc=r=48000:cl=stereo,atrim=duration=${total}[asil]`];
   const labels = ["[asil]"];
+  const buses = plan.buses ?? [];
+  const busOf = new Map(buses.map((b) => [b.track, [] as Array<string>]));
   plan.audio.forEach((layer, k) => {
     const index = first + k;
     const seconds = (layer.to - layer.from) / plan.fps;
@@ -845,14 +973,15 @@ export function audioGraph(plan: ExportPlan, first: number, loudnorm?: string): 
     const constant = constantGain(layer.gain);
     const volume = constant !== undefined ? `volume=${n(constant)}` : `asetnsamples=n=${AUDIO_BLOCK}:p=0,volume=eval=frame:volume='${gainExpr(layer.gain, plan.fps)}'`;
     const delay = Math.round((layer.from / plan.fps) * 48000);
+    const bus = busOf.get(layer.track);
     filters.push(
       [
         `[${index}:a:0]aresample=48000`,
         // Mono plays at full level in both ears, as Web Audio up-mixes it in the preview.
         "pan=stereo|FL<FL+FC+BL+SL|FR<FR+FC+BR+SR",
         "aformat=sample_fmts=fltp:channel_layouts=stereo",
-        // The track's pan (D83): one factor per channel, the law in core panGains.
-        ...(layer.pan.left !== 1 || layer.pan.right !== 1 ? [`pan=stereo|c0=${n(layer.pan.left)}*c0|c1=${n(layer.pan.right)}*c1`] : []),
+        // The track's pan (D83): one factor per channel, the law in core panGains. A bussed track pans after its effects.
+        ...(!bus && (layer.pan.left !== 1 || layer.pan.right !== 1) ? [`pan=stereo|c0=${n(layer.pan.left)}*c0|c1=${n(layer.pan.right)}*c1`] : []),
         ...(layer.cycle
           ? [
               // Exactly the media's length in project frames (padded if its sound is shorter), repeated.
@@ -868,7 +997,21 @@ export function audioGraph(plan: ExportPlan, first: number, loudnorm?: string): 
         `adelay=delays=${delay}S:all=1`,
       ].join(",") + `[a${k}]`,
     );
-    labels.push(`[a${k}]`);
+    (bus ?? labels).push(`[a${k}]`);
+  });
+  // Tracks with effects (D84): their items summed over a silent base, the stages in order, then the pan.
+  buses.forEach((b, j) => {
+    const items = busOf.get(b.track)!;
+    if (!items.length) return;
+    filters.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${total}[tsil${j}]`);
+    const chain = [
+      `[tsil${j}]${items.join("")}amix=inputs=${items.length + 1}:duration=first:dropout_transition=0:normalize=0`,
+      ...b.stages.map(stageFilter),
+      "aformat=sample_fmts=fltp:channel_layouts=stereo",
+      ...(b.pan.left !== 1 || b.pan.right !== 1 ? [`pan=stereo|c0=${n(b.pan.left)}*c0|c1=${n(b.pan.right)}*c1`] : []),
+    ];
+    filters.push(`${chain.join(",")}[t${j}]`);
+    labels.push(`[t${j}]`);
   });
   const mix =
     labels.length === 1
@@ -876,7 +1019,14 @@ export function audioGraph(plan: ExportPlan, first: number, loudnorm?: string): 
       : `${labels.join("")}amix=inputs=${labels.length}:duration=first:dropout_transition=0:normalize=0`;
   // The master volume after the sum (D83), before loudness normalising (which would undo it).
   const master = plan.masterGain !== 1 && labels.length > 1 ? `,volume=${n(plan.masterGain)}` : "";
-  filters.push(`${mix}${master},atrim=duration=${total}${loudnorm ? `,${loudnorm},aresample=48000` : ""},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`);
+  const after = [
+    ...(opts.loudnorm ? [opts.loudnorm, "aresample=48000"] : []),
+    ...(opts.gainDb !== undefined && opts.gainDb !== 0 ? [`volume=${n(opts.gainDb)}dB`] : []),
+    // The master limiter, last (D86). Nothing to limit in a silent mix.
+    ...(plan.limiter && !opts.noLimiter && labels.length > 1 ? [limiterFilter(plan.limiter.ceilingDb)] : []),
+    ...(opts.tail ? [opts.tail] : []),
+  ];
+  filters.push(`${mix}${master},atrim=duration=${total}${after.map((f) => `,${f}`).join("")},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`);
   return { inputs, filters };
 }
 
@@ -899,7 +1049,9 @@ export interface CommandOptions {
   readonly rasters: ReadonlyMap<VisualLayer, RasterOutput>;
   readonly caps: Caps;
   readonly quality: Quality;
+  /** A second-pass loudnorm filter (the limiter bypassed) — or `loudness`, what follows the mix (D86, D87). */
   readonly loudnorm?: string | undefined;
+  readonly loudness?: AudioOptions | undefined;
   readonly output: string;
 }
 
@@ -1149,7 +1301,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
   });
   // fps on frames already on the 1/fps grid passes them through one to one; it gives the stream its rate.
   graph.push(`[${base}]format=yuv420p,fps=${fps},trim=end_frame=${plan.frames}[vout]`);
-  const audio = audioGraph(plan, plan.visuals.length + 1, opts.loudnorm);
+  const audio = audioGraph(plan, plan.visuals.length + 1, opts.loudness ?? opts.loudnorm);
   inputs.push(...audio.inputs);
   graph.push(...audio.filters);
   const outputArgs = [
@@ -1198,11 +1350,34 @@ export function silentFailure(stderr: string): string | undefined {
   return line?.trim();
 }
 
-/** The first pass of two-pass loudnorm: measure the mix (audio only, nothing written). */
-export function loudnessCommand(plan: ExportPlan, target: number): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
-  const audio = audioGraph(plan, 0, `loudnorm=I=${target}:TP=-1:LRA=11:print_format=json`);
+/**
+ * A measuring pass (audio only, nothing written): loudnorm's JSON for `target` at the end of the
+ * chain. Without `options` it measures the mix as it goes into the limiter (the first pass, D87);
+ * with a gain it measures what the limiter puts out (the check when the limiter will work).
+ */
+export function loudnessCommand(plan: ExportPlan, target: number, options: AudioOptions = { noLimiter: true }): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
+  // ebur128 (integrated loudness and true peak, D87) and loudnorm's JSON (the bypassed limiter's two-pass loudnorm) in one pass.
+  const audio = audioGraph(plan, 0, { ...options, tail: `ebur128=peak=true:framelog=quiet,loudnorm=I=${target}:TP=-1:LRA=11:print_format=json` });
   return { inputs: audio.inputs, graph: audio.filters.join(";\n"), outputArgs: ["-map", "[aout]", "-f", "null", "-"] };
 }
+
+/** ebur128's summary from a measuring pass: integrated loudness (LUFS) and true peak (dBTP); undefined for silence or none. */
+export function parseEbur128(stderr: string): { readonly lufs: number; readonly tp: number } | undefined {
+  const at = stderr.lastIndexOf("Summary:");
+  if (at < 0) return undefined;
+  const tail = stderr.slice(at);
+  const i = /I:\s+(-?[\d.]+|-inf) LUFS/.exec(tail);
+  const tp = /Peak:\s+(-?[\d.]+|-inf) dBFS/.exec(tail);
+  const lufs = i && i[1] !== "-inf" ? Number(i[1]) : -Infinity;
+  if (!(lufs > -70)) return undefined;
+  return { lufs, tp: tp && tp[1] !== "-inf" ? Number(tp[1]) : -Infinity };
+}
+
+/** At most this many measuring passes through the limiter (D87): the gain is corrected (bracketed) until the target holds within LOUDNESS_TOLERANCE_LU. */
+export const LOUDNESS_CHECKS = 6;
+export const LOUDNESS_TOLERANCE_LU = 0.2;
+/** The loudness gain is kept within ±this (dB). */
+const MAX_LOUDNESS_GAIN_DB = 40;
 
 export interface LoudnessMeasure {
   readonly input_i: string;
@@ -1227,3 +1402,57 @@ export function parseLoudness(stderr: string): LoudnessMeasure | undefined {
 /** The second pass's loudnorm filter, linear (one gain for the whole mix) when the measure allows it. */
 export const loudnormFilter = (target: number, m: LoudnessMeasure) =>
   `loudnorm=I=${target}:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true:print_format=none`;
+
+/**
+ * The loudness step of an export (D87, D86), given a way to run a measuring pass (its stderr):
+ * with the limiter on, one gain to the target before it (ebur128's integrated loudness of the mix
+ * going into the limiter). When the peaks will make the limiter work (true peak + gain over its
+ * limit), the result through the limiter is measured and the gain corrected (bracketing the target,
+ * at most LOUDNESS_CHECKS passes) until it lands within LOUDNESS_TOLERANCE_LU; the gain used is the
+ * closest one measured. With the limiter bypassed:
+ * two-pass loudnorm as before D86. Nothing to do for silence.
+ */
+export async function planLoudness(plan: ExportPlan, target: number, measure: (pass: ReturnType<typeof loudnessCommand>, name: string) => Promise<string>): Promise<{ readonly loudness?: { readonly gainDb: number }; readonly loudnorm?: string }> {
+  if (!plan.audio.length) return {};
+  const stderr = await measure(loudnessCommand(plan, target), "loudness.txt");
+  const norm = parseLoudness(stderr);
+  if (!plan.limiter) return norm ? { loudnorm: loudnormFilter(target, norm) } : {};
+  const first = parseEbur128(stderr);
+  if (!first) return {};
+  const clampGain = (g: number) => Math.round(Math.min(MAX_LOUDNESS_GAIN_DB, Math.max(-MAX_LOUDNESS_GAIN_DB, g)) * 100) / 100;
+  let gainDb = clampGain(target - first.lufs);
+  if (first.tp + gainDb > plan.limiter.ceilingDb - LIMITER_MARGIN_DB) {
+    // Every gain tried is measured through the limiter; the closest one measured is kept (never an
+    // unmeasured step). Loudness rises with the gain, but slowly and unevenly while the limiter flattens
+    // peaks, so the steps bracket the target: below and above, then interpolate inside the bracket
+    // (bisect when interpolation would stall at an edge).
+    let best: { gain: number; err: number } | undefined;
+    let lo: { gain: number; lufs: number } | undefined;
+    let hi: { gain: number; lufs: number } | undefined;
+    let last: { gain: number; lufs: number } | undefined;
+    for (let k = 0; k < LOUDNESS_CHECKS; k++) {
+      const check = parseEbur128(await measure(loudnessCommand(plan, target, { gainDb }), `loudness-check-${k}.txt`));
+      if (!check) break;
+      const err = target - check.lufs;
+      if (!best || Math.abs(err) < Math.abs(best.err)) best = { gain: gainDb, err };
+      if (Math.abs(err) <= LOUDNESS_TOLERANCE_LU) break;
+      const point = { gain: gainDb, lufs: check.lufs };
+      if (err > 0 && (!lo || gainDb > lo.gain)) lo = point;
+      if (err < 0 && (!hi || gainDb < hi.gain)) hi = point;
+      let next: number;
+      if (lo && hi) {
+        next = lo.gain + ((target - lo.lufs) * (hi.gain - lo.gain)) / (hi.lufs - lo.lufs);
+        const span = hi.gain - lo.gain;
+        if (!(next > lo.gain + 0.1 * span && next < hi.gain - 0.1 * span)) next = (lo.gain + hi.gain) / 2;
+      } else {
+        // Not bracketed yet: step along the slope seen so far (at least the full error: the limiter only slows loudness down).
+        const slope = last && gainDb !== last.gain ? Math.min(1, Math.max(0.1, (check.lufs - last.lufs) / (gainDb - last.gain))) : 1;
+        next = gainDb + err / slope;
+      }
+      last = point;
+      gainDb = clampGain(next);
+    }
+    if (best) gainDb = best.gain;
+  }
+  return { loudness: { gainDb } };
+}

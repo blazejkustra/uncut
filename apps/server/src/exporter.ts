@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality } from "@uncut/contracts";
+import { decodeEnvelope, denoiseMediaIds, duckMediaIds, targetOfChoice, type SpeechEnvelope } from "@uncut/core";
 import { baseBox, canvasBox, componentHtml, irisRadius, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -30,11 +31,8 @@ import {
   boxGraph,
   exportCommand,
   placementOf,
-  loudnessCommand,
-  loudnormFilter,
-  LOUDNESS_TARGET,
+  planLoudness,
   outputSize,
-  parseLoudness,
   planExport,
   rasterLooks,
   RASTER_CSS,
@@ -50,6 +48,7 @@ import {
   type RasterOutput,
   type VisualLayer,
 } from "./exportPlan.ts";
+import { analyzeLoudness, cachedFor, fingerprint, targetOf, writeCached, type LoudnessResult } from "./analysis.ts";
 import { Projects } from "./projects.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "./rasterizer.ts";
 import { which } from "./setup.ts";
@@ -59,8 +58,13 @@ export interface ExportInput {
   readonly output: string;
   readonly quality: ExportQuality;
   readonly loudness: ExportLoudness;
+  /** With loudness "target": the LUFS (D87). */
+  readonly targetLufs?: number | undefined;
   readonly overwrite?: boolean | undefined;
 }
+
+/** How long an export waits to measure a ducking key's loudness that isn't cached (D85). */
+const DUCK_MEASURE_MS = 60_000;
 
 export interface RenderedFrame {
   readonly frame: number;
@@ -439,7 +443,52 @@ export const layer = Layer.effect(
       return { background, rasters };
     };
 
-    const runJob = async (job: ExportJob, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, overwrite: boolean, signal: AbortSignal) => {
+    /**
+     * The loudness envelopes ducking (D85) and noise removal (D88) need, by media id: cached ones, and the missing ones
+     * measured here (loudness analysis, written to the cache like the queue's). One that can't be
+     * measured is left out: planExport then skips that duck with a warning.
+     */
+    /** Media (by content fingerprint) whose loudness couldn't be measured for an export this session (D85, D88). */
+    const unmeasurable = new Set<string>();
+    const duckEnvelopes = async (bin: string, dir: string, project: Project, measure: boolean, signal?: AbortSignal) => {
+      const out = new Map<string, SpeechEnvelope | null>();
+      for (const id of new Set([...duckMediaIds(project), ...denoiseMediaIds(project)])) {
+        const media = project.media.find((m) => m.id === id);
+        if (!media) continue;
+        const target = targetOf(dir, media, project.canvas.fps);
+        let result = (await cachedFor(target, "loudness")) as LoudnessResult | undefined;
+        if (!result && !measure) continue;
+        if (!result) {
+          if (signal?.aborted) throw new Cancelled();
+          // A file whose measurement failed or timed out this session isn't tried again on every export.
+          const fp = await fingerprint(target.path).catch(() => target.path);
+          if (unmeasurable.has(fp)) continue;
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), DUCK_MEASURE_MS);
+            const onAbort = () => controller.abort();
+            signal?.addEventListener("abort", onAbort, { once: true });
+            try {
+              result = await analyzeLoudness(bin, target.path, { signal: controller.signal, seconds: target.seconds });
+            } finally {
+              clearTimeout(timer);
+              signal?.removeEventListener("abort", onAbort);
+            }
+            await writeCached(dir, fp, "loudness", result).catch(() => {});
+          } catch (error) {
+            // Cancelling the export stops the measurement: that is the export's cancel, not a failure.
+            if (signal?.aborted || error instanceof Cancelled) throw new Cancelled();
+            unmeasurable.add(fp);
+            continue;
+          }
+        }
+        out.set(id, result.hasAudio ? (decodeEnvelope(result.envelope) ?? null) : null);
+      }
+      return out;
+    };
+
+    const runJob = async (job: ExportJob, planned: ExportPlan, project: Project, mediaPath: (m: Media) => string, overwrite: boolean, signal: AbortSignal, replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string }, cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>) => {
+      let plan = planned;
       const started = Date.now();
       let temp: string | undefined;
       let rasterizer: Rasterizer | undefined;
@@ -447,6 +496,17 @@ export const layer = Layer.effect(
       try {
         const bin = await ffmpegBin();
         if (!bin) throw new Error("ffmpeg isn't installed. Install it (brew install ffmpeg), then export again.");
+        // Ducking (D85) / noise removal (D88) media whose loudness isn't cached: measured here, in
+        // the job (export.start answers at once; the analysis queue waits for exports), then planned again.
+        const needed = [...new Set([...duckMediaIds(project), ...denoiseMediaIds(project)])];
+        if (needed.some((id) => !cachedEnvelopes.has(id))) {
+          const envelopes = await duckEnvelopes(bin, job.projectDir, project, true, signal);
+          const again = replan(envelopes);
+          if (!("problem" in again)) {
+            plan = again;
+            patch(job.id, plan.warnings.length ? { warnings: plan.warnings } : { warnings: [] });
+          }
+        }
         const missing = await missingMedia(plan);
         if (missing) throw new Error(missing);
         const caps = await capsOf(bin);
@@ -463,22 +523,22 @@ export const layer = Layer.effect(
         await rasterizer.close();
         rasterizer = undefined;
 
-        // Loudness: measure the mix first, then normalise it with one gain (two-pass loudnorm).
-        let loudnorm: string | undefined;
-        if (job.loudness !== "off" && plan.audio.length) {
-          const target = LOUDNESS_TARGET[job.loudness];
-          const pass = loudnessCommand(plan, target);
-          const graphFile = join(temp, "loudness.txt");
-          await writeFile(graphFile, pass.graph);
-          const r = await run(bin, ["-hide_banner", "-nostdin", ...pass.inputs, ...graphFileArgs(caps, graphFile), ...pass.outputArgs], signal);
-          if (r.code !== 0) throw new Error(`Measuring the loudness failed: ${ffmpegError(r.stderr)}`);
-          const measure = parseLoudness(r.stderr);
-          if (measure) loudnorm = loudnormFilter(target, measure);
-        }
+        // Loudness (D87): one gain to the target before the master limiter (D86), checked through it
+        // when it will work; with the limiter bypassed, two-pass loudnorm (exportPlan planLoudness).
+        const { loudness, loudnorm } =
+          job.targetLufs === undefined
+            ? {}
+            : await planLoudness(plan, job.targetLufs, async (pass, name) => {
+                const graphFile = join(temp!, name);
+                await writeFile(graphFile, pass.graph);
+                const r = await run(bin, ["-hide_banner", "-nostdin", ...pass.inputs, ...graphFileArgs(caps, graphFile), ...pass.outputArgs], signal);
+                if (r.code !== 0) throw new Error(`Measuring the loudness failed: ${ffmpegError(r.stderr)}`);
+                return r.stderr;
+              });
 
         const partial = join(temp, "export.mp4");
         const untagged = await untaggedFiles(bin, plan, signal);
-        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, output: partial });
+        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, loudness, output: partial });
         const graphFile = join(temp, "graph.txt");
         await writeFile(graphFile, cmd.graph);
         const total = plan.frames / plan.fps;
@@ -548,11 +608,16 @@ export const layer = Layer.effect(
         const bin = (yield* Effect.promise(ffmpegBin))!;
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
         const graphics = yield* Effect.promise(() => readGraphics(dir, project));
-        const plan = planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src) });
+        // Ducking (D85) needs the key media's loudness envelopes, noise removal (D88) its track's:
+        // the cached ones now; the job measures the rest before rendering (one quick ffmpeg pass each).
+        const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
+        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) => planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all });
+        const plan = replan(envelopes);
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
         if (missing) return yield* new ExportError({ reason: "missing-media", message: missing });
         const id = randomUUID();
+        const targetLufs = targetOfChoice(input.loudness, input.targetLufs);
         const job: ExportJob = {
           id,
           projectDir: dir,
@@ -560,6 +625,7 @@ export const layer = Layer.effect(
           output,
           quality: input.quality,
           loudness: input.loudness,
+          ...(targetLufs !== undefined ? { targetLufs } : {}),
           phase: "queued",
           progress: 0,
           width: size.width,
@@ -580,7 +646,7 @@ export const layer = Layer.effect(
           if (controller.signal.aborted) return; // cancelled while queued: already marked
           // Out of "queued" before anything async, so a cancel from now on waits for the cleanup.
           patch(id, { phase: "preparing", startedAt: new Date().toISOString() });
-          running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal);
+          running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal, replan, envelopes);
           await running;
           running = undefined;
         }).finally(() => controllers.delete(id));

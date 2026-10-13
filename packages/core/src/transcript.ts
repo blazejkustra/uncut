@@ -165,7 +165,7 @@ const SHORT_WORD_MAX_S = 1;
 
 const thresholds = new WeakMap<SpeechEnvelope, number>();
 /** The level (dBFS) speech is above: the speech level less SPEECH_RANGE_DB, or the floor plus ABOVE_FLOOR_DB. */
-function speechThreshold(env: SpeechEnvelope): number {
+export function speechThreshold(env: SpeechEnvelope): number {
   const known = thresholds.get(env);
   if (known !== undefined) return known;
   const sorted = Float32Array.from(env.db as ArrayLike<number>).sort();

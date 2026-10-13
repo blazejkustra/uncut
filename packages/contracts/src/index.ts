@@ -305,8 +305,12 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
 /** Draft = 720p, fast; Standard = 1080p; High = the canvas size at a high bitrate. */
 export const ExportQuality = Schema.Literals(["draft", "standard", "high"]);
 export type ExportQuality = typeof ExportQuality.Type;
-/** off = the mix as it is; normal = −14 LUFS (YouTube, Instagram, TikTok); quiet = −16 LUFS (podcasts, Apple). */
-export const ExportLoudness = Schema.Literals(["off", "normal", "quiet"]);
+/**
+ * off = the mix as it is (As mixed; the master limiter still holds the ceiling, D86); normal = −14
+ * LUFS (YouTube, Instagram, TikTok); quiet = −16 LUFS (podcasts, Apple); broadcast = −23 LUFS (EBU
+ * R128); target = targetLufs (the project's own target, D87).
+ */
+export const ExportLoudness = Schema.Literals(["off", "normal", "quiet", "broadcast", "target"]);
 export type ExportLoudness = typeof ExportLoudness.Type;
 
 /**
@@ -321,6 +325,8 @@ export const ExportJob = Schema.Struct({
   output: Schema.String,
   quality: ExportQuality,
   loudness: ExportLoudness,
+  /** The integrated loudness it normalises to (D87); absent with As mixed. */
+  targetLufs: Schema.optional(Schema.Number),
   phase: Schema.Literals(["queued", "preparing", "rendering", "done", "failed", "cancelled"]),
   progress: Schema.Number,
   etaSeconds: Schema.optional(Schema.Number),
@@ -521,7 +527,7 @@ const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
 const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
-  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, overwrite: Schema.optional(Schema.Boolean) }),
+  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
 });

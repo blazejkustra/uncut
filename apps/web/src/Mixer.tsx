@@ -9,15 +9,27 @@
 // Every gesture is one project.edit through timelineEdit (validated, one ⌘Z, a History label): a
 // fader or pan drag is heard while it moves (a local draft the playback mix plays, as the track
 // volume slider does) and saved once on release.
+//
+// Phase 6 chunk 7 (D84–D88): each strip has its effects as slots (EQ, compressor, voice, noise
+// removal; click one for its settings, up / down, bypass and remove, in a small popover; "+" adds
+// one or the Voice preset), a Duck row (under which track, how far, attack, release, threshold; the
+// curve shows on the track's items in the timeline) and a gain-reduction light for compressors.
+// The master strip has the limiter (on by default at −1 dBTP, with its gain reduction) and the
+// loudness target the export dialog starts from. Each change is one edit with a History label.
 import { useEffect, useRef, useState } from "react";
 import { MAX_DB, SILENCE_DB, gainToDb, mixNote } from "@uncut/core/audio";
+import { duckNote, duckSettings, DUCK_DEFAULTS } from "@uncut/core/ducking";
+import { COMPRESSOR, compressorParams, DENOISE, DUCK, effectName, effectSummary, EQ, eqParams, EXPORT_ONLY_EFFECTS, LIMITER_CEILING_DB, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, VOICE, amountOf } from "@uncut/core/effects";
+import type { ModuleUse } from "@uncut/core/types";
 
 import { currentMix, type StereoLevel } from "./audio.ts";
 import { draftOf, planTrackFlag, trackFlag, type Plan } from "./edit.ts";
 import { getPlayback, playback, type PreviewDraft } from "./playback.ts";
 import { MASTER_EXPORT_NOTE } from "./sound.ts";
 import { displayTracks, type ProjectModel, type Track } from "./project.ts";
-import { dbLabel, levelY, panShort, panWords, planMasterGain, planTrackGain, planTrackPan, soundTrack, yLevel } from "./sound.ts";
+import { dbLabel, levelY, panShort, panWords, planAddEffect, planBypassEffect, planDuck, planEffectParams, planLoudnessTarget, planMasterGain, planMasterLimiter, planMoveEffect, planRemoveEffect, planTrackGain, planTrackPan, planVoicePreset, soundTrack, yLevel } from "./sound.ts";
+import { useDuckCurves, useDuckState } from "./ducking.ts";
+import { NumberField } from "./ItemEditors.tsx";
 import { actions, getState, projectOf, useApp } from "./store.ts";
 import { BottomTabs } from "./Timeline.tsx";
 
@@ -220,6 +232,8 @@ function Strip({ project, track, online }: { project: ProjectModel; track: Track
       <div className="strip-name ellipsis" title={track.name}>
         {track.name}
       </div>
+      <EffectSlots project={project} track={track} online={online} />
+      <DuckRow project={project} track={track} online={online} />
       <PanSlider
         name={track.name}
         value={pan}
@@ -266,6 +280,7 @@ function MasterStrip({ project, online }: { project: ProjectModel; online: boole
   return (
     <div className="strip-ch master" data-testid="mixer-master">
       <div className="strip-name">Master</div>
+      <MasterControls project={project} online={online} />
       <div className="pan-row" />
       <div className="strip-body">
         <Meter id="master" />
@@ -305,6 +320,8 @@ export function MixerPanel({ project }: { project: ProjectModel }) {
   const strips = displayTracks(project).filter((t) => soundTrack(project, t) || t.mixer?.solo === true);
   const note = mixNote(project);
   const stripKey = strips.map((t) => t.id).join(",");
+  // Gain-reduction lights come and go with compressors and the limiter: the loop re-reads them.
+  const fxKey = [...strips.map((t) => (t.mixer?.effects ?? []).map((f) => `${f.module}${f.bypass ? "-" : ""}`).join("+")), masterLimiter(project) ? "lim" : ""].join(",");
   // The meters: read the mix's levels every animation frame while something plays; once paused and
   // every meter rests at the floor, the loop idles until playback starts again.
   useEffect(() => {
@@ -316,6 +333,7 @@ export function MixerPanel({ project }: { project: ProjectModel }) {
       overUntil: 0,
     }));
     const silent = { left: { rms: 0, peak: 0 }, right: { rms: 0, peak: 0 } };
+    const reductions = [...(bodyRef.current?.querySelectorAll<HTMLElement>("[data-gr]") ?? [])];
     let raf = 0;
     const loop = (now: number) => {
       raf = 0;
@@ -325,6 +343,12 @@ export function MixerPanel({ project }: { project: ProjectModel }) {
         const id = m.el.dataset.meter!;
         if (drawMeter(m, (id === "master" ? levels?.master : levels?.tracks[id]) ?? silent, now)) lit = true;
         if (now < m.overUntil) lit = true;
+      }
+      // Gain reduction (D84, D86): the master limiter's and each strip's compressors'.
+      for (const el of reductions) {
+        const id = el.dataset.gr!;
+        const gr = id === "master" ? (levels?.limiter ?? 0) : (levels?.reduction[id] ?? 0);
+        if (drawReduction(el, gr)) lit = true;
       }
       if (lit || getPlayback().playing) raf = requestAnimationFrame(loop);
     };
@@ -337,7 +361,7 @@ export function MixerPanel({ project }: { project: ProjectModel }) {
       cancelAnimationFrame(raf);
       unsubscribe();
     };
-  }, [stripKey]);
+  }, [stripKey, fxKey]);
   return (
     <section className="bottom" data-testid="mixer-panel">
       <div className="bottom-toolbar">
@@ -360,5 +384,313 @@ export function MixerPanel({ project }: { project: ProjectModel }) {
         </div>
       </div>
     </section>
+  );
+}
+
+
+// ---- effects, ducking, the limiter and the loudness target (D84–D88) ----
+
+/** Fill a gain-reduction light from a reading (dB ≤ 0): its bar grows down from the top over 0…−12 dB. Returns whether it shows anything. */
+function drawReduction(el: HTMLElement, gr: number): boolean {
+  const v = Math.max(0, Math.min(12, -gr));
+  const key = v.toFixed(1);
+  if (el.dataset.last === key) return v > 0.05;
+  el.dataset.last = key;
+  el.dataset.value = String(Math.round(gr * 10) / 10);
+  const bar = el.firstElementChild as HTMLElement | null;
+  if (bar) bar.style.height = `${(v / 12) * 100}%`;
+  return v > 0.05;
+}
+
+/** A small popover over the panel, opened from an anchor (fixed, so the panel's scroll doesn't clip it). Escape or a click outside closes it. */
+function Popover({ anchor, onClose, children, testId }: { anchor: HTMLElement; onClose: () => void; children: React.ReactNode; testId: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const r = anchor.getBoundingClientRect();
+  const left = Math.max(8, Math.min(window.innerWidth - 268, r.left));
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node) && !anchor.contains(e.target as Node)) onClose();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, [anchor, onClose]);
+  return (
+    <div className="fx-popover" data-testid={testId} ref={ref} style={{ left, bottom: Math.max(8, window.innerHeight - r.top + 6) }} onPointerDown={(e) => e.stopPropagation()}>
+      {children}
+    </div>
+  );
+}
+
+/** The fields of one effect's settings, each a number committed as one edit. */
+const FIELDS: Readonly<Record<string, ReadonlyArray<{ key: string; label: string; step: number; min: number; max: number; optional?: boolean }>>> = {
+  [EQ]: [
+    { key: "lowCutHz", label: "Low cut Hz", step: 10, min: 20, max: 1000, optional: true },
+    { key: "lowGainDb", label: "Low dB", step: 0.5, min: -24, max: 24 },
+    { key: "lowHz", label: "Low Hz", step: 10, min: 20, max: 1000 },
+    { key: "midGainDb", label: "Mid dB", step: 0.5, min: -24, max: 24 },
+    { key: "midHz", label: "Mid Hz", step: 50, min: 100, max: 10000 },
+    { key: "midQ", label: "Mid Q", step: 0.1, min: 0.1, max: 10 },
+    { key: "highGainDb", label: "High dB", step: 0.5, min: -24, max: 24 },
+    { key: "highHz", label: "High Hz", step: 100, min: 1000, max: 16000 },
+    { key: "highCutHz", label: "High cut Hz", step: 100, min: 1000, max: 20000, optional: true },
+  ],
+  [COMPRESSOR]: [
+    { key: "thresholdDb", label: "Threshold dB", step: 1, min: -60, max: 0 },
+    { key: "ratio", label: "Ratio", step: 0.5, min: 1, max: 20 },
+    { key: "attackMs", label: "Attack ms", step: 1, min: 1, max: 500 },
+    { key: "releaseMs", label: "Release ms", step: 10, min: 10, max: 1000 },
+    { key: "makeupDb", label: "Make-up dB", step: 0.5, min: 0, max: 24 },
+  ],
+  [VOICE]: [{ key: "amount", label: "Amount", step: 0.1, min: 0, max: 1 }],
+  [DENOISE]: [{ key: "amount", label: "Amount", step: 0.1, min: 0, max: 1 }],
+};
+/** An effect's value for a field, defaults filled in (what it sounds like now). */
+function fieldValue(fx: ModuleUse, key: string): number | undefined {
+  const all: Record<string, number | undefined> = fx.module === EQ ? eqParams(fx.params) : fx.module === COMPRESSOR ? compressorParams(fx.params) : { amount: amountOf(fx.params) };
+  return all[key];
+}
+
+/** A track's effect slots (ducking has its own row) and the add menu. */
+function EffectSlots({ project, track, online }: { project: ProjectModel; track: Track; online: boolean }) {
+  const [open, setOpen] = useState<{ index: number; module: string; anchor: HTMLElement } | undefined>(undefined);
+  const [menu, setMenu] = useState<HTMLElement | undefined>(undefined);
+  const effects = track.mixer?.effects ?? [];
+  const hasCompressor = effects.some((fx) => !fx.bypass && (fx.module === COMPRESSOR || fx.module === VOICE));
+  // The popover belongs to that entry: if the chain changes under it (an agent turn, an undo), it closes.
+  const shownFx = open && effects[open.index]?.module === open.module ? effects[open.index] : undefined;
+  useEffect(() => {
+    if (open && !shownFx) setOpen(undefined);
+  }, [open, shownFx]);
+  return (
+    <div className="fx-list" data-testid="fx-list">
+      <div className="fx-slots">
+      {effects.map((fx, index) =>
+        fx.module === DUCK ? null : (
+          <button
+            key={index}
+            type="button"
+            className={`fx-slot ${fx.bypass ? "bypassed" : ""} ${open?.index === index ? "open" : ""}`}
+            data-testid="fx-slot"
+            data-module={fx.module}
+            data-index={index}
+            data-bypass={fx.bypass === true}
+            title={`${effectName(fx.module)}: ${effectSummary(fx)}${fx.bypass ? " (bypassed)" : ""}${EXPORT_ONLY_EFFECTS.includes(fx.module) ? " — applied on export" : ""}`}
+            onClick={(e) => setOpen(open?.index === index ? undefined : { index, module: fx.module, anchor: e.currentTarget })}
+          >
+            <span className="fx-dot" />
+            <span className="ellipsis">{effectName(fx.module)}</span>
+            {EXPORT_ONLY_EFFECTS.includes(fx.module) && (
+              <span className="fx-badge" data-testid="fx-export-badge" title="Applied on export: the preview plays the track as recorded">
+                export
+              </span>
+            )}
+          </button>
+        ),
+      )}
+      </div>
+      <div className="fx-foot">
+        <button type="button" className="fx-add" data-testid="fx-add" disabled={!online} title="Add an effect" onClick={(e) => setMenu(menu ? undefined : e.currentTarget)}>
+          + FX
+        </button>
+        {hasCompressor && (
+          <div className="gr" data-testid="fx-gr" data-gr={track.id} data-value="0" title="Compressor gain reduction">
+            <div className="gr-bar" />
+          </div>
+        )}
+      </div>
+      {menu && (
+        <Popover anchor={menu} onClose={() => setMenu(undefined)} testId="fx-menu">
+          <div className="fx-pop-title">Add to {track.name}</div>
+          {(
+            [
+              ["fx-add-audio.eq", "EQ", "Low cut, low / mid / high", (now: ProjectModel) => planAddEffect(now, track.id, EQ)],
+              ["fx-add-audio.compressor", "Compressor", "Evens out the level", (now: ProjectModel) => planAddEffect(now, track.id, COMPRESSOR)],
+              ["fx-add-voice-preset", "Voice preset", "EQ (low cut, presence) and a gentle compressor", (now: ProjectModel) => planVoicePreset(now, track.id)],
+              ["fx-add-audio.voice-enhance", "Voice", "The voice chain in one slot", (now: ProjectModel) => planAddEffect(now, track.id, VOICE)],
+              ["fx-add-audio.denoise", "Noise removal", "Applied on export", (now: ProjectModel) => planAddEffect(now, track.id, DENOISE)],
+            ] as const
+          ).map(([id, name, hint, make]) => (
+            <button
+              key={id}
+              type="button"
+              className="fx-menu-item"
+              data-testid={id}
+              onClick={() => {
+                setMenu(undefined);
+                commit(make);
+              }}
+            >
+              <b>{name}</b>
+              <span className="muted small">{hint}</span>
+            </button>
+          ))}
+        </Popover>
+      )}
+      {open && shownFx && (
+        <Popover anchor={open.anchor} onClose={() => setOpen(undefined)} testId="fx-popover">
+          <div className="fx-pop-title">
+            {effectName(shownFx.module)} on {track.name}
+          </div>
+          {EXPORT_ONLY_EFFECTS.includes(shownFx.module) && <div className="muted small">Applied on export: the preview plays the track as recorded.</div>}
+          <div className="fx-pop-actions">
+            <button type="button" className="btn ghost" data-testid="fx-up" disabled={!online} title="Earlier in the chain" onClick={() => (commit((now) => planMoveEffect(now, track.id, open.index, -1, open.module)), setOpen(undefined))}>
+              ↑
+            </button>
+            <button type="button" className="btn ghost" data-testid="fx-down" disabled={!online} title="Later in the chain" onClick={() => (commit((now) => planMoveEffect(now, track.id, open.index, 1, open.module)), setOpen(undefined))}>
+              ↓
+            </button>
+            <button type="button" className={`btn ghost ${shownFx.bypass ? "on" : ""}`} data-testid="fx-bypass" aria-pressed={shownFx.bypass === true} disabled={!online} onClick={() => commit((now) => planBypassEffect(now, track.id, open.index, !shownFx.bypass, open.module))}>
+              {shownFx.bypass ? "Turn on" : "Bypass"}
+            </button>
+            <button type="button" className="btn ghost" data-testid="fx-remove" disabled={!online} onClick={() => (commit((now) => planRemoveEffect(now, track.id, open.index, open.module)), setOpen(undefined))}>
+              Remove
+            </button>
+          </div>
+          <div className="fx-fields">
+            {(FIELDS[shownFx.module] ?? []).map((f) => (
+              <NumberField
+                key={f.key}
+                label={f.label}
+                testId={`fx-param-${f.key}`}
+                value={f.optional && shownFx.params?.[f.key] === undefined ? undefined : fieldValue(shownFx, f.key)}
+                placeholder={f.optional ? "off" : undefined}
+                step={f.step}
+                min={f.min}
+                max={f.max}
+                disabled={!online}
+                onCommit={(v) => commit((now) => planEffectParams(now, track.id, open.index, { [f.key]: v ?? null }, open.module))}
+              />
+            ))}
+          </div>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+/** The Duck row (D85): under which track, and the settings, in a popover; what it waits for when the key isn't measured. */
+function DuckRow({ project, track, online }: { project: ProjectModel; track: Track; online: boolean }) {
+  const [anchor, setAnchor] = useState<HTMLElement | undefined>(undefined);
+  const curves = useDuckCurves(project);
+  useDuckState((s) => s.measuring);
+  const fxIndex = (track.mixer?.effects ?? []).findIndex((e) => e.module === DUCK);
+  const fx = fxIndex >= 0 ? track.mixer!.effects![fxIndex] : undefined;
+  const settings = fx ? duckSettings(fx.params) : undefined;
+  const bypassed = fx?.bypass === true;
+  const keys = project.tracks.filter((t) => t.id !== track.id && soundTrack(project, t));
+  const note = duckNote(project, track, curves.get(track.id));
+  const name = (id: string) => project.tracks.find((t) => t.id === id)?.name ?? id;
+  const label = settings ? `Duck${bypassed ? " (off)" : ""}: ${settings.under.map(name).join(", ")} ${dbLabel(settings.amountDb)}` : "Duck…";
+  return (
+    <div className="duck-row">
+      <button type="button" className={`duck-btn ${settings && !bypassed ? "on" : ""}`} data-testid="duck-btn" data-under={settings?.under.join(",") ?? ""} data-bypass={bypassed} disabled={!online || (!keys.length && !settings)} title={note ?? (settings ? `Ducks under ${settings.under.map(name).join(", ")} by ${dbLabel(settings.amountDb)} dB` : "Duck this track while another has speech")} onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}>
+        <span className="ellipsis">{label}</span>
+        {note && !bypassed && <span className="duck-wait" data-testid="duck-note" title={note}>…</span>}
+      </button>
+      {anchor && (
+        <Popover anchor={anchor} onClose={() => setAnchor(undefined)} testId="duck-popover">
+          <div className="fx-pop-title">Duck {track.name}</div>
+          <div className="muted small">Goes down while the key track has speech (its measured loudness), the same in the preview and the export.</div>
+          <label className="field">
+            <span className="k">Under</span>
+            <select
+              className="v"
+              data-testid="duck-under"
+              value={settings?.under[0] ?? ""}
+              disabled={!online}
+              onChange={(e) => {
+                const id = e.target.value;
+                commit((now) => planDuck(now, track.id, id ? { under: [id] } : null));
+              }}
+            >
+              <option value="">Nothing (off)</option>
+              {keys.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {settings && (
+            <label className="field">
+              <span className="k">On</span>
+              <input type="checkbox" className="v" data-testid="duck-on" checked={!bypassed} disabled={!online} onChange={(e) => commit((now) => planBypassEffect(now, track.id, fxIndex, !e.target.checked, DUCK))} />
+            </label>
+          )}
+          {settings && (
+            <div className="fx-fields">
+              <NumberField label="Amount dB" testId="duck-amountDb" value={settings.amountDb} step={1} min={-40} max={0} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, amountDb: v ?? DUCK_DEFAULTS.amountDb }))} />
+              <NumberField label="Attack ms" testId="duck-attackMs" value={settings.attackMs} step={50} min={0} max={2000} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, attackMs: v ?? DUCK_DEFAULTS.attackMs }))} />
+              <NumberField label="Release ms" testId="duck-releaseMs" value={settings.releaseMs} step={50} min={0} max={5000} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, releaseMs: v ?? DUCK_DEFAULTS.releaseMs }))} />
+              <NumberField label="Threshold dB" testId="duck-thresholdDb" value={settings.thresholdDb} placeholder="auto" step={1} min={-80} max={0} disabled={!online} onCommit={(v) => commit((now) => planDuck(now, track.id, { under: settings.under, thresholdDb: v ?? null }))} />
+            </div>
+          )}
+          {note && (
+            <div className="small duck-note-text" data-testid="duck-popover-note">
+              {note}
+            </div>
+          )}
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+/** The master's limiter (on / ceiling, gain reduction) and loudness target (D86, D87). */
+function MasterControls({ project, online }: { project: ProjectModel; online: boolean }) {
+  const [anchor, setAnchor] = useState<HTMLElement | undefined>(undefined);
+  const limiter = masterLimiter(project);
+  const target = projectTargetLufs(project);
+  const preset = LOUDNESS_PRESETS.find((p) => p.lufs === target);
+  return (
+    <div className="fx-list master-fx">
+      <div className="fx-foot">
+        <button type="button" className={`fx-slot ${limiter ? "" : "bypassed"}`} data-testid="limiter-btn" data-on={limiter !== undefined} data-ceiling={limiter?.ceilingDb ?? ""} title={limiter ? `Limiter on: peaks stay under ${dbLabel(limiter.ceilingDb)} dBTP` : "Limiter off: loud peaks can clip"} onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}>
+          <span className="fx-dot" />
+          <span className="ellipsis">Limiter</span>
+        </button>
+        {limiter && (
+          <div className="gr" data-testid="limiter-gr" data-gr="master" data-value="0" title="Limiter gain reduction">
+            <div className="gr-bar" />
+          </div>
+        )}
+      </div>
+      <button type="button" className="fx-slot target" data-testid="target-btn" data-lufs={target} title="Loudness target: the export dialog starts from it" onClick={(e) => setAnchor(anchor ? undefined : e.currentTarget)}>
+        <span className="ellipsis">{preset ? preset.name : `${dbLabel(target)} LUFS`}</span>
+      </button>
+      {anchor && (
+        <Popover anchor={anchor} onClose={() => setAnchor(undefined)} testId="master-popover">
+          <div className="fx-pop-title">Master</div>
+          <label className="field">
+            <span className="k">Limiter</span>
+            <input type="checkbox" className="v" data-testid="limiter-toggle" checked={limiter !== undefined} disabled={!online} onChange={(e) => commit((now) => planMasterLimiter(now, e.target.checked, masterLimiter(now)?.ceilingDb ?? LIMITER_CEILING_DB))} />
+          </label>
+          {limiter && <NumberField label="Ceiling dBTP" testId="limiter-ceiling" value={limiter.ceilingDb} step={0.5} min={-12} max={0} disabled={!online} onCommit={(v) => commit((now) => planMasterLimiter(now, true, v ?? LIMITER_CEILING_DB))} />}
+          <div className="muted small">The limiter is the last stage, after the master volume: the export never goes over the ceiling, As mixed too.</div>
+          <label className="field">
+            <span className="k">Loudness target</span>
+            <select className="v" data-testid="target-select" value={preset ? String(target) : "custom"} disabled={!online} onChange={(e) => e.target.value !== "custom" && commit((now) => planLoudnessTarget(now, Number(e.target.value)))}>
+              {LOUDNESS_PRESETS.map((p) => (
+                <option key={p.id} value={String(p.lufs)}>
+                  {p.name} ({dbLabel(p.lufs)} LUFS)
+                </option>
+              ))}
+              <option value="custom">Custom…</option>
+            </select>
+          </label>
+          <NumberField label="Target LUFS" testId="target-lufs" value={target} step={1} min={-30} max={-5} disabled={!online} onCommit={(v) => commit((now) => planLoudnessTarget(now, v ?? -14))} />
+          <div className="muted small">The export dialog starts from this target (Normal, Quieter, Broadcast or this number); As mixed keeps your levels.</div>
+        </Popover>
+      )}
+    </div>
   );
 }

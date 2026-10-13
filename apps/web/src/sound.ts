@@ -6,6 +6,9 @@
 // removed rather than stored (0 dB, no fade), so project.json stays clean.
 import { keyDbAt, MAX_DB, SILENCE_DB, soundMedia } from "@uncut/core/audio";
 import { dbWords, panWords } from "@uncut/core/edit-log";
+import { DUCK_DEFAULTS, duckSettings } from "@uncut/core/ducking";
+import { DEFAULT_TARGET_LUFS, DUCK, effectName, effectSummary, LIMITER, LIMITER_CEILING_DB, projectTargetLufs, TARGET_LUFS_RANGE, targetWords, VOICE_PRESET } from "@uncut/core/effects";
+import type { ModuleUse } from "@uncut/core/types";
 
 import type { Plan } from "./edit.ts";
 import { itemLabel, type Item, type ProjectModel, type Track } from "./project.ts";
@@ -179,3 +182,146 @@ export function planRemoveGainKey(project: ProjectModel, itemId: string, index: 
 
 /** The index (in frame order) of the key at `frame` in a plan's gainKeys, for selecting the key an edit made. */
 export const keyIndexAt = (keys: ReadonlyArray<GainKey> | null | undefined, frame: number) => (keys ? [...keys].sort((a, b) => a.frame - b.frame).findIndex((k) => k.frame === frame) : -1);
+
+// ---- track effects, ducking, the master limiter and loudness target (D84–D88) ----
+
+/** A track's effects list with one entry changed (null removes it); an empty list removes the field, as does an empty mixer. */
+function withEffects(track: Track, effects: ReadonlyArray<ModuleUse>): Plan["ops"] {
+  const { effects: _, ...rest } = track.mixer ?? {};
+  const mixer = effects.length ? { ...rest, effects } : rest;
+  return [{ op: "update_track", track: track.id, set: { mixer: Object.keys(mixer).length ? mixer : null } }];
+}
+const trackOf = (project: ProjectModel, trackId: string) => project.tracks.find((t) => t.id === trackId);
+const GONE = { problem: "That track isn't in the project any more." } as const;
+const NO_SLOT = { problem: "That effect isn't on the track any more." } as const;
+/**
+ * The entry at `index`, if it is still the `module` the caller saw (an agent turn or an undo may have
+ * reordered the chain while a popover was open: the edit then lands nowhere instead of on another effect).
+ */
+const slotAt = (track: Track | undefined, index: number, module?: string) => {
+  const fx = track?.mixer?.effects?.[index];
+  return fx && (module === undefined || fx.module === module) ? fx : undefined;
+};
+
+/** Add an effect at the end of a track's chain, with its defaults (or `params`). */
+export function planAddEffect(project: ProjectModel, trackId: string, module: string, params?: Record<string, unknown>): Plan | Problem {
+  const track = trackOf(project, trackId);
+  if (!track) return GONE;
+  const fx: ModuleUse = params && Object.keys(params).length ? { module, params } : { module };
+  return { ops: withEffects(track, [...(track.mixer?.effects ?? []), fx]), summary: `Add ${effectName(module)} to ${track.name}` };
+}
+
+/** The Voice preset (D84): an EQ (high-pass 80 Hz, presence +4 dB at 3.5 kHz) and a gentle compressor, at the end of the chain. */
+export function planVoicePreset(project: ProjectModel, trackId: string): Plan | Problem {
+  const track = trackOf(project, trackId);
+  if (!track) return GONE;
+  return { ops: withEffects(track, [...(track.mixer?.effects ?? []), ...VOICE_PRESET]), summary: `Add the voice preset to ${track.name}` };
+}
+
+/** Remove the effect at `index` of mixer.effects. */
+export function planRemoveEffect(project: ProjectModel, trackId: string, index: number, module?: string): Plan | Problem {
+  const track = trackOf(project, trackId);
+  const fx = slotAt(track, index, module);
+  if (!track) return GONE;
+  if (!fx) return NO_SLOT;
+  return { ops: withEffects(track, track.mixer!.effects!.filter((_, i) => i !== index)), summary: `Remove ${effectName(fx.module)} from ${track.name}` };
+}
+
+/** Move the effect at `index` one place earlier (−1) or later (+1) in the chain, past slots the strip doesn't list (ducking). */
+export function planMoveEffect(project: ProjectModel, trackId: string, index: number, dir: -1 | 1, module?: string): Plan | Problem {
+  const track = trackOf(project, trackId);
+  const list = [...(track?.mixer?.effects ?? [])];
+  const fx = slotAt(track, index, module);
+  if (!track) return GONE;
+  if (!fx) return NO_SLOT;
+  let to = index + dir;
+  while (to >= 0 && to < list.length && list[to]!.module === DUCK) to += dir;
+  if (to < 0 || to >= list.length) return { ops: [], summary: "" };
+  list.splice(index, 1);
+  list.splice(to, 0, fx);
+  return { ops: withEffects(track, list), summary: `Move ${effectName(fx.module)} ${dir < 0 ? "up" : "down"} on ${track.name}` };
+}
+
+/** Bypass (or turn back on) the effect at `index`. */
+export function planBypassEffect(project: ProjectModel, trackId: string, index: number, bypass: boolean, module?: string): Plan | Problem {
+  const track = trackOf(project, trackId);
+  const fx = slotAt(track, index, module);
+  if (!track) return GONE;
+  if (!fx) return NO_SLOT;
+  if ((fx.bypass === true) === bypass) return { ops: [], summary: "" };
+  const { bypass: _, ...rest } = fx;
+  const next: ModuleUse = bypass ? { ...rest, bypass: true } : rest;
+  return { ops: withEffects(track, track.mixer!.effects!.map((e, i) => (i === index ? next : e))), summary: `${bypass ? "Bypass" : "Turn on"} ${effectName(fx.module)} on ${track.name}` };
+}
+
+/** Change some params of the effect at `index` (a null removes one: back to its default). */
+export function planEffectParams(project: ProjectModel, trackId: string, index: number, patch: Record<string, unknown>, module?: string): Plan | Problem {
+  const track = trackOf(project, trackId);
+  const fx = slotAt(track, index, module);
+  if (!track) return GONE;
+  if (!fx) return NO_SLOT;
+  const params: Record<string, unknown> = { ...(fx.params ?? {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === undefined) delete params[k];
+    else params[k] = typeof v === "number" ? Math.round(v * 100) / 100 : v;
+  }
+  if (JSON.stringify(params) === JSON.stringify(fx.params ?? {})) return { ops: [], summary: "" };
+  const { params: _, ...rest } = fx;
+  const next: ModuleUse = Object.keys(params).length ? { ...rest, params } : rest;
+  const label = (id: string) => project.tracks.find((t) => t.id === id)?.name ?? id;
+  return { ops: withEffects(track, track.mixer!.effects!.map((e, i) => (i === index ? next : e))), summary: `Set ${effectName(fx.module)} on ${track.name}: ${effectSummary(next, label)}` };
+}
+
+/**
+ * Ducking (D85): duck a track under key tracks by amountDb with attack / release (and an optional
+ * threshold); null stops it. One duck entry per track (it replaces the one there).
+ */
+export function planDuck(project: ProjectModel, trackId: string, settings: { under: ReadonlyArray<string>; amountDb?: number; attackMs?: number; releaseMs?: number; thresholdDb?: number | null } | null): Plan | Problem {
+  const track = trackOf(project, trackId);
+  if (!track) return GONE;
+  const list = track.mixer?.effects ?? [];
+  const at = list.findIndex((fx) => fx.module === DUCK);
+  if (!settings) {
+    if (at < 0) return { ops: [], summary: "" };
+    return { ops: withEffects(track, list.filter((_, i) => i !== at)), summary: `Stop ducking ${track.name}` };
+  }
+  const under = settings.under.filter((id) => id !== trackId && project.tracks.some((t) => t.id === id));
+  if (!under.length) return { problem: "Choose a track to duck under." };
+  const current = at >= 0 ? duckSettings(list[at]!.params) : undefined;
+  const pick = (v: number | undefined, fallback: number) => Math.round((v ?? fallback) * 10) / 10;
+  const params: Record<string, unknown> = {
+    under,
+    amountDb: pick(settings.amountDb, current?.amountDb ?? DUCK_DEFAULTS.amountDb),
+    attackMs: Math.round(settings.attackMs ?? current?.attackMs ?? DUCK_DEFAULTS.attackMs),
+    releaseMs: Math.round(settings.releaseMs ?? current?.releaseMs ?? DUCK_DEFAULTS.releaseMs),
+  };
+  const threshold = settings.thresholdDb === null ? undefined : (settings.thresholdDb ?? current?.thresholdDb);
+  if (threshold !== undefined) params.thresholdDb = Math.round(threshold);
+  // A bypassed duck stays bypassed while its settings change (planBypassEffect turns it back on).
+  const fx: ModuleUse = at >= 0 && list[at]!.bypass ? { module: DUCK, params, bypass: true } : { module: DUCK, params };
+  if (at >= 0 && JSON.stringify(list[at]) === JSON.stringify(fx)) return { ops: [], summary: "" };
+  const names = under.map((id) => project.tracks.find((t) => t.id === id)!.name).join(", ");
+  return { ops: withEffects(track, at >= 0 ? list.map((e, i) => (i === at ? fx : e)) : [...list, fx]), summary: `Duck ${track.name} under ${names} by ${dbWords(params.amountDb as number)}` };
+}
+
+/** The master limiter (D86): on at `ceilingDb` (−1 dBTP, the default, removes the entry), or bypassed. */
+export function planMasterLimiter(project: ProjectModel, on: boolean, ceilingDb = LIMITER_CEILING_DB): Plan | Problem {
+  const ceiling = Math.round(Math.min(0, Math.max(-12, ceilingDb)) * 10) / 10;
+  const others = (project.master?.effects ?? []).filter((fx) => fx.module !== LIMITER);
+  const entry: ModuleUse | undefined = !on ? { module: LIMITER, bypass: true } : ceiling === LIMITER_CEILING_DB ? undefined : { module: LIMITER, params: { ceilingDb: ceiling } };
+  const effects = entry ? [...others, entry] : others;
+  if (JSON.stringify(effects) === JSON.stringify(project.master?.effects ?? [])) return { ops: [], summary: "" };
+  const { effects: _, ...rest } = project.master ?? {};
+  const master = effects.length ? { ...rest, effects } : rest;
+  const words = `${ceiling < 0 ? "−" : ""}${Math.abs(ceiling)} dBTP`;
+  return { ops: [{ op: "update_project", set: { master: Object.keys(master).length ? master : null } }], summary: on ? `Set the master limiter to ${words}` : "Turn off the master limiter" };
+}
+
+/** The project's loudness target (D87): master.loudness.targetLufs, which the export dialog starts from. −14 (the default) removes it. */
+export function planLoudnessTarget(project: ProjectModel, lufs: number): Plan | Problem {
+  const next = Math.round(Math.min(TARGET_LUFS_RANGE.max, Math.max(TARGET_LUFS_RANGE.min, lufs)) * 10) / 10;
+  if (next === projectTargetLufs(project) && (next !== DEFAULT_TARGET_LUFS || !project.master?.loudness)) return { ops: [], summary: "" };
+  const { loudness: _, ...rest } = project.master ?? {};
+  const master = next === DEFAULT_TARGET_LUFS ? rest : { ...rest, loudness: { targetLufs: next } };
+  return { ops: [{ op: "update_project", set: { master: Object.keys(master).length ? master : null } }], summary: `Set the loudness target to ${targetWords(next)}` };
+}
