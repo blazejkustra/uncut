@@ -2,6 +2,7 @@
 // preview, export and agent share one implementation), and the edit ops the editor sends for
 // "add to timeline". The ops go through project.edit, so the server validates them and they undo.
 import { SOLID, textLook } from "@uncut/core/render";
+import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
 
 import type { Item, Media, Project, Track } from "@uncut/core/types";
@@ -162,6 +163,14 @@ export const backgroundLabel = (item: Item) =>
 export function itemLabel(project: ProjectModel, item: Item) {
   if (item.type === "text" && typeof item.text === "string") return item.text.replace(/\[\[|\]\]|\*\*|`/g, "").replace(/\n/g, " ");
   if (item.type === "component" && item.component === SOLID && !item.name) return backgroundLabel(item);
+  // A component (D76): its name, and its title or first line when it has one.
+  const component = item.type === "component" && !item.name ? componentInfo(item.component) : undefined;
+  if (component) {
+    const p = item.props ?? {};
+    const words = [p.title, p.code, Array.isArray(p.lines) ? (p.lines[0] as { text?: unknown } | undefined)?.text : undefined, p.device].find((v): v is string => typeof v === "string" && v.trim() !== "");
+    return words ? `${component.name} · ${words}` : component.name;
+  }
+  if (item.type === "graphic" && !item.name && item.src) return `Graphic · ${item.src.replace(/^graphics\//, "")}`;
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   return item.name ?? media?.name ?? item.id;
 }

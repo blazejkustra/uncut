@@ -28,6 +28,7 @@ import { NumberField, Slider } from "./ItemEditors.tsx";
 import { dbLabel, hasSound, planFade, planTrackGain, soundTrack } from "./sound.ts";
 import { actions, getState, projectOf, thumbUrl, useApp } from "./store.ts";
 import { ItemWaveform } from "./Waveform.tsx";
+import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent } from "./components.ts";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 
 /** Timeline | Transcript | Mixer (D32): the bottom panel's modes. Mixer comes later. */
@@ -411,7 +412,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       if (over !== dropCut) setDropCut(over);
       return;
     }
-    if (!online || ![...e.dataTransfer.types].includes(MEDIA_DRAG_TYPE)) return;
+    if (!online || (![...e.dataTransfer.types].includes(MEDIA_DRAG_TYPE) && ![...e.dataTransfer.types].includes(COMPONENT_DRAG_TYPE))) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDropping(true);
@@ -425,6 +426,14 @@ export function Timeline({ project }: { project: ProjectModel }) {
       setDropCut(undefined);
       setDraggedTransition(undefined);
       if (cut) void actions.applyTransition(module, { cut: cut.item.id });
+      return;
+    }
+    // A component from Elements (D76): added at the time it's dropped on.
+    const component = e.dataTransfer.getData(COMPONENT_DRAG_TYPE) || ([...e.dataTransfer.types].includes(COMPONENT_DRAG_TYPE) ? draggedComponent() : undefined);
+    if (component) {
+      e.preventDefault();
+      setDraggedComponent(undefined);
+      void actions.addComponent(component, { frame: Math.max(0, Math.round(frameAt(e.clientX))) });
       return;
     }
     const id = e.dataTransfer.getData(MEDIA_DRAG_TYPE);

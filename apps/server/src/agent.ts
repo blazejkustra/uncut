@@ -13,13 +13,13 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { readFile, realpath, rename } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, layout, manualEditsNote, planTextCut, TurnDependency, undoTurn, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planTextCut, TurnDependency, undoTurn, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -35,7 +35,7 @@ import type { BeatsResult } from "./beats.ts";
 import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { expandDeviceFrames, FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
@@ -1090,6 +1090,34 @@ export const layer = Layer.effect(
       });
 
     // ui_show (D65): the renderer moves the playhead, selects and opens a panel once per request.
+    /**
+     * graphic_write (D78): a graphic's HTML into the project's graphics/ folder. A new file only
+     * (earlier revisions keep pointing at the files they used), a plain name, at most
+     * MAX_GRAPHIC_BYTES, inside the project by realpath (a symlinked graphics/ folder pointing out is refused).
+     */
+    const graphicWrite = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.promise(async (): Promise<McpResult> => {
+        const name = args.name;
+        const html = args.html;
+        const src = `graphics/${String(name)}`;
+        if (typeof name !== "string" || !GRAPHIC_SRC.test(src)) return textResult("name must be a plain file name ending in .html, e.g. counter.html (letters, digits, dots, dashes, underscores).", true);
+        if (typeof html !== "string" || !html.trim()) return textResult("html must be the graphic's HTML: markup, <style> and a <script> defining render(t, info).", true);
+        if (Buffer.byteLength(html) > MAX_GRAPHIC_BYTES) return textResult(`The HTML is over ${MAX_GRAPHIC_BYTES / 1024} KB; keep a graphic small (no embedded videos or large images).`, true);
+        const folder = join(v.dir, "graphics");
+        try {
+          await mkdir(folder, { recursive: true });
+          const real = await realpath(folder);
+          const project = await realpath(v.dir);
+          if (!real.startsWith(`${project}${sep}`)) return textResult("The project's graphics folder points outside the project, so nothing was written.", true);
+          await writeFile(join(real, name), html, { flag: "wx" });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST") return textResult(`${src} already exists, and graphics are never overwritten (earlier revisions use them). Write the new version under another name, e.g. ${name.replace(/(\.html)$/, "-2$1")}, and point the item's src at it.`, true);
+          return textResult(`Couldn't write ${src}: ${(error as Error).message}`, true);
+        }
+        const hasRender = /\brender\s*(=|\(|:)|function\s+render\b/.test(html);
+        return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
+      });
+
     const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
       const project = v.session.project;
       const said: Array<string> = [];
@@ -1149,6 +1177,8 @@ export const layer = Layer.effect(
             const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
             // Frames past the last one are drawn as the last one: say so, not silently.
             const clamped = rendered.list.flatMap((r, i) => (r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : []));
+            // What a frame leaves out (a graphic it couldn't read, D78), once each.
+            clamped.push(...new Set(rendered.list.flatMap((r) => r.notes ?? [])));
             return {
               content: [
                 { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}` },
@@ -1162,6 +1192,8 @@ export const layer = Layer.effect(
             return yield* contactSheet(v, args);
           case "ui_show":
             return uiShow(r, v, args);
+          case "graphic_write":
+            return yield* graphicWrite(v, args);
           case "media_analyze":
             return yield* mediaAnalyze(v, args);
           case "media_rank":
@@ -1171,9 +1203,13 @@ export const layer = Layer.effect(
           case "transcript_edit":
             return yield* transcriptEdit(r, v, args);
           case "timeline_edit": {
-            const { baseRevision, ops, summary } = args;
+            const { baseRevision, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);
-            if (!Array.isArray(ops)) return textResult("ops must be a list of edit ops.", true);
+            if (!Array.isArray(args.ops)) return textResult("ops must be a list of edit ops.", true);
+            // insert_device_frame (D76) becomes the edit ops that make it (tracks, the screen clip, the frame).
+            const expanded = expandDeviceFrames(v.session.project as Project, args.ops);
+            if ("problem" in expanded) return textResult({ refused: expanded.problem, revision: v.session.revision }, true);
+            const ops = expanded.ops;
             if (!r.owner.seen.has(baseRevision)) {
               return textResult(
                 { refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`, revision: v.session.revision },

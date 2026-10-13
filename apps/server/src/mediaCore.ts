@@ -26,7 +26,7 @@ export interface ProbeInfo {
   readonly hasAudio: boolean;
   readonly rotation?: number;
   readonly creationTime?: string;
-  readonly via: "native" | "ffprobe";
+  readonly via: "native" | "ffprobe" | "svg";
 }
 
 /** A probe per path: the info, or why not ("not-found", "unsupported", "unreadable", ...). */

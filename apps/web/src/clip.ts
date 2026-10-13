@@ -7,6 +7,7 @@
 // there); a property without keys edits the transform. The diamonds add or remove a key at the
 // playhead.
 import { baseBox, clipBox, keysOf, type ClipBox, type Fit, type KeyProp, type Rect } from "@uncut/core/box";
+import { componentBox, componentInfo, componentRest, isDrawnComponent } from "@uncut/core/components";
 import { pictureMedia } from "@uncut/core/timeline";
 import type { FieldSet, Item } from "@uncut/core/types";
 
@@ -32,19 +33,23 @@ export interface BoxPatch {
 export const PROP_NAMES: Readonly<Record<KeyProp, string>> = { x: "X", y: "Y", scale: "scale", opacity: "opacity" };
 const FIT_NAMES: Readonly<Record<Fit, string>> = { contain: "contain", cover: "cover", fill: "fill" };
 
-/** Whether an item draws in a box: a clip of video or still media. */
-export const isBoxed = (project: ProjectModel, item: Item) => !!pictureMedia(project, item);
+/** Whether an item draws in a box: a clip of video or still media, or a drawn component (D76). */
+export const isBoxed = (project: ProjectModel, item: Item) => !!pictureMedia(project, item) || isDrawnComponent(item);
 
-/** A clip's box now: its rest box (no keys) and its box at the playhead, with the local frame. */
+/** What a boxed item is called in History labels: "clip", or the component's name ("end card"). */
+export const boxNoun = (item: Item) => componentInfo(item.component)?.name.toLowerCase() ?? "clip";
+
+/** A boxed item's box now (a clip's or a component's): its rest box (no keys) and its box at the playhead, with the local frame. */
 export function clipState(project: ProjectModel, itemId: string, frame: number): { item: Item; start: number; local: number; inside: boolean; rest: Rect; box: ClipBox } | undefined {
   const placed = findItem(project, itemId);
   if (!placed) return undefined;
   const media = pictureMedia(project, placed.item);
-  if (!media) return undefined;
+  if (!media && !isDrawnComponent(placed.item)) return undefined;
   const local = Math.round(frame - placed.start);
   const inside = local >= 0 && local < placed.item.duration;
   // A keyed edit with the playhead off the clip goes on its nearest frame (never past its last).
   const at = Math.min(placed.item.duration - 1, Math.max(0, local));
+  if (!media) return { item: placed.item, start: placed.start, local: at, inside, rest: componentRest(placed.item, project.canvas)!, box: componentBox(placed.item, project.canvas, at)! };
   return { item: placed.item, start: placed.start, local: at, inside, rest: baseBox(placed.item, project.canvas, media.probe), box: clipBox(placed.item, project.canvas, media.probe, at) };
 }
 
@@ -94,6 +99,7 @@ export function planClipBox(project: ProjectModel, itemId: string, patch: BoxPat
   const s = clipState(project, itemId, frame);
   if (!s) return { problem: "That clip isn't in the project any more." };
   const { item, local, rest } = s;
+  const noun = boxNoun(item);
   const t: Record<string, unknown> = { ...(item.transform ?? {}) };
   let keys: Array<Key> = [...(item.keys ?? [])];
   const keyed = (p: KeyProp) => keysOf(item.keys, p).length > 0;
@@ -125,18 +131,18 @@ export function planClipBox(project: ProjectModel, itemId: string, patch: BoxPat
     ...(sameJson(transform, item.transform) ? {} : { transform }),
     ...(sameJson(keys, item.keys ?? []) ? {} : { keys: keys.length ? keys : null }),
   };
-  const words = summary ?? describePatch(clean, project.canvas.fps);
+  const words = summary ?? describePatch(clean, noun);
   return planUpdate(project, itemId, set, atKey ? `${words} (key at ${secs(local, project.canvas.fps)})` : words);
 }
 
-function describePatch(p: BoxPatch, _fps: number): string {
-  if (p.fit) return `Fit clip: ${FIT_NAMES[p.fit]}`;
-  if (p.w !== undefined || p.h !== undefined) return "Resize clip";
-  if (p.x !== undefined || p.y !== undefined) return "Move clip";
-  if (p.scale !== undefined) return `Zoom clip to ${Math.round(p.scale * 100)}%`;
-  if (p.opacity !== undefined) return `Set clip opacity to ${Math.round(p.opacity * 100)}%`;
-  if (p.radius !== undefined) return p.radius > 0 ? `Round clip corners (${p.radius} px)` : "Square clip corners";
-  return "Change clip box";
+function describePatch(p: BoxPatch, noun: string): string {
+  if (p.fit) return `Fit ${noun}: ${FIT_NAMES[p.fit]}`;
+  if (p.w !== undefined || p.h !== undefined) return `Resize ${noun}`;
+  if (p.x !== undefined || p.y !== undefined) return `Move ${noun}`;
+  if (p.scale !== undefined) return `Zoom ${noun} to ${Math.round(p.scale * 100)}%`;
+  if (p.opacity !== undefined) return `Set ${noun} opacity to ${Math.round(p.opacity * 100)}%`;
+  if (p.radius !== undefined) return p.radius > 0 ? `Round ${noun} corners (${p.radius} px)` : `Square ${noun} corners`;
+  return `Change ${noun} box`;
 }
 
 /** Whether `prop` has a key at the playhead ("on"), keys elsewhere ("keyed") or none. */
@@ -169,7 +175,7 @@ export function planResetBox(project: ProjectModel, itemId: string): Plan | Prob
   const placed = findItem(project, itemId);
   if (!placed) return { problem: "That clip isn't in the project any more." };
   const set: FieldSet = { ...(placed.item.transform ? { transform: null } : {}), ...(placed.item.keys ? { keys: null } : {}) };
-  return planUpdate(project, itemId, set, "Reset clip position and size");
+  return planUpdate(project, itemId, set, `Reset ${boxNoun(placed.item)} position and size`);
 }
 
 /** Loop the clip's media (it starts over when the clip is longer), or not. */

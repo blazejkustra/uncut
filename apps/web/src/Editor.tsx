@@ -10,6 +10,8 @@ import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
 import { AudioEditor, BackgroundEditor, ClipBoxEditor, TextEditor, TransitionInspector } from "./ItemEditors.tsx";
 import { isBoxed } from "./clip.ts";
+import { ComponentEditor } from "./ComponentEditor.tsx";
+import { componentInfo, isDrawnComponent } from "@uncut/core/components";
 import { useBeatsLoading } from "./beats.ts";
 import { hasSound } from "./sound.ts";
 import { Library, type LibraryTab } from "./Library.tsx";
@@ -408,11 +410,12 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
         <span className="ellipsis">{itemLabel(project, item)}</span>
       </div>
       <div className="insp-sub">
-        {item.type === "component" && item.component === SOLID ? "Background" : (TYPE_NAMES[item.type] ?? item.type)} on {track.name}
+        {item.type === "component" && item.component === SOLID ? "Background" : (componentInfo(item.component)?.name ?? TYPE_NAMES[item.type] ?? item.type)} on {track.name}
         {locked ? ". The track is locked: unlock it in the timeline to edit it." : ". Drag it on the timeline to move it, its edges to trim it."}
       </div>
       {item.type === "text" && <TextEditor project={project} item={item} locked={locked} />}
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
+      {isDrawnComponent(item) && <ComponentEditor project={project} item={item} locked={locked} />}
       {isBoxed(project, item) && <ClipBoxEditor project={project} item={item} locked={locked} />}
       {hasSound(project, item) && <AudioEditor project={project} item={item} locked={locked} />}
       <div className="group">
