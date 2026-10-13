@@ -11,6 +11,7 @@
     "@effect/platform-node": "4.0.2",
     "@uncut/contracts": "workspace:*",
     "@uncut/core": "workspace:*",
+    "@uncut/plugin-sdk": "workspace:*",
     "effect": "4.0.2"
   },
   "devDependencies": {

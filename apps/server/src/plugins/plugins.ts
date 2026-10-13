@@ -13,9 +13,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { PluginError, type PluginInfo } from "@uncut/contracts";
 import { validateModule, type ModuleManifest } from "@uncut/core";
+import { API_VERSION, API_VERSIONS } from "@uncut/plugin-sdk";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -25,9 +27,11 @@ import type { McpResult } from "../agent/agent.ts";
 import { TOOL_NAMES, type McpTool } from "../agent/agentTools.ts";
 import { ServerConfig } from "../app/config.ts";
 import { ProjectFormat } from "../project/format.ts";
-import { Settings, type PluginApproval } from "../app/settings.ts";
+import { Settings, type PluginApproval, type PluginInstall } from "../app/settings.ts";
 import { which } from "../app/setup.ts";
 import { pluginEnv } from "../app/shellEnv.ts";
+import { besideServer } from "../paths.ts";
+import { InstallError, installPlugin, isRemovable, removePluginFolder, sweepLeftovers } from "./install.ts";
 
 export const MANIFEST_FILE = "uncut.module.json";
 export const DEFAULT_TIMEOUT_S = 120;
@@ -91,6 +95,32 @@ const str = (x: unknown) => (typeof x === "string" ? x : undefined);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
+ * A plugin's parsed uncut.module.json, checked as discovery and install check it: a protocol
+ * version this Uncut speaks (D102: missing means uncut.module/1; a newer one is refused before the
+ * schema, whose fields it may not know), the module schema, a process plugin with a command, and
+ * not a built-in module's id. Else one sentence (and the id and name, when it has them).
+ */
+export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { readonly manifest: ModuleManifest } | { readonly problem: string; readonly id: string | undefined; readonly name: string | undefined } {
+  const loose = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const fail = (problem: string, manifest?: { id?: unknown; name?: unknown }) => ({ problem, id: str((manifest ?? loose).id), name: str((manifest ?? loose).name) });
+  const api = loose.apiVersion;
+  if (typeof api === "string" && /^uncut\.module\/[0-9]+$/.test(api) && !API_VERSIONS.includes(api)) {
+    return fail(`It's written for the plugin format ${api}, which is newer than this Uncut understands (${API_VERSION}). Update Uncut to use it.`);
+  }
+  const problems = validateModule(raw);
+  if (problems.length) {
+    const list = problems.slice(0, 3).map((p) => `${p.path} ${p.message}`).join("; ");
+    return fail(`Its ${MANIFEST_FILE} doesn't match the module format: ${list}${problems.length > 3 ? `, and ${problems.length - 3} more` : ""}.`);
+  }
+  const manifest = raw as ModuleManifest;
+  const runtime = manifest.runtime as { type: string; command?: string };
+  if (runtime.type !== "process") return fail(`It's a "${runtime.type}" module; only "process" plugins run from a plugin folder for now.`);
+  if (!runtime.command) return fail(`Its runtime has no command, so Uncut can't start it.`);
+  if (builtinIds.has(manifest.id)) return fail(`Its id ${manifest.id} belongs to a built-in module.`);
+  return { manifest };
+}
+
+/**
  * Every plugin folder under `roots`, in order: a subfolder with an uncut.module.json. A manifest
  * that isn't JSON, doesn't match the schema, isn't a process plugin, takes a built-in module's id
  * or an id found earlier is skipped and reported (never thrown). A tool whose name Uncut or an
@@ -139,27 +169,13 @@ export async function discoverPlugins(
         skip(`Its ${MANIFEST_FILE} isn't valid JSON (${messageOf(error)}).`);
         continue;
       }
-      const loose = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-      const problems = validateModule(raw);
-      if (problems.length) {
-        const list = problems.slice(0, 3).map((p) => `${p.path} ${p.message}`).join("; ");
-        skip(`Its ${MANIFEST_FILE} doesn't match the module format: ${list}${problems.length > 3 ? `, and ${problems.length - 3} more` : ""}.`, str(loose.id), str(loose.name));
+      const checked = checkManifest(raw, reserved.moduleIds);
+      if ("problem" in checked) {
+        skip(checked.problem, checked.id, checked.name);
         continue;
       }
-      const manifest = raw as ModuleManifest;
+      const manifest = checked.manifest;
       const runtime = manifest.runtime as { type: string; command?: string; args?: Array<string>; timeoutSeconds?: number };
-      if (runtime.type !== "process") {
-        skip(`It's a "${runtime.type}" module; only "process" plugins run from a plugin folder for now.`, manifest.id, manifest.name);
-        continue;
-      }
-      if (!runtime.command) {
-        skip(`Its runtime has no command, so Uncut can't start it.`, manifest.id, manifest.name);
-        continue;
-      }
-      if (reserved.moduleIds.has(manifest.id)) {
-        skip(`Its id ${manifest.id} belongs to a built-in module.`, manifest.id, manifest.name);
-        continue;
-      }
       const earlier = byId.get(manifest.id);
       if (earlier) {
         skip(`Another plugin with the id ${manifest.id} comes first (${earlier}), so this one is skipped.`, manifest.id, manifest.name);
@@ -250,7 +266,16 @@ export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabil
     JSON.stringify(approval.args) === JSON.stringify(plugin.spec.args) &&
     plugin.capabilities.every((c) => approval.capabilities.includes(c)));
 
-export function pluginInfos(discovery: Discovery, approvals: Readonly<Record<string, PluginApproval>>): Array<PluginInfo> {
+export function pluginInfos(
+  discovery: Discovery,
+  approvals: Readonly<Record<string, PluginApproval>>,
+  installs: Readonly<Record<string, PluginInstall>> = {},
+  removable: ReadonlySet<string> = new Set(),
+): Array<PluginInfo> {
+  const originOf = (id: string | undefined, dir: string) => {
+    const i = id ? installs[id] : undefined;
+    return i && i.dir === dir ? { origin: { kind: i.kind, source: i.source, ...(i.ref ? { ref: i.ref } : {}), ...(i.commit ? { commit: i.commit } : {}) } } : {};
+  };
   return [
     ...discovery.plugins.map((p): PluginInfo => ({
       id: p.id,
@@ -264,6 +289,8 @@ export function pluginInfos(discovery: Discovery, approvals: Readonly<Record<str
       asks: pluginAsks(p),
       tools: p.tools.map((t) => t.name),
       warnings: [...p.warnings],
+      ...originOf(p.id, p.dir),
+      ...(removable.has(p.dir) ? { removable: true } : {}),
     })),
     ...discovery.broken.map((b): PluginInfo => ({
       id: b.id ?? b.dir.split("/").at(-1) ?? b.dir,
@@ -276,6 +303,8 @@ export function pluginInfos(discovery: Discovery, approvals: Readonly<Record<str
       tools: [],
       warnings: [],
       problem: b.problem,
+      ...originOf(b.id, b.dir),
+      ...(removable.has(b.dir) ? { removable: true } : {}),
     })),
   ];
 }
@@ -294,9 +323,26 @@ export class PluginTimeout extends Error {}
 /** Thrown when the agent turn ended before the call finished. */
 export class PluginCancelled extends Error {}
 
-/** Where `command` is: "node" is our own runtime; a path is the plugin folder's; else PATH. */
-async function resolveCommand(spec: ProcessSpec): Promise<{ file: string; env: Record<string, string> }> {
-  if (spec.command === "node") return { file: process.execPath, env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {} };
+/** The plugin SDK shipped with this Uncut (D102): Resources/plugin-sdk, or the repo's packages/plugin-sdk/src. */
+export const DEFAULT_SDK_DIR = besideServer("../../../packages/plugin-sdk/src");
+
+interface Command {
+  readonly file: string;
+  readonly env: Record<string, string>;
+  /** Runtime flags before the plugin's own arguments. */
+  readonly flags: ReadonlyArray<string>;
+}
+
+/**
+ * Where `command` is: "node" is our own runtime, with the SDK's resolve hook so the plugin can
+ * import "@uncut/plugin-sdk" (D102); a path is the plugin folder's; else PATH.
+ */
+async function resolveCommand(spec: ProcessSpec, sdkDir: string): Promise<Command> {
+  if (spec.command === "node") {
+    const register = join(sdkDir, "register.ts");
+    if (!(await stat(register).then((s) => s.isFile(), () => false))) throw new Error(`Uncut's plugin SDK is missing at ${sdkDir}`);
+    return { file: process.execPath, env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}, flags: ["--import", pathToFileURL(join(sdkDir, "register.ts")).href] };
+  }
   if (spec.command.includes("/")) {
     const outside = new Error(`its command ${spec.command} is outside its folder`);
     const isInside = (dir: string, file: string) => {
@@ -312,11 +358,11 @@ async function resolveCommand(spec: ProcessSpec): Promise<{ file: string; env: R
       throw new Error(`its command ${spec.command} isn't in its folder`);
     }
     if (!isInside(await realpath(spec.dir), file)) throw outside;
-    return { file, env: {} };
+    return { file, env: {}, flags: [] };
   }
   const found = await which(spec.command, process.env.PATH ?? "");
   if (!found) throw new Error(`${spec.command} isn't installed (not found on PATH)`);
-  return { file: found, env: {} };
+  return { file: found, env: {}, flags: [] };
 }
 
 /** A running stdio MCP server: newline-delimited JSON-RPC 2.0 over its stdin/stdout. */
@@ -331,10 +377,10 @@ export class PluginProcess {
   /** Set when Uncut stopped it on purpose (a timeout, a stop): not a crash. */
   stoppedByUs = false;
 
-  private constructor(spec: ProcessSpec, file: string, extraEnv: Record<string, string>, live?: Set<PluginProcess>) {
+  private constructor(spec: ProcessSpec, command: Command, live?: Set<PluginProcess>) {
     this.spec = spec;
     // Its own process group, so stopping it also stops whatever it started.
-    this.child = spawn(file, [...spec.args], { cwd: spec.dir, env: { ...pluginEnv(process.env), ...extraEnv }, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    this.child = spawn(command.file, [...command.flags, ...spec.args], { cwd: spec.dir, env: { ...pluginEnv(process.env), ...command.env }, stdio: ["pipe", "pipe", "pipe"], detached: true });
     this.exited = new Promise((done) => {
       const finish = (code: number | null, signal: NodeJS.Signals | null) => {
         if (this.gone) return;
@@ -425,14 +471,14 @@ export class PluginProcess {
   }
 
   /** Starts the plugin and does the MCP handshake; rejects with a sentence. */
-  static async start(spec: ProcessSpec, live?: Set<PluginProcess>): Promise<PluginProcess> {
-    let command: { file: string; env: Record<string, string> };
+  static async start(spec: ProcessSpec, live?: Set<PluginProcess>, sdkDir: string = DEFAULT_SDK_DIR): Promise<PluginProcess> {
+    let command: Command;
     try {
-      command = await resolveCommand(spec);
+      command = await resolveCommand(spec, sdkDir);
     } catch (error) {
       throw new Error(`Couldn't start ${spec.name}: ${messageOf(error)}.`);
     }
-    const proc = new PluginProcess(spec, command.file, command.env, live);
+    const proc = new PluginProcess(spec, command, live);
     try {
       await proc.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "uncut", version: "0.0.1" } }, START_TIMEOUT_MS);
       proc.notify("notifications/initialized");
@@ -616,6 +662,13 @@ export class PluginHost {
   // Every plugin process alive, also those still starting (for killAllNow).
   private readonly live = new Set<PluginProcess>();
 
+  private readonly sdkDir: string;
+
+  /** `sdkDir`: the folder with the plugin SDK's index.ts and register.ts (D102). */
+  constructor(sdkDir: string = DEFAULT_SDK_DIR) {
+    this.sdkDir = sdkDir;
+  }
+
   /** The process of a running plugin (tests, diagnostics). */
   processOf(id: string) {
     const proc = this.slots.get(id)?.proc;
@@ -634,7 +687,7 @@ export class PluginHost {
     const spec = slot.spec;
     const starting = (async () => {
       if (wait) await new Promise((r) => setTimeout(r, wait));
-      const proc = await PluginProcess.start(spec, this.live);
+      const proc = await PluginProcess.start(spec, this.live, this.sdkDir);
       void proc.exited.then(() => {
         if (!proc.stoppedByUs) slot.crashes.push(Date.now());
         if (slot.proc === proc) slot.proc = undefined;
@@ -734,6 +787,10 @@ export interface PluginsShape {
   readonly list: Effect.Effect<ReadonlyArray<PluginInfo>>;
   readonly approve: (input: { readonly id: string; readonly dir: string; readonly capabilities: ReadonlyArray<string> }) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   readonly revoke: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
+  /** Installs a plugin from a folder or git URL into <dataDir>/plugins/<id> (D102); it needs allowing afterwards. */
+  readonly install: (input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined }) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
+  /** Stops and removes a plugin Uncut installed (one in <dataDir>/plugins), with its approval. */
+  readonly uninstall: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   /** The allowed plugins' agent tools, from the last scan. */
   readonly tools: Effect.Effect<ReadonlyArray<McpTool>>;
   /** The plugin that owns a tool name, from the last scan. */
@@ -772,10 +829,15 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const settings = yield* Settings;
     const format = yield* ProjectFormat;
-    const host = new PluginHost();
+    const host = new PluginHost(config.pluginSdkDir);
     const reserved = { moduleIds: new Set(format.modules.keys()), toolNames: new Set<string>(TOOL_NAMES) };
     let discovery: Discovery = { plugins: [], broken: [] };
     const scanLock = yield* Semaphore.make(1);
+    // Plugins being installed right now: their calls are refused until the new copy is in place.
+    const installing = new Set<string>();
+    const busy = (id: string) => (installing.has(id) ? `The plugin ${id} is being installed right now. Try again in a moment.` : undefined);
+    // One install or removal at a time (they rename folders in <dataDir>/plugins).
+    const installLock = yield* Semaphore.make(1);
     const reported = new Set<string>();
 
     const refresh = scanLock.withPermits(1)(
@@ -793,7 +855,18 @@ export const layer = Layer.effect(
         }
       }),
     );
-    const infos = Effect.map(settings.pluginApprovals, (approvals) => pluginInfos(discovery, approvals));
+    const userRoot = config.pluginDirs.find((r) => r.source === "user" && r.dir === join(config.dataDir, "plugins"))?.dir ?? join(config.dataDir, "plugins");
+    const removableDirs = () =>
+      Effect.promise(async () => {
+        const dirs = [...discovery.plugins.filter((p) => p.source === "user").map((p) => p.dir), ...discovery.broken.filter((b) => b.source === "user").map((b) => b.dir)];
+        const ok = await Promise.all(dirs.map((d) => isRemovable(userRoot, d)));
+        return new Set(dirs.filter((_, i) => ok[i]));
+      });
+    const infos = Effect.gen(function* () {
+      const approvals = yield* settings.pluginApprovals;
+      const installs = yield* settings.pluginInstalls;
+      return pluginInfos(discovery, approvals, installs, yield* removableDirs());
+    });
     const list = Effect.andThen(refresh, infos);
     const find = (id: string) =>
       Effect.gen(function* () {
@@ -806,6 +879,8 @@ export const layer = Layer.effect(
 
     const byTool = (tool: string) => discovery.plugins.find((p) => p.tools.some((t) => t.name === tool));
 
+    // What an interrupted install or removal left behind (D102).
+    yield* Effect.promise(() => sweepLeftovers(userRoot));
     yield* refresh;
     // Plugins stop with the server: on a normal shutdown (the finalizer) and on any exit that
     // skips it, synchronously. A plugin also exits when its stdin closes (the MCP stdio
@@ -851,6 +926,53 @@ export const layer = Layer.effect(
           yield* Effect.promise(() => host.stop(id));
           return yield* infos;
         }),
+      install: (input) =>
+        installLock.withPermits(1)(Effect.gen(function* () {
+          // The plugins that ship with Uncut, found on their own (a user plugin may shadow one).
+          const shipped = yield* Effect.promise(() => discoverPlugins(config.pluginDirs.filter((r) => r.source === "bundled"), { moduleIds: reserved.moduleIds, toolNames: new Set() }));
+          const bundled = new Map(shipped.plugins.map((p) => [p.id, p.name]));
+          // Right before the new copy replaces the old (D102 review M1): no calls start it from now
+          // on, its approval goes (a failed write aborts the install) and the old process stops.
+          let swapping: string | undefined;
+          const beforeSwap = async (id: string) => {
+            swapping = id;
+            installing.add(id);
+            await Effect.runPromise(settings.setPluginApproval(id, undefined));
+            await host.stop(id);
+          };
+          const installed = yield* Effect.tryPromise({
+            try: () => installPlugin(input, { pluginsRoot: userRoot, builtinIds: reserved.moduleIds, bundled, git: () => which("git", process.env.PATH ?? ""), beforeSwap }),
+            catch: (error) =>
+              error instanceof InstallError
+                ? new PluginError({ reason: error.reason, message: error.message })
+                : new PluginError({ reason: "io", message: `Couldn't install it: ${messageOf(error)}` }),
+          }).pipe(Effect.ensuring(Effect.sync(() => swapping && installing.delete(swapping))));
+          // A new copy: the user allows it again (D97), whatever was allowed before.
+          yield* settings
+            .setPluginInstall(installed.id, { dir: installed.dir, source: installed.source, kind: installed.kind, ...(installed.ref ? { ref: installed.ref } : {}), ...(installed.commit ? { commit: installed.commit } : {}), installedAt: new Date().toISOString() })
+            .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `${installed.name} was copied, but Uncut couldn't record where it came from: ${error.message}` })));
+          yield* refresh;
+          const winner = discovery.plugins.find((p) => p.id === installed.id);
+          const note = winner && winner.dir !== installed.dir ? `Another plugin with the id ${installed.id} comes first (${winner.dir}), so the one you installed isn't used until that one is removed.` : undefined;
+          return { id: installed.id, ...(note ? { note } : {}), plugins: yield* infos };
+        })),
+      uninstall: (id) =>
+        installLock.withPermits(1)(Effect.gen(function* () {
+          yield* refresh;
+          const dir = discovery.plugins.find((p) => p.id === id && p.source === "user")?.dir ?? discovery.broken.find((b) => b.id === id && b.source === "user")?.dir;
+          if (!dir) {
+            if (discovery.plugins.some((p) => p.id === id && p.source === "bundled")) return yield* new PluginError({ reason: "bundled", message: `That plugin ships with Uncut and can't be removed.` });
+            return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id}.` });
+          }
+          if (!(yield* Effect.promise(() => isRemovable(userRoot, dir)))) {
+            return yield* new PluginError({ reason: "not-removable", message: `Uncut didn't install that plugin (it's in ${dir}), so it doesn't remove it: delete the folder yourself.` });
+          }
+          yield* Effect.promise(() => host.stop(id));
+          yield* Effect.tryPromise({ try: () => removePluginFolder(userRoot, dir), catch: (error) => new PluginError({ reason: "io", message: `Couldn't remove it: ${messageOf(error)}` }) });
+          yield* settings.setPluginInstall(id, undefined).pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `It was removed, but Uncut couldn't update its settings: ${error.message}` })));
+          yield* refresh;
+          return yield* infos;
+        })),
       // Only allowed plugins' tools reach the agent's list (D97): an unapproved plugin's manifest
       // text never gets into the prompt; modules_list says it's installed and waits for approval.
       tools: Effect.map(settings.pluginApprovals, (approvals) =>
@@ -864,11 +986,13 @@ export const layer = Layer.effect(
         Effect.gen(function* () {
           const plugin = byTool(tool);
           if (!plugin) return undefined;
+          const installingNow = busy(plugin.id);
+          if (installingNow) return { ...errorResult(installingNow), plugin: callerOf(plugin) };
           // Read now, so allowing it mid-turn counts at once.
           const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
           if (refused) return { ...errorResult(refused), plugin: callerOf(plugin) };
           // ...and again once the process is up, in case it was revoked while it started.
-          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => refusal(plugin, approvals[plugin.id])));
+          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => busy(plugin.id) ?? refusal(plugin, approvals[plugin.id])));
           const context = yield* Effect.promise(() => pluginContext(plugin, projectDir).catch(() => ({})));
           const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, turn ? AbortSignal.any([signal, turn]) : signal, allowed, context));
           return { ...result, plugin: callerOf(plugin) };
@@ -881,9 +1005,11 @@ export const layer = Layer.effect(
             const broken = discovery.broken.find((b) => b.id === id);
             return { ...errorResult(broken ? `The plugin ${id} can't be used: ${broken.problem}` : `There's no plugin ${id}.`), plugin: undefined };
           }
+          const installingNow = busy(plugin.id);
+          if (installingNow) return { ...errorResult(installingNow), plugin: callerOf(plugin) };
           const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
           if (refused) return { ...errorResult(`${plugin.name} isn't allowed to run yet: allow it in Settings, the Capture step.`), plugin: callerOf(plugin) };
-          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
+          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => busy(plugin.id) ?? (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
           const context = yield* Effect.promise(() => pluginContext(plugin, options.projectDir).catch(() => ({})));
           const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context, { timeoutMs: options.timeoutMs, onProgress: options.onProgress }));
           return { ...result, plugin: callerOf(plugin) };

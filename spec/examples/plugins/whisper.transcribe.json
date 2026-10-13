@@ -1,5 +1,6 @@
 {
   "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
   "id": "whisper.transcribe",
   "kind": "analyzer",
   "name": "Whisper (on this Mac)",

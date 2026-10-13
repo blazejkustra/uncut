@@ -8,6 +8,11 @@
   "unevaluatedProperties": false,
   "properties": {
     "manifest": { "const": "uncut.module/0" },
+    "apiVersion": {
+      "type": "string",
+      "pattern": "^uncut\\.module/[0-9]+$",
+      "description": "The plugin protocol it was written for (D102): uncut.module/1 is the stdio contract in packages/plugin-sdk. Missing means uncut.module/1. A newer one than Uncut knows is refused."
+    },
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$",

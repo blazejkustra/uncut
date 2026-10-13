@@ -262,6 +262,24 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .wiz-sub { overflow: hidden; text-overflow: ellipsis; }
 .wiz-plugins { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
 .wiz-section { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+/* Settings › Plugins (D102): Add plugin…, the git URL row, the approval dialog. */
+.wiz-section-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.wiz-plugins:has(.plugin-git) { max-height: none; }
+.plugin-git { display: flex; gap: 6px; }
+.plugin-git .field.input { flex: 2; min-width: 0; }
+.plugin-git .field.input.plugin-ref { flex: 1; }
+.wiz-fix .error { color: var(--error); }
+.wiz-fix .wiz-btns { justify-content: flex-end; }
+.wiz-fix.wiz-actions { flex-direction: row; gap: 4px; padding-left: 40px; }
+.plugin-approval-layer { z-index: 60; align-items: center; justify-content: center; }
+.plugin-approval { width: min(520px, 100%); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+.plugin-approval h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.plugin-facts { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.plugin-fact { display: grid; grid-template-columns: 130px 1fr; gap: 10px; }
+.plugin-fact .k { color: var(--dim); }
+.plugin-fact .v { font-family: var(--mono); color: var(--fg); overflow-wrap: anywhere; }
+.plugin-asks p { margin: 0 0 4px; font-size: 13px; color: var(--fg); }
+.plugin-approval .wiz-btns { justify-content: flex-end; }
 .modal-layer.standalone { background: var(--bg); }
 .modal-layer.standalone::before { content: ""; position: fixed; inset: 0 0 auto; height: 40px; -webkit-app-region: drag; }
 .wiz-num.visited { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 25%); color: var(--fg); }

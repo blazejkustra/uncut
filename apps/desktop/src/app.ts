@@ -74,8 +74,9 @@ const resources = app.isPackaged
       mediaBin: path.join(process.resourcesPath, "bin", "uncut-media"),
       modulesDir: path.join(process.resourcesPath, "modules", "builtin"),
       musicDir: path.join(process.resourcesPath, "music"),
-      // Plugins shipped with the app (D97); none yet, so the folder may be missing.
+      // Plugins shipped with the app (D97).
       bundledPluginsDir: path.join(process.resourcesPath, "plugins"),
+      pluginSdkDir: path.join(process.resourcesPath, "plugin-sdk"),
       renderEntry: undefined,
     }
   : {
@@ -84,6 +85,7 @@ const resources = app.isPackaged
       modulesDir: path.join(repoRoot, "spec/modules/builtin"),
       musicDir: path.join(repoRoot, "assets/music"),
       bundledPluginsDir: path.join(repoRoot, "plugins"),
+      pluginSdkDir: path.join(repoRoot, "packages/plugin-sdk/src"),
       // Under `pnpm dev` the binary is a bare Electron: it needs this bundle to be the rasteriser.
       renderEntry: path.join(__dirname, "main.cjs"),
     };
@@ -162,9 +164,14 @@ async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
   }
   if (!win) return null;
   const result = await dialog.showOpenDialog(win, {
-    title: purpose === "parent" ? "Choose where to save the project" : "Open a project",
-    buttonLabel: purpose === "parent" ? "Choose" : "Open",
-    message: purpose === "parent" ? "The project folder (Name.uncut) is created inside this folder." : "Choose a .uncut project folder.",
+    title: purpose === "parent" ? "Choose where to save the project" : purpose === "plugin" ? "Add a plugin" : "Open a project",
+    buttonLabel: purpose === "parent" ? "Choose" : purpose === "plugin" ? "Add" : "Open",
+    message:
+      purpose === "parent"
+        ? "The project folder (Name.uncut) is created inside this folder."
+        : purpose === "plugin"
+          ? "Choose a plugin folder (it has an uncut.module.json). Uncut copies it; you allow it next."
+          : "Choose a .uncut project folder.",
     defaultPath: appInfo.defaultParentDir,
     properties: purpose === "parent" ? ["openDirectory", "createDirectory"] : ["openDirectory"],
   });

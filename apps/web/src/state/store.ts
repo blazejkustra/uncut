@@ -56,6 +56,12 @@ export interface AppStateShape {
   readonly plugins?: ReadonlyArray<PluginInfo>;
   // Why allowing (or revoking) a plugin failed.
   readonly pluginError?: string;
+  // Settings › Plugins, Add plugin… (D102): installing, why it failed (reason "replaces-bundled"
+  // can be retried on purpose), and the plugin whose approval dialog is open.
+  readonly pluginInstalling?: boolean;
+  readonly pluginInstallError?: { readonly message: string; readonly reason: string; readonly source: string; readonly ref?: string | undefined };
+  readonly pluginInstallNote?: string;
+  readonly pluginDialog?: string;
   /** The Capture tab's Argent section (D98): what the plugin last said, and while it's asked. */
   readonly capture?: CaptureState;
   readonly captureChecking?: boolean;
@@ -203,6 +209,7 @@ function applyFromCall(snapshot: ProjectSnapshot) {
 /** A sentence for a failed call, without validator jargon. */
 export function plainError(error: CallError): string {
   if (isTransportError(error)) return "Not connected to the server. Try again when it's back.";
+  if (error._tag === "PluginError") return error.message;
   const first = error.details?.[0];
   if (error._tag === "EditRefused" && first && /invalid|malformed/.test(error.message)) return `That change isn't allowed: ${first.message}.`;
   if (error._tag === "EditRefused" && first?.code === "depends") return error.message;
@@ -817,8 +824,34 @@ export const actions = {
   async approvePlugin(plugin: Pick<PluginInfo, "id" | "dir" | "capabilities">) {
     set({ pluginError: undefined });
     const result = await call((c) => c["plugins.approve"]({ id: plugin.id, dir: plugin.dir, capabilities: [...plugin.capabilities] }));
-    if (result.ok) set({ plugins: result.value });
+    if (result.ok) set({ plugins: result.value, pluginDialog: undefined });
     else set({ pluginError: plainError(result.error) });
+  },
+  /** Installs a plugin from a folder or git URL (D102), then opens its approval dialog. */
+  async installPlugin(input: { source: string; ref?: string | undefined; replaceBundled?: boolean }) {
+    set({ pluginInstalling: true, pluginInstallError: undefined, pluginInstallNote: undefined, pluginError: undefined });
+    const result = await call((c) => c["plugins.install"]({ source: input.source, ...(input.ref ? { ref: input.ref } : {}), ...(input.replaceBundled ? { replaceBundled: true } : {}) }));
+    if (result.ok) {
+      set({ pluginInstalling: false, plugins: result.value.plugins, pluginInstallNote: result.value.note, pluginDialog: result.value.plugins.some((p) => p.id === result.value.id && p.status === "needs-approval") ? result.value.id : undefined });
+      return true;
+    }
+    const error = result.error as { reason?: unknown };
+    set({ pluginInstalling: false, pluginInstallError: { message: plainError(result.error), reason: typeof error.reason === "string" ? error.reason : "", source: input.source, ref: input.ref } });
+    return false;
+  },
+  /** Add plugin… › Choose folder: the folder dialog, then install. */
+  async installPluginFolder() {
+    const dir = await bridge.chooseFolder("plugin");
+    return dir ? actions.installPlugin({ source: dir }) : false;
+  },
+  async uninstallPlugin(id: string) {
+    set({ pluginError: undefined });
+    const result = await call((c) => c["plugins.uninstall"]({ id }));
+    if (result.ok) set({ plugins: result.value, pluginDialog: undefined });
+    else set({ pluginError: plainError(result.error) });
+  },
+  openPluginDialog(id: string | undefined) {
+    set({ pluginDialog: id, pluginError: undefined });
   },
   async revokePlugin(id: string) {
     set({ pluginError: undefined });

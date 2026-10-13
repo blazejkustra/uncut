@@ -1,6 +1,7 @@
 import type { KeyInfo, PluginInfo, SetupCheck } from "@uncut/contracts";
-import { ArrowRight, AudioLines, Blocks, KeyRound, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, AudioLines, Blocks, KeyRound, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, FolderOpen, GitBranch, Plus, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { actions, useApp } from "../state/store.ts";
 
@@ -392,32 +393,180 @@ function PendingRow() {
 }
 
 /**
- * The plugin folders Uncut found (D97), only when there are any: each one's status, what allowing
- * it means, and Allow. The full plugin manager comes later (Phase 8).
+ * Settings › Plugins (D97, D102): every plugin found, its status, Allow (through the approval
+ * dialog) and, for one Uncut installed, Remove; plus Add plugin… from a folder or a git URL.
  */
 export function PluginRows() {
-  const { plugins, pluginError, connection } = useApp();
-  if (!plugins?.length) return null;
+  const { plugins, pluginError, pluginInstallNote, connection, pluginDialog } = useApp();
+  const [adding, setAdding] = useState(false);
   const offline = connection !== "connected";
+  const dialog = pluginDialog ? plugins?.find((p) => p.id === pluginDialog && p.status !== "broken") : undefined;
   return (
     <div className="wiz-plugins" data-testid="plugins">
-      <div className="wiz-section">Plugins</div>
-      {plugins.map((p) => (
+      <div className="wiz-section-row">
+        <div className="wiz-section">Plugins</div>
+        {!adding && (
+          <button className="btn ghost" data-testid="plugin-add" disabled={offline} onClick={() => setAdding(true)}>
+            <Plus />
+            Add plugin…
+          </button>
+        )}
+      </div>
+      {adding && <AddPlugin offline={offline} onClose={() => setAdding(false)} />}
+      {!plugins?.length && !adding && <div className="wiz-sub">No plugins yet. A plugin adds tools for the agent, like a capture source or a generator.</div>}
+      {plugins?.map((p) => (
         <PluginRow key={`${p.source}:${p.dir}`} plugin={p} offline={offline} />
       ))}
+      {pluginInstallNote && (
+        <div className="wiz-note warn" data-testid="plugin-install-note">
+          <TriangleAlert />
+          {pluginInstallNote}
+        </div>
+      )}
       {pluginError && (
         <div className="wiz-note error" data-testid="plugin-error">
           <TriangleAlert />
           {pluginError}
         </div>
       )}
+      {dialog && <PluginApproval plugin={dialog} offline={offline} />}
     </div>
+  );
+}
+
+/** Add plugin…: choose a folder, or paste a git URL (with an optional branch or tag). */
+function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void }) {
+  const { pluginInstalling, pluginInstallError } = useApp();
+  const [url, setUrl] = useState("");
+  const [ref, setRef] = useState("");
+  const busy = offline || !!pluginInstalling;
+  const done = (ok: boolean) => ok && onClose();
+  const fromUrl = async () => url.trim() && done(await actions.installPlugin({ source: url.trim(), ref: ref.trim() || undefined }));
+  return (
+    <div className="wiz-check" data-testid="plugin-add-panel">
+      <div className="wiz-row">
+        <FolderOpen />
+        <div className="grow">
+          <div className="wiz-name">From a folder on this Mac</div>
+          <div className="wiz-sub">A folder with an uncut.module.json. Uncut copies it into its plugins folder.</div>
+        </div>
+        <button className="btn" data-testid="plugin-add-folder" disabled={busy} onClick={() => void actions.installPluginFolder().then(done)}>
+          Choose folder…
+        </button>
+      </div>
+      <div className="wiz-row">
+        <GitBranch />
+        <div className="grow plugin-git">
+          <input
+            className="field input"
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="Git URL (https://, ssh:// or git@host:path)"
+            data-testid="plugin-add-url"
+            value={url}
+            disabled={busy}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void fromUrl()}
+          />
+          <input
+            className="field input plugin-ref"
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="Branch or tag (optional)"
+            data-testid="plugin-add-ref"
+            value={ref}
+            disabled={busy}
+            onChange={(e) => setRef(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void fromUrl()}
+          />
+        </div>
+        <button className="btn" data-testid="plugin-add-install" disabled={busy || !url.trim()} onClick={() => void fromUrl()}>
+          {pluginInstalling ? "Installing…" : "Install"}
+        </button>
+      </div>
+      <div className="wiz-fix">
+        <span>Installing doesn't run it: you see what it asks for and allow it next.</span>
+        {pluginInstallError && (
+          <span className="error" data-testid="plugin-install-error">
+            {pluginInstallError.message}
+          </span>
+        )}
+        <span className="wiz-btns">
+          {pluginInstallError?.reason === "replaces-bundled" && (
+            <button
+              className="btn"
+              data-testid="plugin-add-replace"
+              disabled={busy}
+              onClick={() => void actions.installPlugin({ source: pluginInstallError.source, ref: pluginInstallError.ref, replaceBundled: true }).then(done)}
+            >
+              Install it anyway
+            </button>
+          )}
+          <button className="link-btn" data-testid="plugin-add-cancel" onClick={onClose}>
+            Cancel
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Where a plugin came from, in words (the approval dialog and the row's tooltip). */
+const originLines = (p: PluginInfo): Array<[string, string]> => {
+  if (p.source === "bundled") return [["Source", "Ships with Uncut"]];
+  if (p.origin?.kind === "git") return [["Source", p.origin.source], ...(p.origin.ref ? [["Branch or tag", p.origin.ref] as [string, string]] : []), ["Commit", p.origin.commit ?? "unknown"]];
+  if (p.origin?.kind === "folder") return [["Source", `Copied from ${p.origin.source}`]];
+  return [["Source", `The folder ${p.dir}`]];
+};
+
+/** Allowing a plugin (D97): where it came from, what it asks for, and that it runs with your rights. */
+function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
+  const [rights, ...rest] = p.asks;
+  // Above Settings (itself a modal), outside its scrolling list.
+  return createPortal(
+    <div className="modal-layer plugin-approval-layer" data-testid="plugin-dialog" onMouseDown={(e) => e.target === e.currentTarget && actions.openPluginDialog(undefined)}>
+      <div className="modal plugin-approval" role="dialog" aria-label={`Allow ${p.name}?`}>
+        <h2>Allow {p.name}?</h2>
+        <div className="plugin-facts">
+          {[...originLines(p), ["Id", p.id] as [string, string], ...(p.version ? [["Version", p.version] as [string, string]] : []), ["Tools for the agent", p.tools.length ? p.tools.join(", ") : "None"] as [string, string]].map(([k, v]) => (
+            <div className="plugin-fact" key={k} data-testid={`plugin-dialog-${k.toLowerCase().replace(/\W+/g, "-")}`}>
+              <span className="k">{k}</span>
+              <span className="v">{v}</span>
+            </div>
+          ))}
+        </div>
+        <div className="plugin-asks" data-testid="plugin-dialog-asks">
+          {rest.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+          {p.capabilities.length === 0 && <p>It doesn't ask for any capabilities.</p>}
+        </div>
+        {rights && (
+          <div className="wiz-note warn" data-testid="plugin-dialog-rights">
+            <TriangleAlert />
+            {rights}
+          </div>
+        )}
+        <div className="wiz-btns">
+          <button className="btn ghost" data-testid="plugin-dialog-cancel" onClick={() => actions.openPluginDialog(undefined)}>
+            Not now
+          </button>
+          <button className="btn primary" data-testid="plugin-dialog-allow" disabled={offline} onClick={() => void actions.approvePlugin(p)}>
+            Allow
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
 function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
   const tools = p.tools.length ? `Gives the agent ${p.tools.join(", ")}` : "No agent tools";
-  const sub = p.status === "broken" ? "Skipped" : `${p.version ? `Version ${p.version}. ` : ""}${tools}. ${p.source === "bundled" ? "Ships with Uncut." : `From ${p.dir}`}`;
+  const from = p.source === "bundled" ? "Ships with Uncut." : p.origin?.kind === "git" ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}` : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
+  const sub = p.status === "broken" ? "Skipped" : `${p.version ? `Version ${p.version}. ` : ""}${tools}. ${from}`;
   return (
     <div className="wiz-check" data-testid={p.status === "broken" ? `plugin-skipped-${p.id}` : `plugin-${p.id}`} data-status={p.status}>
       <div className="wiz-row">
@@ -439,8 +588,8 @@ function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolea
             Not loaded
           </span>
         ) : (
-          <button className="btn primary" data-testid={`plugin-allow-${p.id}`} disabled={offline} onClick={() => void actions.approvePlugin(p)}>
-            Allow
+          <button className="btn primary" data-testid={`plugin-allow-${p.id}`} disabled={offline} onClick={() => actions.openPluginDialog(p.id)}>
+            Allow…
           </button>
         )}
       </div>
@@ -453,11 +602,18 @@ function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolea
           ))}
         </div>
       )}
-      {p.status === "ready" && p.source === "user" && (
-        <div className="wiz-fix">
-          <button className="link-btn" data-testid={`plugin-revoke-${p.id}`} disabled={offline} onClick={() => void actions.revokePlugin(p.id)}>
-            Stop allowing it
-          </button>
+      {((p.status === "ready" && p.source === "user") || p.removable) && (
+        <div className="wiz-fix wiz-actions">
+          {p.status === "ready" && p.source === "user" && (
+            <button className="link-btn" data-testid={`plugin-revoke-${p.id}`} disabled={offline} onClick={() => void actions.revokePlugin(p.id)}>
+              Stop allowing it
+            </button>
+          )}
+          {p.removable && (
+            <button className="link-btn" data-testid={`plugin-remove-${p.id}`} disabled={offline} onClick={() => void actions.uninstallPlugin(p.id)}>
+              Remove
+            </button>
+          )}
         </div>
       )}
     </div>
