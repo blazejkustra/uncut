@@ -24,6 +24,17 @@ export type MenuCommand =
   | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" | "open-environments" }
   | { readonly type: "open-recent"; readonly dir: string };
 
+/** Recording on this Mac (D114): macOS's answer for the microphone, camera and screen recording. */
+export type MediaAccessKind = "microphone" | "camera" | "screen";
+export type MediaAccess = "not-determined" | "granted" | "denied" | "restricted" | "unknown";
+/** A screen or window to record; a stand-in (tests) has an id starting "standin:". */
+export interface CaptureSource {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "screen" | "window";
+  readonly thumbnail: string;
+}
+
 export interface UncutBridge {
   readonly getServerConnection: () => Promise<ServerConnection>;
   // Called if the server dies after it started. Returns an unsubscribe function.
@@ -54,6 +65,14 @@ export interface UncutBridge {
   readonly downloadExport: (jobId: string, name: string) => Promise<{ readonly path: string } | { readonly error: string } | null>;
   // Background test runs: the preview plays to no output device (AudioContext sinkId "none").
   readonly silentAudio?: boolean;
+  // Recording on this Mac (D114).
+  readonly mediaAccess: () => Promise<Record<MediaAccessKind, MediaAccess>>;
+  /** Asks macOS (its prompt shows only the first time); the state after. */
+  readonly askMediaAccess: (kind: MediaAccessKind) => Promise<MediaAccess>;
+  readonly openPrivacySettings: (kind: MediaAccessKind) => Promise<void>;
+  readonly captureSources: () => Promise<ReadonlyArray<CaptureSource>>;
+  /** The source the next getDisplayMedia records. */
+  readonly chooseDisplaySource: (id: string) => Promise<void>;
 }
 
 declare global {
@@ -85,4 +104,9 @@ export const bridge: UncutBridge = window.uncut ?? {
   switchEnvironment: () => Promise.resolve(false),
   environmentStatus: () => Promise.resolve({}),
   downloadExport: () => Promise.resolve(null),
+  mediaAccess: () => Promise.resolve({ microphone: "unknown", camera: "unknown", screen: "unknown" }),
+  askMediaAccess: () => Promise.resolve("unknown"),
+  openPrivacySettings: () => Promise.resolve(),
+  captureSources: () => Promise.resolve([]),
+  chooseDisplaySource: () => Promise.resolve(),
 };

@@ -60,6 +60,7 @@ export const RPC_METHODS = {
   captureDevices: "capture.devices",
   captureStart: "capture.start",
   captureStop: "capture.stop",
+  captureSave: "capture.save",
   generateList: "generate.list",
   generateStart: "generate.start",
   generateJobs: "generate.jobs",
@@ -381,6 +382,18 @@ export const CaptureState = Schema.Struct({
   recording: Schema.Array(Schema.Struct({ device: Schema.String, startedAt: Schema.String })),
 });
 export type CaptureState = typeof CaptureState.Type;
+
+/** D114: what a take recorded on this Mac is (the microphone's voiceover, a camera, a screen or window). */
+export const TakeKind = Schema.Literals(["voiceover", "camera", "screen"]);
+export type TakeKind = typeof TakeKind.Type;
+
+/**
+ * D114: the name a take's recording is uploaded under (media/uploads/uncut-take-voiceover-1a2b3c4d5e6f.webm;
+ * the server may add " 2"). capture.save only takes files named like this, so a file the user
+ * uploaded (D108) is never converted or removed by it.
+ */
+export const takeUploadName = (kind: TakeKind, ext: "webm" | "mp4") => `uncut-take-${kind}-${Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("")}.${ext}`;
+export const TAKE_UPLOAD_NAME = /^uncut-take-(voiceover|camera|screen)-[0-9a-f]{12}(?: \d+)?\.(?:webm|mp4)$/;
 
 export class CaptureError extends Schema.TaggedError<CaptureError>()("CaptureError", {
   reason: Schema.Literals(["no-project", "unavailable", "failed"]),
@@ -914,6 +927,16 @@ const CaptureStopRpc = Rpc.make(RPC_METHODS.captureStop, {
   error: CaptureError,
 });
 
+// A take recorded on this Mac (D114): the renderer uploads the recorder's file to /api/upload (the
+// project's media/uploads/, local or remote alike), then this moves it into media/captures/,
+// converts it (m4a for a voiceover, mp4 for camera and screen) and imports it as one user edit,
+// placed on the timeline at `placeAt` (a project frame) when given. `device` is the input's name.
+const CaptureSaveRpc = Rpc.make(RPC_METHODS.captureSave, {
+  payload: Schema.Struct({ path: Schema.String, kind: TakeKind, name: Schema.optional(Schema.String), device: Schema.optional(Schema.String), placeAt: Schema.optional(Schema.Number) }),
+  success: Schema.Struct({ mediaId: Schema.String, name: Schema.String, seconds: Schema.Number, itemId: Schema.optional(Schema.String), trackId: Schema.optional(Schema.String) }),
+  error: CaptureError,
+});
+
 // Generators (D99): which there are and whether each has its key; a generation into the open
 // project (returns at once; progress on generate.jobs); cancel one.
 const GenerateListRpc = Rpc.make(RPC_METHODS.generateList, { payload: Empty, success: Schema.Array(GeneratorInfo) });
@@ -940,6 +963,7 @@ export const WsRpcGroup = RpcGroup.make(
   CaptureDevicesRpc,
   CaptureStartRpc,
   CaptureStopRpc,
+  CaptureSaveRpc,
   PluginsListRpc,
   PluginsApproveRpc,
   PluginsRevokeRpc,

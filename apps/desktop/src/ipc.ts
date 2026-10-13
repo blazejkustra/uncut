@@ -48,3 +48,22 @@ export type EnvironmentTest = { readonly ok: true; readonly version: string; rea
 export type MenuCommand =
   | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" | "open-environments" }
   | { readonly type: "open-recent"; readonly dir: string };
+
+// Recording on this Mac (D114): permission states, asking, System Settings, screen and window sources.
+export const MEDIA_ACCESS_CHANNEL = "uncut:media-access";
+export const ASK_MEDIA_ACCESS_CHANNEL = "uncut:ask-media-access";
+export const OPEN_PRIVACY_SETTINGS_CHANNEL = "uncut:open-privacy-settings";
+export const CAPTURE_SOURCES_CHANNEL = "uncut:capture-sources";
+export const CHOOSE_DISPLAY_SOURCE_CHANNEL = "uncut:choose-display-source";
+
+export type MediaAccessKind = "microphone" | "camera" | "screen";
+export type MediaAccess = "not-determined" | "granted" | "denied" | "restricted" | "unknown";
+
+/** A screen or window to record; a stand-in (tests) has an id starting "standin:". */
+export interface CaptureSource {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "screen" | "window";
+  /** A small picture of it (a data: URL), "" when there's none. */
+  readonly thumbnail: string;
+}

@@ -247,6 +247,15 @@ function seek(el: HTMLMediaElement, t: number) {
   if (!el.seeking && Math.abs(el.currentTime - target) > 0.004) el.currentTime = target;
 }
 
+// D114: the Capture tab mutes what the preview plays while a voiceover records with the timeline
+// playing (so the microphone doesn't pick it up). The meters still move; only the speakers go quiet.
+let outputMuted = false;
+const liveOutputs = new Set<GainNode>();
+export function muteOutput(muted: boolean) {
+  outputMuted = muted;
+  for (const out of liveOutputs) out.gain.value = muted ? 0 : 1;
+}
+
 export class Mix {
   private ctx: AudioContext | undefined;
   private master: GainNode | undefined;
@@ -297,7 +306,11 @@ export class Mix {
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
         post.connect(analyser);
-        analyser.connect(ctx.destination);
+        const out = ctx.createGain();
+        out.gain.value = outputMuted ? 0 : 1;
+        analyser.connect(out);
+        out.connect(ctx.destination);
+        liveOutputs.add(out);
         // The master strip's meters: the output split into its two channels.
         const split = ctx.createChannelSplitter(2);
         const meters = [ctx.createAnalyser(), ctx.createAnalyser()] as const;

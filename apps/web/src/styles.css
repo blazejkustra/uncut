@@ -933,3 +933,30 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .remote-entry .grow { flex: 1; min-width: 0; }
 .remote-empty { padding: 12px; }
 .wiz-sub.warn { color: var(--warn); }
+/* This Mac (D114): microphone, camera and screen takes. */
+.capture-this-mac { display: flex; flex-direction: column; gap: 8px; }
+.capture-modes button { flex: 1; }
+.capture-part { display: flex; flex-direction: column; gap: 8px; }
+.capture-part .check-row { margin-bottom: 0; }
+.capture-access { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.capture-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.capture-level { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.capture-level > div { height: 100%; background: var(--ok); transition: width 60ms linear; }
+.capture-level > div.hot { background: var(--error); }
+.capture-record { align-self: flex-start; }
+.capture-take-row { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.capture-take-row .small-btn svg.lucide { width: 12px; height: 12px; }
+.capture-countdown { font: 600 22px var(--mono); min-width: 24px; color: var(--error); }
+.capture-preview { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.capture-preview video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.capture-preview .inline-error { position: absolute; inset: auto 8px 8px 8px; }
+.capture-sources-head { display: flex; align-items: center; justify-content: space-between; }
+.capture-sources { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.capture-source { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: left; min-width: 0; }
+.capture-source.active { border-color: var(--fg); background: var(--raised); }
+.capture-source img, .capture-source .capture-source-icon { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 3px; background: var(--panel-2); display: flex; align-items: center; justify-content: center; }
+.capture-source .capture-source-icon svg.lucide { width: 18px; height: 18px; color: var(--muted); }
+.capture-source-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capture-message.saved { color: var(--ok); }
+.capture-message.discarded { color: var(--muted); }
+.capture-message.error { color: var(--error); }

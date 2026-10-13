@@ -2,7 +2,7 @@
 // devices (the fake argent via ARGENT_BIN, never the real CLI: it would start the shared
 // tool-server), says why the ones it can't record aren't recordable, records the simulator with a
 // running timer, Stop puts the take in the Library (Media) as a recording from the bundled Argent
-// plugin, and one ⌘Z takes it out again. Screen and Microphone say "Coming later".
+// plugin, and one ⌘Z takes it out again. (This Mac's microphone, camera and screen: capture-this-mac-app.test.ts.)
 // Screenshots: test-output/capture-tab.png, test-output/capture-recording.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -70,8 +70,8 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     assert.match(tv.text, /Not recordable yet/);
     assert.match(tv.text, /tvOS simulators can't be recorded yet/);
     assert.match(rows.find((r) => r.id === "chromium-cdp-9222")!.text, /Chromium apps can't be recorded yet/);
-    assert.match(await text(page, "[data-testid=capture-screen]"), /Coming later/);
-    assert.match(await text(page, "[data-testid=capture-mic]"), /Coming later/);
+    // This Mac (D114) has its own test: capture-this-mac-app.test.ts.
+    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-mic]");
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-library]")), "no dots or stars between words");
     await page.screenshot({ path: "test-output/capture-tab.png" });
 

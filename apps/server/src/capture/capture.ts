@@ -10,15 +10,20 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureState } from "@uncut/contracts";
+import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureState, type TakeKind } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Semaphore from "effect/Semaphore";
 
 import { Analysis, cachedFor, type AnalysisShape } from "../analysis/analysis.ts";
 import { MediaLibrary, type AgentImport, type MediaLibraryShape, type ReplacedMedia } from "../media/media.ts";
 import { CAPTURE_DIR, Plugins, type PluginCaller, type PluginResult } from "../plugins/plugins.ts";
 import { Projects } from "../project/projects.ts";
+import { ServerConfig } from "../app/config.ts";
+import { which } from "../app/setup.ts";
+import { withoutApiKey } from "../app/shellEnv.ts";
+import { convertTake, TAKE_MODULE, uploadedTake } from "./takes.ts";
 
 export const ARGENT_PLUGIN = "argent.capture";
 export const ARGENT_INSTALL = "npm i -g @swmansion/argent@latest";
@@ -132,6 +137,24 @@ export interface CaptureShape {
   readonly state: Effect.Effect<CaptureState, CaptureError>;
   readonly start: (device: string, showTouches?: boolean) => Effect.Effect<{ device: string; startedAt: string }, CaptureError>;
   readonly stop: (device: string) => Effect.Effect<{ mediaId: string; name: string; seconds: number }, CaptureError>;
+  /** D114: a take recorded on this Mac (uploaded to media/uploads/) into the project, placed when `placeAt` is given. */
+  readonly save: (input: SaveTakeInput) => Effect.Effect<SavedTake, CaptureError>;
+}
+
+export interface SaveTakeInput {
+  readonly path: string;
+  readonly kind: TakeKind;
+  readonly name?: string | undefined;
+  readonly device?: string | undefined;
+  readonly placeAt?: number | undefined;
+}
+
+export interface SavedTake {
+  readonly mediaId: string;
+  readonly name: string;
+  readonly seconds: number;
+  readonly itemId?: string;
+  readonly trackId?: string;
 }
 
 export class Capture extends Context.Service<Capture, CaptureShape>()("uncut/Capture") {}
@@ -150,6 +173,7 @@ export const layer = Layer.effect(
     const projects = yield* Projects;
     const media = yield* MediaLibrary;
     const analysis = yield* Analysis;
+    const config = yield* ServerConfig;
     // Recordings started from the Capture tab: the device, when, and the opening of the project
     // the take goes into (a project closed meanwhile gets nothing; the file stays in its folder).
     const recording = new Map<string, { startedAt: string; openId: number; dir: string }>();
@@ -211,6 +235,48 @@ export const layer = Layer.effect(
         return { mediaId: entry.id, name: entry.name, seconds: Number(((entry.probe.frames ?? 0) / fps).toFixed(2)) };
       });
 
-    return Capture.of({ state, start, stop });
+    // One take at a time is converted and imported (a second waits), so two saves never race for a name.
+    const saving = yield* Semaphore.make(1);
+    const save = (input: SaveTakeInput) =>
+      saving.withPermits(1)(
+        Effect.gen(function* () {
+          const open = yield* projects.current;
+          if (!open) return yield* new CaptureError({ reason: "no-project", message: "Open a project first: takes go into its media folder." });
+          const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) => (typeof m.path === "string" ? [m.path] : []));
+          const found = yield* Effect.promise(() => uploadedTake(input.path, open.dir, mediaPaths));
+          if ("problem" in found) return yield* failed(found.problem);
+          const ffmpeg = yield* Effect.promise(async () => {
+            await config.shellReady;
+            return which("ffmpeg", process.env.PATH ?? "");
+          });
+          if (!ffmpeg) return yield* failed("ffmpeg isn't installed, so the take can't be saved (brew install ffmpeg). The recording is in media/uploads.");
+          const fps = (open.project as { canvas?: { fps?: number } }).canvas?.fps ?? 30;
+          const converted = yield* Effect.promise(() =>
+            convertTake({ ffmpeg, env: withoutApiKey(process.env), projectDir: open.dir, upload: found.file, kind: input.kind, name: input.name, fps }).catch((error: Error) => ({ problem: `The take couldn't be saved: ${error.message}` })),
+          );
+          if ("problem" in converted) return yield* failed(converted.problem);
+          const device = str(input.device);
+          const placeAt = typeof input.placeAt === "number" && Number.isFinite(input.placeAt) && input.placeAt >= 0 ? Math.floor(input.placeAt) : undefined;
+          const result = yield* media
+            .importCapture({
+              openId: open.openId,
+              dir: open.dir,
+              path: converted.file,
+              source: { module: TAKE_MODULE[input.kind], ...(device ? { device: device.slice(0, 200) } : {}) },
+              ...(placeAt !== undefined ? { place: { frame: placeAt, placement: input.kind === "voiceover" ? ("voiceover" as const) : ("video" as const) } } : {}),
+            })
+            .pipe(Effect.mapError((error) => failed(`The take wasn't imported: ${error.message}`)));
+          const entry = result.entries[0];
+          if (!entry) return yield* failed(`The take wasn't imported: ${result.failed[0]?.message ?? result.skipped[0]?.reason ?? "nothing was added"}`);
+          return {
+            mediaId: entry.id,
+            name: entry.name,
+            seconds: Number(((entry.probe.frames ?? 0) / fps).toFixed(2)),
+            ...(result.placed ? { itemId: result.placed.itemId, trackId: result.placed.trackId } : {}),
+          } satisfies SavedTake;
+        }),
+      );
+
+    return Capture.of({ state, start, stop, save });
   }),
 );
