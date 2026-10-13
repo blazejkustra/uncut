@@ -4,9 +4,10 @@
 // never copied (D12). Jobs run one at a time and aren't tied to the request that started them.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
+import { planReshoot, type Overrun, type Project } from "@uncut/core";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -38,6 +39,46 @@ export interface MediaLibraryShape {
    * Resolves once the media is in the project; posters carry on in the background.
    */
   readonly importForAgent: (input: AgentImportInput) => Effect.Effect<AgentImport, ProjectError>;
+  /**
+   * A recording a capture plugin made (D98): imported like media_import, with its `source`, stored
+   * relative to the project when it's inside it (media/captures/...). The agent's (turnId) or,
+   * without one, the user's edit (the Capture tab: one ⌘Z removes it).
+   */
+  readonly importCapture: (input: CaptureImportInput) => Effect.Effect<AgentImport, ProjectError>;
+  /**
+   * A re-shot recording swapped in for media `mediaId` (D98): probed, then one edit that changes
+   * the media's file and trims or holds clips past the new end (core planReshoot); a new poster.
+   */
+  readonly replaceMedia: (input: ReplaceMediaInput) => Effect.Effect<ReplacedMedia, ProjectError>;
+}
+
+export interface CaptureImportInput {
+  readonly openId: number;
+  readonly dir: string;
+  readonly path: string;
+  readonly name?: string | undefined;
+  readonly source: { readonly module: string; readonly [key: string]: unknown };
+  readonly turnId?: string | undefined;
+}
+
+export interface ReplaceMediaInput {
+  readonly openId: number;
+  readonly dir: string;
+  readonly mediaId: string;
+  readonly path: string;
+  readonly source?: { readonly module: string; readonly [key: string]: unknown } | undefined;
+  readonly overrun?: Overrun | undefined;
+  readonly turnId?: string | undefined;
+}
+
+export interface ReplacedMedia {
+  readonly snapshot: ProjectSnapshot | undefined;
+  readonly entry: MediaEntry;
+  /** The file it had before. */
+  readonly previousPath: string;
+  readonly warnings: ReadonlyArray<string>;
+  /** The edit's ops (update_media, then the trims and holds). */
+  readonly ops: ReadonlyArray<unknown>;
 }
 
 export interface AgentImportInput {
@@ -65,7 +106,14 @@ export interface MediaEntry {
   readonly name: string;
   readonly path: string;
   readonly probe: { frames?: number; fps?: number; width?: number; height?: number; hasAudio: boolean };
+  readonly source?: { readonly module: string; readonly [key: string]: unknown };
 }
+
+/** A file inside the project folder is stored relative to it (media/captures/x.mp4, D12). */
+const storedPath = (path: string, projectDir: string) => {
+  const rel = relative(projectDir, path);
+  return rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel : path;
+};
 
 type ProjectShape = {
   canvas: { fps: number };
@@ -150,6 +198,16 @@ const fromFfprobe = (json: string): ProbeInfo | undefined => {
 
 const MAX_JOBS_KEPT = 10;
 
+/** A probe in project terms: the length in project frames, the picture as shown. */
+const probeOf = (info: ProbeInfo, fps: number): MediaEntry["probe"] => {
+  // The project stores the picture as shown: a phone clip turned 90° is portrait.
+  const turned = info.rotation === 90 || info.rotation === 270;
+  const width = turned ? info.height : info.width;
+  const height = turned ? info.width : info.height;
+  const frames = info.kind !== "image" && info.durationSeconds ? Math.max(1, Math.floor(info.durationSeconds * fps)) : undefined;
+  return { ...(frames ? { frames } : {}), ...(info.fpsValue ? { fps: info.fpsValue } : {}), ...(width ? { width } : {}), ...(height ? { height } : {}), hasAudio: info.hasAudio };
+};
+
 export const layer = Layer.effect(
   MediaLibrary,
   Effect.gen(function* () {
@@ -182,8 +240,9 @@ export const layer = Layer.effect(
       });
 
     /** A poster for a video or image in `dir`; false (and no file) if ffmpeg is missing or fails. */
-    const makePoster = (entry: MediaEntry, info: ProbeInfo, dir: string) =>
+    const makePoster = (stored: MediaEntry, info: ProbeInfo, dir: string) =>
       Effect.gen(function* () {
+        const entry = { ...stored, path: isAbsolute(stored.path) ? stored.path : resolve(dir, stored.path) };
         // No poster for audio, nor for SVG (ffmpeg can't read it; the Library shows the file itself).
         if (entry.kind === "audio" || extname(entry.path).toLowerCase() === ".svg") return false;
         const bin = yield* tool("ffmpeg");
@@ -221,6 +280,12 @@ export const layer = Layer.effect(
     interface JobOptions {
       readonly agent?: { readonly turnId: string } | undefined;
       readonly names?: ReadonlyMap<string, string> | undefined;
+      /** Where each file came from (a capture, D98), by path. */
+      readonly sources?: ReadonlyMap<string, { readonly module: string; readonly [key: string]: unknown }> | undefined;
+      /** Store files inside the project relative to it. */
+      readonly relativePaths?: boolean | undefined;
+      /** Don't list the job's report in the Library (the agent's, a capture's). */
+      readonly quiet?: boolean | undefined;
       /** Completed once the media is in the project (or the job failed before that). */
       readonly added?: Deferred.Deferred<AgentImport, string> | undefined;
     }
@@ -295,20 +360,17 @@ export const layer = Layer.effect(
               }
               known.add(p.real);
               const { info } = p;
-              // The project stores the picture as shown: a phone clip turned 90° is portrait.
-              const turned = info.rotation === 90 || info.rotation === 270;
-              const width = turned ? info.height : info.width;
-              const height = turned ? info.width : info.height;
-              const frames = info.kind !== "image" && info.durationSeconds ? Math.max(1, Math.floor(info.durationSeconds * fps)) : undefined;
               const name = options.names?.get(p.path) ?? basename(p.path);
+              const source = options.sources?.get(p.path);
               entries.push({
                 info,
                 entry: {
                   id: mediaId(name, taken),
                   kind: info.kind,
                   name,
-                  path: p.path,
-                  probe: { ...(frames ? { frames } : {}), ...(info.fpsValue ? { fps: info.fpsValue } : {}), ...(width ? { width } : {}), ...(height ? { height } : {}), hasAudio: info.hasAudio },
+                  path: options.relativePaths ? storedPath(p.path, projectDir) : p.path,
+                  ...(source ? { source } : {}),
+                  probe: probeOf(info, fps),
                 },
               });
             }
@@ -355,7 +417,7 @@ export const layer = Layer.effect(
     const queueJob = (open: { readonly openId: number; readonly dir: string }, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
       Effect.gen(function* () {
         const id = randomUUID();
-        const job: ImportJob = { id, projectDir: open.dir, total: paths.length, phase: "queued", probed: 0, postersDone: 0, postersTotal: 0, ...(options.agent ? { agent: true } : {}) };
+        const job: ImportJob = { id, projectDir: open.dir, total: paths.length, phase: "queued", probed: 0, postersDone: 0, postersTotal: 0, ...(options.agent || options.quiet ? { agent: true } : {}) };
         yield* SubscriptionRef.update(jobsRef, (jobs) => [...jobs.filter((j) => j.phase !== "done" && j.phase !== "failed"), ...jobs.filter((j) => j.phase === "done" || j.phase === "failed").slice(-MAX_JOBS_KEPT), job]);
         // Forked into the server's scope, not the request's: a client that goes away or times
         // out doesn't cancel the import; one job runs at a time.
@@ -377,6 +439,67 @@ export const layer = Layer.effect(
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 
+    const importCapture = ({ openId, dir, path, name, source, turnId }: CaptureImportInput) =>
+      Effect.gen(function* () {
+        const added = yield* Deferred.make<AgentImport, string>();
+        yield* queueJob({ openId, dir }, [path], {
+          agent: turnId ? { turnId } : undefined,
+          quiet: true,
+          relativePaths: true,
+          names: name ? new Map([[path, name]]) : undefined,
+          sources: new Map([[path, source]]),
+          added,
+        });
+        return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
+      });
+
+    /** One file's probe, as the import job does it (the media core, ffprobe when it can't). */
+    const probeFile = (path: string) =>
+      Effect.gen(function* () {
+        const problem = yield* precheck(path);
+        if (problem) return { ok: false as const, message: problem };
+        const [first] = yield* mediaCore.probeMany([path], () => {}).pipe(Effect.catchTag("MediaCoreError", (e) => Effect.succeed([{ ok: false as const, code: "error", message: e.message }] as ReadonlyArray<ProbeOutcome>)));
+        let outcome = first ?? { ok: false as const, code: "error", message: "no probe" };
+        if ((!outcome.ok && outcome.code === "unsupported") || (outcome.ok && outcome.info.kind !== "image" && !(outcome.info.durationSeconds && outcome.info.durationSeconds > 0))) {
+          const viaFfprobe = yield* ffprobe(path);
+          if (viaFfprobe?.durationSeconds || (viaFfprobe && !outcome.ok)) outcome = { ok: true, info: viaFfprobe };
+        }
+        if (!outcome.ok) return { ok: false as const, message: PROBE_ERRORS[outcome.code] ?? outcome.message };
+        return { ok: true as const, info: outcome.info };
+      });
+
+    const replaceMedia = ({ openId, dir, mediaId: id, path, source, overrun, turnId }: ReplaceMediaInput) =>
+      Effect.gen(function* () {
+        const probed = yield* probeFile(path);
+        if (!probed.ok) return yield* new ProjectError({ reason: "io", message: `The new take can't be read: ${probed.message}`, details: [] });
+        let result: { entry: MediaEntry; previousPath: string; warnings: ReadonlyArray<string>; ops: ReadonlyArray<unknown> } | undefined;
+        const snapshot = yield* projects
+          .editIn(
+            openId,
+            (raw, projectDir) =>
+              Effect.try({
+                try: () => {
+                  const project = raw as Project;
+                  const old = project.media.find((m) => m.id === id);
+                  if (!old) throw new Error(`There's no media ${id} in the project.`);
+                  const probe = probeOf(probed.info, project.canvas.fps);
+                  const stored = storedPath(path, projectDir);
+                  const plan = planReshoot(project, id, { path: stored, probe, ...(source ? { source } : {}) }, overrun);
+                  result = { entry: { id, kind: old.kind, name: old.name, path: stored, probe, ...(source ?? old.source ? { source: (source ?? old.source)! } : {}) }, previousPath: old.path, warnings: plan.warnings, ops: plan.ops };
+                  return { ops: plan.ops as ReadonlyArray<unknown>, summary: `Re-shoot ${old.name}` };
+                },
+                catch: (error) => new ProjectError({ reason: "io", message: error instanceof Error ? error.message : String(error), details: [] }),
+              }),
+            turnId ? { turnId } : undefined,
+          )
+          .pipe(Effect.mapError((error) => (error instanceof ProjectError ? error : new ProjectError({ reason: "io", message: (error as { message?: string }).message ?? String(error), details: [] }))));
+        if (!result) return yield* new ProjectError({ reason: "io", message: "Nothing was swapped in.", details: [] });
+        const done = result;
+        // The new poster in the background (the old one goes: makePoster keeps only the current file's).
+        yield* Effect.forkIn(makePoster(done.entry, probed.info, dir).pipe(Effect.ignore), scope);
+        return { snapshot, ...done };
+      });
+
     const currentPosters = Effect.gen(function* () {
       const open = yield* projects.current;
       if (!open) return new Map<string, string>();
@@ -396,6 +519,8 @@ export const layer = Layer.effect(
       thumbnails: Effect.map(currentPosters, (m) => [...m.keys()]),
       posterFor: (id) => Effect.map(currentPosters, (m) => m.get(id)),
       importForAgent,
+      importCapture,
+      replaceMedia,
     });
   }),
 );

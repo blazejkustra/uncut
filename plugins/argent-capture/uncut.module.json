@@ -1,0 +1,63 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "argent.capture",
+  "kind": "capture-source",
+  "name": "Argent",
+  "version": "0.1.0",
+  "description": "Records iOS simulators and Android emulators and devices with Argent, on a timer or while replaying a saved flow, and re-shoots a flow's take when the app changes.",
+  "author": "Software Mansion",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
+  "requires": {
+    "binary": "argent",
+    "minVersion": "0.19.0",
+    "install": "npm i -g @swmansion/argent@latest",
+    "platforms": ["macos-arm64"]
+  },
+  "capabilities": ["process:spawn", "media:write", "project:read"],
+  "capture": {
+    "targets": ["ios-simulator", "android-emulator", "android-device"],
+    "flows": true,
+    "agentDriven": false
+  },
+  "agentTools": [
+    {
+      "name": "argent_list_devices",
+      "description": "List the simulators, emulators and apps Argent sees, each with recordable (true or false, with the reason). Call it before recording.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "argent_record",
+      "description": "Record a device's screen: replay a saved flow while recording (preferred: repeatable, and it can be re-shot later), or record for a number of seconds. The take is imported into the project as media (its id comes back); place it with timeline_edit.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["device"],
+        "additionalProperties": false,
+        "properties": {
+          "device": { "type": "string", "description": "A recordable device id from argent_list_devices." },
+          "flow": { "type": "string", "description": "A flow to replay while recording: a saved flow's name in the project's flows/ folder, a path relative to the project (flows/login.yaml) or an absolute path to an Argent flow .yaml. The take lasts as long as the flow." },
+          "seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 600, "description": "Record for this long instead of replaying a flow." },
+          "saveFlow": { "type": "string", "description": "Save the replayed flow in the project's flows/ folder under this name (a flow from elsewhere is always copied there, so the take can be re-shot)." },
+          "showTouches": { "type": "boolean", "description": "Draw taps and swipes into the video (default false)." },
+          "name": { "type": "string", "description": "The take's file and media name." }
+        }
+      }
+    },
+    {
+      "name": "argent_reshoot",
+      "description": "Re-record a media item Argent recorded from a flow (its own, or another flow) and swap the new take in everywhere the media is used, as one undoable edit. A shorter take trims the clips that run past its end (overrun hold: they hold its last frame instead); the result lists each with a warning.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["mediaId"],
+        "additionalProperties": false,
+        "properties": {
+          "mediaId": { "type": "string" },
+          "flow": { "type": "string", "description": "Replay this flow instead of the one the media was recorded with." },
+          "overrun": { "enum": ["trim", "hold"], "description": "Clips past the new take's end: trim them (default) or hold its last frame." },
+          "showTouches": { "type": "boolean" }
+        }
+      }
+    }
+  ],
+  "ui": { "panel": "capture", "icon": "circle-dot" }
+}

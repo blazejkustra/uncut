@@ -42,6 +42,7 @@ import { ProjectFormat } from "../project/format.ts";
 import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
 import { Plugins } from "../plugins/plugins.ts";
+import { applyDeclared, appliedNote } from "../capture/capture.ts";
 import { Projects, type ProjectView } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { agentEnv } from "../app/shellEnv.ts";
@@ -1459,8 +1460,30 @@ export const layer = Layer.effect(
           }
           default: {
             // A plugin's tool (D97): forwarded to its process; it returns data, never edits.
-            const result = yield* plugins.call(name, args, r.abort.signal);
-            return result ?? textResult(`Unknown tool ${name}`, true);
+            const result = yield* plugins.call(name, args, r.abort.signal, v.dir);
+            if (!result) return textResult(`Unknown tool ${name}`, true);
+            const { declared, structured: _structured, plugin, ...out } = result;
+            if (!declared || out.isError) return out;
+            // ...except what it declares for Uncut (D98): a recording to import, a re-shot take to
+            // swap in. Uncut does that as an edit of this turn (Undo turn takes it back).
+            const applied = yield* Effect.uninterruptible(applyDeclared({ declared, plugin, openId: r.openId, dir: v.dir, turnId: r.turn.id, media, analysis }));
+            if (!applied) return out;
+            if ("problem" in applied) return { content: [...out.content, { type: "text" as const, text: applied.problem }], isError: true };
+            const snapshot = applied.result.snapshot;
+            if (snapshot) {
+              const project = snapshot.project as Project;
+              const lines =
+                applied.kind === "imported"
+                  ? applied.result.entries.map((entry) => describeOp({ op: "add_media", media: entry } as Op, project))
+                  : [...(applied.result.ops as ReadonlyArray<Op>).map((op) => describeOp(op, project)), ...applied.result.warnings];
+              const summary = applied.kind === "imported" ? `Recorded ${applied.result.entries[0]?.name ?? "a take"}` : `Re-shot ${applied.result.entry.name}`;
+              r.turn.edits.push({ revision: snapshot.revision, summary, lines });
+              persist(r.owner);
+              publish();
+              r.owner.seen.add(snapshot.revision);
+            }
+            const fps = ((snapshot?.project ?? v.session.project) as Project).canvas.fps;
+            return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify(appliedNote(applied, fps), null, 1) }] };
           }
         }
       });

@@ -101,6 +101,17 @@
         },
         {
           "type": "object",
+          "description": "Change a media entry in place: path (another file, e.g. a re-shot recording), name, probe or source. Every clip using the media then plays the new file; clips that would run past its end must be trimmed or held in the same edit.",
+          "required": ["op", "media", "set"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "update_media" },
+            "media": { "$ref": "#/$defs/id" },
+            "set": { "type": "object", "minProperties": 1, "propertyNames": { "enum": ["path", "name", "probe", "source"] } }
+          }
+        },
+        {
+          "type": "object",
           "description": "Change project-level fields: name, canvas, theme, scenes, markers or master. master is replaced whole: gainDb is the master volume (-60..12 dB, after the tracks are summed, D83), loudness {targetLufs} (the export dialog's default target, D87: -14 Normal, -16 Quieter, -23 Broadcast or another number), effects ([{module: audio.limiter, params: {ceilingDb}}] changes the master limiter, on by default at -1 dBTP; {bypass: true} turns it off, D86). checks {disabled: [rule ids]} turns taste checks off for the project (D90; replaced whole, null removes it).",
           "required": ["op", "set"],
           "additionalProperties": false,

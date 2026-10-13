@@ -14,6 +14,7 @@
     "./audio": "./src/audio/audio.ts",
     "./render": "./src/visual/render.ts",
     "./rules": "./src/timeline/rules.ts",
+    "./reshoot": "./src/timeline/reshoot.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/text/transcript.ts",
     "./transitions": "./src/visual/transitions.ts",

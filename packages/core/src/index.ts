@@ -36,3 +36,5 @@ export { CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, plan
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
 export { filterMusic, libraryTrackOf, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";
 export type { MusicTempo, MusicTrack } from "./audio/music.ts";
+export { planReshoot } from "./timeline/reshoot.ts";
+export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";

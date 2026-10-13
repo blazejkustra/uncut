@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["scripts", "apps/*/scripts", "apps/web/vite.config.ts", "native/media/*.ts"]
+  "include": ["scripts", "apps/*/scripts", "apps/web/vite.config.ts", "native/media/*.ts", "plugins"]
 }

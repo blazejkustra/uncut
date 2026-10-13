@@ -18,6 +18,7 @@ import { MediaLibrary } from "../media/media.ts";
 import { MediaCore } from "../media/mediaCore.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { Plugins } from "../plugins/plugins.ts";
+import { Capture } from "../capture/capture.ts";
 import { Projects } from "../project/projects.ts";
 import { Recents } from "../project/recents.ts";
 import { Settings } from "./settings.ts";
@@ -44,10 +45,11 @@ interface Services {
   readonly analysis: typeof Analysis.Service;
   readonly whisper: typeof Whisper.Service;
   readonly plugins: typeof Plugins.Service;
+  readonly capture: typeof Capture.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -102,6 +104,9 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.pluginsList]: () => plugins.list,
     [RPC_METHODS.pluginsApprove]: (input) => plugins.approve(input),
     [RPC_METHODS.pluginsRevoke]: ({ id }) => plugins.revoke(id),
+    [RPC_METHODS.captureDevices]: () => capture.state,
+    [RPC_METHODS.captureStart]: ({ device, showTouches }) => capture.start(device, showTouches),
+    [RPC_METHODS.captureStop]: ({ device }) => capture.stop(device),
   });
 
 export const layer = Layer.unwrap(
@@ -118,7 +123,8 @@ export const layer = Layer.unwrap(
     const analysis = yield* Analysis;
     const whisper = yield* Whisper;
     const plugins = yield* Plugins;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins }).pipe(
+    const capture = yield* Capture;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 
