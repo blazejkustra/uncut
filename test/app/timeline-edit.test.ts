@@ -274,7 +274,7 @@ test("trim both edges of a clip: in and duration saved, the next clip ripples, t
   // With snapping on, a trim smaller than the snap distance still happens: the clip's own edge
   // and the clip after it (which ripples) aren't snap targets.
   await seekTo(10);
-  await dragEdge("clip-1", "end", -1.5);
+  await dragEdge("clip-1", "end", -1.2);
   await waitRevision(r + 7);
   assert.equal(saved("clip-1")!.duration, 119);
   await undo();

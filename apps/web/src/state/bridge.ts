@@ -21,7 +21,7 @@ export interface EnvironmentInfo {
 export type EnvironmentTest = { readonly ok: true; readonly version: string; readonly hostname: string } | { readonly ok: false; readonly message: string };
 
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" | "open-environments" }
+  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "open-settings" | "shortcuts" | "export" | "open-environments" }
   | { readonly type: "open-recent"; readonly dir: string };
 
 /** Recording on this Mac (D114): macOS's answer for the microphone, camera and screen recording. */

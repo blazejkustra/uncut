@@ -320,7 +320,6 @@ function TextContent({ project, item, disabled }: { project: ProjectModel; item:
           }
         }}
       />
-      <div className="hint-line muted small">Saved as you pause. [[word]] accents, **bold**, `mono`.</div>
     </div>
   );
 }
@@ -440,7 +439,6 @@ function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item
           <NumberField label="Y" testId="insp-y" value={box.y} disabled={disabled} onCommit={(v) => v !== undefined && send((p) => planTransform(p, item.id, { y: v }))} />
           <NumberField label="W" testId="insp-w" value={box.w} placeholder="auto" min={1} disabled={disabled} onCommit={(v) => send((p) => planTransform(p, item.id, { w: v ?? null }, v === undefined ? "Fit the text box to its text" : "Set the text box width"))} />
         </div>
-        <div className="hint-line muted small">Drag the text in the preview to move it; it snaps to the centre and the safe margins (hold ⌘ to place it freely). W wraps the text; empty fits it.</div>
       </Group>
     </>
   );
@@ -912,7 +910,6 @@ export function AudioEditor({ project, item, locked }: { project: ProjectModel; 
           <NumberField label="In s" testId="insp-fade-in" value={secs(item.fadeIn)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "in", Math.round((v ?? 0) * fps)))} />
           <NumberField label="Out s" testId="insp-fade-out" value={secs(item.fadeOut)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "out", Math.round((v ?? 0) * fps)))} />
         </div>
-        <div className="hint-line muted small">Or drag the small handles at the top corners of the item on the timeline.</div>
       </Group>
       <BeatsGroup project={project} item={item} />
     </div>
@@ -956,9 +953,6 @@ function BeatsGroup({ project, item }: { project: ProjectModel; item: Item }) {
             {Math.round(entry.bpm)} BPM, {entry.beats.length} beats
           </div>
         )}
-        <div className="hint-line muted small">
-          {entry && entry !== "failed" && entry.bpm !== null ? "Ticks on the timeline. With snapping on, moves, trims and the playhead stick to them." : "Finds the tempo and the beats, to cut on the beat."}
-        </div>
       </div>
     </Group>
   );
@@ -1028,7 +1022,6 @@ export function TransitionInspector({ project, placed, online }: { project: Proj
           </button>
         </div>
       )}
-      <div className="hint muted small">Esc deselects.</div>
     </div>
   );
 }
@@ -1166,7 +1159,6 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
           <RotateCcw />
           Reset position and size
         </button>
-        <div className="hint-line muted small">Drag the selected {component ? "component" : "clip"} in the preview to move it (it snaps to the centre and the margins; ⌘ places it freely), its corners to resize it (⇧ for any shape). ◆ keys a value at the playhead.</div>
       </div>
     </div>
   );

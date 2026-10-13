@@ -2,8 +2,8 @@
 // Uncut's catalog (Resources/plugins/catalog, off by default), search narrows it, Enable copies the
 // example plugin (taste.extra) in and opens the approval dialog, Allow. Then in a new project its
 // look is a tile in the Text grid with its plugin's name, adding it lands a text, its component is in
-// the Elements grid, and its end-card check is in the Checks tab with the plugin's name. Disable
-// takes it out again. Screenshot: test-output/plugins-browse.png (the catalog), plugins-browse-checks.png.
+// the Elements grid (its end-card check has no tab any more, K1). Disable
+// takes it out again. Screenshot: test-output/plugins-browse.png (the catalog).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -96,13 +96,8 @@ test("Browse the catalog, enable and allow the example plugin, then its look, co
     await waitFor(page, "[data-testid=plugin-component-tile][data-component='taste.extra.sticker']");
     assert.equal(await text(page, "[data-testid=plugin-component-tile] [data-testid=component-source]"), "Taste extra");
 
-    // Its check in the Checks tab, with the plugin's name.
-    await page.click("[data-testid=tab-checks]");
-    const check = "[data-testid=check][data-rule='taste.extra.end-card']";
-    await waitFor(page, check);
-    assert.match(await text(page, check), /Ends on an end card/);
-    assert.equal(await text(page, `${check} [data-testid=check-source]`), "Taste extra");
-    await page.screenshot({ path: "test-output/plugins-browse-checks.png" });
+    // K1 (D121): the Checks tab that listed its check is gone; plugin rules reaching project_check is phase8-exit's.
+    assert.equal(await page.$("[data-testid=tab-checks]"), null);
     assert.deepEqual(app.errors, []);
   } catch (error) {
     await page.screenshot({ path: "test-output/plugins-browse-failure.png" }).catch(() => {});

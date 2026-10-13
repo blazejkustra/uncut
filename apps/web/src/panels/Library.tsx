@@ -115,10 +115,6 @@ function TransitionsLibrary({ project }: { project: Project }) {
           ))}
         </div>
       </div>
-      <div className="lib-hint">
-        <Blend />
-        A transition sits on the cut between two clips on the main track. Click its marker on the timeline to change its length or type, ⌫ removes it. Every transition but dip to black needs a little footage past the cut on both clips.
-      </div>
     </aside>
   );
 }
@@ -146,7 +142,7 @@ function AudioLibrary({ project }: { project: Project }) {
         <div className="lib-label">In this project</div>
         {sounds.length === 0 ? (
           <div className="muted small" data-testid="audio-empty">
-            No music or sound yet. Import an audio file (or drop it on the Media tab); it shows up here.
+            No music or sound yet
           </div>
         ) : (
           <div data-testid="audio-list">
@@ -262,9 +258,6 @@ function MusicLibrary({ project, online }: { project: Project; online: boolean }
             </div>
           );
         })}
-      </div>
-      <div className="music-licence">
-        <Music /> Every track is CC0 (public domain): use it anywhere, no credit needed. Adding one copies it into the project's media folder.
       </div>
     </div>
   );
@@ -413,10 +406,6 @@ function ElementsLibrary({ project }: { project: Project }) {
           </div>
         </div>
       </div>
-      <div className="lib-hint">
-        <Layers />
-        Drag a component onto the preview or the timeline, or + adds it at the playhead; the Inspector edits it. A background fills the frame under the text: select a title first to make it a title card.
-      </div>
     </aside>
   );
 }
@@ -542,10 +531,6 @@ function TextLibrary({ project }: { project: Project }) {
           ))}
         </div>
       </div>
-      <div className="lib-hint">
-        <Type />
-        Text lands on the first text track that's free at the playhead, 3 seconds long. The Inspector's Style tab changes its look; Reset to preset puts it back.
-      </div>
     </aside>
   );
 }
@@ -647,7 +632,6 @@ function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => vo
       )}
       {media.length === 0 && generated.size === 0 ? (
         <Empty icon={<Film />} title="No media yet" testId="media-empty">
-          Drop files here, or import them. Footage stays where it is; the project references it.
           <button className="btn" data-testid="import" disabled={!online} onClick={() => void actions.importMedia()}>
             <Upload />
             Import…

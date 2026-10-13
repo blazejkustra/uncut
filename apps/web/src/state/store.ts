@@ -14,7 +14,7 @@ import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
 import { musicInProject, musicTrack } from "@uncut/core/music";
-import { planDisableCheck, projectChecks, type Check, type CheckRule } from "@uncut/core/checks";
+import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
 import { layoutOf, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
@@ -50,6 +50,10 @@ export interface AppStateShape {
   readonly notice?: Notice;
   // Onboarding: open on first launch, or from Settings… / the welcome card.
   readonly setupOpen: boolean;
+  // Settings (G8): the project's and the app's settings, and the keyboard shortcuts sheet (G3).
+  readonly settingsOpen: boolean;
+  readonly settingsSection: SettingsSection;
+  readonly shortcutsOpen: boolean;
   readonly setupChecks?: ReadonlyArray<SetupCheck>;
   readonly setupChecking: boolean;
   // The last setup.check failed as a whole (server unreachable): shown with Check again.
@@ -163,6 +167,9 @@ let state: AppStateShape = {
   newProjectOpen: false,
   changedOnDisk: false,
   setupOpen: false,
+  settingsOpen: false,
+  settingsSection: "project",
+  shortcutsOpen: false,
   setupChecking: false,
   jobs: [],
   thumbIds: new Set(),
@@ -187,7 +194,6 @@ const set = (patch: Partial<AppStateShape>) => {
   if (before.snapshot !== state.snapshot || before.recents !== state.recents) syncShell();
   // Plugins allowed, removed or installed: their looks, components and rules follow (D103).
   if (before.plugins !== state.plugins && state.connection === "connected") void actions.loadContributions();
-  if (before.snapshot !== state.snapshot || before.contributions !== state.contributions) schedulePluginChecks();
 };
 
 // ---- plugin contributions (D103) ----
@@ -220,24 +226,6 @@ export function textPresets(): ReadonlyArray<TextPreset> {
     presetsMemo.set(c, list);
   }
   return list;
-}
-
-// Process plugins' own checks run on the server, once the project settles (each call is a program run).
-let pluginCheckTimer: ReturnType<typeof setTimeout> | undefined;
-let pluginCheckSeq = 0;
-function schedulePluginChecks() {
-  if (pluginCheckTimer) clearTimeout(pluginCheckTimer);
-  const asks = (state.contributions?.rules as ReadonlyArray<PluginRule> | undefined)?.some((r) => r.rule.type === "process");
-  if (!asks || !state.snapshot) {
-    if (state.pluginFindings && !asks) set({ pluginFindings: undefined });
-    return;
-  }
-  pluginCheckTimer = setTimeout(() => {
-    const seq = ++pluginCheckSeq;
-    void call((c) => c["plugins.check"]({})).then((result) => {
-      if (seq === pluginCheckSeq && result.ok) set({ pluginFindings: { checks: result.value.checks as ReadonlyArray<Check>, notes: result.value.notes } });
-    });
-  }, 800);
 }
 
 export const useApp = () =>
@@ -870,16 +858,8 @@ export const actions = {
       musicAdding = false;
     }
   },
-  /** Open a panel as the agent's ui_show does (the Checks tab from the export dialog, D90). */
+  /** Open a panel as the agent's ui_show does. */
   openPanel: (panel: AgentUiPanel) => set({ panelRequest: { panel, seq: ++panelSeq } }),
-  /** A check's fix (D90), planned again on the project as it is now: one undoable edit with the fix's History label. */
-  applyCheckFix: (check: Pick<Check, "key">) =>
-    itemEdit((project) => {
-      const now = projectChecks(project, { rules: pluginRules() }).find((c) => c.key === check.key);
-      return now?.fix ? { ops: now.fix.ops, summary: now.fix.summary } : { problem: "That check doesn't apply any more." };
-    }),
-  /** Turn a check rule off (or back on) for this project (checks.disabled, D90). */
-  setCheckDisabled: (id: string, off: boolean) => itemEdit((project) => planDisableCheck(project, id, off)),
   /** Text tab preset → a text item at the playhead (see planAddText). */
   /** Text tab → a preset at the playhead (or the dropped frame), placed where it was dropped on the canvas (D80). */
   addText: (preset: TextPreset, opts: { at?: { x: number; y: number }; frame?: number } = {}) => addPlanned((project) => planAddText(project, preset, opts.frame ?? getPlayback().frame, opts.at)),
@@ -1081,8 +1061,15 @@ export const actions = {
     if (!result.ok) set({ transcriptionError: plainError(result.error) });
   },
 
+  /** Settings (G8): Project when a project is open, else App. */
+  openSettings(section?: SettingsSection) {
+    set({ settingsOpen: true, shortcutsOpen: false, settingsSection: section ?? (state.snapshot ? state.settingsSection : state.settingsSection === "project" ? "app" : state.settingsSection) });
+  },
+  closeSettings: () => set({ settingsOpen: false }),
+  openShortcuts: () => set({ shortcutsOpen: true }),
+  closeShortcuts: () => set({ shortcutsOpen: false }),
   openSetup() {
-    set({ setupOpen: true, setupFocus: undefined });
+    set({ setupOpen: true, setupFocus: undefined, settingsOpen: false });
     void actions.checkSetup();
     void actions.listKeys();
   },
@@ -1262,6 +1249,9 @@ export const actions = {
 function runCommand(command: MenuCommand) {
   // The way to another environment works while this one is away.
   if (command.type === "open-environments") return void actions.openEnvironments();
+  // Settings and the shortcuts sheet are local UI: they open while the server is away too.
+  if (command.type === "open-settings") return actions.openSettings();
+  if (command.type === "shortcuts") return actions.openShortcuts();
   // Everything below talks to the server; while it's away the buttons are disabled too.
   if (!online()) return;
   if (command.type === "open-setup") return actions.openSetup();
@@ -1288,6 +1278,8 @@ const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "url", "t
  * A field where keys type text (text-like inputs, textareas, contenteditable). A focused checkbox,
  * colour picker or slider is not one: ⌘Z there undoes the project, not typing.
  */
+export type SettingsSection = "project" | "app" | "shortcuts";
+
 export const isTextEntry = (el: EventTarget | null) =>
   el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(el.type)) || (el instanceof HTMLElement && el.isContentEditable);
 
@@ -1308,7 +1300,7 @@ function onKeyDown(event: KeyboardEvent) {
       : event.shiftKey
         ? undefined
         : key === ","
-          ? { type: "open-setup" }
+          ? { type: "open-settings" }
           : key === "n"
           ? { type: "new-project" }
           : key === "e" && state.snapshot
