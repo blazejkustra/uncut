@@ -1,0 +1,45 @@
+# Typecheck and the fast tests (everything but the packaged-app tests) on every push and PR.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # pnpm's version comes from package.json's packageManager field.
+      - run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            native/media/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('native/media/Cargo.lock') }}
+      # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
+      - run: brew install ffmpeg
+      - run: pnpm install --frozen-lockfile
+      # The tests start the bundled server (apps/server/dist) and the media core (native/media, cargo).
+      - run: pnpm build
+      - run: node scripts/notices.ts --check
+      - run: pnpm test:fast

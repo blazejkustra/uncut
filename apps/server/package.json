@@ -1,6 +1,7 @@
 {
   "name": "@uncut/server",
   "version": "0.0.1",
+  "description": "Uncut's local server: projects, media, export, the agent and plugins.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,5 +17,14 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/blazejkustra/uncut",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blazejkustra/uncut.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blazejkustra/uncut/issues"
   }
 }

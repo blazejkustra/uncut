@@ -98,6 +98,10 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.ok(!execFileSync("xattr", [installed], { encoding: "utf8" }).includes("com.apple.quarantine"), "copied locally, so not quarantined");
   assert.deepEqual(readFileSync(join(installed, "Contents/Resources/icon.icns")), readFileSync(resolve("apps/desktop/build/icon.icns")), "Uncut's own icon");
   // The bundled CC0 music library (D91) ships next to the server, the same files as assets/music.
+  // Help › Licence and Third-Party Notices open these; Electron's and Chromium's licences ship too (D112).
+  assert.ok(readFileSync(join(installed, "Contents/Resources/LICENSE.txt")).equals(readFileSync(resolve("LICENSE"))), "LICENSE shipped");
+  assert.ok(readFileSync(join(installed, "Contents/Resources/THIRD_PARTY_NOTICES.txt")).equals(readFileSync(resolve("THIRD_PARTY_NOTICES"))), "notices shipped");
+  assert.ok(existsSync(join(installed, "Contents/Resources/licenses/LICENSES.chromium.html")), "Chromium's licences shipped");
   const library = JSON.parse(readFileSync(join(installed, "Contents/Resources/music/library.json"), "utf8")) as { tracks: Array<{ file: string; license: string }> };
   assert.equal(library.tracks.length, 5);
   for (const t of library.tracks) {

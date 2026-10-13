@@ -1,0 +1,31 @@
+name: Feature request
+description: Something Uncut should do that it doesn't.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to make
+      description: The video or the edit you were working on, and where Uncut got in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you'd like it to work. A sketch or a reference video is welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Could it be a plugin?
+      description: Looks, components, checks and tools can live in plugins/catalog instead of the core.
+      options:
+        - Not sure
+        - Yes, I could write it as a plugin
+        - No, it needs the core
+  - type: textarea
+    id: else
+    attributes:
+      label: Anything else

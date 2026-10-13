@@ -197,7 +197,7 @@ export function buildTurn(paths: { logo: string }): Array<Step> {
   ];
 }
 
-/** The end card's URL line: the reference's argent.swmansion.com, swapped for the author's own. */
+/** The end card's URL line: the reference's argent.example.com, swapped for the author's own. */
 export const END_URL = "github.com/blazejkustra";
 
 /**

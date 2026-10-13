@@ -1,6 +1,7 @@
 {
   "name": "@uncut/contracts",
   "version": "0.0.1",
+  "description": "The RPC contracts between Uncut's editor and its server.",
   "private": true,
   "type": "module",
   "exports": {
@@ -8,5 +9,14 @@
   },
   "dependencies": {
     "effect": "4.0.2"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/blazejkustra/uncut",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blazejkustra/uncut.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blazejkustra/uncut/issues"
   }
 }

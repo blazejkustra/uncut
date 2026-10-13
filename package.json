@@ -1,5 +1,6 @@
 {
   "name": "uncut",
+  "description": "Uncut, an open-source, AI-first video editor for launch videos and devrel clips (macOS).",
   "private": true,
   "type": "module",
   "scripts": {
@@ -28,5 +29,15 @@
     "overrides": {
       "@effect/platform-node-shared": "4.0.2"
     }
-  }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/blazejkustra/uncut",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blazejkustra/uncut.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blazejkustra/uncut/issues"
+  },
+  "packageManager": "pnpm@8.13.1"
 }

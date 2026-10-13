@@ -53,7 +53,7 @@ function componentsProject(media: string): Project {
   const device = planDeviceFrame(base, { media: "m-screen", start: 0, duration: 60, frameId: "phone", clipId: "screen" });
   if ("problem" in device) throw new Error(device.problem);
   const cards: Array<Item> = [
-    { id: "end", type: "component", component: "component.end-card", start: 60, duration: 60, props: { logo: { media: "m-logo" }, title: "Argent [[for agents]]", code: "npx @swmansion/argent init", url: "argent.swmansion.com", background: "bg" } },
+    { id: "end", type: "component", component: "component.end-card", start: 60, duration: 60, props: { logo: { media: "m-logo" }, title: "Argent [[for agents]]", code: "npx @swmansion/argent init", url: "argent.example.com", background: "bg" } },
     { id: "term", type: "component", component: "component.terminal", start: 120, duration: 60, props: { title: "zsh", lines: [{ text: "npx your-tool init", kind: "input" }, { text: "✔ Ready" }], typeFrom: 0, speed: 30 } },
     { id: "logo", type: "clip", media: "m-logo", start: 180, duration: 30, transform: { x: 100, y: 100, w: 400, h: 120 } },
     { id: "move", type: "graphic", src: "graphics/move.html", start: 210, duration: 60 },
@@ -367,7 +367,7 @@ test("agent: modules_list shows the components' params; insert_device_frame and 
             ops: [
               { op: "insert_device_frame", media: "m-screen", device: "phone", start: 0, duration: 60, frameId: "phone", clipId: "screen" },
               { op: "add_track", index: 1, track: { id: "cards", kind: "video", name: "Cards" } },
-              { op: "insert_item", track: "cards", item: { id: "end", type: "component", component: "component.end-card", start: 60, duration: 60, props: { logo: { media: "m-logo" }, title: "Argent", code: "npx @swmansion/argent init", url: "argent.swmansion.com", background: "bg" } } },
+              { op: "insert_item", track: "cards", item: { id: "end", type: "component", component: "component.end-card", start: 60, duration: 60, props: { logo: { media: "m-logo" }, title: "Argent", code: "npx @swmansion/argent init", url: "argent.example.com", background: "bg" } } },
             ],
           },
         },

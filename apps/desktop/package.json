@@ -3,10 +3,19 @@
   "productName": "Uncut",
   "version": "0.0.1",
   "description": "Uncut, an AI-first video editor",
+  "license": "MIT",
+  "homepage": "https://github.com/blazejkustra/uncut",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blazejkustra/uncut.git",
+    "directory": "apps/desktop"
+  },
+  "bugs": {
+    "url": "https://github.com/blazejkustra/uncut/issues"
+  },
   "author": {
     "name": "blazejkustra"
   },
-  "homepage": "https://github.com/blazejkustra",
   "private": true,
   "type": "module",
   "main": "dist/main.cjs",

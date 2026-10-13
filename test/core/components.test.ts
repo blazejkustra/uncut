@@ -119,12 +119,12 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
     assert.doesNotMatch(a, /<video|<script|<iframe/i, `${c.id}: no footage or scripts inside a component`);
   }
   // End card: logo (through the target's mediaUrl), title with markup, the code chip and the URL, centred, filling the canvas.
-  const end = html("component.end-card", { logo: { media: "m-logo" }, title: "Argent [[for agents]]", code: "npx @swmansion/argent init", url: "argent.swmansion.com", background: "bg" }, 0, {}, { ...target, mediaUrl: (id) => `data:image/svg+xml;base64,${id}` });
+  const end = html("component.end-card", { logo: { media: "m-logo" }, title: "Argent [[for agents]]", code: "npx @swmansion/argent init", url: "argent.example.com", background: "bg" }, 0, {}, { ...target, mediaUrl: (id) => `data:image/svg+xml;base64,${id}` });
   assert.match(end, /left:0px;top:0px;width:1920px;height:1080px/);
   assert.match(end, /<img src="data:image\/svg\+xml;base64,m-logo"/);
   assert.match(end, /Argent <span class="accent">for agents<\/span>/);
   assert.match(end, /npx @swmansion\/argent init/);
-  assert.match(end, /argent\.swmansion\.com/);
+  assert.match(end, /argent\.example\.com/);
   assert.match(end, /font-family:'DM Sans'/);
   assert.match(end, /font-family:'DM Mono'/);
   assert.match(end, /background:#0A0A0B/, "background: the theme's bg");
