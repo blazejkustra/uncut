@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -13,10 +13,11 @@ import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
 import { musicInProject, musicTrack } from "@uncut/core/music";
-import { planDisableCheck, projectChecks, type Check } from "@uncut/core/checks";
-import { layoutOf, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
+import { planDisableCheck, projectChecks, type Check, type CheckRule } from "@uncut/core/checks";
+import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
+import { layoutOf, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
-import { planAddComponent } from "../preview/components.ts";
+import { planAddComponent, planAddGraphic } from "../preview/components.ts";
 import { planRemoveGainKey } from "../audio/sound.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
@@ -62,6 +63,12 @@ export interface AppStateShape {
   readonly pluginInstallError?: { readonly message: string; readonly reason: string; readonly source: string; readonly ref?: string | undefined };
   readonly pluginInstallNote?: string;
   readonly pluginDialog?: string;
+  /** The allowed plugins' looks, components and check rules (D103), for the grids and Checks. */
+  readonly contributions?: PluginContributions;
+  /** Process plugins' own findings on the open project (D103), the last answer. */
+  readonly pluginFindings?: { readonly checks: ReadonlyArray<Check>; readonly notes: ReadonlyArray<string> };
+  /** Settings › Plugins › Browse (D103): Uncut's plugin catalog, each with whether it's enabled. */
+  readonly pluginCatalog?: { readonly plugins: ReadonlyArray<CatalogEntry>; readonly problems: ReadonlyArray<string> };
   /** The Capture tab's Argent section (D98): what the plugin last said, and while it's asked. */
   readonly capture?: CaptureState;
   readonly captureChecking?: boolean;
@@ -149,7 +156,60 @@ const set = (patch: Partial<AppStateShape>) => {
   if (state.analysisError && before.snapshot?.dir !== state.snapshot?.dir) state = { ...state, analysisError: undefined };
   for (const listener of listeners) listener();
   if (before.snapshot !== state.snapshot || before.recents !== state.recents) syncShell();
+  // Plugins allowed, removed or installed: their looks, components and rules follow (D103).
+  if (before.plugins !== state.plugins && state.connection === "connected") void actions.loadContributions();
+  if (before.snapshot !== state.snapshot || before.contributions !== state.contributions) schedulePluginChecks();
 };
+
+// ---- plugin contributions (D103) ----
+
+const rulesMemo = new WeakMap<object, { readonly rules: ReadonlyArray<CheckRule>; readonly entries: ReadonlyArray<CheckRule> }>();
+const rulesOf = (c: PluginContributions | undefined) => {
+  if (!c) return { rules: [], entries: [] };
+  let m = rulesMemo.get(c);
+  if (!m) {
+    const list = c.rules as ReadonlyArray<PluginRule>;
+    m = { rules: pluginCheckRules(list), entries: pluginRuleEntries(list) };
+    rulesMemo.set(c, m);
+  }
+  return m;
+};
+/** The allowed plugins' data rules, compiled once per contributions answer (core runs them with the built-ins). */
+export const pluginRules = () => rulesOf(state.contributions).rules;
+/** Every plugin rule as a registry entry (titles, process ones too). */
+export const pluginRuleList = () => rulesOf(state.contributions).entries;
+/** The allowed plugins' looks (D103). */
+export const pluginLooks = () => (state.contributions?.looks ?? []) as ReadonlyArray<PluginLook>;
+const presetsMemo = new WeakMap<object, ReadonlyArray<TextPreset>>();
+/** The Text tab's tiles: the built-in looks, then the allowed plugins' (D103), each with its plugin's name. */
+export function textPresets(): ReadonlyArray<TextPreset> {
+  const c = state.contributions;
+  if (!c?.looks.length) return TEXT_PRESETS;
+  let list = presetsMemo.get(c);
+  if (!list) {
+    list = [...TEXT_PRESETS, ...pluginLooks().map((l): TextPreset => ({ id: l.id, module: l.id, label: l.name, text: l.text, look: l, source: l.pluginName }))];
+    presetsMemo.set(c, list);
+  }
+  return list;
+}
+
+// Process plugins' own checks run on the server, once the project settles (each call is a program run).
+let pluginCheckTimer: ReturnType<typeof setTimeout> | undefined;
+let pluginCheckSeq = 0;
+function schedulePluginChecks() {
+  if (pluginCheckTimer) clearTimeout(pluginCheckTimer);
+  const asks = (state.contributions?.rules as ReadonlyArray<PluginRule> | undefined)?.some((r) => r.rule.type === "process");
+  if (!asks || !state.snapshot) {
+    if (state.pluginFindings && !asks) set({ pluginFindings: undefined });
+    return;
+  }
+  pluginCheckTimer = setTimeout(() => {
+    const seq = ++pluginCheckSeq;
+    void call((c) => c["plugins.check"]({})).then((result) => {
+      if (seq === pluginCheckSeq && result.ok) set({ pluginFindings: { checks: result.value.checks as ReadonlyArray<Check>, notes: result.value.notes } });
+    });
+  }, 800);
+}
 
 export const useApp = () =>
   useSyncExternalStore(
@@ -393,6 +453,7 @@ export async function start() {
     onConnect: () => {
       if (state.connection === "server-exited") return;
       set({ connection: "connected", notice: state.notice?.transport ? undefined : state.notice });
+      void actions.loadContributions();
       unsubscribeJobs?.();
       unsubscribeJobs = conn.subscribe((c) => c["media.jobs"]({}), onJobs);
       unsubscribeExports?.();
@@ -620,7 +681,7 @@ export const actions = {
   /** A check's fix (D90), planned again on the project as it is now: one undoable edit with the fix's History label. */
   applyCheckFix: (check: Pick<Check, "key">) =>
     itemEdit((project) => {
-      const now = projectChecks(project).find((c) => c.key === check.key);
+      const now = projectChecks(project, { rules: pluginRules() }).find((c) => c.key === check.key);
       return now?.fix ? { ops: now.fix.ops, summary: now.fix.summary } : { problem: "That check doesn't apply any more." };
     }),
   /** Turn a check rule off (or back on) for this project (checks.disabled, D90). */
@@ -635,6 +696,14 @@ export const actions = {
   /** Elements tab → a component at the playhead, or where it was dropped (see planAddComponent, D76). */
   addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number } = {}) =>
     addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, opts.at ? { at: opts.at } : {})),
+  /** Elements tab → a plugin's component (D103): the server copies it into graphics/, then a graphic item at the playhead. */
+  async addPluginComponent(id: string) {
+    if (adding || !state.snapshot || !online()) return;
+    const result = await call((c) => c["plugins.addComponent"]({ id }));
+    if (!result.ok) return set({ notice: { text: plainError(result.error) } });
+    const { src, name, props } = result.value;
+    await addPlanned((project) => planAddGraphic(project, { src, name, props: (props ?? {}) as Record<string, unknown>, idBase: id.split(".").at(-1) ?? "graphic" }, getPlayback().frame));
+  },
   /** Elements tab → a full-frame background (see planAddBackground). */
   addBackground: (props: BackgroundProps) => addPlanned((project) => planAddBackground(project, props, getPlayback().frame, getPlayback().selected)),
   /** S: split at the playhead (see planSplit); the part after the playhead is selected. */
@@ -815,6 +884,32 @@ export const actions = {
     const result = await call((c) => c["setup.check"]({}));
     if (result.ok) set({ setupChecking: false, setupChecks: result.value });
     else set({ setupChecking: false, setupError: `Couldn't check this Mac. ${plainError(result.error)}` });
+  },
+  async loadContributions() {
+    const result = await call((c) => c["plugins.contributions"]({}));
+    if (result.ok) set({ contributions: result.value });
+  },
+  /** Settings › Plugins › Browse (D103): the catalog of plugins that ship with Uncut, off until enabled. */
+  async loadCatalog() {
+    const result = await call((c) => c["plugins.catalog"]({}));
+    if (result.ok) set({ pluginCatalog: result.value });
+  },
+  /** Enables a catalog plugin (a copy into Uncut's plugins folder), then opens its approval dialog. */
+  async enablePlugin(id: string) {
+    set({ pluginInstalling: true, pluginInstallError: undefined, pluginInstallNote: undefined, pluginError: undefined });
+    const result = await call((c) => c["plugins.enable"]({ id }));
+    if (result.ok) {
+      set({ pluginInstalling: false, plugins: result.value.plugins, pluginInstallNote: result.value.note, pluginDialog: result.value.plugins.some((p) => p.id === result.value.id && p.status === "needs-approval") ? result.value.id : undefined });
+    } else set({ pluginInstalling: false, pluginError: plainError(result.error) });
+    void actions.loadCatalog();
+  },
+  /** Disables a catalog plugin: its copy and approval go (plugins.uninstall). */
+  async disablePlugin(id: string) {
+    set({ pluginError: undefined });
+    const result = await call((c) => c["plugins.disable"]({ id }));
+    if (result.ok) set({ plugins: result.value, pluginDialog: undefined });
+    else set({ pluginError: plainError(result.error) });
+    void actions.loadCatalog();
   },
   async listPlugins() {
     const result = await call((c) => c["plugins.list"]({}));

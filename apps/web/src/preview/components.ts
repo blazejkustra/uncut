@@ -78,6 +78,32 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
   return { ops, summary, itemId, start };
 }
 
+/**
+ * A plugin component (D103), already copied into the project's graphics/ as `src`: a graphic item
+ * (full canvas, drawn in the graphics sandbox) with the component's props, 3 s at the playhead,
+ * on the first free overlay track under the text (else a new Overlay track), as components go.
+ */
+export function planAddGraphic(project: ProjectModel, graphic: { readonly src: string; readonly name: string; readonly props: Record<string, unknown>; readonly idBase: string }, frame: number): Planned {
+  const mainIndex = project.tracks.findIndex((t) => t.role === "main");
+  if (mainIndex < 0) return { problem: "This project has no main track." };
+  const start = Math.max(0, Math.floor(frame));
+  const duration = 3 * project.canvas.fps;
+  const taken = new Set<string>();
+  const itemId = uniqueId(project, graphic.idBase, taken);
+  taken.add(itemId);
+  const ops: Array<Op> = [];
+  const free = (t: Track) => t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
+  const lastText = project.tracks.slice(0, mainIndex).reduce((n, t, i) => (t.kind === "text" ? i : n), -1);
+  let trackId = project.tracks.slice(lastText + 1, mainIndex).find((t) => t.kind === "video" && !t.locked && free(t))?.id;
+  if (!trackId) {
+    trackId = uniqueId(project, "overlay", taken);
+    const n = displayTracks(project).filter((t) => t.kind === "video" && t.role !== "main" && t.name.startsWith("Overlay")).length;
+    ops.push({ op: "add_track", index: lastText + 1, track: { id: trackId, kind: "video", name: n ? `Overlay ${n + 1}` : "Overlay" } });
+  }
+  ops.push({ op: "insert_item", track: trackId, item: { id: itemId, type: "graphic", src: graphic.src, name: graphic.name, start, duration, props: graphic.props } as Item });
+  return { ops, summary: `Add ${graphic.name.toLowerCase()}`, itemId, start };
+}
+
 /** A component's props replaced whole (update_item replaces nested objects), labelled for History. */
 export function planComponentProps(project: ProjectModel, itemId: string, props: Record<string, unknown>, summary: string): Plan | Problem {
   const placed = findItem(project, itemId);

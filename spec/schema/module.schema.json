@@ -19,10 +19,11 @@
       "description": "Namespaced id used in project.json, e.g. transition.crossfade or argent.capture."
     },
     "kind": {
-      "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source"]
+      "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source", "pack"],
+      "description": "pack (D103): a plugin that only adds data (contributes: text looks, components, check rules); nothing of it runs in Uncut's process or the renderer."
     },
     "name": { "type": "string", "minLength": 1 },
-    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.+-]*)?$" },
     "description": { "type": "string" },
     "author": { "type": "string" },
     "license": { "type": "string" },
@@ -33,7 +34,7 @@
       "additionalProperties": false,
       "description": "How the module runs. html modules render in the graphics layer; wasm runs sandboxed; native ships with the Rust core; process is an external program Uncut talks to.",
       "properties": {
-        "type": { "enum": ["html", "wasm", "native", "process", "agent"] },
+        "type": { "enum": ["html", "wasm", "native", "process", "agent", "data"], "description": "data (D103): no program; the manifest's contributes is the whole plugin." },
         "entry": { "type": "string" },
         "command": { "type": "string", "minLength": 1, "description": "process: the program to start (a plugin folder needs one; built-in process modules run inside Uncut). \"node\" is Uncut's own Node runtime; a path with a slash is relative to the plugin's folder; a bare name is looked up on PATH." },
         "args": { "type": "array", "items": { "type": "string" }, "description": "process: its arguments. It starts in the plugin's folder, so relative paths are the folder's." },
@@ -76,6 +77,68 @@
         }
       }
     },
+    "contributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What a plugin adds to Uncut as data (D103), shown once the user allows the plugin. Every id is the plugin's id, a dot and a name (taste.extra.neon); an id a built-in has is refused.",
+      "properties": {
+        "looks": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "Text looks for the Text tab, the same look block as a built-in text style. A text added with one carries the whole look, so it keeps drawing when the plugin is removed.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "look"],
+            "additionalProperties": false,
+            "properties": { "id": { "$ref": "#/$defs/contributionId" }, "name": { "type": "string", "minLength": 1, "maxLength": 60 }, "description": { "type": "string", "maxLength": 300 }, "look": { "$ref": "#/$defs/look" } }
+          }
+        },
+        "components": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "HTML/CSS templates for the Elements tab. {{name}} is replaced by the param's value, HTML-escaped; no scripts or event handlers. Drawn full canvas in the graphics sandbox (D78); adding one copies it into the project's graphics/ folder.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "template"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/contributionId" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+              "description": { "type": "string", "maxLength": 300 },
+              "params": { "type": "object", "description": "JSON Schema (type object) of the params; each property's default is what a new one gets." },
+              "template": { "type": "string", "minLength": 1, "maxLength": 65536 },
+              "css": { "type": "string", "maxLength": 65536 }
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "Check rules for the Checks tab and the agent's project_check.",
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "rule"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/contributionId" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "description": { "type": "string", "maxLength": 300 },
+              "severity": { "enum": ["warn", "info"] },
+              "hint": { "type": "string", "maxLength": 300 },
+              "rule": {
+                "oneOf": [
+                  { "type": "object", "required": ["type", "max"], "additionalProperties": false, "properties": { "type": { "const": "max-words" }, "max": { "type": "integer", "minimum": 1 } }, "description": "At most this many words on screen at once (every text showing at a text's start)." },
+                  { "type": "object", "required": ["type", "phrases"], "additionalProperties": false, "properties": { "type": { "const": "banned-phrases" }, "phrases": { "type": "array", "minItems": 1, "maxItems": 200, "items": { "type": "string", "minLength": 1, "maxLength": 80 } } }, "description": "None of these words or phrases (whole words, any case)." },
+                  { "type": "object", "required": ["type", "px"], "additionalProperties": false, "properties": { "type": { "const": "min-text-size" }, "px": { "type": "number", "exclusiveMinimum": 0 } }, "description": "Text at least this many px on a canvas whose shorter side is 1080." },
+                  { "type": "object", "required": ["type"], "additionalProperties": false, "properties": { "type": { "const": "end-card" }, "seconds": { "type": "number", "exclusiveMinimum": 0 } }, "description": "The video ends on a component (not a background) or a graphic, like an end card, shown for at least seconds (default 2)." },
+                  { "type": "object", "required": ["type"], "additionalProperties": false, "properties": { "type": { "const": "process" } }, "description": "A process plugin's own check: Uncut calls its check tool with the project and shows the findings it returns." }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "ui": {
       "type": "object",
       "additionalProperties": false,
@@ -87,6 +150,7 @@
     }
   },
   "$defs": {
+    "contributionId": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*){2,}$", "description": "The plugin's id, a dot and a name." },
     "emLength": { "type": "number", "minimum": 0, "description": "A length as a share of the text's font size (em)." },
     "look": {
       "type": "object",

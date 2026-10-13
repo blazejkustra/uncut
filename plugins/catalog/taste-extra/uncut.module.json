@@ -1,0 +1,70 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "taste.extra",
+  "kind": "pack",
+  "name": "Taste extra",
+  "version": "0.1.0",
+  "description": "An example data-only plugin: a soft card look, a corner sticker and two house-style checks. Nothing in it runs as a program.",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "data" },
+  "contributes": {
+    "looks": [
+      {
+        "id": "taste.extra.soft-card",
+        "name": "Soft card",
+        "description": "A short line on a white rounded card, centred, fading in.",
+        "look": {
+          "size": 0.06,
+          "weight": 600,
+          "font": "DM Sans",
+          "tracking": -0.02,
+          "lineHeight": 1.1,
+          "color": "#111111",
+          "align": "center",
+          "w": 0.6,
+          "x": 0.2,
+          "y": 0.44,
+          "text": "Soft card",
+          "background": { "color": "#FFFFFF", "opacity": 0.94, "padding": 0.9, "radius": 0.45, "wrap": "box" },
+          "animation": { "in": { "module": "move.fade", "seconds": 0.3 } }
+        }
+      }
+    ],
+    "components": [
+      {
+        "id": "taste.extra.sticker",
+        "name": "Corner sticker",
+        "description": "A tilted label in the top right corner that pops in.",
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": { "type": "string", "maxLength": 40, "default": "New" },
+            "color": { "type": "string", "maxLength": 40, "default": "#FFD84D" }
+          }
+        },
+        "template": "<div class=\"sticker\" style=\"background: {{color}}\">{{label}}</div>",
+        "css": ".sticker{position:absolute;top:8%;right:6%;padding:18px 34px;border-radius:999px;font:700 44px/1 -apple-system,system-ui,sans-serif;color:#111;transform:rotate(6deg) scale(calc(0.6 + 0.4 * min(1, var(--t) * 4)));opacity:min(1, calc(var(--t) * 6));box-shadow:0 8px 24px rgb(0 0 0 / 25%)}"
+      }
+    ],
+    "rules": [
+      {
+        "id": "taste.extra.end-card",
+        "title": "Ends on an end card",
+        "description": "The video ends on a component or graphic, like an end card, for at least 2 seconds.",
+        "severity": "warn",
+        "rule": { "type": "end-card", "seconds": 2 }
+      },
+      {
+        "id": "taste.extra.banned-phrases",
+        "title": "No hype words",
+        "description": "No game changer, revolutionary or next level.",
+        "severity": "warn",
+        "hint": "Say what it does instead.",
+        "rule": { "type": "banned-phrases", "phrases": ["game changer", "game-changer", "revolutionary", "next level"] }
+      }
+    ]
+  }
+}

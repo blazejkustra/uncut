@@ -30,6 +30,8 @@ import {
   musicTrack,
   projectChecks,
   type Check,
+  type CheckRule,
+  type TextLook,
   type MusicTempo,
   type Device,
   type ModuleManifest,
@@ -429,7 +431,7 @@ const INSERT_TEXT_KEYS = new Set(["op", "look", "text", "start", "duration", "id
  * planInsertText: the look's size, weight, position and moves, the looks it comes with, free or new
  * text tracks), planned against the project as the ops before it leave it. Other ops pass through.
  */
-export function expandTextLooks(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
+export function expandTextLooks(project: Project, ops: ReadonlyArray<unknown>, pluginLooks: Readonly<Record<string, TextLook>> = {}): { ops: Array<unknown> } | { problem: string } {
   if (!ops.some((op) => (op as { op?: unknown })?.op === "insert_text")) return { ops: [...ops] };
   const out: Array<unknown> = [];
   for (const [i, raw] of ops.entries()) {
@@ -462,7 +464,7 @@ export function expandTextLooks(project: Project, ops: ReadonlyArray<unknown>): 
       ...(op.transform ? { transform: op.transform as { x?: number; y?: number; w?: number } } : {}),
       ...(op.animation !== undefined ? { animation: op.animation as null } : {}),
       ...(op.alone === true ? { alone: true } : {}),
-    });
+    }, pluginLooks);
     if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
     out.push(...plan.ops);
   }
@@ -482,8 +484,16 @@ const checkOut = (c: Check, fps: number) => ({
 });
 
 /** project_check's answer (D90): the project's checks, optionally only some rules or one severity. */
-export function checksOut(project: Project, revision: number, filter: { readonly rules?: ReadonlyArray<string> | undefined; readonly severity?: string | undefined } = {}) {
-  const all = projectChecks(project);
+export function checksOut(
+  project: Project,
+  revision: number,
+  filter: { readonly rules?: ReadonlyArray<string> | undefined; readonly severity?: string | undefined } = {},
+  plugins: { readonly rules?: ReadonlyArray<CheckRule>; readonly found?: ReadonlyArray<Check>; readonly notes?: ReadonlyArray<string> } = {},
+) {
+  // Plugin rules (D103): the allowed plugins' data rules run with the built-ins; process plugins' findings are added.
+  const off = new Set(disabledChecks(project));
+  const rank = (c: Check) => (c.severity === "warn" ? 0 : 1);
+  const all = [...projectChecks(project, { rules: plugins.rules ?? [] }), ...(plugins.found ?? []).filter((c) => !off.has(c.id))].sort((a, b) => rank(a) - rank(b) || (a.frame ?? Infinity) - (b.frame ?? Infinity));
   const picked = all.filter((c) => (!filter.rules?.length || filter.rules.includes(c.id)) && (!filter.severity || c.severity === filter.severity));
   const fps = project.canvas.fps;
   const warnings = picked.filter((c) => c.severity === "warn").length;
@@ -494,6 +504,7 @@ export function checksOut(project: Project, revision: number, filter: { readonly
     notes: picked.length - warnings,
     checks: picked.map((c) => checkOut(c, fps)),
     ...(disabled.length ? { disabled } : {}),
+    ...(plugins.notes?.length ? { pluginNotes: plugins.notes } : {}),
     note: picked.length
       ? "Fix each warning (a fix's ops go into timeline_edit as they are, with your baseRevision) or tell the user why it's right as it is. Info notes are suggestions. Checks never block the export."
       : "Nothing to fix.",

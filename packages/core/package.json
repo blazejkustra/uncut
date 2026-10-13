@@ -26,7 +26,8 @@
     "./effects": "./src/audio/effects.ts",
     "./ducking": "./src/audio/ducking.ts",
     "./checks": "./src/checks/checks.ts",
-    "./music": "./src/audio/music.ts"
+    "./music": "./src/audio/music.ts",
+    "./contributions": "./src/plugins/contributions.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

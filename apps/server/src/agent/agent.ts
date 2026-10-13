@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { captionCardList, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { captionCardList, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -1477,7 +1477,10 @@ export const layer = Layer.effect(
             // Its fixes are planned on this revision, so it may be passed back as baseRevision (the
             // user's edits stay news for the next note: agentSeen doesn't move).
             r.owner.seen.add(v.session.revision);
-            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }));
+            // The allowed plugins' rules too (D103): data rules run here, process plugins are asked (5 s each).
+            const contributed = yield* plugins.contributions;
+            const asked = yield* plugins.processChecks(v.session.project, v.dir);
+            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: pluginCheckRules(contributed.rules), found: asked.checks, notes: asked.notes }));
           }
           case "music_list": {
             if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
@@ -1507,7 +1510,8 @@ export const layer = Layer.effect(
             const expanded = expandDeviceFrames(v.session.project as Project, args.ops);
             if ("problem" in expanded) return textResult({ refused: expanded.problem, revision: v.session.revision }, true);
             // insert_text (D80) becomes the inserts (and text tracks) of a text in a look.
-            const texts = expandTextLooks(v.session.project as Project, expanded.ops);
+            const pluginLooks = Object.fromEntries((yield* plugins.contributions).looks.map((l) => [l.id, l]));
+            const texts = expandTextLooks(v.session.project as Project, expanded.ops, pluginLooks);
             if ("problem" in texts) return textResult({ refused: texts.problem, revision: v.session.revision }, true);
             // edit_captions (D82) becomes the update_item of the captions it changes.
             const captions = expandCaptionEdits(v.session.project as Project, texts.ops);

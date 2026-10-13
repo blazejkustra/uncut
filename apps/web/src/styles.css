@@ -884,3 +884,12 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .approval-text { font-weight: 600; font-size: 13px; }
 .approval-sub { font-size: 11px; color: var(--muted); }
 .approval-btns { display: flex; justify-content: flex-end; gap: 8px; }
+/* Plugin contributions (D103): a small label with the plugin's name under a tile, next to a check's title. */
+.source-label { padding: 0 7px 6px; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.check-title .source-label { display: inline; padding: 0 0 0 6px; }
+.plugin-comp-thumb { background: linear-gradient(135deg, #2b2e36, #17181c); }
+.plugin-comp-thumb svg { width: 22px; height: 22px; }
+.plugin-browse { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+.wiz-plugins > * { flex-shrink: 0; }
+.plugin-browse-row { display: flex; gap: 8px; align-items: flex-start; }
+.plugin-browse-tags { font-size: 10px; color: var(--muted); }
