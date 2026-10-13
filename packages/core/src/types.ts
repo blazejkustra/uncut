@@ -195,7 +195,8 @@ export interface Project {
   readonly tracks: ReadonlyArray<Track>;
   readonly scenes?: ReadonlyArray<Scene>;
   readonly markers?: ReadonlyArray<Marker>;
-  readonly master?: { readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
+  /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
+  readonly master?: { readonly gainDb?: number; readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
 }
 
 /** Fields an op sets; a null value removes the field. */

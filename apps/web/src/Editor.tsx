@@ -22,6 +22,7 @@ import { frameTimecode } from "./format.ts";
 import { getPlayback, playback, usePlayback } from "./playback.ts";
 import { Stage } from "./Preview.tsx";
 import { actions, getState, isTextEntry, MAX_NAME_LENGTH, plainError, projectOf, useApp, type Project } from "./store.ts";
+import { MixerPanel } from "./Mixer.tsx";
 import { Timeline } from "./Timeline.tsx";
 import { cutSelectedWords, TranscriptPanel } from "./Transcript.tsx";
 import { transcriptStore } from "./transcript.ts";
@@ -61,7 +62,9 @@ function useEditorKeys(fps: number) {
       else if (e.key === "Backspace" || e.key === "Delete") {
         done();
         // In the Transcript panel ⌫ cuts the selected words (D69), never the timeline item it doesn't show.
-        if (!e.repeat) void (getPlayback().bottom === "transcript" ? cutSelectedWords() : actions.deleteSelected());
+        // The Mixer (D83) shows no selection, so ⌫ there deletes nothing.
+        const bottom = getPlayback().bottom;
+        if (!e.repeat && bottom !== "mixer") void (bottom === "transcript" ? cutSelectedWords() : actions.deleteSelected());
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -155,10 +158,10 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   );
 }
 
-/** The bottom panel (D32): the timeline, or the transcript of what's on the main track. */
+/** The bottom panel (D32): the timeline, the transcript of what's on the main track, or the mixer (D83). */
 function Bottom({ project, dir }: { project: Project; dir: string }) {
   const bottom = usePlayback((s) => s.bottom);
-  return bottom === "transcript" ? <TranscriptPanel project={project} dir={dir} /> : <Timeline project={project} />;
+  return bottom === "transcript" ? <TranscriptPanel project={project} dir={dir} /> : bottom === "mixer" ? <MixerPanel project={project} /> : <Timeline project={project} />;
 }
 
 function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean }) {

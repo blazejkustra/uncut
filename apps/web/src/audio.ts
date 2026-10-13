@@ -2,7 +2,14 @@
 // (core audibleAt: clips with sound and audio items, the gain from their volume, keys, fades, the
 // track's volume and mute, transitions) plays through Web Audio:
 //
-//   media element → MediaElementAudioSourceNode → GainNode (per item) → master → analyser → speakers
+//   media element → MediaElementAudioSourceNode → GainNode (per item) → track bus → master → analyser → speakers
+//
+// The track bus (D83) makes the sum stereo (mono at full level on both channels, as the speakers
+// up-mixed it before), pans it with core panGains (left and right GainNodes between a splitter and
+// a merger: exactly the export's per-channel factors, not a StereoPannerNode, whose law differs)
+// and meters it (one AnalyserNode per channel, after the pan). The master GainNode is the project's
+// master volume (core masterGain), metered the same way after it; the mono analyser after it stays
+// the app tests' level().
 //
 // A clip that the preview shows already has a <video> (the Compositor's): its sound is routed from
 // that element, so picture and sound come from one decoder and stay together. Audio items, and
@@ -15,7 +22,7 @@
 // The file:// renderer can only hear an element through Web Audio if the media was fetched in
 // CORS mode: elements get crossOrigin="anonymous" before their src, and the server's /media/file
 // route allows it.
-import { audibleAt, audioSpan, itemGain, soundMedia, sourceAt } from "@uncut/core/audio";
+import { audibleAt, audioSpan, itemGain, masterGain, panGains, soundMedia, sourceAt, trackPan } from "@uncut/core/audio";
 
 import { layoutOf, type Item, type ProjectModel } from "./project.ts";
 import { mediaUrl } from "./store.ts";
@@ -36,7 +43,40 @@ interface Route {
   readonly gain: GainNode;
   /** The gain last asked for (the AudioParam ramps towards it). */
   target: number;
+  /** The track bus its gain feeds (items move between tracks). */
+  bus?: Bus;
+  /** Moving to another bus: ramping down until this context time, then rewired (no click). */
+  rewiring?: number;
 }
+
+/** A reroute or a dropped bus first ramps to silence over this long, so it doesn't click. */
+const UNWIRE_S = 0.01;
+
+/** A track's bus (D83): stereo up-mix → pan (a gain per channel) → master, with a meter per channel. */
+interface Bus {
+  readonly input: GainNode;
+  readonly splitter: ChannelSplitterNode;
+  readonly left: GainNode;
+  readonly right: GainNode;
+  readonly merger: ChannelMergerNode;
+  readonly meters: readonly [AnalyserNode, AnalyserNode];
+}
+
+/** A channel's level over the analyser's window: RMS and peak, linear (1 = full scale). */
+export interface Level {
+  readonly rms: number;
+  readonly peak: number;
+}
+/** Left and right levels of a strip. */
+export interface StereoLevel {
+  readonly left: Level;
+  readonly right: Level;
+}
+export interface Levels {
+  readonly master: StereoLevel;
+  readonly tracks: Readonly<Record<string, StereoLevel>>;
+}
+const SILENT: StereoLevel = { left: { rms: 0, peak: 0 }, right: { rms: 0, peak: 0 } };
 
 /** What the test hook and the timeline can read about the mix. */
 export interface MixState {
@@ -57,6 +97,14 @@ export class Mix {
   private ctx: AudioContext | undefined;
   private master: GainNode | undefined;
   private analyser: AnalyserNode | undefined;
+  private masterMeters: readonly [AnalyserNode, AnalyserNode] | undefined;
+  private readonly buses = new Map<string, Bus>();
+  /** The pan factors and master gain last asked for (ramped towards). */
+  private readonly panTarget = new WeakMap<Bus, { left: number; right: number }>();
+  private masterTarget = 1;
+  /** Test-only capture of the master output (see capture()). */
+  private tap: Capture | undefined;
+  private marks: Array<{ t: number; frame: number }> = [];
   private readonly routes = new WeakMap<HTMLMediaElement, Route>();
   /** Elements the Compositor shows, by item id (registered with attach). */
   private readonly shown = new Map<string, HTMLVideoElement>();
@@ -76,13 +124,22 @@ export class Mix {
       try {
         const ctx = new AudioContext({ latencyHint: "interactive" });
         const master = ctx.createGain();
+        master.gain.value = this.masterTarget;
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
         master.connect(analyser);
         analyser.connect(ctx.destination);
+        // The master strip's meters: the output split into its two channels.
+        const split = ctx.createChannelSplitter(2);
+        const meters = [ctx.createAnalyser(), ctx.createAnalyser()] as const;
+        for (const m of meters) m.fftSize = 2048;
+        master.connect(split);
+        split.connect(meters[0], 0);
+        split.connect(meters[1], 1);
         this.ctx = ctx;
         this.master = master;
         this.analyser = analyser;
+        this.masterMeters = meters;
       } catch {
         return undefined;
       }
@@ -101,6 +158,7 @@ export class Mix {
       const gain = g.ctx.createGain();
       gain.gain.value = 0;
       source.connect(gain);
+      // Until render() wires it to its track's bus, straight to the master.
       gain.connect(g.master);
       // From now on the element is heard only through the graph; muted would silence its input.
       el.muted = false;
@@ -131,6 +189,112 @@ export class Mix {
     route.source.disconnect();
     route.gain.disconnect();
     this.routes.delete(el);
+  }
+
+  /** The bus of a track, made on first use. */
+  private bus(trackId: string): Bus | undefined {
+    const known = this.buses.get(trackId);
+    if (known) return known;
+    const g = this.graph();
+    if (!g) return undefined;
+    const ctx = g.ctx;
+    // Explicit stereo with speaker up-mixing: a mono source plays at full level on both channels.
+    const input = ctx.createGain();
+    input.channelCount = 2;
+    input.channelCountMode = "explicit";
+    input.channelInterpretation = "speakers";
+    const splitter = ctx.createChannelSplitter(2);
+    const left = ctx.createGain();
+    const right = ctx.createGain();
+    const merger = ctx.createChannelMerger(2);
+    const meters = [ctx.createAnalyser(), ctx.createAnalyser()] as const;
+    for (const m of meters) m.fftSize = 2048;
+    input.connect(splitter);
+    splitter.connect(left, 0);
+    splitter.connect(right, 1);
+    left.connect(merger, 0, 0);
+    right.connect(merger, 0, 1);
+    left.connect(meters[0]);
+    right.connect(meters[1]);
+    merger.connect(g.master);
+    const bus = { input, splitter, left, right, merger, meters };
+    this.buses.set(trackId, bus);
+    return bus;
+  }
+
+  private dropBus(trackId: string) {
+    const bus = this.buses.get(trackId);
+    if (!bus) return;
+    this.buses.delete(trackId);
+    const nodes = [bus.input, bus.splitter, bus.left, bus.right, bus.merger];
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== "running") return nodes.forEach((n) => n.disconnect());
+    // Ramp its output down first, then let go of it.
+    for (const g of [bus.left.gain, bus.right.gain]) {
+      g.cancelScheduledValues(ctx.currentTime);
+      g.setValueAtTime(g.value, ctx.currentTime);
+      g.linearRampToValueAtTime(0, ctx.currentTime + UNWIRE_S);
+    }
+    setTimeout(() => nodes.forEach((n) => n.disconnect()), UNWIRE_S * 1000 + 15);
+  }
+
+  /** Feed a route into another bus: at once when it is silent, else after a short ramp down (the next render ramps it back up). */
+  private rewire(route: Route, bus: Bus) {
+    const ctx = this.ctx!;
+    if (route.rewiring !== undefined) return;
+    const connect = () => {
+      route.gain.disconnect();
+      route.gain.connect(bus.input);
+      route.bus = bus;
+      route.rewiring = undefined;
+    };
+    if (route.gain.gain.value === 0 || ctx.state !== "running") return connect();
+    const param = route.gain.gain;
+    param.cancelScheduledValues(ctx.currentTime);
+    param.setValueAtTime(param.value, ctx.currentTime);
+    param.linearRampToValueAtTime(0, ctx.currentTime + UNWIRE_S);
+    route.target = 0;
+    route.rewiring = ctx.currentTime + UNWIRE_S;
+    setTimeout(connect, UNWIRE_S * 1000 + 5);
+  }
+
+  /** Move an AudioParam towards a value with the usual short ramp. */
+  private glide(param: AudioParam, target: number) {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(target, now + RAMP_S);
+  }
+
+  /** Pan every sounding track's bus and set the master volume (D83); drop buses of tracks that went. */
+  private mixer(project: ProjectModel) {
+    if (!this.ctx) {
+      this.masterTarget = masterGain(project);
+      return;
+    }
+    const ids = new Set(project.tracks.map((t) => t.id));
+    for (const id of [...this.buses.keys()]) if (!ids.has(id)) this.dropBus(id);
+    for (const track of project.tracks) {
+      const bus = this.buses.get(track.id);
+      if (!bus) continue;
+      const want = panGains(trackPan(track));
+      const had = this.panTarget.get(bus);
+      if (had && had.left === want.left && had.right === want.right) continue;
+      this.panTarget.set(bus, { ...want });
+      if (had) {
+        this.glide(bus.left.gain, want.left);
+        this.glide(bus.right.gain, want.right);
+      } else {
+        bus.left.gain.value = want.left;
+        bus.right.gain.value = want.right;
+      }
+    }
+    const master = masterGain(project);
+    if (master !== this.masterTarget && this.master) {
+      this.masterTarget = master;
+      this.glide(this.master.gain, master);
+    }
   }
 
   private ramp(route: Route, target: number) {
@@ -287,8 +451,14 @@ export class Mix {
       items.push({ id, gain: playing ? gain : 0, playing: playing && !cur.paused, own: this.own.get(id) === cur });
       if (!this.ctx && !playing) continue;
       const route = this.route(cur);
-      if (route) this.ramp(route, playing ? gain : 0);
+      if (route) {
+        const bus = this.bus(a.track.id);
+        if (bus && route.bus !== bus) this.rewire(route, bus);
+        if (route.rewiring === undefined) this.ramp(route, playing ? gain : 0);
+      }
     }
+    this.mixer(project);
+    if (this.tap && this.ctx) this.marks.push({ t: this.ctx.currentTime, frame });
 
     // Audio items (and clips on hidden tracks) about to start: ready at their first frame and
     // silent. Just before they start (while playing) they already run, so a cut overlaps two
@@ -358,6 +528,7 @@ export class Mix {
 
   destroy() {
     this.stop();
+    for (const id of [...this.buses.keys()]) this.dropBus(id);
     void this.ctx?.close().catch(() => {});
     this.ctx = undefined;
   }
@@ -366,20 +537,76 @@ export class Mix {
     return this.last;
   }
 
+  /** Left and right levels of the master and of every track bus (the Mixer's meters), from the last ~43 ms. */
+  levels(): Levels {
+    const read = (meters: readonly [AnalyserNode, AnalyserNode] | undefined): StereoLevel => (meters ? { left: levelOf(meters[0]), right: levelOf(meters[1]) } : SILENT);
+    const tracks: Record<string, StereoLevel> = {};
+    for (const [id, bus] of this.buses) tracks[id] = read(bus.meters);
+    return { master: read(this.masterMeters), tracks };
+  }
+
+  /**
+   * Test-only: record what the master puts out (after the master volume), sample for sample, with
+   * the context time of each block and, from render(), which frame was drawn at which context
+   * time. The app tests compare it with the export's mix (D83). Nothing else uses it.
+   */
+  capture(): { stop: () => CaptureResult } | undefined {
+    const g = this.graph();
+    if (!g) return undefined;
+    const node = g.ctx.createScriptProcessor(4096, 2, 2);
+    const sink = g.ctx.createGain();
+    sink.gain.value = 0;
+    const tap: Capture = { node, sink, blocks: [] };
+    node.onaudioprocess = (e) => {
+      tap.blocks.push({ t: e.playbackTime, left: e.inputBuffer.getChannelData(0).slice(), right: e.inputBuffer.getChannelData(1).slice() });
+    };
+    g.master.connect(node);
+    node.connect(sink);
+    sink.connect(g.ctx.destination);
+    this.tap = tap;
+    this.marks = [];
+    return {
+      stop: () => {
+        g.master.disconnect(node);
+        node.disconnect();
+        sink.disconnect();
+        node.onaudioprocess = null;
+        if (this.tap === tap) this.tap = undefined;
+        return { sampleRate: g.ctx.sampleRate, blocks: tap.blocks, marks: this.marks };
+      },
+    };
+  }
+
   /** The master output's level right now: RMS and peak of the last ~43 ms (0 when nothing plays). */
   level(): { rms: number; peak: number } {
-    const analyser = this.analyser;
-    if (!analyser) return { rms: 0, peak: 0 };
-    const buf = new Float32Array(analyser.fftSize);
-    analyser.getFloatTimeDomainData(buf);
-    let sum = 0;
-    let peak = 0;
-    for (const v of buf) {
-      sum += v * v;
-      peak = Math.max(peak, Math.abs(v));
-    }
-    return { rms: Math.sqrt(sum / buf.length), peak };
+    return this.analyser ? levelOf(this.analyser) : { rms: 0, peak: 0 };
   }
+}
+
+interface Capture {
+  readonly node: ScriptProcessorNode;
+  readonly sink: GainNode;
+  readonly blocks: Array<{ t: number; left: Float32Array; right: Float32Array }>;
+}
+export interface CaptureResult {
+  readonly sampleRate: number;
+  readonly blocks: ReadonlyArray<{ readonly t: number; readonly left: Float32Array; readonly right: Float32Array }>;
+  readonly marks: ReadonlyArray<{ readonly t: number; readonly frame: number }>;
+}
+
+const buffers = new WeakMap<AnalyserNode, Float32Array<ArrayBuffer>>();
+/** RMS and peak of an analyser's window. */
+function levelOf(analyser: AnalyserNode): Level {
+  let buf = buffers.get(analyser);
+  if (!buf) buffers.set(analyser, (buf = new Float32Array(analyser.fftSize)));
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  let peak = 0;
+  for (const v of buf) {
+    sum += v * v;
+    peak = Math.max(peak, Math.abs(v));
+  }
+  return { rms: Math.sqrt(sum / buf.length), peak };
 }
 
 // A read-only hook for the app tests (and for poking at the mix in DevTools): the live mix's
@@ -388,7 +615,37 @@ let current: Mix | undefined;
 export const setCurrentMix = (mix: Mix | undefined) => {
   current = mix;
 };
+export const currentMix = () => current;
+let capturing: { stop: () => CaptureResult } | undefined;
+const b64 = (a: Float32Array) => {
+  const bytes = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
 (globalThis as { __uncutAudio?: unknown }).__uncutAudio = {
   level: () => current?.level() ?? { rms: 0, peak: 0 },
+  levels: () => current?.levels() ?? { master: SILENT, tracks: {} },
   state: () => current?.state() ?? { state: "none", items: [] },
+  // Test-only (D83): record the master output; stop returns the samples (float32, base64 per
+  // channel), the context time of the first one, and the frame drawn at each context time.
+  startCapture: () => {
+    capturing = current?.capture();
+    return capturing !== undefined;
+  },
+  stopCapture: () => {
+    const r = capturing?.stop();
+    capturing = undefined;
+    if (!r || !r.blocks.length) return undefined;
+    const n = r.blocks.reduce((s, b) => s + b.left.length, 0);
+    const left = new Float32Array(n);
+    const right = new Float32Array(n);
+    let o = 0;
+    for (const b of r.blocks) {
+      left.set(b.left, o);
+      right.set(b.right, o);
+      o += b.left.length;
+    }
+    return { sampleRate: r.sampleRate, t0: r.blocks[0]!.t, left: b64(left), right: b64(right), marks: r.marks };
+  },
 };
