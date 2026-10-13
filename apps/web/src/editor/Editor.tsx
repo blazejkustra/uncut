@@ -29,8 +29,6 @@ import { Timeline } from "../timeline/Timeline.tsx";
 import { cutSelectedWords, TranscriptPanel } from "../panels/Transcript.tsx";
 import { transcriptStore } from "../panels/transcript.ts";
 
-const LATER = "Coming in a later phase";
-
 // Keys belong to the control while typing, picking from a list or moving a slider.
 const isEditable = (el: EventTarget | null) => isTextEntry(el) || el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && el.type === "range");
 
@@ -83,7 +81,7 @@ function useEditorKeys(fps: number) {
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
-  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest } = useApp();
+  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest, generateDraft } = useApp();
   const online = connection === "connected";
   const [tab, setTab] = useState<LibraryTab>("media");
   // history.db can't be used (D71): said once per project and problem, dismissable.
@@ -94,6 +92,10 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
     const panel = panelRequest?.panel;
     if (panel === "media" || panel === "text" || panel === "elements" || panel === "audio") setTab(panel);
   }, [panelRequest]);
+  // "Edit prompt" on a generated result opens the Generate tab with it (D99).
+  useEffect(() => {
+    if (generateDraft) setTab("generate");
+  }, [generateDraft?.seq]);
   useEditorKeys(project.canvas.fps);
   useBeatsLoading(project, snapshot.dir);
   useDuckLoading(project, snapshot.dir);
@@ -143,7 +145,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
         )}
       </div>
       <Rail tab={tab} onTab={setTab} />
-      <Library project={project} tab={tab} />
+      <Library project={project} tab={tab} onTab={setTab} />
       <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
       <Side snapshot={snapshot} project={project} online={online} />
       <Bottom project={project} dir={snapshot.dir} />
@@ -203,8 +205,6 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   );
 }
 
-// Media, Text, Elements (backgrounds), Audio, Transitions and Capture work; Generate arrives later.
-const RAIL: ReadonlyArray<[string, typeof Film]> = [["Generate", Sparkles]];
 
 function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => void }) {
   return (
@@ -233,12 +233,10 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
         <CircleDot />
         <span>Capture</span>
       </button>
-      {RAIL.map(([label, Icon]) => (
-        <button key={label} disabled title={`${label}: ${LATER}`}>
-          <Icon />
-          <span>{label}</span>
-        </button>
-      ))}
+      <button className={tab === "generate" ? "active" : ""} data-testid="rail-generate" title="Generate pictures, video and sound" onClick={() => onTab("generate")}>
+        <Sparkles />
+        <span>Generate</span>
+      </button>
     </nav>
   );
 }

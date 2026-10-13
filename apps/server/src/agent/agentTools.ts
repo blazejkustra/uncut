@@ -50,9 +50,9 @@ import toolsSpec from "../../../../spec/agent/tools.json" with { type: "json" };
 // transcript_read with chunk 4 (D68, local whisper.cpp); transcript_edit with chunk 5 (D69, cut by
 // text through core planTextCut); the beats analyzer with chunk 6 (D70); graphic_write with phase 6
 // chunk 2 (D78); captions_make with chunk 5 (D82); project_check, music_list and music_add with
-// chunk 8 (D90, D91); generate_media comes with its feature.
+// chunk 8 (D90, D91); generate_media with phase 7 chunk B (D99).
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "project_check", "music_list", "music_add", "media_import", "contact_sheet", "ui_show", "graphic_write"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "project_check", "music_list", "music_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -168,6 +168,11 @@ export function stepLabel(tool: string, input: unknown, plugin?: string): string
     }
     case "graphic_write":
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
+    case "generate_media": {
+      const what = args.kind === "video" ? "a video" : args.kind === "audio" ? "a sound" : args.generator === "generate.sound" ? "a sound" : args.generator === "generate.veo" ? "a video" : "a picture";
+      const by = args.generator === "generate.gpt-image" ? " with GPT Image" : args.generator === "generate.veo" ? " with Veo" : args.generator === "generate.sound" ? " with ElevenLabs" : args.generator === "generate.svg" ? " from SVG" : "";
+      return `Generated ${what}${by}`;
+    }
     case "project_check":
       return "Checked the video against the taste checks";
     case "music_list": {
@@ -556,6 +561,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
   A device frame shows footage on a phone or browser: the footage is a clip under the frame, its box on the frame's screen. One op does both: {"op":"insert_device_frame","media":"m-recording","device":"phone","start":0,"duration":150,"in":0} (optional box {x, y, h}, frameId, clipId; it adds the video tracks it needs, above main and under the text). Move the frame and its clip together (the clip's box is the frame's screen: modules_list's component.screens gives the rect per device). Animated components (a terminal typing) are drawn frame by frame in the export, up to ${MAX_RASTER_STATES} distinct looks per item; past that it holds frames.
 - Graphics are the escape hatch for motion the components can't do: write the HTML with graphic_write (it defines render(t, info), t in seconds from the item's start; full canvas, transparent, no network, system fonts), then insert {"type":"graphic","src":"graphics/<name>","start":…,"duration":…} on a video track. Prefer components and text; keep graphics simple.
 - Images can be SVG (a logo): they're stills like PNGs, drawn sharp at their box's size.
+- generate_media makes new media into Media › Generated (an edit of your turn; place it with timeline_edit). generate.svg is free (the user's subscription): write the SVG (a still, kept sharp) or an HTML page (a still, or an animation of up to 12 s: window.render(t, info) or CSS/SMIL animations; encoded as an opaque MP4, so paint a background) yourself and pass it as content, with kind image or video and size "canvas" or WIDTHxHEIGHT. generate.gpt-image (stills), generate.veo (4, 6 or 8 s video with sound, size 16:9 or 9:16) and generate.sound (sound effects, 0.5 to 30 s) bill the user's own API keys: use them only when the user asks for that kind of media, and say what it cost. Without the key the result says so: tell the user to add it in Settings › Keys, never ask for a key in chat. Over $1 (every Veo video) the user is asked on a card in the Agent tab and the call waits for their answer; if they don't allow it, don't retry in this turn.
 - What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop, hold), backgrounds (component.solid), the components above, graphic items, the transitions above, captions, and text with its position, box width, size, weight, colour, alignment, font, letter spacing, line height, case, outline, shadow, box and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume, pan, mute and solo, track effects (EQ, compressor, voice), ducking, the master volume and the master limiter, as the export mixes it; noise removal (audio.denoise) is applied on export only. Other components (${UNDRAWN_DOCS}) and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, components, graphics, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.

@@ -41,6 +41,27 @@ const prompt = await new Promise<string>((resolve) => {
   process.stdin.on("end", () => resolve(text));
 });
 const flag = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+
+// One-shot mode (no --mcp-config): the SVG generator asking for markup (D99). Answers like
+// `claude -p --output-format json`: the markup from $FAKE_SVG (a file), else a picture of the asked
+// size (an animated one when an animation was asked for), or $FAKE_SVG_FAIL as an error result.
+if (!argv.includes("--mcp-config")) {
+  if (process.env.FAKE_PROMPT_LOG) appendFileSync(process.env.FAKE_PROMPT_LOG, `${JSON.stringify({ oneshot: true, prompt, env: Object.keys(process.env), pid: process.pid, cwd: process.cwd(), system: flag("--append-system-prompt"), tools: flag("--tools"), args: argv })}\n`);
+  if (process.env.FAKE_SVG_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.FAKE_SVG_SLEEP)));
+  if (process.env.FAKE_SVG_FAIL) {
+    process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: true, result: process.env.FAKE_SVG_FAIL })}\n`, () => process.exit(0));
+    await new Promise(() => {});
+  }
+  const size = /(\d+)x(\d+) pixels/.exec(prompt);
+  const [w, h] = size ? [Number(size[1]), Number(size[2])] : [1920, 1080];
+  const animated = /An animation/.test(prompt);
+  const svg = process.env.FAKE_SVG
+    ? readFileSync(process.env.FAKE_SVG, "utf8")
+    : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#0B1D3A"/>${animated ? `<style>@keyframes grow{from{r:10px}to{r:${Math.round(h / 3)}px}}circle{animation:grow 2s linear forwards}</style>` : ""}<circle cx="${w / 2}" cy="${h / 2}" r="${Math.round(h / 4)}" fill="#F5A524"/></svg>`;
+  // Written before exiting: stdout to a pipe is asynchronous on macOS.
+  process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: false, result: `Here it is:\n\n\`\`\`svg\n${svg}\n\`\`\``, total_cost_usd: 0.01 })}\n`, () => process.exit(0));
+  await new Promise(() => {});
+}
 const cfg = JSON.parse(readFileSync(flag("--mcp-config")!, "utf8")).mcpServers.uncut as { command: string; args: Array<string>; env: Record<string, string> };
 
 const counter = `${process.env.FAKE_PLAN}.turn`;

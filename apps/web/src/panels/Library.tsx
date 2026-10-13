@@ -22,10 +22,11 @@ import { secondsLabel } from "../timeline/edit.ts";
 import { usePlayback } from "../preview/playback.ts";
 import { analysisText } from "../state/analysisText.ts";
 import { CaptureLibrary } from "./Capture.tsx";
+import { GeneratedSection, generatedMedia, GenerateLibrary } from "./Generate.tsx";
 
-export type LibraryTab = "media" | "text" | "elements" | "audio" | "transitions" | "capture";
+export type LibraryTab = "media" | "text" | "elements" | "audio" | "transitions" | "capture" | "generate";
 
-export function Library({ project, tab }: { project: Project; tab: LibraryTab }) {
+export function Library({ project, tab, onTab }: { project: Project; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
   return tab === "text" ? (
     <TextLibrary project={project} />
   ) : tab === "elements" ? (
@@ -36,8 +37,10 @@ export function Library({ project, tab }: { project: Project; tab: LibraryTab })
     <TransitionsLibrary project={project} />
   ) : tab === "capture" ? (
     <CaptureLibrary />
+  ) : tab === "generate" ? (
+    <GenerateLibrary project={project} />
   ) : (
-    <MediaLibrary project={project} />
+    <MediaLibrary project={project} onEdit={() => onTab?.("generate")} />
   );
 }
 
@@ -516,14 +519,16 @@ function TextLibrary({ project }: { project: Project }) {
   );
 }
 
-function MediaLibrary({ project }: { project: Project }) {
+function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => void }) {
   const app = useApp();
   const { importReport, connection } = app;
   const running = activeJobs(app);
   const importing = running.length > 0;
   const [dragging, setDragging] = useState(false);
   const online = connection === "connected";
-  const media = project.media;
+  // Generated media (D99) are listed under Generated, with their prompts.
+  const generated = new Set(generatedMedia(project).map((m) => m.id));
+  const media = project.media.filter((m) => !generated.has(m.id));
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
@@ -595,7 +600,7 @@ function MediaLibrary({ project }: { project: Project }) {
           </button>
         </div>
       )}
-      {media.length === 0 ? (
+      {media.length === 0 && generated.size === 0 ? (
         <Empty icon={<Film />} title="No media yet" testId="media-empty">
           Drop files here, or import them. Footage stays where it is; the project references it.
           <button className="btn" data-testid="import" disabled={!online} onClick={() => void actions.importMedia()}>
@@ -603,7 +608,7 @@ function MediaLibrary({ project }: { project: Project }) {
             Import…
           </button>
         </Empty>
-      ) : (
+      ) : media.length > 0 ? (
         <div className="lib-section">
           <div className="lib-label">In this project</div>
           <div className="grid2" data-testid="media-grid">
@@ -612,7 +617,8 @@ function MediaLibrary({ project }: { project: Project }) {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
+      <GeneratedSection project={project} {...(onEdit ? { onEdit } : {})} />
       {dragging && <div className="drop-hint">Drop to import</div>}
     </aside>
   );

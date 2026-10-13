@@ -1,0 +1,25 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "generate.svg",
+  "kind": "generator",
+  "name": "SVG and HTML",
+  "version": "0.1.0",
+  "description": "Pictures and short animations drawn from SVG or HTML: the agent writes the markup (or Claude does, from the Generate tab) and Uncut draws it in its sandboxed rasteriser. Works on the Claude subscription alone, no API key.",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "agent"
+  },
+  "capabilities": [
+    "media:write"
+  ],
+  "generator": {
+    "media": "image",
+    "provider": "uncut",
+    "model": "claude"
+  },
+  "ui": {
+    "panel": "generate"
+  }
+}

@@ -19,6 +19,8 @@ import { MediaCore } from "../media/mediaCore.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { Capture } from "../capture/capture.ts";
+import { Generator } from "../generate/generate.ts";
+import { Keys } from "../generate/keys.ts";
 import { Projects } from "../project/projects.ts";
 import { Recents } from "../project/recents.ts";
 import { Settings } from "./settings.ts";
@@ -46,10 +48,12 @@ interface Services {
   readonly whisper: typeof Whisper.Service;
   readonly plugins: typeof Plugins.Service;
   readonly capture: typeof Capture.Service;
+  readonly generator: typeof Generator.Service;
+  readonly keys: typeof Keys.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -87,6 +91,7 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.agentSend]: (input) => agent.send(input),
     [RPC_METHODS.agentCancel]: () => agent.cancel,
     [RPC_METHODS.agentUndoTurn]: ({ turnId }) => agent.undoTurn(turnId),
+    [RPC_METHODS.agentApprove]: ({ id, allow }) => agent.approve(id, allow),
     [RPC_METHODS.exportStart]: (input) => exporter.start(input),
     [RPC_METHODS.exportJobs]: () => exporter.jobs,
     [RPC_METHODS.exportCancel]: ({ jobId }) => exporter.cancel(jobId),
@@ -107,6 +112,13 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.captureDevices]: () => capture.state,
     [RPC_METHODS.captureStart]: ({ device, showTouches }) => capture.start(device, showTouches),
     [RPC_METHODS.captureStop]: ({ device }) => capture.stop(device),
+    [RPC_METHODS.generateList]: () => generator.list,
+    [RPC_METHODS.generateStart]: (input) => generator.start(input),
+    [RPC_METHODS.generateJobs]: () => generator.jobs,
+    [RPC_METHODS.generateCancel]: ({ jobId }) => generator.cancel(jobId),
+    [RPC_METHODS.keysList]: () => keys.list,
+    [RPC_METHODS.keysSet]: ({ provider, key }) => keys.set(provider, key),
+    [RPC_METHODS.keysRemove]: ({ provider }) => keys.remove(provider),
   });
 
 export const layer = Layer.unwrap(
@@ -124,7 +136,9 @@ export const layer = Layer.unwrap(
     const whisper = yield* Whisper;
     const plugins = yield* Plugins;
     const capture = yield* Capture;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture }).pipe(
+    const generator = yield* Generator;
+    const keys = yield* Keys;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 
