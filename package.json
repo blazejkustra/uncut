@@ -18,7 +18,7 @@
     "dist:signed": "pnpm build && node apps/desktop/scripts/dist-signed.ts"
   },
   "devDependencies": {
-    "@types/node": "24.19.1",
+    "@types/node": "26.6.5",
     "@uncut/plugin-sdk": "workspace:*",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
