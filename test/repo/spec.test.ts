@@ -26,11 +26,15 @@ test("every built-in and plugin manifest matches the module schema", async () =>
   }
 });
 
-test("Argent (D20) and a local Whisper (D26) fit the manifest", () => {
+test("Argent (D20) and a local Whisper (D26) fit the manifest", async () => {
   const argent: any = modules.get("argent.capture");
   assert.equal(argent.kind, "capture-source");
-  assert.ok(argent.capture.flows && argent.capture.agentDriven);
+  // Flows yes; the agent driving the app while it records is D19's later step (D98).
+  assert.ok(argent.capture.flows);
+  assert.equal(argent.capture.agentDriven, false);
   assert.ok(argent.agentTools.some((t: any) => t.name === "argent_record"));
+  // The example is the bundled plugin's manifest (plugins/argent-capture, D98).
+  assert.deepEqual(await read("../../plugins/argent-capture/uncut.module.json"), argent);
   const whisper: any = modules.get("whisper.transcribe");
   assert.equal(whisper.analyzer.backend, "local-model");
   assert.ok(whisper.analyzer.outputs.includes("transcript"));

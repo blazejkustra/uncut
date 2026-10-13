@@ -21,8 +21,9 @@ import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../
 import { secondsLabel } from "../timeline/edit.ts";
 import { usePlayback } from "../preview/playback.ts";
 import { analysisText } from "../state/analysisText.ts";
+import { CaptureLibrary } from "./Capture.tsx";
 
-export type LibraryTab = "media" | "text" | "elements" | "audio" | "transitions";
+export type LibraryTab = "media" | "text" | "elements" | "audio" | "transitions" | "capture";
 
 export function Library({ project, tab }: { project: Project; tab: LibraryTab }) {
   return tab === "text" ? (
@@ -33,6 +34,8 @@ export function Library({ project, tab }: { project: Project; tab: LibraryTab })
     <AudioLibrary project={project} />
   ) : tab === "transitions" ? (
     <TransitionsLibrary project={project} />
+  ) : tab === "capture" ? (
+    <CaptureLibrary />
   ) : (
     <MediaLibrary project={project} />
   );

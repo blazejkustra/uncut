@@ -35,6 +35,7 @@ function touches(op: Op): Array<string> {
   if (op.op === "add_track") return [`track:${op.track.id}`];
   if ("track" in op && op.track) return [`track:${op.track}`];
   if (op.op === "add_media") return [`media:${op.media.id}`];
+  if (op.op === "update_media") return [`media:${op.media}`];
   return ["project"];
 }
 
@@ -226,6 +227,14 @@ function applyOp(project: Draft, op: Op) {
     case "add_media":
       project.media.push(structuredClone(op.media) as Draft["media"][number]);
       return;
+    case "update_media": {
+      const media = project.media.find((m) => m.id === op.media);
+      if (!media) throw new EditError(`No media "${op.media}"`);
+      for (const k of Object.keys(op.set)) if (!["path", "name", "probe", "source"].includes(k)) throw new EditError(`update_media can't set "${k}"`);
+      if ("path" in op.set && (typeof op.set.path !== "string" || !op.set.path)) throw new EditError("update_media: path must be a non-empty string");
+      merge(media, structuredClone(op.set));
+      return;
+    }
     case "update_project":
       merge(project, structuredClone(op.set));
       return;

@@ -26,6 +26,10 @@ extraResources:
   - from: ../../spec/modules/builtin
     to: modules/builtin
     filter: ["*.json"]
+  # Bundled plugins (D97, D98): Resources/plugins, pre-approved. Only manifests and their code.
+  - from: ../../plugins
+    to: plugins
+    filter: ["*/uncut.module.json", "*/*.ts", "!**/*.test.ts", "!**/*.md"]
 # Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
 afterSign: scripts/after-sign.ts
 mac:

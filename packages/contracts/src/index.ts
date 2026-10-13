@@ -47,6 +47,9 @@ export const RPC_METHODS = {
   pluginsList: "plugins.list",
   pluginsApprove: "plugins.approve",
   pluginsRevoke: "plugins.revoke",
+  captureDevices: "capture.devices",
+  captureStart: "capture.start",
+  captureStop: "capture.stop",
 } as const;
 
 // ---- server ----
@@ -251,6 +254,39 @@ export type PluginInfo = typeof PluginInfo.Type;
 
 export class PluginError extends Schema.TaggedError<PluginError>()("PluginError", {
   reason: Schema.Literals(["unknown-plugin", "broken", "bundled", "changed", "io"]),
+  message: Schema.String,
+}) {}
+
+// ---- capture (D98) ----
+
+/** A device a capture source can see (Argent: simulators, emulators, Chromium apps). */
+export const CaptureDevice = Schema.Struct({
+  id: Schema.String,
+  platform: Schema.String,
+  name: Schema.String,
+  state: Schema.String,
+  recordable: Schema.Boolean,
+  // Why it can't be recorded (yet), in a few words.
+  reason: Schema.optional(Schema.String),
+});
+export type CaptureDevice = typeof CaptureDevice.Type;
+
+/**
+ * The Capture tab's Argent section: whether Argent is there (else the command that installs it),
+ * its devices, and the recordings running now (device id, ISO start).
+ */
+export const CaptureState = Schema.Struct({
+  installed: Schema.Boolean,
+  version: Schema.optional(Schema.String),
+  install: Schema.String,
+  problem: Schema.optional(Schema.String),
+  devices: Schema.Array(CaptureDevice),
+  recording: Schema.Array(Schema.Struct({ device: Schema.String, startedAt: Schema.String })),
+});
+export type CaptureState = typeof CaptureState.Type;
+
+export class CaptureError extends Schema.TaggedError<CaptureError>()("CaptureError", {
+  reason: Schema.Literals(["no-project", "unavailable", "failed"]),
   message: Schema.String,
 }) {}
 
@@ -632,7 +668,24 @@ const PluginsListRpc = Rpc.make(RPC_METHODS.pluginsList, { payload: Empty, succe
 const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, { payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String) }), success: Schema.Array(PluginInfo), error: PluginError });
 const PluginsRevokeRpc = Rpc.make(RPC_METHODS.pluginsRevoke, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
 
+// The Capture tab (D98): Argent's devices (asks the plugin each time), start and stop a recording.
+// Stop imports the take into the open project as one user edit and returns its media id.
+const CaptureDevicesRpc = Rpc.make(RPC_METHODS.captureDevices, { payload: Empty, success: CaptureState, error: CaptureError });
+const CaptureStartRpc = Rpc.make(RPC_METHODS.captureStart, {
+  payload: Schema.Struct({ device: Schema.String, showTouches: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ device: Schema.String, startedAt: Schema.String }),
+  error: CaptureError,
+});
+const CaptureStopRpc = Rpc.make(RPC_METHODS.captureStop, {
+  payload: Schema.Struct({ device: Schema.String }),
+  success: Schema.Struct({ mediaId: Schema.String, name: Schema.String, seconds: Schema.Number }),
+  error: CaptureError,
+});
+
 export const WsRpcGroup = RpcGroup.make(
+  CaptureDevicesRpc,
+  CaptureStartRpc,
+  CaptureStopRpc,
   PluginsListRpc,
   PluginsApproveRpc,
   PluginsRevokeRpc,

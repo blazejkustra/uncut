@@ -11,7 +11,7 @@
 // timeline_edit, never by a plugin writing project.json.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { PluginError, type PluginInfo } from "@uncut/contracts";
@@ -531,6 +531,49 @@ export function toMcpResult(raw: unknown): McpResult {
 
 const errorResult = (text: string): McpResult => ({ content: [{ type: "text", text }], isError: true });
 
+/**
+ * A tool result as the host returns it: what the agent sees, plus what the plugin declared for
+ * Uncut itself (D98): `structuredContent.uncut`, e.g. a recording to import ({ media }) or a file
+ * to swap in ({ replace }). Uncut acts on it only for a plugin allowed to add media.
+ */
+export type PluginResult = McpResult & { readonly declared?: Record<string, unknown>; readonly structured?: unknown };
+
+/** What Uncut tells a plugin about the call (D98), as MCP `_meta` on tools/call. */
+export interface PluginContext {
+  /** The open project's folder (plugins that read the project). */
+  readonly "uncut/projectDir"?: string;
+  /** Where a plugin that adds media writes its files: <project>/media/captures (D12). */
+  readonly "uncut/captureDir"?: string;
+  /** The project's saved flows (capture sources): <project>/flows. */
+  readonly "uncut/flowsDir"?: string;
+}
+
+export const CAPTURE_DIR = join("media", "captures");
+export const FLOWS_DIR = "flows";
+
+/** The context a plugin gets for a project, by what it may do; the capture folder is created. */
+export async function pluginContext(plugin: Pick<FoundPlugin, "capabilities" | "kind">, projectDir: string | undefined): Promise<PluginContext> {
+  if (!projectDir) return {};
+  const reads = plugin.capabilities.includes("project:read");
+  const writes = plugin.capabilities.includes("media:write");
+  const context: Record<string, string> = {};
+  if (reads) context["uncut/projectDir"] = projectDir;
+  if (writes) {
+    const dir = join(projectDir, CAPTURE_DIR);
+    await mkdir(dir, { recursive: true });
+    context["uncut/captureDir"] = dir;
+  }
+  if (plugin.kind === "capture-source" && (reads || writes)) context["uncut/flowsDir"] = join(projectDir, FLOWS_DIR);
+  return context;
+}
+
+/** The plugin's declaration for Uncut in a raw tools/call result, if any. */
+const declaredOf = (raw: unknown): Record<string, unknown> | undefined => {
+  const structured = (raw as { structuredContent?: unknown } | null)?.structuredContent;
+  const uncut = structured && typeof structured === "object" ? (structured as { uncut?: unknown }).uncut : undefined;
+  return uncut && typeof uncut === "object" && !Array.isArray(uncut) ? (uncut as Record<string, unknown>) : undefined;
+};
+
 interface Slot {
   spec: ProcessSpec;
   proc: PluginProcess | undefined;
@@ -600,7 +643,7 @@ export class PluginHost {
    * `allowed` is asked again once the process is up, right before the call (it may have been
    * revoked meanwhile); `signal` is the agent turn's.
    */
-  async call(spec: ProcessSpec, tool: string, args: unknown, signal?: AbortSignal, allowed?: () => Promise<string | undefined>): Promise<McpResult> {
+  async call(spec: ProcessSpec, tool: string, args: unknown, signal?: AbortSignal, allowed?: () => Promise<string | undefined>, context?: PluginContext): Promise<PluginResult> {
     let slot = this.slots.get(spec.id);
     if (slot && !sameSpec(slot.spec, spec)) {
       await this.stop(spec.id);
@@ -621,7 +664,10 @@ export class PluginHost {
     const refusal = await allowed?.();
     if (refusal) return errorResult(refusal);
     try {
-      return toMcpResult(await proc.request("tools/call", { name: tool, arguments: args ?? {} }, spec.timeoutMs, signal));
+      const raw = await proc.request("tools/call", { name: tool, arguments: args ?? {}, ...(context && Object.keys(context).length ? { _meta: context } : {}) }, spec.timeoutMs, signal);
+      const declared = declaredOf(raw);
+      const structured = (raw as { structuredContent?: unknown } | null)?.structuredContent;
+      return { ...toMcpResult(raw), ...(declared ? { declared } : {}), ...(structured !== undefined ? { structured } : {}) };
     } catch (error) {
       if (error instanceof PluginTimeout) {
         // A plugin that doesn't answer may be stuck: stop it; the next call starts it afresh.
@@ -669,13 +715,31 @@ export interface PluginsShape {
   readonly tools: Effect.Effect<ReadonlyArray<McpTool>>;
   /** The plugin that owns a tool name, from the last scan. */
   readonly owner: (tool: string) => { readonly id: string; readonly name: string } | undefined;
-  /** Runs a plugin's tool; undefined when no plugin has a tool by that name. */
-  readonly call: (tool: string, args: unknown, turn?: AbortSignal) => Effect.Effect<McpResult | undefined>;
+  /**
+   * Runs a plugin's tool; undefined when no plugin has a tool by that name. `projectDir` is the
+   * open project's folder, passed to the plugin as context (D98) by what it may do.
+   */
+  readonly call: (tool: string, args: unknown, turn?: AbortSignal, projectDir?: string) => Effect.Effect<(PluginResult & { readonly plugin: PluginCaller }) | undefined>;
+  /**
+   * Runs a tool of the plugin `id` for Uncut itself (the Capture tab): any tool the process serves,
+   * also those it doesn't list for the agent. Refused (an error result) when it isn't allowed.
+   */
+  readonly callPlugin: (id: string, tool: string, args: unknown, options?: { readonly projectDir?: string | undefined; readonly signal?: AbortSignal | undefined }) => Effect.Effect<PluginResult & { readonly plugin: PluginCaller | undefined }>;
   /** modules_list entries for the plugins (D97). */
   readonly modules: (kind?: string) => Effect.Effect<ReadonlyArray<Record<string, unknown>>>;
   /** The running process of a plugin (tests). */
   readonly host: PluginHost;
 }
+
+/** Who answered a plugin call: what Uncut needs to decide what to do with its declaration. */
+export interface PluginCaller {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly capabilities: ReadonlyArray<string>;
+}
+
+const callerOf = (p: FoundPlugin): PluginCaller => ({ id: p.id, name: p.name, kind: p.kind, capabilities: p.capabilities });
 
 export class Plugins extends Context.Service<Plugins, PluginsShape>()("uncut/Plugins") {}
 
@@ -773,16 +837,33 @@ export const layer = Layer.effect(
         const p = byTool(tool);
         return p ? { id: p.id, name: p.name } : undefined;
       },
-      call: (tool, args, turn) =>
+      call: (tool, args, turn, projectDir) =>
         Effect.gen(function* () {
           const plugin = byTool(tool);
           if (!plugin) return undefined;
           // Read now, so allowing it mid-turn counts at once.
           const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
-          if (refused) return errorResult(refused);
+          if (refused) return { ...errorResult(refused), plugin: callerOf(plugin) };
           // ...and again once the process is up, in case it was revoked while it started.
           const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => refusal(plugin, approvals[plugin.id])));
-          return yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, turn ? AbortSignal.any([signal, turn]) : signal, allowed));
+          const context = yield* Effect.promise(() => pluginContext(plugin, projectDir).catch(() => ({})));
+          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, turn ? AbortSignal.any([signal, turn]) : signal, allowed, context));
+          return { ...result, plugin: callerOf(plugin) };
+        }),
+      callPlugin: (id, tool, args, options = {}) =>
+        Effect.gen(function* () {
+          yield* refresh;
+          const plugin = discovery.plugins.find((p) => p.id === id);
+          if (!plugin) {
+            const broken = discovery.broken.find((b) => b.id === id);
+            return { ...errorResult(broken ? `The plugin ${id} can't be used: ${broken.problem}` : `There's no plugin ${id}.`), plugin: undefined };
+          }
+          const refused = refusal(plugin, (yield* settings.pluginApprovals)[plugin.id]);
+          if (refused) return { ...errorResult(`${plugin.name} isn't allowed to run yet: allow it in Settings, the Capture step.`), plugin: callerOf(plugin) };
+          const allowed = () => Effect.runPromise(Effect.map(settings.pluginApprovals, (approvals) => (refusal(plugin, approvals[plugin.id]) ? `${plugin.name} isn't allowed to run.` : undefined)));
+          const context = yield* Effect.promise(() => pluginContext(plugin, options.projectDir).catch(() => ({})));
+          const result = yield* Effect.promise((signal) => host.call(plugin.spec, tool, args, options.signal ? AbortSignal.any([signal, options.signal]) : signal, allowed, context));
+          return { ...result, plugin: callerOf(plugin) };
         }),
       modules: (kind) =>
         Effect.map(settings.pluginApprovals, (approvals) => [

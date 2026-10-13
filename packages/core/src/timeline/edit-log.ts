@@ -249,6 +249,11 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       return `Deleted track ${op.track}`;
     case "add_media":
       return `Added media ${op.media.name} (${op.media.id})`;
+    case "update_media": {
+      const name = project.media.find((m) => m.id === op.media)?.name ?? op.media;
+      if ("path" in op.set) return `Swapped in a new file for ${name} (${op.media})`;
+      return `Changed ${Object.keys(op.set).join(", ")} of media ${name} (${op.media})`;
+    }
     case "update_project": {
       // The master volume (D83); update_project replaces master whole.
       const keys = Object.keys(op.set);

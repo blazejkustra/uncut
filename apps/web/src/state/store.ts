@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -56,6 +56,14 @@ export interface AppStateShape {
   readonly plugins?: ReadonlyArray<PluginInfo>;
   // Why allowing (or revoking) a plugin failed.
   readonly pluginError?: string;
+  /** The Capture tab's Argent section (D98): what the plugin last said, and while it's asked. */
+  readonly capture?: CaptureState;
+  readonly captureChecking?: boolean;
+  readonly captureError?: string;
+  /** Devices whose Record or Stop is on its way to the server. */
+  readonly captureBusy?: ReadonlyArray<string>;
+  /** The last take the Capture tab added (its media id and name). */
+  readonly captureSaved?: { readonly mediaId: string; readonly name: string; readonly seconds: number };
   // Import jobs on the server (running and recent); the library shows the open project's.
   readonly jobs: ReadonlyArray<ImportJob>;
   readonly importReport?: { readonly failed: MediaImportResult["failed"]; readonly skipped: MediaImportResult["skipped"] };
@@ -788,6 +796,29 @@ export const actions = {
     const result = await call((c) => c["plugins.revoke"]({ id }));
     if (result.ok) set({ plugins: result.value });
     else set({ pluginError: plainError(result.error) });
+  },
+  /** The Capture tab: Argent's devices (and whether Argent is there at all). */
+  async checkCapture() {
+    set({ captureChecking: true });
+    const result = await call((c) => c["capture.devices"]({}));
+    if (result.ok) set({ captureChecking: false, capture: result.value, captureError: undefined });
+    else set({ captureChecking: false, captureError: plainError(result.error) });
+  },
+  async startCapture(device: string) {
+    set({ captureError: undefined, captureSaved: undefined, captureBusy: [...(state.captureBusy ?? []), device] });
+    const result = await call((c) => c["capture.start"]({ device }));
+    set({ captureBusy: (state.captureBusy ?? []).filter((d) => d !== device) });
+    if (!result.ok) set({ captureError: plainError(result.error) });
+    await actions.checkCapture();
+  },
+  /** Stops a recording; the server adds the take to the project as one edit (⌘Z removes it). */
+  async stopCapture(device: string) {
+    set({ captureError: undefined, captureBusy: [...(state.captureBusy ?? []), device] });
+    const result = await call((c) => c["capture.stop"]({ device }));
+    set({ captureBusy: (state.captureBusy ?? []).filter((d) => d !== device) });
+    if (result.ok) set({ captureSaved: result.value });
+    else set({ captureError: plainError(result.error) });
+    await actions.checkCapture();
   },
   copy: (text: string) => bridge.copyText(text),
   /** Finish (or skip) onboarding; it won't open on launch again. */
