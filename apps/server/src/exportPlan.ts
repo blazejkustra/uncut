@@ -14,7 +14,10 @@
 //   terminal typing, gets one per frame its look changes; past MAX_RASTER_STATES looks it holds
 //   frames, with a warning), their box's opacity baked into the HTML. SVG images are drawn by
 //   Chromium at their box's size (ffmpeg can't decode SVG). A graphic item (D78) is its document
-//   drawn frame by frame (render(t) called), capped the same way.
+//   drawn frame by frame (render(t) called), capped the same way. Captions (D82) are one raster
+//   layer per captions item from its first card to its last: core captionAt's text item at each
+//   frame drawn by textHtml (an empty state between cards), one PNG per distinct card / speaking
+//   word. Not capped: each card has at most its words + 1 looks, so a long talk is many small sets.
 //   Opacity (a transition's crossfade, fade/rise/slide in and out) is linear in frames, so it is
 //   ffmpeg's fade on the layer's alpha, evaluated at the same frames (time mode). A dip to black
 //   is core's black layer over the main track (a raster with two ramps); a wipe crops the
@@ -46,6 +49,7 @@ import {
   dipsOf,
   spanOf,
   canvasBackground,
+  captionSegments,
   componentBox,
   componentParts,
   wrapComponent,
@@ -510,6 +514,64 @@ export function svgClipHtml(item: Item, box: ClipBox, src: string, opacity: numb
   return `<div data-item="${item.id}" style="position:absolute;left:${r(box.x)};top:${r(box.y)};width:${r(box.w)};height:${r(box.h)};overflow:hidden;opacity:${Math.round(opacity * 10000) / 10000}${box.radius > 0 ? `;border-radius:${r(box.radius)}` : ""}"><img src="${src}" alt="" style="position:absolute;display:block;left:${r(c.x - box.x)};top:${r(c.y - box.y)};width:${r(c.w)};height:${r(c.h)};object-fit:${box.fit}"></div>`;
 }
 
+/** A captions layer between cards: nothing drawn (a transparent PNG). */
+export const CAPTION_GAP_HTML = "<div></div>";
+/** At most this many layers (ffmpeg inputs) per captions item: runs of cards closest together are merged. */
+export const MAX_CAPTION_LAYERS = 16;
+/** Past this many looks, the export says captions add time (each look is one PNG Chromium draws). */
+export const CAPTION_LOOKS_WARN = 1500;
+/** Roughly how many caption looks the rasteriser draws a second (for that warning's estimate). */
+const CAPTION_LOOKS_PER_S = 25;
+
+/**
+ * Captions (D82) as raster layers: core captionSegments gives each stretch with one look (a card, or
+ * a card with one speaking word), so textHtml runs once per look, not per frame. Touching segments
+ * form a run (one layer: a still when it has one look, else a sequence of its looks); the gaps
+ * between runs draw nothing and cost nothing. Past MAX_CAPTION_LAYERS runs, those with the shortest
+ * gaps between them are merged (the gap is an empty look). Not capped at MAX_RASTER_STATES: each
+ * card has at most its words + 1 looks.
+ */
+export function captionLayers(project: Project, item: Item, track: Track, duration: number, warnings: Array<string>): Array<VisualLayer> {
+  const segs = captionSegments(project, item)
+    .map((s) => ({ from: Math.max(0, s.from), to: Math.min(duration, s.to), text: s.text }))
+    .filter((s) => s.to > s.from);
+  if (!segs.length) return [];
+  const runs: Array<Array<(typeof segs)[number]>> = [];
+  for (const s of segs) {
+    const run = runs.at(-1);
+    if (run && run.at(-1)!.to === s.from) run.push(s);
+    else runs.push([s]);
+  }
+  // Merge across the shortest gaps until few enough layers.
+  while (runs.length > MAX_CAPTION_LAYERS) {
+    let best = 0;
+    for (let i = 1; i < runs.length - 1; i++) if (runs[i + 1]![0]!.from - runs[i]!.at(-1)!.to < runs[best + 1]![0]!.from - runs[best]!.at(-1)!.to) best = i;
+    runs.splice(best, 2, [...runs[best]!, ...runs[best + 1]!]);
+  }
+  const html = new Map<Item, string>();
+  let looks = 0;
+  const layers = runs.map((run): VisualLayer => {
+    const f0 = run[0]!.from;
+    const f1 = run.at(-1)!.to;
+    const states: Array<string> = [];
+    const index = new Map<string, number>();
+    const at = (h: string) => index.get(h) ?? (index.set(h, states.push(h) - 1), states.length - 1);
+    const frames = new Array<number>(f1 - f0);
+    let f = f0;
+    for (const s of run) {
+      if (s.from > f) frames.fill(at(CAPTION_GAP_HTML), f - f0, s.from - f0);
+      let h = html.get(s.text);
+      if (h === undefined) html.set(s.text, (h = textHtml(s.text, project)));
+      frames.fill(at(h), s.from - f0, s.to - f0);
+      f = s.to;
+    }
+    looks += states.length;
+    return { item, track, f0, f1, ramps: [], kind: "raster", states, frames };
+  });
+  if (looks > CAPTION_LOOKS_WARN) warnings.push(`"${item.name ?? item.id}" has ${looks} caption looks to draw, which adds about ${Math.max(1, Math.round(looks / CAPTION_LOOKS_PER_S / 60))} min to the export.`);
+  return layers;
+}
+
 /** Everything the export draws and plays, or why there's nothing to export. */
 export function planExport(project: Project, { mediaPath, width, height, graphic }: PlanOptions): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
@@ -550,6 +612,10 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       const isText = item.type === "text" && typeof item.text === "string";
       const isComponent = isDrawnComponent(item);
       const isGraphic = item.type === "graphic" && typeof item.src === "string";
+      if (item.type === "captions") {
+        visuals.push(...captionLayers(project, item, track, duration, warnings));
+        return;
+      }
       if (!isMedia && !isSolid && !isText && !isComponent && !isGraphic) return;
       const start = starts.get(item.id)!;
       const span = spanOf(track, i, start);

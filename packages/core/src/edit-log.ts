@@ -79,6 +79,8 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
   if (keys.length === 1 && keys[0] === "text" && typeof set.text === "string") return `Changed the text of ${id} to ${quote(set.text)}`;
   const sound = describeSound(id, set, it, fps);
   if (sound) return sound;
+  const captions = describeCaptions(id, set, project, it, fps);
+  if (captions) return captions;
   const parts: Array<string> = [];
   const rest: Array<string> = [];
   for (const key of keys) {
@@ -130,6 +132,29 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
   return `${keys.length === 1 && keys[0] === "animation" ? "Animated" : "Restyled"} ${it(id)}: ${tail}`;
 }
 
+const CAPTION_KEYS = new Set(["edits", "breaks", "mode", "lines", "hideFillers", "words", "start", "duration", "coversMain"]);
+
+/** A captions item's own fields (D82) in words, when they are all an update_item changes: the corrected words by id, so the agent can find them. */
+function describeCaptions(id: Id, set: { readonly [key: string]: unknown }, project: Project, it: (id: Id) => string, fps: number): string | undefined {
+  const item = project.tracks.flatMap((t) => t.items).find((i) => i.id === id);
+  const keys = Object.keys(set);
+  if (item?.type !== "captions" || !keys.length || !keys.every((k) => CAPTION_KEYS.has(k))) return undefined;
+  const parts: Array<string> = [];
+  for (const k of keys) {
+    const v = set[k];
+    if (k === "edits") {
+      const list = Array.isArray(v) ? (v as ReadonlyArray<{ word: number; text: string }>) : [];
+      parts.push(list.length ? `corrections ${list.map((e) => `w${e.word} ${e.text === "" ? "hidden" : quote(e.text, 30)}`).join(", ")}` : "no corrections");
+    } else if (k === "breaks") parts.push(Array.isArray(v) && v.length ? `new cards at ${(v as ReadonlyArray<number>).map((w) => `w${w}`).join(", ")}` : "no forced cards");
+    else if (k === "mode") parts.push(`mode ${String(v ?? "line")}`);
+    else if (k === "lines") parts.push(v && typeof v === "object" ? `lines ${Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ")}` : "default lines");
+    else if (k === "hideFillers") parts.push(v === true ? "fillers hidden" : "fillers shown");
+    else if (k === "words") parts.push(`${Array.isArray(v) ? v.length : 0} words from the transcript`);
+    else if (k === "duration" && typeof v === "number") parts.push(`covering ${secs(v, fps)}`);
+  }
+  return `Changed the captions ${it(id)}: ${parts.join("; ")}`;
+}
+
 const SOUND_KEYS = new Set(["gainDb", "fadeIn", "fadeOut", "gainKeys"]);
 const fadeSecs = (v: unknown, fps: number) => (typeof v === "number" && v > 0 ? secs(v, fps).replace("s", " s") : undefined);
 
@@ -175,6 +200,7 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       }
       if (op.item.type === "component" && componentInfo(op.item.component)) return `Added ${componentInfo(op.item.component)!.name.toLowerCase()} ${op.item.id} on track ${op.track}`;
       if (op.item.type === "graphic") return `Added graphic ${op.item.id} (${op.item.src ?? "no file"}) on track ${op.track}`;
+      if (op.item.type === "captions") return `Added captions ${op.item.id} of ${op.item.source} (${op.item.mode ?? "line"} mode, ${op.item.words?.length ?? 0} words) on track ${op.track}`;
       return `Added ${op.item.type} ${op.item.id} on track ${op.track}`;
     case "set_transition":
       return op.transition ? `Set ${op.transition.module} into ${it(op.item)}` : `Removed the transition into ${it(op.item)}`;

@@ -150,6 +150,10 @@ export function itemLabel(project: ProjectModel, item: Item) {
     return words ? `${component.name} · ${words}` : component.name;
   }
   if (item.type === "graphic" && !item.name && item.src) return `Graphic · ${item.src.replace(/^graphics\//, "")}`;
+  if (item.type === "captions" && !item.name) {
+    const source = project.media.find((m) => m.id === item.source);
+    return source ? `Captions of ${source.name}` : "Captions";
+  }
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   return item.name ?? media?.name ?? item.id;
 }

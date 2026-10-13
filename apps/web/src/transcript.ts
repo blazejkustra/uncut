@@ -6,9 +6,10 @@
 // planTextCut, the same planner as the agent's transcript_edit, chained clip by clip into ONE
 // project.edit, so one ⌘Z restores it.
 import { editWords, planTextCut, speechWords, type CutWord, type EditWord, type SpeechEnvelope, type SpeechSegment } from "@uncut/core/transcript";
+import { planMakeCaptions, type CaptionMode } from "@uncut/core/captions";
 import { useSyncExternalStore } from "react";
 
-import type { Plan } from "./edit.ts";
+import { draftOf, type Plan } from "./edit.ts";
 import type { ProjectModel } from "./project.ts";
 
 export interface MediaTranscript {
@@ -187,4 +188,37 @@ export function planRemoveFillers(project: ProjectModel, transcripts: ReadonlyMa
   const fps = project.canvas.fps;
   const steps = mediaOnMain(project).map((media) => ({ media, request: { fillers: true } }));
   return chain(project, transcripts, steps, (p) => `Removed ${plural(p.fillers, "filler")} (${(p.framesRemoved / fps).toFixed(1)} s)`);
+}
+
+export interface CaptionsPlan extends Plan {
+  /** The captions items made or remade, in edit order of their media. */
+  readonly items: ReadonlyArray<string>;
+  readonly remade: boolean;
+}
+
+/**
+ * "Make captions" (D82): captions for every transcribed media on the main track (core
+ * planMakeCaptions: the words where they're heard, a captions item over the main track on its own
+ * track; remade in place when the media has captions), each planned on the project the one before
+ * leaves, as one edit.
+ */
+export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, options: { readonly mode: CaptionMode; readonly look: string }): CaptionsPlan | { readonly problem: string } {
+  let current = project;
+  const ops: Array<Plan["ops"][number]> = [];
+  const items: Array<string> = [];
+  let remade = false;
+  for (const media of mediaOnMain(project)) {
+    const t = transcripts.get(media);
+    if (!t || !t.words.length) continue;
+    const plan = planMakeCaptions(current, { media, transcript: { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments }, silences: t.silences, envelope: t.envelope, mode: options.mode, look: options.look });
+    if ("problem" in plan) return plan;
+    const next = draftOf(current, plan.ops);
+    if ("problem" in next) return next;
+    ops.push(...plan.ops);
+    items.push(plan.itemId);
+    remade ||= plan.remade;
+    current = next.project;
+  }
+  if (!ops.length) return { problem: "Transcribe the speech on the main track first: captions are made from the transcript." };
+  return { ops, items, remade, summary: remade && items.length === 1 ? "Remake captions" : "Make captions" };
 }

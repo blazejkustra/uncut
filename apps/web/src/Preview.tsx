@@ -603,6 +603,8 @@ interface CanvasDrag {
   /** The box in canvas pixels, for snapping. */
   readonly w: number;
   readonly h: number;
+  /** How far the drawn box's top is below y (captions are drawn from their bottom edge, D82): snapping uses the drawn box. */
+  readonly oy?: number;
   /** The playhead when it began: a keyed clip changes its keys there. */
   readonly frame: number;
   readonly revision: number;
@@ -664,7 +666,8 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       (target as HTMLElement).closest<HTMLElement>(".pv-text[data-item]") ??
       (at ? document.elementsFromPoint(at.clientX, at.clientY).find((n): n is HTMLElement => n instanceof HTMLElement && n.matches(".pv-text[data-item]")) : undefined);
     const placed = findItem(project, el?.dataset.item);
-    if (!el || !placed || placed.item.type !== "text" || lockOf(placed)) return undefined;
+    // Captions (D82) draw as text: they move like it, but their words are edited in the Inspector.
+    if (!el || !placed || (placed.item.type !== "text" && placed.item.type !== "captions") || lockOf(placed)) return undefined;
     return { el, item: placed.item };
   };
 
@@ -706,6 +709,8 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       // Laid out at canvas size, so its offset size is already in canvas pixels.
       w: hit.el.offsetWidth,
       h: hit.el.offsetHeight,
+      // A captions card is drawn from its bottom edge: its drawn top isn't the item's y.
+      oy: hit.item.type === "captions" ? hit.el.offsetTop - box.y : 0,
     };
   };
 
@@ -736,8 +741,10 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       let x = Math.round(d.x + dx * scale);
       let y = Math.round(d.y + dy * scale);
       if (!e.metaKey && getPlayback().snapping) {
-        const snapped = snapBox({ x, y, w: d.w, h: d.h }, project, SNAP_SCREEN_PX * scale);
-        ({ x, y } = snapped);
+        const oy = d.oy ?? 0;
+        const snapped = snapBox({ x, y: y + oy, w: d.w, h: d.h }, project, SNAP_SCREEN_PX * scale);
+        x = snapped.x;
+        y = snapped.y - oy;
         shown = snapped.guides;
       }
       d.to = { x, y };
@@ -771,7 +778,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const hit = editableText(e.target, e);
     const snapshot = getState().snapshot;
-    if (!hit || !snapshot || snapshot.dir !== dir) return;
+    if (!hit || hit.item.type !== "text" || !snapshot || snapshot.dir !== dir) return;
     playback.pause();
     setEditing({ id: hit.item.id, css: hit.el.getAttribute("style") ?? "", text: hit.item.text ?? "", revision: snapshot.revision });
   };

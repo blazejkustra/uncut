@@ -132,10 +132,19 @@ export interface Item {
   // text: TextStyle (the schema lists its fields); captions: a free-form object in the schema,
   // so other keys are allowed.
   readonly style?: TextStyle & { readonly [key: string]: unknown };
-  // captions
+  // captions (D82): the source media, a snapshot of its transcript words (seconds of the media,
+  // where each is heard), corrections by word index, forced card starts and how cards are grouped.
   readonly source?: Id;
-  readonly mode?: "line" | "word";
+  readonly mode?: "line" | "word" | "single";
+  readonly words?: ReadonlyArray<{ readonly text: string; readonly start: number; readonly end: number; readonly filler?: boolean }>;
   readonly edits?: ReadonlyArray<{ readonly word: number; readonly text: string }>;
+  readonly breaks?: ReadonlyArray<number>;
+  readonly lines?: { readonly maxChars?: number; readonly maxLines?: number; readonly maxSeconds?: number; readonly maxWords?: number; readonly pause?: number };
+  readonly hideFillers?: boolean;
+  /** Captions (D82): draw wherever the source plays on main, whatever start/duration say (set by Make captions). */
+  readonly coversMain?: boolean;
+  /** Drawn text only (captions' cards, never saved): transform.y is the box's bottom edge, so wrapping grows upward. */
+  readonly anchor?: "bottom";
   // clip, audio
   readonly fadeIn?: Frame;
   readonly fadeOut?: Frame;
