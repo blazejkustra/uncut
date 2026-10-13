@@ -1,0 +1,39 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.zoom",
+  "kind": "move",
+  "name": "Zoom",
+  "description": "Text: scales from `scale` to its size (in), or from its size to `scale` (out), about the text box's centre, with an ease; fades too unless fade is false.",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "properties": {
+      "scale": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 4,
+        "default": 0.7,
+        "description": "The size at the start of the move in (the end of the move out): below 1 zooms in, above 1 zooms out."
+      },
+      "ease": {
+        "enum": [
+          "linear",
+          "in",
+          "out",
+          "inOut"
+        ],
+        "default": "out"
+      },
+      "fade": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}

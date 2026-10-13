@@ -3,6 +3,7 @@
   "id": "text.captions",
   "kind": "text-style",
   "name": "Captions",
+  "description": "Centred captions near the bottom.",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -12,5 +13,18 @@
   },
   "ui": {
     "panel": "text"
+  },
+  "look": {
+    "size": 0.05,
+    "weight": 600,
+    "font": "sans",
+    "tracking": -0.01,
+    "lineHeight": 1.15,
+    "color": "fg",
+    "align": "center",
+    "x": 0.1,
+    "y": 0.78,
+    "legacyShadow": true,
+    "text": "Captions"
   }
 }

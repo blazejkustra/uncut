@@ -16,6 +16,8 @@ export const COMPONENT_DRAG_TYPE = "application/x-uncut-component";
 let dragged: string | undefined;
 export const setDraggedComponent = (id: string | undefined) => void (dragged = id);
 export const draggedComponent = () => dragged;
+/** A Text tab preset being dragged (D80): its TEXT_PRESETS id. */
+export const TEXT_DRAG_TYPE = "application/x-uncut-text";
 
 /** How long a new component lasts: an end card 3 s, the rest 4 s. */
 const secondsFor = (id: string) => (id === "component.end-card" ? 3 : 4);

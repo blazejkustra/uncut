@@ -20,9 +20,9 @@ import { Mix, PREROLL_S, setCurrentMix } from "./audio.ts";
 import { draftOf, findItem, lockOf } from "./edit.ts";
 import { canvasLabel, frameTimecode } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
-import { layoutOf, type Item, type ProjectModel } from "./project.ts";
+import { layoutOf, TEXT_PRESETS, type Item, type ProjectModel } from "./project.ts";
 import { actions, getState, graphicUrl, mediaUrl } from "./store.ts";
-import { COMPONENT_DRAG_TYPE, draggedComponent } from "./components.ts";
+import { COMPONENT_DRAG_TYPE, draggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 import { clipState, planClipBox, resizeBox, type Corner } from "./clip.ts";
 
@@ -696,7 +696,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     }
     const hit = editableText(e.target);
     if (!hit) return;
-    const box = textBox(hit.item, project.canvas);
+    const box = textBox(hit.item, project);
     drag.current = {
       ...start,
       id: hit.item.id,
@@ -778,16 +778,25 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
 
   /** A component dragged from Elements (D76): dropped on the canvas, it's added at the playhead, centred where it lands. */
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (![...e.dataTransfer.types].includes(COMPONENT_DRAG_TYPE) || getState().connection !== "connected") return;
+    const types = [...e.dataTransfer.types];
+    if ((!types.includes(COMPONENT_DRAG_TYPE) && !types.includes(TEXT_DRAG_TYPE)) || getState().connection !== "connected") return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   };
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const rect = frameRef.current!.getBoundingClientRect();
+    const at = { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale };
+    // A Text tab preset (D80): added at the playhead, where it's dropped.
+    const preset = TEXT_PRESETS.find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
+    if (preset) {
+      e.preventDefault();
+      void actions.addText(preset, { at });
+      return;
+    }
     const id = e.dataTransfer.getData(COMPONENT_DRAG_TYPE) || draggedComponent();
     if (!id) return;
     e.preventDefault();
-    const rect = frameRef.current!.getBoundingClientRect();
-    void actions.addComponent(id, { at: { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale } });
+    void actions.addComponent(id, { at });
   };
 
   const finishEdit = (text: string | undefined) => {

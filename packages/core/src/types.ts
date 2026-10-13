@@ -69,9 +69,33 @@ export interface TextStyle {
   readonly lineHeight?: number;
   readonly color?: string;
   readonly align?: "left" | "center" | "right";
-  readonly stroke?: object;
-  readonly shadow?: object;
-  readonly background?: object;
+  readonly uppercase?: boolean;
+  /** D80: false = none (even when the preset's look has one); absent = the look's. */
+  readonly stroke?: TextStroke | false;
+  readonly shadow?: TextShadow | false;
+  readonly background?: TextBackground | false;
+}
+
+/** A text's outline (D80): width in canvas px, colour a theme token or CSS colour. */
+export interface TextStroke {
+  readonly width: number;
+  readonly color?: string;
+}
+/** A text's drop shadow (D80): offsets and blur in canvas px, opacity 0–1. */
+export interface TextShadow {
+  readonly x?: number;
+  readonly y?: number;
+  readonly blur?: number;
+  readonly color?: string;
+  readonly opacity?: number;
+}
+/** A box behind a text (D80): one box around its text box, or one behind each line; padding (the sides; top and bottom get half) and radius in canvas px. */
+export interface TextBackground {
+  readonly color?: string;
+  readonly opacity?: number;
+  readonly padding?: number;
+  readonly radius?: number;
+  readonly wrap?: "box" | "lines";
 }
 
 export type ItemType = "clip" | "component" | "graphic" | "text" | "captions" | "audio";
@@ -156,6 +180,8 @@ export interface Project {
   readonly name: string;
   readonly canvas: Canvas;
   readonly theme?: { readonly colors?: Readonly<Record<string, string>>; readonly fonts?: Readonly<Record<string, string>>; readonly margin?: number };
+  /** D80: 1 on projects created from D80 on (the older looks' soft shadow isn't drawn there); absent on older ones. */
+  readonly textLooks?: number;
   readonly media: ReadonlyArray<Media>;
   readonly tracks: ReadonlyArray<Track>;
   readonly scenes?: ReadonlyArray<Scene>;

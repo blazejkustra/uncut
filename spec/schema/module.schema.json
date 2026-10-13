@@ -81,6 +81,74 @@
     }
   },
   "$defs": {
+    "emLength": { "type": "number", "minimum": 0, "description": "A length as a share of the text's font size (em)." },
+    "look": {
+      "type": "object",
+      "required": ["size", "weight", "x", "y"],
+      "additionalProperties": false,
+      "description": "How a text style looks (D80): what a text item with this preset gets when it's added or reset, and the fallbacks for the style fields it doesn't set. size, x, y and w are shares of the canvas (height for size and y, width for x and w); stroke, shadow and background lengths are shares of the font size (em), so they scale with it.",
+      "properties": {
+        "size": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "weight": { "type": "integer", "minimum": 100, "maximum": 900 },
+        "font": { "enum": ["sans", "mono", "DM Sans", "DM Mono"], "description": "sans, mono (the system's or the theme's), or a bundled family: DM Sans, DM Mono (D77)." },
+        "tracking": { "type": "number", "description": "Letter spacing in em." },
+        "lineHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "color": { "type": "string", "description": "A theme token (fg, mute, accent, bg) or a CSS colour." },
+        "align": { "enum": ["left", "center", "right"] },
+        "uppercase": { "type": "boolean" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number", "exclusiveMinimum": 0, "description": "The text box's width (share of the canvas width); none = as wide as its text." },
+        "span": { "type": "boolean", "description": "The box spans the canvas between the safe margins (x and w ignored), as the Inspector's Centre does." },
+        "stroke": {
+          "type": "object",
+          "required": ["width"],
+          "additionalProperties": false,
+          "properties": { "width": { "$ref": "#/$defs/emLength" }, "color": { "type": "string" } }
+        },
+        "shadow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "blur": { "$ref": "#/$defs/emLength" }, "color": { "type": "string" }, "opacity": { "type": "number", "minimum": 0, "maximum": 1 } }
+        },
+        "legacyShadow": { "type": "boolean", "description": "Draws the soft shadow every text had before D80 (0 2px 18px, 45 % black) when the item sets no shadow, so older projects look the same." },
+        "background": {
+          "type": "object",
+          "required": ["color"],
+          "additionalProperties": false,
+          "properties": {
+            "color": { "type": "string" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "padding": { "$ref": "#/$defs/emLength" },
+            "radius": { "$ref": "#/$defs/emLength" },
+            "wrap": { "enum": ["box", "lines"], "description": "box: one box around the text box (padding grows it); lines: a box behind each line, hugging the text." }
+          }
+        },
+        "text": { "type": "string", "description": "Placeholder copy a new item gets." },
+        "animation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The in/out moves a new item gets, lengths in seconds.",
+          "properties": { "in": { "$ref": "#/$defs/lookMove" }, "out": { "$ref": "#/$defs/lookMove" } }
+        },
+        "with": {
+          "type": "array",
+          "description": "Other text items added with it (e.g. a kicker above a title), each in its own look, dy = offset of its top from this one's (share of the canvas height).",
+          "items": {
+            "type": "object",
+            "required": ["look", "text"],
+            "additionalProperties": false,
+            "properties": { "look": { "type": "string" }, "text": { "type": "string" }, "dy": { "type": "number" } }
+          }
+        }
+      }
+    },
+    "lookMove": {
+      "type": "object",
+      "required": ["module", "seconds"],
+      "additionalProperties": false,
+      "properties": { "module": { "type": "string" }, "seconds": { "type": "number", "exclusiveMinimum": 0 }, "params": { "type": "object" } }
+    },
     "size": {
       "type": "object",
       "required": ["width", "height"],
@@ -89,6 +157,10 @@
     }
   },
   "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "text-style" } } },
+      "then": { "properties": { "look": { "$ref": "#/$defs/look" } } }
+    },
     {
       "if": { "properties": { "kind": { "const": "transition" } } },
       "then": {

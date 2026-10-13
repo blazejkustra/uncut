@@ -1,10 +1,10 @@
 // @uncut/core: the reference format code shared by the server, the renderer and the tests.
 export type * from "./types.ts";
-export { loadModules, validateModule, validateOps, validateProject } from "./validate.ts";
+export { loadModules, lookProblems, validateModule, validateOps, validateProject } from "./validate.ts";
 export { resolveStarts, projectDuration, timelineProblems } from "./rules.ts";
 export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn } from "./apply-ops.ts";
 export { describeOp, manualEditsNote } from "./edit-log.ts";
-export { animationAt, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline.ts";
+export { animationAt, moveFades, wordProgress, zoomScale, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline.ts";
 export { alignScreen, bezelSvg, COMPONENT_IMAGE, COMPONENTS, componentBox, componentDefaults, componentRest, componentHtml, componentInfo, componentParts, wrapComponent, componentScale, deviceSpec, DEVICES, DRAWN_COMPONENTS, FRAME_COLOR, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenRect, screenTransform, terminalState, UNDRAWN_COMPONENTS } from "./components.ts";
 export type { ComponentBlock, ComponentInfo, Device, DeviceFrameRequest, TerminalLine } from "./components.ts";
 export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_SRC, graphicDocument, graphicInfo, MAX_GRAPHIC_BYTES, MAX_RASTER_STATES } from "./graphics.ts";
@@ -16,7 +16,11 @@ export type { Cut, TransitionFx, TransitionInfo, TransitionLimits } from "./tran
 export { audibleAt, audioSpan, dbToGain, fadeAt, gainToDb, itemGain, keyDbAt, MAX_DB, SILENCE_DB, soundMedia, sourceAt, trackAudible } from "./audio.ts";
 export type { Audible } from "./audio.ts";
 export type { Dip, Span, Visual } from "./timeline.ts";
-export { canvasBackground, DEFAULT_THEME, DM_MONO, DM_SANS, esc, FONT_FACES, fontFaceCss, markup, RENDER_CSS, resolveColor, resolveFont, safeMargin, SOLID, solidBackground, solidHtml, TEXT_STYLES, textHtml, textLook, themeColors } from "./render.ts";
+export { canvasBackground, DEFAULT_THEME, DM_MONO, DM_SANS, esc, FONT_FACES, fontFaceCss, markup, RENDER_CSS, resolveColor, resolveFont, safeMargin, SOLID, solidBackground, solidHtml, LEGACY_SHADOW_CSS, textDecor, textPlacement, TEXT_STYLES, textHtml, textLook, themeColors, withAlpha, wordCount, wordCss } from "./render.ts";
+export { LEGACY_LOOKS, PLAIN_LOOK, TEXT_PRESETS, WORD_BY_WORD, WORD_STYLES, ZOOM_DEFAULTS, ZOOM_MOVE } from "./looks.ts";
+export type { LookBackground, LookMove, LookShadow, LookStroke, TextPreset, WordStyle } from "./looks.ts";
+export { lookItem, planInsertText, resetLookFields } from "./textPlan.ts";
+export type { InsertTextPlan, InsertTextRequest } from "./textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./render.ts";
 export { outputSize } from "./export.ts";
 export type { ExportQuality } from "./export.ts";

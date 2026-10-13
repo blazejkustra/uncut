@@ -17,7 +17,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above.",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track.",
       "inputSchema": {
         "type": "object",
         "required": ["baseRevision", "ops", "summary"],
@@ -213,6 +213,24 @@
     }
   ],
   "$defs": {
+    "insertText": {
+      "type": "object",
+      "required": ["op", "look", "start", "duration"],
+      "additionalProperties": false,
+      "description": "Text in a look (a text-style module, D80), as one op: the item gets the look's size, weight, position and in/out moves (the rest of the look, e.g. its outline, shadow or box, applies while the item doesn't set those fields), plus the looks it comes with (a kicker above a title) on their own text tracks; it goes on the top-most text track free for [start, start + duration), else a new one on top.",
+      "properties": {
+        "op": { "const": "insert_text" },
+        "look": { "type": "string", "description": "A text-style module id, e.g. text.big-title, text.caption, text.boxed-label (modules_list kind text-style lists them with their looks)." },
+        "text": { "type": "string", "description": "Markup: **bold**, [[accent]], `mono`, \\n for a line break. Default: the look's placeholder." },
+        "start": { "type": "integer", "minimum": 0 },
+        "duration": { "type": "integer", "minimum": 1 },
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The new item's id (default: the look's name, numbered)." },
+        "style": { "type": "object", "description": "Style fields over the look's, canvas px: size, weight, font, color, align, tracking, lineHeight, uppercase, stroke {width, color}, shadow {x, y, blur, color, opacity}, background {color, opacity, padding, radius, wrap box|lines}; false for stroke, shadow or background removes the look's." },
+        "transform": { "type": "object", "additionalProperties": false, "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number", "exclusiveMinimum": 0 } }, "description": "The text box's top-left and width in canvas px, over the look's." },
+        "animation": { "description": "In/out moves instead of the look's (frames), or null for none.", "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "properties": { "in": { "type": "object" }, "out": { "type": "object" } } }] },
+        "alone": { "type": "boolean", "description": "Leave out the looks it comes with." }
+      }
+    },
     "insertDeviceFrame": {
       "type": "object",
       "required": ["op", "start", "duration"],

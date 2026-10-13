@@ -113,7 +113,7 @@ test("position: transform merges, centre spans the safe area, w null fits the te
   assert.deepEqual(itemIn(p, "title-1").transform, { x: 72, y: 410 });
   // A text item with no transform (the agent can write one) starts from its preset's spot.
   const bare = { ...empty, tracks: [{ ...empty.tracks[0]!, items: [{ id: "t", type: "text" as const, start: 0, duration: 30, text: "x", style: { preset: "text.header" } }] }, ...empty.tracks.slice(1)] };
-  assert.deepEqual(textBox(itemIn(bare, "t"), bare.canvas), { x: 154, y: 497, w: undefined, size: 65, weight: 500, color: "fg", align: "left" });
+  assert.deepEqual(textBox(itemIn(bare, "t"), bare), { x: 154, y: 497, w: undefined, size: 65, weight: 500, color: "fg", align: "left" });
   // Locked items refuse.
   const locked = { ...empty, tracks: [{ ...empty.tracks[0]!, locked: true }, ...empty.tracks.slice(1)] };
   assert.match((planTransform(locked, "title-1", { x: 1 }) as { problem: string }).problem, /locked/);

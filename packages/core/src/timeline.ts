@@ -4,9 +4,10 @@
 // transition past its end and the incoming one start half before its start, on top; a dip to
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "./audio.ts";
-import { clipBox, moveBox, type ClipBox } from "./box.ts";
+import { clipBox, EASES, moveBox, type ClipBox, type Ease } from "./box.ts";
 import { componentBox } from "./components.ts";
-import { SOLID, type Motion } from "./render.ts";
+import { WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "./looks.ts";
+import { SOLID, wordCount, type Motion } from "./render.ts";
 import { incomingFx, outgoingFx, overlaps, WIPE, type TransitionFx } from "./transitions.ts";
 import type { Canvas, Item, Media, Project, Track } from "./types.ts";
 
@@ -186,26 +187,57 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
   return out;
 }
 
-// The built-in moves (spec/modules/builtin/move.*.json) the preview and export draw. Others
-// (word-by-word) are valid in project.json but show the item without motion for now.
-export const DRAWN_MOVES = ["move.fade", "move.rise", "move.slide-left", "move.wipe"] as const;
+// The built-in moves (spec/modules/builtin/move.*.json) the preview and export draw. word-by-word
+// and zoom (D81) draw on text; on other items they show the item without motion.
+export const DRAWN_MOVES = ["move.fade", "move.rise", "move.slide-left", "move.wipe", WORD_BY_WORD, ZOOM_MOVE] as const;
+
+/**
+ * Whether an in/out move changes the item's opacity (linearly over its frames, as animationAt does):
+ * fade, rise and slide-left; zoom on text unless params.fade is false (D81). The export draws those
+ * as alpha ramps; the rest of a move is in the drawn look.
+ */
+export function moveFades(item: Partial<Pick<Item, "text">>, move: { readonly module: string; readonly params?: { readonly [key: string]: unknown } | undefined }): boolean {
+  if (move.module === "move.fade" || move.module === "move.rise" || move.module === "move.slide-left") return true;
+  return move.module === ZOOM_MOVE && typeof item.text === "string" && move.params?.fade !== false;
+}
 
 const easeOut = (p: number) => 1 - (1 - p) ** 3;
 const clamp01 = (p: number) => Math.min(1, Math.max(0, p));
+
+/**
+ * A word-by-word move's word progress (D81): n words arrive one after another, each over 1/n of the
+ * move; p is the move's share (0 → 1 in; 1 → 0 out, words leaving first-to-last). In, word i is at
+ * clamp(p·n − i): none on the first frame, then ceil(local·n / duration) words have started.
+ */
+export function wordProgress(n: number, p: number, out: boolean): Array<number> {
+  return Array.from({ length: n }, (_, i) => clamp01(out ? p * n - (n - 1 - i) : p * n - i));
+}
+
+/** A zoom move's scale (D81): `scale` → 1 over the move in, 1 → `scale` out, shaped by the ease (time share t). */
+export function zoomScale(p: number, out: boolean, params: { readonly [key: string]: unknown } | undefined): number {
+  const scale = typeof params?.scale === "number" && params.scale > 0 ? params.scale : ZOOM_DEFAULTS.scale;
+  const ease = EASES[(typeof params?.ease === "string" && params.ease in EASES ? params.ease : ZOOM_DEFAULTS.ease) as Ease];
+  return out ? 1 + (scale - 1) * ease(1 - p) : scale + (1 - scale) * ease(p);
+}
 
 /**
  * An item's in and out animation at `local` frames from its start. The in-animation runs from 0
  * at the first frame to 1 at `duration`; the out-animation from 1 to 0 on the item's last frame,
  * so a faded item is fully transparent on its first and last frame. Fade changes opacity
  * linearly; rise and slide-left also move (eased) by 4 % of the height / 5 % of the width; wipe
- * reveals the box from the left.
+ * reveals the box from the left. On text (an item with `text`), word-by-word reveals the words in
+ * turn and zoom scales the text about its centre, fading unless params.fade is false (D81).
  */
-export function animationAt(item: Pick<Item, "duration" | "animation">, local: number, canvas: Pick<Canvas, "width" | "height">, { skipIn = false, skipOut = false } = {}): { opacity: number; motion: Motion } {
+export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial<Pick<Item, "text">>, local: number, canvas: Pick<Canvas, "width" | "height">, { skipIn = false, skipOut = false } = {}): { opacity: number; motion: Motion } {
   let opacity = 1;
   let dx = 0;
   let dy = 0;
   let reveal = 1;
-  const apply = (module: string, p: number, out: boolean) => {
+  let scale = 1;
+  let words: Array<number> | undefined;
+  let wordStyle: WordStyle | undefined;
+  const isText = typeof item.text === "string";
+  const apply = (module: string, p: number, out: boolean, params: { readonly [key: string]: unknown } | undefined) => {
     const e = easeOut(p);
     if (module === "move.fade") opacity *= p;
     else if (module === "move.rise") {
@@ -215,19 +247,32 @@ export function animationAt(item: Pick<Item, "duration" | "animation">, local: n
       opacity *= p;
       dx += (out ? -1 : 1) * (1 - e) * canvas.width * 0.05;
     } else if (module === "move.wipe") reveal = Math.min(reveal, e);
+    else if (module === ZOOM_MOVE && isText) {
+      scale *= zoomScale(p, out, params);
+      if (params?.fade !== false) opacity *= p;
+    } else if (module === WORD_BY_WORD && isText) {
+      const next = wordProgress(wordCount(item.text!), p, out);
+      words = words ? words.map((w, i) => Math.min(w, next[i]!)) : next;
+      if (!wordStyle) wordStyle = typeof params?.style === "string" && ["pop", "fade", "rise"].includes(params.style) ? (params.style as WordStyle) : "pop";
+    }
   };
   const a = item.animation;
   // Outside the item's own frames (a transition's pre-roll and tail) it holds its first / last
   // state; with skipIn/skipOut (the transition at that cut blends instead) it doesn't apply.
   const at = Math.max(0, Math.min(item.duration - 1, local));
-  if (!skipIn && a?.in && a.in.duration > 0 && at < a.in.duration) apply(a.in.module, clamp01(at / a.in.duration), false);
+  if (!skipIn && a?.in && a.in.duration > 0 && at < a.in.duration) apply(a.in.module, clamp01(at / a.in.duration), false, a.in.params);
   if (!skipOut && a?.out && a.out.duration > 0) {
     const left = item.duration - 1 - at;
-    if (left < a.out.duration) apply(a.out.module, clamp01(left / a.out.duration), true);
+    if (left < a.out.duration) apply(a.out.module, clamp01(left / a.out.duration), true, a.out.params);
   }
-  const motion: { dx?: number; dy?: number; reveal?: number } = {};
+  const motion: { dx?: number; dy?: number; reveal?: number; scale?: number; words?: Array<number>; wordStyle?: WordStyle } = {};
   if (dx) motion.dx = dx;
   if (dy) motion.dy = dy;
   if (reveal < 1) motion.reveal = reveal;
+  if (scale !== 1) motion.scale = scale;
+  if (words && words.some((w) => w < 1)) {
+    motion.words = words;
+    motion.wordStyle = wordStyle ?? "pop";
+  }
   return { opacity, motion };
 }

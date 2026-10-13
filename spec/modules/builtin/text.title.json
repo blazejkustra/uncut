@@ -3,6 +3,7 @@
   "id": "text.title",
   "kind": "text-style",
   "name": "Title",
+  "description": "A big headline.",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -12,5 +13,17 @@
   },
   "ui": {
     "panel": "text"
+  },
+  "look": {
+    "size": 0.12,
+    "weight": 700,
+    "font": "sans",
+    "tracking": -0.02,
+    "lineHeight": 1.05,
+    "color": "fg",
+    "x": 0.08,
+    "y": 0.38,
+    "legacyShadow": true,
+    "text": "Title"
   }
 }

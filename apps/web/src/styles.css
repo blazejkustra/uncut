@@ -330,6 +330,8 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 
 /* Text presets */
 .text-tile { width: 100%; padding: 0; cursor: pointer; }
+.text-thumb { background: linear-gradient(160deg, #2a3140, #14161b 55%, #1d1a17); }
+.text-thumb-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; container-type: size; }
 .thumb.tp { background: #050505; color: var(--fg); align-items: flex-start; justify-content: flex-start; padding: 8px; }
 .thumb.tp.title span { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin-top: auto; margin-bottom: auto; }
 .thumb.tp.text span { font-size: 13px; font-weight: 500; margin-top: auto; margin-bottom: auto; }

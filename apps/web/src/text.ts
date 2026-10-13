@@ -3,8 +3,9 @@
 // every gesture becomes one project.edit, so it is validated, undoes in one step and is listed in
 // the agent's next note. update_item replaces nested objects whole, so every plan here sends the
 // complete style / transform / animation / props, built from the item as it is now.
-import { SOLID, safeMargin, textLook, TEXT_STYLES, themeColors, type RenderTarget } from "@uncut/core/render";
-import type { FieldSet, Item, TimedModule } from "@uncut/core/types";
+import { SOLID, safeMargin, textDecor, textLook, textPlacement, TEXT_STYLES, themeColors, type RenderTarget } from "@uncut/core/render";
+import { lookItem } from "@uncut/core/textPlan";
+import type { FieldSet, Item, TextBackground, TextShadow, TextStroke, TimedModule } from "@uncut/core/types";
 
 import { findItem, lockOf, type Plan } from "./edit.ts";
 import { displayTracks, uniqueId, type ProjectModel, type Track } from "./project.ts";
@@ -13,14 +14,18 @@ type Problem = { readonly problem: string };
 type Style = NonNullable<Item["style"]>;
 type Transform = NonNullable<Item["transform"]>;
 
-/** A text item's position, size and box, with the preset's fallbacks filled in. */
-export function textBox(item: Item, canvas: { readonly width: number; readonly height: number }) {
+/**
+ * A text item's position, size and box as it's drawn (core textPlacement, the rule textHtml uses:
+ * the item's, else its look's, a spanning look's safe area included), weight, colour, alignment.
+ */
+export function textBox(item: Item, target: Pick<RenderTarget, "canvas" | "theme">) {
   const look = textLook(item.style?.preset);
+  const at = textPlacement(item, target);
   return {
-    x: Math.round(item.transform?.x ?? canvas.width * look.x),
-    y: Math.round(item.transform?.y ?? canvas.height * look.y),
-    w: item.transform?.w,
-    size: Math.round(item.style?.size ?? canvas.height * look.size),
+    x: Math.round(at.x),
+    y: Math.round(at.y),
+    w: at.w === undefined ? undefined : Math.round(at.w),
+    size: Math.round(at.size),
     weight: item.style?.weight ?? look.weight,
     color: item.style?.color ?? look.color,
     align: item.style?.align ?? look.align ?? "left",
@@ -69,22 +74,84 @@ export function planStyle(project: ProjectModel, itemId: string, patch: { readon
 }
 
 /**
- * A built-in text style: the preset and its size and weight (scaled to the canvas); fields that
- * only the preset defines (font, tracking, line height) are dropped so its look shows. Colour,
- * alignment and position stay: they're the user's.
+ * Apply a look (a built-in text style, D80): the preset and its size and weight (scaled to the
+ * canvas); fields the look defines beyond those (font, tracking, line height, case, stroke,
+ * shadow, box) are dropped so its look shows. Colour, alignment and position stay: they're the
+ * user's (D53). "Reset to preset" (planResetLook) puts those back too.
  */
 export function planPreset(project: ProjectModel, itemId: string, preset: string): Plan | Problem {
   const look = TEXT_STYLES[preset];
   if (!look) return { problem: `There's no text style called ${preset}.` };
-  return planStyle(project, itemId, { preset, size: project.canvas.height * look.size, weight: look.weight, font: null, tracking: null, lineHeight: null }, `Style text as ${look.name}`);
+  return planStyle(project, itemId, { preset, size: project.canvas.height * look.size, weight: look.weight, font: null, tracking: null, lineHeight: null, uppercase: null, stroke: null, shadow: null, background: null }, `Style text as ${look.name}`);
+}
+
+/** Reset to preset (D80): the item's look again, whole: its style is the look's (size, weight, every other field from the look) and so is its position. */
+export function planResetLook(project: ProjectModel, itemId: string): Plan | Problem {
+  const item = itemOf(project, itemId);
+  if (!item) return { problem: "That item isn't in the project any more." };
+  const look = TEXT_STYLES[item.style?.preset ?? ""];
+  if (!look) return { problem: "This text has no preset to reset to: pick one first." };
+  const { style, transform } = lookItem(look, project, item.duration);
+  if (JSON.stringify(style) === JSON.stringify(item.style ?? {}) && JSON.stringify(transform) === JSON.stringify(item.transform ?? {})) return { ops: [], summary: "" };
+  return planUpdate(project, itemId, { style, transform } as FieldSet, `Reset text to ${look.name}`);
+}
+
+/** What a text draws now (D80): its stroke, shadow and box in canvas px, the look's where the item sets none. */
+export function textDecorOf(item: Item, project: Pick<RenderTarget, "canvas" | "theme" | "textLooks">) {
+  const look = textLook(item.style?.preset);
+  const decor = textDecor(item, look, textBox(item, project).size, project);
+  const shadow: TextShadow | undefined = decor.legacyShadow ? LEGACY_SHADOW : decor.shadow;
+  return { stroke: decor.stroke, shadow, background: decor.background, uppercase: !!(item.style?.uppercase ?? look.uppercase), tracking: item.style?.tracking ?? look.tracking, lineHeight: item.style?.lineHeight ?? look.lineHeight };
+}
+/** The pre-D80 soft shadow (render.ts LEGACY_SHADOW_CSS) as shadow fields. */
+export const LEGACY_SHADOW: TextShadow = { x: 0, y: 2, blur: 18, color: "#000000", opacity: 0.45 };
+
+const r1 = (n: number) => Math.round(n * 10) / 10;
+const clamp01 = (n: number) => Math.min(1, Math.max(0, Math.round(n * 100) / 100));
+
+/** A stroke change merged into what's drawn now; false removes it (also a look's), null goes back to the look's. Width ≥ 0 canvas px. */
+export function planStroke(project: ProjectModel, itemId: string, patch: Partial<TextStroke> | false | null): Plan | Problem {
+  const item = itemOf(project, itemId);
+  if (!item) return { problem: "That item isn't in the project any more." };
+  if (patch === null || patch === false) return planStyle(project, itemId, { stroke: patch === false ? false : null }, patch === false ? "Remove text outline" : "Use the preset's outline");
+  const now = textDecorOf(item, project).stroke;
+  const width = Math.max(0, r1(patch.width ?? now?.width ?? Math.max(2, Math.round(textBox(item, project).size * 0.04))));
+  const stroke: TextStroke = { width, color: patch.color ?? now?.color ?? "#000000" };
+  return planStyle(project, itemId, { stroke }, patch.width !== undefined || !now ? `Outline text: ${width} px` : "Recolour text outline");
+}
+
+/** A shadow change merged into what's drawn now; false removes it (also a legacy or look shadow), null goes back to the look's. */
+export function planShadow(project: ProjectModel, itemId: string, patch: Partial<TextShadow> | false | null): Plan | Problem {
+  const item = itemOf(project, itemId);
+  if (!item) return { problem: "That item isn't in the project any more." };
+  if (patch === null || patch === false) return planStyle(project, itemId, { shadow: patch === false ? false : null }, patch === false ? "Remove text shadow" : "Use the preset's shadow");
+  const now = textDecorOf(item, project).shadow ?? { x: 0, y: 4, blur: 16, color: "#000000", opacity: 0.6 };
+  const next = { ...now, ...patch };
+  const shadow: TextShadow = { x: r1(next.x ?? 0), y: r1(next.y ?? 0), blur: Math.max(0, r1(next.blur ?? 0)), color: next.color ?? "#000000", opacity: clamp01(next.opacity ?? 1) };
+  return planStyle(project, itemId, { shadow }, textDecorOf(item, project).shadow ? "Change text shadow" : "Add text shadow");
+}
+
+/** A box behind the text (D80), merged into what's drawn now; false removes it, null goes back to the look's. Padding and radius ≥ 0 canvas px, opacity 0–1. */
+export function planTextBox(project: ProjectModel, itemId: string, patch: Partial<TextBackground> | false | null): Plan | Problem {
+  const item = itemOf(project, itemId);
+  if (!item) return { problem: "That item isn't in the project any more." };
+  if (patch === null || patch === false) return planStyle(project, itemId, { background: patch === false ? false : null }, patch === false ? "Remove text box" : "Use the preset's box");
+  const size = textBox(item, project).size;
+  const was = textDecorOf(item, project).background;
+  const now = was ?? { color: "#000000", opacity: 0.7, padding: Math.round(size * 0.35), radius: Math.round(size * 0.18), wrap: "box" as const };
+  const next = { ...now, ...patch };
+  const background: TextBackground = { color: next.color ?? "#000000", opacity: clamp01(next.opacity ?? 1), padding: Math.max(0, Math.round(next.padding ?? 0)), radius: Math.max(0, Math.round(next.radius ?? 0)), wrap: next.wrap === "lines" ? "lines" : "box" };
+  return planStyle(project, itemId, { background }, was ? "Change text box" : `Put text on a box${background.wrap === "lines" ? " per line" : ""}`);
 }
 
 /** Position and box width merged into the transform (a null w makes the box fit its text). */
 export function planTransform(project: ProjectModel, itemId: string, patch: { readonly x?: number; readonly y?: number; readonly w?: number | null }, summary = "Move text"): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  const box = textBox(item, project.canvas);
-  const transform: Record<string, unknown> = { ...(item.transform ?? {}), x: box.x, y: box.y };
+  // The box as drawn: a look's width (a quote, a spanning title) is written with the position,
+  // so moving it doesn't make the text reflow to its natural width.
+  const box = textBox(item, project);
+  const transform: Record<string, unknown> = { ...(item.transform ?? {}), x: box.x, y: box.y, ...(box.w !== undefined ? { w: box.w } : {}) };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined || (k === "w" && (v as number) <= 0)) delete transform[k];
     else transform[k] = Math.round(v as number);
@@ -101,7 +168,7 @@ export function planCentre(project: ProjectModel, itemId: string): Plan | Proble
   const margin = safeMargin(project);
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
-  const transform = { ...(item.transform ?? {}), x: margin, y: textBox(item, project.canvas).y, w: project.canvas.width - 2 * margin };
+  const transform = { ...(item.transform ?? {}), x: margin, y: textBox(item, project).y, w: project.canvas.width - 2 * margin };
   const style = { ...(item.style ?? {}), align: "center" as const };
   return planUpdate(project, itemId, { transform, style }, "Centre text");
 }
@@ -114,6 +181,8 @@ export const MOVES = [
   { id: "move.rise", label: "Rise" },
   { id: "move.slide-left", label: "Slide left" },
   { id: "move.wipe", label: "Wipe" },
+  { id: "move.word-by-word", label: "Word by word" },
+  { id: "move.zoom", label: "Zoom" },
 ] as const;
 
 /**
@@ -124,7 +193,11 @@ export function planAnimation(project: ProjectModel, itemId: string, slot: Anima
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
   const animation: Record<string, TimedModule> = { ...((item.animation ?? {}) as Record<string, TimedModule>) };
-  if (move?.module) animation[slot] = { ...move, duration: Math.max(1, Math.min(item.duration, Math.round(move.duration))) };
+  if (move?.module) {
+    const params = move.params && Object.keys(move.params).length ? move.params : undefined;
+    const { params: _drop, ...rest } = move;
+    animation[slot] = { ...rest, duration: Math.max(1, Math.min(item.duration, Math.round(move.duration))), ...(params ? { params } : {}) };
+  }
   else delete animation[slot];
   if (JSON.stringify(animation) === JSON.stringify(item.animation ?? {})) return { ops: [], summary: "" };
   const words = move?.module ? `${MOVES.find((m) => m.id === move.module)?.label ?? move.module} ${slot}` : `no ${slot} animation`;

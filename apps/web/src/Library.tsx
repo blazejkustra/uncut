@@ -2,7 +2,9 @@
 // the Text tab's presets and the Elements tab's components and backgrounds. Which one shows is
 // the rail's choice.
 import type { ImportJob } from "@uncut/contracts";
-import { solidBackground } from "@uncut/core/render";
+import { RENDER_CSS, solidBackground, textHtml } from "@uncut/core/render";
+import { planInsertText } from "@uncut/core/textPlan";
+import type { Item } from "@uncut/core/types";
 import { COMPONENTS, componentDefaults, componentHtml, naturalSize, screenRect, type ComponentInfo } from "@uncut/core/components";
 import { defaultFrames, TRANSITIONS, type TransitionInfo } from "@uncut/core/transitions";
 import { AudioLines, Blend, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
@@ -10,10 +12,10 @@ import React, { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 import { bridge } from "./bridge.ts";
 import { timecode } from "./format.ts";
-import { TEXT_PRESETS } from "./project.ts";
+import { TEXT_PRESETS, type TextPreset } from "./project.ts";
 import { BACKGROUNDS } from "./text.ts";
 import { actions, activeAnalyses, activeJobs, mediaUrl, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
-import { COMPONENT_DRAG_TYPE, setDraggedComponent } from "./components.ts";
+import { COMPONENT_DRAG_TYPE, setDraggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./Timeline.tsx";
 import { secondsLabel } from "./edit.ts";
 import { usePlayback } from "./playback.ts";
@@ -23,7 +25,7 @@ export type LibraryTab = "media" | "text" | "elements" | "audio" | "transitions"
 
 export function Library({ project, tab }: { project: Project; tab: LibraryTab }) {
   return tab === "text" ? (
-    <TextLibrary />
+    <TextLibrary project={project} />
   ) : tab === "elements" ? (
     <ElementsLibrary project={project} />
   ) : tab === "audio" ? (
@@ -295,32 +297,114 @@ function ElementsLibrary({ project }: { project: Project }) {
   );
 }
 
-/** Presets that add a 3 s text item at the playhead (on a free text track). */
-function TextLibrary() {
+/** The canvas a text tile lays its look out on (as the preview does, at canvas size in CSS px). */
+const THUMB_CANVAS = { width: 1920, height: 1080, fps: 30 } as const;
+
+/**
+ * A text preset's thumbnail (D80): the items it adds (core planInsertText on an empty 1080p
+ * project, its look and the looks it comes with) drawn with core textHtml at canvas size in a
+ * size container, then cropped to the text and scaled into the tile, so a small caption is as
+ * readable as a big title. No motion: the look it lands in.
+ */
+function TextThumb({ preset, project }: { preset: TextPreset; project: Project }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ k: number; x: number; y: number } | undefined>(undefined);
+  // Tiles show text as new projects draw it (D80: no soft shadow by default).
+  const target = { canvas: THUMB_CANVAS, theme: project.theme, textLooks: 1 };
+  const empty = { canvas: THUMB_CANVAS, theme: project.theme, media: [], tracks: [] };
+  const plan = planInsertText(empty, { look: preset.module, text: preset.text, start: 0, duration: 90, animation: null });
+  const items = "ops" in plan ? plan.ops.flatMap((op) => (op.op === "insert_item" ? [op.item as Item] : [])) : [];
+  // Renamed (class tt-text, no data-item) so the preview's text queries never find a tile's.
+  const html = items.map((item) => textHtml(item, target).replace(/^<div class="pv-text" data-item="[^"]*"/, '<div class="tt-text"')).join("");
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const box = inner.current;
+    if (!el || !box) return;
+    const update = () => {
+      const texts = [...box.querySelectorAll<HTMLElement>(".tt-text")];
+      if (!texts.length || !el.clientWidth) return;
+      // The text's own extent (a look that spans the safe area has a canvas-wide box): its content's
+      // rect, plus a box's padding, in canvas px (screen rects divided by the current scale).
+      const origin = box.getBoundingClientRect();
+      const scale = origin.width / THUMB_CANVAS.width || 1;
+      const rects = texts.map((t) => {
+        const range = document.createRange();
+        range.selectNodeContents(t);
+        const r = range.getBoundingClientRect();
+        const cs = getComputedStyle(t);
+        const padX = cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? parseFloat(cs.paddingLeft) || 0 : 0;
+        const padY = cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? parseFloat(cs.paddingTop) || 0 : 0;
+        return { l: (r.left - origin.left) / scale - padX, t: (r.top - origin.top) / scale - padY, r: (r.right - origin.left) / scale + padX, b: (r.bottom - origin.top) / scale + padY };
+      });
+      const left = Math.min(...rects.map((r) => r.l));
+      const top = Math.min(...rects.map((r) => r.t));
+      const right = Math.max(...rects.map((r) => r.r));
+      const bottom = Math.max(...rects.map((r) => r.b));
+      const w = Math.max(1, right - left);
+      const h = Math.max(1, bottom - top);
+      const k = Math.min((el.clientWidth * 0.84) / w, (el.clientHeight * 0.62) / h, el.clientWidth / 500);
+      setFit({ k, x: el.clientWidth / 2 - (left + w / 2) * k, y: el.clientHeight / 2 - (top + h / 2) * k });
+    };
+    update();
+    void document.fonts?.ready.then(update);
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [html]);
+  return (
+    <div className="thumb text-thumb" ref={ref} data-testid="text-thumb">
+      <div
+        ref={inner}
+        className="text-thumb-inner"
+        style={{ width: THUMB_CANVAS.width, height: THUMB_CANVAS.height, transform: fit ? `translate(${fit.x}px, ${fit.y}px) scale(${fit.k})` : "scale(0)" }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
+}
+
+/** Core's text rules (RENDER_CSS) for the tiles' renamed copies. */
+const THUMB_CSS = RENDER_CSS.split("\n")
+  .filter((rule) => rule.startsWith(".pv-text"))
+  .map((rule) => rule.replaceAll(".pv-text", ".text-thumb-inner .tt-text"))
+  .join("\n");
+
+/**
+ * The Text tab (D80): a grid of looks (core TEXT_PRESETS, from the text-style manifests), each tile
+ * a real thumbnail. Click (or +) adds it at the playhead, 3 s long, on a free text track; drag it
+ * onto the preview (placed where it lands) or the timeline (at that time).
+ */
+function TextLibrary({ project }: { project: Project }) {
   const { connection } = useApp();
   const online = connection === "connected";
   return (
     <aside className="library" data-testid="text-library">
+      <style>{THUMB_CSS}</style>
       <div className="lib-head">Text</div>
       <div className="lib-section">
-        <div className="lib-label">Add at the playhead</div>
-        <div className="grid2">
+        <div className="lib-label">Click to add at the playhead, or drag</div>
+        <div className="grid2" data-testid="text-grid">
           {TEXT_PRESETS.map((preset) => (
             <button
               key={preset.id}
               className="tile text-tile"
               data-testid="text-preset"
               data-preset={preset.id}
+              data-module={preset.module}
               disabled={!online}
+              draggable={online}
               title={`Add ${preset.label.toLowerCase()} at the playhead`}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(TEXT_DRAG_TYPE, preset.id);
+                e.dataTransfer.effectAllowed = "copy";
+              }}
               onClick={(e) => {
                 e.currentTarget.blur();
                 void actions.addText(preset);
               }}
             >
-              <div className={`thumb tp ${preset.id}`}>
-                <span>{preset.label}</span>
-              </div>
+              <TextThumb preset={preset} project={project} />
               <div className="tile-name">{preset.label}</div>
             </button>
           ))}
@@ -328,7 +412,7 @@ function TextLibrary() {
       </div>
       <div className="lib-hint">
         <Type />
-        Text lands on the first text track that's free at the playhead, 3 seconds long.
+        Text lands on the first text track that's free at the playhead, 3 seconds long. The Inspector's Style tab changes its look; Reset to preset puts it back.
       </div>
     </aside>
   );
