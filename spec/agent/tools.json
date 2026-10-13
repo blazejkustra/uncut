@@ -17,7 +17,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn.",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above.",
       "inputSchema": {
         "type": "object",
         "required": ["baseRevision", "ops", "summary"],
@@ -172,7 +172,7 @@
     },
     {
       "name": "modules_list",
-      "description": "Installed modules (transitions, text styles, components, effects…) with their params schema, so you know what you can use and how.",
+      "description": "Installed modules (transitions, text styles, components, effects…) with their params schema, so you know what you can use and how. Components also give their placement (component: default size, devices' screens, animated); showsInPreview says whether the preview and export draw a module yet.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -181,6 +181,20 @@
         }
       },
       "returns": "manifests"
+    },
+    {
+      "name": "graphic_write",
+      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do (D78). The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network, no other files, system fonts only; render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["name", "html"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\\.html$", "description": "The file name, e.g. counter.html (it becomes graphics/counter.html)." },
+          "html": { "type": "string", "minLength": 1, "maxLength": 262144, "description": "The document's body: markup, <style> and a <script> defining render(t, info)." }
+        }
+      },
+      "returns": "the src to put on the item, or why it was refused"
     },
     {
       "name": "ui_show",
@@ -192,13 +206,32 @@
         "properties": {
           "frame": { "type": "integer", "minimum": 0 },
           "select": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string" }, "description": "The id of one timeline item (the editor selects one item at a time)." },
-          "panel": { "enum": ["media", "text", "elements", "audio", "inspector", "agent"], "description": "Left: media, text, elements (backgrounds), audio. Right: inspector, agent (this chat)." }
+          "panel": { "enum": ["media", "text", "elements", "audio", "inspector", "agent"], "description": "Left: media, text, elements (backgrounds and components), audio. Right: inspector, agent (this chat)." }
         }
       },
       "returns": "what was shown"
     }
   ],
   "$defs": {
+    "insertDeviceFrame": {
+      "type": "object",
+      "required": ["op", "start", "duration"],
+      "additionalProperties": false,
+      "description": "A device frame (component.device-frame) with footage under it, as one op: the footage is a clip on a free video track above main (else a new one), its box the frame's screen (cover, the screen's rounded corners); the frame goes on the video track above it; both from start for duration. Default box: centred, 86% of the canvas height (a browser 80% of its width).",
+      "properties": {
+        "op": { "const": "insert_device_frame" },
+        "media": { "type": "string", "description": "Video or image media for the screen; leave it out for the frame alone." },
+        "device": { "enum": ["phone", "android", "browser"], "description": "Default phone." },
+        "start": { "type": "integer", "minimum": 0 },
+        "duration": { "type": "integer", "minimum": 1 },
+        "in": { "type": "integer", "minimum": 0, "description": "Where the clip starts in its media (project frames)." },
+        "box": { "type": "object", "additionalProperties": false, "description": "The frame's box in canvas pixels: x, y (its top-left) and h (the width follows the device's shape).", "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "h": { "type": "number", "exclusiveMinimum": 0 } } },
+        "frameId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "clipId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "color": { "type": "string", "description": "The frame's colour (a theme token or CSS colour)." },
+        "url": { "type": "string", "description": "browser: the address in its bar." }
+      }
+    },
     "range": {
       "type": "object",
       "required": ["start", "end"],

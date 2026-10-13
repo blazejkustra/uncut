@@ -13,6 +13,7 @@ import { Agent } from "./agent.ts";
 import { Analysis } from "./analysis.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
+import { graphicToken } from "./graphicToken.ts";
 import { MediaLibrary } from "./media.ts";
 import { MediaCore } from "./mediaCore.ts";
 import { Projects } from "./projects.ts";
@@ -51,6 +52,7 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         node: process.versions.node,
         pid: process.pid,
         mediaCore: { version },
+        graphicToken: graphicToken(config.token),
       })),
     [RPC_METHODS.projectCreate]: (input) => projects.create(input),
     [RPC_METHODS.projectOpen]: ({ dir }) => projects.open(dir),

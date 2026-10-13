@@ -10,6 +10,11 @@
 //   lookups on the frame number, and keyed opacity is sent to colorchannelmixer frame by frame
 //   (sendcmd), all from core's boxes. A looped clip is one layer per pass through its media. Text and backgrounds are PNGs Chromium drew from core's textHtml / solidHtml with
 //   RENDER_CSS; a text whose position moves (rise, slide, wipe) gets one PNG per distinct state.
+//   Components (D76) are PNGs of core's componentHtml, one per distinct look (an animated one, a
+//   terminal typing, gets one per frame its look changes; past MAX_RASTER_STATES looks it holds
+//   frames, with a warning), their box's opacity baked into the HTML. SVG images are drawn by
+//   Chromium at their box's size (ffmpeg can't decode SVG). A graphic item (D78) is its document
+//   drawn frame by frame (render(t) called), capped the same way.
 //   Opacity (a transition's crossfade, fade/rise/slide in and out) is linear in frames, so it is
 //   ffmpeg's fade on the layer's alpha, evaluated at the same frames (time mode). A dip to black
 //   is core's black layer over the main track (a raster with two ramps); a wipe crops the
@@ -30,7 +35,15 @@ import {
   dipsOf,
   spanOf,
   canvasBackground,
+  componentBox,
+  componentParts,
+  wrapComponent,
+  graphicDocument,
+  graphicInfo,
+  isDrawnComponent,
+  isSvg,
   layout,
+  MAX_RASTER_STATES,
   outputSize,
   RENDER_CSS,
   SILENCE_DB,
@@ -121,7 +134,18 @@ export type VisualLayer =
       readonly states: ReadonlyArray<string>;
       /** For each frame from f0, the index of its look. */
       readonly frames: ReadonlyArray<number>;
+    })
+  | (LayerBase & {
+      readonly kind: "graphic";
+      /** The graphic's document (core graphicDocument), drawn at canvas size. */
+      readonly doc: string;
+      /** For each frame from f0, the frame from the item's start drawn there (held frames repeat one). */
+      readonly frames: ReadonlyArray<number>;
     });
+
+/** The placeholder a component's media reference becomes in the plan's HTML; the exporter swaps in a data: URL. */
+export const MEDIA_TOKEN = "uncut-media:";
+export const mediaToken = (id: string) => `${MEDIA_TOKEN}${id}`;
 
 /** What itemGain needs of an item, kept so the volume expression can be built (and checked). */
 export interface GainModel {
@@ -169,6 +193,8 @@ export interface ExportPlan {
   readonly audio: ReadonlyArray<AudioLayer>;
   /** Every media file the export reads. */
   readonly files: ReadonlyArray<{ readonly media: Media; readonly path: string }>;
+  /** What the export draws differently from the preview (a capped animation), as sentences. */
+  readonly warnings: ReadonlyArray<string>;
 }
 
 /** The CSS every rasterised layer gets: the preview's (D53). */
@@ -235,6 +261,7 @@ function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, s
   const b = to - layer.f0;
   const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}) };
   if (layer.kind === "raster") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
+  if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
   const geometry = layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {};
   if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, ...geometry, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
   if (layer.kind === "video") return { ...layer, ...common, ...geometry, source: source ?? layer.source + (a * layer.speed) / fps };
@@ -364,10 +391,43 @@ export interface PlanOptions {
   readonly mediaPath: (media: Media) => string;
   readonly width: number;
   readonly height: number;
+  /** A graphic item's file contents (D78), by its src; undefined when it can't be read. */
+  readonly graphic?: ((src: string) => string | undefined) | undefined;
+}
+
+/**
+ * Looks per frame, at most `cap` distinct: when there are more, frames are held (every k-th
+ * frame's look is shown for k frames, the smallest k that fits). Returns the looks, each frame's
+ * index and the hold (1 = every frame drawn).
+ */
+export function capStates(looks: ReadonlyArray<string>, cap = MAX_RASTER_STATES): { states: Array<string>; frames: Array<number>; hold: number } {
+  for (let hold = 1; ; hold++) {
+    const states: Array<string> = [];
+    const index = new Map<string, number>();
+    const frames: Array<number> = [];
+    for (let i = 0; i < looks.length; i++) {
+      const html = looks[i - (i % hold)]!;
+      let k = index.get(html);
+      if (k === undefined) {
+        k = states.length;
+        states.push(html);
+        index.set(html, k);
+      }
+      frames.push(k);
+    }
+    if (states.length <= cap || hold >= looks.length) return { states, frames, hold };
+  }
+}
+
+/** An SVG image clip's box as HTML (D76): the picture at its content rect in a box that clips and rounds it, Chromium-drawn at canvas size. */
+export function svgClipHtml(item: Item, box: ClipBox, src: string, opacity: number): string {
+  const r = (n: number) => `${Math.round(n * 1000) / 1000}px`;
+  const c = box.content;
+  return `<div data-item="${item.id}" style="position:absolute;left:${r(box.x)};top:${r(box.y)};width:${r(box.w)};height:${r(box.h)};overflow:hidden;opacity:${Math.round(opacity * 10000) / 10000}${box.radius > 0 ? `;border-radius:${r(box.radius)}` : ""}"><img src="${src}" alt="" style="position:absolute;display:block;left:${r(c.x - box.x)};top:${r(c.y - box.y)};width:${r(c.w)};height:${r(c.h)};object-fit:${box.fit}"></div>`;
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
-export function planExport(project: Project, { mediaPath, width, height }: PlanOptions): ExportPlan | { readonly problem: string } {
+export function planExport(project: Project, { mediaPath, width, height, graphic }: PlanOptions): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
   if (!project.tracks.some((t) => t.items.length)) return { problem: "The timeline is empty: there's nothing to export yet." };
@@ -379,6 +439,21 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
     return path;
   };
   const aspect = project.canvas.width / project.canvas.height;
+  const warnings: Array<string> = [];
+  // Components' media references: a placeholder each (the exporter swaps in the file as a data: URL).
+  const target = { ...project, mediaUrl: (id: string) => {
+    const m = project.media.find((x) => x.id === id);
+    if (!m || m.kind !== "image") return undefined;
+    fileOf(m);
+    return mediaToken(id);
+  } };
+  const name = (item: Item) => `"${item.name ?? item.id}"`;
+  const ordinal = (n: number) => `${n}${n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
+  const capped = (item: Item, looks: ReadonlyArray<string>, what = "changes") => {
+    const out = capStates(looks);
+    if (out.hold > 1) warnings.push(`${name(item)} ${what} on more than ${MAX_RASTER_STATES} frames; the export draws every ${ordinal(out.hold)} frame of it (the preview draws them all).`);
+    return out;
+  };
   const fills = (media: Media) => !!media.probe?.width && !!media.probe?.height && Math.abs(media.probe.width / media.probe.height - aspect) < 0.002;
 
   const visuals: Array<VisualLayer> = [];
@@ -389,7 +464,9 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
       const isMedia = item.type === "clip" && media && media.kind !== "audio";
       const isSolid = item.type === "component" && item.component === SOLID;
       const isText = item.type === "text" && typeof item.text === "string";
-      if (!isMedia && !isSolid && !isText) return;
+      const isComponent = isDrawnComponent(item);
+      const isGraphic = item.type === "graphic" && typeof item.src === "string";
+      if (!isMedia && !isSolid && !isText && !isComponent && !isGraphic) return;
       const start = starts.get(item.id)!;
       const span = spanOf(track, i, start);
       const f0 = Math.max(0, Math.ceil(span.from));
@@ -397,6 +474,31 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
       if (f1 <= f0) return;
       const ramps = opacityRamps(item, start, span);
       const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: { st: span.from, d: 2 * span.half } } : {}) };
+      if (isMedia && isSvg(media)) {
+        // An SVG (D76): Chromium draws it in its box, one PNG per distinct box (keys).
+        fileOf(media);
+        const looks: Array<string> = [];
+        for (let f = f0; f < f1; f++) {
+          const box = clipBox(item, project.canvas, media.probe, f - start);
+          looks.push(svgClipHtml(item, box, mediaToken(media.id), box.opacity));
+        }
+        // Only its box changes (keys): drawn on every frame, like a clip's, never capped.
+        const { states, frames } = capStates(looks, Infinity);
+        visuals.push(...splitWipe({ ...base, kind: "raster", states, frames }, fps));
+        return;
+      }
+      if (isGraphic) {
+        const html = graphic?.(item.src!);
+        if (html === undefined) {
+          warnings.push(`${name(item)}: ${item.src} couldn't be read, so it isn't drawn.`);
+          return;
+        }
+        const looks = Array.from({ length: f1 - f0 }, (_, k) => String(Math.max(0, Math.min(item.duration - 1, f0 + k - start))));
+        const { states, frames } = capped(item, looks, "is drawn");
+        const opacity = typeof item.transform?.opacity === "number" ? Math.min(1, Math.max(0, item.transform.opacity)) : 1;
+        visuals.push(...splitWipe({ ...base, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames: frames.map((k) => Number(states[k])) }, fps));
+        return;
+      }
       if (isMedia) {
         const path = fileOf(media);
         // The box at every frame (D75): a plain one (no transform) keeps the full-frame chain.
@@ -413,20 +515,26 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
         return;
       }
       // Text moves (rise, slide, wipe) are drawn by Chromium frame by frame; opacity is a ramp.
-      const states: Array<string> = [];
-      const index = new Map<string, number>();
-      const frames: Array<number> = [];
+      // A component's look (a terminal typing), its box (keys) and its box's opacity too.
+      // A component's body (its animation: a terminal typing) is capped; its box (position, size,
+      // opacity, scale, the move's offset) changes on every frame it changes, like text's motion.
+      const looks: Array<string> = [];
+      const wrappers: Array<string> = [];
       for (let f = f0; f < f1; f++) {
-        const motion = isText ? animationAt(item, f - start, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut }).motion : {};
-        const html = isText ? textHtml(item, project, { motion }) : solidHtml(item, project);
-        let k = index.get(html);
-        if (k === undefined) {
-          k = states.length;
-          states.push(html);
-          index.set(html, k);
-        }
-        frames.push(k);
+        const local = f - start;
+        const motion = isText || isComponent ? animationAt(item, local, project.canvas, { skipIn: span.skipIn, skipOut: span.skipOut }).motion : {};
+        if (isComponent) {
+          const parts = componentParts(item, target, local, { opacity: componentBox(item, project.canvas, local)?.opacity ?? 1, motion, fps })!;
+          wrappers.push(parts.wrapper);
+          looks.push(parts.body);
+        } else looks.push(isText ? textHtml(item, project, { motion }) : solidHtml(item, project));
       }
+      let html = looks;
+      if (isComponent) {
+        const bodies = capped(item, looks, "changes its look");
+        html = wrappers.map((w, i) => wrapComponent(w, bodies.states[bodies.frames[i]!]!));
+      }
+      const { states, frames } = capStates(html, Infinity);
       visuals.push(...splitWipe({ ...base, kind: "raster", states, frames }, fps));
     });
     // Dips to black: core's black layer over the main track, fading in to the cut and out after it.
@@ -479,6 +587,7 @@ export function planExport(project: Project, { mediaPath, width, height }: PlanO
     visuals,
     audio,
     files: [...files.values()],
+    warnings,
   };
 }
 
@@ -720,7 +829,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // at 0) starts at 0 instead, a frame's worth off.
     const fades = fadeFilters(layer.ramps, fps);
     const opacity = alphaFilters(layer, k, fps);
-    const geo = layer.kind !== "raster" ? layer.geometry?.frames : undefined;
+    const geo = layer.kind === "video" || layer.kind === "image" ? layer.geometry?.frames : undefined;
     let chain: Array<string>;
     if (layer.kind === "video") {
       // Seek a second early and let fps pick, for each frame, the last source frame that starts at
@@ -777,14 +886,15 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         ];
       }
     } else {
+      // Rasters (text, backgrounds, components, SVG) and graphics: PNGs the rasteriser drew.
       const raster = opts.rasters.get(layer);
       if (!raster) throw new Error(`no raster for ${layer.item.id}`);
       if (raster.kind === "still") {
         inputs.push("-f", "image2", "-pattern_type", "none", "-i", raster.png);
-        chain = [`[${index}:v:0]${toYuv(true)}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades];
+        chain = [`[${index}:v:0]${toYuv(true)}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades, ...opacity];
       } else {
         inputs.push("-f", "image2", "-framerate", String(fps), "-start_number", "0", "-i", raster.pattern);
-        chain = [`[${index}:v:0]${toYuv(true)}`, `trim=end_frame=${frames}`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades];
+        chain = [`[${index}:v:0]${toYuv(true)}`, `trim=end_frame=${frames}`, `settb=1/${fps}`, `setpts=N+${layer.f0}`, ...fades, ...opacity];
       }
     }
     // A wipe: the layer shows only its left X pixels (X even, the chroma grid): padded with W

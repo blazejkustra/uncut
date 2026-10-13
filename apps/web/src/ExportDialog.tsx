@@ -126,6 +126,13 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <div className="export-bar" data-testid="export-progress">
           <div style={{ width: `${job.phase === "done" ? 100 : job.phase === "rendering" ? pct : 0}%` }} className={job.phase === "preparing" || job.phase === "queued" ? "indeterminate" : ""} />
         </div>
+        {job.warnings && job.warnings.length > 0 && job.phase !== "failed" && (
+          <div className="export-warnings muted small" data-testid="export-warnings">
+            {job.warnings.map((w) => (
+              <div key={w}>{w}</div>
+            ))}
+          </div>
+        )}
         {job.phase === "failed" && (
           <div className="inline-error" role="alert" data-testid="export-error">
             {job.error ?? "Something went wrong."}

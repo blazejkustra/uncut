@@ -52,6 +52,8 @@ export const ServerHello = Schema.Struct({
   node: Schema.String,
   pid: Schema.Number,
   mediaCore: Schema.Struct({ version: Schema.String }),
+  /** The secret GRAPHIC_PATH takes instead of the server token (D78): a graphic's iframe URL must not carry the token every other route and the WebSocket accept. */
+  graphicToken: Schema.optional(Schema.String),
 });
 export type ServerHello = typeof ServerHello.Type;
 
@@ -159,6 +161,10 @@ export const MEDIA_FILE_PATH = "/media/file";
 // { version, rate, seconds, peaks } where peaks is base64 of one byte per 1/rate s (the loudest
 // sample in it, 0–255 for 0–full scale). Made once per file and cached in the project's .cache/.
 export const WAVEFORM_PATH = "/media/waveform";
+// GET /media/graphic/<file name>?token=…: a graphic item's document (D78) for the preview's
+// sandboxed iframe: the open project's graphics/<file name>, only if one of its graphic items uses
+// it, wrapped by core graphicDocument and served with its strict CSP (inline script, no network).
+export const GRAPHIC_PATH = "/media/graphic";
 export interface Waveform {
   readonly version: 1;
   /** Peaks per second. */
@@ -326,6 +332,8 @@ export const ExportJob = Schema.Struct({
   finishedAt: Schema.optional(Schema.String),
   elapsedSeconds: Schema.optional(Schema.Number),
   error: Schema.optional(Schema.String),
+  /** What the export draws differently from the preview (an animation past the frame cap, a graphic it couldn't read), as sentences (D76). */
+  warnings: Schema.optional(Schema.Array(Schema.String)),
 });
 export type ExportJob = typeof ExportJob.Type;
 

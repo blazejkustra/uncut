@@ -80,6 +80,14 @@
       }
     }
   },
+  "$defs": {
+    "size": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": { "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 } }
+    }
+  },
   "allOf": [
     {
       "if": { "properties": { "kind": { "const": "transition" } } },
@@ -89,6 +97,43 @@
             "type": "object",
             "additionalProperties": false,
             "properties": { "minFrames": { "type": "integer", "minimum": 1 }, "maxFrames": { "type": "integer", "minimum": 1 } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "component" } } },
+      "then": {
+        "properties": {
+          "component": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["size"],
+            "description": "How an html component is placed (D76). Sizes are canvas pixels on a canvas whose shorter side is 1080, scaled to the project's.",
+            "properties": {
+              "size": { "$ref": "#/$defs/size", "description": "The box a new one gets (centred)." },
+              "fullFrame": { "type": "boolean", "description": "A new one fills the canvas instead." },
+              "animated": { "type": "boolean", "description": "Its look changes from frame to frame (the export draws one picture per distinct look, capped)." },
+              "defaults": { "type": "object", "description": "The props a new one gets; they validate against params." },
+              "screens": {
+                "type": "object",
+                "description": "Device frames: per device, the frame's size and its screen rect (the clip under it), in that size's pixels.",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["size", "screen"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "size": { "$ref": "#/$defs/size" },
+                    "screen": {
+                      "type": "object",
+                      "required": ["x", "y", "width", "height"],
+                      "additionalProperties": false,
+                      "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 }, "radius": { "type": "number", "minimum": 0 } }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

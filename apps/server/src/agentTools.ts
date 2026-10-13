@@ -1,7 +1,25 @@
 // What the agent CLI sees of Uncut (spec/agent/tools.json, uncut.agent-tools/0): the tools it
 // gets over MCP, how each call reads in a turn card, the project summary project_read returns,
 // and the system prompt. Pure functions; the agent service runs them.
-import { DRAWN_MOVES, DRAWN_TRANSITIONS, layout, SOLID, TEXT_STYLES, TRANSITIONS, type ModuleManifest, type Modules, type Project } from "@uncut/core";
+import {
+  applyEdit,
+  COMPONENTS,
+  createSession,
+  DRAWN_COMPONENTS,
+  DRAWN_MOVES,
+  DRAWN_TRANSITIONS,
+  layout,
+  MAX_RASTER_STATES,
+  planDeviceFrame,
+  TEXT_STYLES,
+  TRANSITIONS,
+  UNDRAWN_COMPONENTS,
+  type Device,
+  type ModuleManifest,
+  type Modules,
+  type Op,
+  type Project,
+} from "@uncut/core";
 
 import { MAX_CELLS, MAX_IMPORT, shortName } from "./agentFootage.ts";
 
@@ -12,10 +30,10 @@ import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
 // D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze with
 // chunk 2 (D66, loudness and silences); the video analyzer and media_rank with chunk 3 (D67);
 // transcript_read with chunk 4 (D68, local whisper.cpp); transcript_edit with chunk 5 (D69, cut by
-// text through core planTextCut); the beats analyzer with chunk 6 (D70); generate_media comes
-// with its feature.
+// text through core planTextCut); the beats analyzer with chunk 6 (D70); graphic_write with phase 6
+// chunk 2 (D78); generate_media comes with its feature.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "media_import", "contact_sheet", "ui_show"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "media_import", "contact_sheet", "ui_show", "graphic_write"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -43,7 +61,8 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
     .filter((t) => (TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
     .map((t) => {
       const schema = structuredClone(t.inputSchema);
-      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { $ref: "#/$defs/op" } };
+      // timeline_edit's ops: the edit ops, or the device-frame convenience op the server expands (D76).
+      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }] } };
       schema.$defs = { ...toolsSpec.$defs, ...editOpsSchema.$defs };
       return { name: t.name, description: t.description, inputSchema: schema };
     });
@@ -124,6 +143,8 @@ export function stepLabel(tool: string, input: unknown): string {
       const from = typeof args.media === "string" ? ` from ${args.media}` : "";
       return args.dryRun === true ? `Planned cutting ${list}${from}` : `Cut ${list}${from}`;
     }
+    case "graphic_write":
+      return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
     case "ui_show": {
       const parts: Array<string> = [];
       if (typeof args.frame === "number") parts.push(`moved the playhead to frame ${args.frame}`);
@@ -175,7 +196,7 @@ export function projectSummary(project: Project, revision: number, range?: { sta
 }
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
-const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || DRAWN_TRANSITIONS.includes(m.id) || m.id === SOLID;
+const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || DRAWN_TRANSITIONS.includes(m.id) || DRAWN_COMPONENTS.includes(m.id);
 
 /** A built-in text style's look (core TEXT_STYLES), in canvas fractions, for the agent. */
 const textStyleLook = (id: string) => {
@@ -195,12 +216,86 @@ export function modulesList(modules: Modules, kind?: string) {
       ...(m.params ? { params: m.params } : {}),
       ...(m.transition ? { transition: m.transition } : {}),
       ...(m.kind === "text-style" && textStyleLook(m.id) ? { look: textStyleLook(m.id) } : {}),
+      // Components (D76): how one is placed (sizes in canvas px for a canvas whose shorter side is 1080).
+      ...(m.kind === "component" && m.component && typeof m.component === "object" ? { component: m.component } : {}),
+      ...(UNDRAWN_COMPONENTS[m.id] ? { notDrawn: UNDRAWN_COMPONENTS[m.id] } : {}),
       showsInPreview: SHOWN_IN_PREVIEW(m),
     }));
 }
 
+/** An insert_device_frame op as the agent writes it (spec/agent/tools.json $defs/insertDeviceFrame). */
+interface DeviceFrameOp {
+  readonly op: "insert_device_frame";
+  readonly media?: unknown;
+  readonly device?: unknown;
+  readonly start?: unknown;
+  readonly duration?: unknown;
+  readonly in?: unknown;
+  readonly box?: unknown;
+  readonly frameId?: unknown;
+  readonly clipId?: unknown;
+  readonly color?: unknown;
+  readonly url?: unknown;
+}
+
+const DEVICE_FRAME_KEYS = new Set(["op", "media", "device", "start", "duration", "in", "box", "frameId", "clipId", "color", "url"]);
+
+/**
+ * timeline_edit's ops with each insert_device_frame expanded into the edit ops that make it
+ * (core planDeviceFrame: tracks, the footage clip on the screen, the frame), planned against the
+ * project as the ops before it leave it. Other ops pass through untouched (the edit validates
+ * them). A malformed device-frame op is a problem, as a sentence.
+ */
+export function expandDeviceFrames(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
+  if (!ops.some((op) => (op as { op?: unknown })?.op === "insert_device_frame")) return { ops: [...ops] };
+  const out: Array<unknown> = [];
+  for (const [i, raw] of ops.entries()) {
+    const op = raw as DeviceFrameOp;
+    if (op?.op !== "insert_device_frame") {
+      out.push(raw);
+      continue;
+    }
+    const where = `ops[${i}] (insert_device_frame)`;
+    const extra = Object.keys(op).filter((k) => !DEVICE_FRAME_KEYS.has(k));
+    if (extra.length) return { problem: `${where}: unknown field ${extra.join(", ")}.` };
+    if (op.media !== undefined && typeof op.media !== "string") return { problem: `${where}: media must be a media id.` };
+    if (op.device !== undefined && !["phone", "android", "browser"].includes(op.device as string)) return { problem: `${where}: device must be phone, android or browser.` };
+    for (const k of ["start", "duration", "in"] as const) if (op[k] !== undefined && !Number.isInteger(op[k])) return { problem: `${where}: ${k} must be a whole number of frames.` };
+    for (const k of ["frameId", "clipId", "color", "url"] as const) if (op[k] !== undefined && typeof op[k] !== "string") return { problem: `${where}: ${k} must be a string.` };
+    const box = op.box as { x?: unknown; y?: unknown; h?: unknown } | undefined;
+    if (box !== undefined && (typeof box !== "object" || box === null || Object.entries(box).some(([k, v]) => !["x", "y", "h"].includes(k) || typeof v !== "number" || !Number.isFinite(v)))) return { problem: `${where}: box takes numbers x, y and h (canvas pixels).` };
+    if (box?.h !== undefined && !((box.h as number) > 0)) return { problem: `${where}: box.h must be more than 0 (the frame's height in canvas pixels).` };
+    if (typeof op.in === "number" && op.in < 0) return { problem: `${where}: in must be 0 or more (a frame of the media).` };
+    if (typeof op.start !== "number" || typeof op.duration !== "number") return { problem: `${where}: start and duration are required.` };
+    if (op.start < 0 || op.duration < 1) return { problem: `${where}: start must be 0 or more and duration at least 1 frame.` };
+    // The project as the ops before this one leave it (they're checked for real when the edit runs).
+    let now: Project = project;
+    try {
+      if (out.length) now = applyEdit(createSession(project), { actor: "agent", ops: out as ReadonlyArray<Op> }).project;
+    } catch {}
+    const plan = planDeviceFrame(now, {
+      media: op.media as string | undefined,
+      device: op.device as Device | undefined,
+      start: op.start,
+      duration: op.duration,
+      in: op.in as number | undefined,
+      box: box as { x?: number; y?: number; h?: number } | undefined,
+      frameId: op.frameId as string | undefined,
+      clipId: op.clipId as string | undefined,
+      color: op.color as string | undefined,
+      url: op.url as string | undefined,
+    });
+    if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
+    out.push(...plan.ops);
+  }
+  return { ops: out };
+}
+
 /** The drawn transitions for the system prompt: id, what it does, frame limits. */
 const TRANSITION_DOCS = TRANSITIONS.map((t) => `${t.id} (${t.name.toLowerCase()}, ${t.minFrames}–${t.maxFrames} frames)`).join(", ");
+/** The drawn components for the system prompt (D76). */
+const COMPONENT_DOCS = COMPONENTS.map((c) => `${c.id} (${c.name.toLowerCase()}: props ${Object.keys(c.params.properties ?? {}).join(", ")})`).join("; ");
+const UNDRAWN_DOCS = Object.keys(UNDRAWN_COMPONENTS).join(", ");
 
 export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop video editor. The user sees the timeline and a live preview next to this chat; every edit you make appears there immediately and is saved.
 - Positions and lengths are integer frames at the project's canvas fps (project_read gives canvas and fps). Main-track items have no start: they play back to back. "in" is where an item starts inside its media, in project frames.
@@ -221,15 +316,21 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
   Two-up: two clips at the same time on two video tracks, {"x":0,"y":0,"w":960,"h":1080,"fit":"cover"} and {"x":960,"y":0,"w":960,"h":1080,"fit":"cover"}. keys animate x, y, scale and opacity, frames from the item's start, e.g. a slow zoom in (Ken Burns): "keys":[{"frame":0,"scale":1,"ease":"inOut"},{"frame":150,"scale":1.15}]. Each property uses only the keys that set it (none: the transform's value); it holds its first value before the first key and its last after the last; a key's ease (linear by default, in, out, inOut) shapes the move from that key to the next. "loop":true on a clip starts its media over from the beginning when the clip is longer than the media. On clips, in/out animations change only the opacity (rise and slide don't move a clip, wipe doesn't apply); rotate is saved but not drawn.
 - Sound: a clip plays its media's sound (media with probe.hasAudio); music, voiceover and effects are audio items on an audio track, e.g. {"op":"insert_item","track":"audio","item":{"id":"music-1","type":"audio","media":"m-song","in":0,"start":0,"duration":300}}. On a clip or audio item, gainDb is the volume in dB (0 or absent = as recorded, −6 about half as loud, −60 = silent, at most +12), fadeIn / fadeOut are fade lengths in frames (together no longer than the item; remove one with null), and gainKeys [{"frame":…,"db":…}] is a volume envelope in dB on top of gainDb (linear between keys). A track's volume is mixer.gainDb and mixer.mute silences it; update_track replaces the whole mixer, so send the fields you want to keep. A main-track transition blends the sound too (a crossfade or wipe crossfades it, a dip to black dips it). A hidden track only hides the picture: its clips still sound unless the track is muted.
 - Transitions go between two neighbouring main-track items, on the incoming one: {"op":"set_transition","item":"clip-2","transition":{"module":"transition.crossfade","duration":15}} (null removes it). They draw: ${TRANSITION_DOCS}. Both items must be at least twice the transition long. A crossfade or wipe is centred on the cut, so video needs spare footage there: ceil(duration/2) frames before the incoming clip's in and after the outgoing clip's end in its media; a dip to black needs none. Other transition modules (cut, iris, push-left, zoom) are saved but draw as a crossfade.
-- What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop), backgrounds (component.solid), the transitions above, and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
-- render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
+- Components (D76) are component items on a video track, drawn from their props in a box like a clip's: transform {x, y, w, h} in canvas pixels (no w and h = the component's default size, centred; an end card fills the canvas), opacity, x / y / opacity keys, in/out animations (rise and slide move them). modules_list with kind "component" gives each one's props schema and default size (component.size, canvas pixels for a canvas whose shorter side is 1080: scale it to the project's). They draw: ${COMPONENT_DOCS}. Text in them uses the bundled DM Sans and DM Mono. E.g. an end card for the last 3 s of a 1920x1080 video at 30 fps, on a free video track:
+  {"op":"insert_item","track":"overlay","item":{"id":"end-card-1","type":"component","component":"component.end-card","start":600,"duration":90,"props":{"logo":{"media":"m-logo"},"title":"Argent","code":"npx @swmansion/argent init","url":"argent.swmansion.com","background":"bg"}}}
+  A terminal's input lines type in by frame: "props":{"title":"zsh","lines":[{"text":"npx your-tool init","kind":"input"},{"text":"✔ Done in 1.2 s"}],"typeFrom":10,"speed":30}. A chart: "props":{"bars":[{"label":"Before","value":42},{"label":"After","value":12,"accent":true}],"unit":" s"}. A code chip: component.code-block with "props":{"code":"npx your-tool init","prompt":true} in a box about 760×120.
+  A device frame shows footage on a phone or browser: the footage is a clip under the frame, its box on the frame's screen. One op does both: {"op":"insert_device_frame","media":"m-recording","device":"phone","start":0,"duration":150,"in":0} (optional box {x, y, h}, frameId, clipId; it adds the video tracks it needs, above main and under the text). Move the frame and its clip together (the clip's box is the frame's screen: modules_list's component.screens gives the rect per device). Animated components (a terminal typing) are drawn frame by frame in the export, up to ${MAX_RASTER_STATES} distinct looks per item; past that it holds frames.
+- Graphics are the escape hatch for motion the components can't do: write the HTML with graphic_write (it defines render(t, info), t in seconds from the item's start; full canvas, transparent, no network, system fonts), then insert {"type":"graphic","src":"graphics/<name>","start":…,"duration":…} on a video track. Prefer components and text; keep graphics simple.
+- Images can be SVG (a logo): they're stills like PNGs, drawn sharp at their box's size.
+- What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop), backgrounds (component.solid), the components above, graphic items, the transitions above, and text with its position, box width, size, weight, colour, alignment, font and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components (${UNDRAWN_DOCS}) and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
+- render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, components, graphics, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" (with media) shows one frame per shot, from the video analysis.
 - media_analyze measures a media file: "loudness" (also "silence") gives integrated loudness (LUFS), loudness range, true peak and the silences (below −40 dB for at least 0.3 s); "video" (also "shots", "motion", "stability") gives the cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0–1, with the best stretch and good/fair/poor stretches. Frames in the answers are project frames of the media you can use as in. "transcript" transcribes the speech (a summary: language, word, filler and pause counts; read it with transcript_read). "beats" (also "rhythm", "onsets", "tempo") gives the tempo (bpm), a confidence 0–1, the beats in project frames of the media (the first ones; range lists those inside it, with the onsets) and the onset count: use it to cut clips on the beat of the music (a clip of the media at timeline frame S with in I hits beat b at S + b − I). Default: loudness only; ask for "video" or "beats" by name ("video" takes longer: about a minute on a long 4K clip). It waits up to about a minute; if it answers "running", call it again with the same arguments. Results are cached, so asking again is free.
 - media_rank ranks video takes (media ids, or the media from a folder, or all the project's video) by cleanScore, best first, each with its stability, sharpness and exposure and its best stretch inside one shot (window seconds long, default 5; start and end usable as in). Use it to pick the clean take or the clean part of a long one, and say why from the components (e.g. "sharper, less shake"). Look at the pick with contact_sheet or render_frames before you rely on it.
 - transcript_read gives what's said in a media file, transcribed on this Mac (whisper.cpp; the language is detected, pass language like "pl" if it's wrong). Text lines start with their first word's index and frames, e.g. "w12 [300–452] So {um} this is the shot (pause 0.8 s) we wanted."; {braces} mark fillers, (pause …) gaps of at least 0.3 s; fillers and pauses also come as lists with frames. format "words" gives each word with start (the frame it begins in) and end (the frame after it), project frames of the media usable as in. Long transcripts come in pages: call again with from = next.from; range narrows to project frames of the media. The first transcript of a file takes a while (and the very first one downloads the speech model): if it answers running, call again with the same arguments. Cached afterwards.
 - transcript_edit cuts by text: remove takes word ranges by the ids transcript_read gives ({"from":"w12","to":"w20"}, both ends included; {"from":"w31"} is one word), pauses {"min": seconds} removes pauses at least that long (default 0.5; a little quiet stays next to each word), fillers true removes the hesitation fillers (um, uh, yyy; never the "maybe" ones: judge those and pass them in remove if they should go). It cuts from every main-track clip that uses the media, as one edit on your turn (Undo turn reverts it); the main track closes up and items on other tracks don't move, so check titles and music still line up. Read the transcript first and cut whole phrases or sentences, not single words in the middle of one; dryRun true shows what would go and the new length without changing anything. It answers what was removed (text, seconds) and the new duration.
-- ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements, audio, inspector, agent). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
+- ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements (backgrounds and components), audio, inspector, agent). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."
 - Keep replies short: what you changed, in plain words.`;

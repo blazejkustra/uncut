@@ -16,7 +16,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { audibleAt, baseBox, isPlainBox, layout, textHtml, visualsAt } from "../packages/core/src/index.ts";
+import { audibleAt, baseBox, isDrawnComponent, isPlainBox, layout, textHtml, visualsAt } from "../packages/core/src/index.ts";
 import type { Item, Project } from "../packages/core/src/types.ts";
 import type { Visual } from "../packages/core/src/timeline.ts";
 import { alphaAt, AUDIO_BLOCK, exportCommand, silentFailure, frameLookup, gainAt, gainExpr, graphFileArgs, outputSize, placementOf, planExport, rampsAt, wipeAt, type GainModel, type VisualLayer } from "../apps/server/src/exportPlan.ts";
@@ -87,7 +87,8 @@ function trickyProject(): Project {
  */
 const drawn = (project: Project, v: Visual) => {
   const media = v.item.media ? project.media.find((m) => m.id === v.item.media) : undefined;
-  return (v.item.type === "clip" && media !== undefined && media.kind !== "audio") || (v.item.type === "component" && v.item.component === "component.solid") || (v.item.type === "text" && typeof v.item.text === "string");
+  // Components the registry draws (D76) too; a graphic only with a readable file (none here: its src isn't one).
+  return (v.item.type === "clip" && media !== undefined && media.kind !== "audio") || (v.item.type === "component" && (v.item.component === "component.solid" || isDrawnComponent(v.item))) || (v.item.type === "text" && typeof v.item.text === "string");
 };
 
 /** The fixture's main track with every drawn transition (D73) and odd lengths: a dip into a clip with a fade, a wipe into a background. */
@@ -161,7 +162,7 @@ for (const [name, project, size] of [
         const v = seen[i]!;
         const opacity = rampsAt(l.ramps, f) * alphaAt(l, f);
         assert.ok(Math.abs(opacity - v.opacity) < 1e-9, `${l.item.id} at ${f}: opacity ${opacity} vs ${v.opacity}`);
-        if (l.kind !== "raster") {
+        if (l.kind === "video" || l.kind === "image") {
           // The box (D75): a layer without geometry is the plain full frame; one with it is core's box in output pixels.
           if (!l.geometry) assert.ok(isPlainBox(v.box!, project.canvas), `${l.item.id} at ${f}: drawn plain but core has a box`);
           else {
@@ -204,7 +205,7 @@ test("export plan (boxes): keyed boxes, loops in passes, the wipe on a box, and 
   assert.deepEqual(of("b").map((l) => [l.f0, l.f1, !!l.wipe, l.kind === "video" ? Math.round(l.source * FPS) : -1]), [[55, 65, true, 5], [65, 170, false, 15], [170, 265, false, 0]]);
   // The box's size never changes in a layer; a cover picture covers it at every frame.
   for (const l of plan.visuals) {
-    if (l.kind === "raster" || !l.geometry) continue;
+    if ((l.kind !== "video" && l.kind !== "image") || !l.geometry) continue;
     const [p0] = l.geometry.frames;
     for (const p of l.geometry.frames) {
       assert.ok(p.w === p0!.w && p.h === p0!.h && p.radius === p0!.radius, `${l.item.id}: one box size`);

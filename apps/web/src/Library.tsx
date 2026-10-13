@@ -1,16 +1,19 @@
 // The library panel on the left: the media in the project (import, drop, add to the timeline)
-// the Text tab's presets and the Elements tab's backgrounds. Which one shows is the rail's choice.
+// the Text tab's presets and the Elements tab's components and backgrounds. Which one shows is
+// the rail's choice.
 import type { ImportJob } from "@uncut/contracts";
 import { solidBackground } from "@uncut/core/render";
+import { COMPONENTS, componentDefaults, componentHtml, naturalSize, screenRect, type ComponentInfo } from "@uncut/core/components";
 import { defaultFrames, TRANSITIONS, type TransitionInfo } from "@uncut/core/transitions";
 import { AudioLines, Blend, Film, Gauge, Image as ImageIcon, Layers, Music, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
-import React, { useState, type ReactNode } from "react";
+import React, { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { bridge } from "./bridge.ts";
 import { timecode } from "./format.ts";
 import { TEXT_PRESETS } from "./project.ts";
 import { BACKGROUNDS } from "./text.ts";
-import { actions, activeAnalyses, activeJobs, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
+import { actions, activeAnalyses, activeJobs, mediaUrl, thumbUrl, useApp, type MediaItem, type Project } from "./store.ts";
+import { COMPONENT_DRAG_TYPE, setDraggedComponent } from "./components.ts";
 import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./Timeline.tsx";
 import { secondsLabel } from "./edit.ts";
 import { usePlayback } from "./playback.ts";
@@ -167,9 +170,48 @@ function AudioLibrary({ project }: { project: Project }) {
   );
 }
 
+/** The frame a component's thumbnail shows (a terminal mid-way, its line typed). */
+const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45 };
+
 /**
- * Backgrounds (component.solid, D53): a full-frame colour or gradient under the text. With a
- * text item selected it spans that text (a title card); otherwise 3 s at the playhead.
+ * A component's thumbnail (D76): its real HTML (core componentHtml with its default props) laid out
+ * at its default size on a 1080p canvas and scaled into the tile, like the preview's canvas. A
+ * device frame gets a gradient on its screen, standing in for footage.
+ */
+function ComponentThumb({ info, project }: { info: ComponentInfo; project: Project }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const canvas = { width: 1920, height: 1080 };
+  const props = componentDefaults(info.id);
+  const size = naturalSize({ component: info.id, props }, canvas);
+  const item = { id: `thumb-${info.id}`, type: "component" as const, component: info.id, duration: 300, props, transform: { x: 0, y: 0, w: size.width, h: size.height } };
+  const html = componentHtml(item, { canvas, theme: project.theme }, THUMB_FRAME[info.id] ?? 0, { fps: 30 });
+  const k = box.w && box.h ? Math.min((box.w * 0.86) / size.width, (box.h * 0.86) / size.height) : 0;
+  const screen = info.id === "component.device-frame" ? screenRect("phone", size.width, size.height) : undefined;
+  return (
+    <div className="thumb comp-thumb" ref={ref} data-testid="component-thumb">
+      <div className="comp-thumb-inner" style={{ width: size.width, height: size.height, transform: `translate(-50%, -50%) scale(${k})` }}>
+        {screen && <div className="comp-thumb-screen" style={{ left: screen.x, top: screen.y, width: screen.w, height: screen.h, borderRadius: screen.radius }} />}
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Components (D76) and backgrounds (component.solid, D53). A component: drag it onto the canvas
+ * (it lands there, at the playhead) or the timeline (at that time), or + adds it at the playhead.
+ * A background is a full-frame colour or gradient under the text: with a text item selected it
+ * spans that text (a title card); otherwise 3 s at the playhead.
  */
 function ElementsLibrary({ project }: { project: Project }) {
   const { connection } = useApp();
@@ -178,6 +220,43 @@ function ElementsLibrary({ project }: { project: Project }) {
   return (
     <aside className="library" data-testid="elements-library">
       <div className="lib-head">Elements</div>
+      <div className="lib-section">
+        <div className="lib-label">Components</div>
+        <div className="grid2" data-testid="components-grid">
+          {COMPONENTS.map((c) => (
+            <div
+              key={c.id}
+              className="tile comp-tile"
+              data-testid="component-tile"
+              data-component={c.id}
+              title={`${c.name}: ${c.description}`}
+              draggable={online}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(COMPONENT_DRAG_TYPE, c.id);
+                e.dataTransfer.effectAllowed = "copy";
+                setDraggedComponent(c.id);
+              }}
+              onDragEnd={() => setDraggedComponent(undefined)}
+            >
+              <ComponentThumb info={c} project={project} />
+              <button
+                className="tile-add"
+                data-testid="component-add"
+                disabled={!online}
+                title={`Add a ${c.name.toLowerCase()} at the playhead`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.currentTarget.blur();
+                  void actions.addComponent(c.id);
+                }}
+              >
+                <Plus />
+              </button>
+              <div className="tile-name">{c.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="lib-section">
         <div className="lib-label">Backgrounds</div>
         <div className="grid2">
@@ -210,7 +289,7 @@ function ElementsLibrary({ project }: { project: Project }) {
       </div>
       <div className="lib-hint">
         <Layers />
-        A background fills the frame under the text. Select a title first to make it a title card.
+        Drag a component onto the preview or the timeline, or + adds it at the playhead; the Inspector edits it. A background fills the frame under the text: select a title first to make it a title card.
       </div>
     </aside>
   );
@@ -394,7 +473,8 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
   const hasSound = item.kind === "audio" || (item.kind === "video" && item.probe?.hasAudio !== false);
   const [broken, setBroken] = useState(false);
   const Icon = item.kind === "audio" ? AudioLines : item.kind === "image" ? ImageIcon : Film;
-  const src = thumbIds.has(item.id) ? thumbUrl(item.id, item.path) : undefined;
+  // An SVG has no poster (ffmpeg can't read it): the tile shows the file itself (D76).
+  const src = thumbIds.has(item.id) ? thumbUrl(item.id, item.path) : item.kind === "image" && /\.svg$/i.test(item.path) ? mediaUrl(item.id, item.path) : undefined;
   const seconds = item.probe?.frames ? item.probe.frames / fps : undefined;
   return (
     <div

@@ -57,7 +57,11 @@ test("prints one ready line with the port and the token it generated", T, () => 
 test("server.hello reports server, node, pid and media core versions", T, async () => {
   const exit = await hello(ready);
   assert.equal(exit._tag, "Success");
-  assert.deepEqual(exit.value, { version: "0.0.1", node: process.versions.node, pid: server.pid, mediaCore: { version: "0.0.1" } });
+  const { graphicToken, ...rest } = exit.value;
+  assert.deepEqual(rest, { version: "0.0.1", node: process.versions.node, pid: server.pid, mediaCore: { version: "0.0.1" } });
+  // The graphic documents' secret (D78): derived from the token, never the token itself.
+  assert.match(graphicToken, /^[\w-]{43}$/);
+  assert.notEqual(graphicToken, ready.token);
 });
 
 test("a wrong or missing token is refused before the upgrade", T, async () => {

@@ -224,7 +224,7 @@
         {
           "properties": {
             "type": { "const": "graphic" },
-            "src": { "type": "string", "pattern": "^graphics/.+\\.html$", "description": "Agent-written HTML/CSS exposing render(t), in the project's graphics/ folder." },
+            "src": { "type": "string", "pattern": "^graphics/[A-Za-z0-9][A-Za-z0-9._-]{0,80}\\.html$", "description": "Agent-written HTML/CSS exposing render(t), in the project's graphics/ folder." },
             "props": { "type": "object" }
           },
           "required": ["src"]

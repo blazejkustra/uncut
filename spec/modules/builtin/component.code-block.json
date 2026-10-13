@@ -3,7 +3,8 @@
   "id": "component.code-block",
   "kind": "component",
   "name": "Code block",
-  "version": "0.1.0",
+  "description": "Monospace code on a dark card, sized to fit its box: one line makes a code chip (e.g. npx your-tool init). Lines starting with \"+ \" are additions (accent), \"- \" removals (dim, struck).",
+  "version": "0.2.0",
   "author": "Uncut",
   "license": "MIT",
   "builtin": true,
@@ -14,16 +15,15 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "file": {
-        "type": "string"
-      },
-      "code": {
-        "type": "string"
-      }
+      "file": { "type": "string", "maxLength": 200, "description": "A file name over the code." },
+      "code": { "type": "string", "maxLength": 4000, "x-control": "multiline" },
+      "prompt": { "type": "boolean", "description": "Starts each line with a \"$ \" prompt." }
     },
-    "required": [
-      "code"
-    ]
+    "required": ["code"]
+  },
+  "component": {
+    "size": { "width": 760, "height": 120 },
+    "defaults": { "code": "npx your-tool init", "prompt": true }
   },
   "ui": {
     "panel": "components",

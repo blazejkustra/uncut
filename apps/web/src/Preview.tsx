@@ -3,10 +3,14 @@
 // of the frame (D38), each in its box (D75: a wrapper at core's box that clips, rounds and fades
 // it, the picture inside at core's content rect), backgrounds (component.solid) between them in
 // track order, text from @uncut/core's textHtml on top (D39), the canvas colour where nothing is.
-// The text can be selected, dragged and edited in place (D53); a selected clip can be dragged
-// and resized by its corners (D75).
+// Components are core's componentHtml at the frame (D76: the same HTML the export rasterises);
+// graphic items are their documents in sandboxed iframes, render(t) called by postMessage (D78).
+// The text can be selected, dragged and edited in place (D53); a selected clip or component can be
+// dragged and resized by its corners (D75); a component dropped from Elements lands where it's dropped.
 import type { ClipBox } from "@uncut/core/box";
 import { visualsAt } from "@uncut/core/timeline";
+import { componentHtml, isDrawnComponent } from "@uncut/core/components";
+import { graphicInfo } from "@uncut/core/graphics";
 import { overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
 import { Maximize2, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
@@ -17,7 +21,8 @@ import { draftOf, findItem, lockOf } from "./edit.ts";
 import { canvasLabel, frameTimecode } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "./project.ts";
-import { actions, getState, mediaUrl } from "./store.ts";
+import { actions, getState, graphicUrl, mediaUrl } from "./store.ts";
+import { COMPONENT_DRAG_TYPE, draggedComponent } from "./components.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 import { clipState, planClipBox, resizeBox, type Corner } from "./clip.ts";
 
@@ -124,6 +129,13 @@ class Compositor {
   // Each media element sits in a box wrapper (D75), keyed like `els`.
   private readonly boxes = new Map<string, HTMLDivElement>();
   private readonly solids = new Map<string, HTMLDivElement>();
+  // Components (D76): each one's element and the HTML (plus wipe) it was made from.
+  private readonly comps = new Map<string, { el: HTMLElement; key: string }>();
+  // Graphics (D78): a wrapper and its sandboxed iframe per item; `sent` is the last render asked for.
+  private readonly graphics = new Map<string, { wrap: HTMLDivElement; frame: HTMLIFrameElement; src: string; loaded: boolean; sent: string }>();
+  // Whether the server has each graphic's document: "ok", being asked, or when to ask again (D78).
+  private readonly graphicCheck = new Map<string, "ok" | "pending" | number>();
+  private graphicSeq = 0;
   private textKey = "";
   // The text being edited in place: hidden while the editor sits over it.
   private editing: string | undefined;
@@ -153,8 +165,17 @@ class Compositor {
     for (const id of [...this.els.keys()]) this.drop(id);
     for (const el of this.solids.values()) el.remove();
     this.solids.clear();
+    this.clearOverlays();
     this.mix.destroy();
     setCurrentMix(undefined);
+  }
+
+  /** Components and graphics off the canvas. */
+  private clearOverlays() {
+    for (const c of this.comps.values()) c.el.remove();
+    this.comps.clear();
+    for (const g of this.graphics.values()) g.wrap.remove();
+    this.graphics.clear();
   }
 
   setEditing(id: string | undefined) {
@@ -254,6 +275,7 @@ class Compositor {
     if (!project) return;
     if (getState().snapshot?.dir !== this.dir) {
       for (const id of [...this.els.keys()]) this.drop(id);
+      this.clearOverlays();
       this.mix.stop();
       return;
     }
@@ -293,11 +315,16 @@ class Compositor {
     // (the layers don't form stacking contexts of their own), so a background on a track above a
     // text track covers it here exactly as it will in the export.
     const drawn = visible.filter(
-      (v) => (v.item.type === "clip" && mediaKind(v.item) && mediaKind(v.item)!.kind !== "audio") || (v.item.type === "component" && v.item.component === SOLID) || (v.item.type === "text" && typeof v.item.text === "string"),
+      (v) =>
+        (v.item.type === "clip" && mediaKind(v.item) && mediaKind(v.item)!.kind !== "audio") ||
+        (v.item.type === "component" && v.item.component === SOLID) ||
+        isDrawnComponent(v.item) ||
+        (v.item.type === "graphic" && typeof v.item.src === "string") ||
+        (v.item.type === "text" && typeof v.item.text === "string"),
     );
     const z = new Map(drawn.map((v, i) => [v.item.id, i + 1]));
     const layered = drawn.filter((v) => v.item.type !== "text");
-    const solids = layered.filter((v) => v.item.type === "component");
+    const solids = layered.filter((v) => v.item.type === "component" && v.item.component === SOLID);
     for (const [id, el] of [...this.solids]) {
       if (solids.some((v) => v.item.id === id)) continue;
       el.remove();
@@ -322,6 +349,125 @@ class Compositor {
       el.style.opacity = String(v.opacity);
       el.style.zIndex = String(z.get(v.item.id));
       wipe(el, v.wipe);
+    }
+
+    // Components (D76): core's HTML at this frame, remade only when it changes (a terminal typing,
+    // a fade); media references go through the server's /media/file route.
+    const target = {
+      ...project,
+      mediaUrl: (id: string) => {
+        const m = project.media.find((x) => x.id === id);
+        return m && m.kind === "image" ? mediaUrl(m.id, m.path) : undefined;
+      },
+    };
+    const comps = drawn.filter((v) => isDrawnComponent(v.item));
+    for (const [id, c] of [...this.comps]) {
+      if (comps.some((v) => v.item.id === id)) continue;
+      c.el.remove();
+      this.comps.delete(id);
+    }
+    const whole = Math.floor(frame);
+    for (const v of comps) {
+      const html = componentHtml(v.item, target, whole - starts.get(v.item.id)!, { opacity: v.opacity, motion: v.motion, fps });
+      const key = `${html}|${v.wipe ?? ""}`;
+      let c = this.comps.get(v.item.id);
+      if (!c || c.key !== key) {
+        const holder = document.createElement("div");
+        holder.innerHTML = html;
+        const el = holder.firstElementChild as HTMLElement | null;
+        if (!el) continue;
+        // A wipe reveals the canvas from the left (as the export crops it): its edge in the element's
+        // own pixels, through the scale about the box's centre and the move's offset; combined with
+        // the element's own reveal (an in/out wipe) as the larger of the two.
+        if (v.wipe !== undefined && v.box) {
+          const b = v.box;
+          const centre = b.x + b.w / 2 + (v.motion.dx ?? 0);
+          const edge = b.w / 2 + (project.canvas.width * v.wipe - centre) / b.scale;
+          const reveal = v.motion.reveal;
+          const right = Math.min(b.w, Math.max(0, b.w - edge, reveal !== undefined && reveal < 1 ? (1 - reveal) * b.w : 0));
+          el.style.clipPath = reveal !== undefined && reveal < 1 ? `inset(${px(-0.2 * b.h)} ${px(right)} ${px(-0.2 * b.h)} ${px(-0.05 * b.w)})` : `inset(0 ${px(right)} 0 0)`;
+        }
+        if (c) c.el.replaceWith(el);
+        else this.mediaLayer.append(el);
+        c = { el, key };
+        this.comps.set(v.item.id, c);
+      }
+      const zi = String(z.get(v.item.id));
+      if (c.el.style.zIndex !== zi) c.el.style.zIndex = zi;
+      c.el.classList.toggle("sel-clip", v.item.id === selected);
+    }
+    // Graphics (D78): the server's document in a sandboxed iframe; render(t) by postMessage. One
+    // starting within two seconds is loaded ahead, out of sight at its first frame, so it doesn't
+    // start blank (like the next clip's warm-up).
+    type Shown = { item: Item; opacity: number; wipe?: number; visible: boolean };
+    const graphics: Array<Shown> = drawn.filter((v) => v.item.type === "graphic" && typeof v.item.src === "string").map((v) => ({ item: v.item, opacity: v.opacity, ...(v.wipe !== undefined ? { wipe: v.wipe } : {}), visible: true }));
+    for (const track of project.tracks) {
+      if (track.hidden || track.kind !== "video") continue;
+      for (const it of track.items) {
+        const s = starts.get(it.id)!;
+        if (it.type === "graphic" && typeof it.src === "string" && s > frame && s - frame <= 2 * fps && !graphics.some((g) => g.item.id === it.id)) graphics.push({ item: it, opacity: 0, visible: false });
+      }
+    }
+    for (const [id, g] of [...this.graphics]) {
+      if (graphics.some((v) => v.item.id === id && graphicUrl(v.item.src!) === g.src)) continue;
+      g.wrap.remove();
+      this.graphics.delete(id);
+    }
+    for (const v of graphics) {
+      const src = graphicUrl(v.item.src!);
+      if (!src) continue;
+      let g = this.graphics.get(v.item.id);
+      if (!g) {
+        // Asked first: a 404 page in the iframe would draw "Not found" over the canvas, where the
+        // export draws nothing. A missing file is asked for again 3 s later.
+        const check = this.graphicCheck.get(src);
+        if (check !== "ok") {
+          if (check === "pending" || (typeof check === "number" && Date.now() < check)) continue;
+          this.graphicCheck.set(src, "pending");
+          void fetch(src)
+            .then((r) => r.ok, () => false)
+            .then((ok) => {
+              this.graphicCheck.set(src, ok ? "ok" : Date.now() + 3000);
+              if (!ok) setTimeout(() => this.render(), 3100);
+              this.render();
+            });
+          continue;
+        }
+        const wrap = document.createElement("div");
+        wrap.className = "pv-graphic";
+        wrap.dataset.item = v.item.id;
+        const iframe = document.createElement("iframe");
+        iframe.setAttribute("sandbox", "allow-scripts");
+        iframe.setAttribute("tabindex", "-1");
+        iframe.title = v.item.name ?? v.item.id;
+        iframe.style.width = `${project.canvas.width}px`;
+        iframe.style.height = `${project.canvas.height}px`;
+        const entry = { wrap, frame: iframe, src, loaded: false, sent: "" };
+        iframe.addEventListener("load", () => {
+          entry.loaded = true;
+          entry.sent = "";
+          this.render();
+        });
+        iframe.src = src;
+        wrap.append(iframe);
+        this.mediaLayer.append(wrap);
+        g = entry;
+        this.graphics.set(v.item.id, g);
+      }
+      g.wrap.style.opacity = String(v.opacity);
+      g.wrap.style.zIndex = v.visible ? String(z.get(v.item.id)) : "0";
+      g.wrap.style.visibility = v.visible ? "" : "hidden";
+      wipe(g.wrap, v.wipe);
+      if (g.loaded) {
+        const local = Math.max(0, Math.min(v.item.duration - 1, whole - starts.get(v.item.id)!));
+        const info = graphicInfo(v.item, project.canvas, local);
+        // Anything render(t, info) is given: a new length or canvas draws again too.
+        const sent = JSON.stringify([local, info]);
+        if (g.sent !== sent) {
+          g.sent = sent;
+          g.frame.contentWindow?.postMessage({ uncut: "render", seq: ++this.graphicSeq, t: local / fps, info }, "*");
+        }
+      }
     }
 
     clips.forEach((c) => {
@@ -473,10 +619,10 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     return { el, item: placed.item };
   };
 
-  /** A clip that can be moved or resized by hand (D75): selected, unlocked, drawn at the playhead. */
+  /** A clip or component that can be moved or resized by hand (D75, D76): selected, unlocked, drawn at the playhead. */
   const editableClip = (id: string | undefined) => {
     const placed = findItem(project, id);
-    if (!placed || placed.item.type !== "clip" || lockOf(placed)) return undefined;
+    if (!placed || (placed.item.type !== "clip" && !isDrawnComponent(placed.item)) || lockOf(placed)) return undefined;
     const state = clipState(project, placed.item.id, getPlayback().frame);
     return state?.inside ? state : undefined;
   };
@@ -492,7 +638,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     if (editing || !snapshot || snapshot.dir !== dir) return;
     const start = { pointer: e.pointerId, px: e.clientX, py: e.clientY, frame: Math.round(getPlayback().frame), revision: snapshot.revision, moved: false };
     // A clip's corner handle, or a press on the clip that was already selected: move or resize it.
-    const clipId = corner ? before : target.closest<HTMLElement>(".pv-box[data-item]")?.dataset.item;
+    const clipId = corner ? before : target.closest<HTMLElement>(".pv-box[data-item], .pv-comp[data-item]")?.dataset.item;
     const clip = clipId !== undefined && clipId === before ? editableClip(clipId) : undefined;
     if (clip) {
       e.stopPropagation();
@@ -516,7 +662,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
 
   /** The edit a drag makes, planned on `p`. */
   const dragPlan = (p: ProjectModel, d: CanvasDrag, to: NonNullable<CanvasDrag["to"]>) =>
-    d.kind === "text" ? planTransform(p, d.id, { x: to.x, y: to.y }) : d.kind === "clip" ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame, "Move clip") : planClipBox(p, d.id, to, d.frame, "Resize clip");
+    d.kind === "text" ? planTransform(p, d.id, { x: to.x, y: to.y }) : d.kind === "clip" ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame) : planClipBox(p, d.id, to, d.frame);
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -581,6 +727,20 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     setEditing({ id: hit.item.id, css: hit.el.getAttribute("style") ?? "", text: hit.item.text ?? "", revision: snapshot.revision });
   };
 
+  /** A component dragged from Elements (D76): dropped on the canvas, it's added at the playhead, centred where it lands. */
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (![...e.dataTransfer.types].includes(COMPONENT_DRAG_TYPE) || getState().connection !== "connected") return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const id = e.dataTransfer.getData(COMPONENT_DRAG_TYPE) || draggedComponent();
+    if (!id) return;
+    e.preventDefault();
+    const rect = frameRef.current!.getBoundingClientRect();
+    void actions.addComponent(id, { at: { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale } });
+  };
+
   const finishEdit = (text: string | undefined) => {
     const edit = editing;
     setEditing(undefined);
@@ -603,6 +763,8 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           onPointerUp={(e) => endDrag(e, true)}
           onPointerCancel={(e) => endDrag(e, false)}
           onDoubleClick={onDoubleClick}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
         >
           {/* Everything is laid out at canvas size and scaled down as one (D56): the text's
               cqh sizes, shadows and line breaks resolve exactly as in the export's canvas-size
@@ -642,7 +804,7 @@ function ClipSelection({ project }: { project: ProjectModel }) {
   const draft = usePlayback((s) => s.draft);
   const shown = draft && draft.base === project ? draft.project : project;
   const placed = findItem(shown, selected);
-  if (!placed || placed.item.type !== "clip" || lockOf(placed)) return null;
+  if (!placed || (placed.item.type !== "clip" && !isDrawnComponent(placed.item)) || lockOf(placed)) return null;
   const state = clipState(shown, placed.item.id, frame);
   if (!state?.inside) return null;
   const { x, y, w, h } = state.box;

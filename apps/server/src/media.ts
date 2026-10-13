@@ -18,6 +18,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { ServerConfig } from "./config.ts";
 import { MediaCore, type ProbeInfo, type ProbeOutcome } from "./mediaCore.ts";
+import { probeSvg } from "./svg.ts";
 import { runProbe } from "./probe.ts";
 import { Projects } from "./projects.ts";
 import { which } from "./setup.ts";
@@ -108,7 +109,7 @@ export const posterKey = async (path: string) => {
 };
 const posterName = (id: string, key: string) => `${id}--${key}.jpg`;
 
-const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic"]);
+const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".svg"]);
 // ffmpeg reads "shot%d.png" as an image sequence; for one image, say it's one file.
 const imageInput = (path: string) => ["-f", "image2", "-pattern_type", "none", "-i", path];
 
@@ -183,7 +184,8 @@ export const layer = Layer.effect(
     /** A poster for a video or image in `dir`; false (and no file) if ffmpeg is missing or fails. */
     const makePoster = (entry: MediaEntry, info: ProbeInfo, dir: string) =>
       Effect.gen(function* () {
-        if (entry.kind === "audio") return false;
+        // No poster for audio, nor for SVG (ffmpeg can't read it; the Library shows the file itself).
+        if (entry.kind === "audio" || extname(entry.path).toLowerCase() === ".svg") return false;
         const bin = yield* tool("ffmpeg");
         const key = yield* Effect.promise(() => posterKey(entry.path));
         if (!bin || !key) return false;
@@ -255,6 +257,8 @@ export const layer = Layer.effect(
         const probed: Array<{ path: string; real: string; at: number; info: ProbeInfo }> = [];
         for (const [i, t] of todo.entries()) {
           let outcome = outcomes[i]!;
+          // SVG (D76): sized from the file (neither the media core nor ffmpeg reads it).
+          if (extname(t.path).toLowerCase() === ".svg") outcome = yield* Effect.promise(() => probeSvg(t.path));
           if (!outcome.ok && outcome.code === "unsupported") {
             const viaFfprobe = yield* ffprobe(t.path);
             if (viaFfprobe) outcome = { ok: true, info: viaFfprobe };

@@ -27,7 +27,7 @@ export const TYPING_PAUSE_MS = 800;
 type PlanResult = { readonly ops: ReadonlyArray<Op>; readonly summary: string } | { readonly problem: string };
 
 /** Show a plan's result in the preview without sending it; returns the draft (to drop later). */
-function showDraft(project: ProjectModel, plan: PlanResult): PreviewDraft | undefined {
+export function showDraft(project: ProjectModel, plan: PlanResult): PreviewDraft | undefined {
   if (!("ops" in plan) || !plan.ops.length) return undefined;
   const result = draftOf(project, plan.ops);
   if (!("project" in result)) return undefined;
@@ -35,15 +35,15 @@ function showDraft(project: ProjectModel, plan: PlanResult): PreviewDraft | unde
   playback.setDraft(draft);
   return draft;
 }
-const dropDraft = (draft: PreviewDraft | undefined) => {
+export const dropDraft = (draft: PreviewDraft | undefined) => {
   if (draft && getPlayback().draft === draft) playback.setDraft(undefined);
 };
 
 /** The revision and folder an edit is planned against (see actions.itemEdit). */
-const origin = () => ({ baseRevision: getState().snapshot?.revision, dir: getState().snapshot?.dir });
+export const origin = () => ({ baseRevision: getState().snapshot?.revision, dir: getState().snapshot?.dir });
 
 /** Send an edit planned against the newest project; the draft (if any) goes once it's applied. */
-function send(make: (project: ProjectModel) => PlanResult, draft?: PreviewDraft, from = origin()) {
+export function send(make: (project: ProjectModel) => PlanResult, draft?: PreviewDraft, from = origin()) {
   void actions.itemEdit(make, from).finally(() => dropDraft(draft));
 }
 
@@ -105,7 +105,7 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
 }
 
 /** Colour swatches (theme tokens first) plus a custom colour. */
-function ColorPicker({ project, value, onPick, testId, disabled }: { project: ProjectModel; value: string | undefined; onPick: (color: string, final: boolean) => void; testId: string; disabled?: boolean }) {
+export function ColorPicker({ project, value, onPick, testId, disabled }: { project: ProjectModel; value: string | undefined; onPick: (color: string, final: boolean) => void; testId: string; disabled?: boolean }) {
   const css = resolveColor(project, value, "#ffffff");
   const hex = /^#[0-9a-f]{6}$/i.test(css) ? css : "#ffffff";
   return (
@@ -130,7 +130,7 @@ function ColorPicker({ project, value, onPick, testId, disabled }: { project: Pr
 }
 
 /** Debounces a value that streams in (a colour picker) into one edit after it settles. */
-function useSettle(delay: number) {
+export function useSettle(delay: number) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pending = useRef<(() => void) | undefined>(undefined);
   useEffect(
@@ -195,7 +195,7 @@ function Tabs<T extends string>({ tabs, value, onChange }: { tabs: ReadonlyArray
   );
 }
 
-const Group = ({ label, children }: { label: string; children: ReactNode }) => (
+export const Group = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="group">
     <div className="group-label">{label}</div>
     {children}
@@ -323,6 +323,13 @@ function TextContent({ project, item, disabled }: { project: ProjectModel; item:
 }
 
 const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
+/** Fonts the Style tab offers: the preset's (system), the system mono, and the bundled DM Sans / DM Mono (D77). */
+const FONTS: ReadonlyArray<readonly [string, string]> = [
+  ["", "Preset font (system)"],
+  ["mono", "System mono"],
+  ["DM Sans", "DM Sans"],
+  ["DM Mono", "DM Mono"],
+];
 const WEIGHT_NAMES: Readonly<Record<number, string>> = { 100: "Thin", 200: "Extra light", 300: "Light", 400: "Regular", 500: "Medium", 600: "Semibold", 700: "Bold", 800: "Heavy", 900: "Black" };
 const ALIGNS = [
   ["left", AlignLeft],
@@ -371,6 +378,23 @@ function TextStyleTab({ project, item, disabled }: { project: ProjectModel; item
           {WEIGHTS.map((w) => (
             <option key={w} value={w}>
               {w} {WEIGHT_NAMES[w]}
+            </option>
+          ))}
+        </select>
+        <select
+          className="field input"
+          data-testid="insp-font"
+          value={FONTS.some(([v]) => v === (item.style?.font ?? "")) ? (item.style?.font ?? "") : ""}
+          disabled={disabled}
+          title="Font: the system's, or the bundled DM Sans and DM Mono (the same in the preview and the export)"
+          onChange={(e) => {
+            const font = e.target.value || null;
+            send((p) => planStyle(p, item.id, { font }, font ? `Set font to ${font}` : "Use the preset's font"));
+          }}
+        >
+          {FONTS.map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
             </option>
           ))}
         </select>
@@ -715,6 +739,8 @@ function KeyButton({ project, item, prop, local, inside, disabled }: { project: 
  */
 export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
   const frame = usePlayback((s) => Math.round(s.frame));
+  // A component (D76) has a box and opacity; fit, zoom, corners and loop are a clip's.
+  const component = item.type === "component";
   const state = clipState(project, item.id, frame);
   const scaleDraft = useRef<PreviewDraft | undefined>(undefined);
   const opacityDraft = useRef<PreviewDraft | undefined>(undefined);
@@ -737,15 +763,18 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
           <NumberField label="W" testId="insp-box-w" value={Math.round(box.w)} min={1} disabled={locked} onCommit={(v) => v !== undefined && edit({ w: v })} />
           <NumberField label="H" testId="insp-box-h" value={Math.round(box.h)} min={1} disabled={locked} onCommit={(v) => v !== undefined && edit({ h: v })} />
         </div>
-        <div className="seg fit" role="group">
-          {FITS.map(([fit, label, title]) => (
-            <button key={fit} className={box.fit === fit ? "active" : ""} data-testid="insp-fit" data-fit={fit} title={title} disabled={locked} onClick={() => edit({ fit })}>
-              {label}
-            </button>
-          ))}
-        </div>
+        {!component && (
+          <div className="seg fit" role="group">
+            {FITS.map(([fit, label, title]) => (
+              <button key={fit} className={box.fit === fit ? "active" : ""} data-testid="insp-fit" data-fit={fit} title={title} disabled={locked} onClick={() => edit({ fit })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </Group>
-      <Group label="Scale and opacity">
+      <Group label={component ? "Opacity" : "Scale and opacity"}>
+        {!component && (
         <div className="slider-row key-row">
           <Slider
             testId="insp-scale"
@@ -764,6 +793,7 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
           <NumberField label="Scale %" testId="insp-scale-num" value={Math.round(box.scale * 100)} min={5} max={2000} disabled={locked} onCommit={(v) => v !== undefined && edit({ scale: v / 100 })} />
           {key("scale")}
         </div>
+        )}
         <div className="slider-row key-row">
           <Slider
             testId="insp-opacity"
@@ -781,9 +811,11 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
           <NumberField label="Opacity %" testId="insp-opacity-num" value={Math.round(box.opacity * 100)} min={0} max={100} disabled={locked} onCommit={(v) => v !== undefined && edit({ opacity: v / 100 })} />
           {key("opacity")}
         </div>
-        <div className="field-row">
-          <NumberField label="Radius" testId="insp-radius" value={radius} min={0} disabled={locked} onCommit={(v) => edit({ radius: v ?? 0 })} />
-        </div>
+        {!component && (
+          <div className="field-row">
+            <NumberField label="Radius" testId="insp-radius" value={radius} min={0} disabled={locked} onCommit={(v) => edit({ radius: v ?? 0 })} />
+          </div>
+        )}
       </Group>
       <div className="group">
         {media?.kind === "video" && (
@@ -799,7 +831,7 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
           <RotateCcw />
           Reset position and size
         </button>
-        <div className="hint-line muted small">Drag the selected clip in the preview to move it (it snaps to the centre and the margins; ⌘ places it freely), its corners to resize it (⇧ for any shape). ◆ keys a value at the playhead.</div>
+        <div className="hint-line muted small">Drag the selected {component ? "component" : "clip"} in the preview to move it (it snaps to the centre and the margins; ⌘ places it freely), its corners to resize it (⇧ for any shape). ◆ keys a value at the playhead.</div>
       </div>
     </div>
   );
