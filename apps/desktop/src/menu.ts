@@ -25,6 +25,7 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         { role: "about" },
         { type: "separator" },
         item("Settings…", "CmdOrCtrl+,", { type: "open-setup" }),
+        item("Environments…", undefined, { type: "open-environments" }),
         { type: "separator" },
         { role: "services" },
         { type: "separator" },

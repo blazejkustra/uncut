@@ -11,8 +11,17 @@ export interface AppState {
   readonly recents: ReadonlyArray<{ readonly name: string; readonly dir: string }>;
 }
 
+/** An environment (Phase 9, D106): Local, or a remote uncut-server. */
+export interface EnvironmentInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "local" | "remote";
+  readonly url?: string;
+}
+export type EnvironmentTest = { readonly ok: true; readonly version: string; readonly hostname: string } | { readonly ok: false; readonly message: string };
+
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" }
+  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "export" | "open-environments" }
   | { readonly type: "open-recent"; readonly dir: string };
 
 export interface UncutBridge {
@@ -32,6 +41,17 @@ export interface UncutBridge {
   // The disk path of a dropped File ("" if it isn't a file on disk).
   readonly pathForFile: (file: File) => string;
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
+  // Environments (D106): the list and which is active; switching (and removing the active one) reloads the window.
+  readonly environments: () => Promise<{ readonly active: string; readonly environments: ReadonlyArray<EnvironmentInfo> }>;
+  readonly addEnvironment: (input: { name: string; url: string; token: string }) => Promise<{ readonly id: string } | { readonly problem: string }>;
+  readonly testEnvironment: (input: { url: string; token: string } | { id: string }) => Promise<EnvironmentTest>;
+  readonly renameEnvironment: (id: string, name: string) => Promise<boolean>;
+  readonly removeEnvironment: (id: string) => Promise<boolean>;
+  readonly switchEnvironment: (id: string) => Promise<boolean>;
+  /** Why the relay last failed to reach the active remote (undefined once it got through). */
+  readonly environmentStatus: () => Promise<{ readonly problem?: string | undefined }>;
+  /** D109: a remote export saved to a path picked here; null when cancelled. */
+  readonly downloadExport: (jobId: string, name: string) => Promise<{ readonly path: string } | { readonly error: string } | null>;
   // Background test runs: the preview plays to no output device (AudioContext sinkId "none").
   readonly silentAudio?: boolean;
 }
@@ -57,4 +77,12 @@ export const bridge: UncutBridge = window.uncut ?? {
   chooseSavePath: () => Promise.resolve(null),
   pathForFile: () => "",
   onMenuCommand: () => () => {},
+  environments: () => Promise.resolve({ active: "local", environments: [{ id: "local", name: "This Mac", kind: "local" }] }),
+  addEnvironment: () => Promise.resolve({ problem: "Not running inside the Uncut desktop app" }),
+  testEnvironment: () => Promise.resolve({ ok: false, message: "Not running inside the Uncut desktop app" }),
+  renameEnvironment: () => Promise.resolve(false),
+  removeEnvironment: () => Promise.resolve(false),
+  switchEnvironment: () => Promise.resolve(false),
+  environmentStatus: () => Promise.resolve({}),
+  downloadExport: () => Promise.resolve(null),
 };

@@ -4,12 +4,31 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 
-import { readConfig, readLaunchOptions } from "./config.ts";
+import { resolve } from "node:path";
+
+import { isLoopbackHost } from "./auth.ts";
+import { dataDirOf, readConfig, readLaunchOptions, type LaunchOptions } from "./config.ts";
+import { loadOrCreateToken } from "./pairing.ts";
 import { makeServerLayer, openSockets } from "./server.ts";
 import { fallbackPathDirs, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
 
-const launch = readLaunchOptions(process.argv.slice(2));
+let launch: LaunchOptions;
+try {
+  launch = readLaunchOptions(process.argv.slice(2));
+} catch (error) {
+  console.error(`[uncut] ${(error as Error).message}`);
+  process.exit(2);
+}
 const envToken = process.env.UNCUT_TOKEN || undefined;
+// Headless (`uncut-server --host/--port/--data-dir`, D106): flags win over the environment.
+const headless = launch.host !== undefined || launch.port !== undefined || launch.dataDir !== undefined;
+if (launch.dataDir !== undefined) process.env.UNCUT_DATA_DIR = resolve(launch.dataDir);
+if (launch.port !== undefined) process.env.UNCUT_PORT = String(launch.port);
+// From an installed Uncut.app (ELECTRON_RUN_AS_NODE), the export's rasteriser is the app binary itself.
+if (headless && process.versions.electron && !process.env.UNCUT_RENDER_BIN) {
+  process.env.UNCUT_RENDER_BIN = process.execPath;
+  process.env.UNCUT_RENDER_ENTRY = "";
+}
 // Child processes (the media core, agent CLIs) must not inherit the token, nor run as Node
 // because the desktop started us with ELECTRON_RUN_AS_NODE, nor see an API key (D41).
 delete process.env.UNCUT_TOKEN;
@@ -37,7 +56,26 @@ const shellReady =
           .catch(() => undefined);
       })();
 
-const config = readConfig(process.env, launch.bootstrapToken ?? envToken, { apiKeyInEnv, shellReady }, launch.keysFd);
+// The token: the desktop's (bootstrap fd), UNCUT_TOKEN, or a headless server's stored one (made once).
+let token = launch.bootstrapToken ?? envToken;
+let tokenFile: string | undefined;
+if (!token && headless) {
+  try {
+    const stored = loadOrCreateToken(dataDirOf(process.env));
+    token = stored.token;
+    tokenFile = stored.file;
+  } catch (error) {
+    console.error(`[uncut] can't keep a pairing token: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
+const host = launch.host ?? "127.0.0.1";
+// Never listen beyond this machine with a throwaway or weak token.
+if (!isLoopbackHost(host) && (!token || token.length < 24)) {
+  console.error(`[uncut] refusing to listen on ${host} without a pairing token (at least 24 characters): use --data-dir, or set UNCUT_TOKEN`);
+  process.exit(1);
+}
+const config = readConfig(process.env, token, { apiKeyInEnv, shellReady }, launch.keysFd, headless ? { host, tokenFile } : undefined);
 
 // Last line of defence: log instead of dying on a stray rejection.
 process.on("unhandledRejection", (reason) => console.error("[uncut] unhandled rejection:", reason));

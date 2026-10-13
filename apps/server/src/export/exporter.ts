@@ -82,6 +82,8 @@ export interface ExporterShape {
   readonly start: (input: ExportInput) => Effect.Effect<{ jobId: string }, ExportError>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
   readonly jobs: Stream.Stream<ReadonlyArray<ExportJob>>;
+  /** The jobs right now (the Download route, D109). */
+  readonly jobList: Effect.Effect<ReadonlyArray<ExportJob>>;
   /** Whether an export is queued, preparing or rendering, now (analysis yields to it, D66). */
   readonly busy: () => boolean;
   /** Frames of the open project as JPEGs, `width` px wide (the agent's render_frames). */
@@ -792,7 +794,7 @@ export const layer = Layer.effect(
       });
 
     const busy = () => Effect.runSync(SubscriptionRef.get(jobsRef)).some((j) => j.phase === "queued" || j.phase === "preparing" || j.phase === "rendering");
-    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), busy, renderFrames, mediaFrames, sheetImage, saveSubtitles });
+    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), jobList: SubscriptionRef.get(jobsRef), busy, renderFrames, mediaFrames, sheetImage, saveSubtitles });
   }),
 );
 

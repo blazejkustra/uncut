@@ -1,8 +1,8 @@
 // The WebSocket RPC endpoint. Same shape as t3code's ws.ts: authenticate the upgrade,
 // then run an RpcServer for that one socket.
-import { timingSafeEqual } from "node:crypto";
+import { homedir, hostname } from "node:os";
 
-import { PluginError, ProjectError, RPC_METHODS, TOKEN_QUERY_PARAM, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import { PluginError, ProjectError, RPC_METHODS, WS_PATH, WsRpcGroup } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -11,6 +11,8 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { Agent } from "../agent/agent.ts";
 import { Analysis } from "../analysis/analysis.ts";
+import { presentedToken, tokensMatch } from "./auth.ts";
+import { defaultParentDir, listFolder } from "./files.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "../export/exporter.ts";
 import { graphicToken } from "../export/graphicToken.ts";
@@ -28,12 +30,7 @@ import { Settings } from "./settings.ts";
 import { Setup } from "./setup.ts";
 import { Whisper } from "../analysis/whisper.ts";
 
-export const tokensMatch = (given: string | null, expected: string) => {
-  if (given === null) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-};
+export { tokensMatch } from "./auth.ts";
 
 interface Services {
   readonly config: typeof ServerConfig.Service;
@@ -63,7 +60,11 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         pid: process.pid,
         mediaCore: { version },
         graphicToken: graphicToken(config.token),
+        home: homedir(),
+        defaultParentDir: defaultParentDir(),
+        hostname: hostname(),
       })),
+    [RPC_METHODS.filesList]: ({ dir }) => listFolder(dir),
     [RPC_METHODS.projectCreate]: (input) => projects.create(input),
     [RPC_METHODS.projectOpen]: ({ dir }) => projects.open(dir),
     [RPC_METHODS.projectGet]: () => projects.get,
@@ -177,7 +178,7 @@ export const layer = Layer.unwrap(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = HttpServerRequest.toURL(request);
-        const token = Option.isSome(url) ? url.value.searchParams.get(TOKEN_QUERY_PARAM) : null;
+        const token = presentedToken(request.headers, Option.isSome(url) ? url.value : undefined);
         if (!tokensMatch(token, config.token)) {
           return HttpServerResponse.text("Unauthorized", { status: 401 });
         }

@@ -5,7 +5,7 @@
 import { open as openFile, type FileHandle } from "node:fs/promises";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { MEDIA_FILE_PATH, MUSIC_FILE_PATH, TOKEN_QUERY_PARAM } from "@uncut/contracts";
+import { MEDIA_FILE_PATH, MUSIC_FILE_PATH } from "@uncut/contracts";
 import { MUSIC_TRACKS } from "@uncut/core/music";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -14,7 +14,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "../app/config.ts";
 import { Projects } from "../project/projects.ts";
-import { tokensMatch } from "../app/ws.ts";
+import { presentedToken, tokensMatch } from "../app/auth.ts";
 
 // The lookup is an exact match against the project's media ids; this only rejects junk early.
 const MEDIA_ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -79,7 +79,7 @@ export function parseRange(header: string | undefined, size: number): { start: n
 }
 
 /** A file streamed with Range support (see the header), or 403/404 when it can't be opened. */
-const serveFile = (request: HttpServerRequest.HttpServerRequest, path: string) =>
+export const serveFile = (request: HttpServerRequest.HttpServerRequest, path: string) =>
       Effect.gen(function* () {
         // Opened before any header goes out, so an unreadable file is a clean 403/404, not a
         // connection reset halfway through a response.
@@ -136,7 +136,7 @@ export const layer = Layer.unwrap(
     const projects = yield* Projects;
     const authorised = (request: HttpServerRequest.HttpServerRequest) => {
       const url = HttpServerRequest.toURL(request);
-      return Option.isSome(url) && tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), config.token) ? url.value : undefined;
+      return Option.isSome(url) && tokensMatch(presentedToken(request.headers, url.value), config.token) ? url.value : undefined;
     };
     const unauthorized = () => HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
     return Layer.mergeAll(

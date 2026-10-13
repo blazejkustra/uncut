@@ -13,7 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
-import { TOKEN_QUERY_PARAM, WAVEFORM_PATH, type Waveform } from "@uncut/contracts";
+import { WAVEFORM_PATH, type Waveform } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -25,7 +25,7 @@ import { posterKey } from "./media.ts";
 import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
-import { tokensMatch } from "../app/ws.ts";
+import { presentedToken, tokensMatch } from "../app/auth.ts";
 
 /** Peaks per second. */
 export const RATE = 100;
@@ -212,7 +212,7 @@ export const layer = Layer.unwrap(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = HttpServerRequest.toURL(request);
-        if (Option.isNone(url) || !tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), config.token)) {
+        if (Option.isNone(url) || !tokensMatch(presentedToken(request.headers, url.value), config.token)) {
           return HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
         }
         const id = decode(url.value.pathname.slice(WAVEFORM_PATH.length + 1));
