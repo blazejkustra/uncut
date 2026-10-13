@@ -4,10 +4,10 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
-import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
+import { bridge, type AppInfo, type EnvironmentInfo, type EnvironmentTest, type MenuCommand } from "./bridge.ts";
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
@@ -114,6 +114,31 @@ export interface AppStateShape {
   readonly transcription?: TranscriptionState;
   // Why the last model action was refused.
   readonly transcriptionError?: string;
+  // ---- environments (Phase 9, D106) ----
+  /** Where this window's server runs: Local, or a remote uncut-server (through the desktop's relay). */
+  readonly environment: EnvironmentInfo;
+  /** Every environment, for the Environments dialog (loaded when it opens). */
+  readonly environments?: ReadonlyArray<EnvironmentInfo>;
+  readonly environmentsOpen: boolean;
+  /** Why the relay can't reach the remote right now (a refused token, nothing listening). */
+  readonly environmentProblem?: string;
+  /** The remote file browser (D107), open in place of a native dialog. */
+  readonly remotePicker?: RemotePickerRequest;
+  /** Files going up to a remote project's media/uploads/ (D108). */
+  readonly uploading?: { readonly total: number; readonly done: number; readonly name: string };
+  /** Remote exports being downloaded, or where they went (D109), by job id. */
+  readonly downloads: Readonly<Record<string, { readonly state: "running" } | { readonly path: string } | { readonly error: string }>>;
+}
+
+/** What a remote environment's file browser is for (D107): each native dialog it stands in for. */
+export type PickerPurpose = "project" | "parent" | "plugin" | "media" | "save";
+export interface RemotePickerRequest {
+  readonly purpose: PickerPurpose;
+  /** The folder to start in. */
+  readonly start?: string | undefined;
+  /** "save": the file name to suggest. */
+  readonly fileName?: string | undefined;
+  readonly seq: number;
 }
 
 export const MAX_NAME_LENGTH = 100;
@@ -146,6 +171,9 @@ let state: AppStateShape = {
   exportJobs: [],
   analysisJobs: [],
   generateJobs: [],
+  environment: { id: "local", name: "This Mac", kind: "local" },
+  environmentsOpen: false,
+  downloads: {},
 };
 const listeners = new Set<() => void>();
 
@@ -220,6 +248,8 @@ export const useApp = () =>
 export const getState = () => state;
 export const projectOf = (snapshot: ProjectSnapshot) => snapshot.project as Project;
 export const online = () => state.connection === "connected";
+/** The window shows a remote environment (D106): paths are the server's, not this Mac's. */
+export const isRemote = (s: AppStateShape = state) => s.environment.kind === "remote";
 
 /** Keep the native menu (Open Recent, ⌘W) and the window title in step with the screen. */
 function syncShell() {
@@ -365,7 +395,8 @@ function onExportJobs(jobs: ReadonlyArray<ExportJob>) {
   for (const job of jobs) {
     if (!revealWhenDone.has(job.id) || (job.phase !== "done" && job.phase !== "failed" && job.phase !== "cancelled")) continue;
     revealWhenDone.delete(job.id);
-    if (job.phase === "done") void bridge.showInFolder(job.output);
+    // A remote export stays on its server (D109): Download brings it here.
+    if (job.phase === "done" && !isRemote()) void bridge.showInFolder(job.output);
   }
   set({ exportJobs: jobs });
 }
@@ -435,15 +466,47 @@ const refreshRecents = async () => {
   if (recents.ok) set({ recents: recents.value });
 };
 
+/** server.hello: versions, the graphic secret, and for a remote its own home and default folder (D107). */
+async function refreshHello() {
+  const hello = await call((c) => c["server.hello"]({}));
+  if (hello.ok) {
+    set({ hello: hello.value, ...(isRemote() && hello.value.home ? { appInfo: { homeDir: hello.value.home, defaultParentDir: hello.value.defaultParentDir ?? hello.value.home } } : {}) });
+  } else if (!isTransportError(hello.error)) set({ connectionMessage: plainError(hello.error) });
+  return hello;
+}
+
+// While a remote isn't connected, ask the relay why (a refused token reads differently from a
+// server that's down), so the banner can say so.
+let statusTimer: ReturnType<typeof setInterval> | undefined;
+function watchRemoteStatus() {
+  if (statusTimer) return;
+  statusTimer = setInterval(() => {
+    if (state.connection === "connected") return void (state.environmentProblem && set({ environmentProblem: undefined }));
+    void bridge.environmentStatus().then(({ problem }) => problem !== state.environmentProblem && set({ environmentProblem: problem }));
+  }, 1500);
+}
+
 export async function start() {
-  bridge.onServerExit((message) => set({ connection: "server-exited", connectionMessage: message }));
+  // Only Local's own server can exit under the window (the desktop doesn't report it for a remote).
+  bridge.onServerExit((message) => !isRemote() && set({ connection: "server-exited", connectionMessage: message }));
   bridge.onMenuCommand(runCommand);
   window.addEventListener("keydown", onKeyDown);
   const [appInfo, server] = await Promise.all([bridge.appInfo(), bridge.getServerConnection().then((c) => ({ ok: true as const, c }), (e: Error) => ({ ok: false as const, e }))]);
   set({ appInfo });
   if (!server.ok) {
+    // The active remote couldn't even be set up (its token unreadable): say so, with the way back to Local.
+    void bridge.environments().then(({ active, environments }) => {
+      const env = environments.find((e) => e.id === active);
+      if (env) set({ environment: env });
+    });
     set({ connection: "failed", connectionMessage: server.e.message, ready: true });
     return;
+  }
+  if (server.c.environment) set({ environment: server.c.environment });
+  if (isRemote()) {
+    watchRemoteStatus();
+    // A remote that doesn't answer mustn't keep the splash up: show the screen (it says it's reconnecting).
+    setTimeout(() => !state.ready && set({ ready: true }), 4000);
   }
   let firstSnapshot: () => void = () => {};
   const gotFirstSnapshot = new Promise<void>((resolve) => (firstSnapshot = resolve));
@@ -452,8 +515,10 @@ export async function start() {
     // Every (re)connect resubscribes: the server re-sends the current project first.
     onConnect: () => {
       if (state.connection === "server-exited") return;
-      set({ connection: "connected", notice: state.notice?.transport ? undefined : state.notice });
+      set({ connection: "connected", environmentProblem: undefined, notice: state.notice?.transport ? undefined : state.notice });
       void actions.loadContributions();
+      // A remote that restarted may be another version; a late first connect has no hello yet.
+      if (isRemote() || !state.hello) void refreshHello();
       unsubscribeJobs?.();
       unsubscribeJobs = conn.subscribe((c) => c["media.jobs"]({}), onJobs);
       unsubscribeExports?.();
@@ -489,9 +554,7 @@ export async function start() {
     },
   });
   connection = conn;
-  const hello = await call((c) => c["server.hello"]({}));
-  if (hello.ok) set({ hello: hello.value });
-  else if (!isTransportError(hello.error)) set({ connectionMessage: plainError(hello.error) });
+  await refreshHello();
   await Promise.race([gotFirstSnapshot, new Promise((r) => setTimeout(r, 5000))]);
   // First launch (onboarding never finished or skipped): show it.
   const setup = await call((c) => c["setup.state"]({}));
@@ -601,11 +664,141 @@ function itemEdit(makePlan: (project: ProjectModel) => Plan | { readonly problem
   return next;
 }
 
+// ---- the remote file browser (D107) and uploads (D108) ----
+
+let pickerSeq = 0;
+let pickerAnswer: ((value: string | ReadonlyArray<string> | null) => void) | undefined;
+/** Opens the remote file browser; resolves with what was picked (a path, paths for "media"), or null. */
+function pickRemote(purpose: PickerPurpose, opts: { start?: string | undefined; fileName?: string | undefined } = {}): Promise<string | ReadonlyArray<string> | null> {
+  pickerAnswer?.(null);
+  return new Promise((resolve) => {
+    pickerAnswer = resolve;
+    set({ remotePicker: { purpose, start: opts.start, fileName: opts.fileName, seq: ++pickerSeq } });
+  });
+}
+/** A folder: the native dialog on Local, the server's disk on a remote. */
+async function chooseFolder(purpose: "parent" | "project" | "plugin"): Promise<string | null> {
+  if (!isRemote()) return bridge.chooseFolder(purpose);
+  const picked = await pickRemote(purpose);
+  return typeof picked === "string" ? picked : null;
+}
+
+/** A URL on the active server (through the relay when remote) with the window's token. */
+const apiUrl = (route: string, params: Record<string, string> = {}) => {
+  if (!serverConnection) return undefined;
+  const url = new URL(serverConnection.url.replace(/^ws/, "http"));
+  url.pathname = route;
+  url.search = "";
+  url.searchParams.set(TOKEN_QUERY_PARAM, serverConnection.token);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return url.href;
+};
+
+/** One file up to the open remote project's media/uploads/ (D108): its path there, or why not. */
+async function uploadOne(file: File): Promise<{ readonly path: string } | { readonly message: string }> {
+  const url = apiUrl(UPLOAD_PATH, { name: file.name });
+  if (!url) return { message: "Not connected to the server." };
+  try {
+    const res = await fetch(url, { method: "POST", body: file, headers: { "content-type": "application/octet-stream" } });
+    const text = await res.text();
+    if (!res.ok) return { message: text.trim() || `The server answered ${res.status}.` };
+    const path = (JSON.parse(text) as { path?: unknown }).path;
+    return typeof path === "string" ? { path } : { message: "The server's answer had no path." };
+  } catch (error) {
+    // A folder (or a file that went away) can't be read as a body.
+    return { message: file.size === 0 && file.type === "" ? "Folders can't be uploaded; drop the files inside." : `The upload stopped: ${(error as Error).message}` };
+  }
+}
+
 export const actions = {
   showNewProject: () => set({ newProjectOpen: true }),
   hideNewProject: () => set({ newProjectOpen: false }),
 
-  chooseParentFolder: () => bridge.chooseFolder("parent"),
+  chooseParentFolder: () => chooseFolder("parent"),
+
+  // ---- environments (D106) ----
+  async openEnvironments() {
+    set({ environmentsOpen: true });
+    await actions.loadEnvironments();
+  },
+  closeEnvironments: () => set({ environmentsOpen: false }),
+  async loadEnvironments() {
+    const { environments } = await bridge.environments();
+    set({ environments });
+  },
+  /** Adds a remote (after a passing test); undefined, or why not. */
+  async addEnvironment(input: { name: string; url: string; token: string }): Promise<string | undefined> {
+    const result = await bridge.addEnvironment(input);
+    if ("problem" in result) return result.problem;
+    await actions.loadEnvironments();
+    return undefined;
+  },
+  testEnvironment: (input: { url: string; token: string } | { id: string }): Promise<EnvironmentTest> => bridge.testEnvironment(input),
+  async renameEnvironment(id: string, name: string) {
+    await bridge.renameEnvironment(id, name);
+    await actions.loadEnvironments();
+    if (id === state.environment.id && name.trim()) set({ environment: { ...state.environment, name: name.trim() } });
+  },
+  async removeEnvironment(id: string) {
+    await bridge.removeEnvironment(id);
+    await actions.loadEnvironments();
+  },
+  /** The window reloads into the other environment: nothing carries over (D106). */
+  switchEnvironment: (id: string) => (id === state.environment.id ? Promise.resolve(false) : bridge.switchEnvironment(id)),
+
+  // ---- the remote file browser (D107) ----
+  listFolder: async (dir?: string): Promise<{ readonly listing: FileListing } | { readonly problem: string }> => {
+    const result = await call((c) => c["files.list"](dir ? { dir } : {}));
+    return result.ok ? { listing: result.value } : { problem: plainError(result.error) };
+  },
+  /** The browser's answer: a path, paths ("media"), or null when cancelled. */
+  answerPicker(value: string | ReadonlyArray<string> | null) {
+    const answer = pickerAnswer;
+    pickerAnswer = undefined;
+    set({ remotePicker: undefined });
+    answer?.(value);
+  },
+  /**
+   * Local files into a remote project (D108): each goes up into media/uploads/, then they're
+   * imported from there as one job, as a drop on Local imports in place.
+   */
+  async uploadAndImport(files: ReadonlyArray<File>) {
+    if (!files.length || !state.snapshot || !online() || state.uploading) return;
+    if (!activeJobs(state).length) set({ importReport: undefined });
+    const dir = state.snapshot.dir;
+    const paths: Array<string> = [];
+    const failed: Array<{ path: string; message: string }> = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
+      set({ uploading: { total: files.length, done: i, name: file.name } });
+      const result = await uploadOne(file);
+      if ("path" in result) paths.push(result.path);
+      else failed.push({ path: file.name, message: result.message });
+    }
+    set({ uploading: undefined });
+    // The project changed meanwhile: the files are in the old one's media/uploads/, not imported here.
+    if (paths.length && state.snapshot?.dir === dir) {
+      const result = await call((c) => c["media.import"]({ paths }));
+      if (!result.ok) failed.push(...paths.map((path) => ({ path, message: plainError(result.error) })));
+    }
+    if (failed.length) set({ importReport: { failed: [...(state.importReport?.failed ?? []), ...failed], skipped: state.importReport?.skipped ?? [] } });
+  },
+  /** D109: a finished remote export, downloaded to a path picked on this Mac. */
+  async downloadExport(job: ExportJob) {
+    if (state.downloads[job.id] && "state" in state.downloads[job.id]!) return;
+    set({ downloads: { ...state.downloads, [job.id]: { state: "running" } } });
+    const name = job.output.slice(job.output.lastIndexOf("/") + 1) || "Export.mp4";
+    let result: { readonly path: string } | { readonly error: string } | null;
+    try {
+      result = await bridge.downloadExport(job.id, name);
+    } catch (error) {
+      result = { error: (error as Error).message };
+    }
+    const { [job.id]: _running, ...rest } = state.downloads;
+    set({ downloads: result ? { ...rest, [job.id]: result } : rest });
+  },
+  /** Finder, for a path on this Mac (a downloaded export). */
+  revealLocal: (path: string) => bridge.showInFolder(path),
 
   /** Creates and opens the project (replacing any open one); returns the error for the form. */
   async createProject(input: { parentDir: string; name: string; canvas: Canvas }): Promise<string | undefined> {
@@ -635,7 +828,7 @@ export const actions = {
   },
 
   async openWithDialog() {
-    const dir = await bridge.chooseFolder("project");
+    const dir = await chooseFolder("project");
     if (dir) await actions.openProject(dir);
   },
 
@@ -764,7 +957,8 @@ export const actions = {
     else set({ reloadProblem: plainError(result.error) });
   },
 
-  showInFolder: (path: string) => bridge.showInFolder(path),
+  // A remote's paths aren't on this Mac: there is no Finder to show them in (D109).
+  showInFolder: (path: string) => (isRemote() ? Promise.resolve() : bridge.showInFolder(path)),
 
   /** The project as it was at a revision (History's preview), or a sentence saying why not. */
   async historyPreview(revision: number): Promise<{ readonly project: Project } | { readonly problem: string }> {
@@ -779,7 +973,8 @@ export const actions = {
    * it as a job (queued behind any running one); progress and results arrive on media.jobs.
    */
   async importMedia(paths?: ReadonlyArray<string>) {
-    const chosen = paths ?? (await bridge.chooseMedia());
+    const picked = paths ?? (isRemote() ? await pickRemote("media") : await bridge.chooseMedia());
+    const chosen = Array.isArray(picked) ? picked : [];
     const absolute = chosen.filter((p) => typeof p === "string" && p.startsWith("/"));
     if (absolute.length === 0) return;
     if (!activeJobs(state).length) set({ importReport: undefined });
@@ -823,7 +1018,12 @@ export const actions = {
     if (state.setupChecks?.find((c) => c.id === "ffmpeg")?.status !== "ready") void actions.checkSetup();
   },
   closeExport: () => set({ exportOpen: false }),
-  chooseExportPath: (defaultPath: string) => bridge.chooseSavePath(defaultPath),
+  async chooseExportPath(defaultPath: string): Promise<string | null> {
+    if (!isRemote()) return bridge.chooseSavePath(defaultPath);
+    const cut = defaultPath.lastIndexOf("/");
+    const picked = await pickRemote("save", { start: cut > 0 ? defaultPath.slice(0, cut) : undefined, fileName: defaultPath.slice(cut + 1) });
+    return typeof picked === "string" ? picked : null;
+  },
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
   async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
@@ -890,7 +1090,7 @@ export const actions = {
     void actions.listPlugins();
     const result = await call((c) => c["setup.check"]({}));
     if (result.ok) set({ setupChecking: false, setupChecks: result.value });
-    else set({ setupChecking: false, setupError: `Couldn't check this Mac. ${plainError(result.error)}` });
+    else set({ setupChecking: false, setupError: `Couldn't check ${isRemote() ? state.environment.name : "this Mac"}. ${plainError(result.error)}` });
   },
   async loadContributions() {
     const result = await call((c) => c["plugins.contributions"]({}));
@@ -943,7 +1143,7 @@ export const actions = {
   },
   /** Add plugin… › Choose folder: the folder dialog, then install. */
   async installPluginFolder() {
-    const dir = await bridge.chooseFolder("plugin");
+    const dir = await chooseFolder("plugin");
     return dir ? actions.installPlugin({ source: dir }) : false;
   },
   async uninstallPlugin(id: string) {
@@ -1042,6 +1242,8 @@ export const actions = {
 };
 
 function runCommand(command: MenuCommand) {
+  // The way to another environment works while this one is away.
+  if (command.type === "open-environments") return void actions.openEnvironments();
   // Everything below talks to the server; while it's away the buttons are disabled too.
   if (!online()) return;
   if (command.type === "open-setup") return actions.openSetup();

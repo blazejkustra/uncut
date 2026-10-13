@@ -8,6 +8,9 @@ import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer } from "effect/http";
 
 import * as Agent from "../agent/agent.ts";
+import { installGate } from "./auth.ts";
+import { pairingText } from "./pairing.ts";
+import * as Remote from "./remote.ts";
 import * as AgentBridge from "../agent/agentBridge.ts";
 import * as Analysis from "../analysis/analysis.ts";
 import * as Capture from "../capture/capture.ts";
@@ -37,8 +40,11 @@ const layerReadyLine = Layer.effectDiscard(
     const config = yield* Config.ServerConfig;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
-    const line = { ready: true, port, ...(config.tokenGenerated ? { token: config.token } : {}) };
+    // A headless server's token goes to stderr only (with the pairing text), never stdout (D106).
+    const line = { ready: true, port, ...(config.tokenGenerated && !config.headless ? { token: config.token } : {}), ...(config.headless ? { host: config.host } : {}) };
     process.stdout.write(`${JSON.stringify(line)}\n`);
+    // A headless server (D106) says where it is and how to pair, for whoever started it.
+    if (config.headless) process.stderr.write(pairingText(config.host, port, config.token, config.tokenFile));
   }),
 );
 
@@ -52,8 +58,10 @@ export const openSockets = {
   },
 };
 let httpServer: NodeHttp.Server | undefined;
-const createServer = () => {
+const createServer = (config: Config.ServerConfigShape) => () => {
   httpServer = NodeHttp.createServer();
+  // Origin, token and failed-attempt limits for every request and upgrade (D110), before the router.
+  installGate(httpServer, { token: config.token, host: config.host, allowedOrigins: config.allowedOrigins ?? [] });
   httpServer.on("upgrade", (_request, socket) => {
     upgraded.add(socket);
     socket.once("close", () => upgraded.delete(socket));
@@ -62,11 +70,11 @@ const createServer = () => {
 };
 
 export const makeServerLayer = (config: Config.ServerConfigShape) => {
-  const layerHttpServer = NodeHttpServer.layer(createServer, {
+  const layerHttpServer = NodeHttpServer.layer(createServer(config), {
     host: config.host,
     port: config.port,
   });
-  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, MediaFiles.layer, GraphicFiles.layer, Waveforms.layer, AgentBridge.layer), { disableLogger: true, disableListenLog: true });
+  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, MediaFiles.layer, GraphicFiles.layer, Waveforms.layer, AgentBridge.layer, Remote.layer), { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),

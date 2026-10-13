@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { actions, useApp } from "../state/store.ts";
+import { EnvironmentChip } from "./Environments.tsx";
 
 const STEPS = ["Agents", "Capture", "First video"] as const;
 
@@ -78,6 +79,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
             </div>
           )}
           <KeyRows />
+          <EnvironmentSettings />
         </div>
         <div className="wiz-foot">
           <p>One agent is enough. Add more any time in Settings.</p>
@@ -686,6 +688,28 @@ function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolea
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Settings, Environments (D106): which server this window uses, and the way to the others. */
+function EnvironmentSettings() {
+  const { environment } = useApp();
+  return (
+    <div className="wiz-plugins" data-testid="settings-environments">
+      <div className="wiz-section-row">
+        <div className="wiz-section">Environment</div>
+      </div>
+      <div className="wiz-row">
+        <div className="grow">
+          <div className="wiz-name">{environment.kind === "remote" ? `Working on ${environment.name}` : "Working on this Mac"}</div>
+          <div className="wiz-sub">{environment.kind === "remote" ? "Agents, ffmpeg, Argent and plugins above are that machine's." : "Add another machine to edit and export there instead."}</div>
+        </div>
+        <EnvironmentChip />
+        <button className="btn" data-testid="settings-environments-manage" onClick={() => void actions.openEnvironments()}>
+          Manage…
+        </button>
+      </div>
     </div>
   );
 }

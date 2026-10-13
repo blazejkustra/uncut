@@ -18,6 +18,7 @@ import { useDuckLoading } from "../audio/ducking.ts";
 import { hasSound } from "../audio/sound.ts";
 import { Library, type LibraryTab } from "../panels/Library.tsx";
 import { NewProject } from "../onboarding/NewProject.tsx";
+import { EnvironmentChip } from "../onboarding/Environments.tsx";
 import { SOLID } from "@uncut/core/render";
 import { findItem } from "../timeline/edit.ts";
 import { frameTimecode } from "../state/format.ts";
@@ -81,7 +82,7 @@ function useEditorKeys(fps: number) {
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
-  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest, generateDraft } = useApp();
+  const { connection, changedOnDisk, reloadProblem, notice, newProjectOpen, exportOpen, panelRequest, generateDraft, environment, environmentProblem } = useApp();
   const online = connection === "connected";
   const [tab, setTab] = useState<LibraryTab>("media");
   // history.db can't be used (D71): said once per project and problem, dismissable.
@@ -106,11 +107,20 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
         {!online && (
           <div className="banner" data-testid="connection-banner" data-state={connection}>
             <RefreshCw className={connection === "reconnecting" ? "spin" : ""} />
-            {connection === "reconnecting"
-              ? "Reconnecting to the server… Changes are paused."
-              : connection === "server-exited"
-                ? "The server stopped. Restart Uncut to keep editing."
-                : "Connecting to the server…"}
+            <span className="banner-text">
+              {environment.kind === "remote"
+                ? `${connection === "reconnecting" ? "Reconnecting to" : "Connecting to"} ${environment.name}… Changes are paused.${environmentProblem ? ` ${environmentProblem}` : ""}`
+                : connection === "reconnecting"
+                  ? "Reconnecting to the server… Changes are paused."
+                  : connection === "server-exited"
+                    ? "The server stopped. Restart Uncut to keep editing."
+                    : "Connecting to the server…"}
+            </span>
+            {environment.kind === "remote" && (
+              <button className="btn ghost" data-testid="banner-environments" onClick={() => void actions.openEnvironments()}>
+                Environments…
+              </button>
+            )}
           </div>
         )}
         {changedOnDisk && (
@@ -170,12 +180,15 @@ function Bottom({ project, dir }: { project: Project; dir: string }) {
 }
 
 function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean }) {
-  const { exportJobs, exportJobId } = useApp();
+  const { exportJobs, exportJobId, environment } = useApp();
+  const remote = environment.kind === "remote";
   const job = exportJobs.find((j) => j.id === exportJobId && j.projectDir === snapshot.dir);
   const running = exportRunning(job);
   return (
     <header className="topbar">
       <div className="brand">Uncut</div>
+      {/* A remote environment says so where the project's name is (D106). */}
+      {remote && <EnvironmentChip />}
       <div className="project-title" data-testid="project-title">
         {project.name}
       </div>
@@ -302,7 +315,7 @@ function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; projec
 }
 
 function Inspector({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
-  const { appInfo } = useApp();
+  const { appInfo, environment } = useApp();
   const [name, setName] = useState(project.name);
   const [error, setError] = useState<string | undefined>();
   const editing = useRef(false);
@@ -392,10 +405,17 @@ function Inspector({ snapshot, project, online }: { snapshot: ProjectSnapshot; p
           <span className="mono small ellipsis" data-testid="project-dir" title={snapshot.dir}>
             {shortPath(snapshot.dir, appInfo.homeDir)}
           </span>
-          <button className="btn" data-testid="show-in-finder" onClick={() => void actions.showInFolder(snapshot.dir)}>
-            <FolderOpen />
-            Show in Finder
-          </button>
+          {/* A remote project's folder is on the server, not in this Mac's Finder (D109). */}
+          {environment.kind === "remote" ? (
+            <span className="muted small" data-testid="project-host">
+              on {environment.name}
+            </span>
+          ) : (
+            <button className="btn" data-testid="show-in-finder" onClick={() => void actions.showInFolder(snapshot.dir)}>
+              <FolderOpen />
+              Show in Finder
+            </button>
+          )}
         </div>
       </div>
     </>

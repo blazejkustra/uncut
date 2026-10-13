@@ -10,7 +10,7 @@ import { dbWords } from "@uncut/core/edit-log";
 import { outputSize } from "@uncut/core/export";
 import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
-import { FolderOpen, ListChecks, X } from "lucide-react";
+import { Download, FolderOpen, ListChecks, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { warningCount } from "./Checks.tsx";
@@ -54,7 +54,9 @@ const dirName = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";
 const eta = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `About ${Math.max(1, Math.round(s))} s left` : `About ${Math.round(s / 60)} min left`);
 
 export function ExportDialog({ project, dir }: { project: Project; dir: string }) {
-  const { appInfo, exportJobs, exportJobId, exportFolder, setupChecks, setupChecking } = useApp();
+  const { appInfo, exportJobs, exportJobId, exportFolder, setupChecks, setupChecking, environment, downloads } = useApp();
+  // On a remote environment the video is made and kept on the server; Download brings it here (D109).
+  const remote = environment.kind === "remote";
   const [quality, setQuality] = useState<ExportQuality>("standard");
   // The default comes from the project's loudness target (D87: master.loudness.targetLufs, −14 when unset).
   const target = projectTargetLufs(project);
@@ -152,7 +154,9 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           : job.phase === "rendering"
             ? `Rendering… ${pct}%`
             : job.phase === "done"
-              ? `Saved in ${job.elapsedSeconds ?? 0} s, and shown in Finder.`
+              ? remote
+                ? `Saved on ${environment.name} in ${job.elapsedSeconds ?? 0} s.`
+                : `Saved in ${job.elapsedSeconds ?? 0} s, and shown in Finder.`
               : "The export didn't finish.";
     body = (
       <div data-testid="export-job" data-phase={job.phase} data-progress={job.progress} data-output={job.output}>
@@ -202,12 +206,13 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               <button className="btn ghost" data-testid="export-again" onClick={() => setDismissed(job.id)}>
                 {job.phase === "done" ? "Export again" : "Try again"}
               </button>
-              {job.phase === "done" && (
+              {job.phase === "done" && !remote && (
                 <button className="btn" data-testid="export-reveal" onClick={() => void actions.showInFolder(job.output)}>
                   <FolderOpen />
                   Show in Finder
                 </button>
               )}
+              {job.phase === "done" && remote && <DownloadButton job={job} state={downloads[job.id]} />}
               <button className="btn primary" data-testid="export-done" onClick={actions.closeExport}>
                 Done
               </button>
@@ -396,5 +401,35 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         </div>
       </div>
     </div>
+  );
+}
+
+/** D109: a remote export's Download, then where it went (with Finder, since that's on this Mac). */
+function DownloadButton({ job, state }: { job: ExportJob; state: { readonly state: "running" } | { readonly path: string } | { readonly error: string } | undefined }) {
+  if (state && "path" in state) {
+    return (
+      <>
+        <span className="muted small ellipsis" data-testid="export-downloaded" title={state.path}>
+          Downloaded to {baseName(state.path)}
+        </span>
+        <button className="btn" data-testid="export-reveal-download" onClick={() => void actions.revealLocal(state.path)}>
+          <FolderOpen />
+          Show in Finder
+        </button>
+      </>
+    );
+  }
+  return (
+    <>
+      {state && "error" in state && (
+        <span className="inline-error small" data-testid="export-download-error">
+          {state.error}
+        </span>
+      )}
+      <button className="btn" data-testid="export-download" disabled={state !== undefined && "state" in state} onClick={() => void actions.downloadExport(job)}>
+        <Download />
+        {state && "state" in state ? "Downloading…" : "Download…"}
+      </button>
+    </>
   );
 }

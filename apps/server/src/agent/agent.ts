@@ -416,7 +416,9 @@ export const layer = Layer.effect(
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
-    const bridgeUrl = `http://127.0.0.1:${port}`;
+    // The MCP server dials back to this server: loopback, unless a headless server listens on one address only (D106).
+    const bridgeHost = config.host === "0.0.0.0" || config.host === "::" || config.host === "" ? "127.0.0.1" : config.host;
+    const bridgeUrl = `http://${bridgeHost.includes(":") ? `[${bridgeHost}]` : bridgeHost}:${port}`;
 
     const stateRef = yield* SubscriptionRef.make<AgentState | null>(null);
     const loadLock = yield* Semaphore.make(1);

@@ -15,7 +15,7 @@ import { ServerConfig } from "../app/config.ts";
 import { readGraphics } from "./exporter.ts";
 import { graphicToken } from "./graphicToken.ts";
 import { Projects } from "../project/projects.ts";
-import { tokensMatch } from "../app/ws.ts";
+import { tokensMatch } from "../app/auth.ts";
 
 // The preview asks for the document (fetch, CORS from its file:// page) before showing it; the token protects the route.
 const notFound = () => HttpServerResponse.text("Not found", { status: 404, headers: { "access-control-allow-origin": "*" } });

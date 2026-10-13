@@ -7,6 +7,14 @@ import {
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
   COPY_TEXT_CHANNEL,
+  DOWNLOAD_EXPORT_CHANNEL,
+  ENVIRONMENT_ADD_CHANNEL,
+  ENVIRONMENT_REMOVE_CHANNEL,
+  ENVIRONMENT_RENAME_CHANNEL,
+  ENVIRONMENT_STATUS_CHANNEL,
+  ENVIRONMENT_SWITCH_CHANNEL,
+  ENVIRONMENT_TEST_CHANNEL,
+  ENVIRONMENTS_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
@@ -44,6 +52,16 @@ contextBridge.exposeInMainWorld("uncut", {
     }
   },
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
+  // Environments (Phase 9, D106): Local and the remote servers; switching reloads the window.
+  environments: () => ipcRenderer.invoke(ENVIRONMENTS_CHANNEL),
+  addEnvironment: (input: { name: string; url: string; token: string }) => ipcRenderer.invoke(ENVIRONMENT_ADD_CHANNEL, input),
+  testEnvironment: (input: { url: string; token: string } | { id: string }) => ipcRenderer.invoke(ENVIRONMENT_TEST_CHANNEL, input),
+  renameEnvironment: (id: string, name: string) => ipcRenderer.invoke(ENVIRONMENT_RENAME_CHANNEL, id, name),
+  removeEnvironment: (id: string) => ipcRenderer.invoke(ENVIRONMENT_REMOVE_CHANNEL, id),
+  switchEnvironment: (id: string) => ipcRenderer.invoke(ENVIRONMENT_SWITCH_CHANNEL, id),
+  environmentStatus: () => ipcRenderer.invoke(ENVIRONMENT_STATUS_CHANNEL),
+  // A remote export, saved where the user picks on this Mac (D109).
+  downloadExport: (jobId: string, name: string) => ipcRenderer.invoke(DOWNLOAD_EXPORT_CHANNEL, jobId, name),
   // True only in a background test run: the preview's audio goes to no device.
   silentAudio: ipcRenderer.sendSync(SILENT_AUDIO_CHANNEL) === true,
 });

@@ -12,6 +12,14 @@ import {
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
   COPY_TEXT_CHANNEL,
+  DOWNLOAD_EXPORT_CHANNEL,
+  ENVIRONMENT_ADD_CHANNEL,
+  ENVIRONMENT_REMOVE_CHANNEL,
+  ENVIRONMENT_RENAME_CHANNEL,
+  ENVIRONMENT_STATUS_CHANNEL,
+  ENVIRONMENT_SWITCH_CHANNEL,
+  ENVIRONMENT_TEST_CHANNEL,
+  ENVIRONMENTS_CHANNEL,
   MENU_COMMAND_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
@@ -19,11 +27,14 @@ import {
   SILENT_AUDIO_CHANNEL,
   type AppInfo,
   type AppState,
+  type EnvironmentTest,
   type FolderPurpose,
   type MenuCommand,
 } from "./ipc.ts";
 import { BACKGROUND_SWITCHES, isTestBackground } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
+import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
+import { pingServer, startRelay, type Relay } from "./relay.ts";
 import { startServer, type ServerProcess } from "./server.ts";
 
 // Lets tests drive the window with puppeteer (same switch as the phase 2 spike).
@@ -140,15 +151,15 @@ async function chooseMedia(): Promise<Array<string>> {
   return result.canceled ? [] : result.filePaths;
 }
 
-/** Where to save an export: the native save panel (it asks before replacing a file); null when cancelled. */
-async function chooseSavePath(defaultPath: string): Promise<string | null> {
+/** Where to save an export (or, D109, a remote export's download): the native save panel (it asks before replacing a file); null when cancelled. */
+async function chooseSavePath(defaultPath: string, title = "Export video"): Promise<string | null> {
   if (testDialogs) {
     const next = testDialogs.shift();
     return typeof next === "string" ? next : null;
   }
   if (!win) return null;
   const result = await dialog.showSaveDialog(win, {
-    title: "Export video",
+    title,
     buttonLabel: "Choose",
     defaultPath: typeof defaultPath === "string" && path.isAbsolute(defaultPath) ? defaultPath : path.join(appInfo.defaultParentDir, "Untitled.mp4"),
     filters: [{ name: "MP4 video", extensions: ["mp4"] }],
@@ -176,6 +187,79 @@ async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
     properties: purpose === "parent" ? ["openDirectory", "createDirectory"] : ["openDirectory"],
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
+}
+
+// ---- environments (Phase 9, D106) ----
+
+// Generator keys and remote tokens are both wrapped by safeStorage (D99), or by the test stand-in.
+const crypt: Crypt = testKeys
+  ? {
+      encrypt: (text) => `test-standin:${Buffer.from(text, "utf8").toString("base64")}`,
+      decrypt: (data) => {
+        if (!data.startsWith("test-standin:")) throw new Error("not a test key");
+        return Buffer.from(data.slice("test-standin:".length), "base64").toString("utf8");
+      },
+    }
+  : {
+      encrypt: (text) => {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
+        return safeStorage.encryptString(text).toString("base64");
+      },
+      decrypt: (data) => {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
+        return safeStorage.decryptString(Buffer.from(data, "base64"));
+      },
+    };
+
+let environments: EnvironmentStore | undefined;
+// The relay to the active remote, if the active environment is one.
+let relay: { readonly id: string; readonly relay: Relay } | undefined;
+const devOrigins = devServerUrl ? [new URL(devServerUrl).origin] : [];
+
+async function closeRelay() {
+  const open = relay;
+  relay = undefined;
+  await open?.relay.close().catch(() => {});
+}
+
+/** The active environment's connection: the local server's, or the relay to the remote one. */
+async function activeConnection() {
+  if (!environments || !server) throw new Error("the app is quitting");
+  const env = environments.active();
+  if (env.kind === "local") {
+    await closeRelay();
+    return { ...(await server.connection), environment: { id: LOCAL_ID, name: env.name, kind: "local" as const } };
+  }
+  if (relay?.id !== env.id) {
+    await closeRelay();
+    let secret: { url: string; token: string } | undefined;
+    try {
+      secret = environments.secret(env.id);
+    } catch (error) {
+      throw new Error(`Can't read the token for ${env.name}: ${(error as Error).message}`);
+    }
+    if (!secret) throw new Error(`${env.name} isn't in the environments list any more`);
+    relay = { id: env.id, relay: await startRelay({ target: secret.url, token: secret.token, allowedOrigins: devOrigins }) };
+  }
+  return { url: relay.relay.wsUrl, token: relay.relay.token, environment: { id: env.id, name: env.name, kind: "remote" as const, ...(env.url ? { url: env.url } : {}) } };
+}
+
+// Downloads this window asked for (D109), by URL: where each goes and who's waiting.
+const downloads = new Map<string, { readonly path: string; readonly done: (result: { path: string } | { error: string }) => void }>();
+
+/** A remote export's video, streamed through the relay to a path the user picks here; null when cancelled. */
+async function downloadExport(jobId: string, name: string): Promise<{ path: string } | { error: string } | null> {
+  if (typeof jobId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(jobId)) throw new Error("not an export id");
+  const open = relay;
+  if (!open || !win) return { error: "Downloads are for exports on a remote environment." };
+  const base = typeof name === "string" && name ? path.basename(name) : "Export.mp4";
+  const target = await chooseSavePath(path.join(appInfo.defaultParentDir, base), "Download export");
+  if (!target) return null;
+  const url = `${open.relay.httpBase}/api/export/${encodeURIComponent(jobId)}?token=${encodeURIComponent(open.relay.token)}`;
+  return new Promise((done) => {
+    downloads.set(url, { path: target, done });
+    win!.webContents.downloadURL(url);
+  });
 }
 
 function createWindow() {
@@ -209,6 +293,14 @@ function createWindow() {
     return { action: "deny" };
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
+  // The only downloads are the ones downloadExport asked for (D109); anything else is cancelled.
+  contents.session.on("will-download", (_event, item) => {
+    const wanted = downloads.get(item.getURL());
+    if (!wanted) return item.cancel();
+    downloads.delete(item.getURL());
+    item.setSavePath(wanted.path);
+    item.once("done", (_e, state) => wanted.done(state === "completed" ? { path: wanted.path } : { error: state === "cancelled" ? "The download was cancelled." : "The download stopped before the end." }));
+  });
   // A graphic item's sandboxed iframe (D78) can't reach anyone over WebRTC either: Chromium honours
   // no CSP webrtc directive, and without a proxy this keeps UDP (STUN) off. The app uses no WebRTC.
   contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
@@ -243,41 +335,72 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(() => {
+  environments = makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt);
   server = startServer({
     ...resources,
     // Tests point this at a temp dir so they never touch the real recents.
     dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
-    onExit: (reason) => win?.webContents.send(SERVER_EXIT_CHANNEL, reason),
+    // The local server going away matters to the window only while it shows Local.
+    onExit: (reason) => {
+      if (environments?.active().kind !== "remote") win?.webContents.send(SERVER_EXIT_CHANNEL, reason);
+    },
     // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
     // ciphertext reaches the server's keys.json.
-    keys: testKeys
-      ? {
-          encrypt: (text) => `test-standin:${Buffer.from(text, "utf8").toString("base64")}`,
-          decrypt: (data) => {
-            if (!data.startsWith("test-standin:")) throw new Error("not a test key");
-            return Buffer.from(data.slice("test-standin:".length), "base64").toString("utf8");
-          },
-        }
-      : {
-          encrypt: (text) => {
-            if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
-            return safeStorage.encryptString(text).toString("base64");
-          },
-          decrypt: (data) => {
-            if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
-            return safeStorage.decryptString(Buffer.from(data, "base64"));
-          },
-        },
+    keys: crypt,
   });
   const handle = <A extends Array<unknown>, R>(channel: string, fn: (...args: A) => R) =>
     ipcMain.handle(channel, (event, ...args) => {
       if (!fromAppWindow(event)) throw new Error("not allowed");
       return fn(...(args as A));
     });
-  handle(SERVER_CONNECTION_CHANNEL, () => {
-    if (!server) throw new Error("the app is quitting");
-    return server.connection;
+  handle(SERVER_CONNECTION_CHANNEL, () => activeConnection());
+  handle(ENVIRONMENTS_CHANNEL, () => environments!.list());
+  handle(ENVIRONMENT_ADD_CHANNEL, (input: { name?: unknown; url?: unknown; token?: unknown }) => {
+    if (typeof input?.url !== "string" || typeof input.token !== "string" || typeof input.name !== "string") throw new Error("not an environment");
+    try {
+      return environments!.add({ name: input.name, url: input.url, token: input.token });
+    } catch (error) {
+      return { problem: `Couldn't keep the token safely: ${(error as Error).message}` };
+    }
   });
+  handle(ENVIRONMENT_TEST_CHANNEL, async (input: { url?: unknown; token?: unknown; id?: unknown }): Promise<EnvironmentTest> => {
+    let target: { url: string; token: string } | undefined;
+    if (typeof input?.id === "string") {
+      try {
+        target = environments!.secret(input.id);
+      } catch (error) {
+        return { ok: false, message: `Can't read the stored token: ${(error as Error).message}` };
+      }
+      if (!target) return { ok: false, message: "That environment isn't in the list any more." };
+    } else if (typeof input?.url === "string" && typeof input.token === "string") {
+      const pairing = parsePairing(input.url);
+      const normal = normalizeServerUrl(pairing?.url ?? input.url);
+      if ("problem" in normal) return { ok: false, message: normal.problem };
+      target = { url: normal.url, token: (pairing?.token ?? input.token).trim() };
+    } else throw new Error("nothing to test");
+    return pingServer(target.url, target.token);
+  });
+  handle(ENVIRONMENT_RENAME_CHANNEL, (id: unknown, name: unknown) => typeof id === "string" && typeof name === "string" && environments!.rename(id, name));
+  handle(ENVIRONMENT_REMOVE_CHANNEL, async (id: unknown) => {
+    if (typeof id !== "string") return false;
+    const wasActive = environments!.active().id === id;
+    const removed = environments!.remove(id);
+    // Removing the one on screen goes back to Local.
+    if (removed && wasActive) {
+      await closeRelay();
+      win?.webContents.reload();
+    }
+    return removed;
+  });
+  handle(ENVIRONMENT_SWITCH_CHANNEL, async (id: unknown) => {
+    if (typeof id !== "string" || !environments!.setActive(id)) return false;
+    // A fresh page for the other environment: nothing of one server's projects carries over (D106).
+    await closeRelay();
+    win?.webContents.reload();
+    return true;
+  });
+  handle(ENVIRONMENT_STATUS_CHANNEL, () => ({ problem: relay?.relay.problem() }));
+  handle(DOWNLOAD_EXPORT_CHANNEL, (jobId: string, name: string) => downloadExport(jobId, name));
   handle(APP_INFO_CHANNEL, (): AppInfo => appInfo);
   handle(CHOOSE_FOLDER_CHANNEL, (purpose: FolderPurpose) => chooseFolder(purpose));
   handle(CHOOSE_MEDIA_CHANNEL, () => chooseMedia());
@@ -309,6 +432,7 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => app.quit());
 
 app.on("will-quit", (event) => {
+  void closeRelay();
   if (!server?.running()) return;
   // Hold the quit until the server is really gone (stop() is bounded: SIGKILL after 1.5 s).
   // Re-quit on a later tick: Electron ignores app.quit() while will-quit is still dispatching.

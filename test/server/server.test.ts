@@ -3,7 +3,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import { connect, killAll, openSocket, startServer as start, type Ready, type StartOptions } from "../helpers/server.ts";
@@ -57,8 +57,12 @@ test("prints one ready line with the port and the token it generated", T, () => 
 test("server.hello reports server, node, pid and media core versions", T, async () => {
   const exit = await hello(ready);
   assert.equal(exit._tag, "Success");
-  const { graphicToken, ...rest } = exit.value;
+  const { graphicToken, home, defaultParentDir, hostname, ...rest } = exit.value;
   assert.deepEqual(rest, { version: "0.0.1", node: process.versions.node, pid: server.pid, mediaCore: { version: "0.0.1" } });
+  // Phase 9 (D107): the server machine's own home, default folder and name, for a remote environment.
+  assert.equal(home, homedir());
+  assert.ok(typeof defaultParentDir === "string" && defaultParentDir.startsWith(home));
+  assert.equal(typeof hostname, "string");
   // The graphic documents' secret (D78): derived from the token, never the token itself.
   assert.match(graphicToken, /^[\w-]{43}$/);
   assert.notEqual(graphicToken, ready.token);
