@@ -1,0 +1,3 @@
+#!/bin/sh
+# The fake `argent` CLI (../fake-argent.ts) for ARGENT_BIN; FAKE_ARGENT_NODE picks the Node to run it.
+exec "${FAKE_ARGENT_NODE:-node}" "$(dirname "$0")/../fake-argent.ts" "$@"

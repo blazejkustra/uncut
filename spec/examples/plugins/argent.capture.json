@@ -4,51 +4,58 @@
   "kind": "capture-source",
   "name": "Argent",
   "version": "0.1.0",
-  "description": "Records iOS simulators, Android emulators, web and desktop apps. Saves recordings as flows you can re-shoot when the app changes, and lets the agent drive the app while it records.",
+  "description": "Records iOS simulators and Android emulators and devices with Argent, on a timer or while replaying a saved flow, and re-shoots a flow's take when the app changes.",
   "author": "Software Mansion",
   "license": "MIT",
-  "runtime": { "type": "process", "command": "argent", "args": ["mcp"] },
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
   "requires": {
     "binary": "argent",
-    "minVersion": "0.9.0",
-    "install": "npm i -g @swmansion/argent@latest && argent init -y",
-    "platforms": ["macos-arm64", "linux-x64", "windows-x64"]
+    "minVersion": "0.19.0",
+    "install": "npm i -g @swmansion/argent@latest",
+    "platforms": ["macos-arm64"]
   },
   "capabilities": ["process:spawn", "media:write", "project:read"],
   "capture": {
-    "targets": ["ios-simulator", "ios-device", "android-emulator", "android-device", "chromium", "electron", "vega"],
+    "targets": ["ios-simulator", "android-emulator", "android-device"],
     "flows": true,
-    "agentDriven": true
+    "agentDriven": false
   },
   "agentTools": [
     {
       "name": "argent_list_devices",
-      "description": "List simulators, emulators and Chromium apps that can be recorded, with their state.",
+      "description": "List the simulators, emulators and apps Argent sees, each with recordable (true or false, with the reason). Call it before recording.",
       "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
     },
     {
       "name": "argent_record",
-      "description": "Record a device. Either replay a saved flow or let the agent drive the app from a goal. Returns the new media id.",
+      "description": "Record a device's screen: replay a saved flow while recording (preferred: repeatable, and it can be re-shot later), or record for a number of seconds. The take is imported into the project as media (its id comes back); place it with timeline_edit.",
       "inputSchema": {
         "type": "object",
         "required": ["device"],
         "additionalProperties": false,
         "properties": {
-          "device": { "type": "string" },
-          "flow": { "type": "string", "description": "Path of a saved flow to replay, e.g. flows/login.yaml." },
-          "goal": { "type": "string", "description": "What the agent should do in the app while recording." },
-          "saveFlow": { "type": "string", "description": "Save what happened as a flow at this path." }
+          "device": { "type": "string", "description": "A recordable device id from argent_list_devices." },
+          "flow": { "type": "string", "description": "A flow to replay while recording: a saved flow's name in the project's flows/ folder, a path relative to the project (flows/login.yaml) or an absolute path to an Argent flow .yaml. The take lasts as long as the flow." },
+          "seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 600, "description": "Record for this long instead of replaying a flow." },
+          "saveFlow": { "type": "string", "description": "Save the replayed flow in the project's flows/ folder under this name (a flow from elsewhere is always copied there, so the take can be re-shot)." },
+          "showTouches": { "type": "boolean", "description": "Draw taps and swipes into the video (default false)." },
+          "name": { "type": "string", "description": "The take's file and media name." }
         }
       }
     },
     {
       "name": "argent_reshoot",
-      "description": "Re-record a media item from its saved flow and swap it in everywhere it is used.",
+      "description": "Re-record a media item Argent recorded from a flow (its own, or another flow) and swap the new take in everywhere the media is used, as one undoable edit. A shorter take trims the clips that run past its end (overrun hold: they hold its last frame instead); the result lists each with a warning.",
       "inputSchema": {
         "type": "object",
-        "required": ["media"],
+        "required": ["mediaId"],
         "additionalProperties": false,
-        "properties": { "media": { "type": "string" } }
+        "properties": {
+          "mediaId": { "type": "string" },
+          "flow": { "type": "string", "description": "Replay this flow instead of the one the media was recorded with." },
+          "overrun": { "enum": ["trim", "hold"], "description": "Clips past the new take's end: trim them (default) or hold its last frame." },
+          "showTouches": { "type": "boolean" }
+        }
       }
     }
   ],

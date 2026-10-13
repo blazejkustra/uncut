@@ -794,3 +794,24 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .music-row .icon-btn svg.lucide { width: 14px; height: 14px; }
 .music-row .icon-btn.playing { color: var(--select); }
 .music-licence { margin: 4px 0 0; font-size: 11px; color: var(--dim); line-height: 1.45; }
+
+/* The Capture tab (D98). */
+.capture-devices { display: flex; flex-direction: column; gap: 2px; }
+.capture-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); min-height: 36px; }
+.capture-row:hover { background: var(--raised); }
+.capture-row > svg.lucide { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.capture-row .capture-name { flex: 1; min-width: 0; display: flex; flex-direction: column; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capture-row .capture-sub { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.capture-row.later .capture-name { color: var(--muted); }
+.capture-row .capture-note { font-size: 11px; color: var(--dim); white-space: nowrap; }
+.capture-row .small-btn svg.lucide { width: 12px; height: 12px; }
+.capture-row.recording { background: rgb(248 113 113 / 8%); }
+.capture-timer { display: inline-flex; align-items: center; gap: 4px; font: 12px var(--mono); color: var(--error); }
+.capture-timer svg.lucide { width: 12px; height: 12px; animation: capture-pulse 1.2s ease-in-out infinite; }
+@keyframes capture-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .capture-timer svg.lucide { animation: none; } }
+.capture-missing { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.capture-missing .wiz-cmd { align-self: stretch; }
+.capture-saved { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--ok); }
+.capture-saved svg.lucide { width: 13px; height: 13px; flex: none; }
+.capture-saved span { flex: 1; min-width: 0; color: var(--fg); }

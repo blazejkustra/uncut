@@ -203,11 +203,8 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   );
 }
 
-// Media, Text, Elements (backgrounds), Audio and Transitions work; the rest arrive in later chunks.
-const RAIL: ReadonlyArray<[string, typeof Film]> = [
-  ["Capture", CircleDot],
-  ["Generate", Sparkles],
-];
+// Media, Text, Elements (backgrounds), Audio, Transitions and Capture work; Generate arrives later.
+const RAIL: ReadonlyArray<[string, typeof Film]> = [["Generate", Sparkles]];
 
 function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => void }) {
   return (
@@ -231,6 +228,10 @@ function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => voi
       <button className={tab === "transitions" ? "active" : ""} data-testid="rail-transitions" title="Transitions between clips on the main track" onClick={() => onTab("transitions")}>
         <Blend />
         <span>Transitions</span>
+      </button>
+      <button className={tab === "capture" ? "active" : ""} data-testid="rail-capture" title="Capture: record simulators and emulators" onClick={() => onTab("capture")}>
+        <CircleDot />
+        <span>Capture</span>
       </button>
       {RAIL.map(([label, Icon]) => (
         <button key={label} disabled title={`${label}: ${LATER}`}>

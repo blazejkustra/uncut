@@ -30,6 +30,7 @@ function newestSource() {
   };
   for (const parent of ["apps", "packages"]) for (const pkg of existsSync(parent) ? readdirSync(parent) : []) walk(join(parent, pkg, "src"));
   walk("native/media/src");
+  walk("plugins");
   return newest;
 }
 
@@ -103,6 +104,11 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
     assert.equal(t.license, "CC0-1.0");
     assert.ok(readFileSync(join(installed, "Contents/Resources/music", t.file)).equals(readFileSync(resolve("assets/music", t.file))), t.file);
   }
+  // The Argent capture plugin ships as a bundled plugin (D98): its manifest and server, no tests or notes.
+  const shipped = join(installed, "Contents/Resources/plugins/argent-capture");
+  assert.deepEqual(readFileSync(join(shipped, "uncut.module.json")), readFileSync(resolve("plugins/argent-capture/uncut.module.json")));
+  assert.ok(readFileSync(join(shipped, "server.ts")).equals(readFileSync(resolve("plugins/argent-capture/server.ts"))));
+  assert.deepEqual(readdirSync(shipped).sort(), ["server.ts", "uncut.module.json"]);
 
   const data = join(root, "data");
   const projects = join(root, "Projects");

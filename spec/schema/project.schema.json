@@ -110,7 +110,11 @@
           "type": "object",
           "required": ["module"],
           "description": "Where the media came from: a capture source, a generator or an import. Lets Uncut re-shoot or regenerate it.",
-          "properties": { "module": { "$ref": "#/$defs/moduleId" } }
+          "properties": {
+            "module": { "$ref": "#/$defs/moduleId" },
+            "device": { "type": "string", "description": "Capture sources: the device it was recorded on (an Argent device id)." },
+            "flow": { "type": "string", "description": "Capture sources: the flow replayed while recording, relative to the project folder (flows/login.yaml), so it can be re-shot." }
+          }
         },
         "probe": {
           "type": "object",

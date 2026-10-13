@@ -170,7 +170,43 @@ export interface LaunchedApp {
   output: () => string;
 }
 
-export async function launchApp({ command, args = [], env: extra = {}, port: requested, firstLaunch = false, cleanEnv = false }: LaunchOptions): Promise<LaunchedApp> {
+/** Why a launch failed before the app's window was there, and whether trying once more makes sense. */
+class LaunchFailure extends Error {
+  readonly retryable: boolean;
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.retryable = retryable;
+  }
+}
+
+// How long the app may take to open its DevTools port: a loaded machine (a full test run, an
+// export in another test) can take well over the old 20 s.
+const CONNECT_TIMEOUT_MS = Number(process.env.UNCUT_TEST_LAUNCH_MS ?? 60000);
+
+/**
+ * Starts the packaged app and attaches to its window. When it fails, the error says why: the exit
+ * code or signal and how soon, or that the DevTools port never opened (and the process is still
+ * running), with what it printed. A launch is tried again once, and only when no window ever
+ * opened and it didn't crash (it timed out, or quit cleanly before a window, e.g. while another
+ * test's app was still letting go of the single-instance lock); a crash is reported at once.
+ */
+export async function launchApp(options: LaunchOptions): Promise<LaunchedApp> {
+  try {
+    return await launchOnce(options);
+  } catch (error) {
+    if (!(error instanceof LaunchFailure) || !error.retryable) throw error;
+    console.log(`# launchApp: trying once more (${error.message.split("\n")[0]})`);
+    await sleep(1000);
+    try {
+      return await launchOnce(options);
+    } catch (again) {
+      if (again instanceof Error) again.message = `${again.message}\n(the first try: ${error.message.split("\n")[0]})`;
+      throw again;
+    }
+  }
+}
+
+async function launchOnce({ command, args = [], env: extra = {}, port: requested, firstLaunch = false, cleanEnv = false }: LaunchOptions): Promise<LaunchedApp> {
   const port = requested ?? (await freePort());
   // Background by default so test runs don't pop windows over the user's work; UNCUT_TEST_VISIBLE=1 to watch.
   const background = process.env.UNCUT_TEST_VISIBLE === "1" ? {} : { UNCUT_TEST_BACKGROUND: "1" };
@@ -181,28 +217,51 @@ export async function launchApp({ command, args = [], env: extra = {}, port: req
   }
   delete env.VITE_DEV_SERVER_URL;
   installInterruptHandlers();
+  const startedAt = Date.now();
   const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
   launched.add(proc);
   proc.once("exit", () => launched.delete(proc));
-  const exited = new Promise((r) => proc.once("exit", r));
+  let ended: { code: number | null; signal: NodeJS.Signals | null; at: number } | undefined;
+  let spawnError: Error | undefined;
+  const exited = new Promise((r) =>
+    proc.once("exit", (code, signal) => {
+      ended = { code, signal, at: Date.now() };
+      r(ended);
+    }),
+  );
+  proc.once("error", (error) => (spawnError = error));
   let output = "";
   proc.stdout.on("data", (d) => (output += d));
   proc.stderr.on("data", (d) => (output += d));
   let browser: Browser | null | undefined;
   const kill = async () => {
     await browser?.disconnect().catch(() => {});
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill();
+    if (proc.exitCode === null && proc.signalCode === null && !spawnError) proc.kill();
     // A quit that hangs is a bug the tests should see, not wait on forever.
     const timer = setTimeout(() => proc.kill("SIGKILL"), 10000);
-    await exited;
+    if (!spawnError) await exited;
     clearTimeout(timer);
   };
+  const printed = () => {
+    const text = output.trim();
+    return text ? `\nIt printed:\n${text.slice(-4000)}` : "\nIt printed nothing.";
+  };
   try {
-    for (let i = 0; i < 100 && !browser; i++) {
+    while (!browser) {
+      if (spawnError) throw new LaunchFailure(`Uncut didn't start: ${command} couldn't be run (${spawnError.message}).`, false);
+      if (ended) {
+        const after = `${((ended.at - startedAt) / 1000).toFixed(1)} s after it started, before its window opened`;
+        const how = ended.signal ? `it was killed by ${ended.signal}` : `it exited with code ${ended.code}`;
+        // A clean quit before any window (no crash) may be the single-instance lock of an app
+        // that's still quitting: worth one more try. A non-zero exit or a signal is a crash.
+        throw new LaunchFailure(`Uncut didn't start: ${how} ${after}.${printed()}`, ended.code === 0 && !ended.signal);
+      }
+      if (Date.now() - startedAt > CONNECT_TIMEOUT_MS) {
+        throw new LaunchFailure(`Uncut didn't start: no DevTools port ${port} after ${CONNECT_TIMEOUT_MS / 1000} s, and it's still running (pid ${proc.pid}).${printed()}`, true);
+      }
       await sleep(200);
       browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}`, defaultViewport: null }).catch(() => null);
     }
-    if (!browser) throw new Error(`Uncut didn't start:\n${output}`);
     // Make sure we attached to *this* app: the DevTools port must belong to the process we spawned.
     const owners = listenerPid(port);
     if (!owners.includes(proc.pid!)) throw new Error(`DevTools port ${port} belongs to pid ${owners.join(",") || "?"}, not the app we started (${proc.pid})`);
@@ -211,7 +270,7 @@ export async function launchApp({ command, args = [], env: extra = {}, port: req
       page = (await browser.pages()).find((p) => p.url().endsWith("index.html"));
       if (!page) await sleep(100);
     }
-    if (!page) throw new Error(`no index.html page; pages: ${(await browser.pages()).map((p) => p.url())}`);
+    if (!page) throw new Error(`no index.html page; pages: ${(await browser.pages()).map((p) => p.url())}${printed()}`);
     // The background window is never key, so tell Chromium the page has focus anyway (keyboard,
     // :focus and document.hasFocus() behave as for a window the user is typing into).
     if (env.UNCUT_TEST_BACKGROUND === "1") await (await page.createCDPSession()).send("Emulation.setFocusEmulationEnabled", { enabled: true });

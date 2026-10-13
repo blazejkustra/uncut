@@ -10,6 +10,7 @@ import { HttpRouter, HttpServer } from "effect/http";
 import * as Agent from "../agent/agent.ts";
 import * as AgentBridge from "../agent/agentBridge.ts";
 import * as Analysis from "../analysis/analysis.ts";
+import * as Capture from "../capture/capture.ts";
 import * as Config from "./config.ts";
 import * as Exporter from "../export/exporter.ts";
 import * as Format from "../project/format.ts";
@@ -67,6 +68,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),
+    Layer.provide(Capture.layer),
     // media_analyze and analysis.* (D66); analysis waits for exports.
     Layer.provide(Analysis.layer),
     // whisper-cli and the speech models (D68), for transcripts and the Setup row.

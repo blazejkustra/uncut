@@ -221,6 +221,8 @@ export type Op =
   | { readonly op: "update_track"; readonly track: Id; readonly set: FieldSet }
   | { readonly op: "delete_track"; readonly track: Id }
   | { readonly op: "add_media"; readonly media: Media }
+  // Another file (a re-shot recording, D98), name, probe or source of a media entry, in place.
+  | { readonly op: "update_media"; readonly media: Id; readonly set: FieldSet }
   | { readonly op: "update_project"; readonly set: FieldSet };
 
 export type OpName = Op["op"];

@@ -139,8 +139,11 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
     }
   };
 
+  // A media's source only says where it came from (D98): a recording made with a plugin that
+  // isn't installed here (or isn't in this map: plugins are discovered at run time) still plays.
+  // A known module must be a capture source or a generator.
   for (const m of project.media) {
-    if (m.source) useModule(m.source.module, ["capture-source", "generator"], `/media/${m.id}/source`);
+    if (m.source && modules.has(m.source.module)) useModule(m.source.module, ["capture-source", "generator"], `/media/${m.id}/source`);
   }
 
   for (const track of project.tracks) {
