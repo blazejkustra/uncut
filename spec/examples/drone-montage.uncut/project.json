@@ -24,7 +24,7 @@
       "id": "a1",
       "kind": "audio",
       "name": "Music",
-      "items": [{ "id": "music", "type": "audio", "media": "m-music", "start": 0, "in": 0, "duration": 4200, "fadeOut": 60 }]
+      "items": [{ "id": "music", "type": "audio", "media": "m-music", "start": 0, "in": 0, "duration": 4200, "fadeIn": 30, "fadeOut": 60 }]
     }
   ],
   "master": { "loudness": { "targetLufs": -14 } }

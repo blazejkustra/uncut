@@ -7,9 +7,10 @@ import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
 import { outputSize } from "@uncut/core/export";
 import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
-import { FolderOpen, X } from "lucide-react";
+import { FolderOpen, ListChecks, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { warningCount } from "./Checks.tsx";
 import { shortPath } from "./format.ts";
 import { CheckRow } from "./Onboarding.tsx";
 import { actions, useApp, type Project } from "./store.ts";
@@ -188,6 +189,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     const limiter = masterLimiter(project);
     const note = mixNote(project);
     const masterDb = project.master?.gainDb ?? 0;
+    const checks = warningCount(project);
     body = (
       <form
         data-testid="export-form"
@@ -247,6 +249,26 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         {masterDb > SILENCE_DB && masterDb !== 0 && loudness !== "off" && (
           <p className="wiz-meta" data-testid="export-master-note">
             The master volume ({dbWords(masterDb)}) is heard in the editor and in As mixed; {look.label} evens the loudness out after it.
+          </p>
+        )}
+        {checks > 0 && (
+          // D90: the taste checks never block the export; this only says there's something to look at.
+          <p className="wiz-meta export-checks" data-testid="export-checks">
+            <ListChecks />
+            <span>
+              {checks} check{checks === 1 ? "" : "s"} to look at. You can still export.
+            </span>
+            <button
+              type="button"
+              className="btn ghost small-btn"
+              data-testid="export-open-checks"
+              onClick={() => {
+                actions.closeExport();
+                actions.openPanel("checks");
+              }}
+            >
+              Open Checks
+            </button>
           </p>
         )}
         {cancelled && !error && <p className="wiz-meta">The last export was cancelled; nothing was saved.</p>}

@@ -63,6 +63,13 @@
         },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/moduleUse" } }
       }
+    },
+    "checks": {
+      "type": "object",
+      "description": "Taste checks (D90): disabled lists the rule ids (core checks.ts) the project turned off. Other keys are kept for later.",
+      "properties": {
+        "disabled": { "type": "array", "maxItems": 200, "items": { "type": "string", "minLength": 1, "maxLength": 100 } }
+      }
     }
   },
   "$defs": {

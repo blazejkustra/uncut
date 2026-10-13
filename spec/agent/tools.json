@@ -233,10 +233,50 @@
         "properties": {
           "frame": { "type": "integer", "minimum": 0 },
           "select": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string" }, "description": "The id of one timeline item (the editor selects one item at a time)." },
-          "panel": { "enum": ["media", "text", "elements", "audio", "inspector", "agent"], "description": "Left: media, text, elements (backgrounds and components), audio. Right: inspector, agent (this chat)." }
+          "panel": { "enum": ["media", "text", "elements", "audio", "inspector", "agent", "checks"], "description": "Left: media, text, elements (backgrounds and components), audio. Right: inspector, agent (this chat), checks (the taste checks list)." }
         }
       },
       "returns": "what was shown"
+    },
+    {
+      "name": "project_check",
+      "description": "Taste checks on the current project (D90), the same list the editor's Checks tab shows: text read time (words ÷ 3 s, 2 s minimum, after the in move), the last text holding 3 s, no new text in the last 2 s, trailing periods, dots or stars between words, filler phrases, frame 1 empty or fading in from black, more than two texts at once, more than one typeface, text under 28 px (at a 1080 px shorter side), text at the frame's edge, mixed footage speeds, the same entrance on every text, long transitions, blank stretches, no sound, music that starts or stops cold, music not ducked under speech, a canvas other than 4:5 (info). Each finding has the rule id, severity (warn or info), one sentence, the item ids, the frame (and range) to look at, and either fix (ops you can send as they are with timeline_edit, with a summary) or a hint. Checks never block the export; rules the project turned off (checks.disabled) are left out.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rules": { "type": "array", "items": { "type": "string" }, "description": "Only these rule ids (e.g. [\"text-read-time\", \"trailing-period\"])." },
+          "severity": { "enum": ["warn", "info"], "description": "Only warnings, or only info notes." }
+        }
+      },
+      "returns": "{ revision, warnings, notes, checks: [{ rule, severity, message, items, frame, seconds, range, fix | hint }], disabled }"
+    },
+    {
+      "name": "music_list",
+      "description": "The bundled music library (D91): cozy CC0 tracks (lo-fi, Rhodes, piano), each with id, title, moods, bpm and tempo (slow, medium, fast, free), length in seconds and project frames, loudness (normalised to about -16 LUFS), author and licence, and the media id when it's already in the project. Filter by mood, tempo or words.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mood": { "type": "string", "description": "A mood tag, e.g. warm, calm, lo-fi, upbeat." },
+          "tempo": { "enum": ["slow", "medium", "fast", "free"], "description": "slow < 80 bpm, medium 80–109, fast from 110, free = no steady beat." },
+          "query": { "type": "string", "description": "Words to find in the title, author or moods." }
+        }
+      },
+      "returns": "{ tracks: [...] }"
+    },
+    {
+      "name": "music_add",
+      "description": "Add a library track (music_list's id) to the project's media: the file is copied into the project's media/ folder (so the project stays portable) and added as audio media, as an edit on your turn. It returns the media id and its length in project frames; then put it on an audio track with timeline_edit (an audio item with fades, often ducked under the voice). A track already in the project returns its media id without copying again.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "The library track id, e.g. cozy-2." }
+        }
+      },
+      "returns": "{ media, frames, seconds, revision }"
     }
   ],
   "$defs": {

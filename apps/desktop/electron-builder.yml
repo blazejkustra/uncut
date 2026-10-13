@@ -18,6 +18,10 @@ extraResources:
   # The bundled DM Sans / DM Mono are inlined in the renderer and rasteriser (D77); their licence ships with them.
   - from: ../../assets/fonts/OFL.txt
     to: fonts/OFL.txt
+  # The bundled CC0 music library (D91): the tracks and library.json (titles, licences).
+  - from: ../../assets/music
+    to: music
+    filter: ["*.m4a", "library.json"]
   # The server validates projects against these; schemas are bundled into server.mjs.
   - from: ../../spec/modules/builtin
     to: modules/builtin

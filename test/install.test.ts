@@ -96,6 +96,13 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.equal(spawnSync("codesign", ["--verify", "--deep", "--strict", installed]).status, 0, "the copy is validly (ad-hoc) signed");
   assert.ok(!execFileSync("xattr", [installed], { encoding: "utf8" }).includes("com.apple.quarantine"), "copied locally, so not quarantined");
   assert.deepEqual(readFileSync(join(installed, "Contents/Resources/icon.icns")), readFileSync(resolve("apps/desktop/build/icon.icns")), "Uncut's own icon");
+  // The bundled CC0 music library (D91) ships next to the server, the same files as assets/music.
+  const library = JSON.parse(readFileSync(join(installed, "Contents/Resources/music/library.json"), "utf8")) as { tracks: Array<{ file: string; license: string }> };
+  assert.equal(library.tracks.length, 5);
+  for (const t of library.tracks) {
+    assert.equal(t.license, "CC0-1.0");
+    assert.ok(readFileSync(join(installed, "Contents/Resources/music", t.file)).equals(readFileSync(resolve("assets/music", t.file))), t.file);
+  }
 
   const data = join(root, "data");
   const projects = join(root, "Projects");
