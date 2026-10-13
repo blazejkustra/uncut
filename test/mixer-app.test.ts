@@ -281,7 +281,9 @@ test("Mixer: faders, pan, solo, meters, volume keys on the timeline, undo, Histo
     await page.keyboard.press("Space");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.playing === "false", { timeout: 20000 });
     await sleep(300);
-    const cap = await page.evaluate(() => (globalThis as unknown as { __uncutAudio: { stopCapture(): { sampleRate: number; t0: number; left: string; right: string; marks: Array<{ t: number; frame: number }> } } }).__uncutAudio.stopCapture());
+    const cap = await page.evaluate(() => (globalThis as unknown as { __uncutAudio: { stopCapture(): { sampleRate: number; t0: number; left: string; right: string; marks: Array<{ t: number; frame: number }>; latency: number; sink: string } } }).__uncutAudio.stopCapture());
+    // A background test window plays to no device (D97 note): no headphone latency in the capture.
+    assert.equal(cap.sink, "none", "the preview plays to no output device in a test run");
     assert.ok(cap, "captured");
     const f32 = (s: string) => {
       const b = Buffer.from(s, "base64");
@@ -325,7 +327,8 @@ test("Mixer: faders, pan, solo, meters, volume keys on the timeline, undo, Histo
     };
     const W = Math.round(0.05 * sr);
     let best = { lag: 0, err: Infinity };
-    for (let lag = -0.25; lag <= 0.25; lag += 0.005) {
+    // ±0.6 s: wide enough for an output device's latency (Bluetooth ~0.25 s) should a sink ever be used.
+    for (let lag = -0.6; lag <= 0.6; lag += 0.005) {
       const s0 = startIndex(lag);
       let err = 0;
       for (let k = Math.round(0.5 / 0.05); k < Math.round(7.5 / 0.05); k++) {
@@ -334,9 +337,9 @@ test("Mixer: faders, pan, solo, meters, volume keys on the timeline, undo, Histo
       }
       if (err < best.err) best = { lag, err };
     }
-    assert.ok(Math.abs(best.lag) < 0.25 - 0.005, `the alignment search hit its ±0.25 s limit (lag ${best.lag.toFixed(3)} s): the recording and the clock disagree more than the search covers`);
+    assert.ok(Math.abs(best.lag) < 0.6 - 0.005, `the alignment search hit its ±0.6 s limit (lag ${best.lag.toFixed(3)} s): the recording and the clock disagree more than the search covers`);
     const s0 = startIndex(best.lag);
-    console.log(`capture: ${sr} Hz, ${pre.left.length} samples from context time ${cap.t0.toFixed(3)}; clock offset ${clockOffset.toFixed(3)} s, lag ${best.lag.toFixed(3)} s, project 0 at sample ${s0}`);
+    console.log(`capture: ${sr} Hz, ${pre.left.length} samples from context time ${cap.t0.toFixed(3)}; clock offset ${clockOffset.toFixed(3)} s, lag ${best.lag.toFixed(3)} s (sink ${cap.sink}, output latency ${cap.latency.toFixed(3)} s), project 0 at sample ${s0}`);
     assert.ok(s0 + 0.5 * sr >= 0 && s0 + 7.75 * sr <= pre.left.length, `the recording covers 0.5–7.75 s of the mix (start ${s0}, ${pre.left.length} samples, lag ${best.lag})`);
     // Windows touching a hard item edge (the clip's end at 4 s: no fade, so the level steps) depend
     // on when each element stops, which D54 keeps within 0.12 s of the clock: there the preview must

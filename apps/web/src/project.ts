@@ -203,9 +203,9 @@ export function itemLabel(project: ProjectModel, item: Item) {
   if (component) {
     const p = item.props ?? {};
     const words = [p.title, p.code, Array.isArray(p.lines) ? (p.lines[0] as { text?: unknown } | undefined)?.text : undefined, p.device].find((v): v is string => typeof v === "string" && v.trim() !== "");
-    return words ? `${component.name} · ${words}` : component.name;
+    return words ? `${component.name}: ${words}` : component.name;
   }
-  if (item.type === "graphic" && !item.name && item.src) return `Graphic · ${item.src.replace(/^graphics\//, "")}`;
+  if (item.type === "graphic" && !item.name && item.src) return `Graphic: ${item.src.replace(/^graphics\//, "")}`;
   if (item.type === "captions" && !item.name) {
     const source = project.media.find((m) => m.id === item.source);
     return source ? `Captions of ${source.name}` : "Captions";

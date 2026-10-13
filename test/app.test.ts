@@ -73,7 +73,7 @@ test("window shows the server and media core versions, from the bundle, without 
   const app = await launch();
   const s = await status(app.page);
   assert.equal(s.state, "connected", `${s.text}\n${app.output()}`);
-  assert.match(s.text, /^Server connected · server v0\.0\.1 · media core v0\.0\.1$/);
+  assert.match(s.text, /^Server connected, server v0\.0\.1, media core v0\.0\.1$/);
   assert.match(app.page.url(), /^file:\/\/.*Uncut\.app\/Contents\/Resources\/app\.asar\/dist\/renderer\/index\.html$/);
   assert.deepEqual(app.errors, []);
   await done(app);

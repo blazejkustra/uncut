@@ -138,7 +138,7 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   await page.click("[data-testid=wizard-continue]");
   await waitFor(page, "[data-testid=check-argent]");
   step(`Argent (shell-only stub): ${await row(page, "argent")}`);
-  assert.match(await row(page, "argent"), /^Ready, v9\.9\.9-shellenv /, "the stub that only the login shell's PATH can find");
+  assert.match(await row(page, "argent"), /^Ready, Version 9\.9\.9-shellenv\. /, "the stub that only the login shell's PATH can find");
   const ffmpeg = await page.$eval("[data-testid=check-ffmpeg]", (el) => (el as HTMLElement).dataset.status);
   step(`ffmpeg: ${await row(page, "ffmpeg")}`);
   const hasFfmpeg = ffmpeg === "ready";

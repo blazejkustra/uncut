@@ -25,6 +25,9 @@ export interface ServerConfigShape {
   readonly musicDir: string;
   // Where app state lives (recents.json). The desktop passes Electron's userData path.
   readonly dataDir: string;
+  // Plugin folders, searched in this order (D97): UNCUT_PLUGINS_DIR (tests, development), the
+  // user's <dataDir>/plugins, then the plugins shipped with the app (Resources/plugins; dev: plugins/).
+  readonly pluginDirs: ReadonlyArray<{ readonly source: "user" | "bundled"; readonly dir: string }>;
   // ANTHROPIC_API_KEY was in our environment at startup (D41: it is removed and never passed on).
   readonly apiKeyInEnv: boolean;
   // The login shell's environment, once resolved (undefined when UNCUT_SHELL_ENV=off).
@@ -61,7 +64,7 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
   return { bootstrapToken, exitWithStdin: argv.includes("--exit-with-stdin") };
 };
 
-// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_MUSIC_DIR / UNCUT_DATA_DIR
+// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_MUSIC_DIR / UNCUT_DATA_DIR / UNCUT_BUNDLED_PLUGINS_DIR
 // and the token over the bootstrap fd. Dev fallbacks assume the bundle in apps/server/dist.
 // Run by hand, the server picks a free port and a fresh token (or takes UNCUT_TOKEN) and
 // prints the port, plus any token it generated, on its ready line.
@@ -84,6 +87,11 @@ export const readConfig = (
     modulesDir: env.UNCUT_MODULES_DIR || fileURLToPath(new URL("../../../spec/modules/builtin", import.meta.url)),
     musicDir: env.UNCUT_MUSIC_DIR || fileURLToPath(new URL("../../../assets/music", import.meta.url)),
     dataDir: env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"),
+    pluginDirs: [
+      ...(env.UNCUT_PLUGINS_DIR ? [{ source: "user" as const, dir: env.UNCUT_PLUGINS_DIR }] : []),
+      { source: "user" as const, dir: join(env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut"), "plugins") },
+      { source: "bundled" as const, dir: env.UNCUT_BUNDLED_PLUGINS_DIR || fileURLToPath(new URL("../../../plugins", import.meta.url)) },
+    ],
     testFault: env.UNCUT_TEST_FAULT || undefined,
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
     apiKeyInEnv: shell.apiKeyInEnv,

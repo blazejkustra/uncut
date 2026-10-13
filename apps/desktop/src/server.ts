@@ -37,6 +37,8 @@ export function startServer(options: {
   modulesDir: string;
   // The bundled music library (D91).
   musicDir: string;
+  // Plugins shipped with the app (D97).
+  bundledPluginsDir: string;
   dataDir: string;
   // How the server starts the export rasteriser (this binary with --uncut-render): the entry to
   // run, or undefined when packaged (the binary always runs its bundled main).
@@ -51,6 +53,7 @@ export function startServer(options: {
     UNCUT_MEDIA_BIN: options.mediaBin,
     UNCUT_MODULES_DIR: options.modulesDir,
     UNCUT_MUSIC_DIR: options.musicDir,
+    UNCUT_BUNDLED_PLUGINS_DIR: options.bundledPluginsDir,
     UNCUT_DATA_DIR: options.dataDir,
     UNCUT_RENDER_BIN: process.execPath,
     UNCUT_RENDER_ENTRY: options.renderEntry ?? "",

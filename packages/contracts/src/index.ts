@@ -44,6 +44,9 @@ export const RPC_METHODS = {
   transcriptionDownload: "transcription.download",
   transcriptionCancelDownload: "transcription.cancelDownload",
   transcriptionSelectModel: "transcription.selectModel",
+  pluginsList: "plugins.list",
+  pluginsApprove: "plugins.approve",
+  pluginsRevoke: "plugins.revoke",
 } as const;
 
 // ---- server ----
@@ -221,6 +224,35 @@ export const SetupCheck = Schema.Struct({
   fix: Schema.optional(Schema.Struct({ text: Schema.String, command: Schema.optional(Schema.String) })),
 });
 export type SetupCheck = typeof SetupCheck.Type;
+
+// ---- plugins (D97) ----
+
+/**
+ * A plugin folder Uncut found (uncut.module.json). status: "ready" (allowed, or shipped with the
+ * app), "needs-approval" (its tools are listed to the agent but refused until the user allows
+ * it), "broken" (skipped: problem says why; id/name may be missing).
+ */
+export const PluginInfo = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  version: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  source: Schema.Literals(["user", "bundled"]),
+  dir: Schema.String,
+  status: Schema.Literals(["ready", "needs-approval", "broken"]),
+  capabilities: Schema.Array(Schema.String),
+  // The capabilities in words, and what running it means (one sentence each).
+  asks: Schema.Array(Schema.String),
+  tools: Schema.Array(Schema.String),
+  warnings: Schema.Array(Schema.String),
+  problem: Schema.optional(Schema.String),
+});
+export type PluginInfo = typeof PluginInfo.Type;
+
+export class PluginError extends Schema.TaggedError<PluginError>()("PluginError", {
+  reason: Schema.Literals(["unknown-plugin", "broken", "bundled", "changed", "io"]),
+  message: Schema.String,
+}) {}
 
 // ---- agent (D40, D48) ----
 
@@ -594,7 +626,16 @@ const TranscriptionCancelDownloadRpc = Rpc.make(RPC_METHODS.transcriptionCancelD
 // Chooses the model transcripts use (saved in settings).
 const TranscriptionSelectModelRpc = Rpc.make(RPC_METHODS.transcriptionSelectModel, { payload: Schema.Struct({ model: Schema.String }), error: TranscriptionError });
 
+// The plugins found (scans the folders again), and the user allowing one / taking that back (D97).
+const PluginsListRpc = Rpc.make(RPC_METHODS.pluginsList, { payload: Empty, success: Schema.Array(PluginInfo) });
+// The approval names what the user saw (folder and capabilities): a plugin that changed since is refused.
+const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, { payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String) }), success: Schema.Array(PluginInfo), error: PluginError });
+const PluginsRevokeRpc = Rpc.make(RPC_METHODS.pluginsRevoke, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
+
 export const WsRpcGroup = RpcGroup.make(
+  PluginsListRpc,
+  PluginsApproveRpc,
+  PluginsRevokeRpc,
   HistorySubscribeRpc,
   HistoryPreviewRpc,
   HistoryJumpRpc,

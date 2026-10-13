@@ -40,6 +40,7 @@ import { LIMITER_MARGIN_DB, makeupCompensationDb, masterLimiter, trackStages, ty
 import { duckCurvesOf } from "./ducking.ts";
 
 import { layoutOf, type Item, type ProjectModel } from "./project.ts";
+import { bridge } from "./bridge.ts";
 import { mediaUrl } from "./store.ts";
 
 /** How long a gain change takes (one display frame): smooth, and short enough to feel immediate. */
@@ -283,7 +284,9 @@ export class Mix {
   private graph() {
     if (!this.ctx) {
       try {
-        const ctx = new AudioContext({ latencyHint: "interactive" });
+        // Background test runs play to no device: no sound, and no output latency between the
+        // clock and the captured mix (Bluetooth headphones as the default output add ~0.25 s).
+        const ctx = new AudioContext({ latencyHint: "interactive", ...(bridge.silentAudio ? { sinkId: { type: "none" } } : {}) } as AudioContextOptions);
         const master = ctx.createGain();
         master.gain.value = this.masterTarget;
         // After the master volume: the limiter (D86, wired by mixer()), then `post`, what is heard and metered.
@@ -785,7 +788,7 @@ export class Mix {
         sink.disconnect();
         node.onaudioprocess = null;
         if (this.tap === tap) this.tap = undefined;
-        return { sampleRate: g.ctx.sampleRate, blocks: tap.blocks, marks: this.marks };
+        return { sampleRate: g.ctx.sampleRate, blocks: tap.blocks, marks: this.marks, latency: (g.ctx.outputLatency || 0) + (g.ctx.baseLatency || 0), sink: sinkOf(g.ctx) };
       },
     };
   }
@@ -805,7 +808,16 @@ export interface CaptureResult {
   readonly sampleRate: number;
   readonly blocks: ReadonlyArray<{ readonly t: number; readonly left: Float32Array; readonly right: Float32Array }>;
   readonly marks: ReadonlyArray<{ readonly t: number; readonly frame: number }>;
+  /** The context's output + base latency (s) and its sink ("none" in background test runs). */
+  readonly latency: number;
+  readonly sink: string;
 }
+
+/** The context's output device: "default", a device id, or "none" (AudioContext.sinkId; not in TS's DOM types yet). */
+const sinkOf = (ctx: AudioContext) => {
+  const id = (ctx as AudioContext & { sinkId?: string | { type: string } }).sinkId;
+  return id === undefined ? "default" : typeof id === "string" ? id || "default" : id.type;
+};
 
 const buffers = new WeakMap<AnalyserNode, Float32Array<ArrayBuffer>>();
 /** RMS and peak of an analyser's window. */
@@ -902,6 +914,6 @@ const b64 = (a: Float32Array) => {
       right.set(b.right, o);
       o += b.left.length;
     }
-    return { sampleRate: r.sampleRate, t0: r.blocks[0]!.t, left: b64(left), right: b64(right), marks: r.marks };
+    return { sampleRate: r.sampleRate, t0: r.blocks[0]!.t, left: b64(left), right: b64(right), marks: r.marks, latency: r.latency, sink: r.sink };
   },
 };

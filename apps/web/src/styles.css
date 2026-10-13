@@ -260,6 +260,8 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .wiz-note.warn { background: rgb(251 191 36 / 8%); border: 1px solid rgb(251 191 36 / 25%); color: #f6d77b; }
 .wiz-note.error { background: rgb(248 113 113 / 8%); border: 1px solid rgb(248 113 113 / 30%); color: var(--error); }
 .wiz-sub { overflow: hidden; text-overflow: ellipsis; }
+.wiz-plugins { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
+.wiz-section { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .modal-layer.standalone { background: var(--bg); }
 .modal-layer.standalone::before { content: ""; position: fixed; inset: 0 0 auto; height: 40px; -webkit-app-region: drag; }
 .wiz-num.visited { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 25%); color: var(--fg); }
