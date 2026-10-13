@@ -67,6 +67,7 @@ export const RPC_METHODS = {
   keysList: "keys.list",
   keysSet: "keys.set",
   keysRemove: "keys.remove",
+  filesList: "files.list",
 } as const;
 
 // ---- server ----
@@ -78,8 +79,45 @@ export const ServerHello = Schema.Struct({
   mediaCore: Schema.Struct({ version: Schema.String }),
   /** The secret GRAPHIC_PATH takes instead of the server token (D78): a graphic's iframe URL must not carry the token every other route and the WebSocket accept. */
   graphicToken: Schema.optional(Schema.String),
+  /** The server machine's home folder and where New project suggests saving there (D107): a remote environment's paths are its own, not this Mac's. */
+  home: Schema.optional(Schema.String),
+  defaultParentDir: Schema.optional(Schema.String),
+  /** The server machine's name, for the environment's connection line. */
+  hostname: Schema.optional(Schema.String),
 });
 export type ServerHello = typeof ServerHello.Type;
+
+// ---- remote environments (Phase 9) ----
+
+/** HTTP routes a remote environment adds (D106-D109). Each takes the server token (query or Authorization: Bearer). */
+// GET: { ok, version, hostname }, so Settings can test a connection before saving it.
+export const PING_PATH = "/api/ping";
+// POST ?name=<file name>: the body is a file, saved into the open project's media/uploads/ (D108); answers { path }.
+export const UPLOAD_PATH = "/api/upload";
+// GET /api/export/<job id>: a finished export's video, with byte ranges (D109).
+export const EXPORT_FILE_PATH = "/api/export";
+
+/** One entry of a folder listing on the server (files.list, D107). */
+export const FileEntry = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literals(["dir", "file"]),
+  /** A folder with a project.json in it (a .uncut project). */
+  project: Schema.optional(Schema.Boolean),
+  size: Schema.optional(Schema.Number),
+});
+export type FileEntry = typeof FileEntry.Type;
+export const FileListing = Schema.Struct({
+  dir: Schema.String,
+  /** The folder above, absent at /. */
+  parent: Schema.optional(Schema.String),
+  home: Schema.String,
+  entries: Schema.Array(FileEntry),
+});
+export type FileListing = typeof FileListing.Type;
+export class FilesError extends Schema.TaggedError<FilesError>()("FilesError", {
+  reason: Schema.Literals(["invalid-path", "missing", "not-a-folder", "forbidden", "io"]),
+  message: Schema.String,
+}) {}
 
 export class MediaCoreError extends Schema.TaggedError<MediaCoreError>()("MediaCoreError", {
   message: Schema.String,
@@ -887,7 +925,11 @@ const KeysListRpc = Rpc.make(RPC_METHODS.keysList, { payload: Empty, success: Sc
 const KeysSetRpc = Rpc.make(RPC_METHODS.keysSet, { payload: Schema.Struct({ provider: KeyProvider, key: Schema.String }), success: Schema.Array(KeyInfo), error: GenerateError });
 const KeysRemoveRpc = Rpc.make(RPC_METHODS.keysRemove, { payload: Schema.Struct({ provider: KeyProvider }), success: Schema.Array(KeyInfo), error: GenerateError });
 
+// The server's own disk, for a remote environment's pickers (D107): one folder's entries (hidden ones left out).
+const FilesListRpc = Rpc.make(RPC_METHODS.filesList, { payload: Schema.Struct({ dir: Schema.optional(Schema.String) }), success: FileListing, error: FilesError });
+
 export const WsRpcGroup = RpcGroup.make(
+  FilesListRpc,
   GenerateListRpc,
   GenerateStartRpc,
   GenerateJobsRpc,
@@ -953,4 +995,6 @@ export const WsRpcGroup = RpcGroup.make(
 export interface ServerConnection {
   readonly url: string; // ws://127.0.0.1:<port>/ws
   readonly token: string;
+  /** Which environment this is (Phase 9); absent means Local. A remote one is reached through the desktop's loopback relay (D106). */
+  readonly environment?: { readonly id: string; readonly name: string; readonly kind: "local" | "remote"; readonly url?: string };
 }

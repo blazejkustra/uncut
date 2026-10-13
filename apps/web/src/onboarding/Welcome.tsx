@@ -3,10 +3,12 @@ import { ChevronRight, Clapperboard, FolderOpen, Plus, Settings2 } from "lucide-
 import { shortPath } from "../state/format.ts";
 import { NewProject } from "./NewProject.tsx";
 import { StatusLine } from "../panels/StatusLine.tsx";
+import { EnvironmentChip } from "./Environments.tsx";
 import { actions, useApp } from "../state/store.ts";
 
 export function Welcome() {
-  const { recents, appInfo, welcomeError, newProjectOpen, connection } = useApp();
+  const { recents, appInfo, welcomeError, newProjectOpen, connection, environment } = useApp();
+  const remote = environment.kind === "remote";
   const offline = connection !== "connected";
   return (
     <div className="welcome" data-testid="welcome">
@@ -14,6 +16,8 @@ export function Welcome() {
       <div className="modal wiz welcome-card">
         <div className="wiz-header row">
           <div className="wiz-brand">Uncut</div>
+          <div className="grow" />
+          <EnvironmentChip />
           <button className="link-btn" data-testid="open-setup" onClick={actions.openSetup} disabled={offline} title="Check agents, Argent and ffmpeg (⌘,)">
             <Settings2 />
             Setup
@@ -25,7 +29,9 @@ export function Welcome() {
           ) : (
             <>
               <h1>Start a video</h1>
-              <p className="wiz-lead">A project is a folder on this Mac. Your footage stays where it is.</p>
+              <p className="wiz-lead" data-testid="welcome-lead">
+                {remote ? `Projects here live on ${environment.name}: its folders, its footage, its exports.` : "A project is a folder on this Mac. Your footage stays where it is."}
+              </p>
               <div className="welcome-actions">
                 <button className="wiz-card" data-testid="new-project" onClick={actions.showNewProject} disabled={offline}>
                   <Plus />

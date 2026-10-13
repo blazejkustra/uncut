@@ -4,7 +4,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { sep } from "node:path";
 
-import { THUMB_PATH, TOKEN_QUERY_PARAM } from "@uncut/contracts";
+import { THUMB_PATH } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -13,7 +13,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { ServerConfig } from "../app/config.ts";
 import { MediaLibrary, thumbDir } from "./media.ts";
 import { Projects } from "../project/projects.ts";
-import { tokensMatch } from "../app/ws.ts";
+import { presentedToken, tokensMatch } from "../app/auth.ts";
 
 const decode = (s: string) => {
   try {
@@ -37,7 +37,7 @@ export const layer = Layer.unwrap(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = HttpServerRequest.toURL(request);
-        if (Option.isNone(url) || !tokensMatch(url.value.searchParams.get(TOKEN_QUERY_PARAM), config.token)) {
+        if (Option.isNone(url) || !tokensMatch(presentedToken(request.headers, url.value), config.token)) {
           return HttpServerResponse.text("Unauthorized", { status: 401 });
         }
         const id = decode(url.value.pathname.slice(THUMB_PATH.length + 1));

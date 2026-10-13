@@ -483,7 +483,10 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
-        return { jobId: yield* queueJob(open, paths) };
+        // Files uploaded from another Mac (D108) live in the project's media/uploads/: stored
+        // relative to it, so the project folder carries them wherever it goes.
+        const uploads = join(open.dir, "media", "uploads") + "/";
+        return { jobId: yield* queueJob(open, paths, paths.every((p) => p.startsWith(uploads)) ? { relativePaths: true } : {}) };
       });
 
     const importForAgent = ({ openId, dir, turnId, paths, names }: AgentImportInput) =>

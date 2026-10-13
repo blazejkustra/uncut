@@ -15,7 +15,7 @@ import { bridge } from "../state/bridge.ts";
 import { timecode } from "../state/format.ts";
 import { TEXT_PRESETS, type TextPreset } from "../state/project.ts";
 import { BACKGROUNDS } from "../preview/text.ts";
-import { actions, activeAnalyses, activeJobs, mediaUrl, musicUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
+import { actions, activeAnalyses, activeJobs, isRemote, mediaUrl, musicUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
 import { COMPONENT_DRAG_TYPE, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../timeline/Timeline.tsx";
 import { secondsLabel } from "../timeline/edit.ts";
@@ -552,9 +552,9 @@ function TextLibrary({ project }: { project: Project }) {
 
 function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => void }) {
   const app = useApp();
-  const { importReport, connection } = app;
+  const { importReport, connection, uploading } = app;
   const running = activeJobs(app);
-  const importing = running.length > 0;
+  const importing = running.length > 0 || uploading !== undefined;
   const [dragging, setDragging] = useState(false);
   const online = connection === "connected";
   // Generated media (D99) are listed under Generated, with their prompts.
@@ -565,6 +565,11 @@ function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => vo
     setDragging(false);
     // Only files from disk have a path; anything else (a dragged link, text) is ignored. A drop
     // while an import runs is queued behind it on the server.
+    // On a remote environment this Mac's paths mean nothing to the server: the files go up instead (D108).
+    if (isRemote()) {
+      if (online && e.dataTransfer.files.length) void actions.uploadAndImport([...e.dataTransfer.files]);
+      return;
+    }
     const paths = [...e.dataTransfer.files].map((f) => bridge.pathForFile(f)).filter((p) => p.startsWith("/"));
     if (paths.length && online) void actions.importMedia(paths);
   };
@@ -589,6 +594,15 @@ function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => vo
           {importing ? <RefreshCw className="spin" /> : <Plus />}
         </button>
       </div>
+      {uploading && (
+        <div className="import-progress" data-testid="upload-progress">
+          <RefreshCw className="spin" />
+          <span>
+            Uploading {uploading.name}
+            {uploading.total > 1 ? ` (${uploading.done + 1} of ${uploading.total})` : ""}…
+          </span>
+        </div>
+      )}
       {running.map((job) => (
         <div key={job.id} className="import-progress" data-testid="import-progress">
           <RefreshCw className="spin" />

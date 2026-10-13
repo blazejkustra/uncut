@@ -899,3 +899,37 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .export-sub-row .muted { font-size: 12px; }
 .export-sub-row select { margin-left: auto; height: 26px; font-size: 12px; }
 .export-sub-row .seg + .muted { margin-left: auto; }
+
+/* Phase 9: environments (D106) and the remote file browser (D107). */
+.env-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; -webkit-app-region: no-drag; }
+.env-chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.env-chip svg.lucide { width: 13px; height: 13px; flex: none; }
+.env-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
+.env-chip[data-state="connected"] .dot { background: var(--ok); }
+.env-chip[data-state="error"] .dot { background: var(--error); }
+.env-chip[data-kind="remote"] { color: var(--fg); }
+.wiz-header.row .grow { flex: 1; }
+.wiz-header.row { gap: 10px; }
+.wiz-brand.small { font-size: 17px; }
+.env-actions { justify-content: flex-end; margin-top: 12px; }
+.env-add { margin-top: 14px; }
+.env-add .wiz-field > span:first-child { width: 56px; }
+.env-rename { display: flex; gap: 6px; align-items: center; }
+.env-rename input { flex: 1; min-width: 0; }
+.env-ports { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.wiz-note.ok { background: rgb(74 222 128 / 8%); border: 1px solid rgb(74 222 128 / 25%); color: var(--ok); }
+.wiz-sub.ok { color: var(--ok); }
+.wiz-sub.error { color: var(--error); }
+.remote-browser { width: 680px; }
+.remote-path { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.remote-path .grow { flex: 1; min-width: 0; }
+.remote-list { display: flex; flex-direction: column; height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 4px; }
+.remote-list[data-loading="true"] { opacity: 0.6; }
+.remote-entry { display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 7px; text-align: left; font-size: 13px; flex: none; }
+.remote-entry:hover { background: var(--raised); }
+.remote-entry.active { background: var(--select-soft); color: var(--fg); }
+.remote-entry svg.lucide { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.remote-entry[data-project="true"] svg.lucide { color: var(--select); }
+.remote-entry .grow { flex: 1; min-width: 0; }
+.remote-empty { padding: 12px; }
+.wiz-sub.warn { color: var(--warn); }
