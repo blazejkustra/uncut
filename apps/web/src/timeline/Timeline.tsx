@@ -1,0 +1,1053 @@
+// The timeline: a ruler with the playhead (click or drag to scrub), every track in CapCut order
+// (D28: visual tracks above Main, audio below), items at their resolved starts and lengths, and
+// zoom. Media tiles can be dropped on it to add them (same as the tile's + button).
+//
+// Editing (chunk 3, D52): click selects; dragging an item moves it (free tracks: in time and to
+// another compatible track, landing on the nearest free spot; main: reorders), dragging an edge
+// trims it, both snapping to the playhead, item edges, 0 and cached beats (D70: drawn as ticks on
+// items with sound; the playhead snaps to them too) (⌘ held: no snapping). The drag is
+// previewed locally from the planned ops (edit.ts) and sent as one edit on release. Split,
+// delete and the track buttons (hide, mute, lock) are edits too.
+//
+// Transitions (D73): each cut between two main-track clips can be clicked to select it; a
+// transition on it shows as a marker straddling the cut (click selects it for the Inspector,
+// dragging its edges changes its length, centred on the cut). A transition tile dragged from the
+// Transitions panel highlights the cuts it fits (and why the others don't) and drops on the
+// nearest one.
+import { AudioLines, Eye, EyeOff, Film, Layers, Lock, LockOpen, Magnet, Maximize2, Scissors, SlidersHorizontal, Trash2, Type, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { cutsOf, transitionName } from "@uncut/core/transitions";
+import { captionCards, captionExtent, type CaptionCard } from "@uncut/core/captions";
+
+import { getBeats, useBeats } from "../audio/beats.ts";
+import { useDuckCurves } from "../audio/ducking.ts";
+import { duckDbAt, duckKeysIn, type DuckKey } from "@uncut/core/ducking";
+import { draftOf, findItem, fitsTrack, lockOf, planMove, planSetTransition, planTrim, secondsLabel, SNAP_PX, snapPlayhead, snapTargets, trackFlag, trimSnapTargets, visibleBeats, type Plan } from "./edit.ts";
+import { frameTimecode, rulerLabel } from "../state/format.ts";
+import { getPlayback, playback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
+import { SOLID, solidBackground } from "@uncut/core/render";
+import { displayTracks, itemLabel, layoutOf, TEXT_PRESETS, type Item, type ProjectModel, type Track } from "../state/project.ts";
+import { NumberField, Slider } from "../panels/ItemEditors.tsx";
+import { dbLabel, envelopeDbAt, hasSound, keyIndexAt, levelY, planAddGainKey, planFade, planMoveGainKey, planRemoveGainKey, planTrackGain, soundTrack, yLevel } from "../audio/sound.ts";
+import { actions, getState, projectOf, thumbUrl, useApp } from "../state/store.ts";
+import { ItemWaveform } from "./Waveform.tsx";
+import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
+import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
+
+/** Timeline | Transcript | Mixer (D32, D83): the bottom panel's modes. */
+export function BottomTabs() {
+  const bottom = usePlayback((s) => s.bottom);
+  return (
+    <div className="seg" data-testid="bottom-tabs">
+      <button className={bottom === "timeline" ? "active" : ""} data-testid="bottom-timeline" onClick={() => playback.setBottom("timeline")}>
+        Timeline
+      </button>
+      <button className={bottom === "transcript" ? "active" : ""} data-testid="bottom-transcript" title="What's said on the main track: cut by deleting words" onClick={() => playback.setBottom("transcript")}>
+        Transcript
+      </button>
+      <button className={bottom === "mixer" ? "active" : ""} data-testid="bottom-mixer" title="Volume, pan, effects, ducking, mute and solo per track; the master volume, limiter and loudness target; live meters" onClick={() => playback.setBottom("mixer")}>
+        Mixer
+      </button>
+    </div>
+  );
+}
+
+/** The drag type a media tile carries when it's dragged onto the timeline. */
+export const MEDIA_DRAG_TYPE = "application/x-uncut-media";
+/** The drag type a transition tile carries (its module id); the data can't be read while dragging over, so the module is kept here too. */
+export const TRANSITION_DRAG_TYPE = "application/x-uncut-transition";
+let draggedTransition: string | undefined;
+const draggedListeners = new Set<() => void>();
+export function setDraggedTransition(module: string | undefined) {
+  draggedTransition = module;
+  for (const l of draggedListeners) l();
+}
+const useDraggedTransition = () =>
+  useSyncExternalStore(
+    (l) => (draggedListeners.add(l), () => void draggedListeners.delete(l)),
+    () => draggedTransition,
+  );
+/** Within this many pixels of a cut, a dropped transition goes on it. */
+const CUT_DROP_PX = 40;
+
+const HEAD_WIDTH = 184;
+// "Fit" shows the whole project, but never less than this, so an empty or short project has room.
+const MIN_FIT_SECONDS = 10;
+const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800];
+// A press has to move this far before it becomes a drag (a click only selects).
+const DRAG_PX = 3;
+
+/** What the lanes draw while an item is dragged: the planned result, before it is sent. */
+interface DragView {
+  readonly itemId: string;
+  readonly mode: "move" | "start" | "end" | "fade" | "transition";
+  /** The project with the planned ops applied (or as it is, when they would be refused). */
+  readonly view: ProjectModel;
+  /** Drawn at this start and length instead of where the view puts it (a main clip's left trim). */
+  readonly ghost?: { readonly start: number; readonly duration: number };
+  /** A move: the item under the pointer, on this track. Its planned spot shows as the landing. */
+  readonly float?: { readonly track: string; readonly start: number };
+  readonly snapAt?: number;
+  /** The frame the tip points at, and what it says (the length while trimming, the start or slot while moving). */
+  readonly tipAt: number;
+  readonly tip: string;
+  /** Why it can't be dropped here (the server would refuse it); releasing sends nothing. */
+  readonly refused?: string;
+}
+
+export function Timeline({ project }: { project: ProjectModel }) {
+  const { thumbIds, connection, snapshot } = useApp();
+  const online = connection === "connected";
+  const zoom = usePlayback((s) => s.zoom);
+  const selected = usePlayback((s) => s.selected);
+  const selectedCut = usePlayback((s) => s.cut);
+  const transitionDragged = useDraggedTransition();
+  // The cut a dragged transition tile is over (the id of the clip after it).
+  const [dropCut, setDropCut] = useState<string | undefined>();
+  useEffect(() => {
+    if (!transitionDragged) setDropCut(undefined);
+  }, [transitionDragged]);
+  const snapping = usePlayback((s) => s.snapping);
+  const beatMap = useBeats((s) => s.map);
+  const [drag, setDrag] = useState<DragView | undefined>();
+  // The beat the playhead stuck to while scrubbing (for the snap line).
+  const [scrubSnap, setScrubSnap] = useState<number | undefined>();
+  // The running drag's cancel: a new press or unmounting (another project) ends it.
+  const stopDrag = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => stopDrag.current?.(), []);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const lanesRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(800);
+  const [dropping, setDropping] = useState(false);
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const update = () => setVisible(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const fps = project.canvas.fps;
+  const { starts, end } = layoutOf(project);
+  const lanesVisible = Math.max(100, visible - HEAD_WIDTH);
+  const fitFrames = Math.max(end, MIN_FIT_SECONDS * fps);
+  // Pixels per frame. Fit leaves a little room after the last item.
+  const ppf = ((lanesVisible - 40) / fitFrames) * zoom;
+  const width = Math.max(lanesVisible, end * ppf + 200);
+  const step = RULER_STEPS.find((s) => s * fps * ppf >= 64) ?? RULER_STEPS.at(-1)!;
+  const ticks: Array<number> = [];
+  for (let s = 0; s * fps * ppf <= width; s += step) ticks.push(s);
+  const tracks = displayTracks(project);
+  const empty = end === 0;
+  // While dragging, the lanes draw the planned result; data-start/data-duration stay the server's.
+  const view = drag?.view ?? project;
+  // Ducked tracks' curves (D85), drawn on their items.
+  const ducks = useDuckCurves(view);
+  const viewStarts = layoutOf(view).starts;
+  // The main track's cuts as drawn (a drag's planned result included).
+  const cuts = cutsOf(view.tracks.find((t) => t.role === "main"));
+
+  /** The track of the lane under a y position, if an item of this kind may go there. */
+  const laneAt = (clientY: number, item: Item): string | undefined => {
+    for (const lane of lanesRef.current?.querySelectorAll<HTMLElement>("[data-testid=lane]") ?? []) {
+      const r = lane.getBoundingClientRect();
+      if (clientY < r.top || clientY >= r.bottom) continue;
+      const track = project.tracks.find((t) => t.id === lane.dataset.track);
+      return track && fitsTrack(item, track) && !track.locked ? track.id : undefined;
+    }
+    return undefined;
+  };
+
+  /**
+   * Press on an item: select it. Moving past DRAG_PX starts a move (or a trim, from an edge
+   * handle); each pointer move re-plans against the project as it was at the press and redraws
+   * (once per animation frame); the release sends the plan as one edit, based on that revision.
+   */
+  const onItemDown = (e: React.PointerEvent, item: Item, track: Track) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    playback.select(item.id);
+    // Captions (D82) follow the speech on the main track: selected here, edited in the Inspector.
+    if (item.type === "captions") return;
+    const found = findItem(project, item.id);
+    const press = found && { ...found, base: project };
+    const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
+    if (!press || lockOf(press) || !online) return;
+    e.preventDefault();
+    const edge = (e.target as HTMLElement).dataset.edge as "start" | "end" | undefined;
+    // A fade handle (top corners of an item with sound): drag sets the fade's length.
+    const fade = (e.target as HTMLElement).dataset.fade as "in" | "out" | undefined;
+    const x0 = e.clientX;
+    const pressEdge = edge === "end" ? press.start + press.item.duration : press.start;
+    let active = false;
+    let plan: Plan | undefined;
+    let raf = 0;
+    let last: PointerEvent | undefined;
+    /** Plan from the pointer against `base`, and draw it (or why it can't be dropped there). */
+    const compute = (ev: PointerEvent, base: ProjectModel) => {
+      plan = undefined;
+      const placed = findItem(base, item.id);
+      if (!placed) return;
+      const delta = (ev.clientX - x0) / ppf;
+      const snapOn = getPlayback().snapping && !ev.metaKey;
+      const threshold = SNAP_PX / ppf;
+      const beats = { beats: getBeats().map, ppf };
+      if (fade) {
+        const x = (ev.clientX - (lanesRef.current?.getBoundingClientRect().left ?? 0)) / ppf;
+        const frames = fade === "in" ? x - placed.start : placed.start + placed.item.duration - x;
+        const p = planFade(base, item.id, fade, frames);
+        if ("problem" in p) return;
+        const draft = draftOf(base, p.ops);
+        if (!("problem" in draft)) plan = p;
+        const shownItem = ("project" in draft ? findItem(draft.project, item.id)?.item : undefined) ?? placed.item;
+        const length = (fade === "in" ? shownItem.fadeIn : shownItem.fadeOut) ?? 0;
+        setDrag({
+          itemId: item.id,
+          mode: "fade",
+          view: "problem" in draft ? base : draft.project,
+          ...("problem" in draft ? { refused: draft.problem } : {}),
+          tipAt: fade === "in" ? placed.start + length : placed.start + placed.item.duration - length,
+          tip: "problem" in draft ? draft.problem : `Fade ${fade} ${(length / fps).toFixed(1)}s`,
+        });
+        return;
+      }
+      if (edge) {
+        // The edge goes where the pointer is, also when re-planned against a newer project.
+        const own = edge === "end" ? placed.start + placed.item.duration : placed.start;
+        const snap = snapOn ? { targets: trimSnapTargets(base, getPlayback().frame, item.id, edge, beats), threshold } : undefined;
+        const p = planTrim(base, item.id, edge, pressEdge + delta - own, snap);
+        if ("problem" in p) return;
+        const draft = draftOf(base, p.ops);
+        if (!("problem" in draft)) plan = p;
+        // A main clip trimmed from the left keeps its start (the rest ripples on release); while
+        // dragging, its left edge follows the pointer so the user sees what they cut.
+        const mainLeft = edge === "start" && placed.track.role === "main";
+        const shown = mainLeft ? { start: placed.start + placed.item.duration - p.duration, duration: p.duration } : undefined;
+        setDrag({
+          itemId: item.id,
+          mode: edge,
+          view: mainLeft || "problem" in draft ? base : draft.project,
+          ...(shown ? { ghost: shown } : {}),
+          ...(p.snapAt !== undefined ? { snapAt: p.snapAt } : {}),
+          ...("problem" in draft ? { refused: draft.problem } : {}),
+          tipAt: edge === "start" ? (shown?.start ?? p.start) : p.start + p.duration,
+          tip: "problem" in draft ? draft.problem : `${(p.duration / fps).toFixed(2)}s`,
+        });
+        return;
+      }
+      const desired = press.start + delta;
+      const snap = snapOn ? { targets: snapTargets(base, getPlayback().frame, item.id, beats), threshold } : undefined;
+      const p = planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
+      if ("problem" in p) return;
+      const draft = draftOf(base, p.ops);
+      if (!("problem" in draft)) plan = p;
+      setDrag({
+        itemId: item.id,
+        mode: "move",
+        view: "problem" in draft ? base : draft.project,
+        float: { track: p.track, start: Math.max(0, desired) },
+        ...(p.snapAt !== undefined ? { snapAt: p.snapAt } : {}),
+        ...("problem" in draft ? { refused: draft.problem } : {}),
+        tipAt: Math.max(0, desired),
+        tip: "problem" in draft ? draft.problem : p.start !== undefined ? frameTimecode(p.start, fps) : `Position ${p.index! + 1}`,
+      });
+    };
+    const move = (ev: PointerEvent) => {
+      if (!active && Math.abs(ev.clientX - x0) < DRAG_PX && Math.abs(ev.clientY - e.clientY) < DRAG_PX) return;
+      if (!active) playback.pause();
+      active = true;
+      last = ev;
+      if (!raf) {
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          if (last) compute(last, press.base);
+        });
+      }
+    };
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+      if (stopDrag.current === cancel) stopDrag.current = undefined;
+    };
+    const cancel = () => {
+      stop();
+      setDrag(undefined);
+    };
+    const up = (ev: PointerEvent) => {
+      stop();
+      if (!active) return;
+      // Another project opened meanwhile: the drag belonged to the old one.
+      const now = getState().snapshot;
+      if (!now || now.dir !== origin.dir) return setDrag(undefined);
+      // The project changed during the drag (the agent edited it): plan the same gesture against
+      // what is there now, so an index or a clamp isn't computed on a stale timeline.
+      const fresh = now.revision !== origin.revision;
+      compute(ev, fresh ? projectOf(now) : press.base);
+      const sent = plan;
+      if (!sent?.ops.length) return setDrag(undefined);
+      // Keep drawing the planned result until the server has answered, so nothing jumps back.
+      void actions.timelineEdit(sent, { baseRevision: fresh ? now.revision : origin.revision, dir: now.dir }).finally(() => setDrag(undefined));
+    };
+    stopDrag.current?.();
+    stopDrag.current = cancel;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+  };
+
+  /**
+   * Press on a transition marker: select its cut. From an edge, dragging changes its length,
+   * centred on the cut (the edge follows the pointer, so the length is twice its distance from
+   * the cut), clamped to what fits there; one edit on release ("Changed transition to 0.8 s").
+   */
+  const onTransitionDown = (e: React.PointerEvent, itemId: string, cutFrame: number) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    playback.selectCut(itemId);
+    const edge = (e.target as HTMLElement).dataset.trEdge;
+    const base = project;
+    const placed = findItem(base, itemId);
+    const tr = placed?.item.transitionIn;
+    const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
+    if (!edge || !placed || !tr || lockOf(placed) || !online) return;
+    e.preventDefault();
+    const x0 = e.clientX;
+    let active = false;
+    let plan: Plan | undefined;
+    const compute = (ev: PointerEvent, against: ProjectModel) => {
+      plan = undefined;
+      const now = findItem(against, itemId)?.item.transitionIn;
+      if (!now) return;
+      const wanted = Math.max(1, Math.round(2 * Math.abs(frameAt(ev.clientX) - cutFrame)));
+      const p = planSetTransition(against, itemId, { module: now.module, duration: wanted });
+      if ("problem" in p) return setDrag({ itemId: `tr:${itemId}`, mode: "transition", view: against, refused: p.problem, tipAt: cutFrame, tip: p.problem });
+      const draft = draftOf(against, p.ops);
+      if (!("problem" in draft)) plan = p;
+      const shown = ("project" in draft ? findItem(draft.project, itemId)?.item.transitionIn?.duration : undefined) ?? now.duration;
+      setDrag({
+        itemId: `tr:${itemId}`,
+        mode: "transition",
+        view: "problem" in draft ? against : draft.project,
+        ...("problem" in draft ? { refused: draft.problem } : {}),
+        tipAt: cutFrame + shown / 2,
+        tip: "problem" in draft ? draft.problem : `${secondsLabel(shown, fps)} (${shown} frames)`,
+      });
+    };
+    const move = (ev: PointerEvent) => {
+      if (!active && Math.abs(ev.clientX - x0) < DRAG_PX) return;
+      if (!active) playback.pause();
+      active = true;
+      compute(ev, base);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+      if (stopDrag.current === cancel) stopDrag.current = undefined;
+    };
+    const cancel = () => {
+      stop();
+      setDrag(undefined);
+    };
+    const up = (ev: PointerEvent) => {
+      stop();
+      if (!active) return;
+      const now = getState().snapshot;
+      if (!now || now.dir !== origin.dir) return setDrag(undefined);
+      const fresh = now.revision !== origin.revision;
+      compute(ev, fresh ? projectOf(now) : base);
+      const sent = plan;
+      if (!sent?.ops.length) return setDrag(undefined);
+      void actions.timelineEdit(sent, { baseRevision: fresh ? now.revision : origin.revision, dir: now.dir }).finally(() => setDrag(undefined));
+    };
+    stopDrag.current?.();
+    stopDrag.current = cancel;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+  };
+
+  const frameAt = (clientX: number) => {
+    const rect = lanesRef.current!.getBoundingClientRect();
+    return (clientX - rect.left) / ppf;
+  };
+  /** Click or drag on the ruler, the playhead or an empty lane: move the playhead there (with snapping on, to a beat within reach, D70). */
+  const scrub = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    playback.pause();
+    const seek = (ev: { clientX: number; metaKey: boolean }) => {
+      const frame = frameAt(ev.clientX);
+      const snapped = getPlayback().snapping && !ev.metaKey ? snapPlayhead(project, frame, { beats: getBeats().map, ppf }, SNAP_PX / ppf) : { frame };
+      setScrubSnap(snapped.snapAt);
+      playback.seek(snapped.frame);
+    };
+    seek(e);
+    const move = (ev: PointerEvent) => seek(ev);
+    const up = () => {
+      setScrubSnap(undefined);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
+  /** The main cut nearest a pointer x, within CUT_DROP_PX. */
+  const cutNear = (clientX: number) => {
+    const f = frameAt(clientX);
+    let best: (typeof cuts)[number] | undefined;
+    for (const c of cuts) if (Math.abs(c.frame - f) * ppf <= CUT_DROP_PX && (!best || Math.abs(c.frame - f) < Math.abs(best.frame - f))) best = c;
+    return best;
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (online && [...e.dataTransfer.types].includes(TRANSITION_DRAG_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      const over = cutNear(e.clientX)?.item.id;
+      if (over !== dropCut) setDropCut(over);
+      return;
+    }
+    if (!online || ![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => [...e.dataTransfer.types].includes(t))) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropping(true);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    setDropping(false);
+    const module = e.dataTransfer.getData(TRANSITION_DRAG_TYPE);
+    if (module) {
+      e.preventDefault();
+      const cut = cutNear(e.clientX);
+      setDropCut(undefined);
+      setDraggedTransition(undefined);
+      if (cut) void actions.applyTransition(module, { cut: cut.item.id });
+      return;
+    }
+    // A Text tab preset (D80): added at the time it's dropped on.
+    const preset = TEXT_PRESETS.find((p) => p.id === e.dataTransfer.getData(TEXT_DRAG_TYPE));
+    if (preset) {
+      e.preventDefault();
+      void actions.addText(preset, { frame: Math.max(0, Math.round(frameAt(e.clientX))) });
+      return;
+    }
+    // A component from Elements (D76): added at the time it's dropped on.
+    const component = e.dataTransfer.getData(COMPONENT_DRAG_TYPE) || ([...e.dataTransfer.types].includes(COMPONENT_DRAG_TYPE) ? draggedComponent() : undefined);
+    if (component) {
+      e.preventDefault();
+      setDraggedComponent(undefined);
+      void actions.addComponent(component, { frame: Math.max(0, Math.round(frameAt(e.clientX))) });
+      return;
+    }
+    const id = e.dataTransfer.getData(MEDIA_DRAG_TYPE);
+    if (!id) return;
+    e.preventDefault();
+    void actions.addMedia(id);
+  };
+
+  return (
+    <section className="bottom">
+      <div className="bottom-toolbar">
+        <BottomTabs />
+        <span className="muted small">{project.tracks.length === 1 ? "1 track" : `${project.tracks.length} tracks`}</span>
+        <div className="toolbar-spacer" />
+        <button className="icon-btn" data-testid="split" title="Split at the playhead (S)" disabled={!online || empty} onClick={() => void actions.split()}>
+          <Scissors />
+        </button>
+        <button
+          className="icon-btn"
+          data-testid="delete-item"
+          title={selectedCut ? "Remove the selected transition (⌫)" : "Delete the selected item (⌫)"}
+          disabled={!online || !(selected || (selectedCut && findItem(project, selectedCut)?.item.transitionIn))}
+          onClick={() => void actions.deleteSelected()}
+        >
+          <Trash2 />
+        </button>
+        <button
+          className={`icon-btn ${snapping ? "on" : ""}`}
+          data-testid="snap-toggle"
+          aria-pressed={snapping}
+          title={snapping ? "Snapping on: moves and trims stick to the playhead, item edges and beats; the playhead sticks to beats (hold ⌘ while dragging to skip)" : "Snapping off"}
+          onClick={playback.toggleSnapping}
+        >
+          <Magnet />
+        </button>
+        <div className="toolbar-sep" />
+        <button className="icon-btn" data-testid="zoom-out" title="Zoom out (⌘−)" onClick={playback.zoomOut}>
+          <ZoomOut />
+        </button>
+        <button className="icon-btn" data-testid="zoom-in" title="Zoom in (⌘+)" onClick={playback.zoomIn}>
+          <ZoomIn />
+        </button>
+        <button className="icon-btn" data-testid="zoom-fit" title="Fit the project (⌘0)" onClick={playback.zoomFit}>
+          <Maximize2 />
+        </button>
+      </div>
+      <div className="bottom-body" ref={bodyRef}>
+        <div className="tl" data-testid="timeline" data-ppf={ppf}>
+          <div className="tl-heads">
+            <div className="tl-corner" />
+            {tracks.map((track) => {
+              const main = track.role === "main";
+              const Icon = track.kind === "text" ? Type : track.kind === "audio" ? AudioLines : main ? Film : Layers;
+              const audio = track.kind === "audio";
+              const hidden = trackFlag(track, "hidden");
+              const muted = trackFlag(track, "mute");
+              const locked = trackFlag(track, "locked");
+              return (
+                <div
+                  key={track.id}
+                  className={`tl-head ${main ? "main" : ""}`}
+                  data-testid="track"
+                  data-id={track.id}
+                  data-kind={track.kind}
+                  data-main={main ? "true" : undefined}
+                  data-hidden={hidden ? "true" : undefined}
+                  data-muted={muted ? "true" : undefined}
+                  data-locked={locked ? "true" : undefined}
+                >
+                  <div className="name">
+                    <Icon />
+                    <span className="ellipsis">{track.name}</span>
+                    {main && (
+                      <span className="badge" title="Main track: clips play back to back">
+                        <Magnet />
+                      </span>
+                    )}
+                  </div>
+                  {(audio || soundTrack(project, track)) && <TrackVolume project={project} track={track} online={online} />}
+                  {(audio || soundTrack(project, track)) && (
+                    <button
+                      className={`icon-btn ${muted ? "on" : ""}`}
+                      data-testid="track-mute"
+                      aria-pressed={muted}
+                      disabled={!online}
+                      title={muted ? "Unmute" : audio ? "Mute" : "Mute the clips' sound"}
+                      onClick={() => void actions.toggleTrack(track.id, "mute")}
+                    >
+                      {muted ? <VolumeX /> : <Volume2 />}
+                    </button>
+                  )}
+                  {!audio && (
+                    <button
+                      className={`icon-btn ${hidden ? "on" : ""}`}
+                      data-testid="track-hide"
+                      aria-pressed={hidden}
+                      disabled={!online}
+                      title={hidden ? "Show in the preview" : "Hide from the preview"}
+                      onClick={() => void actions.toggleTrack(track.id, "hidden")}
+                    >
+                      {hidden ? <EyeOff /> : <Eye />}
+                    </button>
+                  )}
+                  <button
+                    className={`icon-btn ${locked ? "on" : ""}`}
+                    data-testid="track-lock"
+                    aria-pressed={locked}
+                    disabled={!online}
+                    title={locked ? "Unlock" : "Lock: no edits by hand or by the agent"}
+                    onClick={() => void actions.toggleTrack(track.id, "locked")}
+                  >
+                    {locked ? <Lock /> : <LockOpen />}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div
+            className={`tl-lanes ${dropping ? "dropping" : ""}`}
+            ref={lanesRef}
+            style={{ width }}
+            onDragOver={onDragOver}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+              setDropping(false);
+              setDropCut(undefined);
+            }}
+            onDrop={onDrop}
+          >
+            <div className="tl-ruler" data-testid="ruler" onPointerDown={scrub}>
+              {ticks.map((s) => (
+                <div key={s} className="tick" style={{ left: s * fps * ppf }}>
+                  <span>{rulerLabel(s)}</span>
+                </div>
+              ))}
+            </div>
+            {tracks.map((track) => {
+              const items = (view.tracks.find((t) => t.id === track.id) ?? track).items;
+              const editable = !track.locked && online;
+              return (
+                <div
+                  key={track.id}
+                  className={`tl-lane ${track.role === "main" ? "main" : ""} ${track.hidden ? "hidden" : ""} ${track.locked ? "locked" : ""}`}
+                  data-testid="lane"
+                  data-track={track.id}
+                  onPointerDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    playback.select(undefined);
+                    scrub(e);
+                  }}
+                >
+                  {items.map((item) => {
+                    const dragged = drag?.itemId === item.id;
+                    const ghost = dragged ? drag.ghost : undefined;
+                    // Captions (D82) are drawn where their cards are, not over their whole window.
+                    const extent = item.type === "captions" ? (captionExtent(view, item) ?? { from: viewStarts.get(item.id) ?? 0, to: (viewStarts.get(item.id) ?? 0) + 1 }) : undefined;
+                    const start = ghost?.start ?? extent?.from ?? viewStarts.get(item.id) ?? 0;
+                    const duration = ghost?.duration ?? (extent ? extent.to - extent.from : item.duration);
+                    const server = findItem(project, item.id);
+                    return (
+                      <ItemBox
+                        key={item.id}
+                        project={view}
+                        item={item}
+                        start={start}
+                        duration={duration}
+                        ppf={ppf}
+                        thumbIds={thumbIds}
+                        beats={item.media ? beatMap.get(item.media) : undefined}
+                        className={`${item.id === selected ? "selected" : ""} ${dragged && drag.mode === "move" ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
+                        data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
+                        labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
+                        edges={editable && item.type !== "captions"}
+                        envelope={item.id === selected && editable && !dragged ? "edit" : "show"}
+                        duck={ducks.get(track.id)?.keys}
+                        {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
+                        onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
+                      />
+                    );
+                  })}
+                  {track.role === "main" &&
+                    cuts.map((cut) => {
+                      const tr = cut.item.transitionIn;
+                      const isSel = selectedCut === cut.item.id;
+                      // What a drop here would do: the planner's checks (locks on either clip, the cut's limits).
+                      const fit = transitionDragged ? planSetTransition(view, cut.item.id, { module: transitionDragged }) : undefined;
+                      const dropState = fit ? ("problem" in fit ? "invalid" : "valid") : undefined;
+                      const target = transitionDragged && dropCut === cut.item.id;
+                      if (!tr) {
+                        return (
+                          <div
+                            key={`cut-${cut.item.id}`}
+                            className={`cut-point ${isSel ? "selected" : ""} ${dropState ?? ""} ${target ? "target" : ""}`}
+                            data-testid="cut-point"
+                            data-item={cut.item.id}
+                            data-frame={cut.frame}
+                            data-drop={dropState}
+                            title={fit && "problem" in fit ? fit.problem : `Cut between ${itemLabel(view, cut.prev)} and ${itemLabel(view, cut.item)}: click to select, then pick a transition`}
+                            style={{ left: cut.frame * ppf }}
+                            onPointerDown={(e) => {
+                              if (e.button !== 0) return;
+                              e.stopPropagation();
+                              playback.selectCut(cut.item.id);
+                            }}
+                          />
+                        );
+                      }
+                      const w = tr.duration * ppf;
+                      return (
+                        <div
+                          key={`tr-${cut.item.id}`}
+                          className={`tr-marker ${isSel ? "selected" : ""} ${dropState ?? ""} ${target ? "target" : ""} ${drag?.mode === "transition" && drag.itemId === `tr:${cut.item.id}` ? (drag.refused ? "refused" : "resizing") : ""}`}
+                          data-testid="transition-marker"
+                          data-item={cut.item.id}
+                          data-module={tr.module}
+                          data-duration={tr.duration}
+                          data-frame={cut.frame}
+                          title={`${transitionName(tr.module)}, ${secondsLabel(tr.duration, fps)} (${tr.duration} frames): click to select, drag an edge to change its length`}
+                          style={{ left: cut.frame * ppf - Math.max(w, 14) / 2, width: Math.max(w, 14) }}
+                          onPointerDown={(e) => onTransitionDown(e, cut.item.id, cut.frame)}
+                        >
+                          <span className="tr-x" />
+                          {editable && (
+                            <>
+                              <div className="tr-edge start" data-tr-edge="start" data-testid="transition-edge-start" />
+                              <div className="tr-edge end" data-tr-edge="end" data-testid="transition-edge-end" />
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  {drag?.float?.track === track.id &&
+                    (() => {
+                      const item = findItem(project, drag.itemId)?.item;
+                      return item ? (
+                        <ItemBox project={project} item={item} start={drag.float.start} duration={item.duration} ppf={ppf} thumbIds={thumbIds} className={`dragging ${drag.refused ? "refused" : ""}`} data={{ "data-testid": "drag-float" }} edges={false} />
+                      ) : null;
+                    })()}
+                </div>
+              );
+            })}
+            {drag?.snapAt !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={drag.snapAt} style={{ left: drag.snapAt * ppf }} />}
+            {!drag && scrubSnap !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={scrubSnap} style={{ left: scrubSnap * ppf }} />}
+            {drag && (
+              <div className={`drag-tip ${drag.refused ? "refused" : ""}`} data-testid="drag-tip" data-refused={drag.refused ? "true" : undefined} style={{ left: drag.tipAt * ppf }}>
+                {drag.tip}
+              </div>
+            )}
+            <Playhead ppf={ppf} bodyRef={bodyRef} onGrab={scrub} />
+          </div>
+        </div>
+      </div>
+      {empty && (
+        <div className="tl-empty" data-testid="timeline-empty">
+          {project.media.length ? "Drag a clip here, or use + on a tile. Titles are in the Text tab." : "Import media, or add a title from the Text tab."}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** One item on a lane: its box, name, length and (when it can be edited) trim handles at both edges. */
+function ItemBox({
+  project,
+  item,
+  start,
+  duration,
+  ppf,
+  thumbIds,
+  beats,
+  className,
+  data,
+  edges,
+  onPointerDown,
+  labelInset = 0,
+  cards,
+  envelope = "none",
+  duck,
+}: {
+  project: ProjectModel;
+  item: Item;
+  start: number;
+  duration: number;
+  ppf: number;
+  thumbIds: ReadonlySet<string>;
+  /** The item's media's beats (seconds), when cached (D70). */
+  beats?: ReadonlyArray<number> | undefined;
+  className: string;
+  data: Readonly<Record<string, string | number>>;
+  edges: boolean;
+  onPointerDown?: (e: React.PointerEvent) => void;
+  /** Pixels the name starts in from the left (a transition marker sits over the start). */
+  labelInset?: number;
+  /** A captions item's cards (D82), drawn as blocks with their words. */
+  cards?: ReadonlyArray<CaptionCard>;
+  /** The volume line (D83) on items with sound: drawn, or drawn with keys to click and drag (the selected item). */
+  envelope?: "none" | "show" | "edit";
+  /** Its track's duck curve (D85, project frames): drawn as a second, dashed line under the volume line. */
+  duck?: ReadonlyArray<DuckKey> | undefined;
+}) {
+  const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
+  const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
+  const kind = item.type === "clip" ? "video" : item.type;
+  const label = itemLabel(project, item);
+  const sound = media && hasSound(project, item) ? media : undefined;
+  const px = Math.max(4, duration * ppf - 2);
+  const fadeIn = sound ? Math.min(px, (item.fadeIn ?? 0) * ppf) : 0;
+  const fadeOut = sound ? Math.min(px, (item.fadeOut ?? 0) * ppf) : 0;
+  // Beats as ticks along the top and bottom edges, unless too close together at this zoom.
+  const ticks = sound && beats ? visibleBeats(project, item, beats, ppf) : [];
+  return (
+    <div
+      className={`clip ${kind} ${className}`}
+      data-type={item.type}
+      {...data}
+      title={label}
+      style={{ left: start * ppf, width: px }}
+      onPointerDown={onPointerDown}
+    >
+      {poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />}
+      {cards && (
+        <div className="caption-cards" data-testid="caption-cards" data-count={cards.length}>
+          {cards.map((c) => (
+            <div key={`${c.from}-${c.words[0]!.index}`} className="caption-card" data-testid="caption-card" data-from={c.from} data-to={c.to} title={c.words.map((w) => w.text).join(" ")} style={{ left: (c.from - start) * ppf, width: Math.max(2, (c.to - c.from) * ppf - 1) }}>
+              {c.words.map((w) => w.text).join(" ")}
+            </div>
+          ))}
+        </div>
+      )}
+      {item.type === "component" && item.component === SOLID && <div className="strip solid-fill" data-testid="solid-fill" style={{ background: solidBackground(item, project) }} />}
+      {sound && <ItemWaveform item={item} media={sound} fps={project.canvas.fps} width={px} compact={item.type !== "audio"} />}
+      {ticks.length > 0 && (
+        <svg className="beat-ticks" data-testid="beat-ticks" data-media={sound!.id} data-count={ticks.length} data-first={Math.round(start + ticks[0]!)} viewBox={`0 0 ${px} 100`} preserveAspectRatio="none">
+          <path d={ticks.map((f) => `M${(f * ppf).toFixed(1)} 0V22M${(f * ppf).toFixed(1)} 78V100`).join("")} />
+        </svg>
+      )}
+      {sound && (fadeIn > 0 || fadeOut > 0) && (
+        // The fades as ramps: the shaded corner is what the fade takes away.
+        <svg className="fade-shape" data-testid="fade-shape" viewBox={`0 0 ${px} 100`} preserveAspectRatio="none">
+          {fadeIn > 0 && <path d={`M0 0 L${fadeIn} 0 L0 100 Z`} />}
+          {fadeOut > 0 && <path d={`M${px} 0 L${px - fadeOut} 0 L${px} 100 Z`} />}
+        </svg>
+      )}
+      {sound && envelope !== "none" && <Envelope project={project} item={item} px={px} ppf={ppf} edit={envelope === "edit"} duck={duck} start={start} />}
+      <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
+        {label}
+      </span>
+      <span className="meta">{(duration / project.canvas.fps).toFixed(1)}s</span>
+      {edges && (
+        <>
+          <div className="edge start" data-edge="start" data-testid="trim-start" title="Drag to trim" />
+          <div className="edge end" data-edge="end" data-testid="trim-end" title="Drag to trim" />
+        </>
+      )}
+      {edges && sound && (
+        <>
+          <div className="fade-handle in" data-fade="in" data-testid="fade-in-handle" title="Drag to fade in" style={{ left: Math.min(px - 10, Math.max(6, fadeIn)) }} />
+          <div className="fade-handle out" data-fade="out" data-testid="fade-out-handle" title="Drag to fade out" style={{ right: Math.min(px - 10, Math.max(6, fadeOut)) }} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The volume line of an item with sound (D83): gainDb plus its gainKeys envelope (linear in dB
+ * between keys, held outside them), on the level scale the Mixer's faders use (levelY: +12 dB at
+ * the top, 0 dB a quarter down). On the selected item (when it is at least ENVELOPE_MIN_PX wide):
+ * a press within 4 px of the line adds a key there with the line's value (dragging right away
+ * adds it where the pointer lets go), dragging a key moves it in time and volume (one frame clear
+ * of its neighbours), double-click removes it, and a click selects it so ⌫ removes it. One edit
+ * per gesture; a drag plays as it moves (playback carries on). Keys are addressed by their index
+ * in frame order. The trim edges and fade handles sit above the line, so they keep their presses.
+ */
+const ENVELOPE_MIN_PX = 40;
+function Envelope({ project, item, px, ppf, edit: editable, duck, start }: { project: ProjectModel; item: Item; px: number; ppf: number; edit: boolean; duck?: ReadonlyArray<DuckKey> | undefined; start: number }) {
+  const edit = editable && px >= ENVELOPE_MIN_PX;
+  const selectedKey = usePlayback((s) => (s.selected === item.id ? s.gainKey : undefined));
+  // While a key is dragged: the item as it would be (from the plan's gainKeys).
+  const [shown, setShown] = useState<Item | undefined>(undefined);
+  const ref = useRef<SVGSVGElement>(null);
+  const view = shown ?? item;
+  const fps = project.canvas.fps;
+  const keys = [...(view.gainKeys ?? [])].sort((a, b) => a.frame - b.frame);
+  // A selected key that isn't there any more (undo, an agent edit) is deselected.
+  const keyCount = (item.gainKeys ?? []).length;
+  useEffect(() => {
+    if (selectedKey !== undefined && selectedKey >= keyCount) playback.selectGainKey(item.id, undefined);
+  }, [selectedKey, keyCount, item.id]);
+  // The line: sampled every few pixels, plus each key, so the corners are exact.
+  const step = Math.max(1, Math.round(3 / ppf));
+  const frames = new Set<number>([0, view.duration, ...keys.map((k) => k.frame)]);
+  for (let f = 0; f < view.duration; f += step) frames.add(f);
+  const pts = [...frames].sort((a, b) => a - b).map((f) => `${(f * ppf).toFixed(1)},${(levelY(envelopeDbAt(view, f)) * 100).toFixed(2)}`);
+  const d = `M${pts.join("L")}`;
+  // The ducking (D85): the volume line with the duck curve added, where the curve dips inside the item.
+  const duckKeys = duck ? duckKeysIn(duck, start, start + view.duration) : [];
+  let duckPath: string | undefined;
+  if (duckKeys.length) {
+    const df = new Set(frames);
+    for (const k of duckKeys) if (k.frame - start > 0 && k.frame - start < view.duration) df.add(k.frame - start);
+    duckPath = `M${[...df]
+      .sort((a, b) => a - b)
+      .map((f) => `${(f * ppf).toFixed(1)},${(levelY(envelopeDbAt(view, f) + duckDbAt(duck, start + f)) * 100).toFixed(2)}`)
+      .join("L")}`;
+  }
+
+  /** Frame (from the item's start) and the item's dB at a pointer position. */
+  const at = (ev: { clientX: number; clientY: number }) => {
+    const r = ref.current!.getBoundingClientRect();
+    return { frame: Math.max(0, Math.min(item.duration, Math.round((ev.clientX - r.left) / ppf))), db: yLevel((ev.clientY - r.top) / r.height), height: r.height };
+  };
+  /**
+   * A press on the line (`key` undefined) or on a key: plan from the pointer on every move (draft
+   * shown and heard), send one edit on release, planned against the project as it is then.
+   */
+  const press = (e: React.PointerEvent, key?: { index: number; frame: number; db: number }) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (key) playback.selectGainKey(item.id, key.index);
+    const snapshot = getState().snapshot;
+    const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const start = at(e);
+    let moved = false;
+    let draft: PreviewDraft | undefined;
+    /** The plan for the gesture so far, and the frame of the key it leaves (to select it). */
+    const planFor = (base: ProjectModel, ev: { clientX: number; clientY: number }) => {
+      if (!moved) return key ? undefined : { plan: planAddGainKey(base, item.id, start.frame), frame: start.frame };
+      const p = at(ev);
+      if (!key) return { plan: planAddGainKey(base, item.id, p.frame, p.db), frame: p.frame };
+      const frame = key.frame + Math.round((ev.clientX - x0) / ppf);
+      const db = yLevel(levelY(key.db) + (ev.clientY - y0) / p.height);
+      return { plan: planMoveGainKey(base, item.id, key.index, frame, db), frame: undefined };
+    };
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < DRAG_PX && Math.abs(ev.clientY - y0) < DRAG_PX) return;
+      moved = true;
+      const plan = planFor(project, ev)?.plan;
+      if (!plan || "problem" in plan || !plan.ops.length) return;
+      const result = draftOf(project, plan.ops);
+      if (!("project" in result)) return;
+      setShown(findItem(result.project, item.id)?.item);
+      draft = { base: project, project: result.project };
+      playback.setDraft(draft);
+    };
+    const done = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+    };
+    const clear = () => {
+      setShown(undefined);
+      if (draft && getPlayback().draft === draft) playback.setDraft(undefined);
+    };
+    const cancel = () => (done(), clear());
+    const up = (ev: PointerEvent) => {
+      done();
+      const now = getState().snapshot;
+      if (!now || now.dir !== origin.dir) return clear();
+      const planned = planFor(projectOf(now), ev);
+      const plan = planned?.plan;
+      if (!plan || ("ops" in plan && !plan.ops.length)) return clear();
+      // The key that results (new or moved) is selected, so ⌫ removes it.
+      const set = "ops" in plan ? (plan.ops[0] as { set?: { gainKeys?: ReadonlyArray<{ frame: number; db: number }> | null } }).set : undefined;
+      const landed = key ? key.index : planned.frame !== undefined ? keyIndexAt(set?.gainKeys, planned.frame) : -1;
+      void actions
+        .timelineEdit(plan, { baseRevision: now.revision, dir: now.dir })
+        .then((ok) => {
+          if (ok && landed >= 0) playback.selectGainKey(item.id, landed);
+        })
+        .finally(clear);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+  };
+  const remove = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    const now = getState().snapshot;
+    if (!now) return;
+    void actions.timelineEdit(planRemoveGainKey(projectOf(now), item.id, index), { baseRevision: now.revision, dir: now.dir }).then((ok) => ok && playback.selectGainKey(item.id, undefined));
+  };
+  return (
+    <>
+      <svg className="envelope" data-testid="envelope" data-keys={keys.length} viewBox={`0 0 ${px} 100`} preserveAspectRatio="none" ref={ref}>
+        {duckPath && <path className="env-duck" data-testid="duck-line" data-keys={duckKeys.length} d={duckPath} />}
+        <path className="env-line" d={d} />
+        {edit && <path className="env-hit" data-testid="envelope-line" d={d} onPointerDown={(e) => press(e)} />}
+      </svg>
+      {edit &&
+        keys.map((k, index) => {
+          const db = envelopeDbAt(view, k.frame);
+          return (
+            <div
+              key={index}
+              className={`env-key ${selectedKey === index ? "selected" : ""}`}
+              data-testid="envelope-key"
+              data-index={index}
+              data-frame={k.frame}
+              data-db={Math.round(db * 10) / 10}
+              title={`Volume key at ${(k.frame / fps).toFixed(2)} s: ${dbLabel(db)} dB (drag to move, double-click to remove)`}
+              style={{ left: k.frame * ppf, top: `${levelY(db) * 100}%` }}
+              onPointerDown={(e) => press(e, { index, frame: k.frame, db })}
+              onDoubleClick={(e) => remove(e, index)}
+            />
+          );
+        })}
+    </>
+  );
+}
+
+/** The playhead line: its own component, so playback re-renders only this. Its handle drags. */
+function Playhead({ ppf, bodyRef, onGrab }: { ppf: number; bodyRef: React.RefObject<HTMLDivElement | null>; onGrab: (e: React.PointerEvent) => void }) {
+  const frame = usePlayback((s) => s.frame);
+  const x = frame * ppf;
+  // While playing, keep the playhead in view.
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !getPlayback().playing) return;
+    const view = body.clientWidth - HEAD_WIDTH;
+    if (x < body.scrollLeft || x > body.scrollLeft + view - 24) body.scrollLeft = Math.max(0, x - 48);
+  }, [x, bodyRef]);
+  return (
+    <div className="playhead" data-testid="playhead" data-frame={Math.floor(frame)} style={{ left: x }}>
+      <div className="playhead-handle" onPointerDown={onGrab} />
+    </div>
+  );
+}
+
+/**
+ * A track's volume (D54): a button in its header opens a slider (−∞…+12 dB) and a number. The
+ * slider is heard while it moves (a local draft the playback mix plays) and saved on release as
+ * one edit; the mixer's mute and the rest stay as they are.
+ */
+function TrackVolume({ project, track, online }: { project: ProjectModel; track: Track; online: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const db = track.mixer?.gainDb ?? 0;
+  const draft = useRef<PreviewDraft | undefined>(undefined);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  const drop = () => {
+    const d = draft.current;
+    draft.current = undefined;
+    return d;
+  };
+  const send = (v: number) => {
+    const d = drop();
+    const snapshot = getState().snapshot;
+    void actions.timelineEdit(planTrackGain(projectOf(snapshot!), track.id, v), { baseRevision: snapshot?.revision, dir: snapshot?.dir }).finally(() => {
+      if (d && getPlayback().draft === d) playback.setDraft(undefined);
+    });
+  };
+  return (
+    <div className="track-volume" ref={ref}>
+      <button
+        className={`icon-btn ${db !== 0 ? "on-soft" : ""}`}
+        data-testid="track-volume"
+        aria-expanded={open}
+        disabled={!online}
+        title={`Track volume: ${dbLabel(db)} dB`}
+        onClick={() => setOpen(!open)}
+      >
+        <SlidersHorizontal />
+      </button>
+      {open && (
+        <div className="track-volume-pop" data-testid="track-volume-pop">
+          <div className="group-label">{track.name} volume</div>
+          <div className="slider-row">
+            <Slider
+              testId="track-volume-slider"
+              value={db}
+              min={SILENCE_DB}
+              max={MAX_DB}
+              step={0.5}
+              disabled={!online}
+              onPreview={(v) => {
+                const plan = planTrackGain(project, track.id, v);
+                const result = "ops" in plan ? draftOf(project, plan.ops) : undefined;
+                if (result && "project" in result) {
+                  draft.current = { base: project, project: result.project };
+                  playback.setDraft(draft.current);
+                }
+              }}
+              onCommit={send}
+            />
+            <NumberField label="dB" testId="track-volume-num" value={db} step={0.5} min={SILENCE_DB} max={MAX_DB} disabled={!online} onCommit={(v) => send(v ?? 0)} />
+          </div>
+          <div className="hint-line muted small">{db <= SILENCE_DB ? "Silent" : `${dbLabel(db)} dB on every item of the track`}</div>
+        </div>
+      )}
+    </div>
+  );
+}

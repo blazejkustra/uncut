@@ -1,0 +1,160 @@
+// Starts and talks to the export rasteriser (D55): the desktop's Electron binary in its
+// --uncut-render mode (apps/desktop/src/render.ts), an offscreen Chromium that turns HTML into
+// PNGs. The desktop says how to start it when it starts the server: UNCUT_RENDER_BIN (its own
+// binary) and UNCUT_RENDER_ENTRY (empty when packaged, where the binary always runs its bundled
+// main; apps/desktop/dist/main.cjs under `pnpm dev`, where a bare Electron would open its welcome
+// app). Without them (the server run by hand or by the tests, on Node or Electron-as-Node) the
+// workspace's Electron runs apps/desktop/dist/main.cjs.
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createRequire } from "node:module";
+import * as readline from "node:readline";
+import { besideServer } from "../paths.ts";
+
+export interface RasterizerCommand {
+  readonly bin: string;
+  readonly args: ReadonlyArray<string>;
+}
+
+/** How to start the rasteriser here, or a sentence saying why it can't be. */
+export function rasterizerCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  runtime: { readonly electron?: string | undefined; readonly execPath: string } = { electron: process.versions.electron, execPath: process.execPath },
+): RasterizerCommand | { readonly problem: string } {
+  if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), "--uncut-render"] };
+  const entry = env.UNCUT_RENDER_ENTRY || besideServer("../../desktop/dist/main.cjs");
+  if (!existsSync(entry)) return { problem: `Can't draw text for the export: ${entry} isn't built (pnpm build).` };
+  // On Electron-as-Node the binary itself can run the entry; on Node, the workspace's Electron.
+  if (runtime.electron) return { bin: runtime.execPath, args: [entry, "--uncut-render"] };
+  let bin: unknown;
+  try {
+    bin = createRequire(import.meta.url)("electron");
+  } catch {
+    return { problem: "Can't find Electron to draw text for the export (development setup)." };
+  }
+  if (typeof bin !== "string") return { problem: "Can't find Electron to draw text for the export (development setup)." };
+  return { bin, args: [entry, "--uncut-render"] };
+}
+
+/** Draw `html` (with `css`) on a transparent width×height page, or a frame of a graphic's document (D78: render(t, info) called), and save it to `out`. */
+export type RasterJob =
+  | { readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string }
+  | { readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string };
+
+export interface Rasterizer {
+  /** Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). */
+  readonly render: (job: RasterJob) => Promise<void>;
+  /** Stop it (SIGKILL if it doesn't go within a second). Resolves once it's gone. */
+  readonly close: () => Promise<void>;
+  readonly pid: number | undefined;
+}
+
+const READY_TIMEOUT_MS = 20_000;
+const RENDER_TIMEOUT_MS = 30_000;
+
+/** The environment it runs in: ours without the server's own settings and the test hooks. */
+const rasterizerEnv = (env: NodeJS.ProcessEnv) => {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined || k === "ELECTRON_RUN_AS_NODE" || k.startsWith("UNCUT_") || k === "ANTHROPIC_API_KEY") continue;
+    out[k] = v;
+  }
+  return out;
+};
+
+/** Start a rasteriser and wait until its page is ready. */
+export async function startRasterizer(command: RasterizerCommand, env: NodeJS.ProcessEnv = process.env): Promise<Rasterizer> {
+  // Its Chromium profile: ours to remove once it's gone, however it ends.
+  const profile = mkdtempSync(join(tmpdir(), `uncut-render-profile-${process.pid}-`));
+  let child: ChildProcess;
+  try {
+    child = spawn(command.bin, [...command.args, `--uncut-profile=${profile}`], { env: rasterizerEnv(env), stdio: ["pipe", "pipe", "pipe"] });
+  } catch (error) {
+    rmSync(profile, { recursive: true, force: true });
+    throw error;
+  }
+  const exited = new Promise<void>((resolve) => {
+    const gone = () => {
+      rmSync(profile, { recursive: true, force: true });
+      resolve();
+    };
+    child.once("close", gone);
+    // A binary that can't start emits "error" and maybe never "close".
+    child.once("error", gone);
+  });
+  let stderr = "";
+  child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
+  child.stdin!.on("error", () => {});
+  const pending = new Map<number, { resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  let failed: Error | undefined;
+  const failAll = (error: Error) => {
+    failed ??= error;
+    for (const [id, p] of pending) {
+      clearTimeout(p.timer);
+      p.reject(failed);
+      pending.delete(id);
+    }
+  };
+  let onReady: () => void = () => {};
+  let readyTimer: NodeJS.Timeout | undefined;
+  const ready = new Promise<void>((resolve, reject) => {
+    onReady = resolve;
+    readyTimer = setTimeout(() => reject(new Error("The text renderer didn't start in time.")), READY_TIMEOUT_MS);
+    child.once("error", (e) => reject(new Error(`Can't start the text renderer: ${e.message}`)));
+    child.once("exit", (code, signal) => reject(new Error(`The text renderer stopped before it was ready (${signal ?? `code ${code}`}). ${stderr.trim().split("\n").at(-1) ?? ""}`.trim())));
+  });
+  readline.createInterface({ input: child.stdout! }).on("line", (line) => {
+    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown };
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (msg?.uncut !== "render") return;
+    if (msg.ready === true) return onReady();
+    const p = pending.get(Number(msg.id));
+    if (!p) return;
+    pending.delete(Number(msg.id));
+    clearTimeout(p.timer);
+    if (msg.ok === true) p.resolve();
+    else p.reject(new Error(`The text renderer failed: ${String(msg.error)}`));
+  });
+  child.once("exit", (code, signal) => failAll(new Error(`The text renderer stopped (${signal ?? `code ${code}`}).`)));
+
+  const close = async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.stdin!.end();
+      const timer = setTimeout(() => child.kill("SIGKILL"), 1000);
+      await exited;
+      clearTimeout(timer);
+    }
+  };
+  try {
+    await ready;
+  } catch (error) {
+    child.kill("SIGKILL");
+    await exited;
+    throw error;
+  } finally {
+    clearTimeout(readyTimer);
+  }
+
+  let next = 0;
+  return {
+    pid: child.pid,
+    close,
+    render: (job) =>
+      new Promise<void>((resolve, reject) => {
+        if (failed) return reject(failed);
+        const id = ++next;
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error("The text renderer took too long."));
+        }, RENDER_TIMEOUT_MS);
+        pending.set(id, { resolve, reject, timer });
+        child.stdin!.write(`${JSON.stringify({ id, ...job })}\n`);
+      }),
+  };
+}

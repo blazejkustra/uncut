@@ -9,7 +9,7 @@ import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { beatsFromSamples, SAMPLE_RATE } from "../apps/server/src/beats.ts";
+import { beatsFromSamples, SAMPLE_RATE } from "../apps/server/src/analysis/beats.ts";
 
 const SOURCE = process.argv[2] ?? join(homedir(), "Documents/devrel/video-editor/studio/library/music");
 const OUT = resolve("assets/music");

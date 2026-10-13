@@ -1,5 +1,5 @@
 // Phase 6 exit check, the real-claude half (D93): "the next Argent promo is made in Uncut". The same
-// files as test/phase6-exit.test.ts (the reference's recordings and sky by path, a dark copy of the
+// files as test/app/phase6-exit.test.ts (the reference's recordings and sky by path, a dark copy of the
 // Argent logo in the run folder), driven by the REAL agent instead of the scripted one.
 // Not part of `pnpm test`: it uses your Claude subscription (claude CLI, signed in). ANTHROPIC_API_KEY
 // is removed from this process and from the server's environment (D41).
