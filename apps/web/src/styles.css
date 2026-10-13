@@ -557,22 +557,37 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .tr-thumb .tr-b i { position: absolute; right: 22%; top: 50%; width: 26%; aspect-ratio: 1; transform: translateY(-50%); background: #3b1d00; }
 .tr-thumb .tr-k { background: #000; opacity: 0; }
 /* At rest each tile is a still of its idea: A and B half blended; A → black → B across the tile;
-   B wiped in over the left half of A (with its edge). Hovered or focused, it plays as a loop
-   from A to B and back, unless reduced motion is asked for. */
+   B wiped in over the left half of A (with its edge); B in a circle at the centre (iris); A pushed
+   half out to the left by B (push); A zoomed in under B half faded in (zoom, D79). Hovered or
+   focused, it plays as a loop from A to B and back, unless reduced motion is asked for. */
 .tr-thumb.crossfade .tr-b { opacity: 0.5; }
 .tr-thumb.wipe .tr-b { clip-path: inset(0 50% 0 0); }
 .tr-thumb.wipe .tr-k { opacity: 1; background: linear-gradient(90deg, transparent calc(50% - 1px), #fff calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)); }
 .tr-thumb.dip .tr-b { clip-path: inset(0 0 0 50%); }
 .tr-thumb.dip .tr-k { opacity: 1; background: linear-gradient(90deg, transparent 8%, #000 42%, #000 58%, transparent 92%); }
+.tr-thumb.iris .tr-b { clip-path: circle(36% at 50% 50%); }
+.tr-thumb.push .tr-a { transform: translateX(-30%); }
+.tr-thumb.push .tr-b { transform: translateX(70%); }
+.tr-thumb.zoom .tr-a { transform: scale(1.35); }
+.tr-thumb.zoom .tr-b { opacity: 0.35; }
 @media (prefers-reduced-motion: no-preference) {
   .tr-tile:is(:hover, :focus-visible) .tr-thumb.crossfade .tr-b { animation: tr-fade 2.4s ease-in-out infinite; }
   .tr-tile:is(:hover, :focus-visible) .tr-thumb.wipe .tr-b { animation: tr-wipe 2.4s ease-in-out infinite; }
   .tr-tile:is(:hover, :focus-visible) .tr-thumb.wipe .tr-k { opacity: 0; }
   .tr-tile:is(:hover, :focus-visible) .tr-thumb.dip .tr-b { clip-path: none; animation: tr-dip-b 2.4s steps(1, end) infinite; }
   .tr-tile:is(:hover, :focus-visible) .tr-thumb.dip .tr-k { background: #000; animation: tr-dip-k 2.4s ease-in-out infinite; }
+  .tr-tile:is(:hover, :focus-visible) .tr-thumb.iris .tr-b { animation: tr-iris 2.4s ease-in-out infinite; }
+  .tr-tile:is(:hover, :focus-visible) .tr-thumb.push .tr-a { animation: tr-push-a 2.4s ease-in-out infinite; }
+  .tr-tile:is(:hover, :focus-visible) .tr-thumb.push .tr-b { animation: tr-push-b 2.4s ease-in-out infinite; }
+  .tr-tile:is(:hover, :focus-visible) .tr-thumb.zoom .tr-a { animation: tr-zoom 2.4s ease-in-out infinite; }
+  .tr-tile:is(:hover, :focus-visible) .tr-thumb.zoom .tr-b { animation: tr-fade 2.4s ease-in-out infinite; }
 }
 @keyframes tr-fade { 0%, 20% { opacity: 0; } 50%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes tr-wipe { 0%, 20% { clip-path: inset(0 100% 0 0); } 50%, 80% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
+@keyframes tr-iris { 0%, 20% { clip-path: circle(0% at 50% 50%); } 50%, 80% { clip-path: circle(72% at 50% 50%); } 100% { clip-path: circle(0% at 50% 50%); } }
+@keyframes tr-push-a { 0%, 20% { transform: translateX(0); } 50%, 80% { transform: translateX(-100%); } 100% { transform: translateX(0); } }
+@keyframes tr-push-b { 0%, 20% { transform: translateX(100%); } 50%, 80% { transform: translateX(0); } 100% { transform: translateX(100%); } }
+@keyframes tr-zoom { 0%, 20% { transform: scale(1); } 50%, 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
 @keyframes tr-dip-b { 0% { opacity: 0; } 35% { opacity: 1; } 90% { opacity: 0; } }
 @keyframes tr-dip-k { 0%, 15% { opacity: 0; } 35% { opacity: 1; } 55%, 75% { opacity: 0; } 90% { opacity: 1; } 100% { opacity: 0; } }
 

@@ -36,7 +36,7 @@ export function Library({ project, tab }: { project: Project; tab: LibraryTab })
 }
 
 /** The CSS look of a transition's tile preview (styles.css .tr-thumb.<look>). */
-const TILE_LOOK: Readonly<Record<string, string>> = { "transition.crossfade": "crossfade", "transition.dip-to-black": "dip", "transition.wipe": "wipe" };
+const TILE_LOOK: Readonly<Record<string, string>> = { "transition.crossfade": "crossfade", "transition.dip-to-black": "dip", "transition.wipe": "wipe", "transition.iris": "iris", "transition.push-left": "push", "transition.zoom": "zoom" };
 
 /**
  * The Transitions tab (D73): the transitions the preview and export draw (core TRANSITIONS), each a
@@ -108,7 +108,7 @@ function TransitionsLibrary({ project }: { project: Project }) {
       </div>
       <div className="lib-hint">
         <Blend />
-        A transition sits on the cut between two clips on the main track. Click its marker on the timeline to change its length or type, ⌫ removes it. A crossfade or wipe needs a little footage past the cut on both clips; a dip to black doesn't.
+        A transition sits on the cut between two clips on the main track. Click its marker on the timeline to change its length or type, ⌫ removes it. Every transition but dip to black needs a little footage past the cut on both clips.
       </div>
     </aside>
   );
