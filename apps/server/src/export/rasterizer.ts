@@ -21,13 +21,17 @@ export interface RasterizerCommand {
 /** How to start the rasteriser here, or a sentence saying why it can't be. */
 export function rasterizerCommand(
   env: NodeJS.ProcessEnv = process.env,
-  runtime: { readonly electron?: string | undefined; readonly execPath: string } = { electron: process.versions.electron, execPath: process.execPath },
+  runtime: { readonly electron?: string | undefined; readonly execPath: string; readonly platform?: NodeJS.Platform } = { electron: process.versions.electron, execPath: process.execPath },
 ): RasterizerCommand | { readonly problem: string } {
-  if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), "--uncut-render"] };
+  // A headless Linux server (D106): Chromium keeps captured frames in /dev/shm, which Docker caps at
+  // 64 MB, and a 1080p export's captures then fail ("UnknownVizError", the GPU process gone). The
+  // switch puts them in the temp folder instead.
+  const render = (runtime.platform ?? process.platform) === "linux" ? ["--uncut-render", "--disable-dev-shm-usage"] : ["--uncut-render"];
+  if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), ...render] };
   const entry = env.UNCUT_RENDER_ENTRY || besideServer("../../desktop/dist/main.cjs");
   if (!existsSync(entry)) return { problem: `Can't draw text for the export: ${entry} isn't built (pnpm build).` };
   // On Electron-as-Node the binary itself can run the entry; on Node, the workspace's Electron.
-  if (runtime.electron) return { bin: runtime.execPath, args: [entry, "--uncut-render"] };
+  if (runtime.electron) return { bin: runtime.execPath, args: [entry, ...render] };
   let bin: unknown;
   try {
     bin = createRequire(import.meta.url)("electron");
@@ -35,7 +39,7 @@ export function rasterizerCommand(
     return { problem: "Can't find Electron to draw text for the export (development setup)." };
   }
   if (typeof bin !== "string") return { problem: "Can't find Electron to draw text for the export (development setup)." };
-  return { bin, args: [entry, "--uncut-render"] };
+  return { bin, args: [entry, ...render] };
 }
 
 /** Draw `html` (with `css`) on a transparent width×height page, or a frame of a graphic's document (D78: render(t, info) called), and save it to `out`. */

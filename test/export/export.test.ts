@@ -398,6 +398,8 @@ test("the rasteriser starts as the desktop says; without it, the workspace's Ele
   assert.deepEqual(rasterizerCommand({ UNCUT_RENDER_BIN: "/Applications/Uncut.app/Contents/MacOS/Uncut", UNCUT_RENDER_ENTRY: "" }), { bin: "/Applications/Uncut.app/Contents/MacOS/Uncut", args: ["--uncut-render"] });
   // pnpm dev: a bare Electron, so the desktop bundle is the entry.
   assert.deepEqual(rasterizerCommand({ UNCUT_RENDER_BIN: "/x/electron", UNCUT_RENDER_ENTRY: "/x/main.cjs" }), { bin: "/x/electron", args: ["/x/main.cjs", "--uncut-render"] });
+  // A Linux server (D106): Chromium's captures out of /dev/shm (Docker's is 64 MB).
+  assert.deepEqual(rasterizerCommand({ UNCUT_RENDER_BIN: "/x/electron", UNCUT_RENDER_ENTRY: "/x/main.cjs" }, { execPath: "/x/node", platform: "linux" }), { bin: "/x/electron", args: ["/x/main.cjs", "--uncut-render", "--disable-dev-shm-usage"] });
   if (!existsSync(DESKTOP)) return;
   // The server on Electron-as-Node with nothing passed: never a bare --uncut-render (Electron's welcome app).
   assert.deepEqual(rasterizerCommand({}, { electron: "44.6.0", execPath: "/x/electron" }), { bin: "/x/electron", args: [DESKTOP, "--uncut-render"] });
