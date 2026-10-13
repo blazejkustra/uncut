@@ -304,6 +304,11 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .clip.audio { background: #17352a; border-color: #24503a; }
 .clip.component { background: #1d3049; border-color: #2c4a70; }
 .clip.graphic { background: #46301c; border-color: #6a4a2c; }
+/* Captions (D82): the item spans its cards; each card is a block with its words. */
+.clip.captions { background: rgb(59 47 92 / 35%); border-color: #5a4a8a; padding: 0; justify-content: flex-end; }
+.clip.captions .nm, .clip.captions .meta { display: none; }
+.caption-cards { position: absolute; inset: 0; }
+.caption-card { position: absolute; top: 3px; bottom: 3px; border-radius: 3px; background: #3b2f5c; border: 1px solid #6a58a0; padding: 1px 4px; font-size: 10px; line-height: 1.25; color: rgb(255 255 255 / 85%); overflow: hidden; white-space: normal; word-break: break-word; }
 .clip.selected { border-color: var(--select); box-shadow: inset 0 0 0 1px var(--select); }
 
 /* Add to timeline: a button on the tile's thumbnail, shown on hover. */
@@ -645,3 +650,24 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .param-row .num-field { flex: 0 0 76px; }
 .param-row .check-row { flex: none; font-size: 11px; }
 .mono-area { font-family: var(--mono); font-size: 12px; }
+
+/* Captions Inspector (D82): the card under the playhead as editable words, and every card. */
+.cap-words { display: flex; flex-wrap: wrap; gap: 4px 2px; align-items: center; }
+.cap-word { display: inline-flex; align-items: center; gap: 2px; }
+.cap-input { font: inherit; font-size: 12px; background: var(--panel-2); color: inherit; border: 1px solid rgb(255 255 255 / 12%); border-radius: 4px; padding: 2px 4px; min-width: 2ch; }
+.cap-input.edited { border-color: var(--select); }
+.cap-input:focus { outline: none; border-color: var(--select); }
+.cap-break { font-size: 10px; width: 16px; height: 18px; border-radius: 3px; color: rgb(255 255 255 / 35%); }
+.cap-break:hover { color: var(--fg); background: rgb(255 255 255 / 8%); }
+.cap-break.on { color: var(--select); }
+.cap-list { display: flex; flex-direction: column; max-height: 180px; overflow-y: auto; gap: 1px; }
+.cap-row { display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 3px 4px; border-radius: 4px; min-width: 0; }
+.cap-row:hover { background: rgb(255 255 255 / 6%); }
+.cap-row[data-current] { background: var(--select-soft); }
+
+/* Transcript: "Make captions" and its popover (D82). */
+.tx-captions { position: relative; }
+.tx-popover { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 260px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border-strong); box-shadow: 0 10px 30px rgb(0 0 0 / 45%); }
+.tx-popover .seg { display: flex; flex-wrap: wrap; }
+.cap-hidden { font-size: 12px; padding: 2px 4px; border-radius: 4px; border: 1px dashed rgb(255 255 255 / 15%); color: rgb(255 255 255 / 40%); text-decoration: line-through; }
+.cap-hidden:hover { color: var(--fg); text-decoration: none; }

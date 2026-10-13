@@ -26,3 +26,5 @@ export { outputSize } from "./export.ts";
 export type { ExportQuality } from "./export.ts";
 export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOPE_RATE, FILLERS, fillersOf, handleFrames, HEAD_S, PAUSE_MIN_S, pausesOf, planTextCut, speechEdges, speechWords, TAIL_S, tailFrames } from "./transcript.ts";
 export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./transcript.ts";
+export { activeWord, autoMaxChars, captionBox, captionSegments, checkCaptionLines, CAPTION_LINE_BOUNDS, CAPTION_MIN_S, CAPTION_BRIDGE_S, CAPTION_DEFAULTS, CAPTION_HOLD_S, CAPTION_MODE_NAMES, CAPTION_MODES, captionAt, captionCardAt, captionCardList, captionCards, captionExtent, captionMode, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, planMakeCaptions } from "./captions.ts";
+export type { CaptionCard, CaptionEdit, CaptionLines, CaptionMode, CaptionWord, MakeCaptionsPlan, MakeCaptionsRequest } from "./captions.ts";

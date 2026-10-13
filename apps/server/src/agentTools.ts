@@ -3,6 +3,9 @@
 // and the system prompt. Pure functions; the agent service runs them.
 import {
   applyEdit,
+  captionCardList,
+  CAPTION_DEFAULTS,
+  CAPTION_HOLD_S,
   COMPONENTS,
   createSession,
   DRAWN_COMPONENTS,
@@ -10,6 +13,7 @@ import {
   DRAWN_TRANSITIONS,
   layout,
   MAX_RASTER_STATES,
+  planCaptionEdit,
   planDeviceFrame,
   planInsertText,
   WORD_STYLES,
@@ -19,6 +23,7 @@ import {
   type Device,
   type ModuleManifest,
   type Modules,
+  type Item,
   type Op,
   type Project,
 } from "@uncut/core";
@@ -33,9 +38,9 @@ import toolsSpec from "../../../spec/agent/tools.json" with { type: "json" };
 // chunk 2 (D66, loudness and silences); the video analyzer and media_rank with chunk 3 (D67);
 // transcript_read with chunk 4 (D68, local whisper.cpp); transcript_edit with chunk 5 (D69, cut by
 // text through core planTextCut); the beats analyzer with chunk 6 (D70); graphic_write with phase 6
-// chunk 2 (D78); generate_media comes with its feature.
+// chunk 2 (D78); captions_make with chunk 5 (D82); generate_media comes with its feature.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "media_import", "contact_sheet", "ui_show", "graphic_write"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "media_import", "contact_sheet", "ui_show", "graphic_write"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -63,8 +68,8 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
     .filter((t) => (TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
     .map((t) => {
       const schema = structuredClone(t.inputSchema);
-      // timeline_edit's ops: the edit ops, or the convenience ops the server expands (insert_device_frame D76, insert_text D80).
-      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }] } };
+      // timeline_edit's ops: the edit ops, or the convenience ops the server expands (insert_device_frame D76, insert_text D80, edit_captions D82).
+      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }, { $ref: "#/$defs/editCaptions" }] } };
       schema.$defs = { ...toolsSpec.$defs, ...editOpsSchema.$defs };
       return { name: t.name, description: t.description, inputSchema: schema };
     });
@@ -145,6 +150,10 @@ export function stepLabel(tool: string, input: unknown): string {
       const from = typeof args.media === "string" ? ` from ${args.media}` : "";
       return args.dryRun === true ? `Planned cutting ${list}${from}` : `Cut ${list}${from}`;
     }
+    case "captions_make": {
+      const how = args.mode === "word" ? "word-by-word captions" : args.mode === "single" ? "one-word captions" : "captions";
+      return typeof args.media === "string" ? `Made ${how} for ${args.media}` : `Made ${how}`;
+    }
     case "graphic_write":
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
     case "ui_show": {
@@ -192,9 +201,87 @@ export function projectSummary(project: Project, revision: number, range?: { sta
       ...(t.role ? { role: t.role } : {}),
       ...(t.name ? { name: t.name } : {}),
       ...(t.hidden ? { hidden: true } : {}),
-      items: t.items.filter((it) => inRange(it.id, it.duration)).map((it) => ({ ...it, start: starts.get(it.id) })),
+      items: t.items.filter((it) => inRange(it.id, it.duration)).map((it) => (it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id) })),
     })),
   };
+}
+
+/** At most this many caption cards in project_read and captions_make's answer (a range narrows them). */
+export const MAX_CAPTION_CARDS = 40;
+
+/**
+ * A captions item (D82) as project_read shows it: the word snapshot as a count (it can be thousands
+ * of words; transcript_read has them), and its cards in frames of the edit with their word ids.
+ */
+export function captionsSummary(project: Project, item: Item, start: number, range?: { start: number; end: number }) {
+  const { words, ...rest } = item;
+  const all = captionCardList(project, item).filter((c) => !range || (c.from < range.end && c.to > range.start));
+  return {
+    ...rest,
+    start,
+    words: words?.length ?? 0,
+    cards: all.slice(0, MAX_CAPTION_CARDS),
+    ...(all.length > MAX_CAPTION_CARDS ? { moreCards: `${all.length - MAX_CAPTION_CARDS} more cards: pass range to see them.` } : {}),
+  };
+}
+
+const EDIT_CAPTIONS_KEYS = new Set(["op", "item", "words", "breaks", "mode", "lines", "hideFillers", "cover"]);
+
+/**
+ * timeline_edit's ops with each edit_captions (D82) turned into the update_item core
+ * planCaptionEdit makes (corrections and card starts merged into the item's), planned against the
+ * project as the ops before it leave it. Other ops pass through.
+ */
+export function expandCaptionEdits(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
+  if (!ops.some((op) => (op as { op?: unknown })?.op === "edit_captions")) return { ops: [...ops] };
+  const out: Array<unknown> = [];
+  const word = (value: unknown) => (Number.isInteger(value) && (value as number) >= 0 ? (value as number) : typeof value === "string" && /^w?\d+$/.test(value) ? Number(value.replace(/^w/, "")) : undefined);
+  for (const [i, raw] of ops.entries()) {
+    const op = raw as Record<string, unknown>;
+    if (op?.op !== "edit_captions") {
+      out.push(raw);
+      continue;
+    }
+    const where = `ops[${i}] (edit_captions)`;
+    const extra = Object.keys(op).filter((k) => !EDIT_CAPTIONS_KEYS.has(k));
+    if (extra.length) return { problem: `${where}: unknown field ${extra.join(", ")}.` };
+    if (typeof op.item !== "string") return { problem: `${where}: item must be the captions item's id.` };
+    const words: Array<{ index: number; text: string | null }> = [];
+    if (op.words !== undefined) {
+      if (!Array.isArray(op.words) || !op.words.length) return { problem: `${where}: words must be a list like [{"word":"w12","text":"Argent"}].` };
+      for (const w of op.words as ReadonlyArray<{ word?: unknown; text?: unknown }>) {
+        const index = word(w?.word);
+        if (index === undefined || !(typeof w.text === "string" || w.text === null)) return { problem: `${where}: each words entry needs word ("w12") and text (a string, "" to hide it, null for the transcript's); got ${JSON.stringify(w)}.` };
+        words.push({ index, text: w.text as string | null });
+      }
+    }
+    const breaks: Array<{ index: number; on: boolean }> = [];
+    if (op.breaks !== undefined) {
+      if (!Array.isArray(op.breaks) || !op.breaks.length) return { problem: `${where}: breaks must be a list like [{"word":"w20"}].` };
+      for (const b of op.breaks as ReadonlyArray<{ word?: unknown; on?: unknown }>) {
+        const index = word(b?.word);
+        if (index === undefined || (b.on !== undefined && typeof b.on !== "boolean")) return { problem: `${where}: each breaks entry needs word ("w20") and optionally on (true or false); got ${JSON.stringify(b)}.` };
+        breaks.push({ index, on: b.on !== false });
+      }
+    }
+    if (op.lines !== undefined && (typeof op.lines !== "object" || op.lines === null || Array.isArray(op.lines))) return { problem: `${where}: lines must be an object (maxChars, maxLines, maxSeconds, maxWords, pause).` };
+    if (op.hideFillers !== undefined && typeof op.hideFillers !== "boolean") return { problem: `${where}: hideFillers must be true or false.` };
+    let now: Project = project;
+    try {
+      if (out.length) now = applyEdit(createSession(project), { actor: "agent", ops: out as ReadonlyArray<Op> }).project;
+    } catch {}
+    const plan = planCaptionEdit(now, op.item, {
+      ...(words.length ? { words } : {}),
+      ...(breaks.length ? { breaks } : {}),
+      ...(op.mode !== undefined ? { mode: op.mode as "line" } : {}),
+      ...(op.lines !== undefined ? { lines: op.lines as Record<string, number> } : {}),
+      ...(op.hideFillers !== undefined ? { hideFillers: op.hideFillers as boolean } : {}),
+      ...(op.cover === true ? { cover: true } : {}),
+    });
+    if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
+    out.push(...plan.ops);
+  }
+  return { ops: out };
 }
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
@@ -381,7 +468,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
   A device frame shows footage on a phone or browser: the footage is a clip under the frame, its box on the frame's screen. One op does both: {"op":"insert_device_frame","media":"m-recording","device":"phone","start":0,"duration":150,"in":0} (optional box {x, y, h}, frameId, clipId; it adds the video tracks it needs, above main and under the text). Move the frame and its clip together (the clip's box is the frame's screen: modules_list's component.screens gives the rect per device). Animated components (a terminal typing) are drawn frame by frame in the export, up to ${MAX_RASTER_STATES} distinct looks per item; past that it holds frames.
 - Graphics are the escape hatch for motion the components can't do: write the HTML with graphic_write (it defines render(t, info), t in seconds from the item's start; full canvas, transparent, no network, system fonts), then insert {"type":"graphic","src":"graphics/<name>","start":…,"duration":…} on a video track. Prefer components and text; keep graphics simple.
 - Images can be SVG (a logo): they're stills like PNGs, drawn sharp at their box's size.
-- What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop), backgrounds (component.solid), the components above, graphic items, the transitions above, and text with its position, box width, size, weight, colour, alignment, font, letter spacing, line height, case, outline, shadow, box and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components (${UNDRAWN_DOCS}) and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
+- What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop), backgrounds (component.solid), the components above, graphic items, the transitions above, captions, and text with its position, box width, size, weight, colour, alignment, font, letter spacing, line height, case, outline, shadow, box and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume and mute (audio effects and pan are saved but not heard yet). Other components (${UNDRAWN_DOCS}) and effects are saved but don't draw yet, so say so if the user asks for something that won't show.
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, components, graphics, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
 - Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" (with media) shows one frame per shot, from the video analysis.
@@ -389,6 +476,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - media_rank ranks video takes (media ids, or the media from a folder, or all the project's video) by cleanScore, best first, each with its stability, sharpness and exposure and its best stretch inside one shot (window seconds long, default 5; start and end usable as in). Use it to pick the clean take or the clean part of a long one, and say why from the components (e.g. "sharper, less shake"). Look at the pick with contact_sheet or render_frames before you rely on it.
 - transcript_read gives what's said in a media file, transcribed on this Mac (whisper.cpp; the language is detected, pass language like "pl" if it's wrong). Text lines start with their first word's index and frames, e.g. "w12 [300–452] So {um} this is the shot (pause 0.8 s) we wanted."; {braces} mark fillers, (pause …) gaps of at least 0.3 s; fillers and pauses also come as lists with frames. format "words" gives each word with start (the frame it begins in) and end (the frame after it), project frames of the media usable as in. Long transcripts come in pages: call again with from = next.from; range narrows to project frames of the media. The first transcript of a file takes a while (and the very first one downloads the speech model): if it answers running, call again with the same arguments. Cached afterwards.
 - transcript_edit cuts by text: remove takes word ranges by the ids transcript_read gives ({"from":"w12","to":"w20"}, both ends included; {"from":"w31"} is one word), pauses {"min": seconds} removes pauses at least that long (default 0.5; a little quiet stays next to each word), fillers true removes the hesitation fillers (um, uh, yyy; never the "maybe" ones: judge those and pass them in remove if they should go). It cuts from every main-track clip that uses the media, as one edit on your turn (Undo turn reverts it); the main track closes up and items on other tracks don't move, so check titles and music still line up. Read the transcript first and cut whole phrases or sentences, not single words in the middle of one; dryRun true shows what would go and the new length without changing anything. It answers what was removed (text, seconds) and the new duration.
+- captions_make makes captions from a media file's transcript (it fetches it like transcript_read): a captions item on its own text track that follows the main-track clips using the media, so cuts, trims, splits and transcript_edit removals keep it in sync and cut words disappear. mode "line" (default) shows a card of up to 2 lines at a time; "word" also accents the speaking word (karaoke); "single" shows one word at a time. look is a text style (default ${CAPTION_DEFAULTS.look}: white lines on dark boxes near the bottom; text.captions, text.outline or text.highlight work too); lines {maxChars (default ${CAPTION_DEFAULTS.maxChars}), maxLines 1 or 2, maxSeconds (default ${CAPTION_DEFAULTS.maxSeconds}), maxWords, pause (a gap this long in seconds starts a new card, default ${CAPTION_DEFAULTS.pause})}; hideFillers leaves um/uh out. A card starts at its first word and stays ${CAPTION_HOLD_S} s after its last word; a sentence end starts a new card. It answers the cards (frames of the edit, word ids, text); project_read shows a captions item with its word count and cards, never the words themselves. Calling it again for the same media remakes them (fixes kept when the transcript is the same). Fix what the transcript got wrong with timeline_edit's {"op":"edit_captions","item":"captions-1","words":[{"word":"w12","text":"Argent"}]} ("" hides a word, null puts the transcript's back); "breaks":[{"word":"w20"}] starts a new card at w20 ({"word":"w20","on":false} stops forcing it); mode, lines and hideFillers change the rest; restyle or move them with update_item style / transform as on text (send the whole style). Captions draw only where their media's speech plays on the main track and don't make the video longer; check them with render_frames.
 - ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements (backgrounds and components), audio, inspector, agent). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
 - Ids are lowercase letters, digits and dashes, unique across the project.
 - You only act during a turn, when the user sends a message. Don't promise to do something later ("when you add clips, I'll move the end card"); instead say what the user can ask for next, e.g. "Once the clips are in, ask me to move the end card after them."

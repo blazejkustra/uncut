@@ -8,7 +8,7 @@ import { HistoryPanel } from "./History.tsx";
 import { isTransportError } from "./connection.ts";
 import { shortPath } from "./format.ts";
 import { itemLabel } from "./project.ts";
-import { AudioEditor, BackgroundEditor, ClipBoxEditor, TextEditor, TransitionInspector } from "./ItemEditors.tsx";
+import { AudioEditor, BackgroundEditor, CaptionsEditor, ClipBoxEditor, TextEditor, TransitionInspector } from "./ItemEditors.tsx";
 import { isBoxed } from "./clip.ts";
 import { ComponentEditor } from "./ComponentEditor.tsx";
 import { componentInfo, isDrawnComponent } from "@uncut/core/components";
@@ -406,14 +406,15 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
   return (
     <div data-testid="inspector-item" data-item={item.id}>
       <div className="insp-title">
-        {item.type === "text" ? <Type /> : item.type === "audio" ? <Music /> : <Film />}
+        {item.type === "text" || item.type === "captions" ? <Type /> : item.type === "audio" ? <Music /> : <Film />}
         <span className="ellipsis">{itemLabel(project, item)}</span>
       </div>
       <div className="insp-sub">
         {item.type === "component" && item.component === SOLID ? "Background" : (componentInfo(item.component)?.name ?? TYPE_NAMES[item.type] ?? item.type)} on {track.name}
-        {locked ? ". The track is locked: unlock it in the timeline to edit it." : ". Drag it on the timeline to move it, its edges to trim it."}
+        {locked ? ". The track is locked: unlock it in the timeline to edit it." : item.type === "captions" ? ". They follow the speech on the main track: cut the clips and the captions move with them." : ". Drag it on the timeline to move it, its edges to trim it."}
       </div>
       {item.type === "text" && <TextEditor project={project} item={item} locked={locked} />}
+      {item.type === "captions" && <CaptionsEditor project={project} item={item} locked={locked} />}
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
       {isDrawnComponent(item) && <ComponentEditor project={project} item={item} locked={locked} />}
       {isBoxed(project, item) && <ClipBoxEditor project={project} item={item} locked={locked} />}

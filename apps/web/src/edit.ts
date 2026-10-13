@@ -371,7 +371,9 @@ export interface SplitPlan extends Plan {
 export function planSplit(project: ProjectModel, selected: string | undefined, frame: number): SplitPlan | { readonly problem: string } {
   const f = Math.floor(frame);
   const inside = (p: Placed) => p.start < f && f < p.start + p.item.duration;
-  const sel = findItem(project, selected);
+  // Selected captions (D82) aren't split: they follow the main track, so S splits the clip there.
+  const picked = findItem(project, selected);
+  const sel = picked?.item.type === "captions" ? undefined : picked;
   let target: Placed | undefined;
   if (sel) {
     if (!inside(sel)) return { problem: "Move the playhead over the selected item to split it." };

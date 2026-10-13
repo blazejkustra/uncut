@@ -17,7 +17,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track.",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings.",
       "inputSchema": {
         "type": "object",
         "required": ["baseRevision", "ops", "summary"],
@@ -142,6 +142,33 @@
       "returns": "{ media, applied, removed: [{ words?, text, pauses?, fillers?, mediaFrames: { start, end }, frames, seconds, clips }], framesRemoved, secondsSaved, revision, duration, seconds, durationBefore, notes? } (frames: the edit's, mediaFrames: project frames of the media)"
     },
     {
+      "name": "captions_make",
+      "description": "Captions from a media file's transcript (D82): a captions item on its own text track that follows the main-track clips using the media, so later cuts, trims, splits and transcript_edit removals keep it in sync and removed words disappear. Words are grouped into cards (1-2 lines, a new card after a pause, a sentence end or the length limits). mode line shows a card at a time, word also accents the speaking word (karaoke), single shows one word at a time. If the media already has captions they're remade from the transcript (corrections kept when the words are the same). Gets the transcript like transcript_read (if it answers running, call again). Fix words, force card starts or change settings afterwards with timeline_edit's edit_captions op; restyle with update_item style (as on text).",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "media": { "type": "string", "description": "A media id from project_read; may be left out when exactly one media with sound is on the main track." },
+          "mode": { "enum": ["line", "word", "single"], "description": "line (default): a card at a time; word: the card with the speaking word accented; single: one word at a time." },
+          "look": { "type": "string", "description": "A text-style module id (default text.caption: white lines on dark boxes near the bottom). modules_list kind text-style lists them." },
+          "lines": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "How words are grouped (defaults: maxChars what fits the canvas at the look's size, at most 32; maxLines 2, maxSeconds 3, pause 0.3).",
+            "properties": {
+              "maxChars": { "type": "integer", "minimum": 4, "maximum": 200 },
+              "maxLines": { "enum": [1, 2] },
+              "maxSeconds": { "type": "number", "minimum": 0.1, "maximum": 30 },
+              "maxWords": { "type": "integer", "minimum": 1, "maximum": 1000 },
+              "pause": { "type": "number", "minimum": 0, "maximum": 10 }
+            }
+          },
+          "hideFillers": { "type": "boolean", "description": "Leave hesitations (um, uh, yyy) out of the captions." }
+        }
+      },
+      "returns": "{ media, item, remade, mode, words, cards: [{ from, to, words: 'w12–w18', text }] (the first 40; frames of the edit), cardCount, revision, notes? }"
+    },
+    {
       "name": "media_import",
       "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed. At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
       "inputSchema": {
@@ -229,6 +256,30 @@
         "transform": { "type": "object", "additionalProperties": false, "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number", "exclusiveMinimum": 0 } }, "description": "The text box's top-left and width in canvas px, over the look's." },
         "animation": { "description": "In/out moves instead of the look's (frames), or null for none.", "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "properties": { "in": { "type": "object" }, "out": { "type": "object" } } }] },
         "alone": { "type": "boolean", "description": "Leave out the looks it comes with." }
+      }
+    },
+    "editCaptions": {
+      "type": "object",
+      "required": ["op", "item"],
+      "additionalProperties": false,
+      "description": "Change a captions item (D82) as one op: fix words (by transcript_read's word id; \"\" hides a word, null goes back to the transcript's), force a new card at a word (or stop forcing one), switch the mode, change the grouping or hide fillers. It becomes one update_item.",
+      "properties": {
+        "op": { "const": "edit_captions" },
+        "item": { "type": "string", "description": "The captions item's id." },
+        "words": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "object", "required": ["word", "text"], "additionalProperties": false, "properties": { "word": { "type": ["string", "integer"], "description": "\"w12\" (or 12)." }, "text": { "type": ["string", "null"] } } }
+        },
+        "breaks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "object", "required": ["word"], "additionalProperties": false, "properties": { "word": { "type": ["string", "integer"] }, "on": { "type": "boolean", "description": "true (default): a card starts at this word; false: no forced start." } } }
+        },
+        "mode": { "enum": ["line", "word", "single"] },
+        "lines": { "type": "object", "description": "Grouping settings over the item's (null for a field: its default): maxChars, maxLines (1 or 2), maxSeconds, maxWords, pause." },
+        "hideFillers": { "type": "boolean" },
+        "cover": { "type": "boolean", "description": "true: stretch the captions over the whole main track again (after clips were added past them)." }
       }
     },
     "insertDeviceFrame": {

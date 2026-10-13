@@ -19,7 +19,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planTextCut, TurnDependency, undoTurn, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { captionCardList, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -35,7 +35,7 @@ import type { BeatsResult } from "./beats.ts";
 import { isLanguage, type TranscriptResult } from "./transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { ServerConfig } from "./config.ts";
 import { Exporter } from "./exporter.ts";
 import { ProjectFormat } from "./format.ts";
@@ -1016,6 +1016,91 @@ export const layer = Layer.effect(
         });
       });
 
+    // captions_make (D82): captions from a media's transcript (core planMakeCaptions, the Transcript
+    // panel's planner), the words stored where they're heard (the loudness pass, as transcript_edit),
+    // as one agent edit on the turn. Gets the transcript like transcript_read.
+    const captionsMake = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const project = v.session.project;
+        const fps = project.canvas.fps;
+        let mediaId = args.media;
+        if (mediaId === undefined) {
+          const heard = [...new Set(project.tracks.filter((t) => t.role === "main").flatMap((t) => t.items.filter((i) => i.type === "clip" && i.media).map((i) => i.media!)))].filter((id) => {
+            const m = project.media.find((x) => x.id === id);
+            return m && m.kind !== "image" && m.probe?.hasAudio !== false;
+          });
+          if (heard.length !== 1) return textResult(heard.length ? `Several media with sound are on the main track (${heard.join(", ")}): pass media.` : "No clip with sound is on the main track. Put the talk on the timeline first.", true);
+          mediaId = heard[0];
+        }
+        if (typeof mediaId !== "string") return textResult("media must be a media id from project_read.", true);
+        const m = project.media.find((x) => x.id === mediaId);
+        if (!m) return textResult(`There's no media "${mediaId}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
+        if (m.kind === "image") return textResult(`${m.id} is a still image: there's no speech to caption.`, true);
+        if (args.mode !== undefined && !["line", "word", "single"].includes(args.mode as string)) return textResult('mode must be "line", "word" or "single".', true);
+        if (args.look !== undefined && typeof args.look !== "string") return textResult("look must be a text-style module id, e.g. text.caption.", true);
+        if (args.lines !== undefined && (typeof args.lines !== "object" || args.lines === null || Array.isArray(args.lines))) return textResult("lines must be an object (maxChars, maxLines, maxSeconds, maxWords, pause).", true);
+        if (args.hideFillers !== undefined && typeof args.hideFillers !== "boolean") return textResult("hideFillers must be true or false.", true);
+        const target = targetOf(v.dir, m, fps);
+        const [answer] = yield* requestAndWait([{ target, analyzer: "transcript" }]);
+        const { outcome, jobId } = answer!;
+        if (!outcome) {
+          const p = pendingOut(jobId);
+          return textResult({ media: m.id, transcript: p, note: `There's no transcript yet and it's still being made after ${Math.round(analyzeWaitMs() / 1000)} s. Call captions_make again with the same arguments (it joins the running job).` });
+        }
+        if (outcome.state === "failed") return textResult({ media: m.id, transcript: { state: "failed", error: outcome.error } }, true);
+        if (outcome.state === "cancelled") return textResult({ media: m.id, transcript: { state: "cancelled", note: cancelledNote } }, true);
+        const result = outcome.result as TranscriptResult;
+        if (!result.hasAudio || !result.words?.length) return textResult(`${m.id} has ${result.hasAudio ? "no speech in its transcript" : "no sound"}, so there's nothing to caption.`, true);
+        const { silences, envelope } = yield* Effect.promise(() => silencesOf(target));
+        const fresh = view();
+        if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
+        const plan = planMakeCaptions(fresh.session.project, {
+          media: m.id,
+          transcript: { words: result.words, language: result.language, seconds: result.seconds, segments: result.segments },
+          silences,
+          envelope,
+          ...(args.mode !== undefined ? { mode: args.mode as CaptionMode } : {}),
+          ...(args.look !== undefined ? { look: args.look as string } : {}),
+          ...(args.lines !== undefined ? { lines: args.lines as CaptionLines } : {}),
+          ...(args.hideFillers !== undefined ? { hideFillers: args.hideFillers as boolean } : {}),
+        });
+        if ("problem" in plan) return textResult(plan.problem, true);
+        const outcome2 = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops: plan.ops, baseRevision: fresh.session.revision, summary: plan.summary }).pipe(
+          Effect.map((snapshot) => ({ ok: true as const, snapshot })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+        );
+        if (!outcome2.ok) {
+          const now = view();
+          const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+          return textResult({ refused: outcome2.error.message, details: outcome2.error.details, revision: now?.session.revision, ...(userChanges ? { userChanges } : {}), note: "No captions were made. Call captions_make again (it plans on the newest project)." }, true);
+        }
+        const { snapshot } = outcome2;
+        const saved = snapshot.project as Project;
+        const item = saved.tracks.flatMap((t) => t.items).find((i) => i.id === plan.itemId)!;
+        const cards = captionCardList(saved, item);
+        const mode = item.mode ?? "line";
+        r.turn.edits.push({ revision: snapshot.revision, summary: plan.summary, lines: [`${plan.remade ? "Remade" : "Made"} ${mode === "word" ? "word-by-word " : mode === "single" ? "one-word " : ""}captions of ${m.name} (${cards.length} card${cards.length === 1 ? "" : "s"}, ${plan.words} words) as ${plan.itemId}${plan.fixesDropped ? `; ${plan.fixesDropped} fix${plan.fixesDropped === 1 ? "" : "es"} dropped (the transcript changed)` : ""}`] });
+        persist(r.owner);
+        publish();
+        r.owner.seen.add(snapshot.revision);
+        const now = view();
+        const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
+        return textResult({
+          media: m.id,
+          item: plan.itemId,
+          remade: plan.remade,
+          ...(plan.fixesDropped ? { fixesDropped: plan.fixesDropped, fixesNote: "The transcript changed since the captions were made, so their word fixes and forced card starts were dropped: redo them with edit_captions." } : {}),
+          mode,
+          words: plan.words,
+          cardCount: cards.length,
+          cards: cards.slice(0, MAX_CAPTION_CARDS),
+          revision: snapshot.revision,
+          ...(cards.length ? {} : { notes: ["No speech of this media plays on the main track yet, so no card shows."] }),
+          note: `One edit on your turn (Undo turn reverts it). Frames are the edit's. Fix words with timeline_edit {"op":"edit_captions","item":"${plan.itemId}","words":[{"word":"w12","text":"…"}]}; look at a card with render_frames.`,
+          ...(userChanges ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
+        });
+      });
+
     // media_rank (D67): the video analysis of several takes (run, joined or cached), ranked by
     // clean score (or one component), each with its best stretch inside one shot.
     const mediaRank = (v: ProjectView, args: Record<string, unknown>) =>
@@ -1202,6 +1287,8 @@ export const layer = Layer.effect(
             return yield* transcriptRead(v, args);
           case "transcript_edit":
             return yield* transcriptEdit(r, v, args);
+          case "captions_make":
+            return yield* captionsMake(r, v, args);
           case "timeline_edit": {
             const { baseRevision, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);
@@ -1212,7 +1299,10 @@ export const layer = Layer.effect(
             // insert_text (D80) becomes the inserts (and text tracks) of a text in a look.
             const texts = expandTextLooks(v.session.project as Project, expanded.ops);
             if ("problem" in texts) return textResult({ refused: texts.problem, revision: v.session.revision }, true);
-            const ops = texts.ops;
+            // edit_captions (D82) becomes the update_item of the captions it changes.
+            const captions = expandCaptionEdits(v.session.project as Project, texts.ops);
+            if ("problem" in captions) return textResult({ refused: captions.problem, revision: v.session.revision }, true);
+            const ops = captions.ops;
             if (!r.owner.seen.has(baseRevision)) {
               return textResult(
                 { refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`, revision: v.session.revision },

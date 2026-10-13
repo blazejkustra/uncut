@@ -926,6 +926,21 @@ export function editWords(project: Pick<Project, "tracks" | "canvas">, transcrip
   const main = project.tracks.find((t) => t.role === "main");
   const out: Array<EditWord> = [];
   if (!main) return out;
+  // Each word list's middles, and whether they only go up (whisper's do): then each clip finds its
+  // first word by binary search and stops at the first one past its stretch, so a long edit of many
+  // clips over an hour of words costs O(clips · log words + words heard), not O(clips · words).
+  const mids = new Map<ReadonlyArray<CutWord>, { mid: Float64Array; sorted: boolean }>();
+  const midsOf = (words: ReadonlyArray<CutWord>) => {
+    let m = mids.get(words);
+    if (!m) {
+      const mid = Float64Array.from(words, (w) => (w.start + w.end) / 2);
+      let sorted = true;
+      for (let i = 1; i < mid.length && sorted; i++) if (mid[i]! < mid[i - 1]!) sorted = false;
+      m = { mid, sorted };
+      mids.set(words, m);
+    }
+    return m;
+  };
   let t = 0;
   for (const item of main.items) {
     const words = item.type === "clip" && item.media ? transcripts.get(item.media) : undefined;
@@ -934,13 +949,30 @@ export function editWords(project: Pick<Project, "tracks" | "canvas">, transcrip
       const speed = item.speed ?? 1;
       const lo = inF / fps;
       const hi = (inF + item.duration * speed) / fps;
-      words.forEach((w, index) => {
-        const mid = (w.start + w.end) / 2;
-        if (mid < lo || mid >= hi) return;
+      const { mid, sorted } = midsOf(words);
+      let first = 0;
+      if (sorted) {
+        let a = 0;
+        let b = mid.length;
+        while (a < b) {
+          const m = (a + b) >> 1;
+          if (mid[m]! < lo) a = m + 1;
+          else b = m;
+        }
+        first = a;
+      }
+      for (let index = first; index < words.length; index++) {
+        const w = words[index]!;
+        const c = mid[index]!;
+        if (c >= hi) {
+          if (sorted) break;
+          continue;
+        }
+        if (c < lo) continue;
         const start = Math.max(0, Math.floor((floorF(w.start * fps) - inF) / speed));
         const end = Math.min(item.duration, Math.max(start + 1, Math.ceil((ceilF(w.end * fps) - inF) / speed)));
         out.push({ clip: item.id, media: item.media!, index, start: t + start, end: t + end });
-      });
+      }
     }
     t += item.duration;
   }
