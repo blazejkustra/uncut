@@ -238,7 +238,9 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
   const port = requested ?? (await freePort());
   // Background by default so test runs don't pop windows over the user's work; UNCUT_TEST_VISIBLE=1 to watch.
   const background = process.env.UNCUT_TEST_VISIBLE === "1" ? {} : { UNCUT_TEST_BACKGROUND: "1" };
-  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...background, ...extra, UNCUT_CDP: String(port) };
+  // Recording on this Mac (D114): Chromium's fake camera and microphone, no prompts, a stand-in
+  // screen, permission states from UNCUT_TEST_MEDIA_ACCESS: a test never opens a real device.
+  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...background, UNCUT_TEST_MEDIA: "fake", ...extra, UNCUT_CDP: String(port) };
   if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
     mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
     writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));

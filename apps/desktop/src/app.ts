@@ -3,11 +3,14 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, safeStorage, shell, systemPreferences, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 
 import {
   APP_INFO_CHANNEL,
   APP_STATE_CHANNEL,
+  ASK_MEDIA_ACCESS_CHANNEL,
+  CAPTURE_SOURCES_CHANNEL,
+  CHOOSE_DISPLAY_SOURCE_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
@@ -20,18 +23,23 @@ import {
   ENVIRONMENT_SWITCH_CHANNEL,
   ENVIRONMENT_TEST_CHANNEL,
   ENVIRONMENTS_CHANNEL,
+  MEDIA_ACCESS_CHANNEL,
   MENU_COMMAND_CHANNEL,
+  OPEN_PRIVACY_SETTINGS_CHANNEL,
   SERVER_CONNECTION_CHANNEL,
   SERVER_EXIT_CHANNEL,
   SHOW_IN_FOLDER_CHANNEL,
   SILENT_AUDIO_CHANNEL,
   type AppInfo,
   type AppState,
+  type CaptureSource,
   type EnvironmentTest,
   type FolderPurpose,
+  type MediaAccess,
+  type MediaAccessKind,
   type MenuCommand,
 } from "./ipc.ts";
-import { BACKGROUND_SWITCHES, isTestBackground } from "./background.ts";
+import { BACKGROUND_SWITCHES, isTestBackground, privacySettingsUrl, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
 import { pingServer, startRelay, type Relay } from "./relay.ts";
@@ -76,6 +84,11 @@ if (testBackground) {
   app.setActivationPolicy?.("accessory");
   for (const name of BACKGROUND_SWITCHES) app.commandLine.appendSwitch(name);
 }
+
+// Recording on this Mac in tests (D114): fake devices, permission states from the test, a stand-in
+// screen source. Never macOS's prompts, never the real camera, microphone or screen.
+const mediaTest = testMedia(process.env);
+if (mediaTest) for (const name of TEST_MEDIA_SWITCHES) app.commandLine.appendSwitch(name);
 
 // __dirname is apps/desktop/dist in dev and app.asar/dist when packaged.
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -301,6 +314,32 @@ function createWindow() {
     item.setSavePath(wanted.path);
     item.once("done", (_e, state) => wanted.done(state === "completed" ? { path: wanted.path } : { error: state === "cancelled" ? "The download was cancelled." : "The download stopped before the end." }));
   });
+  // Camera, microphone and screen (D114) only for the app's own top-level page: a graphic's
+  // sandboxed iframe (D78) or any other page gets none. Other permissions keep Electron's default.
+  const session = contents.session;
+  const mediaPermission = (permission: string) => permission === "media" || permission === "display-capture";
+  session.setPermissionRequestHandler((requester, permission, callback, details) => {
+    if (!mediaPermission(permission)) return callback(true);
+    callback(requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? ""));
+  });
+  session.setPermissionCheckHandler((requester, permission, _origin, details) => {
+    if (!mediaPermission(permission)) return true;
+    return requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL());
+  });
+  // getDisplayMedia records the screen or window the Capture tab picked (chooseDisplaySource just before).
+  session.setDisplayMediaRequestHandler((request, callback) => {
+    const wanted = pendingDisplaySource;
+    pendingDisplaySource = undefined;
+    const frame = request.frame;
+    if (!wanted || mediaTest || !frame || !fromAppFrame(frame)) return callback({});
+    desktopCapturer
+      .getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => {
+        const source = sources.find((s) => s.id === wanted);
+        callback(source ? { video: source } : {});
+      })
+      .catch(() => callback({}));
+  });
   // A graphic item's sandboxed iframe (D78) can't reach anyone over WebRTC either: Chromium honours
   // no CSP webrtc directive, and without a proxy this keeps UDP (STUN) off. The app uses no WebRTC.
   contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
@@ -325,6 +364,50 @@ const fromAppWindow = (event: IpcMainInvokeEvent | IpcMainEvent) => {
   const frame = event.senderFrame;
   return win !== undefined && event.sender === win.webContents && frame !== null && frame.parent === null && isAppUrl(frame.url);
 };
+const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent === null && frame === win.webContents.mainFrame && isAppUrl(frame.url);
+
+// ---- recording on this Mac (D114) ----
+
+// The screen or window the next getDisplayMedia records (set by the Capture tab just before).
+let pendingDisplaySource: string | undefined;
+const MEDIA_KINDS: ReadonlyArray<MediaAccessKind> = ["microphone", "camera", "screen"];
+const isMediaKind = (x: unknown): x is MediaAccessKind => MEDIA_KINDS.includes(x as MediaAccessKind);
+
+/** macOS's answer for each (tests: the test's states, macOS never asked). */
+function mediaAccess(): Record<MediaAccessKind, MediaAccess> {
+  if (mediaTest) return { ...mediaTest.access };
+  const read = (kind: MediaAccessKind) => {
+    try {
+      return systemPreferences.getMediaAccessStatus(kind) as MediaAccess;
+    } catch {
+      return "unknown" as const;
+    }
+  };
+  return { microphone: read("microphone"), camera: read("camera"), screen: read("screen") };
+}
+
+/** Asks macOS for the microphone or camera (its prompt shows only while it's "not-determined"); the state after. */
+async function askMediaAccess(kind: MediaAccessKind): Promise<MediaAccess> {
+  if (mediaTest) return mediaTest.access[kind];
+  if (kind === "screen") return mediaAccess().screen;
+  if (systemPreferences.getMediaAccessStatus(kind) === "not-determined") await systemPreferences.askForMediaAccess(kind).catch(() => false);
+  return mediaAccess()[kind];
+}
+
+/** Screens and windows to record, with small pictures; never Uncut's own window. Tests: stand-ins. */
+async function captureSources(): Promise<Array<CaptureSource>> {
+  if (mediaTest) {
+    return [
+      { id: "standin:screen:1", name: "Test screen", kind: "screen", thumbnail: "" },
+      { id: "standin:window:1", name: "Test window", kind: "window", thumbnail: "" },
+    ];
+  }
+  const own = win?.getMediaSourceId();
+  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 320, height: 200 }, fetchWindowIcons: false });
+  return sources
+    .filter((s) => s.id !== own)
+    .map((s) => ({ id: s.id, name: s.name, kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const), thumbnail: s.thumbnail.isEmpty() ? "" : s.thumbnail.toDataURL() }));
+}
 
 app.on("second-instance", () => {
   if (!win) return;
@@ -415,6 +498,22 @@ app.whenReady().then(() => {
     // Tests shouldn't overwrite the clipboard of whoever runs them.
     if (testDialogs) console.log(`[test] copied ${text}`);
     else clipboard.writeText(text);
+  });
+  handle(MEDIA_ACCESS_CHANNEL, () => mediaAccess());
+  handle(ASK_MEDIA_ACCESS_CHANNEL, (kind: unknown) => {
+    if (!isMediaKind(kind)) throw new Error("not a media kind");
+    return askMediaAccess(kind);
+  });
+  handle(OPEN_PRIVACY_SETTINGS_CHANNEL, (kind: unknown) => {
+    if (!isMediaKind(kind)) throw new Error("not a media kind");
+    const url = privacySettingsUrl(kind);
+    if (mediaTest) console.log(`[test] open ${url}`);
+    else void shell.openExternal(url);
+  });
+  handle(CAPTURE_SOURCES_CHANNEL, () => captureSources());
+  handle(CHOOSE_DISPLAY_SOURCE_CHANNEL, (id: unknown) => {
+    if (typeof id !== "string" || id.length > 200) throw new Error("not a source id");
+    pendingDisplaySource = id;
   });
   // A background test window plays its preview to no output device (sinkId "none"): no sound, and
   // no device latency (Bluetooth headphones add ~0.25 s) between the clock and what is captured.

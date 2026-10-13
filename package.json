@@ -14,7 +14,8 @@
     "plugin:check": "node scripts/plugin-check.ts",
     "dev": "node scripts/dev.ts",
     "build": "pnpm --filter @uncut/web build && pnpm --filter @uncut/server build && pnpm --filter @uncut/desktop build && node native/media/build-release.ts",
-    "dist": "pnpm build && pnpm --filter @uncut/desktop dist"
+    "dist": "pnpm build && pnpm --filter @uncut/desktop dist",
+    "dist:signed": "pnpm build && node apps/desktop/scripts/dist-signed.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.1",

@@ -4,9 +4,10 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
+import { takeUploadName } from "@uncut/contracts";
 import { bridge, type AppInfo, type EnvironmentInfo, type EnvironmentTest, type MenuCommand } from "./bridge.ts";
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
@@ -458,8 +459,8 @@ function onAnalysisJobs(analysisJobs: ReadonlyArray<AnalysisJob>) {
 
 /** The open project's import jobs that are still running or waiting. */
 export const activeJobs = (s: AppStateShape) => s.jobs.filter((j) => j.projectDir === s.snapshot?.dir && j.phase !== "done" && j.phase !== "failed");
-const call: Connection["call"] = (f) =>
-  connection ? connection.call(f) : Promise.resolve({ ok: false, error: { _tag: "NotConnected", message: "Not connected to the server" } });
+const call: Connection["call"] = (f, timeoutMs) =>
+  connection ? connection.call(f, timeoutMs) : Promise.resolve({ ok: false, error: { _tag: "NotConnected", message: "Not connected to the server" } });
 
 const refreshRecents = async () => {
   const recents = await call((c) => c["recents.list"]({}));
@@ -1183,6 +1184,23 @@ export const actions = {
     if (result.ok) set({ captureSaved: result.value });
     else set({ captureError: plainError(result.error) });
     await actions.checkCapture();
+  },
+  /**
+   * D114: a take recorded on this Mac goes up to the active server's media/uploads/ (Local or a
+   * remote alike, D108), then capture.save converts it into media/captures/ and imports it as one
+   * edit, placed at `placeAt` when given. The project must still be the one it was recorded for.
+   */
+  async saveTake(blob: Blob, take: { readonly kind: TakeKind; readonly name?: string; readonly device?: string; readonly placeAt?: number; readonly dir: string }): Promise<{ readonly saved: { readonly mediaId: string; readonly name: string; readonly seconds: number; readonly itemId?: string | undefined; readonly trackId?: string | undefined } } | { readonly problem: string }> {
+    if (state.snapshot?.dir !== take.dir) return { problem: "The project changed while recording, so the take wasn't added." };
+    const ext = blob.type.startsWith("audio/") ? "webm" : blob.type.includes("mp4") ? "mp4" : "webm";
+    const uploaded = await uploadOne(new File([blob], takeUploadName(take.kind, ext), { type: blob.type }));
+    if ("message" in uploaded) return { problem: `The take couldn't be sent to the server: ${uploaded.message}` };
+    if (state.snapshot?.dir !== take.dir) return { problem: "The project changed while recording, so the take wasn't added." };
+    // Converting a long camera or screen take can take a while: wait up to 10 minutes.
+    const result = await call((c) => c["capture.save"]({ path: uploaded.path, kind: take.kind, ...(take.name ? { name: take.name } : {}), ...(take.device ? { device: take.device } : {}), ...(take.placeAt !== undefined ? { placeAt: take.placeAt } : {}) }), 10 * 60 * 1000);
+    if (!result.ok) return { problem: plainError(result.error) };
+    if (result.value.itemId) playback.select(result.value.itemId);
+    return { saved: result.value };
   },
   // ---- generators and keys (D99) ----
   async listGenerators() {

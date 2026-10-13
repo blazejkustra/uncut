@@ -53,8 +53,14 @@ afterSign: scripts/after-sign.ts
 mac:
   category: public.app-category.video
   icon: build/icon.icns
+  # What macOS shows when the Capture tab first asks for the microphone or camera (D114); without
+  # these macOS ends the app at the first request, ad-hoc or signed alike.
+  extendInfo:
+    NSMicrophoneUsageDescription: Uncut records voiceovers and the sound of camera and screen takes from your microphone.
+    NSCameraUsageDescription: Uncut records camera takes for your videos.
   # Ad-hoc signed ("-"), not Developer ID: Apple Silicon refuses to run an unsigned bundle,
-  # and a real identity + notarization comes later.
+  # and a real identity + notarization comes later. `pnpm dist:signed` (D114) overrides these
+  # three on the command line: a keychain identity, the hardened runtime, build/signed.entitlements.plist.
   identity: "-"
   # The hardened runtime is for notarized Developer ID builds; ad-hoc + hardened runtime breaks
   # library validation for Electron's own frameworks.
