@@ -39,6 +39,7 @@ import {
   type Item,
   type Op,
   type Project,
+  subtitleCues,
 } from "@uncut/core";
 
 import { MAX_CELLS, MAX_IMPORT, shortName } from "./agentFootage.ts";
@@ -52,9 +53,9 @@ import toolsSpec from "../../../../spec/agent/tools.json" with { type: "json" };
 // transcript_read with chunk 4 (D68, local whisper.cpp); transcript_edit with chunk 5 (D69, cut by
 // text through core planTextCut); the beats analyzer with chunk 6 (D70); graphic_write with phase 6
 // chunk 2 (D78); captions_make with chunk 5 (D82); project_check, music_list and music_add with
-// chunk 8 (D90, D91); generate_media with phase 7 chunk B (D99).
+// chunk 8 (D90, D91); generate_media with phase 7 chunk B (D99); subtitles_export with D105.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "project_check", "music_list", "music_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "project_check", "music_list", "music_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -168,6 +169,10 @@ export function stepLabel(tool: string, input: unknown, plugin?: string): string
       const how = args.mode === "word" ? "word-by-word captions" : args.mode === "single" ? "one-word captions" : "captions";
       return typeof args.media === "string" ? `Made ${how} for ${args.media}` : `Made ${how}`;
     }
+    case "subtitles_export": {
+      const format = typeof args.path === "string" && /\.vtt$/i.test(args.path) ? "WebVTT" : typeof args.path === "string" && /\.srt$/i.test(args.path) ? "SRT" : args.format === "vtt" ? "WebVTT" : "SRT";
+      return typeof args.path === "string" ? `Saved the subtitles as ${shortName(args.path)}` : `Saved the subtitles as ${format}`;
+    }
     case "graphic_write":
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
     case "generate_media": {
@@ -197,6 +202,12 @@ export function stepLabel(tool: string, input: unknown, plugin?: string): string
     default:
       return plugin ? `Used ${tool} from ${plugin}` : `Used ${tool}`;
   }
+}
+
+/** D105: project_read's line about subtitles (cues from captions and Subtitles tracks), or undefined. */
+function subtitleNote(project: Project): string | undefined {
+  const n = subtitleCues(project).length;
+  return n ? `${n} subtitle cue${n === 1 ? "" : "s"} (captions cards and Subtitles tracks): subtitles_export writes them as .srt or .vtt.` : undefined;
 }
 
 /**
@@ -237,6 +248,8 @@ export function projectSummary(project: Project, revision: number, range?: { sta
     ...(project.master ? { master: project.master } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),
+    // D105: what a subtitles file would hold, when there's anything.
+    ...(subtitleNote(project) ? { subtitles: subtitleNote(project) } : {}),
   };
 }
 
@@ -582,6 +595,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - transcript_read gives what's said in a media file, transcribed on this Mac (whisper.cpp; the language is detected, pass language like "pl" if it's wrong). Text lines start with their first word's index and frames, e.g. "w12 [300–452] So {um} this is the shot (pause 0.8 s) we wanted."; {braces} mark fillers, (pause …) gaps of at least 0.3 s; fillers and pauses also come as lists with frames. format "words" gives each word with start (the frame it begins in) and end (the frame after it), project frames of the media usable as in. Long transcripts come in pages: call again with from = next.from; range narrows to project frames of the media. The first transcript of a file takes a while (and the very first one downloads the speech model): if it answers running, call again with the same arguments. Cached afterwards.
 - transcript_edit cuts by text: remove takes word ranges by the ids transcript_read gives ({"from":"w12","to":"w20"}, both ends included; {"from":"w31"} is one word), pauses {"min": seconds} removes pauses at least that long (default 0.5; a little quiet stays next to each word), fillers true removes the hesitation fillers (um, uh, yyy; never the "maybe" ones: judge those and pass them in remove if they should go). It cuts from every main-track clip that uses the media, as one edit on your turn (Undo turn reverts it); the main track closes up and items on other tracks don't move, so check titles and music still line up. Read the transcript first and cut whole phrases or sentences, not single words in the middle of one; dryRun true shows what would go and the new length without changing anything. It answers what was removed (text, seconds) and the new duration.
 - captions_make makes captions from a media file's transcript (it fetches it like transcript_read): a captions item on its own text track that follows the main-track clips using the media, so cuts, trims, splits and transcript_edit removals keep it in sync and cut words disappear. mode "line" (default) shows a card of up to 2 lines at a time; "word" also accents the speaking word (karaoke); "single" shows one word at a time. look is a text style (default ${CAPTION_DEFAULTS.look}: white lines on dark boxes near the bottom; text.captions, text.outline or text.highlight work too); lines {maxChars (default ${CAPTION_DEFAULTS.maxChars}), maxLines 1 or 2, maxSeconds (default ${CAPTION_DEFAULTS.maxSeconds}), maxWords, pause (a gap this long in seconds starts a new card, default ${CAPTION_DEFAULTS.pause})}; hideFillers leaves um/uh out. A card starts at its first word and stays ${CAPTION_HOLD_S} s after its last word; a sentence end starts a new card. It answers the cards (frames of the edit, word ids, text); project_read shows a captions item with its word count and cards, never the words themselves. Calling it again for the same media remakes them (fixes kept when the transcript is the same). Fix what the transcript got wrong with timeline_edit's {"op":"edit_captions","item":"captions-1","words":[{"word":"w12","text":"Argent"}]} ("" hides a word, null puts the transcript's back); "breaks":[{"word":"w20"}] starts a new card at w20 ({"word":"w20","on":false} stops forcing it); mode, lines and hideFillers change the rest; restyle or move them with update_item style / transform as on text (send the whole style). Captions draw only where their media's speech plays on the main track and don't make the video longer; check them with render_frames.
+- subtitles_export writes the subtitles as a file: every captions item's cards (what the video draws: corrections in, hidden words and fillers out, word modes as whole cards) and the text items of "Subtitles" tracks, merged by time, in the edit's time after cuts. format "srt" (default) or "vtt"; path an absolute .srt / .vtt path inside the project folder (default: next to project.json, named after the project; elsewhere the user saves them from the Export dialog); overwrite true replaces a file there, never a subtitles file the project imported. media_import of a .srt or .vtt file puts its cues on a new "Subtitles" text track (one text item per cue at the edit's frames, cut to the main track's length); edit or restyle them like any text. The video export (the user's Export dialog) can also write the file next to the video, add a soft subtitle track, or leave the captions out of the picture.
 - ui_show points the user at something: it moves the playhead, selects an item and/or opens a panel (media, text, elements (backgrounds and components), audio, inspector, agent, checks). Use it at the end of a turn to show what you did, e.g. the playhead at a cut with the clip selected.
 - Music: music_list lists the bundled CC0 tracks (cozy lo-fi, Rhodes, piano; mood, bpm, length; all about -16 LUFS); music_add copies one into the project's media and returns its media id. Put it on an audio track that's free for that stretch (its own "Music" track via add_track when a voice uses the existing one; never after the voice) with fades (about 1 s in, 2 s out), ending by the video's end at the latest (set duration; never let music make the video longer), and when there's a voice or talking footage, duck it under that track: update_track mixer.effects [{"module":"audio.duck","params":{"under":["voice"],"amountDb":-12}}]. Only add music when the user asks for it or the video has no sound at all.
 - Taste (the house style for short product videos; project_check lists what the project gets wrong): restraint, few elements per frame, the product is the hero; one typeface family with a real size scale and one accent colour that carries meaning; hard cuts or short crossfades, motion only when the story changes, not the same entrance on every text; every text fully visible for at least words ÷ 3 s (2 s minimum, after its in move), the last line holding 3 s, no new text in the last 2 s; plain dev-to-dev wording, no filler ("seamlessly", "unlock"), no trailing periods on titles and captions, never ·, • or * between words (commas or line breaks); text at least 28 px at a 1080 px shorter side, inside the safe margin; frame 1 is the thumbnail and the muted autoplay, so it shows the claim, never black or a fade from black; footage at one honest speed (say a speed-up in words, never mix speeds); cozy music, never corporate. Before you say you're done with an edit that changes how the video looks or reads, run project_check and fix each warning (its fix ops go straight into timeline_edit) or say in one line why it's right as it is. The editor's Checks tab shows the same list (ui_show panel "checks").

@@ -23,6 +23,7 @@
     "./looks": "./src/text/looks.ts",
     "./textPlan": "./src/text/textPlan.ts",
     "./captions": "./src/text/captions.ts",
+    "./subtitles": "./src/text/subtitles.ts",
     "./effects": "./src/audio/effects.ts",
     "./ducking": "./src/audio/ducking.ts",
     "./checks": "./src/checks/checks.ts",
