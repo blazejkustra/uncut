@@ -13,7 +13,7 @@ export { baseBox, canvasBox, clipBox, EASES, fitRect, FITS, hasKeys, isPlainBox,
 export type { ClipBox, Ease, Fit, KeyProp, Rect } from "./box.ts";
 export { CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, DRAWN_TRANSITIONS, fadesIn, handleAfter, handleBefore, incomingFx, IRIS, irisRadius, movesOutgoing, outgoingFx, overlaps, PUSH_LEFT, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE, ZOOM, ZOOM_SCALE } from "./transitions.ts";
 export type { Cut, TransitionFx, TransitionInfo, TransitionLimits } from "./transitions.ts";
-export { audibleAt, audioSpan, dbToGain, fadeAt, gainToDb, itemGain, keyDbAt, MAX_DB, SILENCE_DB, soundMedia, sourceAt, trackAudible } from "./audio.ts";
+export { anySolo, audibleAt, audibleTracks, mixNote, trackHasSound, audioSpan, dbToGain, fadeAt, gainToDb, itemGain, keyDbAt, masterGain, MAX_DB, outputGains, panGains, SILENCE_DB, soundMedia, sourceAt, trackAudible, trackPan } from "./audio.ts";
 export type { Audible } from "./audio.ts";
 export type { Dip, Span, Visual } from "./timeline.ts";
 export { canvasBackground, DEFAULT_THEME, DM_MONO, DM_SANS, esc, FONT_FACES, fontFaceCss, markup, RENDER_CSS, resolveColor, resolveFont, safeMargin, SOLID, solidBackground, solidHtml, LEGACY_SHADOW_CSS, textDecor, textPlacement, TEXT_STYLES, textHtml, textLook, themeColors, withAlpha, wordCount, wordCss } from "./render.ts";

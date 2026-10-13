@@ -26,6 +26,9 @@ export const dbWords = (db: unknown) => {
   return `${n < 0 ? "−" : n > 0 ? "+" : ""}${Math.abs(n)} dB`;
 };
 
+/** A pan in words (D83): "centre", "30 % left", "100 % right". */
+export const panWords = (pan: unknown) => (typeof pan !== "number" || pan === 0 ? "centre" : `${Math.round(Math.abs(pan) * 100)} % ${pan < 0 ? "left" : "right"}`);
+
 /**
  * Hide, lock, mute and volume in words (the timeline's track buttons); undefined for anything
  * else. update_track replaces the mixer whole, so a mute toggle on a track with a volume and a
@@ -39,11 +42,18 @@ function trackFlag(track: Id, set: { readonly [key: string]: unknown }, hint?: s
   if (keys[0] === "hidden") return `${on(set.hidden) ? "Hid" : "Showed"} track ${track}`;
   if (keys[0] === "locked") return `${on(set.locked) ? "Locked" : "Unlocked"} track ${track}`;
   if (keys[0] === "mixer") {
-    const mixer = (set.mixer ?? {}) as { readonly mute?: unknown; readonly gainDb?: unknown };
+    const mixer = (set.mixer ?? {}) as { readonly mute?: unknown; readonly gainDb?: unknown; readonly pan?: unknown; readonly solo?: unknown };
+    // The Mixer's pan and solo (D83): the summary says which field the gesture changed.
+    if (hint && /^pan\b/i.test(hint)) return `Panned track ${track} ${panWords(mixer.pan)}`;
+    if (hint && /^(un)?solo\b/i.test(hint)) return `${mixer.solo === true ? "Soloed" : "Unsoloed"} track ${track}`;
     const muteNews = hint && /^(un)?mute\b/i.test(hint) ? true : hint && /\bvolume\b/i.test(hint) ? false : !("gainDb" in mixer);
-    if (muteNews && mixer.mute === true) return `Muted track ${track}`;
-    if (muteNews && mixer.mute === false) return `Unmuted track ${track}`;
-    if (!muteNews) return `Set volume of track ${track} to ${dbWords(mixer.gainDb)}${mixer.mute === true ? " (muted)" : ""}`;
+    // Without a summary that says (the agent's edits): pan and solo are listed with the rest.
+    const extra = hint && (muteNews || /\bvolume\b/i.test(hint)) ? "" : [typeof mixer.pan === "number" && mixer.pan !== 0 ? `, panned ${panWords(mixer.pan)}` : "", mixer.solo === true ? ", soloed" : ""].join("");
+    if (muteNews && mixer.mute === true) return `Muted track ${track}${extra}`;
+    if (muteNews && mixer.mute === false) return `Unmuted track ${track}${extra}`;
+    if (!muteNews) return `Set volume of track ${track} to ${dbWords(mixer.gainDb)}${mixer.mute === true ? " (muted)" : ""}${extra}`;
+    if (extra) return `Set mixer of track ${track}: ${extra.slice(2)}`;
+    if (set.mixer === null) return `Reset the mixer of track ${track}`;
   }
   return undefined;
 }
@@ -212,8 +222,15 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       return `Deleted track ${op.track}`;
     case "add_media":
       return `Added media ${op.media.name} (${op.media.id})`;
-    case "update_project":
-      return `Changed project ${Object.keys(op.set).join(", ")}`;
+    case "update_project": {
+      // The master volume (D83); update_project replaces master whole.
+      const keys = Object.keys(op.set);
+      if (keys.length === 1 && keys[0] === "master") {
+        const m = (op.set.master ?? {}) as { readonly gainDb?: unknown };
+        if (typeof m.gainDb === "number" || hint?.startsWith("Set master volume")) return `Set master volume to ${dbWords(m.gainDb)}`;
+      }
+      return `Changed project ${keys.join(", ")}`;
+    }
     default:
       // Every op is handled above; this is for ops from a newer format.
       return String((op as { op: unknown }).op).replace(/_/g, " ");

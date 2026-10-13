@@ -44,11 +44,13 @@ export interface PlaybackState {
   /** Moves and trims snap to the playhead, item edges and 0 (hold ⌘ while dragging to skip). */
   readonly snapping: boolean;
   readonly draft: PreviewDraft | undefined;
-  /** What the bottom panel shows (D32): the timeline or the transcript. */
-  readonly bottom: "timeline" | "transcript";
+  /** What the bottom panel shows (D32): the timeline, the transcript or the mixer (D83). */
+  readonly bottom: "timeline" | "transcript" | "mixer";
+  /** A selected volume key (D83) of the selected item: its index among the item's keys in frame order. ⌫ removes it. */
+  readonly gainKey: number | undefined;
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: true, draft: undefined, bottom: "timeline" };
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: true, draft: undefined, bottom: "timeline", gainKey: undefined };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -110,7 +112,7 @@ export const playback = {
   /** Another project opened: back to the start, nothing selected, fit zoom. */
   reset() {
     cancelAnimationFrame(raf);
-    set({ frame: 0, playing: false, selected: undefined, cut: undefined, zoom: 1, draft: undefined });
+    set({ frame: 0, playing: false, selected: undefined, cut: undefined, gainKey: undefined, zoom: 1, draft: undefined });
   },
 
   play() {
@@ -156,9 +158,11 @@ export const playback = {
     follower = fn;
   },
 
-  select: (id: string | undefined) => (id === state.selected && state.cut === undefined ? undefined : set({ selected: id, cut: undefined })),
+  select: (id: string | undefined) => (id === state.selected && state.cut === undefined && state.gainKey === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: undefined })),
   /** Select the cut before main item `id` (its transition, if it has one); undefined clears it. */
-  selectCut: (id: string | undefined) => (id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined })),
+  selectCut: (id: string | undefined) => (id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined, gainKey: undefined })),
+  /** Select item `id` and its volume key `index` (in frame order), D83; undefined selects just the item. */
+  selectGainKey: (id: string, index: number | undefined) => (id === state.selected && index === state.gainKey && state.cut === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: index })),
 
   zoomIn: () => set({ zoom: clamp(state.zoom * 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),

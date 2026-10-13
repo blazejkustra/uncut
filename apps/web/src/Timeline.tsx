@@ -26,13 +26,13 @@ import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playbac
 import { SOLID, solidBackground } from "@uncut/core/render";
 import { displayTracks, itemLabel, layoutOf, TEXT_PRESETS, type Item, type ProjectModel, type Track } from "./project.ts";
 import { NumberField, Slider } from "./ItemEditors.tsx";
-import { dbLabel, hasSound, planFade, planTrackGain, soundTrack } from "./sound.ts";
+import { dbLabel, envelopeDbAt, hasSound, keyIndexAt, levelY, planAddGainKey, planFade, planMoveGainKey, planRemoveGainKey, planTrackGain, soundTrack, yLevel } from "./sound.ts";
 import { actions, getState, projectOf, thumbUrl, useApp } from "./store.ts";
 import { ItemWaveform } from "./Waveform.tsx";
 import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 
-/** Timeline | Transcript | Mixer (D32): the bottom panel's modes. Mixer comes later. */
+/** Timeline | Transcript | Mixer (D32, D83): the bottom panel's modes. */
 export function BottomTabs() {
   const bottom = usePlayback((s) => s.bottom);
   return (
@@ -43,7 +43,7 @@ export function BottomTabs() {
       <button className={bottom === "transcript" ? "active" : ""} data-testid="bottom-transcript" title="What's said on the main track: cut by deleting words" onClick={() => playback.setBottom("transcript")}>
         Transcript
       </button>
-      <button disabled title="Coming in a later phase">
+      <button className={bottom === "mixer" ? "active" : ""} data-testid="bottom-mixer" title="Volume, pan, mute and solo per track, the master volume and live meters" onClick={() => playback.setBottom("mixer")}>
         Mixer
       </button>
     </div>
@@ -617,6 +617,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
                         labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
                         edges={editable && item.type !== "captions"}
+                        envelope={item.id === selected && editable && !dragged ? "edit" : "show"}
                         {...(item.type === "captions" ? { cards: captionCards(view, item) } : {})}
                         onPointerDown={(e) => onItemDown(e, server?.item ?? item, track)}
                       />
@@ -718,6 +719,7 @@ function ItemBox({
   onPointerDown,
   labelInset = 0,
   cards,
+  envelope = "none",
 }: {
   project: ProjectModel;
   item: Item;
@@ -735,6 +737,8 @@ function ItemBox({
   labelInset?: number;
   /** A captions item's cards (D82), drawn as blocks with their words. */
   cards?: ReadonlyArray<CaptionCard>;
+  /** The volume line (D83) on items with sound: drawn, or drawn with keys to click and drag (the selected item). */
+  envelope?: "none" | "show" | "edit";
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
@@ -779,6 +783,7 @@ function ItemBox({
           {fadeOut > 0 && <path d={`M${px} 0 L${px - fadeOut} 0 L${px} 100 Z`} />}
         </svg>
       )}
+      {sound && envelope !== "none" && <Envelope project={project} item={item} px={px} ppf={ppf} edit={envelope === "edit"} />}
       <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
         {label}
       </span>
@@ -796,6 +801,144 @@ function ItemBox({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The volume line of an item with sound (D83): gainDb plus its gainKeys envelope (linear in dB
+ * between keys, held outside them), on the level scale the Mixer's faders use (levelY: +12 dB at
+ * the top, 0 dB a quarter down). On the selected item (when it is at least ENVELOPE_MIN_PX wide):
+ * a press within 4 px of the line adds a key there with the line's value (dragging right away
+ * adds it where the pointer lets go), dragging a key moves it in time and volume (one frame clear
+ * of its neighbours), double-click removes it, and a click selects it so ⌫ removes it. One edit
+ * per gesture; a drag plays as it moves (playback carries on). Keys are addressed by their index
+ * in frame order. The trim edges and fade handles sit above the line, so they keep their presses.
+ */
+const ENVELOPE_MIN_PX = 40;
+function Envelope({ project, item, px, ppf, edit: editable }: { project: ProjectModel; item: Item; px: number; ppf: number; edit: boolean }) {
+  const edit = editable && px >= ENVELOPE_MIN_PX;
+  const selectedKey = usePlayback((s) => (s.selected === item.id ? s.gainKey : undefined));
+  // While a key is dragged: the item as it would be (from the plan's gainKeys).
+  const [shown, setShown] = useState<Item | undefined>(undefined);
+  const ref = useRef<SVGSVGElement>(null);
+  const view = shown ?? item;
+  const fps = project.canvas.fps;
+  const keys = [...(view.gainKeys ?? [])].sort((a, b) => a.frame - b.frame);
+  // A selected key that isn't there any more (undo, an agent edit) is deselected.
+  const keyCount = (item.gainKeys ?? []).length;
+  useEffect(() => {
+    if (selectedKey !== undefined && selectedKey >= keyCount) playback.selectGainKey(item.id, undefined);
+  }, [selectedKey, keyCount, item.id]);
+  // The line: sampled every few pixels, plus each key, so the corners are exact.
+  const step = Math.max(1, Math.round(3 / ppf));
+  const frames = new Set<number>([0, view.duration, ...keys.map((k) => k.frame)]);
+  for (let f = 0; f < view.duration; f += step) frames.add(f);
+  const pts = [...frames].sort((a, b) => a - b).map((f) => `${(f * ppf).toFixed(1)},${(levelY(envelopeDbAt(view, f)) * 100).toFixed(2)}`);
+  const d = `M${pts.join("L")}`;
+
+  /** Frame (from the item's start) and the item's dB at a pointer position. */
+  const at = (ev: { clientX: number; clientY: number }) => {
+    const r = ref.current!.getBoundingClientRect();
+    return { frame: Math.max(0, Math.min(item.duration, Math.round((ev.clientX - r.left) / ppf))), db: yLevel((ev.clientY - r.top) / r.height), height: r.height };
+  };
+  /**
+   * A press on the line (`key` undefined) or on a key: plan from the pointer on every move (draft
+   * shown and heard), send one edit on release, planned against the project as it is then.
+   */
+  const press = (e: React.PointerEvent, key?: { index: number; frame: number; db: number }) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (key) playback.selectGainKey(item.id, key.index);
+    const snapshot = getState().snapshot;
+    const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const start = at(e);
+    let moved = false;
+    let draft: PreviewDraft | undefined;
+    /** The plan for the gesture so far, and the frame of the key it leaves (to select it). */
+    const planFor = (base: ProjectModel, ev: { clientX: number; clientY: number }) => {
+      if (!moved) return key ? undefined : { plan: planAddGainKey(base, item.id, start.frame), frame: start.frame };
+      const p = at(ev);
+      if (!key) return { plan: planAddGainKey(base, item.id, p.frame, p.db), frame: p.frame };
+      const frame = key.frame + Math.round((ev.clientX - x0) / ppf);
+      const db = yLevel(levelY(key.db) + (ev.clientY - y0) / p.height);
+      return { plan: planMoveGainKey(base, item.id, key.index, frame, db), frame: undefined };
+    };
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < DRAG_PX && Math.abs(ev.clientY - y0) < DRAG_PX) return;
+      moved = true;
+      const plan = planFor(project, ev)?.plan;
+      if (!plan || "problem" in plan || !plan.ops.length) return;
+      const result = draftOf(project, plan.ops);
+      if (!("project" in result)) return;
+      setShown(findItem(result.project, item.id)?.item);
+      draft = { base: project, project: result.project };
+      playback.setDraft(draft);
+    };
+    const done = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+    };
+    const clear = () => {
+      setShown(undefined);
+      if (draft && getPlayback().draft === draft) playback.setDraft(undefined);
+    };
+    const cancel = () => (done(), clear());
+    const up = (ev: PointerEvent) => {
+      done();
+      const now = getState().snapshot;
+      if (!now || now.dir !== origin.dir) return clear();
+      const planned = planFor(projectOf(now), ev);
+      const plan = planned?.plan;
+      if (!plan || ("ops" in plan && !plan.ops.length)) return clear();
+      // The key that results (new or moved) is selected, so ⌫ removes it.
+      const set = "ops" in plan ? (plan.ops[0] as { set?: { gainKeys?: ReadonlyArray<{ frame: number; db: number }> | null } }).set : undefined;
+      const landed = key ? key.index : planned.frame !== undefined ? keyIndexAt(set?.gainKeys, planned.frame) : -1;
+      void actions
+        .timelineEdit(plan, { baseRevision: now.revision, dir: now.dir })
+        .then((ok) => {
+          if (ok && landed >= 0) playback.selectGainKey(item.id, landed);
+        })
+        .finally(clear);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+  };
+  const remove = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    const now = getState().snapshot;
+    if (!now) return;
+    void actions.timelineEdit(planRemoveGainKey(projectOf(now), item.id, index), { baseRevision: now.revision, dir: now.dir }).then((ok) => ok && playback.selectGainKey(item.id, undefined));
+  };
+  return (
+    <>
+      <svg className="envelope" data-testid="envelope" data-keys={keys.length} viewBox={`0 0 ${px} 100`} preserveAspectRatio="none" ref={ref}>
+        <path className="env-line" d={d} />
+        {edit && <path className="env-hit" data-testid="envelope-line" d={d} onPointerDown={(e) => press(e)} />}
+      </svg>
+      {edit &&
+        keys.map((k, index) => {
+          const db = envelopeDbAt(view, k.frame);
+          return (
+            <div
+              key={index}
+              className={`env-key ${selectedKey === index ? "selected" : ""}`}
+              data-testid="envelope-key"
+              data-index={index}
+              data-frame={k.frame}
+              data-db={Math.round(db * 10) / 10}
+              title={`Volume key at ${(k.frame / fps).toFixed(2)} s: ${dbLabel(db)} dB (drag to move, double-click to remove)`}
+              style={{ left: k.frame * ppf, top: `${levelY(db) * 100}%` }}
+              onPointerDown={(e) => press(e, { index, frame: k.frame, db })}
+              onDoubleClick={(e) => remove(e, index)}
+            />
+          );
+        })}
+    </>
   );
 }
 

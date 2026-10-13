@@ -17,7 +17,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings.",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. The mix (D83): update_track's mixer {gainDb, pan -1..1, mute, solo} (replaced whole) and update_project's master {gainDb} (the master volume after the track sum) are heard in the preview and mixed the same way in the export.",
       "inputSchema": {
         "type": "object",
         "required": ["baseRevision", "ops", "summary"],

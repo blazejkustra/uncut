@@ -3,6 +3,8 @@
 // progress with a Cancel, and closing the dialog doesn't stop it (the top bar keeps the percentage).
 // Without ffmpeg there's nothing to export with, so the dialog shows how to install it instead.
 import type { ExportJob, ExportLoudness, ExportQuality } from "@uncut/contracts";
+import { mixNote, SILENCE_DB } from "@uncut/core/audio";
+import { dbWords } from "@uncut/core/edit-log";
 import { outputSize } from "@uncut/core/export";
 import { FolderOpen, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -169,6 +171,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     );
   } else {
     const look = LOUDNESS.find((l) => l.id === loudness)!;
+    const note = mixNote(project);
+    const masterDb = project.master?.gainDb ?? 0;
     body = (
       <form
         data-testid="export-form"
@@ -218,6 +222,17 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <p className="wiz-meta" data-testid="loudness-hint">
           {look.hint}
         </p>
+        {note && (
+          // D83: the export mixes what the preview plays, so a solo left on exports only those tracks.
+          <p className="wiz-meta solo-note" data-testid="export-solo-note">
+            {note}
+          </p>
+        )}
+        {masterDb > SILENCE_DB && masterDb !== 0 && loudness !== "off" && (
+          <p className="wiz-meta" data-testid="export-master-note">
+            The master volume ({dbWords(masterDb)}) is heard in the editor and in As mixed; {look.label} evens the loudness out after it.
+          </p>
+        )}
         {cancelled && !error && <p className="wiz-meta">The last export was cancelled; nothing was saved.</p>}
         {error && (
           <div className="inline-error" role="alert" data-testid="export-refused" data-reason={error.reason}>
