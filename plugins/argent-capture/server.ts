@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Uncut's Argent capture plugin (D19, D20, D98): a stdio MCP server, one JSON-RPC message per line,
-// that records iOS simulators and Android emulators/devices through the `argent` CLI. No
-// dependencies: it runs on Uncut's own Node (D97), from this folder.
+// Uncut's Argent capture plugin (D19, D20, D98): a stdio MCP server, written with
+// @uncut/plugin-sdk (D102), that records iOS simulators and Android emulators/devices through the
+// `argent` CLI. No other dependencies: it runs on Uncut's own Node (D97), from this folder.
 //
 // Argent is found at $ARGENT_BIN, else on PATH. It's only ever asked for its version, the device
 // list, a recording's start and stop, and a flow run: never to start, stop or reset its shared
@@ -15,7 +15,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createInterface } from "node:readline";
+
+import { serve, text, ToolError, type Json, type ToolContext, type ToolResult, type UncutDeclaration } from "@uncut/plugin-sdk";
 
 const MODULE_ID = "argent.capture";
 export const MIN_VERSION = "0.19.0";
@@ -29,11 +30,11 @@ const CALL_TIMEOUT_MS = 60_000;
 
 // ---- small helpers ----
 
-type Json = Record<string, unknown>;
 const str = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : undefined);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-class Refusal extends Error {}
+/** A refusal the agent reads as is (the SDK answers a ToolError with its message). */
+class Refusal extends ToolError {}
 
 export const compareVersions = (a: string, b: string) => {
   const pa = a.split(/[.-]/).map((n) => Number.parseInt(n, 10) || 0);
@@ -225,10 +226,6 @@ interface Context {
   readonly flowsDir?: string;
 }
 
-const contextOf = (meta: unknown): Context => {
-  const m = (meta && typeof meta === "object" ? meta : {}) as Json;
-  return { projectDir: str(m["uncut/projectDir"]), captureDir: str(m["uncut/captureDir"]), flowsDir: str(m["uncut/flowsDir"]) };
-};
 
 interface Recording {
   readonly device: string;
@@ -471,12 +468,7 @@ interface Call {
   readonly signal: AbortSignal;
 }
 
-type Result = { content: Array<Json>; structuredContent?: Json; isError?: boolean };
-const text = (value: string, structured?: Json, isError = false): Result => ({
-  content: [{ type: "text", text: value }],
-  ...(structured ? { structuredContent: structured } : {}),
-  ...(isError ? { isError: true } : {}),
-});
+type Result = ToolResult;
 
 const bool = (x: unknown, fallback: boolean) => (typeof x === "boolean" ? x : fallback);
 
@@ -488,7 +480,7 @@ async function listTool(): Promise<Result> {
   return text(JSON.stringify({ devices, note: devices.some((d) => d.recordable) ? "Record a device whose recordable is true with argent_record." : "Nothing can be recorded right now: boot an iOS simulator or Android emulator first (the user does that, or Argent's own tools)." }), structured);
 }
 
-function takeResult(take: Take, device: Device, flow: string | undefined, declare: Json): Result {
+function takeResult(take: Take, device: Device, flow: string | undefined, declare: UncutDeclaration): Result {
   const info = { path: take.path, seconds: take.seconds, bytes: take.bytes, device: device.id, ...(flow ? { flow } : {}), ...(take.warning ? { warning: take.warning } : {}) };
   return text(JSON.stringify(info), { ...info, uncut: declare });
 }
@@ -565,63 +557,22 @@ const TOOLS: Record<string, (call: Call) => Promise<Result>> = {
   argent_capture_list: captureListTool,
 };
 
-// ---- MCP over stdio ----
+// ---- MCP over stdio (@uncut/plugin-sdk) ----
 
-const send = (msg: Json) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...msg })}\n`);
-const inFlight = new Map<number | string, AbortController>();
+const handler =
+  (tool: (call: Call) => Promise<Result>) =>
+  (args: Json, { projectDir, captureDir, flowsDir, signal }: ToolContext) =>
+    tool({ args, context: { projectDir, captureDir, flowsDir }, signal });
 
-async function onMessage(msg: Json) {
-  const { id, method } = msg as { id?: number | string; method?: string };
-  const params = (msg.params && typeof msg.params === "object" ? msg.params : {}) as Json;
-  if (method === "notifications/cancelled") {
-    inFlight.get(params.requestId as number | string)?.abort();
-    return;
-  }
-  if (method === "initialize") return send({ id, result: { protocolVersion: str(params.protocolVersion) ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "uncut-argent-capture", version: "0.1.0" } } });
-  if (method === "ping") return send({ id, result: {} });
-  if (method === "tools/list") return send({ id, result: { tools: [] } });
-  if (method !== "tools/call") {
-    if (id !== undefined && method !== undefined) send({ id, error: { code: -32601, message: `Unknown method ${method}` } });
-    return;
-  }
-  const name = String(params.name ?? "");
-  const tool = TOOLS[name];
-  if (!tool) return send({ id, result: text(`No tool ${name}`, undefined, true) });
-  const abort = new AbortController();
-  if (id !== undefined) inFlight.set(id, abort);
-  let result: Result;
-  try {
-    result = await tool({ args: (params.arguments && typeof params.arguments === "object" ? params.arguments : {}) as Json, context: contextOf(params._meta), signal: abort.signal });
-  } catch (error) {
-    result = text(error instanceof Refusal ? error.message : `The recording didn't work: ${messageOf(error)}.`, undefined, true);
-  } finally {
-    if (id !== undefined) inFlight.delete(id);
-  }
-  // A cancelled call gets no answer (MCP): its recording was stopped and the take dropped.
-  if (!abort.signal.aborted) send({ id, result });
-}
-
+// A cancelled call (notifications/cancelled) aborts its signal: its recording is stopped, the take
+// dropped, and it gets no answer. On the way out (stdin closed: Uncut is done with us; SIGTERM:
+// Uncut is stopping; an uncaught error) every recording still running is stopped.
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname);
 if (isMain) {
-  createInterface({ input: process.stdin }).on("line", (line) => {
-    let msg: unknown;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      return;
-    }
-    if (msg && typeof msg === "object" && !Array.isArray(msg)) void onMessage(msg as Json);
-  });
-  const quit = (code: number) => {
-    stopAllOnExit();
-    process.exit(code);
-  };
-  // stdin closed: Uncut is done with us (MCP stdio). SIGTERM: Uncut is stopping.
-  process.stdin.on("end", () => quit(0));
-  process.on("SIGTERM", () => quit(0));
-  process.on("SIGINT", () => quit(0));
-  process.on("uncaughtException", (error) => {
-    process.stderr.write(`argent-capture: ${messageOf(error)}\n`);
-    quit(1);
+  serve({
+    manifest: new URL("./uncut.module.json", import.meta.url),
+    tools: Object.fromEntries(Object.entries(TOOLS).map(([name, tool]) => [name, handler(tool)])),
+    onError: (error) => text(`The recording didn't work: ${messageOf(error)}.`, undefined, true),
+    onExit: stopAllOnExit,
   });
 }

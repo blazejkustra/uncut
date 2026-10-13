@@ -95,7 +95,8 @@ test("the plugin: no agent tools; transcribe answers words with progress; refusa
   const plugin = startPlugin({ FAKE_WHISPER_JSON: join(root, "say.json"), FAKE_WHISPER_LOG: whisperLog(), FAKE_WHISPER_SLEEP_MS: "2000" });
   try {
     const init = await plugin.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } });
-    assert.equal(init.result.serverInfo.name, "uncut-whisper-transcribe");
+    assert.equal(init.result.serverInfo.name, "whisper.transcribe");
+    assert.equal(init.result._meta["uncut/apiVersion"], "uncut.module/1");
     assert.deepEqual((await plugin.request("tools/list", {})).result.tools, []);
 
     const wav = join(wavDir, "audio.wav");
