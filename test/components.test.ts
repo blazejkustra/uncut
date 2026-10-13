@@ -97,8 +97,8 @@ test("every built-in component manifest is drawn by core's registry or listed as
     const bad = validateProject(project([{ track: "overlay", item: { id: "c1", type: "component", component: c.id, start: 0, duration: 90, props: { ...componentDefaults(c.id), nope: 1 } } }]), modules);
     assert.ok(bad.some((e) => e.code === "params"), `${c.id}: an unknown prop is refused`);
   }
-  // Only the terminal changes from frame to frame.
-  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.terminal"]);
+  // Only the terminal, the agent log and the compare table change from frame to frame.
+  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.terminal", "component.agent-log", "component.compare-table"]);
   // Every device has a frame size and a screen inside it.
   assert.deepEqual([...DEVICES].sort(), [...(modules.get("component.device-frame")!.params as { properties: { device: { enum: Array<string> } } }).properties.device.enum].sort());
   for (const d of DEVICES) {

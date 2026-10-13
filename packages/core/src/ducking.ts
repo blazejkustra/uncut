@@ -13,7 +13,7 @@
 // release (so one duck never starts before the last has recovered). Each run [s, e] becomes a
 // trapezoid: 0 dB at s − attack, amountDb at s (the duck is down when the speech starts: the
 // curve is known ahead), amountDb until e, back to 0 dB at e + release.
-import { audioSpan, itemGain, soundMedia, sourceAt, trackAudible } from "./audio.ts";
+import { audioSpan, heldPast, itemGain, soundMedia, sourceAt, trackAudible } from "./audio.ts";
 import { DUCK } from "./effects.ts";
 import { layout } from "./timeline.ts";
 import { speechThreshold, type SpeechEnvelope } from "./transcript.ts";
@@ -128,7 +128,7 @@ export function duckCurve(
         const local = (k / rate) * fps - start;
         const src = sourceAt(project, item, local);
         const level = env.db[Math.floor(src * rate + 1e-9)];
-        const on = level !== undefined && level >= thr && itemGain(key, index, local) > 0;
+        const on = level !== undefined && level >= thr && itemGain(key, index, local) > 0 && !heldPast(project, item, local);
         if (on && open === undefined) open = k;
         if (!on && open !== undefined) {
           runs.push([open / rate, k / rate]);

@@ -186,6 +186,14 @@ export function planLoop(project: ProjectModel, itemId: string, loop: boolean): 
   return planUpdate(project, itemId, { loop: loop ? true : null }, loop ? "Loop clip" : "Stop looping clip");
 }
 
+/** Hold the media's last frame when the clip is longer than it (a freeze, D94), or not. */
+export function planHold(project: ProjectModel, itemId: string, hold: boolean): Plan | Problem {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That clip isn't in the project any more." };
+  if ((placed.item.hold === true) === hold) return { ops: [], summary: "" };
+  return planUpdate(project, itemId, { hold: hold ? true : null }, hold ? "Hold the last frame" : "Stop holding the last frame");
+}
+
 export type Corner = "nw" | "ne" | "sw" | "se";
 
 /**

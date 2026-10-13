@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { draftOf, findItem } from "./edit.ts";
 import { frameTimecode } from "./format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
-import { clipState, keyState, planClipBox, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "./clip.ts";
+import { clipState, keyState, planClipBox, planHold, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "./clip.ts";
 import { itemLabel, type ProjectModel } from "./project.ts";
 import { useBeats } from "./beats.ts";
 import { analysisText } from "./analysisText.ts";
@@ -1151,6 +1151,15 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
                 send((p) => planLoop(p, item.id, on));
               }} />
             Loop the footage when the clip is longer
+          </label>
+        )}
+        {media?.kind === "video" && (
+          <label className="check-row">
+            <input type="checkbox" data-testid="insp-hold" checked={item.hold === true} disabled={locked || item.loop === true} onChange={(e) => {
+                const on = e.target.checked;
+                send((p) => planHold(p, item.id, on));
+              }} />
+            Hold the last frame when the clip is longer
           </label>
         )}
         <button className="btn" data-testid="insp-box-reset" disabled={locked || (!item.transform && !item.keys)} onClick={() => send((p) => planResetBox(p, item.id))}>

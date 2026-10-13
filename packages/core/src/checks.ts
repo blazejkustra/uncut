@@ -240,6 +240,11 @@ function familyOf(project: Project, item: Item) {
   return { key: house ? "sans" : name, name: house ? "DM Sans" : name, token, mono };
 }
 
+/** The look whose texts don't count as crowding (D96). */
+export const FOOTNOTE_LOOK = "text.footnote";
+/** A footnote for the crowding rule (D96): in the Footnote look and no bigger than the look's own size. */
+const isFootnote = (ctx: CheckContext, item: Item) => item.style?.preset === FOOTNOTE_LOOK && textPlacement(item, ctx.project).size <= textLook(FOOTNOTE_LOOK).size * ctx.project.canvas.height + 0.5;
+
 // ---- the rules ----
 
 export const CHECK_RULES: ReadonlyArray<CheckRule> = [
@@ -402,11 +407,13 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
   {
     id: "crowded-text",
     title: "Few texts at once",
-    description: "At most two texts on screen at the same time.",
+    description: "At most two texts on screen at the same time (a footnote in the Footnote look at its size or smaller, the disclosure line, doesn't count).",
     severity: "warn",
     check: (ctx) => {
-      // Sweep the text spans: the first stretch where three or more overlap, once.
-      const events = ctx.texts.flatMap((p) => [
+      // Sweep the text spans: the first stretch where three or more overlap, once. A footnote
+      // (text.footnote) is the small print best practice asks for ("sped up 8×", how it was
+      // measured), not a competing idea, so it doesn't count (D96).
+      const events = ctx.texts.filter((p) => !isFootnote(ctx, p.item)).flatMap((p) => [
         { at: p.start, d: 1, p },
         { at: p.start + p.item.duration, d: -1, p },
       ]);

@@ -344,7 +344,8 @@ export function planTrim(project: ProjectModel, itemId: string, edge: "start" | 
     // A transition out of this clip needs media after its out-point.
     lo = minDuration - item.duration;
     hi = Infinity;
-    if (frames && !item.loop) hi = Math.floor((frames - (item.in ?? 0) - (media?.kind === "video" ? intoHandle : 0)) / speed - item.duration);
+    // A held clip (D94) may run on past its media, unless an overlapping transition out of it needs media there.
+    if (frames && !item.loop && !(item.hold && intoHandle === 0)) hi = Math.floor((frames - (item.in ?? 0) - (media?.kind === "video" ? intoHandle : 0)) / speed - item.duration);
     if (!main) hi = Math.min(hi, ...busy.filter((b) => b.start >= end).map((b) => b.start - end));
   }
   // Already outside the limits (e.g. a project edited elsewhere): don't make it worse.

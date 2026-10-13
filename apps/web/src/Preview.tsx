@@ -7,6 +7,7 @@
 // graphic items are their documents in sandboxed iframes, render(t) called by postMessage (D78).
 // The text can be selected, dragged and edited in place (D53); a selected clip or component can be
 // dragged and resized by its corners (D75); a component dropped from Elements lands where it's dropped.
+import { heldPast } from "@uncut/core/audio";
 import type { ClipBox } from "@uncut/core/box";
 import { visualsAt, type Visual } from "@uncut/core/timeline";
 import { componentHtml, isDrawnComponent } from "@uncut/core/components";
@@ -509,7 +510,8 @@ class Compositor {
       // A looped clip's media starts over by itself; drive() reseeks only if it drifts (D75).
       el.loop = c.item.loop === true;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
-      drive(el, c.source, playing, c.item.speed ?? 1);
+      // A held clip (D94) past its media's end sits paused on the last frame.
+      drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1);
     });
     if (ahead && !clips.some((c) => c.item.id === ahead.id)) {
       const el = this.elementFor(ahead, "video");

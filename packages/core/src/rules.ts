@@ -66,7 +66,7 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
           if (needsAudio && !(m.kind === "audio" || m.probe?.hasAudio)) errors.push(err("media-kind", ipath, `"${mediaId}" has no audio`));
           if (!needsAudio && m.kind === "audio") errors.push(err("media-kind", ipath, `"${mediaId}" is audio-only`));
           const used = (item.in ?? 0) + item.duration * (item.speed ?? 1);
-          if (m.kind !== "image" && m.probe?.frames && !item.loop && item.type !== "captions" && used > m.probe.frames) {
+          if (m.kind !== "image" && m.probe?.frames && !item.loop && !(item.type === "clip" && item.hold) && item.type !== "captions" && used > m.probe.frames) {
             errors.push(err("media-range", ipath, `uses frames up to ${used} but "${mediaId}" has ${m.probe.frames}`));
           }
         }
