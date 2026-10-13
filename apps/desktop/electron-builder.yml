@@ -2,12 +2,24 @@ appId: com.blazejkustra.uncut
 productName: Uncut
 electronVersion: 44.6.0
 npmRebuild: false
+# No auto-update feed and no publishing from electron-builder: the release workflow uploads the dmg itself.
+publish: null
 directories:
   output: ../../dist
 files:
   - package.json
   - dist/**
 extraResources:
+  # Help › Licence and Help › Third-Party Notices open these (D112).
+  - from: ../../LICENSE
+    to: LICENSE.txt
+  - from: ../../THIRD_PARTY_NOTICES
+    to: THIRD_PARTY_NOTICES.txt
+  # Electron's and Chromium's licences: electron-builder's mac output leaves them out of the bundle.
+  - from: ../../node_modules/electron/dist/LICENSE
+    to: licenses/LICENSE.electron.txt
+  - from: ../../node_modules/electron/dist/LICENSES.chromium.html
+    to: licenses/LICENSES.chromium.html
   - from: ../server/dist/server.mjs
     to: server/server.mjs
   # The agent's MCP server; the server starts it from next to itself (D40).

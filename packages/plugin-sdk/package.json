@@ -4,6 +4,16 @@
   "private": true,
   "type": "module",
   "description": "The Uncut plugin protocol (uncut.module/1) as TypeScript types, and a small helper to write a plugin's stdio server. No dependencies.",
+  "license": "MIT",
+  "homepage": "https://github.com/blazejkustra/uncut",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blazejkustra/uncut.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/blazejkustra/uncut/issues"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./register": "./src/register.ts"

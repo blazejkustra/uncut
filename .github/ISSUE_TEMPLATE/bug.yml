@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Uncut doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting. Please leave out anything private (paths with your name, footage, keys).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. New project, import a 4K clip
+        2. Ask the agent to cut the pauses
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Uncut version
+      description: Uncut › About Uncut, or the commit if you built from source.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac
+      placeholder: macOS 26.1, M3 Pro
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Timeline and editing
+        - Preview
+        - Export
+        - Agent
+        - Captions and transcription
+        - Capture (Argent)
+        - Plugins
+        - Remote environments
+        - Setup and install
+        - Something else
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Drag images here; paste text logs as they are.
+      render: text

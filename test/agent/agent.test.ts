@@ -168,7 +168,7 @@ test("edits are atomic: an invalid edit leaves the project untouched", () => {
 test("every op type works and keeps the promo valid", () => {
   let s = createSession(promo);
   const steps: Array<Array<Op>> = [
-    [{ op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "argent.swmansion.com", style: { preset: "text.mono-label" } } }],
+    [{ op: "insert_item", track: "t1", item: { id: "txt-new", type: "text", start: 760, duration: 60, text: "argent.example.com", style: { preset: "text.mono-label" } } }],
     [{ op: "split_item", item: "sim-login", at: 180, newId: "sim-login-b" }],
     [{ op: "move_item", item: "cmp-tap", start: 430 }],
     [{ op: "delete_item", item: "result-bg" }],

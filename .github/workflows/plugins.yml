@@ -1,0 +1,39 @@
+# A pull request that adds or changes a plugin in plugins/catalog: run the plugin gate on each
+# changed plugin folder (pnpm plugin:check <folder>), so a contributor sees what to fix.
+name: Plugin check
+
+on:
+  pull_request:
+    paths:
+      - "plugins/catalog/**"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Check the changed plugins
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          dirs=$(git diff --name-only "$BASE"...HEAD -- plugins/catalog | cut -d/ -f1-3 | sort -u)
+          status=0
+          for dir in $dirs; do
+            # A removed plugin has nothing left to check.
+            [ -d "$dir" ] || continue
+            echo "::group::$dir"
+            pnpm plugin:check "$dir" || status=1
+            echo "::endgroup::"
+          done
+          exit $status

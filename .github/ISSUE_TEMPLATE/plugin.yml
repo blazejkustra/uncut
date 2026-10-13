@@ -1,0 +1,41 @@
+name: Plugin proposal
+description: Propose a plugin for the catalog (plugins/catalog), or ask for help writing one.
+labels: ["plugin"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Plugins start from the template: `pnpm plugin:new your.id`, then `pnpm plugin:check plugins/catalog/your-id`, then a pull request that adds only that folder.
+  - type: input
+    id: id
+    attributes:
+      label: Plugin id
+      placeholder: acme.promo
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it adds
+      description: Text looks, components, checks, tools for the agent, or a speech model.
+    validations:
+      required: true
+  - type: dropdown
+    id: runs
+    attributes:
+      label: Does it run a program?
+      options:
+        - No, data only (looks, components, checks)
+        - Yes, a process on Uncut's Node
+    validations:
+      required: true
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: What it reads or writes
+      description: The capabilities it asks for (for example project:read) and why. Users see them before they allow it.
+  - type: input
+    id: pr
+    attributes:
+      label: Pull request
+      description: If there's one already.
