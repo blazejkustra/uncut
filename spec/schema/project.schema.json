@@ -113,7 +113,12 @@
           "properties": {
             "module": { "$ref": "#/$defs/moduleId" },
             "device": { "type": "string", "description": "Capture sources: the device it was recorded on (an Argent device id)." },
-            "flow": { "type": "string", "description": "Capture sources: the flow replayed while recording, relative to the project folder (flows/login.yaml), so it can be re-shot." }
+            "flow": { "type": "string", "description": "Capture sources: the flow replayed while recording, relative to the project folder (flows/login.yaml), so it can be re-shot." },
+            "prompt": { "type": "string", "description": "Generators (D31, D99): the prompt it was made from, shown in Media › Generated (Again, Edit prompt)." },
+            "model": { "type": "string", "description": "Generators: the model that made it (gpt-image-2, veo-3.1-generate-preview, eleven_text_to_sound_v2, claude)." },
+            "kind": { "enum": ["image", "video", "audio"], "description": "Generators: what was asked for." },
+            "size": { "type": "string", "description": "Generators: the size asked for (1536x1024, 16:9, canvas)." },
+            "seconds": { "type": "number", "description": "Generators: the length asked for, in seconds." }
           }
         },
         "probe": {

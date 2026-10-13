@@ -23,6 +23,8 @@ export interface StartOptions {
   /** Written to fd 3 (the bootstrap pipe), then closed. */
   bootstrap?: string;
   command?: string;
+  /** Keep stderr (readable with stderr()) instead of passing it through. */
+  captureStderr?: boolean;
 }
 
 export interface Exited {
@@ -38,12 +40,15 @@ export interface Ready {
   [key: string]: any;
 }
 
-export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstrap, command }: StartOptions = {}) {
+export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstrap, command, captureStderr = false }: StartOptions = {}) {
   const proc = spawn(command ?? process.execPath, command ? args : [entry, ...args], {
     // UNCUT_SHELL_ENV=off: keep the PATH the test gives (the login-shell probe has its own tests).
     env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", UNCUT_MEDIA_BIN: MEDIA, UNCUT_MODULES_DIR: MODULES, UNCUT_SHELL_ENV: "off", ...env },
-    stdio: ["pipe", "pipe", "inherit", "pipe"],
+    // fd 4: the keys pipe the desktop gives the server (--keys-fd 4, D99); unused unless asked for.
+    stdio: ["pipe", "pipe", captureStderr ? "pipe" : "inherit", "pipe", "pipe"],
   });
+  let stderrText = "";
+  if (captureStderr) proc.stderr!.on("data", (d) => (stderrText += d));
   running.add(proc);
   proc.once("exit", () => running.delete(proc));
   const fd3 = proc.stdio[3] as Writable;
@@ -63,7 +68,7 @@ export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstr
     if (proc.exitCode === null && proc.signalCode === null) proc.kill();
     await exited;
   };
-  return { proc, ready, exited, stop };
+  return { proc, ready, exited, stop, stderr: () => stderrText };
 }
 
 export function openSocket(url: string) {

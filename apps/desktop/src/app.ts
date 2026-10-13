@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 
 import {
   APP_INFO_CHANNEL,
@@ -236,6 +236,18 @@ app.whenReady().then(() => {
     // Tests point this at a temp dir so they never touch the real recents.
     dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
     onExit: (reason) => win?.webContents.send(SERVER_EXIT_CHANNEL, reason),
+    // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
+    // ciphertext reaches the server's keys.json.
+    keys: {
+      encrypt: (text) => {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
+        return safeStorage.encryptString(text).toString("base64");
+      },
+      decrypt: (data) => {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
+        return safeStorage.decryptString(Buffer.from(data, "base64"));
+      },
+    },
   });
   const handle = <A extends Array<unknown>, R>(channel: string, fn: (...args: A) => R) =>
     ipcMain.handle(channel, (event, ...args) => {

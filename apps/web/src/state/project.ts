@@ -90,6 +90,39 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0):
 }
 
 /**
+ * "Add at playhead" for a generated result (D99): a sound goes where "Add to timeline" puts it (the
+ * playhead on the first free audio track); a picture (5 s) or a video starts at the playhead on the
+ * nearest video track above the main track that is free for its whole length, else on a new
+ * "Generated" track just above the main track. Nothing on the main track moves.
+ */
+export function planAddAtPlayhead(project: ProjectModel, mediaId: string, frame: number): Planned {
+  const media = project.media.find((m) => m.id === mediaId);
+  if (!media) return { problem: "That media isn't in the project any more." };
+  const fps = project.canvas.fps;
+  const frames = media.probe?.frames;
+  if (media.kind !== "image" && !frames) return { problem: `${media.name} has no known length, so it can't go on the timeline.` };
+  if (media.kind === "audio") return planAudio(project, media, frames!, frame);
+  const { starts } = layoutOf(project);
+  const start = Math.max(0, Math.floor(frame));
+  const duration = media.kind === "image" ? IMAGE_SECONDS * fps : frames!;
+  const mainIndex = project.tracks.findIndex((t) => t.role === "main");
+  const above = project.tracks.slice(0, Math.max(0, mainIndex)).reverse();
+  const free = (t: Track) => t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= start || start + duration <= (starts.get(i.id) ?? 0));
+  const ops: Array<unknown> = [];
+  const taken = new Set<string>();
+  let track = above.find((t) => t.kind === "video" && !t.locked && free(t));
+  if (!track) {
+    const id = uniqueId(project, "generated", taken);
+    taken.add(id);
+    ops.push({ op: "add_track", track: { id, kind: "video", name: "Generated" }, index: Math.max(0, mainIndex) });
+    track = { id, kind: "video", name: "Generated", items: [] };
+  }
+  const itemId = uniqueId(project, "clip", taken);
+  ops.push({ op: "insert_item", track: track.id, item: { id: itemId, type: "clip", media: media.id, in: 0, start, duration } });
+  return { ops, summary: `Add ${media.name} at the playhead`, itemId, start };
+}
+
+/**
  * An audio item for `media` (D50 revised): on the first unlocked audio track (made if there is
  * none) at the playhead when that track is free there for the whole sound, else after its last item.
  */

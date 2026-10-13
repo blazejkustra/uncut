@@ -14,6 +14,8 @@ import * as Capture from "../capture/capture.ts";
 import * as Config from "./config.ts";
 import * as Exporter from "../export/exporter.ts";
 import * as Format from "../project/format.ts";
+import * as Generate from "../generate/generate.ts";
+import * as Keys from "../generate/keys.ts";
 import * as Media from "../media/media.ts";
 import * as MediaFiles from "../media/mediaFiles.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
@@ -69,6 +71,9 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),
     Layer.provide(Capture.layer),
+    // Generators (D99): the Generate tab and generate_media; keys through the desktop's safeStorage.
+    Layer.provideMerge(Generate.layer),
+    Layer.provideMerge(Keys.layer),
     // media_analyze and analysis.* (D66); analysis waits for exports.
     Layer.provide(Analysis.layer),
     // whisper-cli and the speech models (D68), for transcripts and the Setup row.

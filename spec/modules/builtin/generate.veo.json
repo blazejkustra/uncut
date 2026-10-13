@@ -18,7 +18,7 @@
   "generator": {
     "media": "video",
     "provider": "google",
-    "model": "veo-3.1"
+    "model": "veo-3.1-generate-preview"
   },
   "ui": {
     "panel": "generate"

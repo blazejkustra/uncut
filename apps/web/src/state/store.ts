@@ -4,7 +4,7 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
+import { GRAPHIC_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { bridge, type AppInfo, type MenuCommand } from "./bridge.ts";
@@ -14,7 +14,7 @@ import { getPlayback, playback } from "../preview/playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
 import { musicInProject, musicTrack } from "@uncut/core/music";
 import { planDisableCheck, projectChecks, type Check } from "@uncut/core/checks";
-import { layoutOf, planAddMedia, planAddMusic, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
+import { layoutOf, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
 import { planAddComponent } from "../preview/components.ts";
 import { planRemoveGainKey } from "../audio/sound.ts";
@@ -64,6 +64,16 @@ export interface AppStateShape {
   readonly captureBusy?: ReadonlyArray<string>;
   /** The last take the Capture tab added (its media id and name). */
   readonly captureSaved?: { readonly mediaId: string; readonly name: string; readonly seconds: number };
+  /** The Generate tab (D99): the generators and whether each has its key, the server's generation jobs, a prompt to edit. */
+  readonly generators?: ReadonlyArray<GeneratorInfo>;
+  readonly generateJobs: ReadonlyArray<GenerateJob>;
+  readonly generateError?: string;
+  readonly generateDraft?: GenerateDraft & { readonly seq: number };
+  /** Settings › Keys: which providers have a key (never the key). */
+  readonly keys?: ReadonlyArray<KeyInfo>;
+  readonly keysError?: string;
+  /** Settings opened at a section (the Generate tab's "Settings › Keys" link). */
+  readonly setupFocus?: "keys";
   // Import jobs on the server (running and recent); the library shows the open project's.
   readonly jobs: ReadonlyArray<ImportJob>;
   readonly importReport?: { readonly failed: MediaImportResult["failed"]; readonly skipped: MediaImportResult["skipped"] };
@@ -95,6 +105,16 @@ export interface AppStateShape {
 
 export const MAX_NAME_LENGTH = 100;
 
+/** What the Generate tab's form holds. */
+export interface GenerateDraft {
+  readonly generator: string;
+  readonly prompt: string;
+  readonly kind?: GenerateKind | undefined;
+  readonly size?: string | undefined;
+  readonly seconds?: number | undefined;
+}
+let draftSeq = 0;
+
 let state: AppStateShape = {
   ready: false,
   connection: "connecting",
@@ -112,6 +132,7 @@ let state: AppStateShape = {
   exportOpen: false,
   exportJobs: [],
   analysisJobs: [],
+  generateJobs: [],
 };
 const listeners = new Set<() => void>();
 
@@ -239,6 +260,7 @@ let unsubscribeHistory: (() => void) | undefined;
 let unsubscribeExports: (() => void) | undefined;
 let unsubscribeAnalysis: (() => void) | undefined;
 let unsubscribeTranscription: (() => void) | undefined;
+let unsubscribeGenerate: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
 const reported = new Set<string>();
 let jobsSeen = false;
@@ -372,6 +394,8 @@ export async function start() {
       unsubscribeAnalysis = conn.subscribe((c) => c["analysis.jobs"]({}), onAnalysisJobs);
       unsubscribeTranscription?.();
       unsubscribeTranscription = conn.subscribe((c) => c["transcription.state"]({}), (transcription) => set({ transcription }));
+      unsubscribeGenerate?.();
+      unsubscribeGenerate = conn.subscribe((c) => c["generate.jobs"]({}), (generateJobs) => set({ generateJobs }));
       unsubscribeAgent?.();
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
@@ -559,6 +583,8 @@ export const actions = {
   // ⌘Z with nothing left says why when that's news (D71: it stops at a change made outside Uncut).
   undo: () => (state.snapshot?.canUndo ? change((c) => c["project.undo"]({})) : state.snapshot?.undoStop ? set({ notice: { text: state.snapshot.undoStop } }) : undefined),
   redo: () => (state.snapshot?.canRedo ? change((c) => c["project.redo"]({})) : undefined),
+  /** A generated result → the timeline at the playhead (see planAddAtPlayhead, D99). */
+  addAtPlayhead: (mediaId: string) => addPlanned((project) => planAddAtPlayhead(project, mediaId, getPlayback().frame)),
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
   addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
   /**
@@ -703,6 +729,8 @@ export const actions = {
     return false;
   },
   agentCancel: () => call((c) => c["agent.cancel"]({})),
+  /** Allow or Don't on the running turn's approval card (D99). */
+  agentApprove: (id: string, allow: boolean) => call((c) => c["agent.approve"]({ id, allow })),
   async agentUndoTurn(turnId: string) {
     set({ agentError: undefined });
     const result = (await call((c) => c["agent.undoTurn"]({ turnId }))) as Result<ProjectSnapshot>;
@@ -770,8 +798,9 @@ export const actions = {
   },
 
   openSetup() {
-    set({ setupOpen: true });
+    set({ setupOpen: true, setupFocus: undefined });
     void actions.checkSetup();
+    void actions.listKeys();
   },
   async checkSetup() {
     set({ setupChecking: true, setupError: undefined });
@@ -820,10 +849,58 @@ export const actions = {
     else set({ captureError: plainError(result.error) });
     await actions.checkCapture();
   },
+  // ---- generators and keys (D99) ----
+  async listGenerators() {
+    const result = await call((c) => c["generate.list"]({}));
+    if (result.ok) set({ generators: result.value });
+  },
+  async startGenerate(draft: GenerateDraft) {
+    set({ generateError: undefined });
+    const result = await call((c) => c["generate.start"]({ generator: draft.generator, prompt: draft.prompt, ...(draft.kind ? { kind: draft.kind } : {}), ...(draft.size ? { size: draft.size } : {}), ...(draft.seconds !== undefined ? { seconds: draft.seconds } : {}) }));
+    if (!result.ok) {
+      set({ generateError: plainError(result.error) });
+      void actions.listGenerators();
+    }
+  },
+  cancelGenerate: (jobId: string) => call((c) => c["generate.cancel"]({ jobId })),
+  /** "Edit prompt" on a generated result: the Generate tab with its generator, prompt and settings. */
+  editPrompt(draft: GenerateDraft) {
+    set({ generateDraft: { ...draft, seq: ++draftSeq }, generateError: undefined });
+  },
+  async listKeys() {
+    const result = await call((c) => c["keys.list"]({}));
+    if (result.ok) set({ keys: result.value });
+  },
+  /** Stores a key (it goes to the server once and never comes back). Returns whether it was saved. */
+  async setKey(provider: KeyProvider, key: string) {
+    set({ keysError: undefined });
+    const result = await call((c) => c["keys.set"]({ provider, key }));
+    if (!result.ok) {
+      set({ keysError: plainError(result.error) });
+      return false;
+    }
+    set({ keys: result.value });
+    void actions.listGenerators();
+    return true;
+  },
+  async removeKey(provider: KeyProvider) {
+    set({ keysError: undefined });
+    const result = await call((c) => c["keys.remove"]({ provider }));
+    if (result.ok) set({ keys: result.value });
+    else set({ keysError: plainError(result.error) });
+    void actions.listGenerators();
+  },
+  /** Settings › Keys. */
+  openKeys() {
+    set({ setupOpen: true, setupFocus: "keys" });
+    void actions.checkSetup();
+    void actions.listKeys();
+  },
   copy: (text: string) => bridge.copyText(text),
   /** Finish (or skip) onboarding; it won't open on launch again. */
   async finishSetup(next: "new-project" | "stay") {
-    set({ setupOpen: false });
+    set({ setupOpen: false, setupFocus: undefined });
+    void actions.listGenerators();
     await call((c) => c["setup.complete"]({}));
     if (next === "new-project") actions.showNewProject();
   },

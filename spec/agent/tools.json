@@ -184,18 +184,22 @@
     },
     {
       "name": "generate_media",
-      "description": "Make an image, video or audio clip with a generator module. The result lands in Media › Generated with its prompt.",
+      "description": "Make an image, video or sound with a generator (D99) into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo and generate.sound bill the user's own API key; without it the result says which key is needed. Over $1 waits for the user to allow it on a card in the Agent tab.",
       "inputSchema": {
         "type": "object",
         "required": ["generator", "prompt"],
         "additionalProperties": false,
         "properties": {
-          "generator": { "type": "string" },
-          "prompt": { "type": "string", "minLength": 1 },
-          "options": { "type": "object" }
+          "generator": { "enum": ["generate.svg", "generate.gpt-image", "generate.veo", "generate.sound"] },
+          "prompt": { "type": "string", "minLength": 1, "maxLength": 4000, "description": "What to make, in words (stored with the media). For generate.svg, what the content shows." },
+          "kind": { "enum": ["image", "video", "audio"], "description": "Default: the generator's own (gpt-image image, veo video, sound audio, svg image)." },
+          "size": { "type": "string", "description": "gpt-image: 1536x1024, 1024x1024 or 1024x1536. veo: 16:9 or 9:16. svg: canvas (default) or WIDTHxHEIGHT." },
+          "seconds": { "type": "number", "exclusiveMinimum": 0, "description": "veo: 4, 6 or 8. sound: 0.5 to 30 (default 5). svg video: up to 12 (default 5)." },
+          "name": { "type": "string", "minLength": 1, "description": "The file's name (without extension); default from the prompt." },
+          "content": { "type": "string", "minLength": 1, "description": "generate.svg only: the SVG document or HTML page you wrote (no network, images as data: URLs, system fonts)." }
         }
       },
-      "returns": "the new media id, or a note that the user needs to add an API key"
+      "returns": "id, kind, name, path, frames, seconds, width, height, hasAudio, revision, model, estimatedCost (US dollars), turnSpend; or needsKey / approved: false with what to tell the user"
     },
     {
       "name": "modules_list",
