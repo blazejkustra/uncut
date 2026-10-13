@@ -11,13 +11,13 @@
 // moved in on first open and renamed agent/turns.migrated-<time>.json; one that can't be read is
 // left alone and turns are refused until it can be.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import { captionCardList, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -43,6 +43,12 @@ import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { applyDeclared, appliedNote } from "../capture/capture.ts";
+import { CONFIRM_OVER, Generator, needsKeyLine, TURN_CAP } from "../generate/generate.ts";
+
+/** How long an approval card waits for the user (D99). */
+const APPROVAL_MS = 120_000;
+import { Keys, providerName } from "../generate/keys.ts";
+import { isTestRun } from "../generate/providers.ts";
 import { Projects, type ProjectView } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { agentEnv } from "../app/shellEnv.ts";
@@ -64,6 +70,8 @@ export interface AgentShape {
   readonly changes: Stream.Stream<AgentState | null>;
   readonly send: (input: { prompt: string; frame?: number | undefined; selected?: string | undefined }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;
+  /** The user's answer to the running turn's approval card (D99). */
+  readonly approve: (id: string, allow: boolean) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
   /** For the bridge: the tool list, or undefined when `token` isn't the running turn's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
@@ -165,6 +173,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     ...(interrupted ? { error: "Interrupted: Uncut stopped while the agent was working." } : isString(t.error) ? { error: t.error } : {}),
     ...(typeof t.seconds === "number" ? { seconds: t.seconds } : {}),
     ...(isString(t.undoneAt) ? { undoneAt: t.undoneAt } : {}),
+    ...(typeof t.spend === "number" && Number.isFinite(t.spend) && t.spend > 0 ? { spend: t.spend } : {}),
   };
 }
 
@@ -401,6 +410,8 @@ export const layer = Layer.effect(
     const analysis = yield* Analysis;
     const config = yield* ServerConfig;
     const plugins = yield* Plugins;
+    const generator = yield* Generator;
+    const keys = yield* Keys;
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
@@ -410,6 +421,11 @@ export const layer = Layer.effect(
     const loadLock = yield* Semaphore.make(1);
     let loaded: Loaded | undefined;
     let running: Running | undefined;
+    // UNCUT_APPROVAL_MS shortens the approval wait in test runs only (as D99's base URLs).
+    const testRun = isTestRun(process.env, config.keysFd);
+    const approvalMs = () => (testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? Number(process.env.UNCUT_APPROVAL_MS) : APPROVAL_MS);
+    // The running turn's one open approval card (D99) and how to answer it.
+    let approval: { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped") => void } | undefined;
 
     const view = () => Effect.runSync(projects.view);
 
@@ -423,6 +439,7 @@ export const layer = Layer.effect(
         running: running && running.owner === owner ? running.turn.id : null,
         turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
         ...(owner.ui ? { ui: owner.ui } : {}),
+        ...(approval && running && running.owner === owner && running.turn.id === approval.card.turnId ? { approval: approval.card } : {}),
       };
     };
     const publish = () => Effect.runSync(SubscriptionRef.set(stateRef, stateNow()));
@@ -1319,6 +1336,96 @@ export const layer = Layer.effect(
       return textResult(`Shown: ${said.join(", ")}.`);
     };
 
+    /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
+    const askUser = (r: Running, text: string, estimate: number) =>
+      Effect.promise(
+        () =>
+          new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
+            const ms = approvalMs();
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString() };
+            let settled = false;
+            const answer = (a: "allow" | "deny" | "timeout" | "stopped") => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              r.abort.signal.removeEventListener("abort", onStop);
+              if (approval?.card.id === card.id) approval = undefined;
+              publish();
+              resolve(a);
+            };
+            const timer = setTimeout(() => answer("timeout"), ms);
+            const onStop = () => answer("stopped");
+            if (r.abort.signal.aborted) return answer("stopped");
+            r.abort.signal.addEventListener("abort", onStop, { once: true });
+            approval?.answer("deny");
+            approval = { card, answer };
+            publish();
+          }),
+      );
+
+    /**
+     * generate_media (D99): a generator's result imported as media, an edit of this turn (Undo
+     * turn removes it), its source {module, prompt, model}. Keyed generators bill the user's own
+     * key: anything estimated over CONFIRM_OVER waits for the user's Allow on a card in the Agent
+     * tab (the agent can't approve it itself); a turn spends at most TURN_CAP. The estimate is
+     * reserved on the turn before the request (kept once a request went out, whatever happens
+     * next; refunded only when nothing was sent) and shown on the turn card (D9).
+     */
+    const generateMedia = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const planned = yield* generator.plan(args);
+        if ("_tag" in planned) return textResult(planned.message, true);
+        const { spec, estimate, provider } = planned;
+        if (provider && !(yield* keys.has(provider)))
+          return textResult({ needsKey: provider, message: `${needsKeyLine(provider)}. Nothing was generated.`, next: `Tell the user it ${needsKeyLine(provider).toLowerCase()}: they add it in Settings › Keys (Uncut never asks for it in chat; don't ask them to paste it here). For a picture or a simple animation you can draw it yourself with generate.svg.` }, true);
+        const dollars = (n: number) => `$${n.toFixed(2)}`;
+        const overCap = () => estimate > 0 && (r.turn.spend ?? 0) + estimate > TURN_CAP;
+        const capNote = () => `That would take this turn past ${dollars(TURN_CAP)} of estimated spend (${dollars(r.turn.spend ?? 0)} so far). Nothing was generated; the user can generate more from the Generate tab.`;
+        if (overCap()) return textResult(capNote(), true);
+        if (estimate > CONFIRM_OVER) {
+          const what = spec.kind === "video" ? `a ${spec.seconds ?? 4} s ${spec.generator === "generate.veo" ? "Veo " : ""}video` : spec.kind === "audio" ? "a sound" : "a picture";
+          const answer = yield* askUser(r, `Generate ${what}, about ${dollars(estimate)} on your ${providerName(provider!)} key`, estimate);
+          if (answer !== "allow")
+            return textResult({ approved: false, message: answer === "deny" ? `The user didn't allow it (about ${dollars(estimate)} on their ${providerName(provider!)} key). Nothing was generated.` : answer === "timeout" ? "Nobody answered the approval in the Agent tab within 2 minutes, so nothing was generated." : "The turn was stopped, so nothing was generated.", next: "Don't try again in this turn unless the user asks; suggest something cheaper or generate.svg if it fits." }, true);
+        }
+        // Check and reserve with nothing in between (no await): two calls can't both pass the cap.
+        if (overCap()) return textResult(capNote(), true);
+        const before = r.turn.spend ?? 0;
+        if (estimate > 0) r.turn.spend = Number((before + estimate).toFixed(3));
+        let sent = false;
+        const outcome = yield* Effect.uninterruptible(
+          generator.produce(spec, { openId: r.openId, dir: v.dir, turnId: r.turn.id, signal: r.abort.signal, sent: () => (sent = true) }).pipe(
+            Effect.map((p) => ({ ok: true as const, p })),
+            Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })),
+          ),
+        );
+        if (!outcome.ok) {
+          // Nothing went to the provider: nothing billed. Once a request went out it may have been.
+          if (!sent && estimate > 0) r.turn.spend = Number(Math.max(0, (r.turn.spend ?? 0) - estimate).toFixed(3)) || undefined;
+          persist(r.owner);
+          publish();
+          return textResult(`Nothing was generated: ${outcome.message}`, true);
+        }
+        const { entry, result, cost, model } = outcome.p;
+        // The reply's own price replaces the reservation.
+        if (estimate > 0 || cost > 0) r.turn.spend = Number(Math.max(0, (r.turn.spend ?? 0) - estimate + cost).toFixed(3)) || undefined;
+        const snapshot = result.snapshot;
+        if (snapshot) {
+          r.turn.edits.push({ revision: snapshot.revision, summary: `Generated ${entry.name}`, lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)] });
+          r.owner.seen.add(snapshot.revision);
+        }
+        persist(r.owner);
+        publish();
+        const fps = ((snapshot?.project ?? v.session.project) as Project).canvas.fps;
+        return textResult({
+          ...entryInfo(entry, fps),
+          ...(snapshot ? { revision: snapshot.revision } : {}),
+          model,
+          ...(cost > 0 ? { estimatedCost: Number(cost.toFixed(3)), turnSpend: r.turn.spend } : { estimatedCost: 0 }),
+          note: `In Media › Generated with its prompt (an edit of this turn: Undo turn removes it). Place it with timeline_edit${entry.kind === "audio" ? " on an audio track" : " (a clip on the main track, or with a start on a video track above it)"}.`,
+        });
+      });
+
     const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
       Effect.gen(function* () {
         const v = view();
@@ -1380,6 +1487,8 @@ export const layer = Layer.effect(
             return yield* musicAdd(r, v, args);
           case "graphic_write":
             return yield* graphicWrite(v, args);
+          case "generate_media":
+            return yield* generateMedia(r, v, args);
           case "media_analyze":
             return yield* mediaAnalyze(v, args);
           case "media_rank":
@@ -1706,6 +1815,10 @@ export const layer = Layer.effect(
       cancel: Effect.sync(() => {
         if (running) stop(running);
       }),
+      approve: (id, allow) =>
+        Effect.sync(() => {
+          if (approval?.card.id === id) approval.answer(allow ? "allow" : "deny");
+        }),
       undoTurn: (turnId) =>
         Effect.gen(function* () {
           const owner = yield* ensureLoaded;

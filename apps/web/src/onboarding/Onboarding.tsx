@@ -1,6 +1,6 @@
-import type { PluginInfo, SetupCheck } from "@uncut/contracts";
-import { ArrowRight, AudioLines, Blocks, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import type { KeyInfo, PluginInfo, SetupCheck } from "@uncut/contracts";
+import { ArrowRight, AudioLines, Blocks, KeyRound, Captions, Check, CircleAlert, CircleDot, Clapperboard, Copy, Download, Film, RefreshCw, Sparkle, Terminal, TriangleAlert, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { actions, useApp } from "../state/store.ts";
 
@@ -18,8 +18,14 @@ const CHIP: Record<SetupCheck["status"], { label: string; className: string; ico
 
 /** The t3code-style wizard from the wireframe: Agents → Capture → First video, with real checks. */
 export function Onboarding({ standalone }: { standalone: boolean }) {
-  const { setupChecks, setupChecking, setupError } = useApp();
+  const { setupChecks, setupChecking, setupError, setupFocus } = useApp();
   const [step, setStep] = useState(0);
+  // Settings › Keys (the Generate tab's link): the Agents step, scrolled to the keys.
+  useEffect(() => {
+    if (setupFocus !== "keys") return;
+    setStep(0);
+    requestAnimationFrame(() => document.querySelector("[data-testid=keys]")?.scrollIntoView({ block: "center" }));
+  }, [setupFocus]);
   // Escape skips (and remembers it), wherever focus is.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && void actions.finishSetup("stay");
@@ -70,6 +76,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
               {byId["api-key"].detail}
             </div>
           )}
+          <KeyRows />
         </div>
         <div className="wiz-foot">
           <p>One agent is enough. Add more any time in Settings.</p>
@@ -283,6 +290,94 @@ export function SpeechModelRow() {
           {transcriptionError}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Settings › Keys (D99): the generator keys, optional. A key is typed once and goes to the server,
+ * which keeps it encrypted (the Keychain); the screen only ever learns whether one is stored.
+ */
+export function KeyRows() {
+  const { keys, keysError, connection } = useApp();
+  useEffect(() => {
+    if (connection === "connected" && !keys) void actions.listKeys();
+  }, [connection, keys]);
+  if (!keys) return null;
+  const offline = connection !== "connected";
+  return (
+    <div className="wiz-plugins wiz-keys" data-testid="keys">
+      <div className="wiz-section">Keys for generators (optional)</div>
+      <div className="wiz-sub">Only GPT Image, Veo and Sound effects need one; they bill your own account. A key stays in this Mac's Keychain and never goes to the agent or into a project. The SVG generator needs none.</div>
+      {keys.map((k) => (
+        <KeyRow key={k.provider} info={k} offline={offline} />
+      ))}
+      {keysError && (
+        <div className="wiz-note error" data-testid="keys-error">
+          <TriangleAlert />
+          {keysError}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KeyRow({ info: k, offline }: { info: KeyInfo; offline: boolean }) {
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const save = async () => {
+    if (!value.trim() || saving) return;
+    setSaving(true);
+    const ok = await actions.setKey(k.provider, value);
+    setSaving(false);
+    // The field forgets it once it's stored.
+    if (ok) setValue("");
+  };
+  return (
+    <div className="wiz-check" data-testid={`key-${k.provider}`} data-set={k.set}>
+      <div className="wiz-row">
+        <KeyRound />
+        <div className="grow">
+          <div className="wiz-name">{k.name}</div>
+          <div className="wiz-sub">
+            For {k.usedBy.join(", ")}
+            {k.set && k.storage === "memory" ? ". Kept until Uncut quits" : ""}
+          </div>
+        </div>
+        {k.set ? (
+          <>
+            <span className="wiz-chip ok" data-testid={`key-chip-${k.provider}`}>
+              <Check />
+              Saved
+            </span>
+            <button className="btn ghost" data-testid={`key-remove-${k.provider}`} disabled={offline} onClick={() => void actions.removeKey(k.provider)}>
+              Remove
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              ref={input}
+              className="field input key-input"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={`${k.name} API key`}
+              data-testid={`key-input-${k.provider}`}
+              value={value}
+              disabled={offline}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void save();
+              }}
+            />
+            <button className="btn" data-testid={`key-save-${k.provider}`} disabled={offline || !value.trim() || saving} onClick={() => void save()}>
+              Save
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

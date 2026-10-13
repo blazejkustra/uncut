@@ -37,7 +37,7 @@ const shellReady =
           .catch(() => undefined);
       })();
 
-const config = readConfig(process.env, launch.bootstrapToken ?? envToken, { apiKeyInEnv, shellReady });
+const config = readConfig(process.env, launch.bootstrapToken ?? envToken, { apiKeyInEnv, shellReady }, launch.keysFd);
 
 // Last line of defence: log instead of dying on a stray rejection.
 process.on("unhandledRejection", (reason) => console.error("[uncut] unhandled rejection:", reason));

@@ -1,7 +1,7 @@
 // The Agent tab (D28, D48): turn cards with the agent's steps, reply and edit list, "Undo turn",
 // the note about edits made by hand, and a prompt box. Everything shown comes from the server's
 // agent.subscribe stream; this component only sends prompts, cancels and undoes turns.
-import type { AgentTurn, SetupCheck } from "@uncut/contracts";
+import type { AgentApproval, AgentTurn, SetupCheck } from "@uncut/contracts";
 import { ArrowUp, Check, Copy, LoaderCircle, MousePointer2, Pencil, RefreshCw, Sparkles, Square, TriangleAlert, Undo2, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -32,6 +32,8 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   const blocked = claude?.status === "missing" || claude?.status === "needs-login";
   const turns = agent?.turns ?? [];
   const running = agent?.running ?? null;
+  // D9: the session's estimated spend on the user's API keys (generators), when there is any.
+  const sessionSpend = turns.reduce((n, t) => n + (t.spend ?? 0), 0);
 
   // Follow the newest turn as it streams in (the empty state stays scrolled to its top).
   useEffect(() => {
@@ -59,7 +61,12 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
         {turns.length === 0 ? (
           <AgentEmpty onPick={pick} disabled={blocked || !online} />
         ) : (
-          turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} />)
+          turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={agent?.approval?.turnId === t.id ? agent.approval : undefined} />)
+        )}
+        {sessionSpend > 0 && (
+          <div className="agent-spend small muted" data-testid="agent-session-spend">
+            About ${sessionSpend.toFixed(2)} billed to your API keys in this project so far (estimates).
+          </div>
         )}
       </div>
       {agentError && (
@@ -158,7 +165,7 @@ function ClaudeStatus({ check, checking }: { check: SetupCheck; checking: boolea
   );
 }
 
-function TurnCard({ turn: t, busy, online }: { turn: AgentTurn; busy: boolean; online: boolean }) {
+function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: boolean; online: boolean; approval?: AgentApproval | undefined }) {
   const undone = t.undo.state === "undone";
   const status =
     t.status === "running" ? (
@@ -175,6 +182,12 @@ function TurnCard({ turn: t, busy, online }: { turn: AgentTurn; busy: boolean; o
     ) : (
       `Claude Code${t.seconds !== undefined ? `, ${Math.max(1, Math.round(t.seconds))} s` : ""}`
     );
+  // D9 / D99: what generators billed to the user's keys cost in this turn (an estimate).
+  const spend = t.spend ? (
+    <span className="turn-spend" data-testid="agent-turn-spend" title="Estimated cost of generators billed to your API keys in this turn">
+      About ${t.spend.toFixed(2)} on your keys
+    </span>
+  ) : null;
   const canShowUndo = t.undo.state === "available" || t.undo.state === "blocked" || t.undo.state === "unavailable";
   return (
     <div className="turn-wrap" data-testid="agent-turn" data-turn={t.id} data-status={t.status} data-undo={t.undo.state}>
@@ -218,6 +231,7 @@ function TurnCard({ turn: t, busy, online }: { turn: AgentTurn; busy: boolean; o
               ))}
             </div>
           )}
+          {approval && <ApprovalCard approval={approval} online={online} />}
           {t.error && (
             <p className="err" data-testid="agent-turn-error">
               {t.error}
@@ -226,6 +240,7 @@ function TurnCard({ turn: t, busy, online }: { turn: AgentTurn; busy: boolean; o
         </div>
         <div className="turn-foot">
           <span className="turn-status">{status}</span>
+          {spend}
           <span className="spacer" />
           {t.status === "running" && (
             <button className="link-btn" data-testid="agent-cancel" disabled={!online} onClick={() => void actions.agentCancel()}>
@@ -252,6 +267,29 @@ function TurnCard({ turn: t, busy, online }: { turn: AgentTurn; busy: boolean; o
             {t.undo.reason}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** D99: the agent wants to spend over $1 of the user's key; it waits for Allow or Don't (no answer in 2 minutes is no). */
+function ApprovalCard({ approval, online }: { approval: AgentApproval; online: boolean }) {
+  const [sent, setSent] = useState(false);
+  const answer = (allow: boolean) => {
+    setSent(true);
+    void actions.agentApprove(approval.id, allow);
+  };
+  return (
+    <div className="approval" data-testid="agent-approval" data-id={approval.id}>
+      <div className="approval-text">{approval.text}?</div>
+      <div className="approval-sub">The agent waits for your answer. Billed to your own key; no answer in 2 minutes means no.</div>
+      <div className="approval-btns">
+        <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={() => answer(false)}>
+          Don't
+        </button>
+        <button className="btn primary" data-testid="agent-allow" disabled={!online || sent} onClick={() => answer(true)}>
+          Allow
+        </button>
       </div>
     </div>
   );

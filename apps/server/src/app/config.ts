@@ -36,6 +36,8 @@ export interface ServerConfigShape {
   readonly testFault: string | undefined;
   // Where speech models come from (UNCUT_WHISPER_MODEL_URL, tests or a mirror; D68). Unset: Hugging Face, checked against the catalog.
   readonly whisperModelUrl: string | undefined;
+  // The desktop's keys pipe (--keys-fd, D99): safeStorage encrypt/decrypt for generator keys. Undefined: keys in memory only.
+  readonly keysFd?: number | undefined;
 }
 
 export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()(
@@ -45,6 +47,7 @@ export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShap
 export interface LaunchOptions {
   readonly bootstrapToken: string | undefined;
   readonly exitWithStdin: boolean;
+  readonly keysFd: number | undefined;
 }
 
 // `--bootstrap-fd N`: read one JSON object ({ "token": "..." }) from that fd until EOF. The
@@ -61,7 +64,10 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
     }
     bootstrapToken = bootstrap.token;
   }
-  return { bootstrapToken, exitWithStdin: argv.includes("--exit-with-stdin") };
+  // `--keys-fd N` (D99): a duplex pipe to the desktop, which encrypts and decrypts generator keys.
+  const keysIndex = argv.indexOf("--keys-fd");
+  const keysFd = keysIndex !== -1 && Number.isInteger(Number(argv[keysIndex + 1])) ? Number(argv[keysIndex + 1]) : undefined;
+  return { bootstrapToken, exitWithStdin: argv.includes("--exit-with-stdin"), keysFd };
 };
 
 // The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_MUSIC_DIR / UNCUT_DATA_DIR / UNCUT_BUNDLED_PLUGINS_DIR
@@ -72,6 +78,7 @@ export const readConfig = (
   env: NodeJS.ProcessEnv = process.env,
   bootstrapToken?: string,
   shell: { readonly apiKeyInEnv: boolean; readonly shellReady: Promise<ShellEnvironment | undefined> } = { apiKeyInEnv: false, shellReady: Promise.resolve(undefined) },
+  keysFd?: number,
 ): ServerConfigShape => {
   const token = bootstrapToken ?? (env.UNCUT_TOKEN || undefined);
   return {
@@ -96,6 +103,7 @@ export const readConfig = (
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
     apiKeyInEnv: shell.apiKeyInEnv,
     shellReady: shell.shellReady,
+    keysFd,
   };
 };
 
