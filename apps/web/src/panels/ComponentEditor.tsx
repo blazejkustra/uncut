@@ -327,7 +327,6 @@ function ScreenFootage({ project, item, disabled }: { project: ProjectModel; ite
           Fit footage to the screen
         </button>
       )}
-      <div className="hint-line muted small">The footage is a clip under the frame ({clip ? clip.item.id : "none yet"}). After moving or resizing the frame, fit it to the screen again.</div>
     </Group>
   );
 }

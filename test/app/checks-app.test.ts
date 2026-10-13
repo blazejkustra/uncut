@@ -1,14 +1,11 @@
 // Phase 6 chunk 8 (D90, D91) on the packaged app, run invisibly and muted:
-// - the Checks tab lists a seeded project's findings (warnings, then suggestions; the tab's count is
-//   core projectChecks' warnings); clicking one selects its item and moves the playhead to it; Fix
-//   applies the suggested edit (History label, ⌘Z reverts, ⇧⌘Z again); a rule turns off for the
-//   project (checks.disabled) and back on;
-// - the export dialog says how many checks there are without blocking Export, and opens the tab;
+// - K1 (D121): the Checks tab and the export dialog's checks line are gone; the checks stay in
+//   core (projectChecks) and with the agent (project_check); Export is never blocked;
 // - the Audio tab's music library: five tracks, mood / tempo / search filters, play to listen, +
 //   copies the track into the project's media/ folder and puts it on the audio track at the
 //   playhead (as long as the video, with fades) in one edit that one ⌘Z takes back; a double click
 //   adds once; with the audio track busy the next one gets its own Music track.
-// Screenshots: test-output/checks-panel.png, test-output/music-library.png.
+// Screenshot: test-output/music-library.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -85,7 +82,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("Checks tab, Fix + undo, turning a rule off, the export dialog's note; the music library adds a track in one edit", { skip, timeout: 300000 }, async () => {
+test("no Checks tab or export checks line (K1); the music library adds a track in one edit", { skip, timeout: 300000 }, async () => {
   const dir = join(root, "Taste.uncut");
   const app = await launchApp({
     command: APP,
@@ -94,80 +91,24 @@ test("Checks tab, Fix + undo, turning a rule off, the export dialog's note; the 
   apps.add(app);
   const { page } = app;
   const onDisk = (): Project => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
-  const title = () => onDisk().tracks.find((t) => t.id === "text")!.items.find((i) => i.id === "title")!;
   try {
     await waitForWelcome(page);
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     let rev = await revision(page);
 
-    // The tab's count is the project's warnings; the list is core's, warnings first.
-    const expected = projectChecks(onDisk());
-    const warnings = expected.filter((c) => c.severity === "warn");
+    // K1 (D121): no Checks tab and no checks line in the export dialog; the project still has
+    // warnings (core projectChecks, what the agent's project_check returns) and Export isn't blocked.
+    const warnings = projectChecks(onDisk()).filter((c) => c.severity === "warn");
     for (const id of ["trailing-period", "dot-separators", "text-read-time", "frame-one"]) assert.ok(warnings.some((c) => c.id === id), id);
-    assert.equal(await page.$eval("[data-testid=checks-count]", (el) => el.textContent), String(warnings.length));
-    await page.click("[data-testid=tab-checks]");
-    await waitFor(page, "[data-testid=checks-panel]");
-    assert.deepEqual(await rows(page, "[data-testid=check]"), expected.map((c) => c.id));
-    assert.equal(await page.$eval("[data-testid=checks-summary]", (el) => el.textContent), `${warnings.length} to look at`);
-    const texts = await page.$$eval("[data-testid=check-message]", (els) => els.map((e) => e.textContent ?? ""));
-    assert.ok(texts.every((t) => !/[·•]/.test(t.replace(/"[^"]*"/g, ""))), "no dots between words in the panel's own words");
-
-    // Clicking a finding selects its item and moves the playhead to it.
-    await page.click('[data-testid=check][data-rule="dot-separators"] [data-testid=check-show]');
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=playhead]")?.dataset.frame === "150", { timeout: 5000 });
-    await page.waitForSelector('[data-testid=timeline-item][data-item="langs"].selected', { timeout: 5000 });
-    await page.click('[data-testid=check][data-rule="trailing-period"] [data-testid=check-show]');
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=playhead]")?.dataset.frame === "60", { timeout: 5000 });
-    await page.waitForSelector('[data-testid=timeline-item][data-item="title"].selected', { timeout: 5000 });
-    await sleep(300);
-    await page.screenshot({ path: out("checks-panel.png") });
-
-    // Fix: one edit with its History label; the finding goes; ⌘Z brings the period back, ⇧⌘Z removes it again.
-    await page.click('[data-testid=check][data-rule="trailing-period"] [data-testid=check-fix]');
-    rev = await savedAfter(page, rev);
-    assert.equal(title().text, "We built it seven times");
-    await page.waitForFunction(() => !document.querySelector('[data-testid=check][data-rule="trailing-period"]'), { timeout: 5000 });
-    await meta(page, "KeyZ");
-    rev = await savedAfter(page, rev);
-    assert.equal(title().text, "We built it seven times.");
-    await waitFor(page, '[data-testid=check][data-rule="trailing-period"]');
-    await meta(page, "KeyZ", true);
-    rev = await savedAfter(page, rev);
-    assert.equal(title().text, "We built it seven times");
-    // The read-time fix lengthens the title (room before the next text).
-    await page.click('[data-testid=check][data-rule="text-read-time"] [data-testid=check-fix]');
-    rev = await savedAfter(page, rev);
-    assert.equal(title().duration, 60);
-
-    // Turn a rule off for the project, then back on.
-    await page.click('[data-testid=check][data-rule="silent"] [data-testid=check-disable]');
-    rev = await savedAfter(page, rev);
-    assert.deepEqual(onDisk().checks, { disabled: ["silent"] });
-    await waitFor(page, '[data-testid=check-off][data-rule="silent"]');
-    assert.equal(await page.$('[data-testid=check][data-rule="silent"]'), null);
-    await page.click('[data-testid=check-off][data-rule="silent"] [data-testid=check-enable]');
-    rev = await savedAfter(page, rev);
-    assert.equal(onDisk().checks, undefined);
-    await waitFor(page, '[data-testid=check][data-rule="silent"]');
-
-    // History lists the fixes and the rule switch by their labels.
-    await page.click("[data-testid=tab-history]");
-    await waitFor(page, "[data-testid=history-entry]");
-    const labels = await page.$$eval("[data-testid=history-entry] .history-what", (els) => els.map((e) => e.textContent ?? ""));
-    for (const want of ['Remove the period from "We built it seven times"', 'Hold "We built it seven times" for 2.0 s', 'Turn off the check "Has sound"', 'Turn on the check "Has sound"']) {
-      assert.ok(labels.some((l) => l.includes(want)), `History has "${want}": ${JSON.stringify(labels)}`);
-    }
-
-    // The export dialog: a line with the count, Export stays enabled; Open Checks closes it and shows the tab.
-    const left = projectChecks(onDisk()).filter((c) => c.severity === "warn").length;
+    assert.equal(await page.$("[data-testid=tab-checks]"), null);
+    assert.equal(await page.$("[data-testid=checks-count]"), null);
     await page.click("[data-testid=export-button]");
-    await waitFor(page, "[data-testid=export-checks]");
-    assert.match(await page.$eval("[data-testid=export-checks]", (el) => el.textContent ?? ""), new RegExp(`^${left} checks? to look at\\. You can still export\\.`));
-    assert.equal(await page.$eval("[data-testid=export-start]", (el) => (el as HTMLButtonElement).disabled), false, "checks never block the export");
-    await page.click("[data-testid=export-open-checks]");
+    await waitFor(page, "[data-testid=export-form]");
+    assert.equal(await page.$("[data-testid=export-checks]"), null);
+    assert.equal(await page.$eval("[data-testid=export-start]", (el) => (el as HTMLButtonElement).disabled), false);
+    await page.keyboard.press("Escape");
     await page.waitForFunction(() => !document.querySelector("[data-testid=export-modal]"), { timeout: 5000 });
-    await waitFor(page, "[data-testid=checks-panel]");
 
     // The music library: five tracks; mood, tempo and search narrow them; clearing brings them back.
     await page.click("[data-testid=rail-audio]");

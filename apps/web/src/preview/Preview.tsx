@@ -14,18 +14,18 @@ import { componentHtml, isDrawnComponent } from "@uncut/core/components";
 import { graphicInfo } from "@uncut/core/graphics";
 import { irisRadius, overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
-import { Maximize2, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Mix, PREROLL_S, setCurrentMix } from "../audio/audio.ts";
 import { draftOf, findItem, lockOf } from "../timeline/edit.ts";
-import { canvasLabel, frameTimecode } from "../state/format.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, graphicUrl, mediaUrl, textPresets } from "../state/store.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 import { clipState, planClipBox, resizeBox, type Corner } from "../timeline/clip.ts";
+import { Transport } from "./Transport.tsx";
+import { useViewport } from "./viewport.ts";
 
 /** Fits a w×h box inside its container, like object-fit: contain. */
 function useFit(width: number, height: number) {
@@ -295,7 +295,9 @@ class Compositor {
     }
     const background = canvasBackground(project);
     if (this.frameEl.style.background !== background) this.frameEl.style.background = background;
-    const { frame, playing, selected } = getPlayback();
+    const { frame, playing: running, rate, selected } = getPlayback();
+    // Shuttling (J/L at another speed, G3): the videos are seeked per frame, like scrubbing, and silent.
+    const playing = running && rate === 1;
     const fps = project.canvas.fps;
     const { starts } = layoutOf(project);
     const visible = visualsAt(project, starts, frame);
@@ -640,7 +642,32 @@ const SNAP_SCREEN_PX = 8;
  */
 export function Stage({ project, dir }: { project: ProjectModel; dir: string }) {
   const { width, height } = project.canvas;
-  const { ref, size } = useFit(width, height);
+  const { ref, size: fitted } = useFit(width, height);
+  // Zoom and pan (G6): Fit is the fitted size; a zoom is canvas px per screen px.
+  const view = useViewport(ref, fitted.w / width);
+  const size = view.zoom === "fit" ? fitted : { w: Math.round(width * view.scale), h: Math.round(height * view.scale) };
+  // The full-window preview (G7b): Esc or the button again leaves it.
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || (e.target as HTMLElement | null)?.closest?.(".pv-inline")) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setFull(false);
+    };
+    // Real full screen too, except in a background test run (it would show the hidden window).
+    const native = !window.uncut?.silentAudio && document.fullscreenEnabled;
+    if (native) void document.documentElement.requestFullscreen().catch(() => {});
+    const onChange = () => !document.fullscreenElement && setFull(false);
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("fullscreenchange", onChange);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+  }, [full]);
   const frameRef = useRef<HTMLDivElement>(null);
   const mediaRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
@@ -816,15 +843,15 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   };
 
   return (
-    <main className="stage">
+    <main className={`stage ${full ? "fullscreen" : ""}`} data-testid="stage" data-full={full ? "true" : undefined}>
       <style>{RENDER_CSS}</style>
-      <div className="stage-canvas" ref={ref}>
+      <div className={`stage-canvas ${view.hand ? "hand" : ""}`} ref={ref} data-testid="stage-canvas" data-zoom={view.zoom === "fit" ? "fit" : view.scale.toFixed(3)} onPointerDownCapture={(e) => view.handDown(e)}>
         <div
           className="frame"
           ref={frameRef}
           data-testid="preview-frame"
           data-frame="0"
-          style={{ width: size.w, height: size.h }}
+          style={{ width: size.w, height: size.h, transform: view.pan.x || view.pan.y ? `translate(${view.pan.x}px, ${view.pan.y}px)` : undefined }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={(e) => endDrag(e, true)}
@@ -856,7 +883,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           </div>
         </div>
       </div>
-      <Transport project={project} />
+      <Transport project={project} view={view} full={full} onFull={() => setFull(!full)} />
     </main>
   );
 }
@@ -938,42 +965,5 @@ function InlineEditor({ edit, onDone }: { edit: InlineEdit; onDone: (text: strin
         }
       }}
     />
-  );
-}
-
-function Transport({ project }: { project: ProjectModel }) {
-  const fps = project.canvas.fps;
-  const frame = usePlayback((s) => Math.floor(s.frame));
-  const playing = usePlayback((s) => s.playing);
-  const { end, frames } = layoutOf(project);
-  return (
-    <div className="transport">
-      <span className="timecode" data-testid="timecode">
-        {frameTimecode(frame, fps)} / {frameTimecode(end, fps)}
-      </span>
-      <div className="transport-mid">
-        <button className="icon-btn" data-testid="to-start" title="Go to start (Home)" disabled={frame === 0} onClick={playback.toStart}>
-          <SkipBack />
-        </button>
-        <button className="icon-btn" data-testid="step-back" title="Back one frame (←)" disabled={frame === 0} onClick={() => playback.step(-1)}>
-          <StepBack />
-        </button>
-        <button className="icon-btn play" data-testid="play" title={playing ? "Pause (Space)" : "Play (Space)"} disabled={frames <= 1} onClick={playback.toggle}>
-          {playing ? <Pause /> : <Play />}
-        </button>
-        <button className="icon-btn" data-testid="step-forward" title="Forward one frame (→)" disabled={frame >= Math.max(frames - 1, end)} onClick={() => playback.step(1)}>
-          <StepForward />
-        </button>
-        <button className="icon-btn" data-testid="to-end" title="Go to end (End)" disabled={frame >= end} onClick={playback.toEnd}>
-          <SkipForward />
-        </button>
-      </div>
-      <span className="muted small" data-testid="canvas-info">
-        {canvasLabel(project.canvas)}
-      </span>
-      <button className="icon-btn" data-testid="zoom-fit-transport" title="Fit the timeline to the window (⌘0)" onClick={playback.zoomFit}>
-        <Maximize2 />
-      </button>
-    </div>
   );
 }

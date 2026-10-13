@@ -100,10 +100,26 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .app {
   display: grid; height: 100vh; position: relative;
   /* Side panels and the timeline shrink with the window down to the minimum (1024×640). */
-  grid-template-columns: 56px clamp(200px, 20vw, 272px) minmax(0, 1fr) clamp(260px, 24vw, 320px);
-  grid-template-rows: 40px auto minmax(0, 1fr) clamp(170px, 30vh, 280px);
-  grid-template-areas: "top top top top" "banners banners banners banners" "rail lib stage side" "rail bottom bottom bottom";
+  /* The panels' sizes: these defaults, or what the user dragged them to (editor/layout.ts, G5). */
+  --lib-col: clamp(200px, 20vw, 272px); --side-col: clamp(260px, 24vw, 320px); --bottom-row: clamp(170px, 30vh, 280px);
+  grid-template-columns: 56px var(--lib-col) minmax(0, 1fr) var(--side-col);
+  grid-template-rows: 40px auto minmax(0, 1fr) var(--bottom-row);
+  /* The timeline spans the whole window; the rail and the left panel sit above it (S1, T4). */
+  grid-template-areas: "top top top top" "banners banners banners banners" "rail lib stage side" "bottom bottom bottom bottom";
 }
+/* Panel resize handles (G5): thin strips over the panels' edges. */
+.resizer { position: relative; z-index: 20; }
+.resizer.v { grid-row: 3; width: 7px; cursor: col-resize; }
+.resizer.h { grid-area: bottom; align-self: start; height: 7px; margin-top: -3px; cursor: row-resize; }
+.resizer-lib { grid-column: 2; justify-self: end; margin-right: -4px; }
+.resizer-side { grid-column: 4; justify-self: start; margin-left: -4px; }
+.resizer:hover, body.resizing .resizer:active { background: var(--select-soft); }
+body.resizing { cursor: col-resize; }
+body.resizing * { cursor: inherit !important; }
+/* Nothing is selected as text by accident (G1): only fields and text that is meant to be copied. */
+body { user-select: none; -webkit-user-select: none; }
+input, textarea, [contenteditable="true"], .selectable, .msg-user, .turn-body .reply, .banner-text, .inline-error, .err { user-select: text; -webkit-user-select: text; }
+input[type="range"], input[type="checkbox"], input[type="color"], input[type="radio"] { user-select: none; -webkit-user-select: none; }
 .topbar { grid-area: top; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 80px; border-bottom: 1px solid var(--border); -webkit-app-region: drag; user-select: none; }
 .topbar button { -webkit-app-region: no-drag; }
 .brand { font-weight: 600; letter-spacing: -0.01em; }
@@ -195,9 +211,11 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .bottom-body { flex: 1; min-height: 0; overflow: auto; }
 .tl { display: grid; grid-template-columns: 184px 1fr; min-width: 100%; width: max-content; position: relative; }
 .tl-heads { position: sticky; left: 0; z-index: 3; background: var(--panel); }
-.tl-corner { height: 44px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
-.tl-lanes { position: relative; }
-.tl-ruler { position: relative; height: 44px; border-bottom: 1px solid var(--border); }
+/* The ruler and the corner stay at the top while the tracks scroll (T10); the track heads stay at
+   the left, over everything the lanes draw (T5): the lanes are their own stacking context. */
+.tl-corner { height: 44px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.tl-lanes { position: relative; z-index: 0; }
+.tl-ruler { position: sticky; top: 0; z-index: 8; height: 44px; border-bottom: 1px solid var(--border); background: var(--panel); }
 .tl-ruler .tick { position: absolute; top: 24px; bottom: 0; border-left: 1px solid var(--border-strong); }
 .tl-ruler .tick span { position: absolute; left: 4px; top: -2px; font: 10px var(--mono); color: var(--dim); }
 .tl-head { height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
@@ -209,7 +227,7 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .tl-head.main { height: 52px; background: var(--panel-2); }
 .tl-lane { position: relative; height: 40px; border-bottom: 1px solid var(--border); }
 .tl-lane.main { height: 52px; background: var(--panel-2); }
-.playhead { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg); z-index: 4; pointer-events: none; }
+.playhead { position: absolute; top: 0; height: calc(var(--tl-view-h, 200px) - 1px); width: 1px; background: var(--fg); z-index: 4; pointer-events: none; }
 .playhead-handle { position: absolute; top: 0; left: -7px; width: 15px; height: 44px; pointer-events: auto; cursor: ew-resize; }
 .playhead::before { content: ""; position: absolute; top: 0; left: -5px; border: 5px solid transparent; border-top: 7px solid var(--fg); }
 /* Over the visible lanes (not the scrolled timeline), wrapping at narrow widths. */
@@ -439,8 +457,8 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .tl-lane.hidden .clip { opacity: 0.35; }
 .tl-lane.locked { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 3%) 6px 12px); }
 .tl-lane.locked .clip { cursor: not-allowed; }
-.snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn); z-index: 5; pointer-events: none; }
-.drag-tip { position: absolute; top: 4px; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: var(--raised); border: 1px solid var(--border-strong); font: 10px var(--mono); color: var(--fg); white-space: nowrap; z-index: 6; pointer-events: none; }
+.snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn); z-index: 9; pointer-events: none; }
+.drag-tip { position: absolute; top: 4px; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: var(--raised); border: 1px solid var(--border-strong); font: 10px var(--mono); color: var(--fg); white-space: nowrap; z-index: 10; pointer-events: none; }
 .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
 .kv-row:last-child { border-bottom: 0; }
 .kv-row .mono { text-align: right; }
@@ -960,3 +978,41 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .capture-message.saved { color: var(--ok); }
 .capture-message.discarded { color: var(--muted); }
 .capture-message.error { color: var(--error); }
+.rail button.lifted { background: var(--raised); box-shadow: 0 0 0 1px var(--select); color: var(--fg); cursor: grabbing; }
+/* Settings (G8) and the keyboard shortcuts sheet (G3). */
+.settings-modal { width: 760px; max-width: 100%; height: min(600px, calc(100vh - 48px)); display: grid; grid-template-columns: 180px 1fr; overflow: hidden; }
+.settings-nav { border-right: 1px solid var(--border); padding: 14px 8px; display: flex; flex-direction: column; gap: 2px; background: var(--bg); }
+.settings-title { font-weight: 600; padding: 4px 10px 12px; }
+.settings-nav button { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: var(--radius-sm); color: var(--muted); text-align: left; }
+.settings-nav button svg.lucide { width: 15px; height: 15px; }
+.settings-nav button.active { background: var(--raised); color: var(--fg); }
+.settings-body { overflow: auto; min-height: 0; }
+.sheet-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; font-weight: 600; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.sheet-head .grow, .grow { flex: 1; }
+.settings-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.color-row { display: flex; align-items: center; gap: 10px; }
+.color-row input[type="color"] { width: 36px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: none; }
+.aspect-seg { display: inline-flex; }
+.aspect-seg button { min-width: 52px; }
+.num-input { width: 100%; background: none; border: 0; color: var(--fg); text-align: right; outline: 0; }
+.modal.sheet { width: 560px; max-width: 100%; max-height: calc(100vh - 48px); overflow: auto; }
+.shortcut-list { padding: 4px 0 8px; }
+.shortcut-group { padding: 10px 14px 4px; }
+.shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.shortcut-row:last-child { border-bottom: 0; }
+.shortcut-keys { display: flex; gap: 4px; flex: none; }
+kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--raised); color: var(--fg); }
+/* In and out marks (I/O, G3) on the ruler. */
+.tl-marks { position: absolute; top: 0; height: 22px; background: rgb(109 140 255 / 18%); pointer-events: none; }
+.tl-marks .mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--select); }
+.tl-marks .mark.in { left: 0; }
+.tl-marks .mark.out { right: 0; }
+/* Preview zoom and pan (G6): the picture can be bigger than its area; the area clips it. */
+.stage-canvas { overflow: hidden; position: relative; }
+.stage-canvas.hand, .stage-canvas.hand .frame * { cursor: grab; }
+.zoom-select { height: 24px; background: var(--panel-2); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; padding: 0 4px; }
+/* The full-window preview (G7b). */
+.stage.fullscreen { position: fixed; inset: 0; z-index: 45; background: #000; }
+.stage.fullscreen .stage-canvas { background: #000; }
+.stage-canvas > .frame { flex: none; }

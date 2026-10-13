@@ -48,9 +48,27 @@ export interface PlaybackState {
   readonly bottom: "timeline" | "transcript" | "mixer";
   /** A selected volume key (D83) of the selected item: its index among the item's keys in frame order. ⌫ removes it. */
   readonly gainKey: number | undefined;
+  /**
+   * Playback speed and direction (J/K/L, G3): 1 is normal play; 2, 4, 8 faster; negative plays
+   * backwards. At any rate but 1 the preview seeks its videos per frame and stays silent.
+   */
+  readonly rate: number;
+  /** In and out points (I/O, G3), frames; drawn on the ruler. */
+  readonly markIn: number | undefined;
+  readonly markOut: number | undefined;
+  /** More items selected along with `selected` (⌘A, G3): deleted, copied and duplicated together. */
+  readonly also: ReadonlyArray<string>;
 }
 
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: true, draft: undefined, bottom: "timeline", gainKey: undefined };
+const SNAP_KEY = "uncut.snapping";
+const savedSnapping = () => {
+  try {
+    return globalThis.localStorage?.getItem(SNAP_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: savedSnapping(), draft: undefined, bottom: "timeline", gainKey: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [] };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -78,14 +96,18 @@ function tick(now: number) {
   if (!state.playing) return;
   // A rAF timestamp is the frame's start, which can be a little before the performance.now()
   // taken in play(); never step back before where playback started.
-  let f = clock.f0 + (Math.max(0, now - clock.t0) * state.fps) / 1000;
-  const videoFrame = follower?.(f);
+  let f = clock.f0 + (Math.max(0, now - clock.t0) * state.fps * state.rate) / 1000;
+  if (f <= 0 && state.rate < 0) {
+    set({ frame: 0, playing: false, rate: 1 });
+    return;
+  }
+  const videoFrame = state.rate === 1 ? follower?.(f) : undefined;
   if (videoFrame !== undefined && Math.abs(videoFrame - f) > 2) {
     clock = { f0: videoFrame, t0: now };
     f = videoFrame;
   }
   if (f >= state.frames - 1) {
-    set({ frame: state.frames - 1, playing: false });
+    set({ frame: state.frames - 1, playing: false, rate: 1 });
     return;
   }
   set({ frame: f });
@@ -112,22 +134,41 @@ export const playback = {
   /** Another project opened: back to the start, nothing selected, fit zoom. */
   reset() {
     cancelAnimationFrame(raf);
-    set({ frame: 0, playing: false, selected: undefined, cut: undefined, gainKey: undefined, zoom: 1, draft: undefined });
+    set({ frame: 0, playing: false, selected: undefined, cut: undefined, gainKey: undefined, zoom: 1, draft: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [] });
   },
 
-  play() {
-    if (state.playing) return;
-    // At the end, play starts over.
-    const frame = state.frame >= state.frames - 1 ? 0 : state.frame;
+  play(rate = 1) {
+    if (state.playing && state.rate === rate) return;
+    if (state.playing) {
+      // A new speed (J/L pressed again): carry on from here.
+      clock = { f0: state.frame, t0: performance.now() };
+      return set({ rate });
+    }
+    // At the end, play starts over (backwards: from the end).
+    const frame = rate > 0 && state.frame >= state.frames - 1 ? 0 : rate < 0 && state.frame <= 0 ? lastPosition(state) : state.frame;
     clock = { f0: frame, t0: performance.now() };
-    set({ frame, playing: true });
+    set({ frame, playing: true, rate });
     raf = requestAnimationFrame(tick);
   },
 
   pause() {
     if (!state.playing) return;
     cancelAnimationFrame(raf);
-    set({ playing: false, frame: Math.floor(state.frame) });
+    set({ playing: false, frame: Math.floor(state.frame), rate: 1 });
+  },
+
+  /** L: play forward, faster with each press (1, 2, 4, 8×); J the same backwards. K pauses. */
+  shuttle(direction: 1 | -1) {
+    const r = state.playing ? state.rate : 0;
+    const next = Math.sign(r) === direction ? Math.min(8, Math.abs(r) * 2) * direction : direction;
+    playback.play(next);
+  },
+  setMark(which: "in" | "out", frame: number | undefined) {
+    set(which === "in" ? { markIn: frame } : { markOut: frame });
+  },
+  /** Select several items at once: the first is the one the Inspector shows. */
+  selectMany(ids: ReadonlyArray<string>) {
+    set({ selected: ids[0], also: ids.slice(1), cut: undefined, gainKey: undefined });
   },
 
   toggle: () => (state.playing ? playback.pause() : playback.play()),
@@ -158,16 +199,22 @@ export const playback = {
     follower = fn;
   },
 
-  select: (id: string | undefined) => (id === state.selected && state.cut === undefined && state.gainKey === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: undefined })),
+  select: (id: string | undefined) => (id === state.selected && state.cut === undefined && state.gainKey === undefined && !state.also.length ? undefined : set({ selected: id, cut: undefined, gainKey: undefined, also: [] })),
   /** Select the cut before main item `id` (its transition, if it has one); undefined clears it. */
-  selectCut: (id: string | undefined) => (id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined, gainKey: undefined })),
+  selectCut: (id: string | undefined) => (id === state.cut && state.selected === undefined ? undefined : set({ cut: id, selected: undefined, gainKey: undefined, also: [] })),
   /** Select item `id` and its volume key `index` (in frame order), D83; undefined selects just the item. */
-  selectGainKey: (id: string, index: number | undefined) => (id === state.selected && index === state.gainKey && state.cut === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: index })),
+  selectGainKey: (id: string, index: number | undefined) => (id === state.selected && index === state.gainKey && state.cut === undefined ? undefined : set({ selected: id, cut: undefined, gainKey: index, also: [] })),
 
   zoomIn: () => set({ zoom: clamp(state.zoom * 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomFit: () => set({ zoom: 1 }),
-  toggleSnapping: () => set({ snapping: !state.snapping }),
+  /** Snapping on or off; remembered on this Mac (Settings › App shows the same switch, G8). */
+  toggleSnapping: () => {
+    set({ snapping: !state.snapping });
+    try {
+      globalThis.localStorage?.setItem(SNAP_KEY, state.snapping ? "on" : "off");
+    } catch {}
+  },
   setBottom: (bottom: PlaybackState["bottom"]) => (bottom === state.bottom ? undefined : set({ bottom })),
   /** Show (or with undefined, stop showing) a local preview of an edit in progress. */
   setDraft: (draft: PreviewDraft | undefined) => (draft === state.draft ? undefined : set({ draft })),

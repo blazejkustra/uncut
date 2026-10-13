@@ -18,7 +18,7 @@ export function Welcome() {
           <div className="wiz-brand">Uncut</div>
           <div className="grow" />
           <EnvironmentChip />
-          <button className="link-btn" data-testid="open-setup" onClick={actions.openSetup} disabled={offline} title="Check agents, Argent and ffmpeg (⌘,)">
+          <button className="link-btn" data-testid="open-setup" onClick={actions.openSetup} disabled={offline} title="Check agents, Argent and ffmpeg">
             <Settings2 />
             Setup
           </button>

@@ -10,10 +10,9 @@ import { dbWords } from "@uncut/core/edit-log";
 import { outputSize } from "@uncut/core/export";
 import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
-import { Download, FolderOpen, ListChecks, X } from "lucide-react";
+import { Download, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { warningCount } from "./Checks.tsx";
 import { shortPath } from "../state/format.ts";
 import { CheckRow } from "../onboarding/Onboarding.tsx";
 import { actions, useApp, type Project } from "../state/store.ts";
@@ -226,7 +225,6 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     const limiter = masterLimiter(project);
     const note = mixNote(project);
     const masterDb = project.master?.gainDb ?? 0;
-    const checks = warningCount(project);
     body = (
       <form
         data-testid="export-form"
@@ -337,26 +335,6 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               </p>
             )}
           </>
-        )}
-        {checks > 0 && (
-          // D90: the taste checks never block the export; this only says there's something to look at.
-          <p className="wiz-meta export-checks" data-testid="export-checks">
-            <ListChecks />
-            <span>
-              {checks} check{checks === 1 ? "" : "s"} to look at. You can still export.
-            </span>
-            <button
-              type="button"
-              className="btn ghost small-btn"
-              data-testid="export-open-checks"
-              onClick={() => {
-                actions.closeExport();
-                actions.openPanel("checks");
-              }}
-            >
-              Open Checks
-            </button>
-          </p>
         )}
         {cancelled && !error && <p className="wiz-meta">The last export was cancelled; nothing was saved.</p>}
         {error && (

@@ -158,11 +158,14 @@ test("first launch shows the wizard with real statuses; finishing it is remember
   await sleep(500);
   assert.equal(await page.$("[data-testid=onboarding]"), null);
 
-  // ⌘, (Uncut → Settings…) reopens it; Escape closes it.
+  // ⌘, (Uncut → Settings…) opens Settings (G8); its Agents and setup reopens the wizard; Escape closes it.
   await page.keyboard.down("Meta");
   await page.keyboard.press("Comma");
   await page.keyboard.up("Meta");
+  await waitFor(page, "[data-testid=settings-app]");
+  await page.click("[data-testid=settings-setup]");
   await waitFor(page, "[data-testid=onboarding]");
+  assert.equal(await page.$("[data-testid=settings]"), null);
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => !document.querySelector("[data-testid=onboarding]"));
 
