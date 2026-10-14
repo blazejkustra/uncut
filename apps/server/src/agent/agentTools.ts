@@ -225,8 +225,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       return n ? `Proposed a storyboard of ${n} beat${n === 1 ? "" : "s"}` : "Proposed a storyboard";
     }
     case "review_submit": {
-      const sc = args.scores && typeof args.scores === "object" ? Object.values(args.scores as Record<string, unknown>).filter((x): x is number => typeof x === "number") : [];
-      return sc.length ? `Reviewed the video (lowest score ${Math.min(...sc)})` : "Reviewed the video";
+      const n = Array.isArray(args.fixes) ? args.fixes.length : 0;
+      return n ? `Asked the critic to check ${n} fix${n === 1 ? "" : "es"}` : "Asked the critic for a review";
     }
     case "brand_read":
       return typeof args.file === "string" ? `Read ${shortName(args.file)} from the brand kit` : "Read the brand kit";
@@ -414,7 +414,7 @@ export function bigChange(tool: string, input: Record<string, unknown>, project:
 
 /** D184, D194: the access line of the message's <editor-context>. */
 export function accessLine(access: "look" | "ask" | "edit"): string {
-  if (access === "look") return "Access: Look only. You may read files, search and read the web, use subagents, look, point (ui_show), ask (ask_user) and plan (brief_write, storyboard_propose, review_submit), but don't run commands, write files or change the timeline, the media, the brand kit or graphics; say what you would do.";
+  if (access === "look") return "Access: Look only. You may read files, search and read the web, use subagents, look, point (ui_show), ask (ask_user) and plan (brief_write, storyboard_propose) and ask for a review (review_submit), but don't run commands, write files or change the timeline, the media, the brand kit or graphics; say what you would do.";
   if (access === "ask") return `Access: Ask before big changes. Commands (Bash), file writes outside the project's .cache, removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; reading, the web and small edits don't. If they say no, don't retry it in this turn.`;
   return "Access: Edit freely. Commands and file writes inside the project run without asking; deleting or writing outside the project, sudo, git push and uploads ask the user first.";
 }
@@ -856,7 +856,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
   3. Storyboard: storyboard_propose the shot list, each beat with its time, entry state, exit state (the next beat's entry), purpose, real assets and the sound it lands on; a hook in the first 2 s, one idea per beat. Once a brief exists, timeline_edit is refused until the storyboard is approved; build what was approved, with the user's edits.
   4. Build scene by scene (above), with motion that settles like a physical thing: ${SPRING_PROMPT}
   5. Sound on the clock: once music is placed, beat_grid gives its beats, downbeats and hits in timeline frames. Cuts and state changes go on beats (beat_grid snap says how far each of your frames is from one), big moments (the reveal, the logo, the end card) on downbeats, a whoosh or hit 1 to 2 frames before the frame it hits.
-  6. Critic loop: after building, look like a critic: contact_sheet of the edit and render_frames with phone true (frame 0, the first 2 s, each beat's last frame), then review_submit with honest scores 0–10 (hook in the first 2 s, readability at phone size, motion, variety, sound sync, brand accuracy against the kit) and the 3 worst defects with their time. Fix them and review again until every score is 8 or more, at most 3 rounds; Uncut checks each graphic draws the same twice. Then project_check.
+  6. Critic loop: after building, look at it yourself (contact_sheet of the edit, render_frames with phone true: frame 0, the first 2 s, each beat's last frame), then review_submit. You don't score your own work: Uncut's critic, a separate Claude that never sees this conversation, scores it from frames Uncut renders, with hard blockers (empty or placeholder screens where real footage was planned, a missing real asset, a fallback font, text overflowing or unreadable at phone size, off-brand colours, invented logos, UI or numbers, blank frames, off-centre elements). Fix every blocker and the worst defects, render_frames each fixed moment after the change and check it really changed, then review_submit with fixes by the review's ids (d1, d2, …); the critic checks each claim on fresh frames. At most 3 rounds; Uncut checks each graphic draws the same twice. Then project_check. Never tell the user a review passed, or that the video is clean, unless review_submit said passed.
   The skills in <brand> are the user's recipes: follow them. Small edits to an existing video skip the brief and storyboard; ask_user whenever something material is unclear, instead of guessing.
 - A style from a reference: reference_frames the video or picture, then brand_write the style into the kit named: the palette as hex with roles, type (families, weights, scale, case), shot lengths, transitions, camera moves, grain and texture. Its grammar, never its content (none of its words, logos or footage).
 - If an edit is refused, read the error and fix the ops. A conflict means the user changed the same thing (or used undo) after you read: read again and build on their change, never revert it.

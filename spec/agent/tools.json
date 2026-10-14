@@ -983,93 +983,52 @@
     },
     {
       "name": "review_submit",
-      "description": "Submit a critic review round of the built video (after a contact_sheet of the edit and render_frames with phone true in this turn): scores 0–10 for the hook in the first 2 s, readability at phone size, motion, variety, sound sync and brand accuracy, and the worst defects with their time. Uncut checks graphics for determinism (each drawn twice at the same frame) and saves the round; the answer says whether to fix and review again.",
+      "description": "Ask Uncut's critic for a review round of the built video. The critic is a separate Claude that sees only frames Uncut renders now (a contact sheet, phone-size frames, each claimed fix's moment), the brief, the brand kit, the storyboard and a strict rubric; it scores hook, phone readability, motion, variety, sound and brand with evidence and lists hard blockers (any one fails the round). Needs a contact_sheet of the edit and render_frames with phone true in this turn since the last round. From round 2, claim each fix by the last review's id; a claimed fix needs its moment rendered (render_frames) after your last change, and the critic checks it on fresh frames. You don't score it yourself.",
       "inputSchema": {
         "type": "object",
-        "required": [
-          "scores",
-          "defects"
-        ],
         "additionalProperties": false,
         "properties": {
-          "scores": {
-            "type": "object",
-            "required": [
-              "hook",
-              "readability",
-              "motion",
-              "variety",
-              "sound",
-              "brand"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "hook": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 10
-              },
-              "readability": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 10
-              },
-              "motion": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 10
-              },
-              "variety": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 10
-              },
-              "sound": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 10
-              },
-              "brand": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 10
-              }
-            }
-          },
-          "defects": {
+          "fixes": {
             "type": "array",
             "maxItems": 10,
+            "description": "What you fixed since the last round, by the review's ids.",
             "items": {
               "type": "object",
               "required": [
-                "at",
+                "defect",
                 "what"
               ],
               "additionalProperties": false,
               "properties": {
-                "at": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Seconds into the video."
+                "defect": {
+                  "type": "string",
+                  "maxLength": 20,
+                  "description": "A blocker or defect id from the last review (d1, d2, …)."
                 },
                 "what": {
                   "type": "string",
-                  "maxLength": 300
-                },
-                "fix": {
-                  "type": "string",
-                  "maxLength": 300
+                  "maxLength": 300,
+                  "description": "What you changed."
                 }
               }
             }
           },
+          "scores": {
+            "type": "object",
+            "description": "Ignored: Uncut's critic scores the video, not you."
+          },
+          "defects": {
+            "type": "array",
+            "description": "Ignored: the critic lists the defects."
+          },
           "notes": {
             "type": "string",
-            "maxLength": 2000
+            "maxLength": 2000,
+            "description": "Ignored by the critic (it never sees your reasoning)."
           }
         }
       },
-      "returns": "the round, its scores, the determinism check and what to do next"
+      "returns": "the critic's round: scores with evidence, blockers and defects with ids, each claimed fix verified or not, the determinism check and what to do next"
     },
     {
       "name": "brand_read",

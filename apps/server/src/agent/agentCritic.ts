@@ -1,0 +1,336 @@
+// The independent critic (D195, issue #28; fix verification D196, issue #36). A review round isn't
+// scored by the agent that built the video: Uncut renders the evidence itself (a contact sheet,
+// phone-size frames, fresh frames of every claimed fix), adds its own layout checks and runs a
+// separate, fresh `claude -p` with no tools, no MCP server, no session to resume and none of the
+// builder's conversation: it sees the frames as images, the brief, the brand kit, the storyboard,
+// the rubric, the last round's findings and the builder's fix claims, and answers with JSON. Any
+// blocker fails the round whatever the scores; a claimed fix the critic can't see on the new frames
+// is a blocker too. Pure functions plus runCritic (the process).
+import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { Brief, Review, ReviewScores, Storyboard } from "@uncut/contracts";
+import { REVIEW_SCORES } from "@uncut/contracts";
+
+/** The critic's bar: every score at least this. */
+export const REVIEW_PASS = 8;
+/** At most this many review rounds in a turn. */
+export const REVIEW_ROUNDS = 3;
+/** A score whose category has a blocker is at most this. */
+export const BLOCKER_CAP = 5;
+/** A score with no frames cited is at most this (it can't pass). */
+export const NO_EVIDENCE_CAP = REVIEW_PASS - 1;
+/** How long the critic may take. */
+export const criticMs = () => {
+  const v = Number(process.env.UNCUT_CRITIC_MS);
+  return Number.isFinite(v) && v > 0 ? v : 4 * 60_000;
+};
+
+/** In the critic's system prompt, so a test (and a log) can tell its process from the builder's. */
+export const CRITIC_MARKER = "[uncut-critic]";
+
+export const BLOCKER_KINDS = ["placeholder", "missing-asset", "font", "overflow", "illegible", "brand-colour", "invented", "blank", "off-centre", "unverified-fix", "other"] as const;
+/** The score a blocker kind caps. */
+const BLOCKER_SCORE: Readonly<Record<string, keyof ReviewScores>> = {
+  placeholder: "brand",
+  "missing-asset": "brand",
+  font: "brand",
+  "brand-colour": "brand",
+  invented: "brand",
+  overflow: "readability",
+  illegible: "readability",
+  "off-centre": "readability",
+  blank: "variety",
+  "unverified-fix": "readability",
+};
+const SCORE_NAMES: Readonly<Record<keyof ReviewScores, string>> = {
+  hook: "hook: the first 2 s make a stranger stop scrolling (motion or a claim on frame 0, no slow fade from black)",
+  readability: "readability: every word can be read at 360 px wide on a phone, in the time it's on screen; nothing clipped, overflowing or off-centre",
+  motion: "motion: moves have intent and settle (springs, eases), no linear drifts, nothing jittery",
+  variety: "variety: shots change every 1 to 3 s, no two scenes look the same, no empty or held frames that say nothing",
+  sound: "sound: cuts and big moments land on the beat, sound effects are sparing and fit",
+  brand: "brand: the kit's colours, fonts and logo files exactly, real product footage and copy where the brief planned them, nothing invented",
+};
+
+export const CRITIC_SYSTEM = `${CRITIC_MARKER} You are an independent critic of short product videos. You didn't make this video and owe its maker nothing. You see only rendered frames (images), the brief, the brand kit, the storyboard, the rubric and, from round 2, the last round's findings and what the editor says it fixed. You have no tools: judge only what is in the frames.
+Score each category 0 to 10, where 8 means you would post it today as is and 10 is the best you've seen. Don't round up and don't default to the pass mark: a score needs evidence, the frames you looked at ("f 45", "f 90 to f 120") and what you saw there.
+Hard blockers fail the video whatever the scores; list every one you see:
+- placeholder: an empty, blank or placeholder screen (a phone, browser or app frame with nothing real in it) where the brief or storyboard planned real footage or UI
+- missing-asset: a planned real asset (logo file, screenshot, recording) that isn't there
+- font: text drawn in a fallback or wrong font (not the kit's fonts; a generic system face where the kit names another)
+- overflow: text cut off, running out of its box or past the frame's edge
+- illegible: text too small, too thin or too low in contrast to read at 360 px wide
+- brand-colour: colours outside the kit where the kit should rule (backgrounds, text, accents)
+- invented: a logo, product UI, screen, metric, quote or customer that the brief and kit don't provide
+- blank: a black or blank frame, or one that shows nothing for longer than a beat
+- off-centre: an element meant to be centred (a button glyph, a title, a logo) visibly off its centre
+Uncut's layout checks are listed as facts about the project: confirm what you see.
+From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim.
+Answer with one JSON object and nothing else:
+{"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...},"motion":{...},"variety":{...},"sound":{...},"brand":{...}},
+ "blockers":[{"kind":"placeholder","what":"one sentence","at":3.2}],
+ "defects":[{"at":1.5,"what":"one sentence","fix":"one sentence"}],
+ "fixes":[{"defect":"d1","verified":false,"note":"what the new frames show"}],
+ "summary":"two sentences at most"}
+at is seconds into the video. defects are the worst problems that aren't blockers, worst first, at most 6.`;
+
+export interface CriticImage {
+  readonly label: string;
+  readonly jpeg: Buffer;
+}
+export interface CriticClaim {
+  /** The defect or blocker id from the last round (d1, d2, …). */
+  readonly defect: string;
+  /** What the editor says it changed. */
+  readonly what: string;
+  /** Where the defect was (seconds), from the last round. */
+  readonly at?: number;
+  /** The defect as the critic described it. */
+  readonly was?: string;
+}
+export interface CriticFinding {
+  readonly rule: string;
+  readonly message: string;
+  readonly frame?: number;
+  readonly hard: boolean;
+}
+export interface CriticInput {
+  readonly round: number;
+  readonly canvas: { readonly width: number; readonly height: number; readonly fps: number };
+  readonly frames: number;
+  readonly brief?: Brief | undefined;
+  readonly storyboard?: Storyboard | undefined;
+  readonly kit: ReadonlyArray<string>;
+  readonly previous?: Review | undefined;
+  readonly claims: ReadonlyArray<CriticClaim>;
+  readonly checks: ReadonlyArray<CriticFinding>;
+  readonly determinism: { readonly checked: ReadonlyArray<string>; readonly differed: ReadonlyArray<string> };
+  readonly images: ReadonlyArray<CriticImage>;
+}
+
+const join2 = (xs: ReadonlyArray<string> | undefined) => (xs ?? []).filter(Boolean).join("; ");
+
+/** The critic's message: what it gets and only that (no builder conversation, no tool results). */
+export function criticText(input: CriticInput): string {
+  const { canvas } = input;
+  const parts: Array<string> = [];
+  parts.push(`Round ${input.round}. The video: ${canvas.width}×${canvas.height} at ${canvas.fps} fps, ${(input.frames / canvas.fps).toFixed(1)} s (${input.frames} frames). Frame n is at n / ${canvas.fps} s.`);
+  const b = input.brief;
+  parts.push(
+    b
+      ? ["<brief>", `film: ${b.film}`, `audience: ${b.audience}`, `duration: ${b.duration}`, `formats: ${join2(b.formats)}`, `assets: ${join2(b.assets)}`, `visual: ${b.visual}`, `hard lines: ${join2(b.hardLines)}`, b.notes ? `notes: ${b.notes}` : "", "</brief>"].filter(Boolean).join("\n")
+      : "<brief>None written: judge it as a short product video.</brief>",
+  );
+  parts.push(`<brand>\n${input.kit.length ? input.kit.join("\n") : "No brand kit: judge brand on consistency and on nothing being invented."}\n</brand>`);
+  const sb = input.storyboard;
+  if (sb) parts.push(`<storyboard ${sb.status}>\n${sb.summary}\n${sb.beats.map((x, i) => `${i + 1}. ${x.start} to ${x.end} s ${x.title}: ${x.entry} to ${x.exit} (${x.purpose})${x.assets.length ? ` real assets: ${x.assets.join(", ")}` : ""}${x.sound ? `, on ${x.sound}` : ""}`).join("\n")}\n</storyboard>`);
+  parts.push(`<rubric>\n${REVIEW_SCORES.map((k) => `- ${SCORE_NAMES[k]}`).join("\n")}\nPass: every score ${REVIEW_PASS} or more, no blockers, every claimed fix verified.\n</rubric>`);
+  const prev = input.previous;
+  if (prev) {
+    const found = [...(prev.blockers ?? []).map((x) => `${x.id ?? "?"} (blocker, ${x.kind})${x.at !== undefined ? ` at ${x.at} s` : ""}: ${x.what}`), ...prev.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`)];
+    parts.push(`<last-round ${prev.round}>\n${found.join("\n") || "nothing listed"}\n</last-round>`);
+  }
+  if (input.claims.length) parts.push(`<claimed-fixes>\nThe editor says it fixed these. Check each on the new frames.\n${input.claims.map((c) => `${c.defect}${c.at !== undefined ? ` (at ${c.at} s)` : ""}${c.was ? `, was: ${c.was}` : ""}; the editor: ${c.what}`).join("\n")}\n</claimed-fixes>`);
+  if (input.checks.length) parts.push(`<layout-checks>\n${input.checks.map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`).join("\n")}\n</layout-checks>`);
+  if (input.determinism.differed.length) parts.push(`Graphics that drew differently twice at the same frame: ${input.determinism.differed.join(", ")}.`);
+  parts.push(`<images>\n${input.images.map((im, i) => `Image ${i + 1}: ${im.label}`).join("\n")}\n</images>`);
+  parts.push("Answer with the JSON object only.");
+  return parts.join("\n\n");
+}
+
+/** The stream-json user message: the text, then the images in order. */
+export function criticMessage(input: CriticInput) {
+  return {
+    type: "user",
+    message: {
+      role: "user",
+      content: [{ type: "text", text: criticText(input) }, ...input.images.map((im) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.jpeg.toString("base64") } }))],
+    },
+  };
+}
+
+export interface CriticAnswer {
+  readonly scores: Record<keyof ReviewScores, number>;
+  readonly evidence: Record<string, string>;
+  readonly blockers: ReadonlyArray<{ kind: string; what: string; at?: number }>;
+  readonly defects: ReadonlyArray<{ at: number; what: string; fix?: string }>;
+  readonly fixes: ReadonlyArray<{ defect: string; verified: boolean; note?: string }>;
+  readonly summary: string;
+  /** Scores capped because they cited no frames. */
+  readonly unproven: ReadonlyArray<string>;
+}
+
+const FRAME_REF = /\b(f|frame|frames)\s*\d+|\d+(\.\d+)?\s*s\b/i;
+const s = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const sec = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : undefined);
+
+/** The critic's JSON (the first object in its answer, fenced or not), or why it isn't one. */
+export function parseCritic(text: string): CriticAnswer | { problem: string } {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
+  const body = fenced ?? text;
+  const a = body.indexOf("{");
+  const z = body.lastIndexOf("}");
+  if (a < 0 || z <= a) return { problem: "no JSON object in the critic's answer" };
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(body.slice(a, z + 1));
+  } catch {
+    return { problem: "the critic's JSON didn't parse" };
+  }
+  const sc = (raw.scores && typeof raw.scores === "object" ? raw.scores : {}) as Record<string, unknown>;
+  const scores = {} as Record<keyof ReviewScores, number>;
+  const evidence: Record<string, string> = {};
+  const unproven: Array<string> = [];
+  for (const k of REVIEW_SCORES) {
+    const v = sc[k];
+    const o = (v && typeof v === "object" ? v : { score: v }) as Record<string, unknown>;
+    const n = o.score;
+    if (typeof n !== "number" || !Number.isFinite(n)) return { problem: `the critic gave no ${k} score` };
+    const ev = s(o.evidence, 400);
+    let score = Math.max(0, Math.min(10, Math.round(n * 10) / 10));
+    if (!FRAME_REF.test(ev)) {
+      unproven.push(k);
+      score = Math.min(score, NO_EVIDENCE_CAP);
+    }
+    scores[k] = score;
+    if (ev) evidence[k] = ev;
+  }
+  const list = (v: unknown) => (Array.isArray(v) ? v : []).map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}));
+  const blockers = list(raw.blockers).flatMap((b) => {
+    const what = s(b.what, 300);
+    const kind = (BLOCKER_KINDS as ReadonlyArray<string>).includes(s(b.kind, 40)) ? s(b.kind, 40) : "other";
+    const at = sec(b.at);
+    return what ? [{ kind, what, ...(at !== undefined ? { at } : {}) }] : [];
+  });
+  const defects = list(raw.defects).flatMap((d) => {
+    const what = s(d.what, 300);
+    const fix = s(d.fix, 300);
+    return what ? [{ at: sec(d.at) ?? 0, what, ...(fix ? { fix } : {}) }] : [];
+  });
+  const fixes = list(raw.fixes).flatMap((f) => {
+    const defect = s(f.defect, 20);
+    const note = s(f.note, 300);
+    return defect ? [{ defect, verified: f.verified === true, ...(note ? { note } : {}) }] : [];
+  });
+  return { scores, evidence, blockers: blockers.slice(0, 12), defects: defects.slice(0, 6), fixes, summary: s(raw.summary, 600), unproven };
+}
+
+/**
+ * The round as saved (D195, D196): the critic's scores and findings, Uncut's hard layout findings
+ * as blockers, every claimed fix the critic didn't verify as a blocker, each blocker capping its
+ * score; passed only with no blocker, every score at the bar and every graphic deterministic.
+ */
+export function criticReview(answer: CriticAnswer, ctx: { round: number; claims: ReadonlyArray<CriticClaim>; checks: ReadonlyArray<CriticFinding>; determinism: { checked: Array<string>; differed: Array<string> }; looked: { sheet: boolean; phone: boolean }; revision: number; turnId: string; fps: number }): Review {
+  const blockers: Array<{ id: string; kind: string; what: string; at?: number; source: string }> = [];
+  let n = 0;
+  const id = () => `d${++n}`;
+  for (const b of answer.blockers) blockers.push({ id: id(), ...b, source: "critic" });
+  for (const c of ctx.checks.filter((x) => x.hard)) blockers.push({ id: id(), kind: c.rule === "layout-off-centre" ? "off-centre" : "overflow", what: c.message, ...(c.frame !== undefined ? { at: Math.round((c.frame / ctx.fps) * 100) / 100 } : {}), source: "check" });
+  const fixes = ctx.claims.map((c) => {
+    const said = answer.fixes.find((f) => f.defect === c.defect);
+    return { defect: c.defect, what: c.what, ...(c.at !== undefined ? { at: c.at } : {}), verified: said?.verified === true, ...(said?.note ? { note: said.note } : said ? {} : { note: "The critic didn't confirm it on the new frames." }) };
+  });
+  for (const f of fixes) if (!f.verified) blockers.push({ id: id(), kind: "unverified-fix", what: `The fix for ${f.defect} isn't visible on the new frames${f.note ? `: ${f.note}` : "."}`, ...(f.at !== undefined ? { at: f.at } : {}), source: "critic" });
+  const scores = { ...answer.scores };
+  for (const b of blockers) {
+    const k = BLOCKER_SCORE[b.kind];
+    if (k) scores[k] = Math.min(scores[k], BLOCKER_CAP);
+  }
+  const defects = answer.defects.map((d) => ({ ...d, id: id() }));
+  const passed = !blockers.length && REVIEW_SCORES.every((k) => scores[k] >= REVIEW_PASS) && !ctx.determinism.differed.length;
+  return {
+    round: ctx.round,
+    scores,
+    defects,
+    ...(answer.summary ? { notes: answer.summary } : {}),
+    by: "critic",
+    blockers,
+    evidence: answer.evidence,
+    ...(fixes.length ? { fixes } : {}),
+    determinism: ctx.determinism,
+    looked: ctx.looked,
+    passed,
+    revision: ctx.revision,
+    at: new Date().toISOString(),
+    turnId: ctx.turnId,
+  };
+}
+
+/** What the builder does next after a round. */
+export function reviewNext(review: Review, turnRound: number = review.round): string {
+  const low = REVIEW_SCORES.filter((k) => review.scores[k] < REVIEW_PASS);
+  const det = review.determinism?.differed.length ? ` The graphics ${review.determinism.differed.map((d) => `"${d}"`).join(", ")} drew differently twice at the same frame: they use the clock, timers or Math.random; make render(t) a pure function of t (seeded random from uncut:lib/random.js).` : "";
+  const blockers = (review.blockers ?? []).map((b) => `${b.id} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`);
+  const scores = REVIEW_SCORES.map((k) => `${k} ${review.scores[k]}`).join(", ");
+  if (review.passed) return `Uncut's critic passed it (${scores}). Run project_check, fix its warnings, then tell the user in a line or two; the scores are the critic's, not yours.`;
+  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under ${REVIEW_PASS}: ${low.join(", ")}.` : ""}${det}`.trim();
+  if (turnRound >= REVIEW_ROUNDS) return `That was round ${turnRound} in this turn, the last one: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
+  return `Not passed. ${open} Fix every blocker first, then the worst defects (their ids are in the review). After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
+}
+
+/** The critic's command line: no tools, no MCP servers, no settings, no session kept; Uncut's critic prompt replaces Claude Code's own (no tool talk, no hedging). */
+export function criticArgs(model: string | undefined) {
+  const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--permission-mode", "dontAsk", "--no-session-persistence", "--system-prompt", CRITIC_SYSTEM];
+  if (model) args.push("--model", model);
+  return args;
+}
+
+/**
+ * Runs the critic: a fresh claude in an empty temp folder, the one message on stdin, its result
+ * text back. Killed on the signal, after its result, or after criticMs.
+ */
+export async function runCritic(o: { bin: string; env: Record<string, string>; model: string | undefined; message: unknown; signal: AbortSignal }): Promise<string> {
+  const cwd = await mkdtemp(join(tmpdir(), "uncut-critic-"));
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      const child = spawn(o.bin, criticArgs(o.model), { cwd, env: o.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+      let buf = "";
+      let stderr = "";
+      let settled = false;
+      const kill = () => {
+        try {
+          if (child.pid) process.kill(-child.pid, "SIGKILL");
+        } catch {}
+      };
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        o.signal.removeEventListener("abort", onAbort);
+        kill();
+        fn();
+      };
+      const timer = setTimeout(() => finish(() => reject(new Error(`the critic didn't answer in ${Math.round(criticMs() / 1000)} s`))), criticMs());
+      const onAbort = () => finish(() => reject(new Error("the turn was stopped")));
+      if (o.signal.aborted) return onAbort();
+      o.signal.addEventListener("abort", onAbort, { once: true });
+      child.stdout!.on("data", (d) => {
+        buf += d;
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          let m: { type?: unknown; is_error?: unknown; result?: unknown };
+          try {
+            m = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          if (m.type !== "result") continue;
+          if (m.is_error === true || typeof m.result !== "string") finish(() => reject(new Error(`the critic stopped: ${String(m.result ?? "no answer").slice(0, 300)}`)));
+          else finish(() => resolve(m.result as string));
+        }
+      });
+      child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
+      child.stdin!.on("error", () => {});
+      child.stdin!.end(`${JSON.stringify(o.message)}\n`);
+      child.once("error", (e) => finish(() => reject(new Error(`couldn't start Claude Code: ${e.message}`))));
+      child.once("close", (code) => finish(() => reject(new Error(`the critic ended without an answer (code ${code})${stderr.trim() ? `: ${stderr.trim().split("\n").at(-1)}` : ""}`))));
+    });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+}

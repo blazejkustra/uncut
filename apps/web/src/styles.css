@@ -1471,14 +1471,34 @@ div.card-head { cursor: default; }
 .brief-form { display: flex; flex-direction: column; gap: 6px; }
 .brief-field { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
 .brief-field .field { font-size: 12px; resize: vertical; }
-.plan-bar { flex: none; border-bottom: 1px solid var(--border); padding: 6px 12px; display: flex; flex-direction: column; gap: 6px; max-height: 50%; overflow: auto; overscroll-behavior: contain; }
-.plan-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.plan-tab { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--fg); font: inherit; font-size: 11.5px; cursor: pointer; }
-.plan-tab.on { border-color: var(--select); }
-.plan-chip { font-size: 10px; color: var(--muted); }
-.plan-chip.approved, .plan-chip.passed { color: var(--ok); }
-.plan-chip.proposed, .plan-chip.declined, .plan-chip.low { color: var(--warn); }
-.plan-body { display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px; }
+/* D197: the pinned Plan chip at the top of the thread; brief, storyboard and reviews are cards in it. */
+.plan-strip { flex: none; position: relative; z-index: 3; display: flex; justify-content: flex-end; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.plan-chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--fg); font: inherit; font-size: 11.5px; cursor: pointer; }
+.plan-chip-btn svg, .plan-row svg { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.plan-chip-btn.on { border-color: var(--select); }
+.plan-state { font-size: 10px; color: var(--muted); flex: none; }
+.plan-state.approved, .plan-state.passed { color: var(--ok); }
+.plan-state.proposed, .plan-state.declined, .plan-state.low { color: var(--warn); }
+.plan-menu { position: absolute; top: calc(100% + 2px); right: 12px; width: min(340px, calc(var(--side-col, 320px) - 24px)); max-height: 60vh; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; padding: 4px; gap: 2px; }
+.plan-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--fg); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.plan-row:hover { background: var(--raised); }
+.plan-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 6px 6px; }
+.card-item { scroll-margin-top: 8px; }
+.card-item[data-flash] { animation: card-flash 1.2s ease-out; }
+@keyframes card-flash { from { border-color: var(--select); box-shadow: 0 0 0 2px var(--select); } to { box-shadow: 0 0 0 0 transparent; } }
+.card-btns { padding: 0 8px 8px; align-items: center; }
+.card-item .brief-form { padding: 0 8px 8px; }
+.review-by { padding: 0 8px 6px; }
+.card-item .blockers, .card-item .fixes { padding: 0 8px 8px; }
+.blockers, .fixes { display: flex; flex-direction: column; gap: 3px; }
+.blocker { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; font-size: 11.5px; line-height: 1.35; }
+.blocker > .grow { flex-basis: 100%; }
+.blocker-kind { flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 8px; background: color-mix(in srgb, var(--error) 18%, transparent); color: var(--error); }
+.fix { display: flex; gap: 6px; align-items: baseline; font-size: 11.5px; line-height: 1.35; }
+.fix svg { width: 12px; height: 12px; flex: none; position: relative; top: 2px; }
+.fix.ok svg { color: var(--ok); }
+.fix.bad svg { color: var(--error); }
+.score-evidence { grid-column: 1 / -1; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: -1px 0 2px; }
 .question-text, .brief-field textarea, .storyboard-card textarea { font-family: var(--font); }
 .storyboard-card .approval-btns { flex-wrap: wrap; }
 .storyboard-card .approval-btns .btn { display: inline-flex; align-items: center; gap: 4px; }

@@ -649,8 +649,19 @@ export type ReviewScores = typeof ReviewScores.Type;
 export const Review = Schema.Struct({
   round: Schema.Number,
   scores: ReviewScores,
-  defects: Schema.Array(Schema.Struct({ at: Schema.Number, what: Schema.String, fix: Schema.optional(Schema.String) })),
+  // id: the critic's defect id (d1, d2, …: what a fix claim names in the next round, D195).
+  defects: Schema.Array(Schema.Struct({ at: Schema.Number, what: Schema.String, fix: Schema.optional(Schema.String), id: Schema.optional(Schema.String) })),
   notes: Schema.optional(Schema.String),
+  // D195: who scored it: "critic" (a separate claude process Uncut ran) or "agent" (rounds before D195).
+  by: Schema.optional(Schema.Literals(["critic", "agent"])),
+  // D195: hard blockers (any one fails the round whatever the scores); source "critic" or "check" (Uncut's layout checks).
+  blockers: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String), kind: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), source: Schema.String }))),
+  // D195: per score, the frames the critic cites ("f 0, f 45: …").
+  evidence: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  // D196: the builder's fix claims and whether the critic saw each fixed on fresh frames.
+  fixes: Schema.optional(Schema.Array(Schema.Struct({ defect: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), verified: Schema.Boolean, note: Schema.optional(Schema.String) }))),
+  // D195: why the round has no scores (the critic couldn't run or answered something unreadable).
+  error: Schema.optional(Schema.String),
   // The determinism check (U16): graphics drawn twice at the same frame, by name; those that differed.
   determinism: Schema.optional(Schema.Struct({ checked: Schema.Array(Schema.String), differed: Schema.Array(Schema.String) })),
   // Whether this round's looks were taken (a contact sheet and phone-size frames in this turn).

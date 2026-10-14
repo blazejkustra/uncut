@@ -8,7 +8,7 @@ import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, Re
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer, withChips } from "./Composer.tsx";
-import { CardItem, PlanBar, QuestionCard, StoryboardApproval } from "./AgentCards.tsx";
+import { CardItem, PlanChip, QuestionCard, StoryboardApproval, type CardLive } from "./AgentCards.tsx";
 import { actions, agentImageUrl, getState, useApp, type Project } from "../state/store.ts";
 import { cancelTake, clock, getRecorder, loadSources, refreshAccess, startTake, stopTake, useRecorder } from "../capture/recorder.ts";
 
@@ -41,6 +41,14 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   const running = agent?.running ?? null;
   // D9: the session's estimated spend on the user's API keys (generators), when there is any.
   const sessionSpend = turns.reduce((n, t) => n + (t.spend ?? 0), 0);
+  // D197: the latest brief and storyboard cards (edit, approve there), as "turn:item".
+  const latest = new Set<string>();
+  for (const type of ["brief", "storyboard"] as const) {
+    let at: string | undefined;
+    for (const t of turns) t.items.forEach((item, i) => item.kind === "card" && item.card?.type === type && (at = `${t.id}:${i}`));
+    if (at) latest.add(at);
+  }
+  const live: CardLive | undefined = agent?.plan ? { plan: agent.plan, online, busy: running !== null, waiting: !!agent.approval?.storyboard } : undefined;
 
   // Follow the newest turn as it streams in (the empty state stays scrolled to its top).
   useEffect(() => {
@@ -64,13 +72,13 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           {agent.warning}
         </p>
       )}
-      {agent?.plan && <PlanBar plan={agent.plan} waiting={!!agent.approval?.storyboard} online={online} busy={running !== null} />}
+      {agent?.plan && <PlanChip plan={agent.plan} />}
       <div className="agent-thread" ref={thread} data-testid="agent-thread">
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
         {turns.length === 0 ? (
           <AgentEmpty onPick={pick} disabled={blocked || !online} />
         ) : (
-          turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={agent?.approval?.turnId === t.id ? agent.approval : undefined} />)
+          turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={agent?.approval?.turnId === t.id ? agent.approval : undefined} latest={latest} live={live} />)
         )}
         <AgentTakeLine />
         {sessionSpend > 0 && (
@@ -150,7 +158,7 @@ function ClaudeStatus({ check, checking }: { check: SetupCheck; checking: boolea
   );
 }
 
-function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: boolean; online: boolean; approval?: AgentApproval | undefined }) {
+function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: AgentTurn; busy: boolean; online: boolean; approval?: AgentApproval | undefined; latest: ReadonlySet<string>; live: CardLive | undefined }) {
   const friendly = useFriendly();
   const undone = t.undo.state === "undone";
   const status =
@@ -193,7 +201,7 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
             ) : g.item.kind === "thinking" ? (
               <Thinking key={g.at} item={g.item} />
             ) : g.item.kind === "card" && g.item.card ? (
-              <CardItem key={g.at} card={g.item.card} />
+              <CardItem key={g.at} card={g.item.card} live={latest.has(`${t.id}:${g.at}`) ? live : undefined} />
             ) : (
               <Reply key={g.at} text={friendly(g.item.text)} live={!!g.item.live} />
             ),
