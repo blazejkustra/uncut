@@ -898,6 +898,14 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .capture-saved { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--ok); }
 .capture-saved svg.lucide { width: 13px; height: 13px; flex: none; }
 .capture-saved span { flex: 1; min-width: 0; color: var(--fg); }
+/* D143: Argent's section header, options, booting. */
+.capture-label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.capture-label-row .icon-btn { margin: -4px 0; }
+.capture-options { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.capture-options .field .k { flex: none; }
+.capture-options .gen-select:disabled { color: var(--dim); }
+.capture-options input.gen-select::placeholder { color: var(--dim); }
+.capture-row .capture-note svg.lucide { width: 12px; height: 12px; vertical-align: -2px; margin-right: 4px; }
 
 /* The Generate tab (D99). */
 .gen-list { display: flex; flex-direction: column; gap: 2px; }
@@ -945,6 +953,36 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .gen-done span { color: var(--fg); word-break: break-word; }
 .gen-done .link-btn { grid-column: 2; justify-self: start; }
 .gen-row { min-height: 32px; padding: 4px 8px; }
+/* D145: the Generate tab's type switch, model prices, chips, inline key, results grid. */
+.gen-types { align-self: stretch; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.gen-types button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 12px; white-space: nowrap; padding: 4px 6px; }
+.gen-types svg.lucide { width: 13px; height: 13px; }
+.gen-row .gen-price { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gen-row.active .gen-price { color: var(--fg); }
+.gen-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gen-chips .k { font-size: 11px; color: var(--dim); margin-right: 2px; min-width: 42px; }
+.gen-needs { flex-direction: column; align-items: stretch; margin-top: 0; }
+.gen-key-row { display: flex; gap: 6px; }
+.gen-key-row .field.input { flex: 1; height: 28px; }
+.gen-needs .link-btn { align-self: flex-start; }
+.gen-failed { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.gen-failed svg.lucide { width: 11px; height: 11px; }
+.gen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.gen-tile { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); min-width: 0; }
+.gen-tile[draggable="true"] { cursor: grab; }
+.gen-tile:hover { border-color: var(--border-strong); }
+.gen-tile-media { position: relative; aspect-ratio: 16 / 10; border-radius: 4px; background: var(--raised); display: grid; place-items: center; overflow: hidden; }
+.gen-tile-media > img, .gen-tile-media > .gen-tile-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.gen-tile-media > .gen-tile-video { opacity: 0; transition: opacity 120ms; }
+.gen-tile:hover .gen-tile-video { opacity: 1; }
+.gen-tile-media > svg.lucide { width: 18px; height: 18px; color: var(--muted); }
+.gen-tile-media .gen-tile-play { position: absolute; right: 4px; bottom: 4px; background: var(--panel); }
+.gen-tile-prompt { font-size: 11px; line-height: 1.3; color: var(--fg); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.gen-tile-by { font-size: 10px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gen-tile-actions { display: flex; gap: 2px; opacity: 0.55; transition: opacity 120ms; }
+.gen-tile:hover .gen-tile-actions, .gen-tile:focus-within .gen-tile-actions { opacity: 1; }
+.gen-tile-actions .icon-btn svg.lucide { width: 13px; height: 13px; }
+.gen-tile.making .gen-tile-prompt { color: var(--muted); }
 .approval { margin-top: 8px; padding: 10px 12px; border: 1px solid rgb(251 191 36 / 40%); border-radius: var(--radius-sm); background: rgb(251 191 36 / 8%); display: flex; flex-direction: column; gap: 6px; }
 .approval-text { font-weight: 600; font-size: 13px; }
 .approval-sub { font-size: 11px; color: var(--muted); }
@@ -1017,6 +1055,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .capture-preview .inline-error { position: absolute; inset: auto 8px 8px 8px; }
 .capture-sources-head { display: flex; align-items: center; justify-content: space-between; }
 .capture-sources { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.agent-take { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.capture-sources-group { margin-top: 2px; font-size: 11px; }
 .capture-source { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: left; min-width: 0; }
 .capture-source.active { border-color: var(--fg); background: var(--raised); }
 .capture-source img, .capture-source .capture-source-icon { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 3px; background: var(--panel-2); display: flex; align-items: center; justify-content: center; }

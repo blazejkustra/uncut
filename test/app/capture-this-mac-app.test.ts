@@ -9,8 +9,12 @@
 // - Screen: the stand-in source, a take into Media (picture only).
 // - Permissions from the test: denied says how to fix it and opens System Settings (logged, not
 //   opened), not asked yet offers to ask.
+// - D143/D144: Screen is the first part (screens and windows grouped, "Record screen").
+// - D144: the agent's screen_record (scripted claude): the card in the Agent tab preselects the
+//   window it named, Record runs the stand-in take for its seconds with the 3-2-1 and a status
+//   line, and the take lands in Media as an edit of the turn.
 // Screenshots: test-output/capture-mic.png, capture-recording-mic.png, capture-camera.png,
-// capture-screen.png, capture-denied.png.
+// capture-screen.png, capture-denied.png, capture-agent-card.png, capture-agent-recording.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -23,6 +27,7 @@ import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } fro
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 // The Capture tab also asks Argent for its devices: always the fake (the real CLI would start the shared tool-server).
 const FAKE_ARGENT = resolve("test/helpers/fake-argent/argent");
+const FAKE_CLAUDE = resolve("test/helpers/fake-claude.ts");
 const argentEnv = () => ({ ARGENT_BIN: FAKE_ARGENT, FAKE_ARGENT_NODE: process.execPath, FAKE_ARGENT_LOG: join(root, "argent.jsonl") });
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = existsSync(APP) ? (hasFfmpeg ? false : "needs ffmpeg") : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -74,6 +79,7 @@ before(async () => {
   execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-f", "lavfi", "-i", "aevalsrc=0.3*sin(2*PI*660*t):s=48000", "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", join(root, "Talk.mp4")]);
   writeProject(join(root, "Takes.uncut"));
   writeProject(join(root, "Denied.uncut"));
+  writeProject(join(root, "Agent.uncut"));
   writeFileSync(join(root, "argent.jsonl"), "");
 });
 after(async () => {
@@ -96,6 +102,12 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await goTo(page, 30);
 
     await page.click("[data-testid=rail-capture]");
+    // Screen is the first part (D144), grouped into screens and windows, with "Record screen".
+    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-screen]");
+    assert.deepEqual(await page.$$eval(".capture-modes button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera"]);
+    await waitFor(page, '[data-testid=capture-sources][data-kind="window"] [data-testid=capture-source][data-id="standin:window:1"]');
+    assert.equal(await text(page, "[data-testid=capture-screen] [data-testid=capture-take-record]"), "Record screen");
+    await page.click("[data-testid=capture-mode-voiceover]");
     await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-mic]");
     // Chromium's fake microphones are listed and the meter moves (the fake input beeps).
     await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, { timeout: 15000 });
@@ -261,6 +273,7 @@ test("This Mac: permissions macOS refused say how to fix them and open System Se
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     await page.click("[data-testid=rail-capture]");
+    await page.click("[data-testid=capture-mode-voiceover]");
     await waitFor(page, '[data-testid=capture-access][data-kind="microphone"][data-state="denied"]');
     assert.match(await text(page, "[data-testid=capture-mic]"), /isn't allowed to use the microphone\. Turn Uncut on in System Settings, Privacy & Security, Microphone/);
     assert.equal(await page.$("[data-testid=capture-take-record]"), null, "no Record while it's off");
@@ -283,6 +296,93 @@ test("This Mac: permissions macOS refused say how to fix them and open System Se
     assert.deepEqual(app.errors, []);
   } catch (error) {
     await page.screenshot({ path: "test-output/capture-denied-failure.png" }).catch(() => {});
+    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-4000)}` });
+  }
+});
+
+test("D144: the agent's screen_record asks on a card, the user picks Record, and the take is an edit of its turn", { skip, timeout: 180000 }, async () => {
+  const dir = join(root, "Agent.uncut");
+  const plan = join(root, "agent-plan.json");
+  writeFileSync(
+    plan,
+    JSON.stringify([
+      [{ tool: "screen_record", args: { source: "test window", seconds: 1.5 } }, { text: "Recorded the window." }],
+      [{ tool: "screen_record", args: { source: "test window", seconds: 30 } }, { text: "Stopped." }],
+      [{ tool: "screen_record", args: { source: "test window", seconds: 4 } }, { text: "Closed." }],
+    ]),
+  );
+  const app = await launchApp({
+    command: APP,
+    env: { ...argentEnv(), UNCUT_DATA_DIR: join(root, "data-agent"), UNCUT_PLUGINS_DIR: join(root, "no-user-plugins"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE_CLAUDE, FAKE_PLAN: plan, ANTHROPIC_API_KEY: "sk-ant-test-not-a-key" },
+  });
+  apps.add(app);
+  const { page } = app;
+  const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
+  try {
+    await waitForWelcome(page);
+    await page.click("[data-testid=open-project]");
+    await waitFor(page, "[data-testid=editor]");
+    await page.click("[data-testid=tab-agent]");
+    await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"), { timeout: 15000 });
+    await page.click("[data-testid=agent-input]");
+    await page.type("[data-testid=agent-input]", "record the test window for a second and a half");
+    await page.keyboard.press("Enter");
+    // The card: what the agent asked for, the window it named preselected, Don't and Record.
+    await waitFor(page, '[data-testid=agent-approval][data-kind="screen"]', 30000);
+    await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", { timeout: 10000 });
+    assert.match(await text(page, "[data-testid=agent-approval]"), /^Record "test window" for 1\.5 s\?/);
+    assert.ok(!/[·•∙⋅*$]/.test(await text(page, "[data-testid=agent-approval]")), "no price, no dots between words");
+    assert.equal(onDisk().media.length, 1, "nothing recorded before Record");
+    await page.screenshot({ path: "test-output/capture-agent-card.png" });
+    await page.click("[data-testid=agent-allow]");
+    await waitFor(page, "[data-testid=agent-screen-take]", 10000);
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-screen-take]")?.dataset.phase === "recording", { timeout: 10000 });
+    await page.screenshot({ path: "test-output/capture-agent-recording.png" });
+    // It stops by itself after 1.5 s; the turn finishes with the take in Media.
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 60000 });
+    const project = onDisk();
+    const screen = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.screen");
+    assert.ok(screen, JSON.stringify(project.media));
+    assert.deepEqual(screen.source, { module: "capture.screen", device: "Test window" });
+    assert.match(screen.path, /^media\/captures\/Test window \d{8}-\d{6}\.mp4$/);
+    const secs = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, screen.path)], { encoding: "utf8" }));
+    assert.ok(secs > 1.1 && secs < 2.4, `about 1.5 s: ${secs}`);
+    assert.match(await text(page, "[data-testid=agent-turn]"), /Recorded/);
+    assert.equal(await page.$("[data-testid=agent-screen-take]"), null);
+
+    // Stop during the agent's take: the take is cancelled (streams stopped, nothing kept).
+    const takesOnDisk = () => [...readdirSync(join(dir, "media", "captures")), ...(existsSync(join(dir, "media", "uploads")) ? readdirSync(join(dir, "media", "uploads")) : [])].sort();
+    const before = takesOnDisk();
+    const mediaBefore = onDisk().media.length;
+    const ask = async (prompt: string) => {
+      await page.waitForFunction(() => !document.querySelector("[data-testid=agent-stop]"), { timeout: 15000 });
+      await page.click("[data-testid=agent-input]");
+      await page.type("[data-testid=agent-input]", prompt);
+      await page.keyboard.press("Enter");
+      await waitFor(page, '[data-testid=agent-approval][data-kind="screen"]', 30000);
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", { timeout: 10000 });
+      await page.click("[data-testid=agent-allow]");
+      await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-screen-take]")?.dataset.phase === "recording", { timeout: 10000 });
+    };
+    await ask("record the window for half a minute");
+    assert.ok(await page.$("[data-testid=agent-screen-cancel]"), "Cancel shows while the agent's take runs");
+    await page.click("[data-testid=agent-stop]");
+    await page.waitForFunction(() => !document.querySelector("[data-testid=agent-screen-take]"), { timeout: 10000 });
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")].every((t) => t.dataset.status !== "running"), { timeout: 15000 });
+    await sleep(1500);
+    assert.equal(onDisk().media.length, mediaBefore, "nothing imported");
+    assert.deepEqual(takesOnDisk(), before, "no take kept or left in uploads");
+
+    // Closing the project mid-take cancels it too; nothing lands anywhere after the take's 4 s.
+    await ask("record the window for four seconds");
+    await page.click("[data-testid=close-project]");
+    await waitForWelcome(page);
+    await sleep(6000);
+    assert.deepEqual(takesOnDisk(), before, "no take kept or left in uploads after closing");
+    assert.equal(onDisk().media.length, mediaBefore);
+    assert.deepEqual(app.errors, []);
+  } catch (error) {
+    await page.screenshot({ path: "test-output/capture-agent-failure.png" }).catch(() => {});
     throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-4000)}` });
   }
 });

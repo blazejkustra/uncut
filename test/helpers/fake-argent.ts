@@ -2,19 +2,26 @@
 // A stand-in for the `argent` CLI (D98 tests), run through the shim test/helpers/fake-argent/argent
 // (point ARGENT_BIN at it). It never touches a device or Argent's tool-server. It implements:
 //   --version                                   FAKE_ARGENT_VERSION, default 0.28.0
-//   run list-devices --json                      FAKE_ARGENT_DEVICES (JSON) or a default set
+//   run list-devices --json                      FAKE_ARGENT_DEVICES (JSON) or a default set, plus
+//                                                FAKE_ARGENT_AVDS (JSON) or two AVDs (one running);
+//                                                devices booted by boot-device show as booted
+//   run boot-device --args {udid}|{avdName} --json   marks the simulator Booted, or adds a running
+//                                                emulator (emulator-5556...) for the AVD; logged
+//                                                with boot: true (tests count them)
+//   run rotate --args {udid, orientation} --json, run launch-app --args {udid, bundleId} --json
+//                                                (fail when the device isn't booted)
 //   run screen-recording-start --args {...} --json
 //   run screen-recording-stop --args {...} --json   writes a real mp4 (ffmpeg testsrc) as long as
 //                                                the wall time since start (capped by the limit),
 //                                                under <cwd>/.argent/recordings like Argent
 //   flow run <file.yaml> --device <id> --json    sleeps for the yaml's "# fake-seconds: N" (default
 //                                                1), fails when it has "# fake-fail"
-// Misbehaviour on request, by files in the state folder: stop-fail (a count: that many stops fail
+// Misbehaviour on request, by files in the state folder: boot-delay (ms a boot takes), stop-fail (a count: that many stops fail
 // before one works), start-delay / stop-delay (ms a start waits after the recording began, a stop
 // waits before it ends it). A stop that finished logs { completed: "screen-recording-stop" }.
 // Every call appends { argv, cwd, pid, at } to $FAKE_ARGENT_LOG; a call that would stop Argent's
-// server, stop all simulator servers or boot/shut down a device is logged with forbidden: true
-// (the tests assert there are none). Recording state lives in $FAKE_ARGENT_STATE (default: the
+// server, stop all simulator servers or shut down a device is logged with forbidden: true (the tests
+// assert there are none). A boot (D143: only on the user's click) is allowed and logged boot: true. Recording state lives in $FAKE_ARGENT_STATE (default: the
 // log's folder), one file per device, since each call is its own process.
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -23,9 +30,9 @@ import { dirname, join } from "node:path";
 const argv = process.argv.slice(2);
 const logFile = process.env.FAKE_ARGENT_LOG;
 const stateDir = process.env.FAKE_ARGENT_STATE ?? (logFile ? join(dirname(logFile), "fake-argent-state") : join(process.cwd(), ".fake-argent-state"));
-const FORBIDDEN = /^(server|stop-all-simulator-servers|stop-simulator-server|boot-device|shutdown|kill|reset|uninstall|remove|update|init|install)$/;
+const FORBIDDEN = /^(server|stop-all-simulator-servers|stop-simulator-server|shutdown|kill|reset|uninstall|remove|update|init|install)$/;
 const forbidden = argv[0] === "server" || (argv[0] === "run" && FORBIDDEN.test(argv[1] ?? "")) || (argv[0] !== "run" && argv[0] !== "flow" && FORBIDDEN.test(argv[0] ?? ""));
-if (logFile) appendFileSync(logFile, `${JSON.stringify({ argv, cwd: process.cwd(), pid: process.pid, at: Date.now(), ...(forbidden ? { forbidden: true } : {}) })}\n`);
+if (logFile) appendFileSync(logFile, `${JSON.stringify({ argv, cwd: process.cwd(), pid: process.pid, at: Date.now(), ...(forbidden ? { forbidden: true } : {}), ...(argv[0] === "run" && argv[1] === "boot-device" ? { boot: true } : {}) })}\n`);
 
 const fail = (message: string, code = 1): never => {
   process.stderr.write(`${message}\n`);
@@ -60,19 +67,70 @@ const DEFAULT_DEVICES = [
   { platform: "vega", serial: "amazon-vvd-1", vvdImage: "tv", kind: "vvd", state: "running" },
 ];
 
+const DEFAULT_AVDS = [
+  { name: "Pixel_8_API_35", target: "android-35" },
+  { name: "Pixel_Tablet_API_35", target: "android-35" },
+];
+const bootedFile = () => join(stateDir, "booted.json");
+/** What boot-device changed: simulators now booted, emulators started for AVDs. */
+const booted = (): { udids: Array<string>; emulators: Array<{ serial: string; avdName: string }> } => (existsSync(bootedFile()) ? JSON.parse(readFileSync(bootedFile(), "utf8")) : { udids: [], emulators: [] });
+const devices = (): Array<Record<string, unknown>> => {
+  const b = booted();
+  const base = (process.env.FAKE_ARGENT_DEVICES ? JSON.parse(process.env.FAKE_ARGENT_DEVICES) : DEFAULT_DEVICES) as Array<Record<string, unknown>>;
+  return [
+    ...base.map((d) => (typeof d.udid === "string" && b.udids.includes(d.udid) ? { ...d, state: "Booted" } : d)),
+    ...b.emulators.map((e) => ({ platform: "android", serial: e.serial, state: "device", isEmulator: true, kind: "emulator", model: "sdk_gphone64_arm64", avdName: e.avdName, sdkLevel: 35, runtimeKind: "mobile" })),
+  ];
+};
+const isBooted = (id: string) => devices().some((d) => (d.udid === id || d.serial === id) && (d.state === "Booted" || d.state === "device"));
+
 async function main() {
   if (forbidden) return fail(`fake argent: ${argv.slice(0, 2).join(" ")} is not something Uncut may run`, 3);
   if (argv[0] === "--version" || argv[0] === "-v") return void process.stdout.write(`${process.env.FAKE_ARGENT_VERSION ?? "0.28.0"}\n`);
   if (argv[0] === "run") {
     const tool = argv[1];
-    if (tool === "list-devices") return print({ devices: process.env.FAKE_ARGENT_DEVICES ? JSON.parse(process.env.FAKE_ARGENT_DEVICES) : DEFAULT_DEVICES, avds: [] });
+    if (tool === "list-devices") return print({ devices: devices(), avds: process.env.FAKE_ARGENT_AVDS ? JSON.parse(process.env.FAKE_ARGENT_AVDS) : DEFAULT_AVDS });
     mkdirSync(stateDir, { recursive: true });
+    if (tool === "boot-device") {
+      const p = payload();
+      if (control("boot-delay")) await sleep(control("boot-delay"));
+      const b = booted();
+      if (typeof p.udid === "string") {
+        const sim = devices().find((d) => d.udid === p.udid);
+        if (!sim) return fail(`No simulator ${p.udid}`);
+        if (!b.udids.includes(p.udid)) b.udids.push(p.udid);
+        writeFileSync(bootedFile(), JSON.stringify(b));
+        return print({ platform: "ios", udid: p.udid, booted: true });
+      }
+      if (typeof p.avdName === "string") {
+        const avds = (process.env.FAKE_ARGENT_AVDS ? JSON.parse(process.env.FAKE_ARGENT_AVDS) : DEFAULT_AVDS) as Array<{ name: string }>;
+        if (!avds.some((a) => a.name === p.avdName)) return fail(`No AVD ${p.avdName}`);
+        const serial = `emulator-${5556 + b.emulators.length * 2}`;
+        b.emulators.push({ serial, avdName: p.avdName });
+        writeFileSync(bootedFile(), JSON.stringify(b));
+        return print({ platform: "android", serial, avdName: p.avdName, booted: true });
+      }
+      return fail("udid or avdName is required", 2);
+    }
+    if (tool === "rotate" || tool === "launch-app") {
+      const p = payload();
+      const udid = String(p.udid ?? "");
+      if (!isBooted(udid)) return fail(`${udid} is not booted`);
+      if (tool === "rotate") {
+        if (!["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"].includes(String(p.orientation))) return fail(`orientation ${p.orientation} is not valid`, 2);
+        return print({ orientation: p.orientation });
+      }
+      if (!p.bundleId) return fail("bundleId is required", 2);
+      if (p.bundleId === "com.missing.app") return fail(`App ${p.bundleId} is not installed`);
+      return print({ launched: true, bundleId: p.bundleId });
+    }
     if (tool === "screen-recording-start") {
       const p = payload();
       const udid = String(p.udid ?? "");
       if (!udid) return fail("udid is required");
       const file = join(stateDir, `${encodeURIComponent(udid)}.json`);
       if (existsSync(file)) return fail(`A recording is already running on ${udid}`);
+      if (!isBooted(udid)) return fail(`${udid} is not booted`);
       writeFileSync(file, JSON.stringify({ udid, startedAt: Date.now(), timeLimitSeconds: p.timeLimitSeconds ?? 180, trimStatic: p.trimStatic ?? true, showTouches: p.showTouches ?? true }));
       if (control("start-delay")) await sleep(control("start-delay"));
       return print({ udid, started: true, timeLimitSeconds: p.timeLimitSeconds ?? 180 });

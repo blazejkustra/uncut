@@ -11,7 +11,7 @@ import { useSyncExternalStore } from "react";
 import { muteOutput } from "../audio/audio.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { bridge, type CaptureSource, type MediaAccess, type MediaAccessKind } from "../state/bridge.ts";
-import { actions, getState } from "../state/store.ts";
+import { actions, getState, subscribeApp } from "../state/store.ts";
 
 export type TakeMode = "voiceover" | "camera" | "screen";
 export type Resolution = "720p" | "1080p";
@@ -43,6 +43,8 @@ export interface RecorderState {
   /** The camera's live picture while the Camera part is open. */
   readonly preview: MediaStream | undefined;
   readonly previewError: string | undefined;
+  /** D144: the running take answers the agent's screen_record (its card id). */
+  readonly agentId: string | undefined;
 }
 
 /** Shorter than this, a take is discarded (a click on Record then Stop). */
@@ -65,6 +67,7 @@ let state: RecorderState = {
   loadingSources: false,
   preview: undefined,
   previewError: undefined,
+  agentId: undefined,
 };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<RecorderState>) => {
@@ -270,6 +273,10 @@ export interface TakeOptions {
   readonly muteTimeline?: boolean;
   /** Camera and screen: put the take on the timeline at the playhead too. */
   readonly place?: boolean;
+  /** Stop by itself after this many seconds of recording (D144's screen_record). */
+  readonly seconds?: number;
+  /** D144: the agent's screen_record this take answers (card id): uploaded and handed to the agent's turn, not saved as the user's edit. */
+  readonly agent?: { readonly id: string };
 }
 
 interface Running {
@@ -286,14 +293,26 @@ interface Running {
   countdown: ReturnType<typeof setTimeout> | undefined;
   /** Resolves the countdown early (cancel). */
   wake: (() => void) | undefined;
+  /** The timed stop (options.seconds). */
+  autoStop: ReturnType<typeof setTimeout> | undefined;
+  /** The agent got its answer already. */
+  answered: boolean;
+  /** The server was seen waiting for this take (AgentState.screenTake). */
+  awaited: boolean;
 }
 let running: Running | undefined;
 
 /** Ends take `r` in the UI; nothing when another take has started since (its state isn't touched). */
 function endTake(r: Running, patch: Partial<RecorderState>) {
+  clearTimeout(r.autoStop);
+  // An agent's take that didn't make it: the agent hears why.
+  if (r.options.agent && !r.answered) {
+    r.answered = true;
+    void actions.agentScreenTake(r.options.agent.id, { problem: patch.message?.kind === "discarded" ? (r.cancelled ? "The user cancelled the recording." : "The take was too short.") : patch.message?.text ?? "The recording didn't work." });
+  }
   if (running !== r) return;
   running = undefined;
-  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, ...patch });
+  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, agentId: undefined, ...patch });
 }
 
 const pickMime = (video: boolean) =>
@@ -369,11 +388,17 @@ async function openStreams(options: TakeOptions, r: Running): Promise<MediaStrea
 /** Record: opens the devices, counts 3-2-1, then records until stopTake or cancelTake. */
 export async function startTake(options: TakeOptions) {
   const snapshot = getState().snapshot;
-  if (running || state.phase !== "idle") return;
-  if (!snapshot) return set({ message: { kind: "error", text: "Open a project first: takes go into its media folder." } });
-  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, playing: false, countdown: undefined, wake: undefined };
+  const refuse = (text: string) => {
+    if (options.agent) void actions.agentScreenTake(options.agent.id, { problem: text });
+  };
+  if (running || state.phase !== "idle") return refuse("Another recording is running in Uncut.");
+  if (!snapshot) {
+    refuse("No project is open.");
+    return set({ message: { kind: "error", text: "Open a project first: takes go into its media folder." } });
+  }
+  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false };
   running = r;
-  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined });
+  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id });
   const stream = await openStreams(options, r);
   if (typeof stream === "string" || r.cancelled) {
     release(r);
@@ -400,6 +425,7 @@ export async function startTake(options: TakeOptions) {
   recorder.onstart = () => {
     r.startMs = performance.now();
     set({ phase: "recording", count: undefined, startedAt: Date.now() });
+    if (options.seconds && options.seconds > 0) r.autoStop = setTimeout(() => void stopTake(), options.seconds * 1000);
     // Play the timeline from where the take goes, for timing (muted unless asked otherwise).
     if (options.mode === "voiceover" && options.playTimeline) {
       muteOutput(options.muteTimeline !== false);
@@ -449,6 +475,15 @@ async function finish(r: Running, ms: number, mimeType: string) {
   set({ phase: "saving", startedAt: undefined, recordedMs });
   const { options } = r;
   const blob = new Blob(r.chunks, { type: mimeType.split(";")[0] || (options.mode === "voiceover" ? "audio/webm" : "video/webm") });
+  if (options.agent) {
+    // The agent's take: up to the server, then its turn imports it (Undo turn removes it).
+    if (getState().snapshot?.dir !== r.dir) return endTake(r, { message: { kind: "error", text: "The project changed while recording, so the take wasn't added." } });
+    const uploaded = await actions.uploadTake(blob, options.mode);
+    if ("message" in uploaded) return endTake(r, { message: { kind: "error", text: `The take couldn't be sent to the server: ${uploaded.message}` } });
+    r.answered = true;
+    void actions.agentScreenTake(options.agent.id, { path: uploaded.path, ...(options.source?.name ? { source: options.source.name } : {}) });
+    return endTake(r, { message: { kind: "saved", text: `Recorded ${options.source?.name ?? "the screen"} for the agent.` } });
+  }
   const device = options.mode === "screen" ? options.source?.name : options.mode === "camera" ? state.cameras.find((c) => c.id === options.camera)?.label : state.mics.find((m) => m.id === options.mic)?.label;
   const place = options.mode === "voiceover" || options.place === true;
   const result = await actions.saveTake(blob, {
@@ -464,6 +499,25 @@ async function finish(r: Running, ms: number, mimeType: string) {
   if (saved.itemId) playback.seek(r.frame);
   endTake(r, { message: { kind: "saved", text: `${saved.name} (${saved.seconds.toFixed(1)} s) is in Media${where}.` } });
 }
+
+/**
+ * D144: an agent's take is cancelled (streams stopped, nothing kept) once nobody waits for it: the
+ * project changed, the turn stopped or finished, or the server stopped waiting (timed out).
+ */
+function watchAgentTake() {
+  const r = running;
+  if (!r?.options.agent || r.cancelled) return;
+  const app = getState();
+  const id = r.options.agent.id;
+  if (app.agent?.screenTake === id) r.awaited = true;
+  const gone = app.snapshot?.dir !== r.dir || !app.agent || app.agent.dir !== r.dir || app.agent.running === null || (r.awaited && app.agent.screenTake !== id);
+  if (gone) {
+    // The server isn't listening any more: no answer goes back (an upload already on its way is deleted there).
+    r.answered = true;
+    cancelTake();
+  }
+}
+subscribeApp(watchAgentTake);
 
 export const clock = (seconds: number) => {
   const s = Math.max(0, Math.floor(seconds));
