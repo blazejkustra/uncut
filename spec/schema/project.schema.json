@@ -173,7 +173,7 @@
         "fit": { "enum": ["contain", "cover", "fill"], "description": "Clips: how the picture sits in the box at scale 1 (default contain)." },
         "radius": { "type": "number", "minimum": 0, "description": "Clips: corner radius of the box in canvas pixels." }
       },
-      "description": "Text: x, y = the box's top-left, w its width (canvas pixels). Clips (D75): x, y, w, h = the box in canvas pixels (no w and h = the whole canvas; one of them = the other from the media's aspect; no x / y = centred), fit, scale, opacity and radius."
+      "description": "Text: x, y = the box's top-left, w its width (canvas pixels), rotate in degrees about the box's centre and opacity 0-1 (D129). Clips (D75): x, y, w, h = the box in canvas pixels (no w and h = the whole canvas; one of them = the other from the media's aspect; no x / y = centred), fit, scale, opacity and radius."
     },
     "keyframe": {
       "type": "object",
@@ -267,6 +267,8 @@
                 "color": { "$ref": "#/$defs/color" },
                 "align": { "enum": ["left", "center", "right"] },
                 "uppercase": { "type": "boolean" },
+                "case": { "enum": ["lower", "title"], "description": "D129: lower case or title case (capitalised words); wins over uppercase." },
+                "italic": { "type": "boolean", "description": "D129: slanted text." },
                 "stroke": {
                   "description": "An outline (D80): width in canvas px (without a width it is ignored; other keys are kept but not drawn, so files saved before D80 still open). false = none, even when the preset's look has one; absent = the look's.",
                   "oneOf": [

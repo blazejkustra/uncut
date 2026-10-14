@@ -18,9 +18,14 @@ export const setDraggedComponent = (id: string | undefined) => void (dragged = i
 export const draggedComponent = () => dragged;
 /** A Text tab preset being dragged (D80): its TEXT_PRESETS id. */
 export const TEXT_DRAG_TYPE = "application/x-uncut-text";
+/** The text preset being dragged (X2, D132): dragover can't read dataTransfer, the drop ghost needs it. */
+let draggedTextId: string | undefined;
+export const setDraggedText = (id: string | undefined) => void (draggedTextId = id);
+export const draggedText = () => draggedTextId;
 
-/** How long a new component lasts: an end card 3 s, the rest 4 s. */
-const secondsFor = (id: string) => (id === "component.end-card" ? 3 : 4);
+/** How long a new component lasts: a countdown or a lower third 5 s, an end card, callout or subscribe 3 s, a sticker 2 s, the rest 4 s. */
+const SECONDS: Readonly<Record<string, number>> = { "component.end-card": 3, "component.subscribe": 3, "component.sticker": 2, "component.callout": 3, "component.countdown": 5, "component.lower-third": 5 };
+export const secondsFor = (id: string) => SECONDS[id] ?? 4;
 
 /**
  * A component at frame `frame` (D76): its manifest's default props and size. `at` (canvas px, a

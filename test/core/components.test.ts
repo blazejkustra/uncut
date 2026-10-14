@@ -98,7 +98,7 @@ test("every built-in component manifest is drawn by core's registry or listed as
     assert.ok(bad.some((e) => e.code === "params"), `${c.id}: an unknown prop is refused`);
   }
   // Only the terminal, the agent log and the compare table change from frame to frame.
-  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.terminal", "component.agent-log", "component.compare-table"]);
+  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.lower-third", "component.progress-bar", "component.countdown", "component.subscribe", "component.sticker", "component.terminal", "component.agent-log", "component.compare-table"]);
   // Every device has a frame size and a screen inside it.
   assert.deepEqual([...DEVICES].sort(), [...(modules.get("component.device-frame")!.params as { properties: { device: { enum: Array<string> } } }).properties.device.enum].sort());
   for (const d of DEVICES) {
@@ -162,8 +162,8 @@ test("the HTML of each component: a wrapper at its box with its body; determinis
   const tall = componentBox({ type: "component", component: "component.terminal" }, { width: 1080, height: 1920 }, 0)!;
   assert.deepEqual([tall.x, tall.y, tall.w, tall.h], [40, 650, 1000, 620]);
   // Not a component the registry draws: nothing.
-  assert.equal(componentBox({ type: "component", component: "component.callout" }, target.canvas, 0), undefined);
-  assert.equal(componentHtml({ id: "x", type: "component", component: "component.callout", duration: 9, props: { label: "x" } }, target, 0), "");
+  assert.equal(componentBox({ type: "component", component: "component.follow-card" }, target.canvas, 0), undefined);
+  assert.equal(componentHtml({ id: "x", type: "component", component: "component.follow-card", duration: 9, props: { label: "x" } }, target, 0), "");
 });
 
 test("terminal: input lines type in by frame, output lines appear after them; N distinct looks for N typed states, capped by the export", () => {
@@ -331,7 +331,7 @@ test("the editor's planners: add at the playhead or a drop point, props with His
   assert.deepEqual(screenClipOf(asBrowser, dev.itemId)!.item.transform, screenTransform(b, asBrowser.canvas));
   const removed = planScreenFootage(asBrowser, dev.itemId, null);
   assert.ok("ops" in removed && removed.ops[0]!.op === "delete_item");
-  assert.match((planAddComponent(p, "component.callout", 0) as { problem: string }).problem, /can't draw/);
+  assert.match((planAddComponent(p, "component.follow-card", 0) as { problem: string }).problem, /can't draw/);
 });
 
 test("device frames, edge cases (review): never a main clip as the footage; short footage loops; keys, scale and the clip's own zoom", () => {
@@ -418,7 +418,7 @@ test("the agent: modules_list shows components with params and placement, truthf
   for (const c of COMPONENTS) assert.ok(SYSTEM_PROMPT.includes(c.id), c.id);
   assert.match(SYSTEM_PROMPT, /insert_device_frame/);
   assert.match(SYSTEM_PROMPT, /graphic_write/);
-  assert.match(SYSTEM_PROMPT, /component\.callout, component\.follow-card, component\.steps, component\.zoom-pan\) and effects are saved but don't draw yet/);
+  assert.match(SYSTEM_PROMPT, /component\.follow-card, component\.steps, component\.zoom-pan\) and effects are saved but don't draw yet/);
   // The edit log names components.
   assert.equal(describeOp({ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90 } }, p), "Added end card end-1 on track overlay");
   const withCard = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90, props: { title: "x" } } }]);

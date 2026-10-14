@@ -100,6 +100,8 @@ const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
   tracking: (v) => `tracking ${v}`,
   lineHeight: (v) => `line height ${v}`,
   uppercase: (v) => (v ? "capitals" : "normal case"),
+  case: (v) => (v === "lower" ? "lower case" : v === "title" ? "title case" : "normal case"),
+  italic: (v) => (v ? "italic" : "upright"),
   // D80: outline, shadow and box in words; false = removed.
   stroke: (v) => (v === false ? "no outline" : v && typeof v === "object" ? `outline ${round((v as { width?: unknown }).width)} px${(v as { color?: unknown }).color ? ` ${(v as { color?: unknown }).color}` : ""}` : "outline"),
   shadow: (v) => (v === false ? "no shadow" : v && typeof v === "object" ? `shadow blur ${round((v as { blur?: unknown }).blur ?? 0)}` : "shadow"),

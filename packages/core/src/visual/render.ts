@@ -260,6 +260,17 @@ export function textPlacement(item: Pick<Item, "transform" | "style">, target: P
   return { x, y, w, size: item.style?.size ?? height * look.size };
 }
 
+/** A text item's own opacity (transform.opacity, D129), 0–1; its fades multiply it. */
+export const textOpacity = (item: Pick<Item, "transform">) => {
+  const o = item.transform?.opacity;
+  return typeof o === "number" && Number.isFinite(o) ? Math.min(1, Math.max(0, o)) : 1;
+};
+/** A text item's rotation in degrees about its box's centre (transform.rotate, D129). */
+export const textRotation = (item: Pick<Item, "transform">) => {
+  const r = item.transform?.rotate;
+  return typeof r === "number" && Number.isFinite(r) ? r % 360 : 0;
+};
+
 /**
  * A text item as HTML. transform (x, y) is the box's top-left corner and transform.w its width in
  * canvas pixels (no w: as wide as its longest line, wrapping at the canvas edge); style.align
@@ -287,21 +298,25 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
     `text-align:${s.align ?? look.align ?? "left"}`,
     `--accent:${resolveColor(target, "accent", DEFAULT_THEME.colors.accent)}`,
     `--mono:${resolveFont(target, "mono").replace(/"/g, "'")}`,
-    `opacity:${num(opacity)}`,
+    `opacity:${num(opacity * textOpacity(item))}`,
   ];
+  if (s.italic) css.push("font-style:italic");
   if (decor.legacyShadow) css.push(`text-shadow:${LEGACY_SHADOW_CSS}`);
   else if (decor.shadow) {
     const sh = decor.shadow;
     css.push(`text-shadow:${num(sh.x ?? 0)}px ${num(sh.y ?? 0)}px ${num(Math.max(0, sh.blur ?? 0))}px ${withAlpha(resolveColor(target, sh.color, "#000000"), sh.opacity ?? 1)}`);
   }
   if (decor.stroke) css.push(`-webkit-text-stroke:${num(decor.stroke.width)}px ${resolveColor(target, decor.stroke.color, "#000000")};paint-order:stroke fill`);
-  if (s.uppercase ?? look.uppercase) css.push("text-transform:uppercase");
+  const textCase = s.case === "lower" ? "lowercase" : s.case === "title" ? "capitalize" : (s.uppercase ?? look.uppercase) ? "uppercase" : undefined;
+  if (textCase) css.push(`text-transform:${textCase}`);
   const bg = decor.background;
   const bgFill = bg ? withAlpha(resolveColor(target, bg.color, "#000000"), bg.opacity ?? 1) : undefined;
   if (bg && bg.wrap !== "lines") css.push(`background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px`);
   const moved = !!(motion?.dx || motion?.dy);
   const scaled = motion?.scale !== undefined && motion.scale !== 1;
-  if (moved || scaled) css.push(`transform:${moved ? `translate(${num(((motion!.dx ?? 0) / width) * 100)}cqw,${num(((motion!.dy ?? 0) / height) * 100)}cqh)` : ""}${moved && scaled ? " " : ""}${scaled ? `scale(${num(motion!.scale!)})` : ""}`);
+  const turn = textRotation(item);
+  const parts = [moved ? `translate(${num(((motion!.dx ?? 0) / width) * 100)}cqw,${num(((motion!.dy ?? 0) / height) * 100)}cqh)` : "", turn ? `rotate(${num(turn)}deg)` : "", scaled ? `scale(${num(motion!.scale!)})` : ""].filter(Boolean);
+  if (parts.length) css.push(`transform:${parts.join(" ")}`);
   if (motion?.reveal !== undefined && motion.reveal < 1) css.push(`clip-path:inset(-20% ${num((1 - motion.reveal) * 100)}% -20% -5%)`);
   let body = markup(item.text ?? "");
   if (motion?.words) {
@@ -318,14 +333,34 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
 /** The built-in full-frame background (component.solid): a colour, or a gradient to `to`. */
 export const SOLID = "component.solid";
 
-/** A component.solid's CSS background: props.color, or a linear gradient to props.to at props.angle. */
+/** Film grain at `amount` (D131): a 240 px tile of SVG fractal noise (deterministic, no network) as a CSS image. */
+const grain = (amount: number) =>
+  `url('data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='240' height='240' filter='url(#n)' opacity='${num(amount)}'/></svg>`,
+  ).replace(/'/g, "%27")}') 0 0 / 240px 240px`;
+
+/**
+ * A component.solid's CSS background (D131): props.color; with props.to a gradient from color
+ * (through props.via) to `to`, linear at props.angle (180 = top to bottom) or radial
+ * (props.gradient "radial", from the centre out); props.noise 0–1 lays film grain over it.
+ * Backgrounds saved before D131 ({color}, {color, to, angle}) draw as they did.
+ */
 export function solidBackground(item: Item, target: Pick<RenderTarget, "theme">): string {
   const props = item.props ?? {};
   const from = resolveColor(target, props.color, DEFAULT_THEME.colors.bg);
-  if (props.to === undefined) return from;
-  const to = resolveColor(target, props.to, from);
-  const angle = typeof props.angle === "number" && Number.isFinite(props.angle) ? props.angle : 180;
-  return `linear-gradient(${num(angle)}deg, ${from}, ${to})`;
+  let fill = from;
+  if (props.to !== undefined) {
+    const to = resolveColor(target, props.to, from);
+    const stops = props.via !== undefined ? [from, resolveColor(target, props.via, from), to] : [from, to];
+    if (props.gradient === "radial") fill = `radial-gradient(circle at 50% 50%, ${stops.join(", ")})`;
+    else {
+      const angle = typeof props.angle === "number" && Number.isFinite(props.angle) ? props.angle : 180;
+      fill = `linear-gradient(${num(angle)}deg, ${stops.join(", ")})`;
+    }
+  }
+  const noise = typeof props.noise === "number" && Number.isFinite(props.noise) ? Math.min(1, Math.max(0, props.noise)) : 0;
+  if (noise <= 0) return fill;
+  return `${grain(noise)}, ${fill}`;
 }
 
 /** A component.solid as HTML (export draws it like this; the preview sets the same background). */
