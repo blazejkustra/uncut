@@ -6,7 +6,8 @@ import { TEXT_STYLES, type TextPreset } from "@uncut/core/looks";
 import { planInsertText } from "@uncut/core/textPlan";
 import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
-import { musicInProject, musicMedia, projectIds, type MusicTrack } from "@uncut/core/music";
+import { mediaIdFor, musicInProject, musicMedia, projectIds, type MusicTrack } from "@uncut/core/music";
+import { libraryMediaOf } from "@uncut/core/library";
 import { planPlaceMedia, takenIds } from "@uncut/core/arrange";
 
 import type { Item, Media, Project, Track } from "@uncut/core/types";
@@ -192,6 +193,61 @@ export function planAddMusic(project: ProjectModel, track: MusicTrack, path: str
   const itemId = uniqueId(project, "audio", taken);
   ops.push({ op: "insert_item", track: target.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration, start, ...(fadeIn > 0 ? { fadeIn } : {}), ...(fadeOut > 0 ? { fadeOut } : {}) } });
   return { ops, summary: `Add ${track.title} from the music library`, itemId, start };
+}
+
+/** What library.add answered, plus what the add is (music: fades, at most to the video's end; a sound effect: whole, as it is). */
+export interface LibrarySound {
+  readonly libraryId: string;
+  readonly name: string;
+  /** Where library.add put it (media/…), when it isn't in the project yet. */
+  readonly path?: string | undefined;
+  readonly seconds: number;
+  readonly source?: Readonly<Record<string, unknown>> | undefined;
+  readonly music: boolean;
+}
+
+/**
+ * A sound from the library (D134) on the timeline, in one edit: its add_media with its credits in
+ * `source` (unless the same library sound is in the project already) and an audio item at the
+ * playhead on the first unlocked audio track free for its stretch, else a new track (D124: sounds
+ * overlap on tracks of their own). Music plays from the playhead to the video's end at most, with
+ * fades, like the bundled tracks (planAddMusic); a sound effect goes in whole, without fades.
+ */
+export function planAddLibrarySound(project: ProjectModel, sound: LibrarySound, frame: number): Planned {
+  const fps = project.canvas.fps;
+  const ops: Array<unknown> = [];
+  const taken = new Set<string>();
+  let media: Media | undefined = libraryMediaOf(project, sound.libraryId);
+  if (!media) {
+    if (!sound.path) return { problem: `${sound.name} isn't in the project yet.` };
+    media = { id: mediaIdFor(sound.name, projectIds(project)), kind: "audio", name: sound.name, path: sound.path, ...(sound.source ? { source: sound.source as Media["source"] } : {}), probe: { frames: Math.max(1, Math.floor(sound.seconds * fps)), hasAudio: true } };
+    taken.add(media.id);
+    ops.push({ op: "add_media", media });
+  }
+  const frames = media.probe?.frames ?? Math.max(1, Math.floor(sound.seconds * fps));
+  const { starts, end } = layoutOf(project);
+  const start = Math.max(0, Math.floor(frame));
+  let duration = frames;
+  if (sound.music && end > 0) {
+    duration = Math.min(frames, end - start);
+    if (duration < MIN_MUSIC_SECONDS * fps) {
+      return { problem: start >= end ? "The playhead is at the end of the video. Move it to where the music should start, then add it." : `Only ${((end - start) / fps).toFixed(1)} s of the video are left after the playhead. Move it earlier to add music there.` };
+    }
+  }
+  const freeOn = (t: Track) => t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= start || start + duration <= (starts.get(i.id) ?? 0));
+  let target = project.tracks.find((t) => t.kind === "audio" && t.role !== "main" && !t.locked && freeOn(t));
+  if (!target) {
+    const name = sound.music ? "Music" : "Sound effects";
+    const id = uniqueId(project, sound.music ? "music" : "sfx", taken);
+    taken.add(id);
+    ops.push({ op: "add_track", track: { id, kind: "audio", name } });
+    target = { id, kind: "audio", name, items: [] };
+  }
+  const fadeIn = sound.music ? Math.min(fps, Math.floor(duration / 4)) : 0;
+  const fadeOut = sound.music ? Math.min(2 * fps, Math.floor(duration / 4)) : 0;
+  const itemId = uniqueId(project, sound.music ? "audio" : "sound", taken);
+  ops.push({ op: "insert_item", track: target.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration, start, ...(fadeIn > 0 ? { fadeIn } : {}), ...(fadeOut > 0 ? { fadeOut } : {}) } });
+  return { ops, summary: `Add ${sound.name} from the ${sound.music ? "music" : "sound"} library`, itemId, start };
 }
 
 /**

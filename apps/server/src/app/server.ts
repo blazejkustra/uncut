@@ -19,6 +19,7 @@ import * as Exporter from "../export/exporter.ts";
 import * as Format from "../project/format.ts";
 import * as Generate from "../generate/generate.ts";
 import * as Keys from "../generate/keys.ts";
+import * as SoundLibrary from "../library/library.ts";
 import * as Media from "../media/media.ts";
 import * as MediaFiles from "../media/mediaFiles.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
@@ -81,6 +82,8 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     Layer.provide(Capture.layer),
     // Generators (D99): the Generate tab and generate_media; keys through the desktop's safeStorage.
     Layer.provideMerge(Generate.layer),
+    // The sound library (D134): Openverse and Freesound search, previews and downloads.
+    Layer.provideMerge(SoundLibrary.layer),
     Layer.provideMerge(Keys.layer),
     // media_analyze and analysis.* (D66); analysis waits for exports.
     Layer.provide(Analysis.layer),

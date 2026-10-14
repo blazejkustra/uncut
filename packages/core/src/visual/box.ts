@@ -142,10 +142,10 @@ export const canvasBox = (canvas: Pick<Canvas, "width" | "height">): ClipBox => 
  * times larger about the box's centre (zoom: like a scale key, the box clips it). Size, radius and
  * opacity unchanged. The same box with no move.
  */
-export function moveBox(box: ClipBox, shift = 0, zoom = 1): ClipBox {
-  if (!shift && zoom === 1) return box;
+export function moveBox(box: ClipBox, shift = 0, zoom = 1, shiftY = 0): ClipBox {
+  if (!shift && !shiftY && zoom === 1) return box;
   const cx = box.x + box.w / 2;
   const cy = box.y + box.h / 2;
   const c = box.content;
-  return { ...box, x: box.x + shift, scale: box.scale * zoom, content: { x: cx + (c.x - cx) * zoom + shift, y: cy + (c.y - cy) * zoom, w: c.w * zoom, h: c.h * zoom } };
+  return { ...box, x: box.x + shift, y: box.y + shiftY, scale: box.scale * zoom, content: { x: cx + (c.x - cx) * zoom + shift, y: cy + (c.y - cy) * zoom + shiftY, w: c.w * zoom, h: c.h * zoom } };
 }

@@ -118,7 +118,20 @@
             "model": { "type": "string", "description": "Generators: the model that made it (gpt-image-2, veo-3.1-generate-preview, eleven_text_to_sound_v2, claude)." },
             "kind": { "enum": ["image", "video", "audio"], "description": "Generators: what was asked for." },
             "size": { "type": "string", "description": "Generators: the size asked for (1536x1024, 16:9, canvas)." },
-            "seconds": { "type": "number", "description": "Generators: the length asked for, in seconds." }
+            "seconds": { "type": "number", "description": "Generators: the length asked for, in seconds." },
+            "libraryId": { "type": "string", "description": "D134, sound library (module library.openverse, library.freesound or library.bundled): the sound's id there (openverse:<id>, freesound:<id>, sfx:<id>)." },
+            "title": { "type": "string", "description": "Sound library: the sound's title." },
+            "creator": { "type": "string", "description": "Sound library: who made it." },
+            "creatorUrl": { "type": "string" },
+            "landingUrl": { "type": "string", "description": "Sound library: the sound's page." },
+            "provider": { "type": "string", "description": "Sound library: where the file is hosted (freesound, jamendo, ...)." },
+            "fileUrl": { "type": "string", "description": "Sound library: the URL the file was downloaded from." },
+            "license": { "enum": ["cc0", "by"], "description": "Sound library: CC0 (no credit needed) or CC BY (credit needed)." },
+            "licenseVersion": { "type": "string" },
+            "licenseUrl": { "type": "string" },
+            "attribution": { "type": "string", "description": "Sound library: the credit line." },
+            "sha256": { "type": "string", "description": "Sound library: the downloaded file's SHA-256." },
+            "downloaded": { "type": "string", "description": "Sound library: when it was downloaded (ISO 8601)." }
           }
         },
         "probe": {

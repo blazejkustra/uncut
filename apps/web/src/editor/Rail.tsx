@@ -1,6 +1,6 @@
 // The left rail: the library's tabs. A long press (LONG_PRESS_MS without moving) picks a tab up;
 // dragging it over another moves it there; the order is remembered on this Mac (S2, D117).
-import { Blend, CircleDot, Film, Music, Shapes, Sparkles, Type, type LucideIcon } from "lucide-react";
+import { AudioWaveform, Blend, CircleDot, Film, Music, Shapes, Sparkles, Type, type LucideIcon } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -14,6 +14,7 @@ const TABS: ReadonlyArray<{ readonly id: LibraryTab; readonly label: string; rea
   { id: "text", label: "Text", title: "Text", icon: Type },
   { id: "elements", label: "Elements", title: "Elements", icon: Shapes },
   { id: "audio", label: "Audio", title: "Audio", icon: Music },
+  { id: "sfx", label: "Sounds", title: "Sound effects", icon: AudioWaveform },
   { id: "transitions", label: "Transitions", title: "Transitions", icon: Blend },
   { id: "capture", label: "Capture", title: "Capture", icon: CircleDot },
   { id: "generate", label: "Generate", title: "Generate", icon: Sparkles },

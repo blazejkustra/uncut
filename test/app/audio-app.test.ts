@@ -157,7 +157,9 @@ test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and
     await page.click("[data-testid=rail-audio]");
     await waitFor(page, "[data-testid=audio-library]");
     await waitFor(page, "[data-testid=audio-empty]");
-    // The music library (D91) lists its tracks under the project's sounds.
+    // The music library (D91) lists its tracks under the project's sounds, in Included (D134).
+    await page.click("[data-testid=library-view-included]");
+    await waitFor(page, "[data-testid=music-library]");
     assert.equal((await page.$$("[data-testid=music-row]")).length, 5);
     await page.click("[data-testid=audio-import]");
     await waitFor(page, '[data-testid=audio-row][data-id="m-music"]', 20000);

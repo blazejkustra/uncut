@@ -37,6 +37,8 @@ export function startServer(options: {
   modulesDir: string;
   // The bundled music library (D91).
   musicDir: string;
+  // The bundled sound-effects pack (D134).
+  sfxDir: string;
   // Plugins shipped with the app (D97).
   bundledPluginsDir: string;
   // The plugin SDK plugins on the app's Node import (D102).
@@ -58,6 +60,7 @@ export function startServer(options: {
     UNCUT_MEDIA_BIN: options.mediaBin,
     UNCUT_MODULES_DIR: options.modulesDir,
     UNCUT_MUSIC_DIR: options.musicDir,
+    UNCUT_SFX_DIR: options.sfxDir,
     UNCUT_BUNDLED_PLUGINS_DIR: options.bundledPluginsDir,
     UNCUT_PLUGIN_SDK_DIR: options.pluginSdkDir,
     UNCUT_DATA_DIR: options.dataDir,

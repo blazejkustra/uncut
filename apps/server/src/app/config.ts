@@ -29,6 +29,8 @@ export interface ServerConfigShape {
   readonly modulesDir: string;
   // The bundled music library (assets/music, D91). The packaged app ships it in Resources/music.
   readonly musicDir: string;
+  // The bundled sound-effects pack (assets/sfx, D134), shipped in Resources/sfx.
+  readonly sfxDir: string;
   // Where app state lives (recents.json). The desktop passes Electron's userData path.
   readonly dataDir: string;
   // Plugin folders, searched in this order (D97): UNCUT_PLUGINS_DIR (tests, development), the
@@ -140,6 +142,7 @@ export const readConfig = (
       fromResources("bin/uncut-media", "../../../native/media/target/release/uncut-media"),
     modulesDir: env.UNCUT_MODULES_DIR || fromResources("modules/builtin", "../../../spec/modules/builtin"),
     musicDir: env.UNCUT_MUSIC_DIR || fromResources("music", "../../../assets/music"),
+    sfxDir: env.UNCUT_SFX_DIR || fromResources("sfx", "../../../assets/sfx"),
     dataDir: dataDirOf(env),
     pluginDirs: [
       ...(env.UNCUT_PLUGINS_DIR ? [{ source: "user" as const, dir: env.UNCUT_PLUGINS_DIR }] : []),

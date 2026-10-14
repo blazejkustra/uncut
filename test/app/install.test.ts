@@ -108,6 +108,13 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
     assert.equal(t.license, "CC0-1.0");
     assert.ok(readFileSync(join(installed, "Contents/Resources/music", t.file)).equals(readFileSync(resolve("assets/music", t.file))), t.file);
   }
+  // The bundled CC0 sound-effects pack (D134) too, the same files as assets/sfx.
+  const sfx = JSON.parse(readFileSync(join(installed, "Contents/Resources/sfx/library.json"), "utf8")) as { sounds: Array<{ file: string; license: string }> };
+  assert.equal(sfx.sounds.length, (JSON.parse(readFileSync(resolve("assets/sfx/library.json"), "utf8")) as { sounds: Array<unknown> }).sounds.length);
+  for (const t of sfx.sounds) {
+    assert.equal(t.license, "CC0-1.0");
+    assert.ok(readFileSync(join(installed, "Contents/Resources/sfx", t.file)).equals(readFileSync(resolve("assets/sfx", t.file))), t.file);
+  }
   // The Argent capture plugin ships as a bundled plugin (D98): its manifest and server, no tests or notes.
   const shipped = join(installed, "Contents/Resources/plugins/argent-capture");
   assert.deepEqual(readFileSync(join(shipped, "uncut.module.json")), readFileSync(resolve("plugins/argent-capture/uncut.module.json")));

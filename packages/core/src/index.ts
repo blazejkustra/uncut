@@ -11,8 +11,8 @@ export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_SRC, graphicDocument, graphicInf
 export type { GraphicInfo } from "./visual/graphics.ts";
 export { baseBox, canvasBox, clipBox, EASES, fitRect, FITS, hasKeys, isPlainBox, keyAt, keysOf, KEY_PROPS, moveBox } from "./visual/box.ts";
 export type { ClipBox, Ease, Fit, KeyProp, Rect } from "./visual/box.ts";
-export { CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, DRAWN_TRANSITIONS, fadesIn, handleAfter, handleBefore, incomingFx, IRIS, irisRadius, movesOutgoing, outgoingFx, overlaps, PUSH_LEFT, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE, ZOOM, ZOOM_SCALE } from "./visual/transitions.ts";
-export type { Cut, TransitionFx, TransitionInfo, TransitionLimits } from "./visual/transitions.ts";
+export { BLINDS, blurs, CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, dipColor, DRAWN_TRANSITIONS, fadesIn, handleAfter, handleBefore, incomingFx, IRIS, irisRadius, maskClipPath, maskDistance, maskGeq, maskOf, maskRings, movesIncoming, movesOutgoing, reveals, outgoingFx, overlaps, PUSH_LEFT, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE, ZOOM, ZOOM_SCALE } from "./visual/transitions.ts";
+export type { Cut, MaskShape, TransitionFx, TransitionInfo, TransitionKind, TransitionLimits } from "./visual/transitions.ts";
 export { anySolo, audibleAt, audibleTracks, mixNote, trackHasSound, audioSpan, dbToGain, fadeAt, gainToDb, heldPast, itemGain, keyDbAt, masterGain, MAX_DB, outputGains, panGains, SILENCE_DB, soundMedia, sourceAt, trackAudible, trackPan } from "./audio/audio.ts";
 export type { Audible, DuckAt } from "./audio/audio.ts";
 export { amountOf, BUTTERWORTH_Q, biquadCoefficients, biquadResponseDb, choiceOfTarget, COMPRESSOR, COMPRESSOR_DEFAULTS, compressorCurveDb, compressorParams, DEFAULT_TARGET_LUFS, DENOISE, DENOISE_DEFAULTS, DENOISE_FLOOR_DB, denoiseMediaIds, noiseFloorDb, DUCK, EFFECT_NAMES, effectName, effectStages, effectSummary, EQ, EQ_DEFAULTS, eqParams, EXPORT_ONLY_EFFECTS, hasExportOnly, HEARD_EFFECTS, LIMITER, LIMITER_CEILING_DB, LIMITER_MARGIN_DB, LOUDNESS_PRESETS, makeupCompensationDb, masterLimiter, projectTargetLufs, stagesResponseDb, TARGET_LUFS_RANGE, targetOfChoice, targetWords, TRACK_EFFECTS, trackStages, VOICE, VOICE_DEFAULTS, VOICE_PRESET, voiceStages } from "./audio/effects.ts";
@@ -36,8 +36,10 @@ export { decodeSubtitleBytes, flattenCues, isPlainCue, isSubtitleTrack, MAX_SUBT
 export type { ImportSubtitlesPlan, ParsedCue, SubtitleCue, SubtitleFormat } from "./text/subtitles.ts";
 export { CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, planDisableCheck, projectChecks, readFrames, textLabel } from "./checks/checks.ts";
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
-export { filterMusic, libraryTrackOf, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";
+export { filterMusic, libraryTrackOf, mediaIdFor, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";
 export type { MusicTempo, MusicTrack } from "./audio/music.ts";
+export { attributionLine, bundledSfxOf, creditOf, creditsOf, creditsText, filterSfx, hitKey, LIBRARY_LENGTHS, LIBRARY_MODULES, LIBRARY_SOURCE_NAMES, LIBRARY_SOURCES, libraryMediaOf, LICENSE_NAMES, lengthLabel, licenseUrl, limitSentence, mediaCredit, MEME_SOUNDS, MUSIC_GENRES, parseHitKey, SFX_CATEGORIES, SFX_SOUNDS, sfxCredit, sfxSound } from "./audio/library.ts";
+export type { Credits, LibraryCredit, LibraryHit, LibraryKind, LibraryLength, LibraryLicense, LibraryQuery, LibrarySource, SfxSound } from "./audio/library.ts";
 export { planReshoot } from "./timeline/reshoot.ts";
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
 export { BUILTIN_CONTRIBUTION_IDS, componentGraphicHtml, componentGraphicName, componentProblem, mergeContributions, NO_CONTRIBUTIONS, pluginCheckRules, pluginRuleEntries, readContributions } from "./plugins/contributions.ts";

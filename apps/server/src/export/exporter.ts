@@ -18,7 +18,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles } from "@uncut/contracts";
 import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
-import { baseBox, canvasBox, componentHtml, irisRadius, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -43,6 +43,7 @@ import {
   mediaToken,
   silentFailure,
   svgClipHtml,
+  blurFilters,
   untaggedFilter,
   type Caps,
   type ExportPlan,
@@ -888,8 +889,15 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         const tag = media ? untaggedFilter(untagged.get(mediaPath(media))) : "";
         const picked = v.item.type === "clip" && media?.kind === "video" ? `${tag}${pick.filter},` : "trim=end_frame=1,setpts=0,";
         // An iris (D79): alpha times the disc at the canvas's centre, for a layer whose top-left is at (ox, oy).
+        // A reveal shape (D133): alpha times core's coverage, the same way.
         const iris = (ox: number, oy: number) =>
-          v.iris === undefined ? "" : `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${irisRadius(v.iris, { width: W, height: H }).toFixed(4)}-hypot(X+${ox + 0.5}-${W / 2},Y+${oy + 0.5}-${H / 2})+0.5,0,1)'`;
+          v.iris !== undefined
+            ? `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${irisRadius(v.iris, { width: W, height: H }).toFixed(4)}-hypot(X+${ox + 0.5}-${W / 2},Y+${oy + 0.5}-${H / 2})+0.5,0,1)'`
+            : v.mask
+              ? `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${maskGeq(v.mask.shape, v.mask.p.toFixed(6), W, H, `(X+${ox + 0.5})`, `(Y+${oy + 0.5})`)}+0.5,0,1)'`
+              : "";
+        // A blur dissolve (D133): gblur at the frame's sigma (output px).
+        const blur = v.blur ? `,${blurFilters((v.blur * H) / ch)}` : "";
         if (v.box && media && !svg && !isPlainBox(v.box, project.canvas)) {
           // A box (D75; moved by a push or zoom, D79), made as the export makes it; a wipe or iris reveals the canvas.
           const p = placementOf(v.box, W / cw, H / ch, baseBox(v.item, project.canvas, media.probe));
@@ -898,7 +906,7 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
           k++;
           inputs.push(...input);
           graph.push(`[${k}:v:0]${picked}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
-          graph.push(`[r${k}]format=rgba${fade}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
+          graph.push(`[r${k}]format=rgba${fade}${blur}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
           graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
           base = `b${k}`;
           continue;
@@ -906,16 +914,16 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         k++;
         inputs.push(...input);
         const full = `[${k}:v:0]${picked}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba${fade}`;
-        if (!v.box && (v.shift !== undefined || v.zoom !== undefined)) {
+        if (!v.box && (v.shift !== undefined || v.shiftY !== undefined || v.zoom !== undefined)) {
           // Text, a background or a graphic pushed or zoomed (D79): the canvas as its box, moved.
-          const p = placementOf(moveBox(canvasBox(project.canvas), v.shift, v.zoom), W / cw, H / ch, canvasBox(project.canvas));
+          const p = placementOf(moveBox(canvasBox(project.canvas), v.shift, v.zoom, v.shiftY), W / cw, H / ch, canvasBox(project.canvas));
           graph.push(`${full}[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
-          graph.push(`[r${k}]format=rgba[l${k}]`);
+          graph.push(`[r${k}]format=rgba${blur}[l${k}]`);
           graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
           base = `b${k}`;
           continue;
         }
-        graph.push(`${full}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
+        graph.push(`${full}${blur}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
         graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
         base = `b${k}`;
       }

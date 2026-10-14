@@ -65,7 +65,7 @@ export function libraryTrackOf(media: Pick<Media, "path">): MusicTrack | undefin
 export const musicInProject = (project: Pick<Project, "media">, track: Pick<MusicTrack, "id">) => project.media.find((m) => libraryTrackOf(m)?.id === track.id);
 
 /** A media id from a name, like the import's ("m-" + lowercase words), unique against `taken`. */
-function mediaIdFor(name: string, taken: ReadonlySet<string>) {
+export function mediaIdFor(name: string, taken: ReadonlySet<string>) {
   const stem = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "music";
   let id = `m-${stem}`;
   for (let n = 2; taken.has(id); n++) id = `m-${stem}-${n}`;

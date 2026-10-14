@@ -96,6 +96,7 @@ const isKeyName = (k: string) =>
   k === "GOOGLE_API_KEY" ||
   k === "GEMINI_API_KEY" ||
   k === "ELEVENLABS_API_KEY" ||
+  k === "FREESOUND_API_KEY" ||
   k === "FAL_KEY" ||
   k === "REPLICATE_API_TOKEN" ||
   k === "HF_TOKEN";

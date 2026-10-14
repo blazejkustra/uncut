@@ -4,7 +4,8 @@
 // The open project comes from the server's project.subscribe stream, which is ordered and
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
-import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, MEDIA_FILE_PATH, MUSIC_FILE_PATH, THUMB_PATH, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { transitionSeconds } from "../timeline/transitionLength.ts";
+import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -15,9 +16,10 @@ import { getPlayback, playback } from "../preview/playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planRippleDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
 import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 import { musicInProject, musicTrack } from "@uncut/core/music";
+import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
-import { layoutOf, uniqueId, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
+import { layoutOf, uniqueId, planAddAtPlayhead, planAddLibrarySound, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
 import { planAddComponent, planAddGraphic } from "../preview/components.ts";
 import { planRemoveGainKey } from "../audio/sound.ts";
@@ -91,6 +93,8 @@ export interface AppStateShape {
   /** Settings › Keys: which providers have a key (never the key). */
   readonly keys?: ReadonlyArray<KeyInfo>;
   readonly keysError?: string;
+  /** The library sound being added (D134), for its row's spinner. */
+  readonly libraryAdding?: string | undefined;
   /** Settings opened at a section (the Generate tab's "Settings › Keys" link). */
   readonly setupFocus?: "keys";
   // Import jobs on the server (running and recent); the library shows the open project's.
@@ -328,6 +332,10 @@ export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id,
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
 /** A track of the bundled music library (D91), for the Audio tab's preview. */
 export const musicUrl = (file: string) => serverUrl(MUSIC_FILE_PATH, file);
+/** A sound of the bundled sound-effects pack (D134), for the Sound effects tab's preview. */
+export const sfxUrl = (file: string) => serverUrl(SFX_FILE_PATH, file);
+/** An online library hit's preview (D134), streamed through the server (only hits of a recent search). */
+export const libraryPreviewUrl = (source: string, id: string) => serverUrl(LIBRARY_PREVIEW_PATH, `${source}/${id}`);
 /** The peaks of a media item's sound, made and cached by the server (D54). */
 export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PATH, id, path);
 /** A graphic item's document (D78), by its src ("graphics/x.html"), for the preview's sandboxed iframe. */
@@ -862,6 +870,39 @@ export const actions = {
       musicAdding = false;
     }
   },
+  /** The sound library's sources and limit (D134). */
+  async libraryState(): Promise<LibraryState | undefined> {
+    const result = await call((c) => c["library.state"]({}));
+    return result.ok ? result.value : undefined;
+  },
+  /** An online search (D134): the result, or the error in words. */
+  async searchLibrary(query: LibraryQuery): Promise<LibrarySearchResult | { readonly error: string }> {
+    const result = await call((c) => c["library.search"]({ kind: query.kind, query: query.query, ...(query.source ? { source: query.source } : {}), ...(query.license ? { license: query.license } : {}), ...(query.length ? { length: query.length } : {}), ...(query.songs ? { songs: true } : {}), ...(query.page ? { page: query.page } : {}) }));
+    return result.ok ? result.value : { error: plainError(result.error) };
+  },
+  /**
+   * Library sound → the timeline (D134): the server downloads it into the project's media/ (or
+   * copies a bundled sound effect, id sfx:<id>) unless it's there already, then the media (with its
+   * credits) and the item go in as one edit, at the playhead on a free audio track.
+   */
+  async addLibrarySound(id: string, music: boolean, name: string) {
+    if (!state.snapshot || !online() || adding || musicAdding) return;
+    musicAdding = true;
+    set({ libraryAdding: id });
+    try {
+      const existing = libraryMediaOf(projectOf(state.snapshot), id);
+      let sound = { libraryId: id, name: existing?.name ?? name, seconds: (existing?.probe?.frames ?? 0) / projectOf(state.snapshot).canvas.fps, music } as Parameters<typeof planAddLibrarySound>[1];
+      if (!existing) {
+        const result = await call((c) => c["library.add"]({ id }));
+        if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });
+        sound = { ...sound, name: result.value.name, path: result.value.path, seconds: result.value.seconds, source: result.value.source };
+      }
+      await addPlanned((project) => planAddLibrarySound(project, sound, getPlayback().frame));
+    } finally {
+      musicAdding = false;
+      set({ libraryAdding: undefined });
+    }
+  },
   /** Open a panel as the agent's ui_show does. */
   openPanel: (panel: AgentUiPanel) => set({ panelRequest: { panel, seq: ++panelSeq } }),
   /** Text tab preset → a text item at the playhead (see planAddText). */
@@ -921,7 +962,9 @@ export const actions = {
       set({ notice: { text: nearest ? "There's no cut yet: put two clips on the main track first." : "Pick a cut first: click between two clips on the main track, drag the transition onto a cut, or use + for the cut nearest the playhead." } });
       return false;
     }
-    const ok = await timelineEdit(planSetTransition(project, target, { module }));
+    // D133: the panel's length for all, when one is chosen (else the transition's default).
+    const seconds = transitionSeconds();
+    const ok = await timelineEdit(planSetTransition(project, target, { module, ...(seconds ? { duration: Math.round(seconds * project.canvas.fps) } : {}) }));
     if (ok || findItem(project, target)?.item.transitionIn?.module === module) playback.selectCut(target);
     return ok;
   },

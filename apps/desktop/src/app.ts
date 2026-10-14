@@ -98,6 +98,7 @@ const resources = app.isPackaged
       mediaBin: path.join(process.resourcesPath, "bin", "uncut-media"),
       modulesDir: path.join(process.resourcesPath, "modules", "builtin"),
       musicDir: path.join(process.resourcesPath, "music"),
+      sfxDir: path.join(process.resourcesPath, "sfx"),
       // Plugins shipped with the app (D97).
       bundledPluginsDir: path.join(process.resourcesPath, "plugins"),
       pluginSdkDir: path.join(process.resourcesPath, "plugin-sdk"),
@@ -108,6 +109,7 @@ const resources = app.isPackaged
       mediaBin: path.join(repoRoot, "native/media/target/release/uncut-media"),
       modulesDir: path.join(repoRoot, "spec/modules/builtin"),
       musicDir: path.join(repoRoot, "assets/music"),
+      sfxDir: path.join(repoRoot, "assets/sfx"),
       bundledPluginsDir: path.join(repoRoot, "plugins"),
       pluginSdkDir: path.join(repoRoot, "packages/plugin-sdk/src"),
       // Under `pnpm dev` the binary is a bare Electron: it needs this bundle to be the rasteriser.

@@ -35,12 +35,24 @@ function serialised<A>(key: string, run: () => Promise<A>): Promise<A> {
  * (media/cozy-2.m4a), or a sentence saying why it couldn't.
  */
 export function copyLibraryTrack(musicDir: string, projectDir: string, id: string): Promise<{ readonly track: MusicTrack; readonly path: string } | { readonly problem: string }> {
-  return serialised(projectDir, () => copyOnce(musicDir, projectDir, id));
+  const track = musicTrack(id);
+  if (!track) return Promise.resolve({ problem: `There's no library track "${id}".` });
+  return serialised(projectDir, async () => {
+    const copied = await copyOnce(musicDir, projectDir, track.file);
+    return "problem" in copied ? copied : { track, path: copied.path };
+  });
 }
 
-async function copyOnce(musicDir: string, projectDir: string, id: string): Promise<{ readonly track: MusicTrack; readonly path: string } | { readonly problem: string }> {
-  const track = musicTrack(id);
-  if (!track) return { problem: `There's no library track "${id}".` };
+/** A bundled sound effect (D134) copied into the project's media/ the same way; its path relative to the project. */
+export function copyBundledFile(dir: string, projectDir: string, file: string): Promise<{ readonly path: string } | { readonly problem: string }> {
+  return serialised(projectDir, () => copyOnce(dir, projectDir, file));
+}
+
+/** Runs `run` after any other copy or download into the same project folder (shared with the online library's downloads). */
+export const serialisedFor = serialised;
+
+async function copyOnce(musicDir: string, projectDir: string, file: string): Promise<{ readonly path: string } | { readonly problem: string }> {
+  const track = { file };
   const source = join(musicDir, track.file);
   try {
     await stat(source);
@@ -59,7 +71,7 @@ async function copyOnce(musicDir: string, projectDir: string, id: string): Promi
       const name = n === 1 ? track.file : `${stem}-${n}.m4a`;
       const target = join(real, name);
       if (await exists(target)) {
-        if (await same(source, target)) return { track, path: `media/${name}` };
+        if (await same(source, target)) return { path: `media/${name}` };
         continue;
       }
       // Written under a name of its own and linked into place, so a half-copied file never has the
@@ -71,13 +83,13 @@ async function copyOnce(musicDir: string, projectDir: string, id: string): Promi
           await link(part, target);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-          if (await same(source, target)) return { track, path: `media/${name}` };
+          if (await same(source, target)) return { path: `media/${name}` };
           continue;
         }
       } finally {
         await rm(part, { force: true });
       }
-      return { track, path: `media/${name}` };
+      return { path: `media/${name}` };
     }
     return { problem: `The project's media folder already holds 99 other files named like ${track.file}.` };
   } catch (error) {

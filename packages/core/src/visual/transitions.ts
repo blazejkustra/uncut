@@ -23,6 +23,14 @@
 //   in over the first half (the outgoing clip's last frames) and out over the second (the
 //   incoming clip's first); the cut frame is black. The sound dips too: the outgoing clip fades
 //   out over its last half, the incoming one fades in over its first.
+// D133 adds 22 more, all from the same few primitives described by TransitionInfo (kind + params):
+// - Reveals (wipe left/up/down, split, split horizontal, box, diamond, diagonal, clock wipe, blinds,
+//   circle close): the incoming clip, opaque, shown inside a mask shape (maskDistance; the preview
+//   clips to maskRings' outline, the export multiplies maskGeq's coverage into the alpha).
+// - Moves: push right/up/down (both clips, `enter` and `exit`), slide left/right/up/down (only the
+//   incoming clip), zoom out (the incoming picture 1.25 → 1 while it fades in).
+// - Blur: both clips blurred (Gaussian sigma up to 2 % of the canvas height at the cut) under a crossfade.
+// - Dips: dip to white (like dip to black) and flash (a white layer peaking on the cut over a crossfade).
 // A move (push, zoom) applies to an item's box (box.ts moveBox: clips and components); items
 // without one (text, backgrounds, graphics) move as the whole canvas. Iris and wipe reveal the
 // canvas, whatever the box. transition.cut and plugin transitions draw as a crossfade.
@@ -39,7 +47,30 @@ export interface TransitionInfo {
   /** The clips overlap at the cut (half the transition each side), so video needs handles. */
   readonly overlaps: boolean;
   readonly description: string;
+  /** How it draws (D133): a fade, a reveal (a mask over the incoming clip), a move, or a dip through a colour. */
+  readonly kind: TransitionKind;
+  /** The incoming clip fades in (opacity p). */
+  readonly fades?: boolean;
+  /** A reveal's shape (D133): the incoming clip, opaque, is shown inside it (wipe and iris keep their own D73/D79 paths). */
+  readonly mask?: MaskShape;
+  /** The incoming clip starts this share of the canvas away (x right, y down) and moves to its place. */
+  readonly enter?: { readonly x: number; readonly y: number };
+  /** The outgoing clip moves this share of the canvas away by the end. */
+  readonly exit?: { readonly x: number; readonly y: number };
+  /** The incoming picture's scale at the start (to 1 at the end), about its box's centre. */
+  readonly inZoom?: number;
+  /** The outgoing picture's scale at the end (from 1), about its box's centre. */
+  readonly outZoom?: number;
+  /** A blur dissolve's strongest blur, as a share of the canvas height (Gaussian sigma). */
+  readonly blur?: number;
+  /** A colour layer over the main track across the cut (dip to black / white, flash). */
+  readonly color?: string;
 }
+
+export type TransitionKind = "fade" | "reveal" | "move" | "dip";
+
+/** The reveal shapes drawn by one mask each (D133). */
+export type MaskShape = "wipe-left" | "wipe-up" | "wipe-down" | "split-v" | "split-h" | "box" | "diamond" | "diagonal" | "circle-close" | "clock" | "blinds";
 
 export const CROSSFADE = "transition.crossfade";
 export const WIPE = "transition.wipe";
@@ -51,13 +82,51 @@ export const ZOOM = "transition.zoom";
 /** How much larger the outgoing picture is at the end of a zoom transition (D79). */
 export const ZOOM_SCALE = 1.2;
 
+/** Blinds: the number of slats (D133). */
+export const BLINDS = 6;
+
+const t = (id: string, name: string, kind: TransitionKind, description: string, rest: Partial<TransitionInfo> = {}): TransitionInfo => ({
+  id: `transition.${id}`,
+  name,
+  kind,
+  description,
+  minFrames: 4,
+  maxFrames: 30,
+  defaultSeconds: 0.5,
+  overlaps: true,
+  ...rest,
+});
+
 export const TRANSITIONS: ReadonlyArray<TransitionInfo> = [
-  { id: CROSSFADE, name: "Crossfade", minFrames: 2, maxFrames: 60, defaultSeconds: 0.5, overlaps: true, description: "The next clip fades in over this one." },
-  { id: DIP_TO_BLACK, name: "Dip to black", minFrames: 4, maxFrames: 90, defaultSeconds: 0.8, overlaps: false, description: "Fades to black and back up; the sound dips with it. Needs no spare footage." },
-  { id: WIPE, name: "Wipe", minFrames: 4, maxFrames: 30, defaultSeconds: 0.5, overlaps: true, description: "The next clip is revealed from the left edge." },
-  { id: IRIS, name: "Iris", minFrames: 6, maxFrames: 30, defaultSeconds: 0.5, overlaps: true, description: "The next clip opens in a growing circle from the centre." },
-  { id: PUSH_LEFT, name: "Push", minFrames: 4, maxFrames: 30, defaultSeconds: 0.5, overlaps: true, description: "The next clip slides in from the right, pushing this one out to the left." },
-  { id: ZOOM, name: "Zoom", minFrames: 4, maxFrames: 30, defaultSeconds: 0.5, overlaps: true, description: "This clip zooms in as the next one fades in over it." },
+  t("crossfade", "Crossfade", "fade", "The next clip fades in over this one.", { minFrames: 2, maxFrames: 60, fades: true }),
+  t("dip-to-black", "Dip to black", "dip", "Fades to black and back up; the sound dips with it. Needs no spare footage.", { maxFrames: 90, defaultSeconds: 0.8, overlaps: false, color: "#000000" }),
+  t("wipe", "Wipe", "reveal", "The next clip is revealed from the left edge."),
+  t("iris", "Iris", "reveal", "The next clip opens in a growing circle from the centre.", { minFrames: 6 }),
+  t("push-left", "Push", "move", "The next clip slides in from the right, pushing this one out to the left.", { enter: { x: 1, y: 0 }, exit: { x: -1, y: 0 } }),
+  t("zoom", "Zoom", "fade", "This clip zooms in as the next one fades in over it.", { fades: true, outZoom: ZOOM_SCALE }),
+  // D133
+  t("dip-to-white", "Dip to white", "dip", "Fades to white and back down; the sound dips with it. Needs no spare footage.", { maxFrames: 90, defaultSeconds: 0.8, overlaps: false, color: "#ffffff" }),
+  t("flash", "Flash", "dip", "A white flash at the cut while the next clip fades in.", { minFrames: 2, defaultSeconds: 0.3, fades: true, color: "#ffffff" }),
+  t("blur", "Blur", "fade", "This clip blurs out as the next one fades in sharp.", { minFrames: 6, maxFrames: 60, fades: true, blur: 0.02 }),
+  t("wipe-left", "Wipe left", "reveal", "The next clip is revealed from the right edge.", { mask: "wipe-left" }),
+  t("wipe-up", "Wipe up", "reveal", "The next clip is revealed from the bottom edge.", { mask: "wipe-up" }),
+  t("wipe-down", "Wipe down", "reveal", "The next clip is revealed from the top edge.", { mask: "wipe-down" }),
+  t("push-right", "Push right", "move", "The next clip slides in from the left, pushing this one out to the right.", { enter: { x: -1, y: 0 }, exit: { x: 1, y: 0 } }),
+  t("push-up", "Push up", "move", "The next clip slides in from below, pushing this one out the top.", { enter: { x: 0, y: 1 }, exit: { x: 0, y: -1 } }),
+  t("push-down", "Push down", "move", "The next clip slides in from above, pushing this one out the bottom.", { enter: { x: 0, y: -1 }, exit: { x: 0, y: 1 } }),
+  t("slide-left", "Slide left", "move", "The next clip slides in from the right over this one.", { enter: { x: 1, y: 0 } }),
+  t("slide-right", "Slide right", "move", "The next clip slides in from the left over this one.", { enter: { x: -1, y: 0 } }),
+  t("slide-up", "Slide up", "move", "The next clip slides in from below over this one.", { enter: { x: 0, y: 1 } }),
+  t("slide-down", "Slide down", "move", "The next clip slides in from above over this one.", { enter: { x: 0, y: -1 } }),
+  t("circle-close", "Circle close", "reveal", "This clip closes into a shrinking circle over the next one.", { minFrames: 6, mask: "circle-close" }),
+  t("clock", "Clock wipe", "reveal", "The next clip is revealed by a hand sweeping clockwise from 12.", { minFrames: 6, mask: "clock" }),
+  t("split", "Split", "reveal", "The next clip opens from a vertical line in the middle.", { mask: "split-v" }),
+  t("split-horizontal", "Split horizontal", "reveal", "The next clip opens from a horizontal line in the middle.", { mask: "split-h" }),
+  t("box", "Box", "reveal", "The next clip opens in a growing rectangle from the centre.", { mask: "box" }),
+  t("diamond", "Diamond", "reveal", "The next clip opens in a growing diamond from the centre.", { minFrames: 6, mask: "diamond" }),
+  t("diagonal", "Diagonal", "reveal", "The next clip is revealed by a diagonal edge from the top left.", { mask: "diagonal" }),
+  t("blinds", "Blinds", "reveal", "The next clip appears through slats that open downwards.", { minFrames: 6, mask: "blinds" }),
+  t("zoom-out", "Zoom out", "fade", "The next clip fades in while settling from 125 % to its size.", { fades: true, inZoom: 1.25 }),
 ];
 
 /** The modules the preview and export draw as themselves. */
@@ -71,49 +140,258 @@ export const transitionInfo = (module: string | undefined) => TRANSITIONS.find((
  */
 export const TRANSITION_LIMITS: Readonly<Record<string, { readonly minFrames: number; readonly maxFrames: number }>> = Object.fromEntries(TRANSITIONS.map((t) => [t.id, { minFrames: t.minFrames, maxFrames: t.maxFrames }]));
 
-/** Whether a transition overlaps the clips at its cut (everything but dip to black; unknown ones draw as a crossfade). */
+/** Whether a transition overlaps the clips at its cut (all but the dips to black / white; unknown ones draw as a crossfade). */
 export const overlaps = (module: string) => transitionInfo(module)?.overlaps ?? true;
 
 /**
- * What an overlapping transition does to the clips at its cut at share p (D79): `opacity` multiplies
- * the clip's; `wipe` is the share of the canvas width shown from the left, `iris` the share of the
- * half diagonal a centred circle shows (both absent when whole); `shift` moves it right by canvas
- * px and `zoom` scales its picture about its box's centre (absent when not moved).
+ * What an overlapping transition does to the clips at its cut at share p (D79, D133): `opacity`
+ * multiplies the clip's; `wipe` is the share of the canvas width shown from the left, `iris` the
+ * share of the half diagonal a centred circle shows, `mask` a reveal shape at its share (all absent
+ * when whole); `shift` / `shiftY` move it right / down by canvas px and `zoom` scales its picture
+ * about its box's centre (absent when not moved); `blur` is a Gaussian sigma in canvas px.
  */
 export interface TransitionFx {
   readonly opacity: number;
   readonly wipe?: number;
   readonly iris?: number;
+  readonly mask?: { readonly shape: MaskShape; readonly p: number };
   readonly shift?: number;
+  readonly shiftY?: number;
   readonly zoom?: number;
+  readonly blur?: number;
 }
 
 const NONE: TransitionFx = { opacity: 1 };
+type Size = { readonly width: number; readonly height: number };
 
 /** The incoming clip at share p (0 ≤ p < 1) of an overlapping `module` transition into it. */
-export function incomingFx(module: string, p: number, canvas: { readonly width: number }): TransitionFx {
+export function incomingFx(module: string, p: number, canvas: Size): TransitionFx {
   if (module === WIPE) return { opacity: 1, wipe: p };
   if (module === IRIS) return { opacity: 1, iris: p };
-  if (module === PUSH_LEFT) return { opacity: 1, shift: (1 - p) * canvas.width };
-  // Crossfade, zoom, transition.cut and plugins: a fade.
-  return { opacity: p };
+  const info = transitionInfo(module);
+  // transition.cut and plugins: a fade.
+  if (!info) return { opacity: p };
+  const fx: { -readonly [K in keyof TransitionFx]: TransitionFx[K] } = { opacity: info.fades ? p : 1 };
+  if (info.mask) fx.mask = { shape: info.mask, p };
+  if (info.enter) {
+    if (info.enter.x) fx.shift = (1 - p) * info.enter.x * canvas.width;
+    if (info.enter.y) fx.shiftY = (1 - p) * info.enter.y * canvas.height;
+  }
+  if (info.inZoom !== undefined) fx.zoom = info.inZoom + (1 - info.inZoom) * p;
+  if (info.blur) fx.blur = (1 - p) * info.blur * canvas.height;
+  return fx;
 }
 
 /** The outgoing clip at share p (0 < p ≤ 1) of an overlapping `module` transition out of it. */
-export function outgoingFx(module: string, p: number, canvas: { readonly width: number }): TransitionFx {
-  if (module === PUSH_LEFT) return { opacity: 1, shift: -p * canvas.width };
-  if (module === ZOOM) return { opacity: 1, zoom: 1 + (ZOOM_SCALE - 1) * p };
-  return NONE;
+export function outgoingFx(module: string, p: number, canvas: Size): TransitionFx {
+  const info = transitionInfo(module);
+  if (!info) return NONE;
+  const fx: { -readonly [K in keyof TransitionFx]: TransitionFx[K] } = { opacity: 1 };
+  if (info.exit) {
+    if (info.exit.x) fx.shift = p * info.exit.x * canvas.width;
+    if (info.exit.y) fx.shiftY = p * info.exit.y * canvas.height;
+  }
+  if (info.outZoom !== undefined) fx.zoom = 1 + (info.outZoom - 1) * p;
+  if (info.blur) fx.blur = p * info.blur * canvas.height;
+  return Object.keys(fx).length === 1 ? NONE : fx;
 }
 
 /** Whether the incoming clip fades in (its opacity ramps) through an overlapping `module` transition. */
-export const fadesIn = (module: string) => module !== WIPE && module !== IRIS && module !== PUSH_LEFT;
+export const fadesIn = (module: string) => {
+  const info = transitionInfo(module);
+  return info ? info.fades === true : true;
+};
 
-/** Whether an overlapping `module` transition moves or reveals the outgoing clip too (push, zoom). */
-export const movesOutgoing = (module: string) => module === PUSH_LEFT || module === ZOOM;
+/** Whether an overlapping `module` transition moves or zooms the outgoing clip (push, zoom). */
+export const movesOutgoing = (module: string) => {
+  const info = transitionInfo(module);
+  return !!info && (!!info.exit || info.outZoom !== undefined);
+};
+
+/** Whether an overlapping `module` transition moves or zooms the incoming clip (push, slide, zoom out). */
+export const movesIncoming = (module: string) => {
+  const info = transitionInfo(module);
+  return !!info && (!!info.enter || info.inZoom !== undefined);
+};
+
+/** Whether a `module` transition reveals the incoming clip (wipe, iris, a mask shape): the reveal is dropped at its end. */
+export const reveals = (module: string) => module === WIPE || module === IRIS || !!transitionInfo(module)?.mask;
+
+/** The reveal shape of a `module` transition (not wipe or iris, which keep their own paths), if any. */
+export const maskOf = (module: string | undefined) => transitionInfo(module)?.mask;
+
+/** Whether a `module` transition blurs the clips at its cut. */
+export const blurs = (module: string | undefined) => !!transitionInfo(module)?.blur;
+
+/** The colour layer a `module` transition puts over the main track across its cut (dips, flash), if any. */
+export const dipColor = (module: string | undefined) => transitionInfo(module)?.color;
 
 /** The iris's radius in canvas px at share `iris` (the half diagonal at 1, so the corners are in). */
 export const irisRadius = (iris: number, canvas: { readonly width: number; readonly height: number }) => (iris * Math.hypot(canvas.width, canvas.height)) / 2;
+
+// ---- reveal masks (D133) ----
+// Every shape is a signed distance d(x, y) in px from its edge (> 0 inside, where the incoming clip
+// shows) at share p, on a W×H picture. The preview clips to the shape's outline (maskRings → a CSS
+// path, antialiased by Chromium); the export and render_frames multiply a geq coverage
+// clip(d / step + 0.5) into the layer's alpha (maskGeq: the same d as an ffmpeg expression).
+
+type Ring = ReadonlyArray<readonly [number, number]>;
+const TAU = 2 * Math.PI;
+
+/** The signed distance (px, > 0 inside) of the point (x, y) from `shape`'s edge at share p on a W×H picture. */
+export function maskDistance(shape: MaskShape, p: number, W: number, H: number, x: number, y: number): number {
+  const dx = x - W / 2;
+  const dy = y - H / 2;
+  switch (shape) {
+    case "wipe-left":
+      return x - (1 - p) * W;
+    case "wipe-up":
+      return y - (1 - p) * H;
+    case "wipe-down":
+      return p * H - y;
+    case "split-v":
+      return (p * W) / 2 - Math.abs(dx);
+    case "split-h":
+      return (p * H) / 2 - Math.abs(dy);
+    case "box":
+      return Math.min((p * W) / 2 - Math.abs(dx), (p * H) / 2 - Math.abs(dy));
+    case "diamond":
+      return (2 * p - Math.abs(dx) / (W / 2) - Math.abs(dy) / (H / 2)) / Math.hypot(2 / W, 2 / H);
+    case "diagonal":
+      return (2 * p - x / W - y / H) / Math.hypot(1 / W, 1 / H);
+    case "circle-close":
+      return Math.hypot(dx, dy) - ((1 - p) * Math.hypot(W, H)) / 2;
+    case "clock": {
+      const th = (Math.atan2(dx, -dy) + TAU) % TAU;
+      const a = TAU * p;
+      const angle = th < a ? Math.min(th, a - th) : -Math.min(th - a, TAU - th);
+      return Math.hypot(dx, dy) * Math.sin(Math.min(Math.PI / 2, Math.max(-Math.PI / 2, angle)));
+    }
+    case "blinds": {
+      const bh = H / BLINDS;
+      return p * bh - (((y % bh) + bh) % bh);
+    }
+  }
+}
+
+/** maskDistance as an ffmpeg expression: `P` the share, `x` / `y` the pixel centre's expressions, W×H the picture. */
+export function maskGeq(shape: MaskShape, P: string, W: number, H: number, x: string, y: string): string {
+  const dx = `(${x}-${W / 2})`;
+  const dy = `(${y}-${H / 2})`;
+  switch (shape) {
+    case "wipe-left":
+      return `(${x}-(1-${P})*${W})`;
+    case "wipe-up":
+      return `(${y}-(1-${P})*${H})`;
+    case "wipe-down":
+      return `(${P}*${H}-${y})`;
+    case "split-v":
+      return `(${P}*${W / 2}-abs${dx})`;
+    case "split-h":
+      return `(${P}*${H / 2}-abs${dy})`;
+    case "box":
+      return `min(${P}*${W / 2}-abs${dx},${P}*${H / 2}-abs${dy})`;
+    case "diamond":
+      return `((2*${P}-abs${dx}/${W / 2}-abs${dy}/${H / 2})/${Math.hypot(2 / W, 2 / H)})`;
+    case "diagonal":
+      return `((2*${P}-(${x})/${W}-(${y})/${H})/${Math.hypot(1 / W, 1 / H)})`;
+    case "circle-close":
+      return `(hypot(${dx},${dy})-(1-${P})*${Math.hypot(W, H) / 2})`;
+    case "clock": {
+      const th = `mod(atan2(${dx},-${dy})+2*PI,2*PI)`;
+      const a = `(2*PI*${P})`;
+      return `(hypot(${dx},${dy})*sin(clip(if(lt(${th},${a}),min(${th},${a}-${th}),-min(${th}-${a},2*PI-${th})),-PI/2,PI/2)))`;
+    }
+    case "blinds": {
+      const bh = H / BLINDS;
+      return `(${P}*${bh}-mod(${y},${bh}))`;
+    }
+  }
+}
+
+/**
+ * The outline of `shape` at share p on a W×H picture, as rings (even-odd: a hole is a ring inside
+ * another), in its px. Straight edges reach well past the picture, so a moved element is cut only
+ * at the shape's real edges.
+ */
+export function maskRings(shape: MaskShape, p: number, W: number, H: number): Array<Ring> {
+  const rect = (x0: number, y0: number, x1: number, y1: number): Ring => [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+  ];
+  const [L, T, R, B] = [-W, -H, 2 * W, 2 * H];
+  const cx = W / 2;
+  const cy = H / 2;
+  switch (shape) {
+    case "wipe-left":
+      return [rect((1 - p) * W, T, R, B)];
+    case "wipe-up":
+      return [rect(L, (1 - p) * H, R, B)];
+    case "wipe-down":
+      return [rect(L, T, R, p * H)];
+    case "split-v":
+      return [rect(cx - (p * W) / 2, T, cx + (p * W) / 2, B)];
+    case "split-h":
+      return [rect(L, cy - (p * H) / 2, R, cy + (p * H) / 2)];
+    case "box":
+      return [rect(cx - (p * W) / 2, cy - (p * H) / 2, cx + (p * W) / 2, cy + (p * H) / 2)];
+    case "diamond":
+      return [
+        [
+          [cx, cy - p * H],
+          [cx + p * W, cy],
+          [cx, cy + p * H],
+          [cx - p * W, cy],
+        ],
+      ];
+    case "diagonal":
+      return [
+        [
+          [-2 * W, -H],
+          [W * (2 * p + 1), -H],
+          [W * (2 * p - 2), 2 * H],
+          [-2 * W, 2 * H],
+        ],
+      ];
+    case "circle-close": {
+      const r = ((1 - p) * Math.hypot(W, H)) / 2;
+      const n = 120;
+      const circle: Array<[number, number]> = [];
+      for (let i = 0; i < n; i++) circle.push([cx + r * Math.cos((TAU * i) / n), cy + r * Math.sin((TAU * i) / n)]);
+      return [rect(L, T, R, B), circle];
+    }
+    case "clock": {
+      if (p >= 1) return [rect(L, T, R, B)];
+      const far = 2 * (W + H);
+      const a = TAU * p;
+      const steps = Math.max(1, Math.ceil(a / (Math.PI / 36)));
+      const fan: Array<[number, number]> = [[cx, cy]];
+      for (let i = 0; i <= steps; i++) {
+        const t = (a * i) / steps;
+        fan.push([cx + far * Math.sin(t), cy - far * Math.cos(t)]);
+      }
+      return [fan];
+    }
+    case "blinds": {
+      const bh = H / BLINDS;
+      return Array.from({ length: BLINDS }, (_, k) => rect(L, k * bh, R, k * bh + p * bh));
+    }
+  }
+}
+
+/**
+ * A CSS clip-path for `shape` at share p on the canvas, in an element's own px: `map` takes a
+ * canvas point to the element's (identity for a full-canvas element).
+ */
+export function maskClipPath(shape: MaskShape, p: number, canvas: Size, map: (x: number, y: number) => readonly [number, number] = (x, y) => [x, y]): string {
+  const r = (n: number) => Math.round(n * 1000) / 1000;
+  const d = maskRings(shape, p, canvas.width, canvas.height)
+    .map((ring) => `M${ring.map(([x, y]) => map(x, y).map(r).join(" ")).join("L")}Z`)
+    .join("");
+  return `path(evenodd, "${d}")`;
+}
 
 /** A transition's name for people ("Crossfade"), or its id when it isn't one the panel knows. */
 export const transitionName = (module: string) => transitionInfo(module)?.name ?? module.replace(/^transition\./, "");
