@@ -270,6 +270,8 @@ function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: Age
         {approval &&
           (approval.screen ? (
             <ScreenApprovalCard approval={approval} screen={approval.screen} online={online} />
+          ) : approval.boot ? (
+            <BootCard key={approval.id} approval={approval} boot={approval.boot} online={online} />
           ) : approval.question ? (
             <QuestionCard key={approval.id} approval={approval} question={approval.question} online={online} />
           ) : approval.storyboard ? (
@@ -281,6 +283,7 @@ function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: Age
           ) : (
             <ApprovalCard approval={approval} online={online} />
           ))}
+        {t.cleanup && <CleanupLine turnId={t.id} cleanup={t.cleanup} online={online} />}
         {t.status === "running" && <NowLine turn={t} waiting={!!approval} />}
         {t.error && (
           <p className="err" data-testid="agent-turn-error">
@@ -407,6 +410,62 @@ function BrandDiffCard({ approval, brand, online }: { approval: AgentApproval; b
           Apply
         </button>
       </div>
+    </div>
+  );
+}
+
+/** D204: the agent asks to boot a simulator or emulator (argent_boot); nothing boots without Boot. */
+function BootCard({ approval, boot, online }: { approval: AgentApproval; boot: NonNullable<AgentApproval["boot"]>; online: boolean }) {
+  const [sent, setSent] = useState(false);
+  const answer = (allow: boolean) => {
+    setSent(true);
+    void actions.agentApprove(approval.id, allow);
+  };
+  return (
+    <div className="approval" data-testid="agent-approval" data-kind="boot" data-id={approval.id}>
+      <div className="approval-text">Boot {boot.name}?</div>
+      <div className="approval-lines" data-testid="agent-boot-lines">
+        <div>{boot.kind}</div>
+        <div>{`Argent starts it on this Mac, which can take a minute. Then the agent ${boot.bundleId ? `opens ${boot.bundleId} and ` : ""}records it into Media.`}</div>
+      </div>
+      <div className="approval-sub">Nothing boots without your answer. No answer in 2 minutes means no.</div>
+      <div className="approval-btns">
+        <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={() => answer(false)}>
+          Don't
+        </button>
+        <button className="btn primary" data-testid="agent-allow" disabled={!online || sent} onClick={() => answer(true)}>
+          Boot
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** D206: what the turn-end clean-up did (unused graphics to the trash, empty tracks removed), with Restore. */
+function CleanupLine({ turnId, cleanup, online }: { turnId: string; cleanup: NonNullable<AgentTurn["cleanup"]>; online: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const g = cleanup.graphics.length;
+  const n = cleanup.tracks.length;
+  const parts = [g ? `Moved ${g === 1 ? "1 unused graphic" : `${g} unused graphics`} to the trash` : "", n ? `${g ? "removed" : "Removed"} ${n === 1 ? "an empty track" : `${n} empty tracks`}` : ""].filter(Boolean);
+  return (
+    <div className="turn-cleanup" data-testid="agent-cleanup">
+      <span>{parts.join(", ")}</span>
+      {g > 0 &&
+        (cleanup.restored ? (
+          <span className="turn-cleanup-done">Restored</span>
+        ) : (
+          <button
+            className="link-btn"
+            data-testid="agent-cleanup-restore"
+            disabled={!online || busy}
+            onClick={() => {
+              setBusy(true);
+              void actions.agentRestoreCleanup(turnId).finally(() => setBusy(false));
+            }}
+          >
+            Restore
+          </button>
+        ))}
     </div>
   );
 }

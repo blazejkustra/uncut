@@ -493,6 +493,12 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .turn-status svg.lucide { width: 12px; height: 12px; }
 .turn-foot .spacer { flex: 1; }
 .turn-foot .link-btn svg.lucide { width: 13px; height: 13px; }
+.recent-search { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--dim); }
+.recent-search svg.lucide { width: 13px; height: 13px; flex: none; }
+.recent-search input { flex: 1; min-width: 0; }
+.recent-none { font-size: 11px; color: var(--dim); padding: 4px 2px; }
+.turn-cleanup { display: flex; align-items: center; gap: 8px; padding: 2px 4px; font-size: 11px; color: var(--dim); }
+.turn-cleanup-done { color: var(--muted); }
 .turn-undo-reason { padding: 0 4px 4px; font-size: 11px; color: var(--muted); line-height: 1.4; }
 .composer { flex: none; margin: 0 12px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; }
 .composer:focus-within { border-color: rgb(255 255 255 / 22%); }

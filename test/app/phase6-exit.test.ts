@@ -264,6 +264,9 @@ async function exitCheck() {
   assert.deepEqual(left.map((c) => c.key).sort(), ["small-text:footnote", "small-text:sum-note", "small-text:task"]);
   nextTurn(fixTurn(left.map((c) => ({ rule: c.id, items: [...(c.itemIds ?? [])], fix: c.fix }))));
   const before2 = results().length;
+  // D202: the agent steers the playhead only once the user has left the timeline alone for IDLE_MS
+  // (the Mixer step just used it); otherwise its ui_show is a pill, not a seek.
+  await new Promise((r) => setTimeout(r, 3200));
   const t2 = await send("Fix the remaining checks");
   await turnDone(t2, 120000);
   assert.equal((await turnStatus(t2))[0], "done", (await turnStatus(t2))[1]);

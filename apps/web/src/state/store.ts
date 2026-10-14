@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -377,6 +377,8 @@ export const brandFileUrl = (kit: string, name: string, path?: string) => server
 export const agentImageUrl = (name: string) => serverUrl(AGENT_IMAGE_PATH, name);
 /** The poster for a media item, from the server's token-protected route (never file://). */
 export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id, path);
+/** D205: a poster from the user's media index. */
+export const recentThumbUrl = (id: string) => serverUrl(RECENT_THUMB_PATH, id);
 /** The original file of a media item, streamed by the server with byte ranges (never file://). */
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
 /** A track of the bundled music library (D91), for the Audio tab's preview. */
@@ -1345,6 +1347,21 @@ export const actions = {
     if (result.ok) applyFromCall(result.value);
     else if (result.error.reason === "changed-on-disk") set({ changedOnDisk: true, reloadProblem: undefined });
     else set({ agentError: plainError(result.error) });
+  },
+  /** D206: puts back the graphics a turn's clean-up moved to the trash. */
+  async agentRestoreCleanup(turnId: string) {
+    const result = await call((c) => c["agent.restoreCleanup"]({ turnId }));
+    if (!result.ok) set({ agentError: plainError(result.error) });
+  },
+  /** D205: other projects' recent captures, imports and generations (the user's media index). */
+  async mediaRecent(query?: string): Promise<ReadonlyArray<MediaRecentEntry>> {
+    const result = await call((c) => c["media.recent"]({ ...(query ? { query } : {}), limit: 30 }));
+    return result.ok ? result.value.entries : [];
+  },
+  /** D205: one of them into the open project (copied when it lives in another project, D12); one ⌘Z. */
+  async mediaRecentImport(id: string): Promise<{ readonly ok: true; readonly copied: boolean; readonly name: string } | { readonly ok: false; readonly message: string }> {
+    const result = await call((c) => c["media.recentImport"]({ id }));
+    return result.ok ? { ok: true, copied: result.value.copied, name: result.value.name } : { ok: false, message: plainError(result.error) };
   },
   dismissAgentError: () => set({ agentError: undefined }),
 
