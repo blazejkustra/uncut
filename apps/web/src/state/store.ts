@@ -8,7 +8,7 @@ import { transitionSeconds } from "../timeline/transitionLength.ts";
 import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, type SoundFolderInfo, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
-import { takeUploadName } from "@uncut/contracts";
+import { takeUploadName, type MultiLayout } from "@uncut/contracts";
 import { bridge, type AppInfo, type EnvironmentInfo, type EnvironmentTest, type MenuCommand } from "./bridge.ts";
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
@@ -1717,6 +1717,27 @@ export const actions = {
     const result = await call((c) => c["capture.save"]({ path: uploaded.path, kind: take.kind, ...(take.name ? { name: take.name } : {}), ...(take.device ? { device: take.device } : {}), ...(take.placeAt !== undefined ? { placeAt: take.placeAt } : {}) }), 10 * 60 * 1000);
     if (!result.ok) return { problem: plainError(result.error) };
     if (result.value.itemId) playback.select(result.value.itemId);
+    return { saved: result.value };
+  },
+  /**
+   * D211: a multi-source take: each part uploaded on its own, then capture.saveMulti converts them
+   * into the take's folder and imports them as one edit (placed at `placeAt`, start-aligned, grouped).
+   */
+  async saveMultiTake(take: { readonly parts: ReadonlyArray<{ readonly blob: Blob; readonly kind: TakeKind; readonly device?: string | undefined; readonly offsetMs: number; readonly recordedMs: number }>; readonly name?: string | undefined; readonly placeAt?: number; readonly layout?: MultiLayout | undefined; readonly dir: string }): Promise<{ readonly saved: { readonly name: string; readonly seconds: number; readonly items: ReadonlyArray<{ readonly itemId: string }> } } | { readonly problem: string }> {
+    const changed = { problem: "The project changed while recording, so the take wasn't added." };
+    if (state.snapshot?.dir !== take.dir) return changed;
+    const parts: Array<{ path: string; kind: TakeKind; device?: string; offsetMs: number; recordedMs: number }> = [];
+    for (const part of take.parts) {
+      const ext = part.blob.type.startsWith("audio/") ? "webm" : part.blob.type.includes("mp4") ? "mp4" : "webm";
+      const uploaded = await uploadOne(new File([part.blob], takeUploadName(part.kind, ext), { type: part.blob.type }));
+      if ("message" in uploaded) return { problem: `The take couldn't be sent to the server: ${uploaded.message}` };
+      parts.push({ path: uploaded.path, kind: part.kind, ...(part.device ? { device: part.device } : {}), offsetMs: Math.max(0, Math.round(part.offsetMs)), recordedMs: Math.round(part.recordedMs) });
+    }
+    if (state.snapshot?.dir !== take.dir) return changed;
+    const result = await call((c) => c["capture.saveMulti"]({ parts, ...(take.name ? { name: take.name } : {}), ...(take.placeAt !== undefined ? { placeAt: take.placeAt } : {}), ...(take.layout ? { layout: take.layout } : {}) }), 10 * 60 * 1000);
+    if (!result.ok) return { problem: plainError(result.error) };
+    const first = result.value.items[0];
+    if (first) playback.select(first.itemId);
     return { saved: result.value };
   },
   // ---- generators and keys (D99) ----

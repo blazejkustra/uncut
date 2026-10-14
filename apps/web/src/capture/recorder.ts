@@ -6,6 +6,14 @@
 // level meter and the camera preview run only while their part of the tab is open. A take under a
 // second is discarded. A voiceover can play the timeline from the playhead while it records (the
 // preview muted, so the microphone doesn't pick it up) and lands on a Voiceover track there.
+//
+// D210: this Mac's sound (getDisplayMedia's loopback audio through the desktop shell; tests use a
+// tone drawn here) alone, or with the microphone or the screen. D211: a take of more than one
+// source (screen, camera, microphone, this Mac's sound) records each with its own MediaRecorder,
+// all started in the same tick after the 3-2-1; each recorder's start event is measured on the
+// page's clock and the parts' offsets go to the server, which trims the earlier ones so every part
+// starts together on the timeline. Each part is its own file (capture.saveMulti).
+import type { MultiLayout } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { muteOutput } from "../audio/audio.ts";
@@ -13,7 +21,10 @@ import { getPlayback, playback } from "../preview/playback.ts";
 import { bridge, type CaptureSource, type MediaAccess, type MediaAccessKind } from "../state/bridge.ts";
 import { actions, getState, subscribeApp } from "../state/store.ts";
 
-export type TakeMode = "voiceover" | "camera" | "screen";
+export type TakeMode = "voiceover" | "camera" | "screen" | "system" | "multi";
+/** D211: a source of a multi-source take, each recorded into its own file. */
+export type PartKind = "screen" | "camera" | "voiceover" | "system";
+export type { MultiLayout };
 export type Resolution = "720p" | "1080p";
 
 export interface Input {
@@ -53,6 +64,13 @@ export interface RecorderState {
   readonly previewError: string | undefined;
   /** D144: the running take answers the agent's screen_record (its card id). */
   readonly agentId: string | undefined;
+  /** D210: whether this Mac can record its own sound (macOS 13 or later); tests: a stand-in tone. */
+  readonly systemAudio: { readonly supported: boolean; readonly macos: string; readonly standin?: boolean } | undefined;
+  /** D211: the running multi-source take's sources, and its screen's live picture (the composite preview). */
+  readonly parts: ReadonlyArray<PartKind> | undefined;
+  readonly screenLive: MediaStream | undefined;
+  /** D211: the last multi-source take's start offsets (ms after the first recorder started), by source. */
+  readonly offsets: Readonly<Partial<Record<PartKind, number>>> | undefined;
 }
 
 /** How long the meter's peak mark stays before it falls back (D209). */
@@ -85,6 +103,10 @@ let state: RecorderState = {
   preview: undefined,
   previewError: undefined,
   agentId: undefined,
+  systemAudio: undefined,
+  parts: undefined,
+  screenLive: undefined,
+  offsets: undefined,
 };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<RecorderState>) => {
@@ -121,6 +143,15 @@ export async function askAccess(kind: "microphone" | "camera") {
 }
 
 export const openPrivacySettings = (kind: MediaAccessKind) => void bridge.openPrivacySettings(kind).catch(() => {});
+
+/** D210: asks the desktop shell whether this Mac can record its own sound. */
+export async function refreshSystemAudio() {
+  try {
+    set({ systemAudio: (await bridge.systemAudio?.()) ?? { supported: false, macos: "" } });
+  } catch {
+    set({ systemAudio: { supported: false, macos: "" } });
+  }
+}
 
 /** The microphones and cameras (their names show once the page may use them). */
 export async function loadInputs() {
@@ -283,6 +314,68 @@ function standinStream(name: string): { stream: MediaStream; stop: () => void } 
   return { stream, stop: () => clearInterval(timer) };
 }
 
+/** D210: tests' stand-in for this Mac's sound (never the real loopback): a steady tone. */
+function standinAudio(): { stream: MediaStream; stop: () => void } {
+  const ctx = new AudioContext();
+  const osc = ctx.createOscillator();
+  osc.frequency.value = 523;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.2;
+  const dest = ctx.createMediaStreamDestination();
+  osc.connect(gain).connect(dest);
+  osc.start();
+  return {
+    stream: dest.stream,
+    stop: () => {
+      osc.stop();
+      void ctx.close().catch(() => {});
+    },
+  };
+}
+
+/** getDisplayMedia's sound as recorded: what the Mac plays, untouched (no call processing). */
+const DISPLAY_AUDIO: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+export const NO_SYSTEM_SOUND = "macOS gave no sound. Check that Uncut is on in System Settings, Privacy & Security, Screen & System Audio Recording, then try again.";
+
+/**
+ * D210: this Mac's sound as a stream: from `display` (a screen take's own getDisplayMedia) or, for
+ * the sound without the screen, from a getDisplayMedia of any screen whose picture isn't kept
+ * (getDisplayMedia always has one; it keeps running until the take ends). Throws a sentence.
+ */
+async function systemStream(r: Running, display?: MediaStream): Promise<MediaStream> {
+  if (!state.systemAudio) await refreshSystemAudio();
+  const support = state.systemAudio;
+  if (!support?.supported) throw new Error(`Recording this Mac's sound needs macOS 13 or later${support?.macos ? ` (this Mac has ${support.macos})` : ""}.`);
+  if (support.standin) {
+    const tone = standinAudio();
+    r.streams.push(tone.stream);
+    r.cleanups.push(tone.stop);
+    return tone.stream;
+  }
+  let source = display;
+  if (!source) {
+    await bridge.chooseDisplaySource("screen:any", { systemAudio: true });
+    source = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: DISPLAY_AUDIO });
+    r.streams.push(source);
+  }
+  const audio = source.getAudioTracks();
+  if (!audio.length) throw new Error(NO_SYSTEM_SOUND);
+  return new MediaStream(audio);
+}
+
+/** The camera for a take: the preview pauses and shows the take's own picture meanwhile. */
+async function takeCamera(options: TakeOptions, r: Running): Promise<MediaStream> {
+  pausePreview();
+  r.cleanups.push(() => {
+    if (state.preview && r.streams.includes(state.preview)) set({ preview: undefined });
+    if (previewWanted) void openPreview(previewWanted.id, previewWanted.resolution);
+  });
+  const cam = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(options.camera, options.resolution ?? "1080p") });
+  r.streams.push(cam);
+  if (previewWanted) set({ preview: cam, previewError: undefined });
+  return cam;
+}
+
 // ---- a take ----
 
 export interface TakeOptions {
@@ -302,7 +395,24 @@ export interface TakeOptions {
   readonly seconds?: number;
   /** D144: the agent's screen_record this take answers (card id): uploaded and handed to the agent's turn, not saved as the user's edit. */
   readonly agent?: { readonly id: string };
+  /** D211: the sources of a multi-source take (each its own file; with more than one, or mode "multi"). */
+  readonly parts?: ReadonlyArray<PartKind>;
+  /** D211: where the camera goes over the screen. */
+  readonly layout?: MultiLayout;
 }
+
+/** D211: one source's recorder in a multi-source take. */
+interface PartRec {
+  readonly kind: PartKind;
+  readonly recorder: MediaRecorder;
+  readonly mime: string;
+  readonly chunks: Array<Blob>;
+  startMs: number | undefined;
+  stopMs: number | undefined;
+}
+
+/** Whether a take records its sources into separate files (D211). */
+export const isMulti = (options: Pick<TakeOptions, "mode" | "parts">) => options.mode === "multi" || (options.parts?.length ?? 0) > 1;
 
 interface Running {
   readonly options: TakeOptions;
@@ -327,7 +437,13 @@ interface Running {
   answered: boolean;
   /** The server was seen waiting for this take (AgentState.screenTake). */
   awaited: boolean;
+  /** D211: a multi-source take's recorders. */
+  parts: Array<PartRec> | undefined;
+  finished: boolean;
 }
+
+/** The take's recorders (one, or one per source). */
+const recordersOf = (r: Running): Array<MediaRecorder> => (r.parts ? r.parts.map((p) => p.recorder) : r.recorder ? [r.recorder] : []);
 let running: Running | undefined;
 
 /** Ends take `r` in the UI; nothing when another take has started since (its state isn't touched). */
@@ -340,7 +456,7 @@ function endTake(r: Running, patch: Partial<RecorderState>) {
   }
   if (running !== r) return;
   running = undefined;
-  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, agentId: undefined, paused: false, pausedMs: 0, pausedAt: undefined, ...patch });
+  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, agentId: undefined, paused: false, pausedMs: 0, pausedAt: undefined, parts: undefined, ...patch });
 }
 
 const pickMime = (video: boolean) =>
@@ -362,6 +478,7 @@ function release(r: Running) {
     r.playing = false;
   }
   muteOutput(false);
+  if (state.screenLive) set({ screenLive: undefined });
 }
 
 /** Opens what the take records; a sentence when it can't. */
@@ -372,18 +489,12 @@ async function openStreams(options: TakeOptions, r: Running): Promise<MediaStrea
       r.streams.push(mic);
       return mic;
     }
+    // D210: this Mac's sound alone.
+    if (options.mode === "system") return await systemStream(r);
     const tracks: Array<MediaStreamTrack> = [];
     if (options.mode === "camera") {
       // One stream from the camera while it records: the preview shows the take's own picture.
-      pausePreview();
-      r.cleanups.push(() => {
-        if (state.preview && r.streams.includes(state.preview)) set({ preview: undefined });
-        if (previewWanted) void openPreview(previewWanted.id, previewWanted.resolution);
-      });
-      const cam = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(options.camera, options.resolution ?? "1080p") });
-      r.streams.push(cam);
-      if (previewWanted) set({ preview: cam, previewError: undefined });
-      tracks.push(...cam.getVideoTracks());
+      tracks.push(...(await takeCamera(options, r)).getVideoTracks());
     } else {
       const source = options.source;
       if (!source) return "Pick a screen or window first.";
@@ -408,8 +519,110 @@ async function openStreams(options: TakeOptions, r: Running): Promise<MediaStrea
     }
     return new MediaStream(tracks);
   } catch (error) {
-    const what = options.mode === "voiceover" ? "The microphone" : options.mode === "camera" ? "The camera" : "The screen";
+    const what = options.mode === "voiceover" ? "The microphone" : options.mode === "camera" ? "The camera" : options.mode === "system" ? "This Mac's sound" : "The screen";
     return `${what} couldn't be opened: ${errorText(error)}`;
+  }
+}
+
+/** D211: opens every source of a multi-source take, each as its own stream; a sentence when one can't. */
+async function openParts(options: TakeOptions, r: Running): Promise<Map<PartKind, MediaStream> | string> {
+  const parts = options.parts ?? [];
+  const out = new Map<PartKind, MediaStream>();
+  let what = "The screen";
+  try {
+    let display: MediaStream | undefined;
+    if (parts.includes("screen")) {
+      const source = options.source;
+      if (!source) return "Pick a screen or window first.";
+      if (source.id.startsWith("standin:")) {
+        const standin = standinStream(source.name);
+        r.streams.push(standin.stream);
+        r.cleanups.push(standin.stop);
+        out.set("screen", new MediaStream(standin.stream.getVideoTracks()));
+      } else {
+        const sound = parts.includes("system") && state.systemAudio?.supported === true;
+        await bridge.chooseDisplaySource(source.id, { systemAudio: sound });
+        const screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: sound ? DISPLAY_AUDIO : false });
+        r.streams.push(screen);
+        display = screen;
+        out.set("screen", new MediaStream(screen.getVideoTracks()));
+        screen.getVideoTracks()[0]?.addEventListener("ended", () => void stopTake());
+      }
+      set({ screenLive: out.get("screen") });
+    }
+    if (parts.includes("camera")) {
+      what = "The camera";
+      out.set("camera", await takeCamera(options, r));
+    }
+    if (parts.includes("voiceover")) {
+      what = "The microphone";
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(options.mic) });
+      r.streams.push(mic);
+      out.set("voiceover", mic);
+    }
+    if (parts.includes("system")) {
+      what = "This Mac's sound";
+      out.set("system", await systemStream(r, display));
+    }
+  } catch (error) {
+    return `${what} couldn't be opened: ${errorText(error)}`;
+  }
+  if (!out.size) return "Turn on at least one source.";
+  return out;
+}
+
+/** The recorder (the first one of a multi-source take) started: the timer, a timed stop, the timeline playing. */
+function recordingStarted(r: Running, startMs: number) {
+  const { options } = r;
+  r.startMs = startMs;
+  set({ phase: "recording", count: undefined, startedAt: Date.now() });
+  if (options.seconds && options.seconds > 0) r.autoStop = setTimeout(() => void stopTake(), options.seconds * 1000);
+  // Play the timeline from where the take goes, for timing (muted unless asked otherwise).
+  if ((options.mode === "voiceover" || options.mode === "system") && options.playTimeline) {
+    muteOutput(options.muteTimeline !== false);
+    playback.seek(r.frame);
+    playback.play();
+    r.playing = true;
+  }
+}
+
+/** D211: one MediaRecorder per source, all started in the same tick; the take ends when every one has stopped. */
+function startParts(r: Running, streams: Map<PartKind, MediaStream>) {
+  const { options } = r;
+  const recs: Array<PartRec> = [];
+  try {
+    for (const [kind, stream] of streams) {
+      const video = kind === "screen" || kind === "camera";
+      const mime = pickMime(video);
+      const recorder = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), ...(video ? { videoBitsPerSecond: kind === "camera" && options.resolution === "720p" ? 6_000_000 : 10_000_000 } : {}), audioBitsPerSecond: 192_000 });
+      recs.push({ kind, recorder, mime, chunks: [], startMs: undefined, stopMs: undefined });
+    }
+  } catch (error) {
+    release(r);
+    return endTake(r, { message: { kind: "error", text: `Recording couldn't start: ${errorText(error)}` } });
+  }
+  r.parts = recs;
+  for (const p of recs) {
+    p.recorder.ondataavailable = (e) => {
+      if (e.data.size) p.chunks.push(e.data);
+    };
+    p.recorder.onstart = (e) => {
+      // The event's own time (the page's clock): when this recorder's file begins.
+      p.startMs = e.timeStamp > 0 ? e.timeStamp : performance.now();
+      if (state.phase === "countdown" && running === r) recordingStarted(r, p.startMs);
+    };
+    p.recorder.onstop = () => {
+      p.stopMs = performance.now();
+      if (recs.every((x) => x.stopMs !== undefined)) void finishParts(r);
+    };
+  }
+  try {
+    for (const p of recs) p.recorder.start(250);
+  } catch (error) {
+    for (const p of recs) if (p.recorder.state !== "inactive") p.recorder.stop();
+    r.parts = undefined;
+    release(r);
+    endTake(r, { message: { kind: "error", text: `Recording couldn't start: ${errorText(error)}` } });
   }
 }
 
@@ -424,10 +637,11 @@ export async function startTake(options: TakeOptions) {
     refuse("No project is open.");
     return set({ message: { kind: "error", text: "Open a project first: takes go into its media folder." } });
   }
-  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, pauseMs: undefined, pausedTotal: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false };
+  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, pauseMs: undefined, pausedTotal: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false, parts: undefined, finished: false };
   running = r;
-  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id, paused: false, pausedMs: 0, pausedAt: undefined });
-  const stream = await openStreams(options, r);
+  const multi = isMulti(options);
+  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id, paused: false, pausedMs: 0, pausedAt: undefined, parts: multi ? options.parts : undefined });
+  const stream = multi ? await openParts(options, r) : await openStreams(options, r);
   if (typeof stream === "string" || r.cancelled) {
     release(r);
     return endTake(r, typeof stream === "string" ? { message: { kind: "error", text: stream } } : {});
@@ -437,7 +651,8 @@ export async function startTake(options: TakeOptions) {
     await sleep(1000, r);
     if (r.cancelled) return;
   }
-  const video = options.mode !== "voiceover";
+  if (stream instanceof Map) return startParts(r, stream);
+  const video = options.mode !== "voiceover" && options.mode !== "system";
   const mimeType = pickMime(video);
   let recorder: MediaRecorder;
   try {
@@ -450,18 +665,7 @@ export async function startTake(options: TakeOptions) {
   recorder.ondataavailable = (e) => {
     if (e.data.size) r.chunks.push(e.data);
   };
-  recorder.onstart = () => {
-    r.startMs = performance.now();
-    set({ phase: "recording", count: undefined, startedAt: Date.now() });
-    if (options.seconds && options.seconds > 0) r.autoStop = setTimeout(() => void stopTake(), options.seconds * 1000);
-    // Play the timeline from where the take goes, for timing (muted unless asked otherwise).
-    if (options.mode === "voiceover" && options.playTimeline) {
-      muteOutput(options.muteTimeline !== false);
-      playback.seek(r.frame);
-      playback.play();
-      r.playing = true;
-    }
-  };
+  recorder.onstart = () => recordingStarted(r, performance.now());
   recorder.onstop = () => {
     // A take stopped while paused: the pause up to now isn't in the file either.
     if (r.pauseMs !== undefined) (r.pausedTotal += performance.now() - r.pauseMs, (r.pauseMs = undefined));
@@ -480,15 +684,17 @@ export async function startTake(options: TakeOptions) {
 export async function stopTake() {
   const r = running;
   if (!r) return;
-  if (!r.recorder || r.recorder.state === "inactive") return cancelTake();
-  r.recorder.stop();
+  const live = recordersOf(r).filter((x) => x.state !== "inactive");
+  if (!live.length) return cancelTake();
+  for (const x of live) x.stop();
 }
 
 /** D209: Pause the running take (the timer and the file stop; the timeline it plays pauses too). */
 export function pauseTake() {
   const r = running;
-  if (!r?.recorder || r.recorder.state !== "recording") return;
-  r.recorder.pause();
+  const recs = r ? recordersOf(r) : [];
+  if (!r || !recs.length || recs.some((x) => x.state !== "recording")) return;
+  for (const x of recs) x.pause();
   r.pauseMs = performance.now();
   clearTimeout(r.autoStop);
   if (r.playing) playback.pause();
@@ -498,10 +704,11 @@ export function pauseTake() {
 /** D209: Resume a paused take. */
 export function resumeTake() {
   const r = running;
-  if (!r?.recorder || r.recorder.state !== "paused" || r.pauseMs === undefined) return;
+  const recs = r ? recordersOf(r) : [];
+  if (!r || !recs.length || recs.some((x) => x.state !== "paused") || r.pauseMs === undefined) return;
   r.pausedTotal += performance.now() - r.pauseMs;
   r.pauseMs = undefined;
-  r.recorder.resume();
+  for (const x of recs) x.resume();
   if (r.playing) playback.play();
   if (r.options.seconds && r.options.seconds > 0) r.autoStop = setTimeout(() => void stopTake(), Math.max(0, r.options.seconds * 1000 - (performance.now() - r.startMs - r.pausedTotal)));
   set({ paused: false, pausedMs: state.pausedMs + (Date.now() - (state.pausedAt ?? Date.now())), pausedAt: undefined });
@@ -518,7 +725,8 @@ export function cancelTake() {
   r.cancelled = true;
   clearTimeout(r.countdown);
   r.wake?.();
-  if (r.recorder && r.recorder.state !== "inactive") r.recorder.stop();
+  const live = recordersOf(r).filter((x) => x.state !== "inactive");
+  if (live.length) for (const x of live) x.stop();
   else {
     // The devices may still be opening: startTake releases what they give once it sees `cancelled`.
     release(r);
@@ -533,20 +741,22 @@ async function finish(r: Running, ms: number, mimeType: string) {
   if (recordedMs < MIN_TAKE_MS || !r.chunks.length) return endTake(r, { recordedMs, message: { kind: "discarded", text: "That take was under a second, so it was discarded." } });
   set({ phase: "saving", startedAt: undefined, recordedMs });
   const { options } = r;
-  const blob = new Blob(r.chunks, { type: mimeType.split(";")[0] || (options.mode === "voiceover" ? "audio/webm" : "video/webm") });
+  const audioOnly = options.mode === "voiceover" || options.mode === "system";
+  const blob = new Blob(r.chunks, { type: mimeType.split(";")[0] || (audioOnly ? "audio/webm" : "video/webm") });
   if (options.agent) {
     // The agent's take: up to the server, then its turn imports it (Undo turn removes it).
     if (getState().snapshot?.dir !== r.dir) return endTake(r, { message: { kind: "error", text: "The project changed while recording, so the take wasn't added." } });
-    const uploaded = await actions.uploadTake(blob, options.mode);
+    const uploaded = await actions.uploadTake(blob, "screen");
     if ("message" in uploaded) return endTake(r, { message: { kind: "error", text: `The take couldn't be sent to the server: ${uploaded.message}` } });
     r.answered = true;
     void actions.agentScreenTake(options.agent.id, { path: uploaded.path, ...(options.source?.name ? { source: options.source.name } : {}) });
     return endTake(r, { message: { kind: "saved", text: `Recorded ${options.source?.name ?? "the screen"} for the agent.` } });
   }
-  const device = options.mode === "screen" ? options.source?.name : options.mode === "camera" ? state.cameras.find((c) => c.id === options.camera)?.label : state.mics.find((m) => m.id === options.mic)?.label;
-  const place = options.mode === "voiceover" || options.place === true;
+  const kind = options.mode === "multi" ? "screen" : options.mode;
+  const device = kind === "screen" ? options.source?.name : kind === "camera" ? state.cameras.find((c) => c.id === options.camera)?.label : kind === "system" ? undefined : state.mics.find((m) => m.id === options.mic)?.label;
+  const place = audioOnly || options.place === true;
   const result = await actions.saveTake(blob, {
-    kind: options.mode,
+    kind,
     dir: r.dir,
     ...(options.mode === "screen" && options.source ? { name: options.source.name } : {}),
     ...(device ? { device } : {}),
@@ -557,6 +767,36 @@ async function finish(r: Running, ms: number, mimeType: string) {
   const where = saved.itemId ? ` and on the timeline at ${clock(r.frame / Math.max(1, getPlayback().fps))}` : "";
   if (saved.itemId) playback.seek(r.frame);
   endTake(r, { message: { kind: "saved", text: `${saved.name} (${saved.seconds.toFixed(1)} s) is in Media${where}.` } });
+}
+
+/** D211: every recorder of a multi-source take stopped: the parts go up and in as one edit. */
+async function finishParts(r: Running) {
+  if (r.finished) return;
+  r.finished = true;
+  if (r.pauseMs !== undefined) (r.pausedTotal += performance.now() - r.pauseMs, (r.pauseMs = undefined));
+  release(r);
+  const parts = r.parts ?? [];
+  const first = Math.min(...parts.map((p) => p.startMs ?? Infinity));
+  const lengthOf = (p: PartRec) => (p.stopMs ?? 0) - (p.startMs ?? p.stopMs ?? 0) - r.pausedTotal;
+  const recordedMs = Math.round(Math.min(...parts.map(lengthOf)));
+  if (r.cancelled) return endTake(r, { message: { kind: "discarded", text: "Cancelled. Nothing was kept." } });
+  if (!parts.length || recordedMs < MIN_TAKE_MS || parts.some((p) => !p.chunks.length)) return endTake(r, { recordedMs, message: { kind: "discarded", text: "That take was under a second, so it was discarded." } });
+  const offsets: Partial<Record<PartKind, number>> = {};
+  for (const p of parts) offsets[p.kind] = Math.round(((p.startMs ?? first) - first) * 10) / 10;
+  set({ phase: "saving", startedAt: undefined, recordedMs, offsets });
+  const { options } = r;
+  const deviceOf = (kind: PartKind) =>
+    kind === "screen" ? options.source?.name : kind === "camera" ? state.cameras.find((c) => c.id === options.camera)?.label : kind === "voiceover" ? state.mics.find((m) => m.id === options.mic)?.label : undefined;
+  const result = await actions.saveMultiTake({
+    parts: parts.map((p) => ({ blob: new Blob(p.chunks, { type: (p.recorder.mimeType || p.mime).split(";")[0] || (p.kind === "screen" || p.kind === "camera" ? "video/webm" : "audio/webm") }), kind: p.kind, device: deviceOf(p.kind), offsetMs: offsets[p.kind] ?? 0, recordedMs: lengthOf(p) })),
+    name: parts.some((p) => p.kind === "screen") ? options.source?.name : undefined,
+    placeAt: r.frame,
+    layout: options.layout,
+    dir: r.dir,
+  });
+  if ("problem" in result) return endTake(r, { message: { kind: "error", text: result.problem } });
+  playback.seek(r.frame);
+  endTake(r, { message: { kind: "saved", text: `${result.saved.name} (${result.saved.seconds.toFixed(1)} s, ${parts.length} files) is in Media and on the timeline at ${clock(r.frame / Math.max(1, getPlayback().fps))}.` } });
 }
 
 /**
@@ -596,7 +836,7 @@ export function closeAll() {
 let miniShown = "";
 function syncMini() {
   const r = running;
-  const show = r && state.mode === "screen" && state.phase !== "idle" && !r.options.agent;
+  const show = r && (state.mode === "screen" || r.options.parts?.includes("screen")) && state.phase !== "idle" && !r.options.agent;
   const mini = show
     ? {
         name: r.options.source?.name ?? "Screen",

@@ -104,7 +104,7 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await page.click("[data-testid=rail-capture]");
     // Screen is the first part (D144), grouped into screens and windows, with "Record screen".
     await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-screen]");
-    assert.deepEqual(await page.$$eval(".capture-modes button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera"]);
+    assert.deepEqual(await page.$$eval(".capture-modes button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera", "Mac sound", "Multi"]);
     await waitFor(page, '[data-testid=capture-sources][data-kind="window"] [data-testid=capture-source][data-id="standin:window:1"]');
     assert.equal(await text(page, "[data-testid=capture-screen] [data-testid=capture-take-record]"), "Record screen");
     await page.click("[data-testid=capture-mode-voiceover]");

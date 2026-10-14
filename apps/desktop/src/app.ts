@@ -11,6 +11,7 @@ import {
   ASK_MEDIA_ACCESS_CHANNEL,
   CAPTURE_SOURCES_CHANNEL,
   CHOOSE_DISPLAY_SOURCE_CHANNEL,
+  SYSTEM_AUDIO_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
@@ -50,7 +51,7 @@ import {
   type MiniRecorderState,
 } from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
-import { BACKGROUND_SWITCHES, isTestBackground, privacySettingsUrl, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
+import { BACKGROUND_SWITCHES, isTestBackground, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
@@ -101,6 +102,8 @@ if (testBackground) {
 // screen source. Never macOS's prompts, never the real camera, microphone or screen.
 const mediaTest = testMedia(process.env);
 if (mediaTest) for (const name of TEST_MEDIA_SWITCHES) app.commandLine.appendSwitch(name);
+// D210: this Mac's sound in a screen take (getDisplayMedia's loopback audio; Core Audio taps on 14.2+).
+else if (process.platform === "darwin") app.commandLine.appendSwitch("enable-features", SYSTEM_AUDIO_FEATURES);
 
 // __dirname is apps/desktop/dist in dev and app.asar/dist when packaged.
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -521,6 +524,9 @@ function createWindow() {
     return requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL());
   });
   // getDisplayMedia records the screen or window the Capture tab picked (chooseDisplaySource just before).
+  // D210: with systemAudio, this Mac's sound too ("loopback": the speakers keep playing); for a
+  // take of the sound alone the Capture tab asks for "any screen" (getDisplayMedia always has a
+  // picture) and records only the audio track.
   session.setDisplayMediaRequestHandler((request, callback) => {
     const wanted = pendingDisplaySource;
     pendingDisplaySource = undefined;
@@ -529,8 +535,8 @@ function createWindow() {
     desktopCapturer
       .getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
-        const source = sources.find((s) => s.id === wanted);
-        callback(source ? { video: source } : {});
+        const source = wanted.id === ANY_SCREEN ? sources.find((s) => s.id.startsWith("screen:")) : sources.find((s) => s.id === wanted.id);
+        callback(source ? { video: source, ...(wanted.systemAudio && request.audioRequested ? { audio: "loopback" as const } : {}) } : {});
       })
       .catch(() => callback({}));
   });
@@ -571,8 +577,11 @@ const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent 
 
 // ---- recording on this Mac (D114) ----
 
-// The screen or window the next getDisplayMedia records (set by the Capture tab just before).
-let pendingDisplaySource: string | undefined;
+// The screen or window the next getDisplayMedia records (set by the Capture tab just before), and
+// whether with this Mac's sound (D210).
+let pendingDisplaySource: { readonly id: string; readonly systemAudio: boolean } | undefined;
+/** D210: any screen (a take of this Mac's sound alone: the picture isn't kept). */
+const ANY_SCREEN = "screen:any";
 const MEDIA_KINDS: ReadonlyArray<MediaAccessKind> = ["microphone", "camera", "screen"];
 const isMediaKind = (x: unknown): x is MediaAccessKind => MEDIA_KINDS.includes(x as MediaAccessKind);
 
@@ -745,10 +754,12 @@ app.whenReady().then(() => {
     else void shell.openExternal(url);
   });
   handle(CAPTURE_SOURCES_CHANNEL, () => captureSources());
-  handle(CHOOSE_DISPLAY_SOURCE_CHANNEL, (id: unknown) => {
+  handle(CHOOSE_DISPLAY_SOURCE_CHANNEL, (id: unknown, options: unknown) => {
     if (typeof id !== "string" || id.length > 200) throw new Error("not a source id");
-    pendingDisplaySource = id;
+    const systemAudio = Boolean(options && typeof options === "object" && (options as { systemAudio?: unknown }).systemAudio === true);
+    pendingDisplaySource = { id, systemAudio };
   });
+  handle(SYSTEM_AUDIO_CHANNEL, () => systemAudioSupport(process.platform, process.getSystemVersion(), process.env));
   // A background test window plays its preview to no output device (sinkId "none"): no sound, and
   // no device latency (Bluetooth headphones add ~0.25 s) between the clock and what is captured.
   ipcMain.on(SILENT_AUDIO_CHANNEL, (event) => {
