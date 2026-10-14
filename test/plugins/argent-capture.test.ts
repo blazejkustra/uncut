@@ -23,6 +23,14 @@ const FAKE_ARGENT = resolve("test/helpers/fake-argent/argent");
 const FAKE_CLAUDE = resolve("test/helpers/fake-claude.ts");
 const skip = !existsSync(BUNDLE) ? "the server bundle isn't built (pnpm --filter @uncut/server build)" : false;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Waits for a condition (not a fixed time: under a parallel test run each fake argent call is a slow node start). */
+const waitFor = async (check: () => boolean, ms = 30000) => {
+  const end = Date.now() + ms;
+  while (!check() && Date.now() < end) await sleep(50);
+  return check();
+};
+/** What's in the capture folder for the user: scratch folders (.argent-take-*) don't count. */
+const visible = (dir: string) => readdirSync(dir).filter((f) => !f.startsWith("."));
 
 let root = "";
 before(() => {
@@ -128,7 +136,11 @@ test("the plugin: list, a timed take, a flow take, refusals, cancel and exit sto
     const take = timed.structuredContent;
     assert.equal(take.path, join(s.captureDir, "home screen.mp4"));
     assert.ok(statSync(take.path).size === take.bytes && take.bytes > 1000);
-    assert.ok(Math.abs(seconds(take.path) - 1.2) < 0.6, `about 1.2 s: ${seconds(take.path)}`);
+    // The plugin waited the 1.2 s between starting and stopping (the take is a bit longer: the
+    // fake measures from its own start to its stop, process starts included).
+    const [startCall, stopCall] = [calls(s.log, "screen-recording-start")[0]!, calls(s.log, "screen-recording-stop")[0]!] as unknown as Array<{ at: number }>;
+    assert.ok(stopCall.at - startCall.at >= 1150, `waited ${stopCall.at - startCall.at} ms`);
+    assert.ok(seconds(take.path) >= 1.1, `at least 1.2 s: ${seconds(take.path)}`);
     assert.deepEqual(take.uncut, { media: { path: take.path, name: "home screen", source: { module: "argent.capture", device: "SIM-IPHONE-16" } } });
     const start = JSON.parse(calls(s.log, "screen-recording-start")[0]!.argv[3]!);
     assert.deepEqual(start, { udid: "SIM-IPHONE-16", timeLimitSeconds: 7, trimStatic: false, showTouches: false });
@@ -155,24 +167,29 @@ test("the plugin: list, a timed take, a flow take, refusals, cancel and exit sto
 
     // A flow that fails: the recording is stopped and the take dropped.
     writeFileSync(join(s.flowsDir, "broken.yaml"), "# fake-seconds: 0.3\n# fake-fail\n");
-    const before = readdirSync(s.captureDir).length;
+    const before = visible(s.captureDir).length;
     const broken = await plugin.call("argent_record", { device: "SIM-IPHONE-16", flow: "flows/broken.yaml" }, metaOf(s));
     assert.equal(broken.isError, true);
     assert.match(textOf(broken), /the flow failed/);
-    assert.equal(readdirSync(s.captureDir).length, before);
+    assert.equal(visible(s.captureDir).length, before);
     assert.equal(calls(s.log, "screen-recording-start").length, calls(s.log, "screen-recording-stop").length);
 
     // Cancelled mid-take (the agent turn stopped): the recording stops, nothing is kept, no answer.
     const id = plugin.nextId();
     void plugin.request("tools/call", { name: "argent_record", arguments: { device: "SIM-IPHONE-16", seconds: 60 }, _meta: metaOf(s) }, 120000).catch(() => {});
     const stopsBefore = calls(s.log, "screen-recording-stop").length;
-    for (let i = 0; i < 100 && calls(s.log, "screen-recording-start").length < 5; i++) await sleep(50);
+    const completedBefore = completedStops(s.log).length;
+    // Cancel once the recording is really running (the fake's state file for the device exists).
+    const recordingState = join(s.state, `${encodeURIComponent("SIM-IPHONE-16")}.json`);
+    assert.ok(await waitFor(() => calls(s.log, "screen-recording-start").length >= 5 && existsSync(recordingState)), "the 60 s take started");
     await sleep(300);
     plugin.child.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: id, reason: "turn ended" } })}\n`);
-    for (let i = 0; i < 100 && calls(s.log, "screen-recording-stop").length === stopsBefore; i++) await sleep(50);
+    await waitFor(() => calls(s.log, "screen-recording-stop").length > stopsBefore);
     assert.equal(calls(s.log, "screen-recording-stop").length, stopsBefore + 1, "cancel stops the recording");
-    await sleep(500);
-    assert.equal(readdirSync(s.captureDir).length, before, "a cancelled take isn't kept");
+    // The stop finished (its ffmpeg can take a while under load) and the plugin let go of the device.
+    assert.ok(await waitFor(() => completedStops(s.log).length > completedBefore && !existsSync(recordingState)), "the stop finished");
+    await waitFor(() => readdirSync(s.captureDir).length === visible(s.captureDir).length, 10000);
+    assert.equal(visible(s.captureDir).length, before, "a cancelled take isn't kept");
     // The device is free again.
     const again = await plugin.call("argent_record", { device: "SIM-IPHONE-16", seconds: 0.5 }, metaOf(s));
     assert.ok(!again.isError, textOf(again));
@@ -192,7 +209,7 @@ test("the plugin: list, a timed take, a flow take, refusals, cancel and exit sto
     const stops = calls(s.log, "screen-recording-stop").length;
     plugin.child.stdin!.end();
     await plugin.exited;
-    for (let i = 0; i < 100 && calls(s.log, "screen-recording-stop").length === stops; i++) await sleep(50);
+    await waitFor(() => calls(s.log, "screen-recording-stop").length > stops);
     assert.equal(calls(s.log, "screen-recording-stop").length, stops + 1, "exiting stops the recording");
     assertNothingForbidden(s.log);
   } finally {

@@ -2,6 +2,7 @@
 // it's dropped on the canvas or the timeline), the generic params Inspector and the device frame's
 // footage. Like every other editor (D52, D53), each gesture is one project.edit: validated, one
 // ⌘Z, labelled in History and listed in the agent's next note.
+import { STICKER_ART } from "@uncut/core/stickers";
 import { alignScreen, componentDefaults, componentInfo, defaultComponentBox, componentRest, deviceSpec, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenTransform, type Device } from "@uncut/core/components";
 import type { FieldSet, Item, Op } from "@uncut/core/types";
 
@@ -35,7 +36,7 @@ export const secondsFor = (id: string) => SECONDS[id] ?? 4;
  * so it draws over the footage and backgrounds and under the text. A device frame comes alone
  * (its Inspector puts footage in it).
  */
-export function planAddComponent(project: ProjectModel, componentId: string, frame: number, { at }: { at?: { x: number; y: number } } = {}): Planned {
+export function planAddComponent(project: ProjectModel, componentId: string, frame: number, { at, props }: { at?: { x: number; y: number }; props?: Record<string, unknown> } = {}): Planned {
   const c = componentInfo(componentId);
   if (!c) return { problem: "Uncut can't draw that component yet." };
   const fps = project.canvas.fps;
@@ -66,8 +67,10 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
     const size = transform ? { width: transform.w!, height: transform.h! } : naturalSize({ component: c.id, props: componentDefaults(c.id) }, project.canvas);
     transform = { x: Math.round(at.x - size.width / 2), y: Math.round(at.y - size.height / 2), w: Math.round(size.width), h: Math.round(size.height) };
   }
-  const item: Item = { id: itemId, type: "component", component: c.id, duration, props: componentDefaults(c.id), ...(transform ? { transform } : {}) };
-  const summary = `Add ${c.name.toLowerCase()}`;
+  // A sticker from the set (D165) comes with its own props over the defaults, and its name.
+  const name = typeof props?.art === "string" ? STICKER_ART[props.art]?.name : undefined;
+  const item: Item = { id: itemId, type: "component", component: c.id, duration, props: { ...componentDefaults(c.id), ...(props ?? {}) }, ...(name ? { name } : {}), ...(transform ? { transform } : {}) };
+  const summary = props?.emoji ? `Add sticker ${String(props.emoji)}` : name ? `Add sticker ${name.toLowerCase()}` : `Add ${c.name.toLowerCase()}`;
   const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
   if (c.block.fullFrame && start === mainEnd && !main.locked) return { ops: [{ op: "insert_item", track: main.id, item }], summary, itemId, start };
   const ops: Array<Op> = [];

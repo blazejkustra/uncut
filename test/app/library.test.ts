@@ -70,7 +70,8 @@ test("import the drone clips, drop an image, see tiles with thumbnails, undo", {
   await page.waitForFunction(() => !document.querySelector("[data-testid=import-progress]"), { timeout: 60000 });
   await page.click("[data-testid=undo]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 2, { timeout: 60000 });
-  assert.deepEqual(await tiles(), [
+  // The panel sorts newest first by default (F26); compare the tiles, not their order.
+  assert.deepEqual((await tiles()).sort((a, b) => String(a.id).localeCompare(String(b.id))), [
     { id: "m-dji-0005", name: "DJI 0005", meta: "3840×2160, 59.94 fps", dur: "05:35" },
     { id: "m-first-flight", name: "first-flight.mp4", meta: "1920×1080, 30 fps", dur: "00:51" },
   ]);
@@ -95,7 +96,7 @@ test("import the drone clips, drop an image, see tiles with thumbnails, undo", {
   const data = { items: [], files: [join(root, "dropped.png")], dragOperationsMask: 1 };
   for (const type of ["dragEnter", "dragOver", "drop"] as const) await cdp.send("Input.dispatchDragEvent", { type, x: box.x, y: box.y, data });
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 3, { timeout: 30000 });
-  assert.deepEqual((await tiles())[2], { id: "m-dropped", name: "dropped.png", meta: "1280×720", dur: null });
+  assert.deepEqual((await tiles()).find((t) => t.id === "m-dropped"), { id: "m-dropped", name: "dropped.png", meta: "1280×720", dur: null });
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].filter((i) => i.complete && i.naturalWidth > 0).length === 3, { timeout: 30000 });
   await shot("dropped");
 

@@ -112,6 +112,13 @@
         },
         {
           "type": "object",
+          "description": "Remove a media entry from the project. No item may still use it (clips and sounds by media, captions by source): delete those items earlier in the same edit. The file on disk is never deleted.",
+          "required": ["op", "media"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "delete_media" }, "media": { "$ref": "#/$defs/id" } }
+        },
+        {
+          "type": "object",
           "description": "Change project-level fields: name, canvas, theme, scenes, markers or master. master is replaced whole: gainDb is the master volume (-60..12 dB, after the tracks are summed, D83), loudness {targetLufs} (the export dialog's default target, D87: -14 Normal, -16 Quieter, -23 Broadcast or another number), effects ([{module: audio.limiter, params: {ceilingDb}}] changes the master limiter, on by default at -1 dBTP; {bypass: true} turns it off, D86). checks {disabled: [rule ids]} turns taste checks off for the project (D90; replaced whole, null removes it).",
           "required": ["op", "set"],
           "additionalProperties": false,

@@ -140,11 +140,8 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
           </div>
         </div>
         <div className="wiz-foot">
-          <p>You can come back to this from Uncut → Settings… (⌘,).</p>
+          <p />
           <div className="wiz-btns">
-            <button className="btn ghost" data-testid="wizard-skip" onClick={() => void actions.finishSetup("stay")}>
-              Skip for now
-            </button>
             <button className="btn primary" data-testid="wizard-new-project" onClick={() => void actions.finishSetup("new-project")}>
               New project
               <ArrowRight />
@@ -175,6 +172,10 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
               </li>
             ))}
           </ol>
+          {/* F32 (D175): one way past the whole wizard, on every step; Settings › App reopens it. */}
+          <button className="btn ghost wiz-skip" data-testid="wizard-skip" onClick={() => void actions.finishSetup("stay")}>
+            Skip setup
+          </button>
         </div>
         <div className="wiz-panel">{body}</div>
       </div>

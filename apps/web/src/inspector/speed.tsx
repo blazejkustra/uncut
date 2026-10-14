@@ -19,7 +19,7 @@ export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Ite
   const speed = item.speed ?? 1;
   return (
     <div data-testid="speed-editor">
-      <Group label="Speed">
+      <div className="group">
         <div className="speed-row" role="group" aria-label="Speed">
           {SPEED_PRESETS.map((s) => (
             <button key={s} className={`small-btn ${Math.abs(s - speed) < 1e-6 ? "active" : ""}`} data-testid={`insp-speed-${s}`} aria-pressed={Math.abs(s - speed) < 1e-6} disabled={locked} onClick={() => void actions.setSpeed(item.id, s)}>
@@ -34,7 +34,7 @@ export function SpeedEditor({ item, locked }: { project: ProjectModel; item: Ite
           <input type="checkbox" data-testid="insp-keep-pitch" checked={item.keepPitch !== false} disabled={locked} onChange={(e) => void actions.setSpeed(item.id, speed, e.target.checked)} />
           Keep pitch
         </label>
-      </Group>
+      </div>
     </div>
   );
 }

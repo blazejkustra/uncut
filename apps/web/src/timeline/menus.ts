@@ -74,6 +74,8 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
           },
         ]
       : []),
+    // F27 (D169): music trimmed or looped to the end of the picture, with a fade out.
+    ...(item.type === "audio" && track.role !== "main" ? [{ id: "fit-to-video", label: "Fit to video", disabled: off || many || locked, run: () => void actions.fitToVideo(item.id) }] : []),
     { id: "rename", label: "Rename", disabled: off || many || locked || item.type === "captions", run: () => ui.renameItem(item.id) },
     ...(item.media && (item.type === "clip" || item.type === "audio")
       ? [

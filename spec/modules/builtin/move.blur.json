@@ -1,0 +1,14 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.blur",
+  "kind": "move",
+  "name": "Blur in",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "description": "Text: comes into focus from a blur while fading in (in), or blurs away while fading out (out)."
+}

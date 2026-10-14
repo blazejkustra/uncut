@@ -22,6 +22,7 @@ import { draftOf, findItem, lockOf, planLayer } from "../timeline/edit.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, graphicUrl, mediaUrl, textPresets } from "../state/store.ts";
+import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, planAddComponent, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
 import { planAddText } from "../state/project.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
@@ -963,6 +964,15 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const hit = editableText(e.target, e);
     const snapshot = getState().snapshot;
+    // F23 (D162): an element (lower third...) has no in-place editor: its main text field in the Inspector takes the focus.
+    const comp = hit ? undefined : findItem(project, (e.target as HTMLElement).closest<HTMLElement>(".pv-comp[data-item]")?.dataset.item);
+    if (comp && isDrawnComponent(comp.item)) {
+      playback.pause();
+      playback.select(comp.item.id);
+      actions.openPanel("inspector");
+      requestTextFocus(comp.item.id);
+      return;
+    }
     if (!hit || hit.item.type !== "text" || !snapshot || snapshot.dir !== dir) return;
     playback.pause();
     setEditing({ id: hit.item.id, css: hit.el.getAttribute("style") ?? "", text: hit.item.text ?? "", revision: snapshot.revision });

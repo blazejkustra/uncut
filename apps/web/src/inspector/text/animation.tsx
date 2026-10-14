@@ -1,11 +1,11 @@
-// The text Inspector's Animation tab (D81, laid out per D129): In and Out, each a move and its
+// The text Inspector's Animation tab (D81, laid out per D129; Loop per D163): In, Out and Loop, each a move and its
 // length, plus the move's own options (word by word's style, zoom's scale and ease). One edit per
 // change, to every selected text.
 import type { Item } from "@uncut/core/types";
-import { WORD_STYLES, ZOOM_DEFAULTS } from "@uncut/core/looks";
+import { LOOP_DEFAULTS, WIGGLE_MOVE, WORD_STYLES, ZOOM_DEFAULTS } from "@uncut/core/looks";
 
 import { type ProjectModel } from "../../state/project.ts";
-import { MOVES, planAnimation, type AnimationSlot } from "../../preview/text.ts";
+import { LOOPS, MOVES, moveLabel, planAnimation, type AnimationSlot } from "../../preview/text.ts";
 import { NumInput, Prop, Section, Segmented } from "../controls.tsx";
 import { useTextEdit } from "./edit.ts";
 
@@ -21,26 +21,41 @@ function Slot({ project, item, slot, disabled }: { project: ProjectModel; item: 
   const fps = project.canvas.fps;
   const current = item.animation?.[slot];
   const module = current?.module ?? "";
-  const frames = current?.duration ?? Math.min(item.duration, Math.round(fps / 3));
+  const frames = current?.duration ?? Math.min(item.duration, slot === "loop" ? fps : Math.round(fps / 3));
+  const list = slot === "loop" ? LOOPS : MOVES;
   const params = current?.params ?? {};
   const set = (next: string, duration: number, nextParams: { readonly [key: string]: unknown } = next === module ? params : {}) =>
     edit.commit((p, id) => planAnimation(p, id, slot, next ? { module: next, duration, params: nextParams } : null));
   const setParam = (key: string, value: unknown) => set(module, frames, { ...params, [key]: value });
   return (
-    <Section title={slot === "in" ? "In" : "Out"} testId={`insp-sec-anim-${slot}`}>
+    <Section title={slot === "in" ? "In" : slot === "out" ? "Out" : "Loop"} testId={`insp-sec-anim-${slot}`}>
       <Prop label="Type">
         <select className="pselect" data-testid={`insp-anim-${slot}`} value={module} disabled={disabled} onChange={(e) => set(e.target.value, frames)}>
-          {MOVES.map((m) => (
+          {list.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.label}
+              {m.id ? moveLabel(m.id, slot) : m.label}
             </option>
           ))}
-          {module && !MOVES.some((m) => m.id === module) && <option value={module}>{module}</option>}
+          {module && !list.some((m) => m.id === module) && <option value={module}>{module}</option>}
         </select>
       </Prop>
-      <Prop label="Duration">
+      <Prop label={slot === "loop" ? "Every" : "Duration"}>
         <NumInput testId={`insp-anim-${slot}-dur`} unit="s" value={Number((frames / fps).toFixed(2))} step={0.1} min={0.04} max={Math.max(0.04, item.duration / fps)} disabled={disabled || !module} onCommit={(v) => v !== undefined && set(module, Math.round(v * fps))} />
       </Prop>
+      {slot === "loop" && module && (
+        <Prop label={module === WIGGLE_MOVE ? "Tilt" : "Grow"}>
+          <NumInput
+            testId="insp-anim-loop-amount"
+            unit={module === WIGGLE_MOVE ? "°" : "%"}
+            value={module === WIGGLE_MOVE ? (typeof params.amount === "number" ? params.amount : LOOP_DEFAULTS[module]!) : Math.round((typeof params.amount === "number" ? params.amount : LOOP_DEFAULTS[module] ?? 0.08) * 100)}
+            min={module === WIGGLE_MOVE ? 0.5 : 1}
+            max={module === WIGGLE_MOVE ? 30 : 50}
+            step={module === WIGGLE_MOVE ? 0.5 : 1}
+            disabled={disabled}
+            onCommit={(v) => v !== undefined && setParam("amount", module === WIGGLE_MOVE ? v : v / 100)}
+          />
+        </Prop>
+      )}
       {module === "move.word-by-word" && (
         <Prop label="Words">
           <Segmented testId={`insp-anim-${slot}-word-style`} attr="style" options={WORD_STYLES.map((w) => [w, w[0]!.toUpperCase() + w.slice(1)] as const)} value={(params.style as string | undefined) ?? "pop"} disabled={disabled} onChange={(w) => setParam("style", w)} />
@@ -71,6 +86,7 @@ export function TextAnimationTab({ project, item, disabled }: { project: Project
     <div className="pstack" data-testid="text-animation">
       <Slot project={project} item={item} slot="in" disabled={disabled} />
       <Slot project={project} item={item} slot="out" disabled={disabled} />
+      <Slot project={project} item={item} slot="loop" disabled={disabled} />
     </div>
   );
 }

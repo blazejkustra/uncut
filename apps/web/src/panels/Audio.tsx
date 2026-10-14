@@ -24,9 +24,10 @@ import {
   type SfxSound,
 } from "@uncut/core/library";
 import { filterMusic, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicTempo, type MusicTempo, type MusicTrack } from "@uncut/core/music";
-import { AudioLines, Check, Copy, Play, Plus, RefreshCw, Search, Square } from "lucide-react";
+import { AudioLines, Check, Clapperboard, Copy, Play, Plus, RefreshCw, Search, Square } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
+import { getPlayback, playback } from "../preview/playback.ts";
 import { bridge } from "../state/bridge.ts";
 import { timecode } from "../state/format.ts";
 import { actions, activeJobs, libraryPreviewUrl, musicUrl, sfxUrl, useApp, type Project } from "../state/store.ts";
@@ -128,35 +129,99 @@ function CopyCredits({ project }: { project: Project }) {
   );
 }
 
-/** One sound playing at a time across the panel: its key, the element, and the waveforms worked out so far. */
+/**
+ * One sound playing at a time across the panel: its key, the element, and the waveforms worked out
+ * so far. F28 (D170): `withTimeline` plays the sound together with the timeline from the playhead;
+ * stopping either (the button, the sound's end, a pause of the timeline) stops both, and the
+ * playhead goes back to where it started, ready for the next try.
+ */
 function usePreview() {
   const [playing, setPlaying] = useState<string | undefined>();
+  const [mode, setMode] = useState<"alone" | "timeline">("alone");
   const [progress, setProgress] = useState(0);
   const [peaks, setPeaks] = useState<Readonly<Record<string, ReadonlyArray<number>>>>({});
   const audio = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => () => audio.current?.pause(), []);
+  // While a sound plays with the timeline: where the playhead started, and the stop for both.
+  const together = useRef<{ from: number; unsubscribe: () => void } | null>(null);
+  const endTogether = () => {
+    const t = together.current;
+    if (!t) return;
+    together.current = null;
+    t.unsubscribe();
+    playback.pause();
+    playback.seek(t.from);
+  };
+  useEffect(
+    () => () => {
+      audio.current?.pause();
+      endTogether();
+    },
+    [],
+  );
   const stop = () => {
     audio.current?.pause();
     audio.current = null;
+    endTogether();
     setPlaying(undefined);
     setProgress(0);
   };
-  const toggle = (key: string, url: string | undefined, wave: boolean) => {
-    if (playing === key) return stop();
-    if (!url) return;
+  const start = (key: string, url: string, wave: boolean, withTimeline: boolean) => {
     audio.current?.pause();
+    endTogether();
     // Streamed from the server (an online hit's preview is passed through, never saved).
     const el = new Audio(url);
     el.dataset.key = key;
     el.ontimeupdate = () => setProgress(el.duration > 0 ? el.currentTime / el.duration : 0);
-    el.onended = () => setPlaying((p) => (p === key ? (setProgress(0), undefined) : p));
+    el.onended = () => {
+      if (audio.current !== el) return;
+      audio.current = null;
+      endTogether();
+      setPlaying((p) => (p === key ? (setProgress(0), undefined) : p));
+    };
     audio.current = el;
     setPlaying(key);
+    setMode(withTimeline ? "timeline" : "alone");
     setProgress(0);
-    el.play().catch(() => setPlaying((p) => (p === key ? undefined : p)));
+    if (withTimeline) {
+      playback.pause();
+      const from = Math.floor(getPlayback().frame);
+      playback.play();
+      // The timeline paused (space, its end, a seek elsewhere doesn't count): the sound stops too.
+      const unsubscribe = playback.subscribe(() => {
+        if (!getPlayback().playing && together.current && audio.current === el) {
+          together.current = null;
+          unsubscribe();
+          el.pause();
+          audio.current = null;
+          setPlaying((p) => (p === key ? (setProgress(0), undefined) : p));
+        }
+      });
+      together.current = { from, unsubscribe };
+    }
+    el.play().catch(() => (audio.current === el ? stop() : undefined));
     if (wave && !peaks[key]) void waveOf(url).then((w) => w && setPeaks((p) => ({ ...p, [key]: w })));
   };
-  return { playing, progress, peaks, toggle, stop };
+  const toggle = (key: string, url: string | undefined, wave: boolean) => {
+    if (playing === key && mode === "alone") return stop();
+    if (!url) return;
+    start(key, url, wave, false);
+  };
+  const withTimeline = (key: string, url: string | undefined, wave: boolean) => {
+    if (playing === key && mode === "timeline") return stop();
+    if (!url) return;
+    start(key, url, wave, true);
+  };
+  return { playing, mode, progress, peaks, toggle, withTimeline, stop };
+}
+
+/** F28 (D170): play the sound and the timeline together from the playhead. */
+function TogetherButton({ preview, soundKey, url, wave }: { preview: Preview; soundKey: string; url: string | undefined; wave: boolean }) {
+  const on = preview.playing === soundKey && preview.mode === "timeline";
+  return (
+    <button className={`icon-btn${on ? " playing" : ""}`} data-testid="sound-with-timeline" data-playing={on} disabled={!url} title={on ? "Stop" : "Play with the timeline from the playhead"} onClick={() => preview.withTimeline(soundKey, url, wave)}>
+      {on ? <Square /> : <Clapperboard />}
+    </button>
+  );
 }
 
 /** The sound's peaks in 48 bins (0–1), decoded from its preview; undefined when it can't be read. */
@@ -450,7 +515,7 @@ type Preview = ReturnType<typeof usePreview>;
 
 function HitRow({ hit, kind, project, online, preview, adding }: { hit: LibraryHit; kind: LibraryKind; project: Project; online: boolean; preview: Preview; adding: boolean }) {
   const key = hitKey(hit);
-  const playing = preview.playing === key;
+  const playing = preview.playing === key && preview.mode === "alone";
   const inProject = !!libraryMediaOf(project, key);
   const peaks = preview.peaks[key];
   const meta = [hit.creator, ...(hit.seconds ? [lengthLabel(hit.seconds)] : []), ...(hit.provider && hit.provider !== hit.source ? [hit.provider] : []), ...(inProject ? ["in the project"] : [])];
@@ -462,8 +527,9 @@ function HitRow({ hit, kind, project, online, preview, adding }: { hit: LibraryH
       <span className="music-text">
         <span className="music-title">{hit.title}</span>
         <span className="music-meta">{meta.join(", ")}</span>
-        {peaks && <Wave peaks={peaks} progress={playing ? preview.progress : 0} />}
+        {peaks && <Wave peaks={peaks} progress={preview.playing === key ? preview.progress : 0} />}
       </span>
+      {kind === "sfx" && <TogetherButton preview={preview} soundKey={key} url={libraryPreviewUrl(hit.source, hit.id)} wave={(hit.seconds ?? 0) <= 120} />}
       <span className={`lib-license ${hit.license}`} data-testid="library-license" title={hit.license === "by" ? "Needs credit: Copy credits lists it" : "Public domain, no credit needed"}>
         {LICENSE_NAMES[hit.license]}
       </span>
@@ -514,7 +580,7 @@ function IncludedSfx({ project, online, query, preview }: { project: Project; on
 function SfxRow({ sound: s, project, online, preview }: { sound: SfxSound; project: Project; online: boolean; preview: Preview }) {
   const app = useApp();
   const key = `sfx:${s.id}`;
-  const playing = preview.playing === key;
+  const playing = preview.playing === key && preview.mode === "alone";
   const inProject = !!libraryMediaOf(project, key);
   const peaks = preview.peaks[key];
   return (
@@ -525,8 +591,9 @@ function SfxRow({ sound: s, project, online, preview }: { sound: SfxSound; proje
       <span className="music-text">
         <span className="music-title">{s.title}</span>
         <span className="music-meta">{[s.author, lengthLabel(s.seconds), ...(inProject ? ["in the project"] : [])].join(", ")}</span>
-        {peaks && <Wave peaks={peaks} progress={playing ? preview.progress : 0} />}
+        {peaks && <Wave peaks={peaks} progress={preview.playing === key ? preview.progress : 0} />}
       </span>
+      <TogetherButton preview={preview} soundKey={key} url={sfxUrl(s.file)} wave />
       <button
         className="icon-btn"
         data-testid="sfx-add"

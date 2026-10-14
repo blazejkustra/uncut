@@ -105,7 +105,9 @@ export function Param({ project, item, info, name, schema, disabled }: { project
         {short ? (
           <Segmented testId={testId} options={options.map((o) => [o, o[0]!.toUpperCase() + o.slice(1)] as const)} value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : undefined} disabled={disabled} onChange={(v) => commit(v, `Set ${label.toLowerCase()} of ${noun} to ${v}`)} />
         ) : (
-          <select className="pselect" data-testid={testId} value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : ""} disabled={disabled} onChange={(e) => commit(e.target.value, `Set ${label.toLowerCase()} of ${noun} to ${e.target.value}`)}>
+          <select className="pselect" data-testid={testId} value={typeof value === "string" ? value : typeof fallback === "string" ? fallback : ""} disabled={disabled} onChange={(e) => (e.target.value ? commit(e.target.value, `Set ${label.toLowerCase()} of ${noun} to ${e.target.value}`) : commit(undefined, `Clear ${label.toLowerCase()} of ${noun}`))}>
+            {/* An optional choice without a default (a sticker's drawn art, D165) can be left unset. */}
+            {!required && fallback === undefined && <option value="">None</option>}
             {options.map((o) => (
               <option key={o} value={o}>
                 {o[0]!.toUpperCase() + o.slice(1)}

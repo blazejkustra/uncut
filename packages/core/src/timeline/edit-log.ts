@@ -90,7 +90,7 @@ const quote = (text: string, max = 60) => {
   return `"${flat.length > max ? `${flat.slice(0, max - 1)}…` : flat}"`;
 };
 const round = (n: unknown) => (typeof n === "number" ? String(Math.round(n)) : String(n));
-const MOVE_NAMES: Readonly<Record<string, string>> = { "move.fade": "fade", "move.rise": "rise", "move.slide-left": "slide left", "move.wipe": "wipe", "move.word-by-word": "word by word", "move.zoom": "zoom" };
+const MOVE_NAMES: Readonly<Record<string, string>> = { "move.fade": "fade", "move.rise": "rise", "move.slide-left": "slide left", "move.wipe": "wipe", "move.word-by-word": "word by word", "move.zoom": "zoom", "move.typewriter": "typewriter", "move.bounce": "bounce", "move.blur": "blur", "move.scale": "scale", "move.pop": "pop", "move.pulse": "pulse", "move.wiggle": "wiggle" };
 const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
   preset: (v) => `style ${v}`,
   size: (v) => `size ${round(v)}`,
@@ -156,7 +156,7 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
     else if (key === "animation") {
       const a = (value ?? {}) as Record<string, { module?: string; duration?: number } | undefined>;
       const one = (k: "in" | "out") => (a[k]?.module ? `${MOVE_NAMES[a[k]!.module!] ?? a[k]!.module} ${k} ${secs(a[k]!.duration ?? 0, fps)}` : `no ${k} animation`);
-      parts.push(`${one("in")}, ${one("out")}`);
+      parts.push(`${one("in")}, ${one("out")}${a.loop?.module ? `, ${MOVE_NAMES[a.loop.module] ?? a.loop.module} loop every ${secs(a.loop.duration ?? 0, fps)}` : ""}`);
     } else if (key === "props" && value && typeof value === "object") {
       const p = value as Record<string, unknown>;
       const item = project.tracks.flatMap((tr) => tr.items).find((i) => i.id === id);
@@ -258,6 +258,8 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
       if ("path" in op.set) return `Swapped in a new file for ${name} (${op.media})`;
       return `Changed ${Object.keys(op.set).join(", ")} of media ${name} (${op.media})`;
     }
+    case "delete_media":
+      return `Removed media ${project.media.find((m) => m.id === op.media)?.name ?? op.media} (${op.media}) from the project`;
     case "update_project": {
       // The master volume (D83); update_project replaces master whole.
       const keys = Object.keys(op.set);

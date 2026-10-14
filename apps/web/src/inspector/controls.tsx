@@ -12,20 +12,28 @@ import { createPortal } from "react-dom";
 import { type ProjectModel } from "../state/project.ts";
 import { swatches } from "../preview/text.ts";
 import { useSettle } from "./fields.tsx";
+import { setSectionOpen, useSectionOpen } from "./sections.ts";
 
-/** A titled block of properties; the header can collapse it and hold an action (add, remove). */
-export function Section({ title, testId, action, children, open: initial = true }: { title: string; testId?: string; action?: ReactNode; children?: ReactNode; open?: boolean }) {
-  const [open, setOpen] = useState(initial);
+/**
+ * A titled block of properties; the header can collapse it and hold an action (add, remove). With
+ * `remember` (a section name, F17) its open state is this Mac's (inspector/sections.ts) and a closed
+ * one keeps its controls mounted, hidden (their values stay readable).
+ */
+export function Section({ title, testId, action, children, open: initial = true, remember }: { title: string; testId?: string; action?: ReactNode; children?: ReactNode; open?: boolean; remember?: string }) {
+  const [local, setLocal] = useState(initial);
+  const saved = useSectionOpen(remember ?? "");
+  const open = remember ? saved : local;
+  const toggle = () => (remember ? setSectionOpen(remember, !open) : setLocal(!open));
   return (
-    <section className="psec" data-testid={testId}>
+    <section className="psec" data-testid={testId} data-section={remember} data-open={open}>
       <div className="psec-head">
-        <button className="psec-title" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button className="psec-title" aria-expanded={open} data-testid={testId ? `${testId}-toggle` : undefined} onClick={toggle}>
           {open ? <ChevronDown /> : <ChevronRight />}
           {title}
         </button>
-        {action}
+        {action && <div className="psec-actions">{action}</div>}
       </div>
-      {open && children && <div className="psec-body">{children}</div>}
+      {remember ? children && <div className="psec-body" hidden={!open}>{children}</div> : open && children && <div className="psec-body">{children}</div>}
     </section>
   );
 }

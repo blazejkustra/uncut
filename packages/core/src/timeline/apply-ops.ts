@@ -2,6 +2,7 @@
 // them, and refuses an agent edit that would overwrite newer user edits (D6).
 import { keyDbAt } from "../audio/audio.ts";
 import { KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
+import { itemUsesMedia } from "./mediaPlan.ts";
 import type { Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
 type Draft = Mutable<Project>;
@@ -36,6 +37,7 @@ function touches(op: Op): Array<string> {
   if ("track" in op && op.track) return [`track:${op.track}`];
   if (op.op === "add_media") return [`media:${op.media.id}`];
   if (op.op === "update_media") return [`media:${op.media}`];
+  if (op.op === "delete_media") return [`media:${op.media}`];
   return ["project"];
 }
 
@@ -233,6 +235,14 @@ function applyOp(project: Draft, op: Op) {
       for (const k of Object.keys(op.set)) if (!["path", "name", "probe", "source"].includes(k)) throw new EditError(`update_media can't set "${k}"`);
       if ("path" in op.set && (typeof op.set.path !== "string" || !op.set.path)) throw new EditError("update_media: path must be a non-empty string");
       merge(media, structuredClone(op.set));
+      return;
+    }
+    case "delete_media": {
+      // F8 (D167): only once nothing uses it (delete those items first, in the same edit). The file stays.
+      if (!project.media.some((m) => m.id === op.media)) throw new EditError(`No media "${op.media}"`);
+      const user = project.tracks.flatMap((t) => t.items).find((i) => itemUsesMedia(i as Item, op.media));
+      if (user) throw new EditError(`Media "${op.media}" is still used by "${user.id}"`);
+      project.media = project.media.filter((m) => m.id !== op.media);
       return;
     }
     case "update_project":

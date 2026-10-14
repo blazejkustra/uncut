@@ -37,6 +37,30 @@
         "x-group": "Layout",
         "description": "Fill the frame (cropped) or show the whole image."
       },
+      "zoom": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 4,
+        "x-unit": "×",
+        "x-group": "Layout",
+        "description": "Crop in: scales the picture inside the frame about its focus."
+      },
+      "focusX": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "x-unit": "%",
+        "x-group": "Layout",
+        "description": "The crop's focus across the picture (0 = its left edge)."
+      },
+      "focusY": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "x-unit": "%",
+        "x-group": "Layout",
+        "description": "The crop's focus down the picture (0 = its top edge)."
+      },
       "radius": {
         "type": "number",
         "minimum": 0,
@@ -77,7 +101,10 @@
       "radius": 24,
       "border": "#FFFFFF",
       "borderWidth": 0,
-      "shadow": true
+      "shadow": true,
+      "zoom": 1,
+      "focusX": 50,
+      "focusY": 50
     }
   },
   "ui": {

@@ -1,7 +1,7 @@
 // The Inspector's sound editor (D83): volume, fades, beats.
 import { MAX_DB, SILENCE_DB, soundMedia } from "@uncut/core/audio";
 import type { Item } from "@uncut/core/types";
-import { Activity, X } from "lucide-react";
+import { Activity, MoveHorizontal, X } from "lucide-react";
 import { useRef } from "react";
 
 import { type PreviewDraft } from "../preview/playback.ts";
@@ -48,6 +48,14 @@ export function AudioEditor({ project, item, locked }: { project: ProjectModel; 
           <NumberField label="Out s" testId="insp-fade-out" value={secs(item.fadeOut)} step={0.1} min={0} disabled={locked} onCommit={(v) => send((p) => planFade(p, item.id, "out", Math.round((v ?? 0) * fps)))} />
         </div>
       </Group>
+      {item.type === "audio" && (
+        <div className="group">
+          <button className="btn" data-testid="insp-fit-to-video" disabled={locked} title="Trim or loop to the end of the video, with a fade out" onClick={() => void actions.fitToVideo(item.id)}>
+            <MoveHorizontal />
+            Fit to video
+          </button>
+        </div>
+      )}
       {item.type === "clip" && (
         <div className="group">
           <button className="btn" data-testid="insp-detach-audio" disabled={locked} onClick={() => void actions.detachAudio(item.id)}>

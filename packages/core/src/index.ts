@@ -11,7 +11,7 @@ export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_SRC, graphicDocument, graphicInf
 export type { GraphicInfo } from "./visual/graphics.ts";
 export { baseBox, canvasBox, clipBox, EASES, fitRect, FITS, hasKeys, isPlainBox, keyAt, keysOf, KEY_PROPS, moveBox } from "./visual/box.ts";
 export type { ClipBox, Ease, Fit, KeyProp, Rect } from "./visual/box.ts";
-export { ADJUST, ADJUST_INFO, ADJUST_KEYS, adjustOf, adjustWord, clipFx, colourFn, colourLut, cubeText, DRAWN_FX, EFFECTS, effectInfo, effectParams, fxBox, fxOverlayHtml, fxOverlayInner, fxPictureSize, fxSkips, fxWords, GRAIN_HOLD, GRAIN_STATES, hasOverlay, isNeutral, LOOK, lookDefOf, lookInfo, LOOKS, LUT_SIZE, lutAt, needsPicturePass, NO_ADJUST, planAdjust, planEffect, planRemoveEffect, planSetLook, posterize, pulseZoom, shakeAt, shakeExpr, shakeWindow, shakeZoom, STABILIZE, visibleRect } from "./visual/fx.ts";
+export { ADJUST, ADJUST_INFO, ADJUST_KEYS, adjustOf, adjustWord, clipFx, colourFn, colourLut, cubeText, DRAWN_FX, EFFECTS, effectInfo, effectParams, fxBox, fxOverlayHtml, fxOverlayInner, fxPictureSize, fxSkips, fxWords, GRAIN_HOLD, GRAIN_STATES, hasOverlay, isNeutral, LOOK, lookDefOf, lookInfo, LOOKS, LUT_SIZE, lutAt, needsPicturePass, NO_ADJUST, planAdjust, planEffect, planEffectBypass, planRemoveEffect, planSetLook, posterize, pulseZoom, shakeAt, shakeExpr, shakeWindow, shakeZoom, STABILIZE, visibleRect } from "./visual/fx.ts";
 export type { Adjust, AdjustInfo, AdjustKey, ClipFx, ColourLut, ColourSpec, Curve, EffectGroup, EffectInfo, EffectParam, LookDef, LookInfo } from "./visual/fx.ts";
 export { BLINDS, blurs, CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, dipColor, DRAWN_TRANSITIONS, fadesIn, handleAfter, handleBefore, incomingFx, IRIS, irisRadius, maskClipPath, maskDistance, maskGeq, maskOf, maskRings, movesIncoming, movesOutgoing, reveals, outgoingFx, overlaps, PUSH_LEFT, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE, ZOOM, ZOOM_SCALE } from "./visual/transitions.ts";
 export type { Cut, MaskShape, TransitionFx, TransitionInfo, TransitionKind, TransitionLimits } from "./visual/transitions.ts";
@@ -28,8 +28,8 @@ export type { LookBackground, LookMove, LookShadow, LookStroke, TextPreset, Word
 export { lookItem, lookSnapshot, planInsertText, resetLookFields } from "./text/textPlan.ts";
 export type { InsertTextPlan, InsertTextRequest } from "./text/textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./visual/render.ts";
-export { outputSize } from "./export.ts";
-export type { ExportQuality } from "./export.ts";
+export { CODEC_NAMES, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps } from "./export.ts";
+export type { ExportCodec, ExportQuality } from "./export.ts";
 export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOPE_RATE, FILLERS, fillersOf, handleFrames, HEAD_S, PAUSE_MIN_S, pausesOf, planTextCut, speechEdges, speechThreshold, speechWords, TAIL_S, tailFrames } from "./text/transcript.ts";
 export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./text/transcript.ts";
 export { activeWord, autoMaxChars, captionBox, captionSegments, checkCaptionLines, CAPTION_LINE_BOUNDS, CAPTION_MIN_S, CAPTION_BRIDGE_S, CAPTION_DEFAULTS, CAPTION_HOLD_S, CAPTION_MODE_NAMES, CAPTION_MODES, captionAt, captionCardAt, captionCardList, captionCards, captionExtent, captionMode, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, planMakeCaptions } from "./text/captions.ts";
@@ -43,6 +43,7 @@ export type { MusicTempo, MusicTrack } from "./audio/music.ts";
 export { attributionLine, bundledSfxOf, creditOf, creditsOf, creditsText, filterSfx, hitKey, LIBRARY_LENGTHS, LIBRARY_MODULES, LIBRARY_SOURCE_NAMES, LIBRARY_SOURCES, libraryMediaOf, LICENSE_NAMES, lengthLabel, licenseUrl, limitSentence, mediaCredit, MEME_SOUNDS, MUSIC_GENRES, parseHitKey, SFX_CATEGORIES, SFX_SOUNDS, sfxCredit, sfxSound } from "./audio/library.ts";
 export type { Credits, LibraryCredit, LibraryHit, LibraryKind, LibraryLength, LibraryLicense, LibraryQuery, LibrarySource, SfxSound } from "./audio/library.ts";
 export { planReshoot } from "./timeline/reshoot.ts";
+export { fitFadeOut, mediaUses, planFitToVideo, planRemoveMedia, usedMediaIds, videoEnd } from "./timeline/mediaPlan.ts";
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
 export { BUILTIN_CONTRIBUTION_IDS, componentGraphicHtml, componentGraphicName, componentProblem, mergeContributions, NO_CONTRIBUTIONS, pluginCheckRules, pluginRuleEntries, readContributions } from "./plugins/contributions.ts";
 export type { Contributions, FromPlugin, PluginComponent, PluginFilter, PluginLook, PluginRule, RuleSpec } from "./plugins/contributions.ts";

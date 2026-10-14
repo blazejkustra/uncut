@@ -659,6 +659,12 @@ export type ExportLoudness = typeof ExportLoudness.Type;
 /** G7 (D127): a part of the timeline to export, frames [from, to) of the edit. */
 export const ExportRange = Schema.Struct({ from: Schema.Number, to: Schema.Number });
 export type ExportRange = typeof ExportRange.Type;
+/** F4 (D171): the video codec; every preset is H.264 unless HEVC is chosen in Advanced. */
+export const ExportCodec = Schema.Literals(["h264", "hevc"]);
+export type ExportCodec = typeof ExportCodec.Type;
+/** F4 (D171): the dialog's Advanced row: codec, bitrate (Mb/s), size by the shorter side (never upscaled), frame rate. Absent = the preset's. */
+export const ExportVideo = Schema.Struct({ codec: Schema.optional(ExportCodec), bitrateMbps: Schema.optional(Schema.Number), shortSide: Schema.optional(Schema.Number), fps: Schema.optional(Schema.Number) });
+export type ExportVideo = typeof ExportVideo.Type;
 
 export const ExportJob = Schema.Struct({
   id: Schema.String,
@@ -666,6 +672,10 @@ export const ExportJob = Schema.Struct({
   name: Schema.String,
   output: Schema.String,
   quality: ExportQuality,
+  /** F4 (D171): the codec it was encoded with (absent on jobs from before: H.264 then, HEVC for High). */
+  codec: Schema.optional(ExportCodec),
+  /** F4 (D171): a bitrate chosen in Advanced (Mb/s); absent = the preset's. */
+  bitrateMbps: Schema.optional(Schema.Number),
   loudness: ExportLoudness,
   /** The integrated loudness it normalises to (D87); absent with As mixed. */
   targetLufs: Schema.optional(Schema.Number),
@@ -698,7 +708,7 @@ export const ExportSubtitles = Schema.Struct({ file: Schema.optional(Schema.Lite
 export type ExportSubtitles = typeof ExportSubtitles.Type;
 
 export class ExportError extends Schema.TaggedError<ExportError>()("ExportError", {
-  reason: Schema.Literals(["no-project", "no-ffmpeg", "exists", "invalid-path", "empty", "missing-media", "source-media", "busy", "unknown-job"]),
+  reason: Schema.Literals(["no-project", "no-ffmpeg", "exists", "invalid-path", "empty", "missing-media", "source-media", "busy", "unknown-job", "invalid-settings", "no-codec"]),
   message: Schema.String,
 }) {}
 
@@ -979,7 +989,7 @@ const AgentScreenTakeRpc = Rpc.make(RPC_METHODS.agentScreenTake, { payload: Sche
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
 const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
-  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean), range: Schema.optional(ExportRange) }),
+  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean), range: Schema.optional(ExportRange), video: Schema.optional(ExportVideo) }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
 });

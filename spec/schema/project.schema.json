@@ -313,7 +313,7 @@
           "properties": {
             "type": { "const": "captions" },
             "source": { "$ref": "#/$defs/id", "description": "Media whose speech the captions show: they follow the main-track clips that play it (D82)." },
-            "style": { "type": "object", "description": "A text style (preset = a text-style look, size, weight, colour, stroke, shadow, background...), as on text items." },
+            "style": { "type": "object", "description": "A text style (preset = a text-style look, size, weight, colour, stroke, shadow, background...), as on text items. Captions also take (D166): accent (the speaking word's colour, the karaoke fill), karaoke (true: every word said so far on the line is filled), accentBox (a colour: a box behind the speaking word) and captionStyle (the caption style preset it came from)." },
             "mode": { "enum": ["line", "word", "single"], "description": "line: a card of 1-2 lines at a time; word: the card with the speaking word accented (karaoke); single: one word at a time. Default line." },
             "words": {
               "type": "array",

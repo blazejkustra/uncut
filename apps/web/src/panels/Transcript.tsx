@@ -20,6 +20,7 @@ import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import type { ProjectModel } from "../state/project.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "../state/store.ts";
 import { BottomTabs } from "../timeline/BottomTabs.tsx";
+import { defaultCaptionStyle } from "../inspector/captionStyle.ts";
 import {
   doneTranscripts,
   getTranscripts,
@@ -200,7 +201,7 @@ async function makeAll(mode: CaptionMode, look: string) {
   await withLoudness(mediaOnMain(projectOf(first)));
   const snapshot = getState().snapshot;
   if (!snapshot) return false;
-  const plan = planCaptions(projectOf(snapshot), doneTranscripts(getTranscripts().entries), { mode, look });
+  const plan = planCaptions(projectOf(snapshot), doneTranscripts(getTranscripts().entries), { mode, look, captionStyle: defaultCaptionStyle() });
   const applied = await actions.timelineEdit(plan);
   if (applied && !("problem" in plan)) playback.select(plan.items[0]);
   return applied;
@@ -401,7 +402,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
       <div className="bottom-toolbar">
         <BottomTabs />
         <span className="muted small" data-testid="tx-status">
-          {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected. ⌫ cuts ${selected.length === 1 ? "it" : "them"}` : anyDone ? "Click a word to go there; drag or ⇧-click to select" : ""}
+          {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected` : ""}
         </span>
         <div className="toolbar-spacer" />
         {selected.length > 0 && (
@@ -462,7 +463,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               <Captions />
             </div>
             <div className="empty-title">Nothing to read yet</div>
-            <div className="empty-sub">Put a clip with speech on the main track to see what's said here, and cut it by deleting words.</div>
+            <div className="empty-sub">No speech on the main track.</div>
           </div>
         ) : (
           <div className="tx-doc">{blocks}</div>

@@ -42,3 +42,13 @@ export const withProp = (p: ProjectModel, id: string, key: string, value: unknow
   else props[key] = value;
   return props;
 };
+
+/**
+ * The element's main text (F23, D162): the first plain text param in Content (else the first one
+ * anywhere), the field a double click on the element on the canvas focuses. Undefined without one.
+ */
+export function mainTextParam(info: { readonly params: { readonly properties?: Readonly<Record<string, unknown>> } }): string | undefined {
+  const params = Object.entries(info.params.properties ?? {}) as Array<[string, Schema]>;
+  const text = params.filter(([, s]) => s.type === "string" && !s.enum && !s["x-control"]?.match(/^(color|image)$/));
+  return (text.find(([, s]) => groupOf(s) === "Content") ?? text[0])?.[0];
+}

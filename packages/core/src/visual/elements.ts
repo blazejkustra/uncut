@@ -13,6 +13,7 @@ import imageFrameJson from "../../../../spec/modules/builtin/component.image-fra
 
 import { DEFAULT_THEME, DM_SANS, esc, num, resolveColor, type RenderTarget } from "./render.ts";
 import type { Draw } from "./components.ts";
+import { STICKER_ART } from "./stickers.ts";
 
 export { shapeJson, progressBarJson, lowerThirdJson, calloutJson, subscribeJson, countdownJson, stickerJson, imageFrameJson };
 
@@ -181,6 +182,9 @@ export function drawSticker({ props, w, h, local, fps }: Draw) {
   const tilt = clamp(numOr(props.tilt, 0), -45, 45);
   const p = props.pop === false ? 1 : backOut(local / (0.5 * fps));
   const s = Math.min(w, h);
+  // A drawn sticker (D165): our SVG at the sticker's size, with the same pop and tilt.
+  const art = typeof props.art === "string" ? STICKER_ART[props.art] : undefined;
+  if (art) return box(`<div data-art="${esc(String(props.art))}" style="width:${px(s * 0.92)};height:${px(s * 0.92)};transform:rotate(${num(tilt * p)}deg) scale(${num(Math.max(0, p))})">${art.svg}</div>`, "display:flex;align-items:center;justify-content:center");
   const glyphs = [...emoji].length;
   return box(
     `<div style="font-size:${px((s * 0.8) / Math.max(1, glyphs * 0.85))};line-height:1;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',${DM_SANS};transform:rotate(${num(tilt * p)}deg) scale(${num(Math.max(0, p))});white-space:nowrap">${esc(emoji)}</div>`,
@@ -194,6 +198,29 @@ export function drawSticker({ props, w, h, local, fps }: Draw) {
 const PICTURE = (s: number) =>
   `<svg width="${num(s)}" height="${num(s)}" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></svg>`;
 
+/** An image frame's fit and crop (D165): cover (fill, cropped) or contain (the whole picture), a zoom 1–4 and its focus in % of the picture. */
+export function imageFrameCrop(props: { readonly [key: string]: unknown }): { fit: "cover" | "contain"; zoom: number; focusX: number; focusY: number } {
+  return { fit: props.fit === "contain" ? "contain" : "cover", zoom: clamp(numOr(props.zoom, 1), 1, 4), focusX: clamp(numOr(props.focusX, 50), 0, 100), focusY: clamp(numOr(props.focusY, 50), 0, 100) };
+}
+
+/**
+ * Where an image frame's picture lands in its w × h frame (D165), as CSS object-fit /
+ * object-position / scale lay it out: the fitted picture (iw × ih) placed at its focus, then
+ * scaled about that point. The frame clips what's outside.
+ */
+export function imageFrameRect(props: { readonly [key: string]: unknown }, frame: { readonly w: number; readonly h: number }, image: { readonly width: number; readonly height: number }): { x: number; y: number; w: number; h: number } {
+  const c = imageFrameCrop(props);
+  const k = c.fit === "cover" ? Math.max(frame.w / image.width, frame.h / image.height) : Math.min(frame.w / image.width, frame.h / image.height);
+  const w = image.width * k;
+  const h = image.height * k;
+  const x = (frame.w - w) * (c.focusX / 100);
+  const y = (frame.h - h) * (c.focusY / 100);
+  // scale about the origin point (focus % of the frame box)
+  const ox = frame.w * (c.focusX / 100);
+  const oy = frame.h * (c.focusY / 100);
+  return { x: ox + (x - ox) * c.zoom, y: oy + (y - oy) * c.zoom, w: w * c.zoom, h: h * c.zoom };
+}
+
 export function drawImageFrame({ props, w, h, target }: Draw) {
   const radius = px(clamp(numOr(props.radius, 0), 0, Math.min(w, h) / 2));
   const bw = Math.max(0, numOr(props.borderWidth, 0));
@@ -201,7 +228,9 @@ export function drawImageFrame({ props, w, h, target }: Draw) {
   const k = Math.min(w, h) / 500;
   const shadow = props.shadow === true ? `box-shadow:0 ${px(18 * k)} ${px(48 * k)} rgb(0 0 0 / 45%);` : "";
   const src = imageSrc(target, props.image);
-  const fit = props.fit === "contain" ? "contain" : "cover";
-  const inner = src ? `<img src="${src}" alt="" style="display:block;width:100%;height:100%;object-fit:${fit}">` : `<div data-empty="true" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2A2A2F,#18181B)">${PICTURE(Math.min(w, h) * 0.3)}</div>`;
+  const crop = imageFrameCrop(props);
+  // Cropped (D165): the picture sits at its focus (object-position) and zooms about it; the frame clips it.
+  const cropCss = (crop.focusX !== 50 || crop.focusY !== 50 ? `;object-position:${num(crop.focusX)}% ${num(crop.focusY)}%` : "") + (crop.zoom !== 1 ? `;transform:scale(${num(crop.zoom)});transform-origin:${num(crop.focusX)}% ${num(crop.focusY)}%` : "");
+  const inner = src ? `<img src="${src}" alt="" style="display:block;width:100%;height:100%;object-fit:${crop.fit}${cropCss}">` : `<div data-empty="true" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2A2A2F,#18181B)">${PICTURE(Math.min(w, h) * 0.3)}</div>`;
   return box(inner, `border-radius:${radius};overflow:hidden;${border}${shadow}`);
 }

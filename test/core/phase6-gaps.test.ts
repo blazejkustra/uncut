@@ -183,9 +183,11 @@ test("agent log: only the lines that can show go into its HTML, so a long log pl
   // The last line is there, the first isn't.
   assert.equal((html.match(/describe/g) ?? []).length < 40, true);
   const p: Project = { format: "uncut/0", name: "Log", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [{ id: "v", kind: "video", name: "V", items: [item] }, { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "bg", type: "component", component: "component.solid", duration: 9000, props: { color: "#000" } }] }] };
-  const t0 = Date.now();
+  // CPU time, not wall time: under a parallel test run the wall clock measures the other tests.
+  const t0 = process.cpuUsage();
   const plan = planExport(p, { mediaPath: () => "", width: 1920, height: 1080 });
-  const ms = Date.now() - t0;
+  const used = process.cpuUsage(t0);
+  const ms = Math.round((used.user + used.system) / 1000);
   console.log(`  5 min of agent log planned in ${ms} ms, ${html.length} bytes of HTML a frame`);
   assert.ok(!("problem" in plan));
   assert.ok(ms < 5000, `planned in ${ms} ms`);
