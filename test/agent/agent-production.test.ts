@@ -455,7 +455,9 @@ test("U7/U17: kits and skills reach every message; brand_read and its files; bra
     assert.equal(onDisk.style.shotLengths, "0.8 to 1.5 s");
     assert.equal(onDisk.colors.length, 3, "the rest of the kit is kept");
     assert.equal(jsonOf(newKit!.result).saved, "side-project");
-    assert.ok(existsSync(join(s.dir, "brand", "kits", "side-project", "kit.json")), "a new kit from the agent is the project's");
+    // D199: a new kit from the agent goes in the user's library.
+    assert.ok(existsSync(join(s.data, "brand", "kits", "side-project", "kit.json")), "a new kit from the agent is in the library");
+    assert.ok(!existsSync(join(s.dir, "brand", "kits", "side-project")));
     const cards = st.items.filter((i: any) => i.kind === "card").map((i: any) => i.card.text);
     assert.deepEqual(cards, ["Style guide written into Argent", "New kit Side project"]);
     // Without a kit, brand_read says not to invent and lists the kits.

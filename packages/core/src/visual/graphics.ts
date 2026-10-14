@@ -6,8 +6,10 @@
 // call render the same way, so preview == export.
 //
 // Limits: full canvas (no box; opacity, fades and transitions apply); no network, no Node, no
-// other files (CSP: inline scripts and styles, data: images and fonts only); system fonts (the
-// bundled DM fonts aren't loaded inside it); render(t) must draw synchronously or return a promise
+// other files (CSP: inline scripts and styles, data: images and fonts only); fonts: the bundled DM
+// Sans and DM Mono, the brand kit's font files (both declared inside the document when it names
+// them, D198, fonts.ts resolveGraphicFonts) and the fonts installed on this Mac; every face is
+// loaded before the first render(t), so canvas text isn't drawn in a fallback; render(t) must draw synchronously or return a promise
 // that settles within GRAPHIC_FRAME_MS; the export draws at most MAX_RASTER_STATES frames of one
 // item (past that it holds frames: every k-th frame is drawn and shown k frames); the file is read
 // when the export starts or the preview loads it (write a new file to change a graphic: graphic_write
@@ -105,6 +107,20 @@ export function resolveGraphicLibs(html: string, libs: Readonly<Record<string, s
   });
 }
 
+// D198: uncut:brand/logo-light (also logo-dark, logo-mark), in an attribute or a CSS url().
+const BRAND_MARKER = /uncut:brand\/logo-(light|dark|mark)\b/g;
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/** Which kit logos a graphic asks for (uncut:brand/logo-…), each once. */
+export function graphicLogosUsed(html: string): Array<"light" | "dark" | "mark"> {
+  return [...new Set([...html.matchAll(BRAND_MARKER)].map((m) => m[1] as "light" | "dark" | "mark"))];
+}
+
+/** The graphic's HTML with each uncut:brand/logo-… marker replaced by the kit's logo as a data: URL (a missing one: a blank pixel). */
+export function resolveGraphicBrand(html: string, logos: Readonly<Partial<Record<"light" | "dark" | "mark", string>>>): string {
+  return html.replace(BRAND_MARKER, (_m, slot: "light" | "dark" | "mark") => logos[slot] ?? BLANK);
+}
+
 /** For the agent's system prompt (D193): the render(t) contract and the bundled libraries. */
 export const GRAPHIC_LIBS_DOC = [
   "Graphics (graphic_write) draw everything from t alone: render(t, info) is called for each frame in any order, in the preview and again in the export, so no timers, no requestAnimationFrame loops, no Date.now or performance.now, no Math.random (use uncutRandom(seed)), no state carried from one frame to the next; nothing loads from the network.",
@@ -114,6 +130,8 @@ export const GRAPHIC_LIBS_DOC = [
   "uncutGlobe.draw(ctx, t, { x, y, radius, dots, rotation, speed in degrees per second, tilt, dotSize, ocean, markers: [{ lat, lon, color, size }], colors: { dot, marker, sphere, rim } }) draws a dotted spinning globe; uncutGlobe.project(ctx, t, lat, lon, options) gives { x, y, visible }.",
   'uncutSpring(t, "spring.land" or { stiffness, damping, mass, velocity }) is the spring Uncut uses for eases (0 at t = 0 seconds, settling at 1; presets spring.snap, spring.settle, spring.land, spring.bounce), with uncutSpring.ease(preset)(p) fitted to p from 0 to 1.',
   "uncutRandom(seed) returns a seeded generator (rnd() in [0, 1), rnd.range(a, b), rnd.int(a, b), rnd.pick(list), rnd.normal()); uncutRandom.noise(seed, x) is smooth noise.",
+  'Fonts: name a family in CSS font-family or in ctx.font (for example ctx.font = "600 64px \'DM Sans\', sans-serif") and Uncut declares it inside the graphic when it is DM Sans, DM Mono or a font file of the brand kit, loaded before the first frame; fonts installed on this Mac work by name. Any other family is a project_check error (it would fall back to another font), so never ask for one that isn\'t there.',
+  'Brand logos: src="uncut:brand/logo-light" (also logo-dark, logo-mark) in an <img> or a CSS url() is the kit\'s logo file as it is (an SVG stays vector), inlined by Uncut.',
 ].join(" ");
 
 export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "height">): string {
@@ -124,7 +142,11 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;${size}}</style>
 <script>(() => {
   const frames = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+  // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
+  let fonts;
+  const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
   window.__uncutRender = async (t, info) => {
+    await fontsReady();
     if (typeof window.render === "function") await window.render(t, info);
     await frames();
     return true;

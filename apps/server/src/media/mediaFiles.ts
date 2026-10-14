@@ -6,7 +6,7 @@ import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
+import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
 import { MUSIC_TRACKS } from "@uncut/core/music";
 import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "../app/config.ts";
+import { readBrand } from "../brand/store.ts";
 import { Projects } from "../project/projects.ts";
 import { Library, MAX_PREVIEW_BYTES } from "../library/library.ts";
 import { presentedToken, tokensMatch } from "../app/auth.ts";
@@ -44,6 +45,10 @@ const TYPES: Record<string, string> = {
   ".webp": "image/webp",
   ".heic": "image/heic",
   ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
 };
 // The DJI clips are ".MP4": the lookup is by lowercased extension.
 const contentType = (path: string) => TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
@@ -173,6 +178,23 @@ export const layer = Layer.unwrap(
           const open = yield* projects.current;
           if (!open || !name || !AGENT_IMAGE_NAME.test(name)) return notFound();
           return yield* serveFile(request, join(open.dir, ".cache", "agent-images", name));
+        }),
+      ),
+      // D198: a brand kit's file (a logo, a font), only one listed for a kit the open project sees.
+      HttpRouter.add(
+        "GET",
+        `${BRAND_FILE_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const [kit, name, ...rest] = url.pathname.slice(BRAND_FILE_PATH.length + 1).split("/").map((x) => decode(x));
+          if (!kit || !name || rest.length) return notFound();
+          const open = yield* projects.current;
+          const files = (yield* Effect.promise(() => readBrand({ dataDir: config.dataDir, projectDir: open?.dir }).catch(() => undefined)))?.files ?? {};
+          const path = Object.hasOwn(files, kit) && Object.hasOwn(files[kit]!, name) ? files[kit]![name] : undefined;
+          if (!path) return notFound();
+          return yield* serveFile(request, path);
         }),
       ),
       // The bundled music library (D91), for the Audio tab's preview: only the files it lists.

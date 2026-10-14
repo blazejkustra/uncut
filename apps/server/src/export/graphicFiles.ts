@@ -4,7 +4,8 @@
 // project's graphics/ folder that one of its graphic items uses (readGraphics: by realpath, size
 // capped). The response's CSP is the document's own (inline script and styles, data: images and
 // fonts, nothing from the network) plus a sandbox, so even opened directly it can't reach anything.
-// Bundled libraries (D193) are inlined by readGraphics, as for the export.
+// Bundled libraries (D193), the kit's logos and the fonts it names (D198) are inlined by
+// projectGraphics, as for the export.
 import { GRAPHIC_PATH, TOKEN_QUERY_PARAM } from "@uncut/contracts";
 import { GRAPHIC_CSP, graphicDocument, type Project } from "@uncut/core";
 import * as Effect from "effect/Effect";
@@ -13,8 +14,7 @@ import * as Option from "effect/Option";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "../app/config.ts";
-import { readGraphics } from "./exporter.ts";
-import { loadGraphicLibs } from "./graphicLibs.ts";
+import { projectGraphics } from "./exporter.ts";
 import { graphicToken } from "./graphicToken.ts";
 import { Projects } from "../project/projects.ts";
 import { tokensMatch } from "../app/auth.ts";
@@ -42,7 +42,7 @@ export const layer = Layer.unwrap(
         const open = yield* projects.current;
         if (!open) return notFound();
         const project = open.project as Project;
-        const html = (yield* Effect.promise(async () => readGraphics(open.dir, project, await loadGraphicLibs(config.graphicLibsDir)))).get(`graphics/${name}`);
+        const html = (yield* Effect.promise(() => projectGraphics(config, open.dir, project))).graphics.get(`graphics/${name}`);
         if (html === undefined) return notFound();
         return HttpServerResponse.text(graphicDocument(html, project.canvas), {
           contentType: "text/html; charset=utf-8",

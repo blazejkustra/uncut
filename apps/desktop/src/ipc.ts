@@ -26,7 +26,8 @@ export const CLOSE_REQUEST_CHANNEL = "uncut:close-request";
 export const CLOSE_ANSWER_CHANNEL = "uncut:close-answer";
 export type CloseAnswer = "close" | "stay" | "asking";
 
-export type FolderPurpose = "parent" | "project" | "plugin";
+// "brand" (D198): a file or a folder of logos and font files for a brand kit.
+export type FolderPurpose = "parent" | "project" | "plugin" | "brand";
 
 export interface AppInfo {
   readonly homeDir: string;

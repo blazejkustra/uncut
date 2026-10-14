@@ -38,6 +38,26 @@ export const DOWNLOAD_TYPES: Record<string, string> = {
   "audio/ogg": ".ogg",
   "audio/flac": ".flac",
 };
+/** D198: what a brand kit import takes from the web: logos (pictures) and font files. */
+export const BRAND_DOWNLOAD_TYPES: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/svg+xml": ".svg",
+  "font/woff2": ".woff2",
+  "font/woff": ".woff",
+  "font/ttf": ".ttf",
+  "font/otf": ".otf",
+  "font/sfnt": ".ttf",
+  "application/font-woff": ".woff",
+  "application/font-woff2": ".woff2",
+  "application/x-font-woff": ".woff",
+  "application/x-font-ttf": ".ttf",
+  "application/x-font-otf": ".otf",
+  "application/x-font-opentype": ".otf",
+  "application/vnd.ms-opentype": ".otf",
+};
 const GENERIC = new Set(["application/octet-stream", "binary/octet-stream", ""]);
 
 /** A file name that is safe on disk: letters, digits, spaces, dots, dashes and underscores; at most 80 characters. */
@@ -62,7 +82,12 @@ async function exists(p: string) {
 export type Downloaded = { readonly path: string; readonly bytes: number; readonly type: string; readonly url: string } | { readonly problem: string };
 
 /** Fetch `url` into `<projectDir>/media/downloads/`. `name`: the file's base name (else the address's). */
-export async function downloadToProject(url: string, projectDir: string, name: string | undefined, signal: AbortSignal, budget = MAX_BYTES): Promise<Downloaded> {
+export function downloadToProject(url: string, projectDir: string, name: string | undefined, signal: AbortSignal, budget = MAX_BYTES): Promise<Downloaded> {
+  return downloadToFolder(url, join(projectDir, "media", "downloads"), name, signal, budget);
+}
+
+/** Fetch `url` into `folder` (made when missing), taking only `types` (content type → extension). */
+export async function downloadToFolder(url: string, folder: string, name: string | undefined, signal: AbortSignal, budget = MAX_BYTES, types: Readonly<Record<string, string>> = DOWNLOAD_TYPES): Promise<Downloaded> {
   const cap = Math.min(MAX_BYTES, budget);
   let target: URL;
   try {
@@ -93,11 +118,11 @@ export async function downloadToProject(url: string, projectDir: string, name: s
   }
   const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
   const urlExt = extname(target.pathname).toLowerCase();
-  const fromUrl = Object.values(DOWNLOAD_TYPES).includes(urlExt === ".jpeg" ? ".jpg" : urlExt) ? (urlExt === ".jpeg" ? ".jpg" : urlExt) : undefined;
-  const ext = DOWNLOAD_TYPES[type] ?? (GENERIC.has(type) ? fromUrl : undefined);
+  const fromUrl = Object.values(types).includes(urlExt === ".jpeg" ? ".jpg" : urlExt) ? (urlExt === ".jpeg" ? ".jpg" : urlExt) : undefined;
+  const ext = types[type] ?? (GENERIC.has(type) ? fromUrl : undefined);
   if (!ext) {
     await res.body?.cancel().catch(() => {});
-    return { problem: `${target.host} sent ${type || "a file of no type"}, not a picture, video or sound${type === "text/html" ? " (that's a web page: find the file's own address in it)" : ""}.` };
+    return { problem: `${target.host} sent ${type || "a file of no type"}, not ${types === DOWNLOAD_TYPES ? "a picture, video or sound" : "a logo picture or a font file"}${type === "text/html" ? " (that's a web page: find the file's own address in it)" : ""}.` };
   }
   const length = Number(res.headers.get("content-length"));
   if (Number.isFinite(length) && length > cap) {
@@ -106,7 +131,6 @@ export async function downloadToProject(url: string, projectDir: string, name: s
   }
   if (!res.body) return { problem: `${target.host} sent an empty file.` };
 
-  const folder = join(projectDir, "media", "downloads");
   await mkdir(folder, { recursive: true });
   const base = safeName((name ?? "").trim() || decodeURIComponent(target.pathname.split("/").pop() ?? "").replace(/\.[A-Za-z0-9]{1,5}$/, ""));
   let file = join(folder, `${base}${ext}`);
@@ -167,6 +191,11 @@ export async function sniff(file: string, ext: string): Promise<string | undefin
     ".wav": () => at(0, "RIFF") && at(8, "WAVE"),
     ".ogg": () => at(0, "OggS"),
     ".flac": () => at(0, "fLaC"),
+    // D198: font files.
+    ".woff2": () => at(0, "wOF2"),
+    ".woff": () => at(0, "wOFF"),
+    ".ttf": () => at(0, "\x00\x01\x00\x00") || at(0, "true") || at(0, "ttcf"),
+    ".otf": () => at(0, "OTTO") || at(0, "\x00\x01\x00\x00"),
   };
   return ok[ext]?.() ? undefined : `the file's content isn't ${ext.slice(1).toUpperCase()} (it may be a web page or a playlist)`;
 }
