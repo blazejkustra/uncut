@@ -1289,8 +1289,8 @@ export const actions = {
   },
   /** Allow or Don't on the running turn's approval card (D99). */
   /** Whether the server took the answer (false: the card was no longer open). */
-  async agentApprove(id: string, allow: boolean, source?: string, extra: { readonly answer?: AgentAnswer; readonly beats?: ReadonlyArray<StoryboardBeat>; readonly note?: string } = {}): Promise<boolean> {
-    const result = await call((c) => c["agent.approve"]({ id, allow, ...(source ? { source } : {}), ...(extra.answer ? { answer: extra.answer } : {}), ...(extra.beats ? { beats: [...extra.beats] } : {}), ...(extra.note ? { note: extra.note } : {}) }));
+  async agentApprove(id: string, allow: boolean, source?: string, extra: { readonly answer?: AgentAnswer; readonly beats?: ReadonlyArray<StoryboardBeat>; readonly note?: string; readonly always?: boolean } = {}): Promise<boolean> {
+    const result = await call((c) => c["agent.approve"]({ id, allow, ...(source ? { source } : {}), ...(extra.answer ? { answer: extra.answer } : {}), ...(extra.beats ? { beats: [...extra.beats] } : {}), ...(extra.note ? { note: extra.note } : {}), ...(extra.always ? { always: true } : {}) }));
     return result.ok && result.value.accepted;
   },
   /** D188: the user's own brief or storyboard (approved on the Plan card); false with the reason in the Agent tab when it didn't save. */

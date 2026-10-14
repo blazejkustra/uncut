@@ -274,7 +274,8 @@ export const layer = Layer.effect(
         const bin = yield* tool("ffprobe");
         if (!bin) return undefined;
         const input = IMAGE_EXT.has(extname(path).toLowerCase()) ? imageInput(path) : [path];
-        const r = yield* run(bin, ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", ...input], 15000, 1024 * 1024);
+        // D194: local files only (a downloaded "video" that is really a playlist can't make ffprobe fetch anything).
+        const r = yield* run(bin, ["-v", "error", "-protocol_whitelist", "file,pipe", "-print_format", "json", "-show_streams", "-show_format", ...input], 15000, 1024 * 1024);
         return r.kind === "done" && r.code === 0 ? fromFfprobe(r.stdout) : undefined;
       });
 
@@ -292,7 +293,7 @@ export const layer = Layer.effect(
         const out = join(folder, posterName(entry.id, key));
         const at = entry.kind === "video" ? Math.min(1, (info.durationSeconds ?? 0) / 3) : 0;
         const input = entry.kind === "image" ? imageInput(entry.path) : ["-hwaccel", "videotoolbox", "-ss", at.toFixed(3), "-i", entry.path];
-        const r = yield* run(bin, ["-v", "error", "-y", ...input, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", out], 30000);
+        const r = yield* run(bin, ["-v", "error", "-y", "-protocol_whitelist", "file,pipe", ...input, "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", out], 30000);
         const ok = r.kind === "done" && r.code === 0;
         // Older posters for this id (another file, or this file before it changed) go.
         yield* Effect.promise(async () => {

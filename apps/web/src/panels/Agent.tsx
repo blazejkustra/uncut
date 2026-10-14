@@ -4,7 +4,7 @@
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
 import { AGENT_MODELS, type AgentApproval, type AgentItem, type AgentTurn, type SetupCheck } from "@uncut/contracts";
 import { friendlyText } from "@uncut/core/mentions";
-import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TriangleAlert, Undo2, X } from "lucide-react";
+import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TerminalSquare, TriangleAlert, Undo2, X } from "lucide-react";
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer, withChips } from "./Composer.tsx";
@@ -58,6 +58,12 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   return (
     <ProjectContext.Provider value={project}>
     <div className="agent" data-testid="agent-panel">
+      {agent?.warning && (
+        <p className="err agent-warning" data-testid="agent-warning">
+          <TriangleAlert />
+          {agent.warning}
+        </p>
+      )}
       {agent?.plan && <PlanBar plan={agent.plan} waiting={!!agent.approval?.storyboard} online={online} busy={running !== null} />}
       <div className="agent-thread" ref={thread} data-testid="agent-thread">
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
@@ -218,6 +224,8 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
               <QuestionCard key={approval.id} approval={approval} question={approval.question} online={online} />
             ) : approval.storyboard ? (
               <StoryboardApproval key={approval.id} approval={approval} storyboard={approval.storyboard} online={online} />
+            ) : approval.permission ? (
+              <PermissionCard key={approval.id} approval={approval} permission={approval.permission} online={online} />
             ) : (
               <ApprovalCard approval={approval} online={online} />
             ))}
@@ -285,6 +293,53 @@ function ApprovalCard({ approval, online }: { approval: AgentApproval; online: b
         </button>
         <button className="btn primary" data-testid="agent-allow" disabled={!online || sent} onClick={() => answer(true)}>
           Allow
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Claude Code's tools in people's words, for the permission card (D194). */
+const TOOL_NAMES: Record<string, string> = { Bash: "Terminal", Write: "Write file", Edit: "Edit file", MultiEdit: "Edit file", NotebookEdit: "Edit notebook", Read: "Read file", WebFetch: "Web page", WebSearch: "Web search" };
+
+/**
+ * D194: a Claude Code tool (a command, a file write outside the project, ...) waits for the user:
+ * what it would run or touch, why it asks, and Deny, Always for this session (when it can be
+ * remembered; a destructive command never can) or Allow once. No answer in 2 minutes is no.
+ */
+function PermissionCard({ approval, permission, online }: { approval: AgentApproval; permission: NonNullable<AgentApproval["permission"]>; online: boolean }) {
+  const [sent, setSent] = useState(false);
+  const answer = (allow: boolean, always = false) => {
+    setSent(true);
+    void actions.agentApprove(approval.id, allow, undefined, always ? { always: true } : {});
+  };
+  return (
+    <div className="approval permission-card" data-testid="agent-approval" data-kind="permission" data-tool={permission.tool} data-id={approval.id}>
+      <div className="approval-text">
+        <TerminalSquare />
+        {approval.text}?
+      </div>
+      <div className="permission-tool">{TOOL_NAMES[permission.tool] ?? permission.tool}</div>
+      <pre className="permission-target" data-testid="agent-permission-target">
+        {permission.target}
+      </pre>
+      {permission.why && (
+        <div className="permission-why" data-testid="agent-permission-why">
+          {permission.why}
+        </div>
+      )}
+      <div className="approval-sub">No answer in 2 minutes means no.</div>
+      <div className="approval-btns">
+        <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={() => answer(false)}>
+          Deny
+        </button>
+        {permission.always && (
+          <button className="btn ghost" data-testid="agent-allow-always" disabled={!online || sent} onClick={() => answer(true, true)}>
+            Always for this session
+          </button>
+        )}
+        <button className="btn primary" data-testid="agent-allow" disabled={!online || sent} onClick={() => answer(true)}>
+          Allow once
         </button>
       </div>
     </div>
@@ -487,7 +542,7 @@ function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {
     <div className={`worklog ${open ? "open" : ""}`} data-testid="agent-worklog" data-count={steps.length}>
       <button className="worklog-head" data-testid="agent-worklog-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
         {open ? <ChevronDown /> : <ChevronRight />}
-        <StepIcon status={runningNow ? "running" : failed === steps.length ? "error" : "done"} />
+        <StepIcon status={runningNow ? "running" : failed === steps.length || lead.status === "error" ? "error" : "done"} />
         <span className="ellipsis grow">
           {friendly(lead.status === "running" ? (lead.doing ?? lead.text) : lead.text)}, and {steps.length - 1} more
           {failed ? <span className="worklog-failed">, {failed} didn't work</span> : null}
@@ -504,17 +559,35 @@ function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {
 function Step({ step: s }: { step: AgentItem }) {
   const friendly = useFriendly();
   const [why, setWhy] = useState(true);
+  // D194: a built-in tool's answer (search results, a page, a command's output) opens from its row.
+  const [shown, setShown] = useState(false);
   const failed = s.status === "error" && !!s.error;
+  const result = !failed && s.status !== "running" && !!s.result;
+  const toggle = failed ? () => setWhy(!why) : result ? () => setShown(!shown) : undefined;
   return (
     <>
-      <div className={`step ${failed ? "failed" : ""}`} data-testid="agent-step" data-status={s.status} title={failed ? (why ? "Hide why" : "Show why") : undefined} onClick={failed ? () => setWhy(!why) : undefined}>
+      <div
+        className={`step ${failed ? "failed" : ""} ${result ? "has-result" : ""}`}
+        data-testid="agent-step"
+        data-status={s.status}
+        data-tool={s.tool}
+        title={failed ? (why ? "Hide why" : "Show why") : result ? (shown ? "Hide the result" : "Show the result") : undefined}
+        onClick={toggle}
+        aria-expanded={result ? shown : undefined}
+      >
         <StepIcon status={s.status} />
-        <span>{friendly(s.status === "running" ? (s.doing ?? s.text) : s.text)}</span>
+        <span className="grow">{friendly(s.status === "running" ? (s.doing ?? s.text) : s.text)}</span>
+        {result && (shown ? <ChevronDown className="step-chev" /> : <ChevronRight className="step-chev" />)}
       </div>
       {failed && why && (
         <div className="step-error" data-testid="agent-step-error">
           {s.error}
         </div>
+      )}
+      {result && shown && (
+        <pre className="step-result" data-testid="agent-step-result">
+          {s.result}
+        </pre>
       )}
     </>
   );

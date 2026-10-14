@@ -49,6 +49,7 @@ import { EFFECTS, LOOKS } from "@uncut/core/fx";
 import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 
 import { MAX_CELLS, MAX_IMPORT, shortName } from "./agentFootage.ts";
+import { shellSegments, shownPath } from "./agentPermissions.ts";
 
 import editOpsSchema from "../../../../spec/schema/edit-ops.schema.json" with { type: "json" };
 import toolsSpec from "../../../../spec/agent/tools.json" with { type: "json" };
@@ -96,8 +97,10 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
     });
 
 /** A tool call as a step in the turn card. `plugin`: the name of the plugin that owns the tool (D97). */
-export function stepLabel(tool: string, input: unknown, plugin?: string): string {
+export function stepLabel(tool: string, input: unknown, plugin?: string, project?: string): string {
   const args = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const builtin = builtinLabel(tool, args, project);
+  if (builtin) return builtin;
   switch (tool) {
     case "project_read":
       return "Read the timeline";
@@ -238,6 +241,75 @@ export function stepLabel(tool: string, input: unknown, plugin?: string): string
   }
 }
 
+const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/** A web address for people: the host and path, no scheme, no www, no query (D194). */
+export function shownUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const path = u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "");
+    return clip(`${u.hostname.replace(/^www\./, "")}${path}`, 70);
+  } catch {
+    return clip(url, 70);
+  }
+}
+
+/**
+ * D194: Claude Code's built-in tools in the work log, with their target: Searched the web for
+ * "…", Read example.dev, Ran `ls media`, Read ~/Downloads/logo.svg, Started a subagent
+ * "…". Undefined for a tool that isn't one of them.
+ */
+function builtinLabel(tool: string, args: Record<string, unknown>, project?: string): string | undefined {
+  const s = (k: string) => (typeof args[k] === "string" ? (args[k] as string).trim() : "");
+  const path = (k = "file_path") => (s(k) ? shownPath(s(k), project) : "");
+  switch (tool) {
+    case "WebSearch":
+      return s("query") ? `Searched the web for "${clip(s("query"), 80)}"` : "Searched the web";
+    case "WebFetch":
+      return s("url") ? `Read ${shownUrl(s("url"))}` : "Read a web page";
+    case "Bash": {
+      const command = s("command");
+      if (!command) return "Ran a command";
+      const lines = command.split("\n").length;
+      const first = shellSegments(command)[0] ?? command;
+      return `Ran \`${clip(first.split("\n")[0]!, 70)}\`${lines > 1 || shellSegments(command).length > 1 ? " and more" : ""}`;
+    }
+    case "BashOutput":
+      return "Checked a command's output";
+    case "KillShell":
+    case "KillBash":
+      return "Stopped a command";
+    case "Read":
+      return path() ? `Read ${path()}` : "Read a file";
+    case "NotebookRead":
+      return path("notebook_path") ? `Read ${path("notebook_path")}` : "Read a notebook";
+    case "Write":
+      return path() ? `Wrote ${path()}` : "Wrote a file";
+    case "Edit":
+    case "MultiEdit":
+      return path() ? `Edited ${path()}` : "Edited a file";
+    case "NotebookEdit":
+      return path("notebook_path") ? `Edited ${path("notebook_path")}` : "Edited a notebook";
+    case "Glob":
+      return s("pattern") ? `Looked for files matching ${clip(s("pattern"), 60)}${s("path") ? ` in ${path("path")}` : ""}` : "Looked for files";
+    case "Grep":
+      return s("pattern") ? `Searched the files for "${clip(s("pattern"), 60)}"${s("path") ? ` in ${path("path")}` : ""}` : "Searched the files";
+    case "LS":
+      return s("path") ? `Listed ${path("path")}` : "Listed a folder";
+    case "Task":
+    case "Agent":
+      return s("description") ? `Started a subagent "${clip(s("description"), 80)}"` : "Started a subagent";
+    case "Skill":
+      return s("skill") || s("command") ? `Used the skill ${clip(s("skill") || s("command"), 60)}` : "Used a skill";
+    case "TodoWrite":
+      return "Updated the to-do list";
+    case "media_download":
+      return s("url") ? `Downloaded ${s("name") ? `${clip(s("name"), 50)} from ` : ""}${shownUrl(s("url"))}` : "Downloaded a file";
+    default:
+      return undefined;
+  }
+}
+
 // Past tense (a step's text) to present (the now line, D182): the first word(s) of a step label.
 const PRESENT: ReadonlyArray<[string, string]> = [
   ["Asked to ", "Asking to "],
@@ -272,6 +344,13 @@ const PRESENT: ReadonlyArray<[string, string]> = [
   ["Opened ", "Opening "],
   ["Pointed ", "Pointing "],
   ["Used ", "Using "],
+  ["Ran ", "Running "],
+  ["Started ", "Starting "],
+  ["Edited ", "Editing "],
+  ["Updated ", "Updating "],
+  ["Listed ", "Listing "],
+  ["Stopped ", "Stopping "],
+  ["Downloaded ", "Downloading "],
 ];
 
 /**
@@ -279,11 +358,11 @@ const PRESENT: ReadonlyArray<[string, string]> = [
  * graphic s3-enter.html", "Editing the timeline: Scene 2"). `input` may be the fields read so far
  * from a call still streaming in (partialFields).
  */
-export function doingLabel(tool: string, input: unknown, plugin?: string): string {
+export function doingLabel(tool: string, input: unknown, plugin?: string, project?: string): string {
   const args = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   if (tool === "timeline_edit") return typeof args.summary === "string" && args.summary.trim() ? `Editing the timeline: ${args.summary.trim()}` : "Editing the timeline";
   if (tool === "graphic_write") return typeof args.name === "string" && args.name.trim() ? `Writing graphic ${args.name.trim()}` : "Writing a graphic";
-  const past = stepLabel(tool, input, plugin);
+  const past = stepLabel(tool, input, plugin, project);
   const hit = PRESENT.find(([from]) => past.startsWith(from));
   return hit ? `${hit[1]}${past.slice(hit[0].length)}` : past;
 }
@@ -294,7 +373,7 @@ export function doingLabel(tool: string, input: unknown, plugin?: string): strin
  */
 export function partialFields(json: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const re = /"(name|summary|path|media|source|kind|generator|query|mode|id|folder|panel|question|file|kit)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
+  const re = /"(name|summary|path|media|source|kind|generator|query|mode|id|folder|panel|question|file|kit|url|command|file_path|pattern|description)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
   for (let m = re.exec(json); m; m = re.exec(json)) {
     if (out[m[1]!] !== undefined) continue;
     try {
@@ -333,12 +412,19 @@ export function bigChange(tool: string, input: Record<string, unknown>, project:
   return { text: `Apply "${summary.slice(0, 120)}" (${ops.length === 1 ? "1 change" : `${ops.length} changes`})`, lines };
 }
 
-/** D184: the access line of the message's <editor-context>. */
+/** D184, D194: the access line of the message's <editor-context>. */
 export function accessLine(access: "look" | "ask" | "edit"): string {
-  if (access === "look") return "Access: Look only. You may read, look, point (ui_show), ask (ask_user) and plan (brief_write, storyboard_propose, review_submit), but don't change the timeline, the media, the brand kit or write graphics; say what you would do.";
-  if (access === "ask") return `Access: Ask before big changes. Removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; if they say no, don't retry it in this turn.`;
-  return "Access: Edit freely.";
+  if (access === "look") return "Access: Look only. You may read files, search and read the web, use subagents, look, point (ui_show), ask (ask_user) and plan (brief_write, storyboard_propose, review_submit), but don't run commands, write files or change the timeline, the media, the brand kit or graphics; say what you would do.";
+  if (access === "ask") return `Access: Ask before big changes. Commands (Bash), file writes outside the project's .cache, removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; reading, the web and small edits don't. If they say no, don't retry it in this turn.`;
+  return "Access: Edit freely. Commands and file writes inside the project run without asking; deleting or writing outside the project, sudo, git push and uploads ask the user first.";
 }
+
+/**
+ * D194: what the agent can use, in every message's <editor-context> (a resumed conversation keeps
+ * the system prompt it started with, which may predate the built-in tools).
+ */
+export const TOOLS_LINE =
+  "Tools: Claude Code's own (WebSearch and WebFetch for the web, Read, Glob and Grep for files on this Mac, Bash, Write, Edit, Task for subagents) and Uncut's (mcp__uncut__…). Look up what you can (the product's site for its copy, features, logo and screenshots) instead of asking the user; mcp__uncut__media_download brings a file from the web into Media.";
 
 /** D105: project_read's line about subtitles (cues from captions and Subtitles tracks), or undefined. */
 function subtitleNote(project: Project): string | undefined {
@@ -760,12 +846,13 @@ const GRAPHIC_LIBS_PROMPT = GRAPHIC_LIBS_DOC;
 
 export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop video editor. The user sees the timeline and a live preview next to this chat; every edit you make appears there immediately and is saved.
 - Positions and lengths are integer frames at the project's canvas fps (project_read gives canvas and fps). Main-track items have no start: they play back to back. "in" is where an item starts inside its media, in project frames.
-- Your tools come from Uncut's MCP server and their full names are mcp__uncut__<name>: this prompt says project_read for mcp__uncut__project_read, graphic_write for mcp__uncut__graphic_write, and so on. Call them by the full name; they're all available directly (no tool search).
+- Uncut's tools come from its MCP server and their full names are mcp__uncut__<name>: this prompt says project_read for mcp__uncut__project_read, graphic_write for mcp__uncut__graphic_write, and so on. Call them by the full name; they're all available directly (no tool search).
+- You also have Claude Code's own tools: WebSearch and WebFetch (the web), Read, Glob and Grep (files on this Mac), Bash, Write and Edit, Task (subagents for research in parallel). Your working folder is the project folder. Use them instead of asking the user for what you can look up: for a product, search for it and read its site and docs for what it does, its tagline, features, real copy, logo and screenshots; read the files and folders the user points at. Bring real assets (a logo SVG or PNG, product screenshots, a demo video) into the project with media_download {url} (it checks the address, size and type, saves the file in the project's media/downloads and imports it), then place them like any media. Still never invent facts, quotes, numbers or UI: use what you found, and say where it came from when it matters. Change the project only with Uncut's tools, never by editing project.json; Bash and file writes are for things Uncut's tools can't do. The user's access setting (in <editor-context>) decides what runs freely and what waits for their Allow on a card; a refusal is final for that call.
 - Always project_read before editing and pass its revision as baseRevision. Group related ops into one timeline_edit with a short summary; the user reads it in the turn card.
 - Build a video scene by scene so the user sees it grow: one timeline_edit per scene (its summary names the scene, e.g. "Scene 2: the problem"), then ui_show with frame at that scene's start (and the scene's main item selected) before the next scene. Write a scene's graphic right before that scene's edit, not every graphic up front.
 - A new video (an empty or nearly empty timeline, or the user asks for a video, promo, teaser or launch clip) follows the production process; each step shows the user a card in the Agent tab:
-  1. Brand: the message's <brand> block is the project's kit. With a kit, use it by default everywhere: its colours by role (background, text, primary, accent) for backgrounds, text, components and graphics, and as the project's theme (update_project theme {"colors":{"bg":…,"fg":…,"accent":…,"mute":…},"fonts":{…}}); its fonts (text style.font, font-family in graphics); its logo files (brand_read gives their paths: media_import them and place them; never draw, trace or retype a logo); its tone, taglines, URLs, do's and don'ts. Without a kit, when the video is for a product or a brand, ask_user before designing (one of their kits by name, or the logo files and colours, which brand_write saves as a kit); never invent a logo, brand colours or fonts.
-  2. Brief: co-write the production brief. ask_user for what's material and not in the message (audience, length, formats, the real assets: recordings, screenshots, logo), one question at a time, with options where you can; then brief_write: the film in one sentence, audience, duration, formats, the real assets, visual direction, hard lines (always: never invent product UI, screens, metrics, quotes, customer logos or features) and deliverables. A missing asset blocks its beat: ask for it, never fake it with a mock-up.
+  1. Brand: the message's <brand> block is the project's kit. With a kit, use it by default everywhere: its colours by role (background, text, primary, accent) for backgrounds, text, components and graphics, and as the project's theme (update_project theme {"colors":{"bg":…,"fg":…,"accent":…,"mute":…},"fonts":{…}}); its fonts (text style.font, font-family in graphics); its logo files (brand_read gives their paths: media_import them and place them; never draw, trace or retype a logo); its tone, taglines, URLs, do's and don'ts. Without a kit, when the video is for a product or a brand, find its brand on its website first (the logo file, colours and fonts its site uses: WebFetch, media_download the logo), save what you found with brand_write and say so; ask_user when you can't find it or there are several kits. Never invent a logo, brand colours or fonts.
+  2. Brief: co-write the production brief. first look up what you can (the product's site and docs, the folders the user named: what it does, its copy, logo and screenshots; media_download the real assets), then ask_user only for what's material and still missing (audience, length, formats, assets you couldn't find), one question at a time, with options where you can; then brief_write: the film in one sentence, audience, duration, formats, the real assets, visual direction, hard lines (always: never invent product UI, screens, metrics, quotes, customer logos or features) and deliverables. A missing asset blocks its beat: ask for it, never fake it with a mock-up.
   3. Storyboard: storyboard_propose the shot list, each beat with its time, entry state, exit state (the next beat's entry), purpose, real assets and the sound it lands on; a hook in the first 2 s, one idea per beat. Once a brief exists, timeline_edit is refused until the storyboard is approved; build what was approved, with the user's edits.
   4. Build scene by scene (above), with motion that settles like a physical thing: ${SPRING_PROMPT}
   5. Sound on the clock: once music is placed, beat_grid gives its beats, downbeats and hits in timeline frames. Cuts and state changes go on beats (beat_grid snap says how far each of your frames is from one), big moments (the reveal, the logo, the end card) on downbeats, a whoosh or hit 1 to 2 frames before the frame it hits.
@@ -799,7 +886,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - Looks and effects (D136) on a clip are its effects list (update_item set effects, the whole list; at most one effect.look and one effect.color): {"module":"effect.look","params":{"look":"warm","intensity":0.8}} (looks: ${LOOKS.map((l) => l.id).join(", ")}), {"module":"effect.color","params":{"exposure":0.3,"saturation":-0.2}} (Adjust: exposure in stops -2 to 2, contrast, saturation, temperature, tint, highlights, shadows, vibrance -1 to 1), and ${EFFECTS.map((e) => e.id).join(", ")} (modules_list kind "effect" gives their params; lengths in canvas px). The preview and export draw them the same.
 - What the preview draws today: media clips in their box (position, size, fit, scale, opacity, corners, keys, loop, hold, looks and effects), backgrounds (component.solid), the components above, graphic items, the transitions above, captions, and text with its position, box width, size, weight, colour, alignment, font, letter spacing, line height, case, outline, shadow, box and the in/out animations above. It plays the sound with volume, fades, gainKeys, track volume, pan, mute and solo, track effects (EQ, compressor, voice), ducking, the master volume and the master limiter, as the export mixes it; noise removal (audio.denoise) is applied on export only. Other components (${UNDRAWN_DOCS}) and effect.stabilize are saved but don't draw yet, so say so if the user asks for something that won't show.
 - render_frames shows you frames of the edit exactly as the export draws them (footage, backgrounds, components, graphics, text with its animation at that frame), as images. Look at a few frames after an edit that changes how things look (text placement, colours, a background) before saying how it looks; ask for only the frames you need (at most ${MAX_FRAMES}).
-- Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
+- Footage: media_import adds files from disk (a file, a folder's media files, or a list of paths; at most ${MAX_IMPORT} per call); they're referenced where they are, never copied. It returns each new media id with its probe; frames, in and duration are in project frames (probe.frames is the media's length in project frames). Only import what the user pointed you to or what you downloaded for this video; an import is part of your turn, so Undo turn removes it. Then put clips on the timeline with timeline_edit, e.g. {"op":"insert_item","track":"main","item":{"id":"clip-1","type":"clip","media":"m-dji-0005","in":0,"duration":150}}.
 - contact_sheet gives one image with a grid of frames, each captioned with its frame and time (at most ${MAX_CELLS} cells): with media, frames pulled from the original file, numbered in project frames of that media (use them as in); with only a range (or nothing), frames of the edit. Use it to scan footage before choosing what to keep, then render_frames for a closer look at a few frames. at "shots" (with media) shows one frame per shot, from the video analysis.
 - media_analyze measures a media file: "loudness" (also "silence") gives integrated loudness (LUFS), loudness range, true peak and the silences (below −40 dB for at least 0.3 s); "video" (also "shots", "motion", "stability") gives the cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0–1, with the best stretch and good/fair/poor stretches. Frames in the answers are project frames of the media you can use as in. "transcript" transcribes the speech (a summary: language, word, filler and pause counts; read it with transcript_read). "beats" (also "rhythm", "onsets", "tempo") gives the tempo (bpm), a confidence 0–1, the beats in project frames of the media (the first ones; range lists those inside it, with the onsets) and the onset count: use it to cut clips on the beat of the music (a clip of the media at timeline frame S with in I hits beat b at S + b − I). Default: loudness only; ask for "video" or "beats" by name ("video" takes longer: about a minute on a long 4K clip). It waits up to about a minute; if it answers "running", call it again with the same arguments. Results are cached, so asking again is free.
 - media_rank ranks video takes (media ids, or the media from a folder, or all the project's video) by cleanScore, best first, each with its stability, sharpness and exposure and its best stretch inside one shot (window seconds long, default 5; start and end usable as in). Use it to pick the clean take or the clean part of a long one, and say why from the components (e.g. "sharper, less shake"). Look at the pick with contact_sheet or render_frames before you rely on it.
