@@ -19,7 +19,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
 import { clipFx, colourLut, cubeText, fitRect, fxOverlayHtml, hasOverlay, needsPicturePass } from "@uncut/core";
-import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, resolveGraphicLibs, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, MAX_GRAPHIC_FONT_BYTES, resolveGraphicBrand, resolveGraphicFonts, resolveGraphicLibs, solidHtml, SOLID, textHtml, visualsAt, type FontSource, type Media, type Project } from "@uncut/core";
 import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -29,6 +29,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { sheetHtml, type SheetLayout } from "../agent/agentFootage.ts";
 import { loadGraphicLibs } from "./graphicLibs.ts";
+import { projectFonts, type ProjectFonts } from "./fonts.ts";
 import { ServerConfig } from "../app/config.ts";
 import {
   boxGraph,
@@ -219,7 +220,7 @@ export function plainFsError(error: unknown, where: string): string {
  * libraries inlined; the size cap is the author's file's): the preview route, the export and
  * render_frames all read graphics here, so they all draw the same document.
  */
-export async function readGraphics(dir: string, project: Project, libs: Readonly<Record<string, string>> = {}): Promise<Map<string, string>> {
+export async function readGraphics(dir: string, project: Project, libs: Readonly<Record<string, string>> = {}, extras: { readonly fonts?: ReadonlyArray<FontSource>; readonly logos?: Readonly<Partial<Record<"light" | "dark" | "mark", string>>> } = {}): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const srcs = new Set(project.tracks.flatMap((t) => t.items).filter((i) => i.type === "graphic" && typeof i.src === "string").map((i) => i.src!));
   if (!srcs.size) return out;
@@ -234,10 +235,27 @@ export async function readGraphics(dir: string, project: Project, libs: Readonly
       if (!real.startsWith(`${folder}/`)) continue;
       const s = await stat(real);
       if (!s.isFile() || s.size > MAX_GRAPHIC_BYTES) continue;
-      out.set(src, resolveGraphicLibs(await readFile(real, "utf8"), libs));
+      // D198: the fonts the author's HTML names (bundled and the kit's), the kit's logos for
+      // uncut:brand/ markers, then the libraries (whose own code isn't searched for fonts).
+      // The fonts get what's left of the document's cap (D193: the export loads it as a data: URL)
+      // after the author's file, its logos and its libraries, at most MAX_GRAPHIC_FONT_BYTES.
+      const raw = await readFile(real, "utf8");
+      const inline = (html: string) => resolveGraphicLibs(resolveGraphicBrand(html, extras.logos ?? {}), libs);
+      const budget = Math.min(MAX_GRAPHIC_FONT_BYTES, MAX_GRAPHIC_DOC_BYTES - Buffer.byteLength(inline(raw)) - 16_000);
+      out.set(src, inline(extras.fonts?.length ? resolveGraphicFonts(raw, extras.fonts, Math.max(0, budget)) : raw));
     } catch {}
   }
   return out;
+}
+
+/**
+ * A project's graphics as every drawer reads them (D193, D198): the bundled libraries, the kit's
+ * logos and the fonts they name inlined; with the project's fonts (the kit's faces for the
+ * rasteriser's CSS, and which families are there).
+ */
+export async function projectGraphics(paths: { readonly graphicLibsDir: string; readonly fontsDir: string; readonly dataDir: string }, dir: string, project: Project): Promise<{ readonly graphics: Map<string, string>; readonly fonts: ProjectFonts }> {
+  const [libs, fonts] = await Promise.all([loadGraphicLibs(paths.graphicLibsDir), projectFonts(paths.fontsDir, { dataDir: paths.dataDir, projectDir: dir })]);
+  return { graphics: await readGraphics(dir, project, libs, { fonts: fonts.sources, logos: fonts.logos }), fonts };
 }
 
 /** Images a component can show (as data: URLs in the rasteriser): what Chromium decodes. TIFF and HEIC it doesn't, so the Inspector doesn't offer them (core COMPONENT_IMAGE). */
@@ -455,10 +473,10 @@ export const layer = Layer.effect(
     };
 
     /** Draw every raster layer (and the canvas colour) with the rasteriser, into `dir`. */
-    const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal) => {
+    const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal, css: string = RASTER_CSS) => {
       const { width, height } = plan.canvas;
       const background = join(dir, "background.png");
-      await r.render({ width, height, css: RASTER_CSS, html: plan.backgroundHtml, out: background });
+      await r.render({ width, height, css, html: plan.backgroundHtml, out: background });
       const rasters = new Map<VisualLayer, RasterOutput>();
       const urls = new Map<string, string>();
       // Every distinct look drawn once (D79 review: slices and layers share looks), then linked per layer.
@@ -466,7 +484,7 @@ export const layer = Layer.effect(
       for (const [j, html] of rasterLooks(plan).entries()) {
         if (signal.aborted) throw new Cancelled();
         const out = join(dir, `look-${j}.png`);
-        await r.render({ width, height, css: RASTER_CSS, html: await withMedia(html, project, mediaPath, urls), out });
+        await r.render({ width, height, css, html: await withMedia(html, project, mediaPath, urls), out });
         drawnLooks.set(html, out);
       }
       for (const [k, layer] of plan.visuals.entries()) {
@@ -557,7 +575,7 @@ export const layer = Layer.effect(
       return out;
     };
 
-    const runJob = async (job: ExportJob, planned: ExportPlan, project: Project, mediaPath: (m: Media) => string, overwrite: boolean, signal: AbortSignal, replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string }, cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>) => {
+    const runJob = async (job: ExportJob, planned: ExportPlan, project: Project, mediaPath: (m: Media) => string, overwrite: boolean, signal: AbortSignal, replan: (envelopes: ReadonlyMap<string, SpeechEnvelope | null>) => ExportPlan | { readonly problem: string }, cachedEnvelopes: ReadonlyMap<string, SpeechEnvelope | null>, css: string = RASTER_CSS) => {
       let plan = planned;
       const started = Date.now();
       let temp: string | undefined;
@@ -588,7 +606,7 @@ export const layer = Layer.effect(
         rasterizer = await startRasterizer(command);
         const onAbort = () => void rasterizer?.close();
         signal.addEventListener("abort", onAbort, { once: true });
-        const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal);
+        const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css);
         signal.removeEventListener("abort", onAbort);
         await rasterizer.close();
         rasterizer = undefined;
@@ -720,7 +738,8 @@ export const layer = Layer.effect(
         const bin = (yield* Effect.promise(ffmpegBin))!;
         if (codec === "hevc" && !canHevc(yield* Effect.promise(() => capsOf(bin)))) return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make HEVC videos. Choose H.264." });
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
-        const graphics = yield* Effect.promise(async () => readGraphics(dir, project, await loadGraphicLibs(config.graphicLibsDir)));
+        // D198: graphics with the fonts and logos they name; the kit's faces for texts and components.
+        const { graphics, fonts } = yield* Effect.promise(() => projectGraphics(config, dir, project));
         // Ducking (D85) needs the key media's loudness envelopes, noise removal (D88) its track's:
         // the cached ones now; the job measures the rest before rendering (one quick ffmpeg pass each).
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
@@ -766,7 +785,7 @@ export const layer = Layer.effect(
           if (controller.signal.aborted) return; // cancelled while queued: already marked
           // Out of "queued" before anything async, so a cancel from now on waits for the cleanup.
           patch(id, { phase: "preparing", startedAt: new Date().toISOString() });
-          running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal, replan, envelopes);
+          running = runJob(job, plan, sized, mediaPath, input.overwrite === true, controller.signal, replan, envelopes, RASTER_CSS + fonts.kitCss);
           await running;
           running = undefined;
         }).finally(() => controllers.delete(id));
@@ -791,7 +810,10 @@ export const layer = Layer.effect(
         const bin = yield* Effect.promise(ffmpegBin);
         if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
         return yield* Effect.tryPromise({
-          try: async (signal) => renderFramesWith(bin, project, mediaPath, await readGraphics(dir, project, await loadGraphicLibs(config.graphicLibsDir)), frames, width, signal),
+          try: async (signal) => {
+            const { graphics, fonts } = await projectGraphics(config, dir, project);
+            return renderFramesWith(bin, project, mediaPath, graphics, frames, width, signal, RASTER_CSS + fonts.kitCss);
+          },
           catch: (error) => new ExportError({ reason: "missing-media", message: (error as Error).message }),
         });
       });
@@ -844,7 +866,7 @@ async function writeLuts(plan: Pick<ExportPlan, "visuals">, dir: string): Promis
  * visual at f in visualsAt order (footage at its source time, text and backgrounds drawn by
  * Chromium with the frame's opacity and motion), one ffmpeg run per frame.
  */
-async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, frames: ReadonlyArray<number>, width: number, signal: AbortSignal): Promise<Array<RenderedFrame>> {
+async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, frames: ReadonlyArray<number>, width: number, signal: AbortSignal, css: string = RASTER_CSS): Promise<Array<RenderedFrame>> {
   const project = await withPictureSizes(bin, unsized, mediaPath, signal);
   const { starts, duration } = layout(project);
   const W = Math.max(2, Math.round(width / 2) * 2);
@@ -864,8 +886,8 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
     const urls = new Map<string, string>();
     // Components' media references as placeholders, swapped for data: URLs before drawing (as the export does).
     const target = { ...project, mediaUrl: (id: string) => (project.media.find((m) => m.id === id)?.kind === "image" ? mediaToken(id) : undefined) };
-    const draw = async (html: string, png: string) => raster!.render({ width: cw, height: ch, css: RASTER_CSS, html: await withMedia(html, project, mediaPath, urls), out: png });
-    await raster.render({ width: cw, height: ch, css: RASTER_CSS, html: "problem" in plan ? "" : plan.backgroundHtml, out: background });
+    const draw = async (html: string, png: string) => raster!.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png });
+    await raster.render({ width: cw, height: ch, css, html: "problem" in plan ? "" : plan.backgroundHtml, out: background });
     const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
     const out: Array<RenderedFrame> = [];
     // The colour tables (D136) written so far, by key.

@@ -6,6 +6,8 @@ import { homedir } from "node:os";
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
+import { expandHome } from "../paths.ts";
+
 export type Access = "look" | "ask" | "edit";
 
 export type Decision =
@@ -22,9 +24,8 @@ const str = (x: unknown) => (typeof x === "string" ? x : "");
 
 /** `p` with ~ expanded, made absolute against the project. */
 export function absolute(p: string, project: string, home = homedir()): string {
-  const t = p.trim();
-  if (t === "~") return home;
-  if (t.startsWith("~/")) return resolve(home, t.slice(2));
+  // D198: ~ and $HOME (and ${HOME}) the same way everywhere (paths.ts expandHome).
+  const t = expandHome(p, home, true);
   return isAbsolute(t) ? resolve(t) : resolve(project, t);
 }
 
@@ -426,21 +427,41 @@ export function rootProblem(dir: string, home = homedir()): string | undefined {
  * file's own folder, the project and the root folder left out. At most 8.
  */
 export function mentionedDirs(text: string, project: string, exists: (p: string) => "dir" | "file" | undefined, home = homedir(), real: (p: string) => string = realpathSync.native): Array<string> {
-  const out = new Set<string>();
-  for (const m of text.matchAll(/(?:^|[\s"'`(<\[])((?:~|\/)(?:\\ |[^\s"'`)<>\]])+)/g)) {
+  return namedFolders(text, project, exists, home, real).flatMap((f) => (f.problem ? [] : [f.dir]));
+}
+
+/** A folder a message names (D198): the folder (its real path), whether the message named it or a file in it, and why it can't be a root. */
+export interface NamedFolder {
+  readonly dir: string;
+  readonly named: "folder" | "file";
+  readonly problem?: string;
+}
+
+/**
+ * Every folder a message names (D194, D198): absolute, ~/ or $HOME/ paths in its text that exist
+ * (a file gives its folder), each once, the project's own folder and anything in it left out. A
+ * folder that can't be a root (rootProblem) comes with why; a file's folder that can't be is left
+ * out (the file itself is what was meant). At most 8 usable ones.
+ */
+export function namedFolders(text: string, project: string, exists: (p: string) => "dir" | "file" | undefined, home = homedir(), real: (p: string) => string = realpathSync.native): Array<NamedFolder> {
+  const out = new Map<string, NamedFolder>();
+  let usable = 0;
+  for (const m of text.matchAll(/(?:^|[\s"'`(<\[])((?:~|\$HOME|\$\{HOME\}|\/)(?:\\ |[^\s"'`)<>\]])*)/g)) {
     let p = m[1]!.replace(/\\ /g, " ").replace(/[.,;:!?]+$/, "");
-    if (!p.startsWith("/") && !p.startsWith("~/")) continue;
+    if (!/^(?:\/|~\/|\$HOME\/|\$\{HOME\}\/)./.test(p)) continue;
     p = absolute(p, project, home);
     const kind = exists(p);
     const found = kind === "dir" ? p : kind === "file" ? dirname(p) : undefined;
     if (!found) continue;
     // The folder as it really is (a symlink to / or ~/Library is that), then the root rules.
     const dir = realPath(found, project, home, real);
-    if (inside(dir, project) || rootProblem(dir, home)) continue;
-    out.add(dir);
-    if (out.size >= 8) break;
+    if (inside(dir, project) || out.has(dir)) continue;
+    const problem = rootProblem(dir, home);
+    if (problem && kind === "file") continue;
+    out.set(dir, { dir, named: kind === "dir" ? "folder" : "file", ...(problem ? { problem } : {}) });
+    if (!problem && ++usable >= 8) break;
   }
-  return [...out];
+  return [...out.values()];
 }
 
 /**

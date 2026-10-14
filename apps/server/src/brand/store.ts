@@ -22,6 +22,10 @@ export const BRAND_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const BRAND_FILE = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,100}\.[A-Za-z0-9]{1,8}$/;
 /** The files a kit may hold (logos, fonts, example frames and clips). */
 export const BRAND_FILE_TYPES = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ttf", ".otf", ".woff", ".woff2", ".mp4", ".mov", ".webm"]);
+/** Font files a kit can hold (D198): graphics, texts and components load them. */
+export const FONT_EXT = new Set([".woff2", ".woff", ".ttf", ".otf"]);
+/** Logo files: pictures Chromium draws (an SVG stays vector in graphics). */
+export const LOGO_EXT = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 /** The most a kit file may be (bytes). */
 export const BRAND_FILE_MAX = 200 * 1024 * 1024;
 /** A colour the kit understands: #rgb or #rrggbb (stored lowercase #rrggbb). */
@@ -86,7 +90,9 @@ export function normKit(raw: unknown, scope: BrandScope, id?: string): BrandKit 
     const family = str(o.family, 80).trim();
     if (!family) return [];
     const weight = typeof o.weight === "number" && o.weight >= 100 && o.weight <= 900 ? Math.round(o.weight) : undefined;
-    return [{ family, role: str(o.role, 40) || "body", ...(weight ? { weight } : {}) }];
+    // D198: the family's font file in the kit's folder.
+    const file = fileName(o.file);
+    return [{ family, role: str(o.role, 40) || "body", ...(weight ? { weight } : {}), ...(file && FONT_EXT.has(extname(file).toLowerCase()) ? { file } : {}) }];
   }).slice(0, 8);
   const style = normStyle(k.style);
   const updatedAt = str(k.updatedAt, 40);
@@ -178,8 +184,51 @@ export async function writeActive(projectDir: string, active: BrandActive): Prom
   await writeAtomic(join(projectBrandDir(projectDir), "active.json"), `${JSON.stringify({ kit, skills: [...new Set(active.skills.filter((s) => BRAND_ID.test(s)))].slice(0, 20) }, null, 2)}\n`);
 }
 
+/**
+ * D198: kits live in the user's library. A kit made in a project before (D186 made the agent's new
+ * kits there) is copied into the library once, with its files, unless the library has one with that
+ * id; the project's copy stays and keeps winning there (a copy pinned to it), so nothing changes
+ * for that project while every other project can now pick the kit. Kits pinned to a project since
+ * (saved with `pinned: true`) stay pinned; brand/migrated.json lists the ids done, so a library kit
+ * the user deletes isn't brought back.
+ */
+export async function migrateProjectKits(dirs: BrandDirs): Promise<Array<string>> {
+  if (!dirs.projectDir) return [];
+  const local = await list(join(projectBrandDir(dirs.projectDir), "kits"));
+  if (!local.length) return [];
+  const marker = join(projectBrandDir(dirs.projectDir), "migrated.json");
+  const done = new Set(strs(((await readJson(marker)) as { kits?: unknown } | undefined)?.kits, 200, 64));
+  const before = done.size;
+  const copied: Array<string> = [];
+  for (const id of local) {
+    if (!BRAND_ID.test(id) || done.has(id)) continue;
+    const from = join(projectBrandDir(dirs.projectDir), "kits", id);
+    const to = join(globalBrandDir(dirs.dataDir), "kits", id);
+    const raw = await readJson(join(from, "kit.json"));
+    const kit = normKit(raw, "global", id);
+    if (!kit || (raw as { pinned?: unknown }).pinned === true) continue;
+    done.add(id);
+    if (await stat(to).then(() => true, () => false)) continue;
+    try {
+      await mkdir(to, { recursive: true });
+      for (const name of await list(from)) if (name === "kit.json" || BRAND_FILE.test(name)) await copyFile(join(from, name), join(to, name));
+      copied.push(id);
+    } catch (error) {
+      done.delete(id);
+      console.error(`[uncut] couldn't copy the kit ${id} into the library: ${(error as Error).message}`);
+    }
+  }
+  if (done.size !== before) {
+    try {
+      await writeAtomic(marker, `${JSON.stringify({ kits: [...done].sort() }, null, 2)}\n`);
+    } catch {}
+  }
+  return copied;
+}
+
 /** Every kit and skill the project sees (its own win on the same id), its choice, and the kits' files. */
 export async function readBrand(dirs: BrandDirs): Promise<BrandState> {
+  await migrateProjectKits(dirs).catch(() => []);
   const kits = new Map<string, { kit: BrandKit; files: Record<string, string> }>();
   for (const k of await kitsIn(globalBrandDir(dirs.dataDir), "global")) kits.set(k.kit.id, k);
   if (dirs.projectDir) for (const k of await kitsIn(projectBrandDir(dirs.projectDir), "project")) kits.set(k.kit.id, k);
@@ -211,7 +260,8 @@ export async function saveKit(dirs: BrandDirs, kit: BrandKit): Promise<BrandKit>
   const dir = join(scopeDir(kit.scope, dirs), "kits", id);
   await mkdir(dir, { recursive: true });
   const { scope: _scope, ...stored } = norm;
-  await writeAtomic(join(dir, "kit.json"), `${JSON.stringify(stored, null, 2)}\n`);
+  // D198: a kit saved into a project is pinned there on purpose; the library migration leaves it.
+  await writeAtomic(join(dir, "kit.json"), `${JSON.stringify(kit.scope === "project" ? { ...stored, pinned: true } : stored, null, 2)}\n`);
   return norm;
 }
 

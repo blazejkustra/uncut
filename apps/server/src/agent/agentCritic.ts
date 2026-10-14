@@ -227,7 +227,7 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
   let n = 0;
   const id = () => `d${++n}`;
   for (const b of answer.blockers) blockers.push({ id: id(), ...b, source: "critic" });
-  for (const c of ctx.checks.filter((x) => x.hard)) blockers.push({ id: id(), kind: c.rule === "layout-off-centre" ? "off-centre" : "overflow", what: c.message, ...(c.frame !== undefined ? { at: Math.round((c.frame / ctx.fps) * 100) / 100 } : {}), source: "check" });
+  for (const c of ctx.checks.filter((x) => x.hard)) blockers.push({ id: id(), kind: c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : "overflow", what: c.message, ...(c.frame !== undefined ? { at: Math.round((c.frame / ctx.fps) * 100) / 100 } : {}), source: "check" });
   const fixes = ctx.claims.map((c) => {
     const said = answer.fixes.find((f) => f.defect === c.defect);
     return { defect: c.defect, what: c.what, ...(c.at !== undefined ? { at: c.at } : {}), verified: said?.verified === true, ...(said?.note ? { note: said.note } : said ? {} : { note: "The critic didn't confirm it on the new frames." }) };

@@ -41,7 +41,7 @@ export interface UncutBridge {
   readonly onServerExit: (listener: (reason: string) => void) => () => void;
   readonly appInfo: () => Promise<AppInfo>;
   // A native folder dialog; null when cancelled.
-  readonly chooseFolder: (purpose: "parent" | "project" | "plugin") => Promise<string | null>;
+  readonly chooseFolder: (purpose: "parent" | "project" | "plugin" | "brand") => Promise<string | null>;
   readonly showInFolder: (path: string) => Promise<void>;
   readonly setAppState: (state: AppState) => void;
   readonly copyText: (text: string) => Promise<void>;

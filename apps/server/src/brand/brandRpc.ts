@@ -3,7 +3,9 @@
 import { BrandError, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 
+import { expandHome } from "../paths.ts";
 import type { ProjectView } from "../project/projects.ts";
+import { importIntoKit } from "./importer.ts";
 import { addKitFile, deleteKit, deleteSkill, readBrand, saveKit, saveSkill, writeActive, type BrandDirs } from "./store.ts";
 
 const failed = (error: unknown) => new BrandError({ reason: "failed", message: error instanceof Error ? error.message : String(error) });
@@ -24,6 +26,13 @@ export function brandRpc(dataDir: string, view: Effect.Effect<ProjectView | unde
           ? Effect.tryPromise({ try: async () => (await writeActive(d.projectDir!, active), state(d)), catch: failed })
           : Effect.fail(new BrandError({ reason: "no-project", message: "Open a project to choose its kit." })),
       ),
-    addFile: (kit: string, scope: BrandScope, path: string) => run(async (d) => ({ name: await addKitFile(d, kit, scope, path), state: await state(d) })),
+    addFile: (kit: string, scope: BrandScope, path: string) => run(async (d) => ({ name: await addKitFile(d, kit, scope, expandHome(path)), state: await state(d) })),
+    // D198: logos and fonts from a file, a folder or an https address.
+    importFiles: (kit: string, scope: BrandScope, source: string) =>
+      run(async (d) => {
+        const got = await importIntoKit(d, kit, scope, source);
+        if ("problem" in got) throw new Error(got.problem);
+        return { files: [...got.files], state: await state(d) };
+      }),
   };
 }

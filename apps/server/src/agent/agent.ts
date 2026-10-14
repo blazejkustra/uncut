@@ -17,11 +17,11 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { brandColourRule, CHECK_IDS, LAYOUT_HARD, LAYOUT_RULES, projectChecks, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
@@ -39,16 +39,19 @@ import { BEATS_NOTE, beatsOut } from "./agentBeats.ts";
 import type { BeatsResult } from "../analysis/beats.ts";
 import { isLanguage, type TranscriptResult } from "../analysis/transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
-import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { answerOut, beatGrid, gateOf, gateRefusal, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, type GridItem } from "./agentPlan.ts";
+import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, listFolder, listingWords, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
+import { answerOut, beatGrid, gateOf, gateRefusal, kitChanges, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, type GridItem } from "./agentPlan.ts";
 import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "./agentCritic.ts";
 import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
-import { decide, LOOK_DISALLOWED, mentionedDirs, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
+import { decide, LOOK_DISALLOWED, namedFolders, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
 import { downloadToProject } from "./agentDownload.ts";
-import { accessLine, TOOLS_LINE, bigChange, checksOut, doingLabel, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { accessLine, TOOLS_LINE, bigChange, checksOut, doingLabel, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
-import { Exporter } from "../export/exporter.ts";
+import { Exporter, readGraphics } from "../export/exporter.ts";
+import { fontFileFamilies, projectFonts } from "../export/fonts.ts";
+import { fillLogos, importIntoKit, type LogoSlot } from "../brand/importer.ts";
+import { logoPictures } from "../brand/logoImages.ts";
 import { canonicalPath } from "../export/subtitleSources.ts";
 import { ProjectFormat } from "../project/format.ts";
 import { withHistory, type TurnRecord } from "../project/history.ts";
@@ -71,7 +74,7 @@ import { which } from "../app/setup.ts";
 import { agentEnv } from "../app/shellEnv.ts";
 import type { VideoResult } from "../analysis/videoAnalysis.ts";
 import { DEFAULT_BEST_SECONDS, RANK_BY, rankValue, type RankBy } from "../analysis/videoScores.ts";
-import { besideServer } from "../paths.ts";
+import { besideServer, expandHome } from "../paths.ts";
 
 export const PROVIDER = "Claude Code";
 const KILL_AFTER_MS = 1500;
@@ -426,6 +429,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     ...(Array.isArray(t.images) ? { images: t.images.filter((x): x is string => isString(x) && AGENT_IMAGE_NAME.test(x)) } : {}),
     ...(isString(t.model) ? { model: t.model } : {}),
     ...(isString(t.note) ? { note: t.note } : {}),
+    ...(Array.isArray(t.folders) ? { folders: t.folders.filter((f): f is AgentFolder => !!f && typeof f === "object" && isString(f.path) && typeof f.files === "number" && typeof f.folders === "number").slice(0, 16).map((f) => ({ path: f.path, files: f.files, folders: f.folders, ...(isString(f.problem) ? { problem: f.problem } : {}) })) } : {}),
     ...(isString(t.finishedAt) ? { finishedAt: t.finishedAt } : {}),
     ...(interrupted ? { error: "Interrupted: Uncut stopped while the agent was working." } : isString(t.error) ? { error: t.error } : {}),
     ...(typeof t.seconds === "number" ? { seconds: t.seconds } : {}),
@@ -1427,7 +1431,7 @@ export const layer = Layer.effect(
         if (args.path !== undefined && (typeof args.path !== "string" || !args.path.trim())) return textResult("path must be an absolute path to a .srt or .vtt file.", true);
         if (args.overwrite !== undefined && typeof args.overwrite !== "boolean") return textResult("overwrite must be true or false.", true);
         const project = v.session.project as Project;
-        let path = typeof args.path === "string" ? args.path.trim().replace(/^~(?=\/|$)/, homedir()) : undefined;
+        let path = typeof args.path === "string" ? expandHome(args.path) : undefined;
         if (path !== undefined && !isAbsolute(path)) return textResult(`"${args.path}" isn't an absolute path. Pass the full path, like /Users/you/Movies/talk.srt.`, true);
         const byName = path ? subtitleFormatOf(path) : undefined;
         if (path && !byName && /\.[^./]+$/.test(basename(path))) return textResult("path must end in .srt or .vtt.", true);
@@ -1562,7 +1566,7 @@ export const layer = Layer.effect(
           chosen = [...new Set(ids as Array<string>)].map((id) => project.media.find((x) => x.id === id)!);
         } else if (args.folder !== undefined) {
           if (typeof args.folder !== "string" || !args.folder.trim()) return textResult("folder must be a folder's absolute path.", true);
-          const raw = args.folder.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+          const raw = expandHome(args.folder);
           if (!isAbsolute(raw)) return textResult(`"${args.folder}" isn't an absolute path. Pass the full path of the folder the takes are in.`, true);
           const folder = yield* Effect.promise(() => realOr(raw, v.dir));
           const paths = yield* Effect.promise(() => Promise.all(project.media.map((x) => realOr(x.path, v.dir))));
@@ -1643,7 +1647,13 @@ export const layer = Layer.effect(
         // D193: the bundled libraries it loads, and any marker that names none.
         const libs = graphicLibsUsed(html);
         const libNote = libs.unknown.length ? { libraries: `${libs.unknown.map((x) => `uncut:lib/${x}`).join(", ")} ${libs.unknown.length === 1 ? "isn't a bundled library" : "aren't bundled libraries"} and won't load (bundled: ${GRAPHIC_LIBS.join(", ")}).` } : libs.known.length ? { libraries: `Loads ${libs.known.join(", ")}.` } : {};
-        return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...libNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
+        // D198: fonts it asks for that aren't there (a fallback would draw them), and kit logos it asks for that the kit lacks.
+        const fonts = await projectFonts(config.fontsDir, brandDirs(v), true).catch(() => undefined);
+        const missingFonts = fonts ? graphicAskedFamilies(html).filter((f) => !GENERIC_FAMILIES.has(familyKey(f)) && !fonts.available(f)) : [];
+        const missingLogos = fonts ? graphicLogosUsed(html).filter((slot) => !fonts.logos[slot]) : [];
+        const fontNote = missingFonts.length ? { fonts: `Not available: ${missingFonts.map((f) => `"${f}"`).join(", ")} (not bundled, not a font file of the brand kit, not installed), so ${missingFonts.length === 1 ? "it" : "they"} would fall back to another font and project_check fails. Use DM Sans, DM Mono or the kit's fonts, or add the font's file to the kit with brand_write.` } : {};
+        const logoNote = missingLogos.length ? { logos: `The kit has no ${missingLogos.map((x) => `logo-${x}`).join(", ")}: ${missingLogos.length === 1 ? "that marker draws" : "those markers draw"} nothing. brand_read lists its logos.` } : {};
+        return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...libNote, ...fontNote, ...logoNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
       });
 
     /**
@@ -1798,14 +1808,14 @@ export const layer = Layer.effect(
     };
 
     /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard; readonly permission?: AgentApproval["permission"] }) =>
+    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard; readonly permission?: AgentApproval["permission"]; readonly brand?: AgentApproval["brand"] }) =>
       Effect.promise(
         () =>
           new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
             // A question or a storyboard may take thinking over (QUESTION_MS); UNCUT_APPROVAL_MS shortens both in tests.
             const long = !!(more?.question || more?.storyboard);
             const ms = long && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : long ? QUESTION_MS : approvalMs();
-            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}), ...(more?.permission ? { permission: more.permission } : {}) };
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}), ...(more?.permission ? { permission: more.permission } : {}), ...(more?.brand ? { brand: more.brand } : {}) };
             let settled = false;
             const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => {
               if (settled) return;
@@ -2227,7 +2237,9 @@ export const layer = Layer.effect(
         ];
         // Uncut's layout checks (D196) and the safe-area ones, as facts.
         const keep = new Set(["text-edge", "small-text"]);
-        const checks: Array<CriticFinding> = projectChecks(project, { rules: LAYOUT_RULES, disabled: CHECK_IDS.filter((id) => !keep.has(id)) }).map((c) => ({ rule: c.id, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), hard: LAYOUT_HARD.has(c.id) }));
+        // D198: a font that isn't there is a hard finding too (a "font" blocker).
+        const fontCheck = yield* fontsRule(v);
+        const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)) }).map((c) => ({ rule: c.id, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) }));
         const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string> }) as { kit?: BrandKit; files: Record<string, string> }));
         const round = r.reviewRounds + 1;
         // The review's number across the project (the card's "round n"); the limit counts this turn's.
@@ -2261,7 +2273,15 @@ export const layer = Layer.effect(
         });
       });
 
-    /** brand_read (D186): the kit and skills, or one of the kit's files. */
+    /** D198: the fonts rule for the open project (the fonts its graphics' own HTML names, the kit's and the installed ones). */
+    const fontsRule = (v: ProjectView) =>
+      Effect.promise(async () => {
+        const project = v.session.project as Project;
+        const [fonts, graphics] = await Promise.all([projectFonts(config.fontsDir, brandDirs(v), true), readGraphics(v.dir, project)]);
+        return fontRule(fonts.available, graphics);
+      });
+
+    /** brand_read (D186, D198): the kit and skills with its logos as pictures, or one of the kit's files. */
     const brandRead = (v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         const all = yield* Effect.promise(() => readBrand(brandDirs(v)));
@@ -2272,29 +2292,60 @@ export const layer = Layer.effect(
             kit: null,
             kits: all.kits.map((k) => ({ id: k.id, name: k.name, scope: k.scope })),
             message: typeof args.kit === "string" ? `There's no kit "${args.kit}".` : "This project has no brand kit.",
-            next: "Don't invent a logo, colours or fonts. Ask the user (ask_user): pick one of their kits (they choose it in the Brand panel), or give you the logo files and colours, which you can save with brand_write.",
+            next: all.kits.length
+              ? "Don't invent a logo, colours or fonts. Ask the user (ask_user) which of their kits this video uses (they choose it in the Brand panel), or find the brand on its own site and save it with brand_write."
+              : "Don't invent a logo, colours or fonts. Find the brand on its own site (the logo file, colours, fonts) or in the folders the user named, and save it with brand_write (logos and font files from a path or an https address); ask_user only when you can't.",
           });
         }
         const files = all.files[kit.id] ?? {};
+        const picture = (png: Buffer) => ({ type: "image" as const, data: png.toString("base64"), mimeType: "image/png" });
         if (typeof args.file === "string") {
           const path = files[args.file];
           if (!path) return textResult(`The kit has no file "${args.file}". Its files: ${Object.keys(files).join(", ") || "(none)"}.`, true);
           const ext = path.toLowerCase().split(".").pop() ?? "";
-          const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext];
-          if (mime) {
-            const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
-            if (data && data.length <= 5 * 1024 * 1024) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path} (media_import this path to place it).` }, { type: "image" as const, data: data.toString("base64"), mimeType: mime }] };
-          }
-          if (ext === "svg") {
-            const text = yield* Effect.promise(() => readFile(path, "utf8").catch(() => ""));
-            return textResult({ file: args.file, path, svg: text.slice(0, 20000), note: "media_import this path to place it (an SVG is drawn sharp at its box's size)." });
+          const slot = (["light", "dark", "mark"] as const).find((k) => kit.logos[k] === args.file) ?? "mark";
+          if (["svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
+            // D198: drawn as a PNG (an SVG too) on the background it's for.
+            const [drawn] = yield* Effect.promise(() => logoPictures([{ slot, path }]));
+            if (drawn?.png) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path}${ext === "svg" ? " (an SVG: drawn here as a PNG; media_import keeps it vector, and in a graphic uncut:brand/logo-… inlines it)" : ""}. media_import this path to place it.` }, picture(drawn.png)] };
+            if (ext !== "svg") {
+              const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
+              const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext]!;
+              if (data && data.length <= 5 * 1024 * 1024) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path} (media_import this path to place it).` }, { type: "image" as const, data: data.toString("base64"), mimeType: mime }] };
+            }
+            return textResult({ file: args.file, path, note: `Couldn't draw it${drawn?.problem ? ` (${drawn.problem})` : ""}; media_import this path to place it.` });
           }
           return textResult({ file: args.file, path, note: "media_import this path to use it." });
         }
-        return textResult({ kit: kitLines(kit, files).join("\n"), colors: kit.colors, fonts: kit.fonts, logos: Object.fromEntries(Object.entries(kit.logos).map(([k, name]) => [k, { name, path: files[name!] ?? null }])), files, skills: all.skills.filter((s) => all.active.skills.includes(s.id)).map((s) => ({ name: s.name, description: s.description, body: s.body })), next: "Use these by default: media_import a logo's path to place it, the colours by role in backgrounds, text and graphics (and the project's theme), the fonts in text style.font and graphics CSS, the tone in every line of copy." });
+        const slots = (["light", "dark", "mark"] as const).flatMap((k) => (kit.logos[k] && files[kit.logos[k]!] ? [{ slot: k, name: kit.logos[k]!, path: files[kit.logos[k]!]! }] : []));
+        const drawn = yield* Effect.promise(() => logoPictures(slots));
+        const fonts = yield* Effect.promise(() => projectFonts(config.fontsDir, brandDirs(v), true).catch(() => undefined));
+        const label = { light: "the logo for light backgrounds", dark: "the logo for dark backgrounds", mark: "the logo mark" } as const;
+        const summary = {
+          kit: kitLines(kit, files).join("\n"),
+          colors: kit.colors,
+          fonts: kit.fonts.map((f) => ({ ...f, ...(f.file ? { path: files[f.file] ?? null } : {}), available: fonts ? fonts.available(f.family) : null })),
+          logos: Object.fromEntries(Object.entries(kit.logos).map(([k, name]) => [k, { name, path: files[name!] ?? null, inGraphics: `uncut:brand/logo-${k}` }])),
+          files,
+          skills: all.skills.filter((s) => all.active.skills.includes(s.id)).map((s) => ({ name: s.name, description: s.description, body: s.body })),
+          ...(fonts?.kitMissing.length ? { fontsMissing: `${fonts.kitMissing.map((f) => `"${f}"`).join(", ")} ${fonts.kitMissing.length === 1 ? "has" : "have"} no font file in the kit and ${fonts.kitMissing.length === 1 ? "isn't" : "aren't"} installed: add the file (brand_write fonts with file) or it falls back to another font.` } : {}),
+          ...(!slots.length ? { logosMissing: "The kit has no logo files: find them (the brand's site, the folders the user named) and add them with brand_write logos; never draw or retype a logo." } : {}),
+          next: "Use these by default: media_import a logo's path to place it (or uncut:brand/logo-… in a graphic), the colours by role in backgrounds, text and graphics (and the project's theme), the fonts in text style.font and graphics CSS, the tone in every line of copy.",
+        };
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(summary, null, 1) },
+            ...drawn.flatMap((d, i) => (d.png ? [{ type: "text" as const, text: `Logo: ${label[slots[i]!.slot]}, ${slots[i]!.name}:` }, picture(d.png)] : [{ type: "text" as const, text: `Logo ${slots[i]!.name} couldn't be drawn: ${d.problem ?? "unknown"}.` }])),
+          ],
+        };
       });
 
-    /** brand_write (D186, D190): merged into a kit; a new kit (with a name) becomes the project's when it has none. */
+    /**
+     * brand_write (D186, D190, D198): merged into a kit; a new kit (with a name) goes in the user's
+     * library and becomes the project's when it has none. Logos and font files come in from kit
+     * names, paths, folders or https addresses. Changing an existing kit's colours or fonts waits for
+     * the user's Apply on a before / after card, in every access mode.
+     */
     const brandWrite = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         const dirs = brandDirs(v);
@@ -2304,23 +2355,91 @@ export const layer = Layer.effect(
         const fresh = !base && typeof args.name === "string" && args.name.trim() !== "" && !all.kits.some((k) => k.id === slug(String(args.name)));
         if (!base && !fresh) base = all.kits.find((k) => k.id === (typeof args.name === "string" ? slug(args.name) : all.active.kit));
         if (!base && !fresh) return textResult("No kit to write into: pass kit (an id from brand_read) or name for a new kit.", true);
-        const start: BrandKit = base ?? { id: slug(String(args.name)), name: String(args.name).trim().slice(0, 80), scope: args.scope === "global" ? "global" : "project", logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] };
+        // D198: a new kit goes in the user's library unless the call pins it to this project.
+        const start: BrandKit = base ?? { id: slug(String(args.name)), name: String(args.name).trim().slice(0, 80), scope: args.scope === "project" ? "project" : "global", logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] };
         const merged = mergeKit(start, args);
         if ("problem" in merged) return textResult(merged.problem, true);
-        const saved = yield* Effect.tryPromise({ try: () => saveKit(dirs, merged), catch: (e) => e as Error }).pipe(Effect.map((k) => ({ ok: true as const, k })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
+        // Files first (into the kit's folder; kit.json is written below): logos, font files, an import.
+        const files = { ...(all.files[start.id] ?? {}) };
+        const notes: Array<string> = [];
+        const bring = (source: string) =>
+          Effect.promise(() => importIntoKit(dirs, start.id, start.scope, source, r.abort.signal).catch((e: Error) => ({ problem: e.message }) as const));
+        const logos: { -readonly [K in LogoSlot]?: string } = { ...merged.logos };
+        if (args.logos && typeof args.logos === "object") {
+          for (const slot of ["light", "dark", "mark"] as const) {
+            const want = (args.logos as Record<string, unknown>)[slot];
+            if (typeof want !== "string" || !want.trim()) continue;
+            if (Object.hasOwn(files, want)) {
+              logos[slot] = want;
+              continue;
+            }
+            const got = yield* bring(want);
+            if ("problem" in got) return textResult(`Couldn't bring in the ${slot} logo: ${got.problem}`, true);
+            const logo = got.files.find((f) => f.kind === "logo");
+            if (!logo) return textResult(`${want} has no logo picture (SVG, PNG, JPEG, WebP, GIF).`, true);
+            logos[slot] = logo.name;
+          }
+        }
+        let fontsOut = [...merged.fonts];
+        if (Array.isArray(args.fonts)) {
+          const next: Array<BrandKit["fonts"][number]> = [];
+          for (const f of merged.fonts) {
+            if (!f.file || Object.hasOwn(files, f.file)) {
+              next.push(f);
+              continue;
+            }
+            const got = yield* bring(f.file);
+            if ("problem" in got) return textResult(`Couldn't bring in the font file for ${f.family}: ${got.problem}`, true);
+            const font = got.files.find((x) => x.kind === "font");
+            if (!font) return textResult(`${f.file} isn't a font file (WOFF2, WOFF, TTF, OTF).`, true);
+            next.push({ ...f, file: font.name });
+          }
+          fontsOut = next;
+        }
+        if (typeof args.import === "string" && args.import.trim()) {
+          const got = yield* bring(args.import);
+          if ("problem" in got) return textResult(`Couldn't import from ${args.import}: ${got.problem}`, true);
+          Object.assign(logos, fillLogos(logos, got.files));
+          for (const f of got.files.filter((x) => x.kind === "font")) {
+            const path = (yield* Effect.promise(() => readBrand(dirs))).files[start.id]?.[f.name];
+            const family = (path ? (yield* Effect.promise(() => fontFileFamilies(path)))[0] : undefined) ?? f.family ?? f.name;
+            const same = fontsOut.findIndex((x) => familyKey(x.family) === familyKey(family) && !x.file);
+            if (same >= 0) fontsOut[same] = { ...fontsOut[same]!, file: f.name };
+            else if (!fontsOut.some((x) => x.file === f.name)) fontsOut.push({ family, role: fontsOut.length ? "body" : "headline", file: f.name });
+          }
+          notes.push(`Imported ${got.files.map((f) => (f.kind === "logo" ? `${f.name} (logo, ${f.slot})` : `${f.name} (font)`)).join(", ")}.`);
+        }
+        let kit: BrandKit = { ...merged, logos, fonts: fontsOut };
+        // D198: an existing kit's colours and fonts change only with the user's approval.
+        const changes = base ? kitChanges(base, kit) : [];
+        if (changes.length) {
+          const answer = yield* askUser(r, `Change the ${changes.map((c) => c.field.toLowerCase()).join(" and ")} of the kit "${base!.name}"`, 0, undefined, undefined, undefined, { brand: { kit: base!.name, changes } });
+          if (answer !== "allow") {
+            kit = { ...kit, colors: base!.colors, fonts: base!.fonts };
+            notes.push(answer === "stopped" ? "The turn was stopped: the kit's colours and fonts stay as they were." : `The user ${answer === "timeout" ? "didn't answer" : "kept the kit as it is"}: its colours and fonts weren't changed. Don't put them in again in this turn; a reference's colours belong in style.`);
+          }
+        }
+        const saved = yield* Effect.tryPromise({ try: () => saveKit(dirs, kit), catch: (e) => e as Error }).pipe(Effect.map((k) => ({ ok: true as const, k })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
         if (!saved.ok) return textResult(`Couldn't save the kit: ${saved.message}`, true);
         if (fresh && !all.active.kit) yield* Effect.promise(() => writeActive(v.dir, { kit: saved.k.id, skills: all.active.skills }).catch(() => {}));
         const what = args.style ? `Style guide written into ${saved.k.name}` : fresh ? `New kit ${saved.k.name}` : `Saved the kit ${saved.k.name}`;
         addCard(r, { type: "brand", text: what }, what);
-        return textResult({ saved: saved.k.id, kit: kitLines(saved.k, (yield* Effect.promise(() => readBrand(dirs))).files[saved.k.id] ?? {}).join("\n"), ...(fresh && !all.active.kit ? { note: "It's now this project's kit." } : {}) });
+        return textResult({ saved: saved.k.id, scope: saved.k.scope === "global" ? "the user's library: every project can pick it" : "pinned to this project", kit: kitLines(saved.k, (yield* Effect.promise(() => readBrand(dirs))).files[saved.k.id] ?? {}).join("\n"), ...(fresh && !all.active.kit ? { note: "It's now this project's kit." } : {}), ...(notes.length ? { notes } : {}) });
       });
 
     /** reference_frames (D190): a contact sheet of a file on disk that isn't imported. */
     const referenceFrames = (v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         if (typeof args.path !== "string" || !args.path.trim()) return textResult("path is the reference file's absolute path.", true);
-        const path = isAbsolute(args.path) ? args.path : resolve(v.dir, args.path);
+        const asked = expandHome(args.path);
+        const path = isAbsolute(asked) ? asked : resolve(v.dir, asked);
         const count = Number.isInteger(args.count) && (args.count as number) >= 1 && (args.count as number) <= MAX_CELLS ? (args.count as number) : 16;
+        // D198: an SVG (a logo, a mockup) is drawn as a PNG, as brand_read does.
+        if (/\.svg$/i.test(path)) {
+          const [drawn] = yield* Effect.promise(() => logoPictures([{ slot: "mark", path }]));
+          if (!drawn?.png) return textResult(`Couldn't draw ${shortName(path)}: ${drawn?.problem ?? "it isn't there"}.`, true);
+          return { content: [{ type: "text" as const, text: `The reference ${shortName(path)} (an SVG, drawn as a PNG on grey). Read its grammar (palette, type, layout), not its content.` }, { type: "image" as const, data: drawn.png.toString("base64"), mimeType: "image/png" }] };
+        }
         const probed = yield* mediaCore.probeMany([path]).pipe(Effect.map((list) => list[0]), Effect.catch(() => Effect.succeed(undefined)));
         if (!probed || !probed.ok) return textResult(`Couldn't read ${shortName(path)}: ${probed && !probed.ok ? probed.message : "it isn't a media file Uncut can open"}.`, true);
         const info = probed.info;
@@ -2455,7 +2574,9 @@ export const layer = Layer.effect(
             // D186: with a brand kit, its colours are a rule too.
             const kit: BrandKit | undefined = (yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => undefined)))?.kit;
             const brandRules = kit && kit.colors.length ? [brandColourRule(kit.name, [...kit.colors.map((c) => c.hex), ...(kit.style?.palette.map((c) => c.hex) ?? [])])] : [];
-            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES], found: asked.checks, notes: asked.notes }));
+            // D198: fonts that aren't there are an error, not a silent fallback.
+            const fonts = yield* fontsRule(v);
+            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts], found: asked.checks, notes: asked.notes, errors: FONT_ERRORS }));
           }
           case "music_list": {
             if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
@@ -3081,16 +3202,38 @@ export const layer = Layer.effect(
           .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
         const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), TOOLS_LINE, note].filter(Boolean);
         // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
-        for (const dir of mentionedDirs(text, v.dir, (p) => {
+        // D198: and each one is listed in the message (names only), so the agent can't miss one.
+        const named = namedFolders(text, v.dir, (p) => {
           try {
             const st = statSync(p);
             return st.isDirectory() ? "dir" : st.isFile() ? "file" : undefined;
           } catch {
             return undefined;
           }
-        })) {
-          if (!owner.dirs.includes(dir) && !owner.mentioned.includes(dir) && owner.mentioned.length < 16) owner.mentioned.push(dir);
+        });
+        for (const f of named) {
+          if (!f.problem && !owner.dirs.includes(f.dir) && !owner.mentioned.includes(f.dir) && owner.mentioned.length < 16) owner.mentioned.push(f.dir);
         }
+        const folderList: Array<AgentFolder> = [];
+        const folderLines: Array<string> = [];
+        for (const f of named) {
+          const shown = shownPath(f.dir);
+          if (f.problem) {
+            folderList.push({ path: shown, files: 0, folders: 0, problem: f.problem });
+            folderLines.push(`${shown}: not listed, ${f.problem}. Ask the user for the folder inside it they mean, or use the files they named by their full paths.`);
+            continue;
+          }
+          const listing = yield* Effect.promise(() => listFolder(f.dir));
+          if (!listing) {
+            folderList.push({ path: shown, files: 0, folders: 0, problem: "Uncut can't read it" });
+            folderLines.push(`${shown}: Uncut can't read it (macOS may need Files and Folders access for Uncut).`);
+            continue;
+          }
+          folderList.push({ path: shown, files: listing.files, folders: listing.folders });
+          const more = listing.files + listing.folders - listing.names.length;
+          folderLines.push(`${shown} (${f.dir}): ${listingWords(listing)}${listing.names.length ? `: ${listing.names.join(", ")}${more > 0 ? ` and ${more} more` : ""}` : ", empty"}.`);
+        }
+        const foldersBlock = folderLines.length ? `<folders>\nThe folders the user named in this message, each listed by Uncut (top level, hidden files left out). Use every one of them; media_import takes these paths.\n${folderLines.join("\n")}\n</folders>` : "";
         const dirsKey = [...owner.dirs].sort().join("\n");
         // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
         const skip = access === "edit" && skipStoryboard;
@@ -3105,7 +3248,7 @@ export const layer = Layer.effect(
             return "";
           }
         });
-        const message = [text, contextBlock(project, pointed), planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
+        const message = [text, contextBlock(project, pointed), foldersBlock, planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
 
         // The session to use: the live one when it's still this opening's with the same tools, model
         // and effort (D184: another choice starts another claude that resumes the conversation).
@@ -3147,6 +3290,7 @@ export const layer = Layer.effect(
           ...(imageNames.length ? { images: imageNames } : {}),
           ...(model ? { model } : {}),
           ...(note ? { note } : {}),
+          ...(folderList.length ? { folders: folderList } : {}),
           startedAt: new Date().toISOString(),
           status: "running",
           items: [],

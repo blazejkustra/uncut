@@ -10,7 +10,8 @@
 //                                                    window of its own, render(t, info) called, captured
 // It knows nothing about projects: the server builds the HTML with core's textHtml / solidHtml /
 // componentHtml and RENDER_CSS (D39, D53, D76). The bundled DM Sans and DM Mono (D77) are loaded
-// once with the page, from data: URLs, with the preview's @font-face rules. Nothing may load from
+// once with the page, from data: URLs, with the preview's @font-face rules; the brand kit's fonts
+// (D198) come in a request's css. Nothing may load from
 // the network: every request that isn't a data: URL is cancelled. It quits when stdin closes,
 // i.e. when the server is done with it or gone. Its Chromium profile is a temp folder (see below).
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -178,13 +179,18 @@ async function main() {
     }
   };
 
+  // The CSS of the last request: set again only when it changes (D198: it may carry the brand
+  // kit's fonts as data: URLs, which shouldn't be parsed and loaded again for every frame).
+  let lastCss: string | undefined;
   const render = async (r: Request) => {
     if (r.kind === "graphic") return renderGraphic(r);
     const [w, h] = win.getContentSize();
     if (w !== r.width || h !== r.height) win.setContentSize(r.width, r.height);
+    const css = lastCss === r.css ? "" : `document.getElementById("css").textContent = ${JSON.stringify(r.css)};`;
+    lastCss = r.css;
     // Set the content, then wait for fonts, images and two frames so what's captured is what was set.
     await win.webContents.executeJavaScript(
-      `(() => { document.getElementById("css").textContent = ${JSON.stringify(r.css)}; document.getElementById("frame").innerHTML = ${JSON.stringify(r.html)}; void document.body.offsetHeight;
+      `(() => { ${css} document.getElementById("frame").innerHTML = ${JSON.stringify(r.html)}; void document.body.offsetHeight;
         const images = Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
         const settled = Promise.all([document.fonts.ready, images]).then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(innerWidth + "x" + innerHeight)))));
         // A frame that never comes (a busy machine) mustn't hang the request: capture after 5 s regardless.

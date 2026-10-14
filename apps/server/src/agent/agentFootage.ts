@@ -2,8 +2,10 @@
 // media_import call means (a folder's media files, not recursive) and what it must refuse, and
 // how a contact sheet is laid out (which frames, the grid, its HTML for the rasteriser).
 import { readdir, realpath, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import type { Dirent } from "node:fs";
 import { basename, extname, isAbsolute, join, sep } from "node:path";
+
+import { expandHome } from "../paths.ts";
 
 /** media_import: at most this many files per call. */
 export const MAX_IMPORT = 50;
@@ -32,7 +34,6 @@ export interface ImportPlan {
   readonly skipped: ReadonlyArray<{ readonly path: string; readonly reason: string }>;
 }
 
-const expandHome = (path: string) => (path === "~" ? homedir() : path.startsWith("~/") ? join(homedir(), path.slice(2)) : path);
 const realOr = (path: string) => realpath(path).catch(() => path);
 const inside = (path: string, folder: string) => path === folder || path.startsWith(folder + sep);
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -243,3 +244,44 @@ export function sheetHtml(cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly
 
 /** A short name for a path in a step label. */
 export const shortName = (path: string) => basename(path.replace(/[/\\]+$/, "")) || path;
+
+/** D198: what a folder the user named holds (not hidden entries), for the message and the turn card. */
+export interface FolderListing {
+  readonly files: number;
+  readonly folders: number;
+  readonly videos: number;
+  readonly images: number;
+  readonly sounds: number;
+  /** Names in order (folders end in /), at most `max`. */
+  readonly names: ReadonlyArray<string>;
+}
+
+/** The folder's own entries (not recursive, dot-files left out), or undefined when it can't be read. */
+export async function listFolder(dir: string, max = 40): Promise<FolderListing | undefined> {
+  let entries: Array<Dirent>;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  const shown = entries.filter((e) => !e.name.startsWith(".") && (e.isFile() || e.isDirectory() || e.isSymbolicLink()));
+  const folders = shown.filter((e) => e.isDirectory()).map((e) => `${e.name}/`).sort(byName);
+  const files = shown.filter((e) => !e.isDirectory()).map((e) => e.name).sort(byName);
+  const ext = (n: string) => extname(n).toLowerCase();
+  return {
+    files: files.length,
+    folders: folders.length,
+    videos: files.filter((n) => VIDEO_EXT.includes(ext(n))).length,
+    images: files.filter((n) => IMAGE_EXT.includes(ext(n))).length,
+    sounds: files.filter((n) => AUDIO_EXT.includes(ext(n))).length,
+    names: [...files, ...folders].slice(0, max),
+  };
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "12 files (3 videos, 8 images) and 2 folders": a listing in words. */
+export function listingWords(l: FolderListing): string {
+  const kinds = [l.videos ? plural(l.videos, "video") : "", l.images ? plural(l.images, "image") : "", l.sounds ? plural(l.sounds, "sound") : ""].filter(Boolean);
+  return `${plural(l.files, "file")}${kinds.length && l.files ? ` (${kinds.join(", ")})` : ""}${l.folders ? ` and ${plural(l.folders, "folder")}` : ""}`;
+}

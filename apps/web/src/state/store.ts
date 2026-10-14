@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { AGENT_IMAGE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -365,6 +365,8 @@ const serverUrl = (route: string, id: string, path?: string) => {
   if (path !== undefined) url.searchParams.set("v", pathTag(path));
   return url.href;
 };
+/** D198: a file of a brand kit (a logo thumbnail, a font for the preview), from the server's token-protected route. */
+export const brandFileUrl = (kit: string, name: string, path?: string) => serverUrl(`${BRAND_FILE_PATH}/${encodeURIComponent(kit)}`, name, path);
 /** An image attached to an agent message (D184), kept in the project's .cache/agent-images/. */
 export const agentImageUrl = (name: string) => serverUrl(AGENT_IMAGE_PATH, name);
 /** The poster for a media item, from the server's token-protected route (never file://). */
@@ -1346,6 +1348,18 @@ export const actions = {
     if (!result.ok) return void set({ brandError: plainError(result.error) });
     set({ brand: result.value.state, brandError: undefined });
     return result.value.name;
+  },
+  /** D198: logos and fonts from a file, a folder or an https address into a kit's folder; what came in, or undefined (the reason in brandError). */
+  async brandImport(kit: string, scope: BrandScope, source: string): Promise<ReadonlyArray<BrandImported> | undefined> {
+    const result = await call((c) => c["brand.import"]({ kit, scope, source }));
+    if (!result.ok) return void set({ brandError: plainError(result.error) });
+    set({ brand: result.value.state, brandError: undefined });
+    return result.value.files;
+  },
+  /** D198: a file or a folder to import into a kit (the native dialog; a remote's own disk isn't browsable for this). */
+  async pickBrandSource(): Promise<string | undefined> {
+    if (isRemote()) return undefined;
+    return (await bridge.chooseFolder("brand")) ?? undefined;
   },
   /** Files for a kit (logos, examples, a reference): the native dialog here, the server's disk on a remote. */
   async pickBrandFiles(): Promise<ReadonlyArray<string>> {

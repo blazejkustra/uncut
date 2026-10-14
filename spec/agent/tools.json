@@ -1032,7 +1032,7 @@
     },
     {
       "name": "brand_read",
-      "description": "Read the project's brand kit (colours with roles, fonts, logos, tone, taglines, URLs, do's and don'ts, style guide) and skills, or one of the kit's files: a logo or example frame comes back as an image (SVG as text) with its path for media_import. Without an active kit it lists the kits there are.",
+      "description": "Read the project's brand kit (colours with roles, fonts with their files, logos, tone, taglines, URLs, do's and don'ts, style guide) and skills, with each logo as an image (an SVG drawn as a PNG for you; graphics keep it vector), or one of the kit's files: a logo or example frame comes back as an image with its path for media_import. Without an active kit it lists the user's kits.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -1051,7 +1051,7 @@
     },
     {
       "name": "brand_write",
-      "description": "Write into a brand kit: a style guide (from a reference), colours, fonts, tone and the rest, merged into what's there (a field you pass replaces that field). With a new name and no kit, makes a new kit (scope project by default) and makes it the project's kit. Only what the user gave or approved, never invented brand facts.",
+      "description": "Write into a brand kit, merged into what's there (a field you pass replaces that field): colours, fonts (with their font files), logos, tone and the rest. Changing an existing kit's colours or fonts shows the user a before and after card and only happens if they approve it. A style from a reference goes in style (its own guide attached to the kit), never in colors or fonts. With a new name and no kit, makes a new kit in the user's library (every project can pick it; scope project pins it to this project only) and makes it the project's kit when it has none. Logos and font files come from a path (~/ works), a folder (its logo pictures and font files) or an https address; SVG logos stay vector. Only what the user gave or approved or the brand's own site shows, never invented brand facts.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -1067,7 +1067,8 @@
             "enum": [
               "global",
               "project"
-            ]
+            ],
+            "description": "A new kit's home: global (default), the user's library; project, pinned to this project."
           },
           "colors": {
             "type": "array",
@@ -1109,9 +1110,33 @@
                 },
                 "weight": {
                   "type": "number"
+                },
+                "file": {
+                  "type": "string",
+                  "description": "The font's file (.woff2, .woff, .ttf, .otf): a file of the kit, a path or an https address. Graphics, texts and components then load it."
                 }
               }
             }
+          },
+          "logos": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Logo files by slot: light (for light backgrounds), dark (for dark backgrounds), mark (the icon). Each: a file of the kit, a path, or an https address (SVG, PNG, JPEG, WebP, GIF).",
+            "properties": {
+              "light": {
+                "type": "string"
+              },
+              "dark": {
+                "type": "string"
+              },
+              "mark": {
+                "type": "string"
+              }
+            }
+          },
+          "import": {
+            "type": "string",
+            "description": "A file, a folder or an https address to bring logos and font files from: logos fill the empty slots by their names (mark, icon: mark; dark, white: dark; else light), font files are added to fonts."
           },
           "tone": {
             "type": "string"
@@ -1208,7 +1233,8 @@
         "additionalProperties": false,
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "The file's absolute path (~/ and $HOME/ work)."
           },
           "count": {
             "type": "integer",

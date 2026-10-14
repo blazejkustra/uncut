@@ -33,6 +33,8 @@ export interface ServerConfigShape {
   readonly sfxDir: string;
   // The libraries graphics load with uncut:lib/ markers (assets/graphic-libs, D193), shipped in Resources/graphic-libs.
   readonly graphicLibsDir: string;
+  /** D198: the bundled fonts (DM Sans, DM Mono; assets/fonts, Resources/fonts) that graphics load. */
+  readonly fontsDir: string;
   // Where app state lives (recents.json). The desktop passes Electron's userData path.
   readonly dataDir: string;
   // Plugin folders, searched in this order (D97): UNCUT_PLUGINS_DIR (tests, development), the
@@ -146,6 +148,7 @@ export const readConfig = (
     musicDir: env.UNCUT_MUSIC_DIR || fromResources("music", "../../../assets/music"),
     sfxDir: env.UNCUT_SFX_DIR || fromResources("sfx", "../../../assets/sfx"),
     graphicLibsDir: env.UNCUT_GRAPHIC_LIBS_DIR || fromResources("graphic-libs", "../../../assets/graphic-libs"),
+    fontsDir: env.UNCUT_FONTS_DIR || fromResources("fonts", "../../../assets/fonts"),
     dataDir: dataDirOf(env),
     pluginDirs: [
       ...(env.UNCUT_PLUGINS_DIR ? [{ source: "user" as const, dir: env.UNCUT_PLUGINS_DIR }] : []),

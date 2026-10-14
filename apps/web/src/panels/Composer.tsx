@@ -14,24 +14,36 @@ import { usePlayback } from "../preview/playback.ts";
 import { setAgentPrefs, toggleFavourite, useAgentPrefs } from "../state/agentPrefs.ts";
 import { frameTimecode } from "../state/format.ts";
 import { itemLabel } from "../state/project.ts";
+import { bridge } from "../state/bridge.ts";
 import { actions, useApp, type Project } from "../state/store.ts";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Text with its @labels (of `labels`) as chip spans: the composer's backdrop and the turn card's prompt. */
+// D198: a path in a message (~/…, $HOME/…, ${HOME}/… or absolute), as the server reads one (a
+// backslash-escaped space stays in it; trailing punctuation doesn't).
+const PATH = String.raw`(?<![^\s"'(<\[])(?:(?:~|\$HOME|\$\{HOME\})\/|\/(?=[^\s/]))(?:\\ |[^\s"'\`)<>\]])*?(?=[.,;:!?]*(?:$|[\s"'\`)<>\]]))`;
+
+/** Text with its @labels (of `labels`) and its paths (D198) as chip spans: the composer's backdrop and the turn card's prompt. */
 export function withChips(text: string, labels: ReadonlyArray<string>, className = "chip"): ReactNode {
   const unique = [...new Set(labels.filter(Boolean))].sort((a, b) => b.length - a.length);
-  if (!unique.length) return text;
-  const re = new RegExp(`(@(?:${unique.map(escape).join("|")}))`, "g");
-  return text.split(re).map((part, i) =>
-    i % 2 === 1 ? (
-      <mark key={i} className={className} data-testid="agent-chip">
-        {part}
-      </mark>
-    ) : (
-      <Fragment key={i}>{part}</Fragment>
-    ),
-  );
+  const re = new RegExp(unique.length ? `@(?:${unique.map(escape).join("|")})|${PATH}` : PATH, "g");
+  const out: Array<ReactNode> = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (!m[0]) continue;
+    const at = m.index;
+    if (at > last) out.push(<Fragment key={`t${last}`}>{text.slice(last, at)}</Fragment>);
+    const path = !m[0].startsWith("@");
+    out.push(
+      <mark key={`m${at}`} className={path ? `${className} path` : className} data-testid={path ? "agent-path-chip" : "agent-chip"}>
+        {m[0]}
+      </mark>,
+    );
+    last = at + m[0].length;
+  }
+  if (!out.length) return text;
+  if (last < text.length) out.push(<Fragment key={`t${last}`}>{text.slice(last)}</Fragment>);
+  return out;
 }
 
 const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag, moment: Clock3, range: ArrowLeftRight } as const;
@@ -188,7 +200,14 @@ export function Composer({ project, online, blocked, turns, running, provider }:
         if (!e.dataTransfer.files.length) return;
         e.preventDefault();
         setDropping(false);
-        void addFiles([...e.dataTransfer.files]);
+        // D198: a dropped folder or non-image file goes in as its path (a path chip); images attach.
+        const files = [...e.dataTransfer.files];
+        const paths = files.flatMap((f) => (f.type.startsWith("image/") ? [] : [bridge.pathForFile(f)].filter((p) => p.startsWith("/"))));
+        if (paths.length) {
+          const quoted = paths.map((p) => p.replace(/ /g, "\\ ")).join(" ");
+          setDraft(draft && !/\s$/.test(draft) ? `${draft} ${quoted} ` : `${draft}${quoted} `);
+        }
+        void addFiles(files.filter((f) => f.type.startsWith("image/") || !bridge.pathForFile(f).startsWith("/")));
       }}
     >
       <ContextLine project={project} />

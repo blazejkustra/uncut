@@ -1,13 +1,15 @@
 // The Brand tab (D186): the open project's kit and skills, the kits (logos, colours, fonts, voice,
 // examples and a style guide the agent writes from a reference) and the skills (production
-// recipes). Kits and skills are the user's (every project) or this project's; an editor works
-// on a draft and saves it explicitly (Esc or Cancel drop it).
+// recipes). Kits and skills live in the user's library (every project picks from it; D198) or are
+// pinned to this project; an editor works on a draft and saves it explicitly (Esc or Cancel drop
+// it). D198: logos show as pictures; logos and font files come in from a file, a folder or an
+// https address; a font with its file is loaded everywhere text is drawn.
 import type { BrandKit, BrandScope, BrandSkill, BrandState } from "@uncut/contracts";
-import { ChevronLeft, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { ChevronLeft, FolderOpen, Plus, Sparkles, Trash2, Type, X } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 
-import { actions, getState, useApp } from "../state/store.ts";
+import { actions, brandFileUrl, getState, useApp } from "../state/store.ts";
 import { SKILL_TEMPLATES } from "./brandTemplates.ts";
 
 const COLOR_ROLES = ["background", "surface", "text", "primary", "accent", "muted"] as const;
@@ -18,7 +20,9 @@ const LOGO_SLOTS = [
   { id: "mark", label: "Mark" },
 ] as const;
 type LogoSlot = (typeof LOGO_SLOTS)[number]["id"];
-const SCOPE_LABEL: Record<BrandScope, string> = { global: "Yours", project: "This project" };
+const SCOPE_LABEL: Record<BrandScope, string> = { global: "Library", project: "Pinned here" };
+const SCOPE_CHOICE: Record<BrandScope, string> = { global: "Library", project: "Pin to this project" };
+const LOGO_BACKDROP: Record<LogoSlot, string> = { light: "#ffffff", dark: "#111111", mark: "#808080" };
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 
 /** An id like the server's slug, not taken by `taken`. */
@@ -47,7 +51,7 @@ interface KitDraft {
   readonly scope: BrandScope;
   readonly logos: Partial<Record<LogoSlot, string>>;
   readonly colors: ReadonlyArray<{ readonly hex: string; readonly role: string; readonly name?: string | undefined }>;
-  readonly fonts: ReadonlyArray<{ readonly family: string; readonly role: string; readonly weight?: number | undefined }>;
+  readonly fonts: ReadonlyArray<{ readonly family: string; readonly role: string; readonly weight?: number | undefined; readonly file?: string | undefined }>;
   readonly tone: string;
   readonly taglines: string;
   readonly urls: string;
@@ -149,7 +153,20 @@ export function BrandLibrary() {
                   <span className="brand-tag">{SCOPE_LABEL[k.scope]}</span>
                 </span>
                 {k.colors.length > 0 && <Swatches hexes={k.colors.map((c) => c.hex)} />}
-                {(k.logos.light ?? k.logos.mark ?? k.logos.dark) && <span className="brand-file ellipsis">{k.logos.light ?? k.logos.mark ?? k.logos.dark}</span>}
+                {(() => {
+                  const slot = (["light", "mark", "dark"] as const).find((x) => k.logos[x]);
+                  const name = slot ? k.logos[slot]! : undefined;
+                  const path = name ? brand.files[k.id]?.[name] : undefined;
+                  const src = name && path ? brandFileUrl(k.id, name, path) : undefined;
+                  return name ? (
+                    <span className="brand-row-logo">
+                      <span className="brand-logo-thumb" style={{ background: LOGO_BACKDROP[slot!] }}>
+                        {src ? <img src={src} alt={name} draggable={false} /> : null}
+                      </span>
+                      <span className="brand-file ellipsis">{name}</span>
+                    </span>
+                  ) : null;
+                })()}
                 {k.style && <span className="brand-tag">Style guide</span>}
               </button>
             ))}
@@ -232,7 +249,7 @@ function ScopeChoice({ value, onChange, hasProject, testId }: { value: BrandScop
     <div className="brand-menu">
       {(["global", "project"] as const).map((s) => (
         <button key={s} className={`chip-btn ${value === s ? "active" : ""}`} data-testid={`${testId}-${s}`} disabled={s === "project" && !hasProject} onClick={() => onChange(s)}>
-          {SCOPE_LABEL[s]}
+          {SCOPE_CHOICE[s]}
         </button>
       ))}
     </div>
@@ -256,7 +273,7 @@ function ThisProject({ brand, hasProject, online }: { brand: BrandState; hasProj
       >
         <option value="">No kit</option>
         {yours.length > 0 && (
-          <optgroup label="Yours">
+          <optgroup label="Library">
             {yours.map((k) => (
               <option key={k.id} value={k.id}>
                 {k.name}
@@ -265,7 +282,7 @@ function ThisProject({ brand, hasProject, online }: { brand: BrandState; hasProj
           </optgroup>
         )}
         {ours.length > 0 && (
-          <optgroup label="This project">
+          <optgroup label="Pinned to this project">
             {ours.map((k) => (
               <option key={k.id} value={k.id}>
                 {k.name}
@@ -367,7 +384,37 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
   const [note, setNote] = useState<string | undefined>();
   // The kit as saved (the style guide is the agent's: always the saved one).
   const saved = brand.kits.find((k) => k.id === view.id && k.scope === view.scope);
-  const files = saved ? (brand.files[view.id] ?? {}) : {};
+  const files = brand.files[view.id] ?? {};
+  const [source, setSource] = useState("");
+  // D198: logos and font files from a file, a folder or an address: logos fill the empty slots, fonts become rows (or a family's file).
+  const importFrom = async (from: string | undefined) => {
+    const what = from?.trim();
+    if (!what) return;
+    setBusy(true);
+    const got = await actions.brandImport(view.id, view.scope, what);
+    setBusy(false);
+    if (!got) return;
+    setSource("");
+    onDraft((cur) => {
+      const logos = { ...cur.logos };
+      for (const f of got) if (f.kind === "logo" && f.slot && !logos[f.slot]) logos[f.slot] = f.name;
+      const fonts = [...cur.fonts];
+      for (const f of got.filter((x) => x.kind === "font")) {
+        const family = f.family ?? f.name;
+        const same = fonts.findIndex((x) => x.family.trim().toLowerCase() === family.toLowerCase() && !x.file);
+        if (same >= 0) fonts[same] = { ...fonts[same]!, file: f.name };
+        else fonts.push({ family, role: fonts.length ? "body" : "headline", file: f.name });
+      }
+      return { ...cur, logos, fonts };
+    });
+  };
+  const fontFile = async (i: number) => {
+    const from = await actions.pickBrandSource();
+    if (!from) return;
+    const got = await actions.brandImport(view.id, view.scope, from);
+    const font = got?.find((f) => f.kind === "font");
+    if (font) onDraft((cur) => ({ ...cur, fonts: cur.fonts.map((x, j) => (j === i ? { ...x, file: font.name, family: x.family.trim() || (font.family ?? x.family) } : x)) }));
+  };
   const badHex = d.colors.findIndex((c) => !HEX6.test(c.hex.trim()));
   const set = (patch: Partial<KitDraft>) => onDraft((cur) => ({ ...cur, ...patch }));
 
@@ -388,12 +435,13 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
     const style = current?.kits.find((k) => k.id === view.id && k.scope === view.scope)?.style;
     let logos: Partial<Record<LogoSlot, string>> = { ...d.logos };
     let examples = [...d.examples];
+    let fontFiles = new Map<string, string>();
     const moving = d.scope !== view.scope;
     if (moving) {
-      // The files go with the kit: copied into the new place (maybe under another name), then the old kit goes.
+      // The files go with the kit: copied into the new place (maybe under another name); an unpinned project copy then goes.
       const oldFiles = current?.files[view.id] ?? {};
       const renamed = new Map<string, string>();
-      for (const name of new Set([...Object.values(logos), ...examples].filter((n): n is string => !!n))) {
+      for (const name of new Set([...Object.values(logos), ...examples, ...d.fonts.map((f) => f.file)].filter((n): n is string => !!n))) {
         const path = oldFiles[name];
         if (!path) continue;
         const copied = await actions.brandAddFile(view.id, d.scope, path);
@@ -403,6 +451,7 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
       const to = (n: string | undefined) => (n === undefined ? undefined : (renamed.get(n) ?? n));
       logos = Object.fromEntries(Object.entries(logos).map(([k, v]) => [k, to(v)]).filter(([, v]) => v !== undefined));
       examples = examples.map((n) => to(n)!);
+      fontFiles = new Map(d.fonts.flatMap((f) => (f.file ? [[f.file, to(f.file)!] as const] : [])));
     }
     const kit: BrandKit = {
       id: view.id,
@@ -410,7 +459,7 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
       scope: d.scope,
       logos,
       colors: d.colors.map((c) => ({ hex: c.hex.trim().toLowerCase(), role: c.role, ...(c.name ? { name: c.name } : {}) })),
-      fonts: d.fonts.filter((f) => f.family.trim()).map((f) => ({ family: f.family.trim(), role: f.role, ...(f.weight ? { weight: f.weight } : {}) })),
+      fonts: d.fonts.filter((f) => f.family.trim()).map((f) => ({ family: f.family.trim(), role: f.role, ...(f.weight ? { weight: f.weight } : {}), ...(f.file ? { file: fontFiles.get(f.file) ?? f.file } : {}) })),
       tone: d.tone,
       taglines: lines(d.taglines),
       urls: lines(d.urls),
@@ -420,7 +469,8 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
       ...(style ? { style } : {}),
     };
     let ok = await actions.brandSaveKit(kit);
-    if (ok && moving) ok = await actions.brandDeleteKit(view.id, view.scope);
+    // D198: pinning to this project copies the kit (the library keeps it for other projects); unpinning moves it back.
+    if (ok && moving && view.scope === "project") ok = await actions.brandDeleteKit(view.id, view.scope);
     setBusy(false);
     if (ok) onClose();
   };
@@ -462,11 +512,17 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
 
       <div className="lib-section">
         <span className="lib-label">Logos</span>
-        {LOGO_SLOTS.map(({ id, label }) => (
+        {LOGO_SLOTS.map(({ id, label }) => {
+          const name = d.logos[id];
+          const src = name && files[name] ? brandFileUrl(view.id, name, files[name]) : undefined;
+          return (
           <div key={id} className="brand-line" data-testid={`brand-logo-${id}`}>
             <span className="brand-line-k">{label}</span>
-            <span className={`brand-file ellipsis ${d.logos[id] ? "" : "muted"}`} title={d.logos[id] ? files[d.logos[id]] : undefined}>
-              {d.logos[id] ?? "None"}
+            <span className="brand-logo-thumb" style={{ background: LOGO_BACKDROP[id] }} data-testid={`brand-logo-${id}-thumb`}>
+              {src ? <img src={src} alt={name} draggable={false} /> : null}
+            </span>
+            <span className={`brand-file ellipsis ${name ? "" : "muted"}`} title={name ? files[name] : undefined}>
+              {name ?? "None"}
             </span>
             <button
               className="btn ghost brand-small-btn"
@@ -494,7 +550,25 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
+        <div className="brand-line brand-import" data-testid="brand-import">
+          <input
+            className="field input"
+            data-testid="brand-import-source"
+            placeholder="File, folder or https address"
+            spellCheck={false}
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void importFrom(source)}
+          />
+          <button className="icon-btn" title="Choose a file or folder" data-testid="brand-import-pick" disabled={!online || busy} onClick={() => void actions.pickBrandSource().then((p) => importFrom(p))}>
+            <FolderOpen />
+          </button>
+          <button className="btn ghost brand-small-btn" data-testid="brand-import-go" disabled={!online || busy || !source.trim()} onClick={() => void importFrom(source)}>
+            Import
+          </button>
+        </div>
       </div>
 
       <div className="lib-section">
@@ -561,6 +635,9 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
                   patch({ weight: e.target.value && n >= 100 && n <= 900 ? Math.round(n) : undefined });
                 }}
               />
+              <button className={`icon-btn ${f.file ? "on" : ""}`} title={f.file ? `${f.file}: loaded in graphics, texts and the export` : "Add the font's file"} data-testid={`brand-font-file-${i}`} disabled={!online} onClick={() => void fontFile(i)}>
+                <Type />
+              </button>
               <button className="icon-btn" title="Remove" data-testid={`brand-font-remove-${i}`} onClick={() => set({ fonts: d.fonts.filter((_, j) => j !== i) })}>
                 <X />
               </button>

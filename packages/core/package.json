@@ -28,6 +28,7 @@
     "./components": "./src/visual/components.ts",
     "./stickers": "./src/visual/stickers.ts",
     "./graphics": "./src/visual/graphics.ts",
+    "./fonts": "./src/visual/fonts.ts",
     "./looks": "./src/text/looks.ts",
     "./textPlan": "./src/text/textPlan.ts",
     "./captions": "./src/text/captions.ts",
