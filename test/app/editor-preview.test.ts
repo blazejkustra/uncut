@@ -102,7 +102,7 @@ test("an empty project gets a title and a lower third, plays them at their frame
   await page.waitForFunction((dir: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === dir, {}, projects);
   await page.click("[data-testid=create]");
   await waitFor(page, "[data-testid=editor]");
-  const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 
   // Empty: nothing to play, black preview, the timeline says what to do.

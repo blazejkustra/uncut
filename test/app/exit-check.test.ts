@@ -265,7 +265,8 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
     await ui.waitFor("[data-testid=editor]");
-    dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+    await page.click("[data-testid=tab-inspector]");
+    dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
     assert.equal(dir, join(root, "projects", "Old town promo.uncut"));
     assert.equal(await page.$eval("[data-testid=canvas-info]", (el) => el.textContent?.trim()), "1920×1080, 30 fps");
 

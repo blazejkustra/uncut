@@ -28,11 +28,14 @@ import { TransitionsLibrary } from "./Transitions.tsx";
 import { EffectsLibrary } from "./Effects.tsx";
 import { StickerPicker } from "./Stickers.tsx";
 import { GeneratedSection, generatedMedia, GenerateLibrary } from "./Generate.tsx";
+import { TranscriptPanel } from "./Transcript.tsx";
 
-export type LibraryTab = "media" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate";
+export type LibraryTab = "media" | "transcript" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate";
 
-export function Library({ project, tab, onTab }: { project: Project; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
-  return tab === "text" ? (
+export function Library({ project, dir, tab, onTab }: { project: Project; dir: string; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
+  return tab === "transcript" ? (
+    <TranscriptPanel project={project} dir={dir} />
+  ) : tab === "text" ? (
     <TextLibrary project={project} />
   ) : tab === "elements" ? (
     <ElementsLibrary project={project} />

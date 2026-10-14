@@ -79,7 +79,7 @@ test("import the drone clips, drop an image, see tiles with thumbnails, undo", {
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>("[data-testid=thumb]")].filter((i) => i.complete && i.naturalWidth > 0).length === 2, { timeout: 60000 });
   const srcs = await page.$$eval("[data-testid=thumb]", (imgs) => (imgs as Array<HTMLImageElement>).map((i) => i.src));
   for (const src of srcs) assert.match(src, /^http:\/\/127\.0\.0\.1:\d+\/media\/thumb\/m-[a-z0-9-]+\?token=/);
-  const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   const media = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).media;
   assert.deepEqual(media.map((m: any) => [m.path, m.probe.frames, m.probe.width, m.probe.height]), [
     [DJI, Math.floor(335.6186166 * 30), 3840, 2160],

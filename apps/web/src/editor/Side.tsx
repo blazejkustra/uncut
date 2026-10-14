@@ -28,9 +28,28 @@ import { itemLabel } from "../state/project.ts";
 import { actions, useApp, type Project } from "../state/store.ts";
 import { isBoxed } from "../timeline/clip.ts";
 import { findItem } from "../timeline/edit.ts";
+import { rememberedSideTab, rememberSideTab, type SideTab } from "./layout.ts";
 
 export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
-  const [tab, setTab] = useState<"inspector" | "agent" | "history">("inspector");
+  // U14 (D180): each project keeps the tab it was left on; a new project starts on the Agent.
+  const [tab, setTabState] = useState<SideTab>(() => rememberedSideTab(snapshot.dir) ?? "inspector");
+  const [tabDir, setTabDir] = useState(snapshot.dir);
+  if (tabDir !== snapshot.dir) {
+    setTabDir(snapshot.dir);
+    setTabState(rememberedSideTab(snapshot.dir) ?? "inspector");
+  }
+  useEffect(() => {
+    const onRemembered = (e: Event) => {
+      const { dir, tab: next } = (e as CustomEvent<{ dir: string; tab: SideTab }>).detail;
+      if (dir === snapshot.dir) setTabState(next);
+    };
+    window.addEventListener("uncut:side-tab", onRemembered);
+    return () => window.removeEventListener("uncut:side-tab", onRemembered);
+  }, [snapshot.dir]);
+  const setTab = (next: SideTab) => {
+    setTabState(next);
+    rememberSideTab(snapshot.dir, next);
+  };
   const selectedId = usePlayback((s) => s.selected);
   const also = usePlayback((s) => s.also);
   const selected = findItem(project, selectedId);

@@ -5,7 +5,7 @@
 import { useEffect } from "react";
 
 import { cutSelectedWords } from "../panels/Transcript.tsx";
-import { transcriptStore } from "../panels/transcript.ts";
+import { getTranscripts, transcriptStore } from "../panels/transcript.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { actions, getState, isTextEntry, projectOf } from "../state/store.ts";
 import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "../timeline/clipboard.ts";
@@ -110,6 +110,9 @@ export function useEditorKeys(fps: number) {
       if (blocked(e) || e.altKey || e.ctrlKey) return;
       const done = () => e.preventDefault();
       const bottom = getPlayback().bottom;
+      // U11 (D177): the Transcript is a rail tab next to the timeline. Words selected in it (which
+      // clears the timeline's selection, and the other way round) are what ⌫ cuts.
+      const words = getTranscripts().anchor !== undefined && document.querySelector("[data-testid=transcript-panel]") !== null;
       if (e.metaKey) {
         const key = e.key.toLowerCase();
         if (e.key === "=" || e.key === "+") (playback.zoomIn(), done());
@@ -117,8 +120,8 @@ export function useEditorKeys(fps: number) {
         else if (e.key === "0") (playback.zoomFit(), done());
         else if (e.shiftKey) return;
         else if (key === "b") (done(), e.repeat || void actions.split());
-        // In the transcript and the mixer ⌘A, ⌘C, ⌘X and ⌘V keep their usual meaning.
-        else if (bottom !== "timeline") return;
+        // With words selected and in the mixer ⌘A, ⌘C, ⌘X and ⌘V keep their usual meaning.
+        else if (bottom !== "timeline" || words) return;
         else if (key === "a") {
           done();
           const snapshot = s().snapshot;
@@ -167,9 +170,9 @@ export function useEditorKeys(fps: number) {
       else if (key === "s") (done(), e.repeat || void actions.split());
       else if (key === "Backspace" || key === "Delete") {
         done();
-        // In the Transcript panel ⌫ cuts the selected words (D69), never the timeline item it doesn't show.
-        // The Mixer (D83) shows no selection, so ⌫ there deletes nothing.
-        if (!e.repeat && bottom !== "mixer") void (bottom === "transcript" ? cutSelectedWords() : e.shiftKey ? actions.rippleDelete(s().snapshot ? withGroups(projectOf(s().snapshot!), selection()) : selection()) : deleteSelection());
+        // Selected words in the Transcript: ⌫ cuts them (D69). The Mixer (D83) shows no selection,
+        // so ⌫ there deletes nothing else.
+        if (!e.repeat && (words || bottom !== "mixer")) void (words ? cutSelectedWords() : e.shiftKey ? actions.rippleDelete(s().snapshot ? withGroups(projectOf(s().snapshot!), selection()) : selection()) : deleteSelection());
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {

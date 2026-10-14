@@ -73,6 +73,13 @@ export interface UncutBridge {
   readonly captureSources: () => Promise<ReadonlyArray<CaptureSource>>;
   /** The source the next getDisplayMedia records. */
   readonly chooseDisplaySource: (id: string) => Promise<void>;
+  /**
+   * U12 (D178): the shell holds a window close or a quit (`kind`) until answerClose says "close"
+   * (nothing pending, or the user chose to go), "stay" (Cancel) or "asking" (the dialog is up:
+   * stop waiting for an answer, the user decides).
+   */
+  readonly onCloseRequest: (listener: (kind: "window" | "quit") => void) => () => void;
+  readonly answerClose: (answer: "close" | "stay" | "asking") => void;
 }
 
 declare global {
@@ -87,6 +94,8 @@ const missing = () => Promise.reject(new Error("Not running inside the Uncut des
 export const bridge: UncutBridge = window.uncut ?? {
   getServerConnection: missing,
   onServerExit: () => () => {},
+  onCloseRequest: () => () => {},
+  answerClose: () => {},
   appInfo: () => Promise.resolve({ homeDir: "", defaultParentDir: "" }),
   chooseFolder: () => Promise.resolve(null),
   showInFolder: () => Promise.resolve(),

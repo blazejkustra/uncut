@@ -118,7 +118,8 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
     await waitFor(page, "[data-testid=editor]");
-    const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+    await page.click("[data-testid=tab-inspector]");
+    const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
     const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
     const title = () => onDisk().tracks.find((t: { id: string }) => t.id === "text").items[0];
 

@@ -373,9 +373,14 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     assert.equal(onDisk().media.length, mediaBefore, "nothing imported");
     assert.deepEqual(takesOnDisk(), before, "no take kept or left in uploads");
 
-    // Closing the project mid-take cancels it too; nothing lands anywhere after the take's 4 s.
+    // Closing the project mid-take asks first (U12, D178); Stop cancels the take and the turn, and
+    // nothing lands anywhere after the take's 4 s.
     await ask("record the window for four seconds");
     await page.click("[data-testid=close-project]");
+    await waitFor(page, "[data-testid=leave-dialog][data-reason=close-project]");
+    const leaving = await page.$$eval("[data-testid=leave-item]", (els) => els.map((e) => (e as HTMLElement).dataset.id));
+    assert.ok(leaving.includes("take") && leaving.includes("agent"), `listed: ${leaving}`);
+    await page.click("[data-testid=leave-drop]");
     await waitForWelcome(page);
     await sleep(6000);
     assert.deepEqual(takesOnDisk(), before, "no take kept or left in uploads after closing");

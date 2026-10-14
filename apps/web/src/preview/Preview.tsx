@@ -1036,7 +1036,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   return (
     <main className={`stage ${full ? "fullscreen" : ""}`} data-testid="stage" data-full={full ? "true" : undefined}>
       <style>{RENDER_CSS}</style>
-      <div className={`stage-canvas ${view.hand ? "hand" : ""}`} ref={ref} data-testid="stage-canvas" data-zoom={view.zoom === "fit" ? "fit" : view.scale.toFixed(3)} onPointerDownCapture={(e) => view.handDown(e)}>
+      <div className={`stage-canvas ${view.hand ? "hand" : ""}`} ref={ref} data-testid="stage-canvas" data-zoom={view.zoom === "fit" ? "fit" : view.scale.toFixed(3)} onPointerDownCapture={(e) => view.handDown(e)} onMouseDownCapture={(e) => e.button === 1 && e.preventDefault()} onAuxClick={(e) => e.button === 1 && e.preventDefault()}>
         <div
           className="frame"
           ref={frameRef}

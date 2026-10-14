@@ -46,8 +46,8 @@ export interface PlaybackState {
   /** F11 (D156): overlays follow the footage under them when a main clip's speed or length changes. */
   readonly linkOverlays: boolean;
   readonly draft: PreviewDraft | undefined;
-  /** What the bottom panel shows (D32): the timeline, the transcript or the mixer (D83). */
-  readonly bottom: "timeline" | "transcript" | "mixer";
+  /** What the bottom panel shows (D32): the timeline or the mixer (D83). */
+  readonly bottom: "timeline" | "mixer";
   /** A selected volume key (D83) of the selected item: its index among the item's keys in frame order. ⌫ removes it. */
   readonly gainKey: number | undefined;
   /**

@@ -14,6 +14,8 @@ import {
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
+  CLOSE_ANSWER_CHANNEL,
+  CLOSE_REQUEST_CHANNEL,
   COPY_TEXT_CHANNEL,
   DOWNLOAD_EXPORT_CHANNEL,
   ENVIRONMENT_ADD_CHANNEL,
@@ -33,6 +35,7 @@ import {
   type AppInfo,
   type AppState,
   type CaptureSource,
+  type CloseAnswer,
   type EnvironmentTest,
   type FolderPurpose,
   type MediaAccess,
@@ -135,6 +138,53 @@ const openIfWeb = (raw: string) => {
 
 let server: ServerProcess | undefined;
 let win: BrowserWindow | undefined;
+
+// ---- leaving with work in progress (U12, D178) ----
+// The window's close (its button, ⌘W with no project, and every quit: ⌘Q, the menu, the Dock) is
+// held while the renderer looks for pending work: nothing pending answers "close" at once; else it
+// answers "asking" and shows its dialog, and later "close" or "stay". A renderer that doesn't answer
+// in time, crashed, hung or isn't loaded never keeps the window open. SIGTERM / SIGINT don't ask.
+const CLOSE_ANSWER_MS = 2000;
+let closeAllowed = false;
+let quitting = false;
+let closeWait: { readonly timer: ReturnType<typeof setTimeout> | undefined } | undefined;
+
+function goClose() {
+  if (closeWait?.timer) clearTimeout(closeWait.timer);
+  closeWait = undefined;
+  closeAllowed = true;
+  if (quitting) app.quit();
+  else win?.close();
+}
+
+function onWindowClose(event: Electron.Event) {
+  const w = win;
+  if (closeAllowed || !w) return;
+  const contents = w.webContents;
+  if (contents.isDestroyed() || contents.isCrashed() || contents.isLoading()) return;
+  event.preventDefault();
+  // Asked already: a dialog is up (the renderer brings it back), or an answer is due.
+  if (!closeWait) closeWait = { timer: setTimeout(goClose, CLOSE_ANSWER_MS) };
+  contents.send(CLOSE_REQUEST_CHANNEL, quitting ? "quit" : "window");
+}
+
+app.on("before-quit", () => {
+  quitting = true;
+});
+/**
+ * Signals: SIGTERM / SIGINT quit without asking. Installed once the app is ready, after Chromium's
+ * own handlers, so these replace them (Chromium's would quit through the window's close, which asks).
+ * In tests (UNCUT_CDP) SIGUSR2 closes the window as its close button does, which tests can't press.
+ */
+function installSignals() {
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(signal, () => {
+      closeAllowed = true;
+      app.quit();
+    });
+  }
+  if (process.env.UNCUT_CDP) process.on("SIGUSR2", () => win?.close());
+}
 
 const home = homedir();
 const appInfo: AppInfo = {
@@ -356,6 +406,10 @@ function createWindow() {
     win?.setIgnoreMouseEvents(true);
     win?.showInactive();
   });
+  win.on("close", onWindowClose);
+  // A renderer that's gone or stuck can't answer: the close goes ahead.
+  contents.on("render-process-gone", () => closeWait && goClose());
+  win.on("unresponsive", () => closeWait && goClose());
   win.on("closed", () => (win = undefined));
   if (devServerUrl) void win.loadURL(devServerUrl);
   else void win.loadFile(path.join(__dirname, "renderer", "index.html"));
@@ -420,6 +474,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(() => {
+  installSignals();
   environments = makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt);
   server = startServer({
     ...resources,
@@ -521,6 +576,17 @@ app.whenReady().then(() => {
   // no device latency (Bluetooth headphones add ~0.25 s) between the clock and what is captured.
   ipcMain.on(SILENT_AUDIO_CHANNEL, (event) => {
     event.returnValue = fromAppWindow(event) && testBackground;
+  });
+  ipcMain.on(CLOSE_ANSWER_CHANNEL, (event, answer: CloseAnswer) => {
+    if (!fromAppWindow(event) || !closeWait) return;
+    if (answer === "close") return goClose();
+    if (closeWait.timer) clearTimeout(closeWait.timer);
+    if (answer === "asking") closeWait = { timer: undefined };
+    else {
+      // Cancel: the quit (if it was one) is off; the next close asks again.
+      closeWait = undefined;
+      quitting = false;
+    }
   });
   ipcMain.on(APP_STATE_CHANNEL, (event, state: AppState) => {
     if (fromAppWindow(event)) setAppMenu(state, sendMenuCommand);

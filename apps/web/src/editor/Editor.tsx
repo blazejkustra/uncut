@@ -9,7 +9,6 @@ import { EnvironmentChip } from "../onboarding/Environments.tsx";
 import { NewProject } from "../onboarding/NewProject.tsx";
 import { ExportDialog, exportRunning } from "../panels/ExportDialog.tsx";
 import { Library, type LibraryTab } from "../panels/Library.tsx";
-import { TranscriptPanel } from "../panels/Transcript.tsx";
 import { usePlayback } from "../preview/playback.ts";
 import { Stage } from "../preview/Preview.tsx";
 import { actions, projectOf, useApp, type Project } from "../state/store.ts";
@@ -98,10 +97,10 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
         )}
       </div>
       <Rail tab={tab} onTab={setTab} />
-      <Library project={project} tab={tab} onTab={setTab} />
+      <Library project={project} dir={snapshot.dir} tab={tab} onTab={setTab} />
       <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
       <Side snapshot={snapshot} project={project} online={online} />
-      <Bottom project={project} dir={snapshot.dir} />
+      <Bottom project={project} />
       <Resizer panel="lib" />
       <Resizer panel="side" />
       <Resizer panel="bottom" />
@@ -119,10 +118,10 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   );
 }
 
-/** The bottom panel (D32): the timeline, the transcript of what's on the main track, or the mixer (D83). */
-function Bottom({ project, dir }: { project: Project; dir: string }) {
+/** The bottom panel (D32): the timeline or the mixer (D83). The transcript is a rail tab (U11, D177). */
+function Bottom({ project }: { project: Project }) {
   const bottom = usePlayback((s) => s.bottom);
-  return bottom === "transcript" ? <TranscriptPanel project={project} dir={dir} /> : bottom === "mixer" ? <MixerPanel project={project} /> : <Timeline project={project} />;
+  return bottom === "mixer" ? <MixerPanel project={project} /> : <Timeline project={project} />;
 }
 
 function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean }) {
@@ -135,7 +134,7 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
       <div className="brand">Uncut</div>
       {/* A remote environment says so where the project's name is (D106). */}
       {remote && <EnvironmentChip />}
-      <div className="project-title" data-testid="project-title">
+      <div className="project-title" data-testid="project-title" title={snapshot.dir}>
         {project.name}
       </div>
       <div className="topbar-spacer" />

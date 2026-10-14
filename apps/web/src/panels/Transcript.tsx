@@ -1,4 +1,4 @@
-// The Transcript panel (D32, D69): what's said on the main track, clip by clip in edit order (what
+// The Transcript panel (D32, D69; a left rail tab since U11, D177): what's said on the main track, clip by clip in edit order (what
 // you'd hear), as selectable words. The word under the playhead is highlighted while it plays;
 // clicking a word goes there (and selects it); dragging or ⇧-clicking selects more, and ⌫/Delete
 // cuts the selection through core planTextCut as one undoable edit. "Remove pauses" (threshold)
@@ -19,7 +19,6 @@ import { analysisText } from "../state/analysisText.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import type { ProjectModel } from "../state/project.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "../state/store.ts";
-import { BottomTabs } from "../timeline/BottomTabs.tsx";
 import { defaultCaptionStyle } from "../inspector/captionStyle.ts";
 import {
   doneTranscripts,
@@ -290,6 +289,14 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
   const entries = useTranscripts((s) => s.entries);
   const anchor = useTranscripts((s) => s.anchor);
   const focus = useTranscripts((s) => s.focus);
+  // The timeline shows next to the transcript (U11): one selection at a time, so ⌫ means one thing.
+  const timelineSelected = usePlayback((s) => s.selected);
+  useEffect(() => {
+    if (anchor !== undefined) playback.select(undefined);
+  }, [anchor]);
+  useEffect(() => {
+    if (timelineSelected !== undefined) transcriptStore.clear();
+  }, [timelineSelected]);
   const transcripts = useMemo(() => doneTranscripts(entries), [entries]);
   const words = useMemo(() => wordsOfEdit(project, transcripts), [project, transcripts]);
   const selected = selectedWords(words, anchor, focus);
@@ -398,13 +405,12 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
   const locked = main?.locked === true;
   const busy = useCutBusy();
   return (
-    <section className="bottom" data-testid="transcript-panel">
-      <div className="bottom-toolbar">
-        <BottomTabs />
-        <span className="muted small" data-testid="tx-status">
+    <aside className="library tx-panel" data-testid="transcript-panel">
+      <div className="lib-head">Transcript</div>
+      <div className="tx-toolbar">
+        <span className="muted small tx-status" data-testid="tx-status">
           {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected` : ""}
         </span>
-        <div className="toolbar-spacer" />
         {selected.length > 0 && (
           <button className="btn ghost" data-testid="tx-cut" disabled={!online || busy} title="Cut the selected words (⌫)" onClick={() => void cutSelectedWords()}>
             <Scissors />
@@ -421,7 +427,6 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         >
           Remove fillers{fillerCount ? <span className="tx-count">{fillerCount}</span> : null}
         </button>
-        <div className="toolbar-sep" />
         <select className="tx-select" data-testid="pause-threshold" value={threshold} title="Pauses at least this long" onChange={(e) => setThreshold(Number(e.target.value))}>
           {PAUSE_STEPS.map((s) => (
             <option key={s} value={s}>
@@ -439,11 +444,10 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         >
           Remove pauses{pauseCount ? <span className="tx-count">{pauseCount}</span> : null}
         </button>
-        <div className="toolbar-sep" />
         <CaptionsButton project={project} disabled={!online || busy || !anyDone} />
       </div>
       <div
-        className="bottom-body tx-body"
+        className="tx-body"
         ref={bodyRef}
         onPointerDown={(e) => {
           if (e.target === e.currentTarget) transcriptStore.clear();
@@ -470,7 +474,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         )}
         <PlayheadWord words={words} container={bodyRef} />
       </div>
-    </section>
+    </aside>
   );
 }
 

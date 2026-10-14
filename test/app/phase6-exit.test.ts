@@ -189,7 +189,7 @@ async function exitCheck() {
   await page.waitForFunction((d: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === d, {}, join(root, "projects"));
   await page.click("[data-testid=create]");
   await waitFor("[data-testid=editor]");
-  dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   assert.deepEqual(onDisk().canvas, { width: 1920, height: 1080, fps: 30 });
 
   // Turn 1: the whole promo, scene by scene.

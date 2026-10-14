@@ -77,3 +77,34 @@ export function loadRail<T extends string>(ids: ReadonlyArray<T>): Array<T> {
     return railOrder([], ids);
   }
 }
+
+// ---- the side panel's tab per project (U14, D180) ----
+
+export type SideTab = "inspector" | "agent" | "history";
+export const SIDE_TAB_KEY = "uncut.side.tab";
+const SIDE_TABS: ReadonlyArray<SideTab> = ["inspector", "agent", "history"];
+const MAX_REMEMBERED = 50;
+
+const readSideTabs = (): Record<string, SideTab> => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SIDE_TAB_KEY) ?? "{}") as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(Object.entries(raw).filter((e): e is [string, SideTab] => SIDE_TABS.includes(e[1] as SideTab)));
+  } catch {
+    return {};
+  }
+};
+
+/** The tab last shown for this project, if any. */
+export const rememberedSideTab = (dir: string): SideTab | undefined => readSideTabs()[dir];
+
+/** Remembers the tab for this project (the newest MAX_REMEMBERED projects are kept). */
+export function rememberSideTab(dir: string, tab: SideTab) {
+  try {
+    const { [dir]: _old, ...rest } = readSideTabs();
+    const entries = [...Object.entries(rest), [dir, tab] as const].slice(-MAX_REMEMBERED);
+    localStorage.setItem(SIDE_TAB_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {}
+  // The editor may already show the project (its snapshot can arrive before the call that made it).
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("uncut:side-tab", { detail: { dir, tab } }));
+}
