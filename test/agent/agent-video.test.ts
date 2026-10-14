@@ -149,7 +149,7 @@ test("media_rank of a folder: smooth > shaky > blurred with components and best 
     { tool: "media_rank", args: { media: ["m-smooth"], folder: takes } },
   ]);
   assert.equal(turn.status, "done", turn.error);
-  assert.deepEqual(steps(turn), ["Ranked the takes from Takes", "Ranked 3 takes", "Ranked 3 takes", "Ranked 2 takes", "Scored the take m-nope", "Scored the take m-smooth", "Ranked the takes from Elsewhere", "Scored the take m-smooth"]);
+  assert.deepEqual(steps(turn), ["Ranked the takes from Takes", "Ranked 3 takes", "Ranked 3 takes", "Ranked 2 takes", "Scored the take nope", "Scored the take Smooth.mp4", "Ranked the takes from Elsewhere", "Scored the take Smooth.mp4"]);
   const [folder, sharp, stable, mixed, nope, badBy, elsewhere, both] = results;
   assert.ok(both!.isError);
   assert.match(textOf(both!), /Pass media or folder, not both/);
@@ -246,7 +246,7 @@ test("media_analyze shots: cuts at frames 45 and 100 (±1), the frozen bars, per
     { tool: "media_analyze", args: { media: "m-tone", analyzers: ["stability"] } },
   ]);
   assert.equal(turn.status, "done", turn.error);
-  assert.deepEqual(steps(turn), ["Found the shots in m-cuts", "Looked over the shots of m-cuts", "Looked over the shots of m-cuts (frames 50–150)", "Looked over the shots", "Measured the camera motion of m-tone"]);
+  assert.deepEqual(steps(turn), ["Found the shots in Cuts.mp4", "Looked over the shots of Cuts.mp4", "Looked over the shots of Cuts.mp4 (frames 50–150)", "Looked over the shots", "Measured the camera motion of Tone.wav"]);
   const [analyzed, sheet, ranged, noMedia, tone] = results;
   assert.ok(!analyzed!.isError, textOf(analyzed!));
   const v = jsonOf(analyzed!).video;

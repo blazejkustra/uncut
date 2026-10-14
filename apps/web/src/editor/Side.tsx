@@ -3,7 +3,7 @@
 import type { ProjectSnapshot } from "@uncut/contracts";
 import { componentInfo, isDrawnComponent } from "@uncut/core/components";
 import { SOLID } from "@uncut/core/render";
-import { Film, Music, Type } from "lucide-react";
+import { AtSign, Film, Music, Type } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { hasSound } from "../audio/sound.ts";
@@ -110,7 +110,12 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
     <div data-testid="inspector-item" data-item={item.id}>
       <div className="insp-title">
         {item.type === "text" || item.type === "captions" ? <Type /> : item.type === "audio" ? <Music /> : <Film />}
-        <span className="ellipsis">{itemLabel(project, item)}</span>
+        <span className="ellipsis grow">{itemLabel(project, item)}</span>
+        {/* D141: this item as a chip in the Agent tab's composer. */}
+        <button className="small-btn insp-chat" data-testid="insp-add-to-chat" title="Add this item to the agent chat" onClick={() => actions.addItemToChat(item.id)}>
+          <AtSign />
+          Add to chat
+        </button>
       </div>
       <div className="insp-sub">
         {item.type === "component" && item.component === SOLID ? "Background" : (componentInfo(item.component)?.name ?? TYPE_NAMES[item.type] ?? item.type)} on {track.name}

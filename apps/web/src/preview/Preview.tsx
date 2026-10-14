@@ -31,6 +31,8 @@ import { useViewport } from "./viewport.ts";
 import { clipFx, fxOverlayInner, fxPictureSize, fxSkips, hasOverlay, needsPicturePass, visibleRect, type ClipFx } from "@uncut/core/fx";
 import { FxRenderer } from "./fx.ts";
 import { EFFECT_DRAG_TYPE, setDraggedEffect } from "../timeline/dnd.ts";
+import { openMenu } from "../timeline/ContextMenu.tsx";
+import { copySelection, deleteSelection, duplicate } from "../editor/keys.ts";
 
 /** Renderers kept for reuse when clips with effects leave the canvas (D136). */
 const FX_POOL = 4;
@@ -1026,6 +1028,23 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           data-frame="0"
           style={{ width: size.w, height: size.h, transform: view.pan.x || view.pan.y ? `translate(${view.pan.x}px, ${view.pan.y}px)` : undefined }}
           onPointerDown={onPointerDown}
+          onContextMenu={(e) => {
+            // D141: right-click a picture or a text on the canvas: Add to chat (with the frame it
+            // was picked at), and the usual Copy, Duplicate and Delete.
+            const id = (e.target as HTMLElement).closest<HTMLElement>("[data-item]")?.dataset.item;
+            if (!id || !findItem(project, id)) return;
+            e.preventDefault();
+            playback.select(id);
+            const frame = Math.floor(getPlayback().frame);
+            const off = getState().connection !== "connected";
+            openMenu(e.clientX, e.clientY, [
+              { id: "add-to-chat", label: "Add to chat", run: () => actions.addItemToChat(id, frame) },
+              "-",
+              { id: "copy", label: "Copy", shortcut: "⌘C", run: () => void copySelection() },
+              { id: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: off, run: () => void duplicate() },
+              { id: "delete", label: "Delete", shortcut: "⌫", danger: true, disabled: off, run: () => void deleteSelection() },
+            ], "Canvas item");
+          }}
           onPointerMove={onPointerMove}
           onPointerUp={(e) => endDrag(e, true)}
           onPointerCancel={(e) => endDrag(e, false)}

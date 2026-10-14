@@ -159,7 +159,7 @@ test("media_analyze: loudness and silences of a clip (first audio stream); a re-
   assert.equal(turn.status, "done", turn.error);
   assert.deepEqual(
     turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
-    ["Analysed the sound of m-talk", "Found the silences in m-talk", "Analysed the sound of m-still", "Analysed m-talk", "Analysed the sound of m-nope", "Analysed the sound of m-talk"],
+    ["Analysed the sound of Talk.mp4", "Found the silences in Talk.mp4", "Analysed the sound of Still.mp4", "Analysed Talk.mp4", "Analysed the sound of nope", "Analysed the sound of Talk.mp4"],
   );
   const [first, again, still, beats, nope, ranged] = results;
   assert.ok(!first!.isError, textOf(first!));

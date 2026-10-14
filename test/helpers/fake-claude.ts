@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Stands in for `claude` in tests, so they never use a real subscription.
 //   claude --version / claude auth status --json: answers like a signed-in Claude Code.
+//   claude -p --input-format stream-json ...: the long-lived session (fake-claude-session.ts, D139).
 //   claude -p --output-format stream-json ...: reads the prompt from stdin, connects to the real
 //   MCP server from --mcp-config (exactly as claude would start it) and plays the steps listed
 //   in $FAKE_PLAN for this turn, printing stream-json like claude does.
@@ -35,12 +36,17 @@ interface RpcReply {
   error?: { message: string };
 }
 
+const flag = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+// Persistent mode (D139): `--input-format stream-json` keeps one process for many messages.
+if (flag("--input-format") === "stream-json") {
+  await import("./fake-claude-session.ts");
+  await new Promise(() => {});
+}
 const prompt = await new Promise<string>((resolve) => {
   let text = "";
   process.stdin.on("data", (d) => (text += d));
   process.stdin.on("end", () => resolve(text));
 });
-const flag = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
 
 // One-shot mode (no --mcp-config): the SVG generator asking for markup (D99). Answers like
 // `claude -p --output-format json`: the markup from $FAKE_SVG (a file), else a picture of the asked
