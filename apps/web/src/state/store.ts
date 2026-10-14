@@ -715,7 +715,58 @@ export function revealItem(itemId: string) {
  * If the agent changed the same item after that revision the server refuses it (D6) and the
  * banner says so. Shares the one-at-a-time guard with adds. Returns whether it was applied.
  */
+// ---- a number field's scrub (D209): edits become a preview while it drags ----
+
+let previewing = false;
+let scrubDraft: { base: ProjectModel; project: ProjectModel } | undefined;
+
+/** Shows a plan in the preview (and the mix) without sending it. */
+function previewPlan(plan: Plan | { readonly problem: string }) {
+  const snapshot = state.snapshot;
+  if (!snapshot || "problem" in plan || !plan.ops.length) return;
+  const base = projectOf(snapshot);
+  const result = draftOf(base, plan.ops);
+  if (!("project" in result)) return;
+  scrubDraft = { base, project: result.project };
+  playback.setDraft(scrubDraft);
+}
+
+/**
+ * Runs `fn` with every edit it makes (itemEdit, timelineEdit) shown in the preview instead of sent:
+ * a number field calls its own commit this way while it's dragged, then once for real on release
+ * (one undoable edit).
+ */
+export function previewEdits(fn: () => void) {
+  previewing = true;
+  try {
+    fn();
+  } finally {
+    previewing = false;
+  }
+}
+
+/** Drops a scrub's preview, now or once the edit it ended with has come back (a new revision, at most 2 s). */
+export function endPreview(afterEdit: boolean) {
+  const draft = scrubDraft;
+  scrubDraft = undefined;
+  if (!draft) return;
+  const drop = () => {
+    if (getPlayback().draft === draft) playback.setDraft(undefined);
+  };
+  if (!afterEdit) return drop();
+  const revision = state.snapshot?.revision;
+  const timer = setTimeout(() => (stop(), drop()), 2000);
+  const stop = subscribeApp(() => {
+    if (state.snapshot?.revision !== revision) {
+      clearTimeout(timer);
+      stop();
+      drop();
+    }
+  });
+}
+
 async function timelineEdit(plan: Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+  if (previewing) return (previewPlan(plan), false);
   const snapshot = state.snapshot;
   if (!snapshot || !online()) return false;
   // Planned in another project (it was switched mid-gesture): never send it to this one.
@@ -756,6 +807,11 @@ const settled = () => new Promise<void>((resolve) => setTimeout(resolve, 25));
  * (a typing burst, a drag), so the server refuses it if the agent changed the item since (D6).
  */
 function itemEdit(makePlan: (project: ProjectModel) => Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+  if (previewing) {
+    const snapshot = state.snapshot;
+    if (snapshot && (origin.dir === undefined || origin.dir === snapshot.dir)) previewPlan(makePlan(projectOf(snapshot)));
+    return Promise.resolve(false);
+  }
   queuedEdits++;
   let started = false;
   const run = async () => {
@@ -920,7 +976,7 @@ export const actions = {
   revealLocal: (path: string) => bridge.showInFolder(path),
 
   /** Creates and opens the project (replacing any open one); returns the error for the form. */
-  async createProject(input: { parentDir: string; name: string; canvas: Canvas }): Promise<string | undefined> {
+  async createProject(input: { parentDir: string; name: string; canvas: Canvas; matchFirstClip?: boolean }): Promise<string | undefined> {
     // It replaces the open project: ask first when that one has work in progress (U12).
     if (state.snapshot && !(await confirmLeave("new-project"))) return undefined;
     const result = await call((c) => c["project.create"](input));

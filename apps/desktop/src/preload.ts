@@ -33,6 +33,12 @@ import {
   type FolderPurpose,
   type MediaAccessKind,
   type MenuCommand,
+  type MiniRecorderAction,
+  type MiniRecorderState,
+  MINI_RECORDER_ACTION_CHANNEL,
+  MINI_RECORDER_CHANNEL,
+  MINI_RECORDER_STATE_CHANNEL,
+  WINDOW_MODE_CHANNEL,
 } from "./ipc.ts";
 
 const subscribe = <A>(channel: string, listener: (value: A) => void) => {
@@ -83,6 +89,14 @@ contextBridge.exposeInMainWorld("uncut", {
   openPrivacySettings: (kind: MediaAccessKind) => ipcRenderer.invoke(OPEN_PRIVACY_SETTINGS_CHANNEL, kind),
   captureSources: () => ipcRenderer.invoke(CAPTURE_SOURCES_CHANNEL),
   chooseDisplaySource: (id: string) => ipcRenderer.invoke(CHOOSE_DISPLAY_SOURCE_CHANNEL, id),
+  // D209: the compact welcome window or the editor's; resolves with the content size.
+  windowMode: (mode: "welcome" | "editor") => ipcRenderer.invoke(WINDOW_MODE_CHANNEL, mode),
+  // D209: the floating mini recorder. The app window sends its state (null closes it) and hears its
+  // buttons; the mini window hears the state and sends the buttons.
+  miniRecorder: (state: MiniRecorderState | null) => ipcRenderer.send(MINI_RECORDER_CHANNEL, state),
+  onMiniRecorderAction: (listener: (action: MiniRecorderAction) => void) => subscribe(MINI_RECORDER_ACTION_CHANNEL, listener),
+  onMiniRecorderState: (listener: (state: MiniRecorderState | null) => void) => subscribe(MINI_RECORDER_STATE_CHANNEL, listener),
+  miniRecorderAction: (action: MiniRecorderAction) => ipcRenderer.send(MINI_RECORDER_ACTION_CHANNEL, action),
   // True only in a background test run: the preview's audio goes to no device.
   silentAudio: ipcRenderer.sendSync(SILENT_AUDIO_CHANNEL) === true,
 });

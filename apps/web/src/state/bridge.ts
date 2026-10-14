@@ -32,7 +32,10 @@ export interface CaptureSource {
   readonly id: string;
   readonly name: string;
   readonly kind: "screen" | "window";
+  /** A small picture of it (a data: URL), "" when there's none. */
   readonly thumbnail: string;
+  /** A window's app icon (a data: URL), the fallback when its picture is empty (D209). */
+  readonly icon?: string;
 }
 
 export interface UncutBridge {
@@ -82,7 +85,25 @@ export interface UncutBridge {
    */
   readonly onCloseRequest: (listener: (kind: "window" | "quit") => void) => () => void;
   readonly answerClose: (answer: "close" | "stay" | "asking") => void;
+  /** D209: the compact welcome window or the editor's; the content size after. */
+  readonly windowMode?: (mode: "welcome" | "editor") => Promise<{ readonly width: number; readonly height: number }>;
+  /** D209: the floating mini recorder: its state from the app window (null closes it), its buttons back. */
+  readonly miniRecorder?: (state: MiniRecorderState | null) => void;
+  readonly onMiniRecorderAction?: (listener: (action: MiniRecorderAction) => void) => () => void;
+  readonly onMiniRecorderState?: (listener: (state: MiniRecorderState | null) => void) => () => void;
+  readonly miniRecorderAction?: (action: MiniRecorderAction) => void;
 }
+
+/** What the mini recorder shows (D209). */
+export interface MiniRecorderState {
+  readonly name: string;
+  readonly phase: "countdown" | "recording" | "paused" | "saving";
+  /** Seconds recorded so far (pauses left out), at the moment `at` (Date.now()). */
+  readonly seconds: number;
+  readonly at: number;
+  readonly count?: number | undefined;
+}
+export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel";
 
 declare global {
   interface Window {

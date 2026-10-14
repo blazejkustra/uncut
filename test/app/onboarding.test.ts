@@ -205,7 +205,8 @@ test("at the minimum window size a tall step scrolls from its top; a failed chec
   const { page } = app;
   await page.evaluate(() => window.resizeTo(800, 500));
   await sleep(600);
-  assert.deepEqual(await page.evaluate(() => [innerWidth, innerHeight]), [1024, 640]);
+  // D209: with no project open the window is the compact one: it stops at 600×520.
+  assert.deepEqual(await page.evaluate(() => [innerWidth, innerHeight]), [800, 520]);
   await waitFor(page, "[data-testid=check-claude][data-status=needs-login]");
   await waitFor(page, "[data-testid=api-key-warning]");
   assert.match(await text(page, "api-key-warning"), /in your environment/);
@@ -214,14 +215,14 @@ test("at the minimum window size a tall step scrolls from its top; a failed chec
   const layer = "[data-testid=onboarding]";
   const metrics = await page.$eval(layer, (el) => ({ scrollTop: el.scrollTop, overflow: el.scrollHeight > el.clientHeight }));
   assert.equal(metrics.scrollTop, 0);
-  assert.ok(metrics.overflow, "this step should be taller than 640 px");
+  assert.ok(metrics.overflow, "this step should be taller than 520 px");
   const brand = await page.$eval(".wiz-brand", (el) => el.getBoundingClientRect().toJSON());
-  assert.ok(brand.top >= 0 && brand.bottom <= 640, `brand at ${brand.top}`);
+  assert.ok(brand.top >= 0 && brand.bottom <= 520, `brand at ${brand.top}`);
   await shot(app, "small-1-top");
   await page.$eval(layer, (el) => el.scrollTo(0, el.scrollHeight));
   await sleep(200);
   const cont = await page.$eval("[data-testid=wizard-continue]", (el) => el.getBoundingClientRect().toJSON());
-  assert.ok(cont.top >= 0 && cont.bottom <= 640, `Continue at ${cont.top}-${cont.bottom}`);
+  assert.ok(cont.top >= 0 && cont.bottom <= 520, `Continue at ${cont.top}-${cont.bottom}`);
   await shot(app, "small-2-bottom");
 
   // No agent ready: the Agents step is marked visited, not done.

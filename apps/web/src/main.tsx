@@ -2,16 +2,17 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./editor/App.tsx";
+import { isMiniWindow, MiniRecorder } from "./capture/MiniRecorder.tsx";
 import { loadFonts, syncKitFonts } from "./preview/fonts.ts";
 import { installLeave } from "./state/leave.tsx";
+import { installScrollbars } from "./editor/scrollbars.ts";
 import { brandFileUrl, getState, start, subscribeApp } from "./state/store.ts";
 import "./styles.css";
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// D209: the floating mini recorder's window loads this page with ?mini: only its bar.
+const mini = isMiniWindow();
+if (mini) document.body.classList.add("mini-window");
+createRoot(document.getElementById("root")!).render(<StrictMode>{mini ? <MiniRecorder /> : <App />}</StrictMode>);
 
 // U13: nothing outside the panels scrolls. The CSS leaves the root nothing to scroll; this puts
 // it back at once should a focus or scrollIntoView move it anyway.
@@ -27,7 +28,11 @@ document.addEventListener(
   true,
 );
 
-installLeave();
+if (!mini) {
+  installLeave();
+  // D209: thin overlay scrollbars everywhere.
+  installScrollbars();
+}
 
 // D198: the chosen brand kit's font files, loaded for the preview whenever the kit or its files change.
 let kitFontsKey = "";
@@ -48,4 +53,5 @@ subscribeApp(() => {
 
 // Tests wait for this: the connection is up (or failed), the first state is loaded and the
 // bundled fonts are ready (D77).
-void Promise.all([start(), loadFonts()]).finally(() => (document.body.dataset.ready = "1"));
+if (mini) document.body.dataset.ready = "1";
+else void Promise.all([start(), loadFonts()]).finally(() => (document.body.dataset.ready = "1"));

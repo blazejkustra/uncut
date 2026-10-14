@@ -7,7 +7,7 @@ import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
-import { decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
+import { canvasForClip, decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
 import { cameraName } from "@uncut/core/mentions";
 import { planPlaceTake, type TakePlacement } from "@uncut/core/place";
 import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
@@ -24,7 +24,7 @@ import { ServerConfig } from "../app/config.ts";
 import { MediaCore, type ProbeInfo, type ProbeOutcome } from "./mediaCore.ts";
 import { probeSvg } from "../export/svg.ts";
 import { runProbe } from "./probe.ts";
-import { Projects } from "../project/projects.ts";
+import { MATCH_FIRST_CLIP, Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { recordSubtitleSources } from "../export/subtitleSources.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
@@ -240,6 +240,26 @@ const fromFfprobe = (json: string): ProbeInfo | undefined => {
 const MAX_JOBS_KEPT = 10;
 
 /** A probe in project terms: the length in project frames, the picture as shown. */
+/** D209: whether the project was made with "Match first clip" and hasn't matched one yet. */
+const matchPending = (dir: string) =>
+  stat(join(dir, ".cache", MATCH_FIRST_CLIP)).then(
+    () => true,
+    () => false,
+  );
+
+/**
+ * D209: the canvas the first video asks for, when the project has no video yet and an empty
+ * timeline (a rate change retimes nothing then); undefined otherwise or when it's the same.
+ */
+function matchCanvas(project: Project, probed: ReadonlyArray<{ readonly info: ProbeInfo }>): Project["canvas"] | undefined {
+  if (project.media.some((m) => m.kind === "video") || project.tracks.some((t) => t.items.length)) return undefined;
+  const clip = probed.find((p) => p.info.kind === "video" && p.info.width && p.info.height)?.info;
+  if (!clip) return undefined;
+  const next = canvasForClip(project.canvas, { width: clip.width, height: clip.height, fps: clip.fpsValue, rotation: clip.rotation });
+  if (!next || (next.width === project.canvas.width && next.height === project.canvas.height && next.fps === project.canvas.fps)) return undefined;
+  return next;
+}
+
 const probeOf = (info: ProbeInfo, fps: number): MediaEntry["probe"] => {
   // The project stores the picture as shown: a phone clip turned 90° is portrait.
   const turned = info.rotation === 90 || info.rotation === 270;
@@ -401,6 +421,7 @@ export const layer = Layer.effect(
         // lock, against the opening of the project the import was started in.
         let entries: Array<{ entry: MediaEntry; info: ProbeInfo }> = [];
         let placed: AgentImport["placed"];
+        let matchedDir: string | undefined;
         const snapshot = yield* projects.editIn(openId, (raw, projectDir) =>
           Effect.gen(function* () {
             const project = raw as ProjectShape;
@@ -413,7 +434,10 @@ export const layer = Layer.effect(
               existing.set(real, m);
             }
             const taken = allIds(project);
-            const fps = project.canvas.fps;
+            // D209: "Match first clip": the first video brought into an empty project sets the canvas
+            // (size and rate) in this edit, before its length in frames is counted at that rate.
+            const matched = (yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined;
+            const fps = matched?.fps ?? project.canvas.fps;
             entries = [];
             // T9 (D128): what a drop places, in the order dropped (new entries and media already in the project).
             const toPlace: Array<PlaceMedia> = [];
@@ -463,6 +487,12 @@ export const layer = Layer.effect(
             }
             const count = entries.length + subtitles.length;
             if (count === 0 && !toPlace.length) return undefined;
+            const canvasOps = matched ? [{ op: "update_project", set: { canvas: matched } }] : [];
+            if (matched) {
+              matchedDir = projectDir;
+              const shaped = { ...(raw as Project), canvas: matched };
+              raw = shaped;
+            }
             // D114: a take recorded on this Mac goes on the timeline in the same edit.
             const placeOps: Array<unknown> = [];
             placed = undefined;
@@ -485,13 +515,15 @@ export const layer = Layer.effect(
               }
             }
             return {
-              ops: [...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
+              ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
               summary: dropped ? (placeable.length > 1 ? `Add ${placeable.length} files to the timeline` : `Add ${placeable[0]!.name} to the timeline`) : placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
             };
           }),
           options.agent,
         );
 
+        // D209: matched once; later imports leave the canvas alone.
+        if (snapshot && matchedDir) yield* Effect.promise(() => rm(join(matchedDir!, ".cache", MATCH_FIRST_CLIP), { force: true }).catch(() => {}));
         // Imported subtitles files are never written over by an export (D105).
         if (snapshot && subtitles.length) yield* Effect.promise(() => recordSubtitleSources(dir, subtitles.map((x) => x.path)).catch(() => {}));
         const inOrder = <A extends { at: number }>(list: Array<A>) => [...list].sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);

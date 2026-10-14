@@ -52,3 +52,5 @@ export { fitFadeOut, mediaUses, planFitToVideo, planRemoveMedia, usedMediaIds, v
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
 export { BUILTIN_CONTRIBUTION_IDS, componentGraphicHtml, componentGraphicName, componentProblem, mergeContributions, NO_CONTRIBUTIONS, pluginCheckRules, pluginRuleEntries, readContributions } from "./plugins/contributions.ts";
 export type { Contributions, FromPlugin, PluginComponent, PluginFilter, PluginLook, PluginRule, RuleSpec } from "./plugins/contributions.ts";
+export { canvasForClip, nearestCanvasFps } from "./timeline/canvasMatch.ts";
+export { CANVAS_FPS } from "./timeline/types.ts";

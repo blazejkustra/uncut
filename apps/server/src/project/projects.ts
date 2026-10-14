@@ -9,7 +9,7 @@
 import { isAbsolute, join } from "node:path";
 
 import { EditRefused, ProjectError, type HistoryState, type Problem, type ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, describeOp, EditConflict, EditError, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
+import { applyEdit, describeOp, EditConflict, EditError, TurnDependency, undoTurn, type Canvas as CoreCanvas, type Op, type Project, type Session } from "@uncut/core";
 import { withLinkedAudio } from "@uncut/core/arrange";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -78,11 +78,15 @@ export interface AgentEditInput {
 export interface Canvas {
   readonly width: number;
   readonly height: number;
-  readonly fps: 24 | 25 | 30 | 50 | 60;
+  readonly fps: CoreCanvas["fps"];
+  readonly background?: string | undefined;
 }
 
+/** D209: a project made with "Match first clip" takes its first video's size and frame rate; this marker in .cache says so until then. */
+export const MATCH_FIRST_CLIP = "match-first-clip";
+
 export interface ProjectsShape {
-  readonly create: (input: { parentDir: string; name: string; canvas?: Canvas | undefined }) => Effect.Effect<ProjectSnapshot, ProjectError>;
+  readonly create: (input: { parentDir: string; name: string; canvas?: Canvas | undefined; matchFirstClip?: boolean | undefined }) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly open: (dir: string) => Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly get: Effect.Effect<ProjectSnapshot, ProjectError>;
   readonly reload: Effect.Effect<ProjectSnapshot, ProjectError>;
@@ -166,7 +170,7 @@ export const DEFAULT_CANVAS: Canvas = { width: 1920, height: 1080, fps: 30 };
 export const emptyProject = (name: string, canvas: Canvas = DEFAULT_CANVAS): Project => ({
   format: "uncut/0",
   name,
-  canvas: { width: canvas.width, height: canvas.height, fps: canvas.fps },
+  canvas: { width: canvas.width, height: canvas.height, fps: canvas.fps, ...(canvas.background ? { background: canvas.background } : {}) },
   // D80: made after text looks landed, so the older looks' soft shadow isn't a default here.
   textLooks: 1,
   media: [],
@@ -537,7 +541,7 @@ export const layer = Layer.effect(
       );
 
     return Projects.of({
-      create: ({ parentDir, name, canvas }) =>
+      create: ({ parentDir, name, canvas, matchFirstClip }) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
             if (!validName(name)) return yield* projectError("invalid-name", `"${name}" can't be used as a folder name`);
@@ -559,6 +563,7 @@ export const layer = Layer.effect(
                 yield* Effect.gen(function* () {
                   if (config.testFault === "create-after-mkdir") yield* Effect.fail(new Error("injected fault"));
                   for (const sub of ["graphics", "media", ".cache"]) yield* fs.makeDirectory(join(dir, sub));
+                  if (matchFirstClip) yield* fs.writeFileString(join(dir, ".cache", MATCH_FIRST_CLIP), "");
                   // history.db (D71) is this Mac's undo history, not part of the shared project.
                   yield* fs.writeFileString(join(dir, ".gitignore"), GITIGNORE);
                   yield* writeFileAtomic(join(dir, "project.json"), text);

@@ -11,10 +11,14 @@ export type Frame = number;
 
 export type Mutable<T> = T extends ReadonlyArray<infer U> ? Array<Mutable<U>> : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
 
+/** The canvas frame rates (D209): the NTSC ones are stored as 23.976, 29.97 and 59.94. */
+export const CANVAS_FPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60] as const;
+export type CanvasFps = (typeof CANVAS_FPS)[number];
+
 export interface Canvas {
   readonly width: number;
   readonly height: number;
-  readonly fps: 24 | 25 | 30 | 50 | 60;
+  readonly fps: CanvasFps;
   readonly background?: string;
 }
 

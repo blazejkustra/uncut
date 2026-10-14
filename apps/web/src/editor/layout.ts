@@ -70,6 +70,26 @@ export function railOrder<T extends string>(saved: unknown, ids: ReadonlyArray<T
   return [...unique, ...ids.filter((id) => !unique.includes(id))];
 }
 
+/** D209: the tabs the user hid into the rail's More menu. */
+export const RAIL_HIDDEN_KEY = "uncut.rail.hidden";
+
+export function loadHidden<T extends string>(ids: ReadonlyArray<T>): Array<T> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RAIL_HIDDEN_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? [...new Set(raw.filter((x): x is T => typeof x === "string" && ids.includes(x as T)))] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Moves `id` to before `before` (undefined: the end); the new order. */
+export function moveInRail<T extends string>(order: ReadonlyArray<T>, id: T, before: T | undefined): Array<T> {
+  const rest = order.filter((t) => t !== id);
+  const at = before === undefined ? rest.length : rest.indexOf(before);
+  rest.splice(at < 0 ? rest.length : at, 0, id);
+  return rest;
+}
+
 export function loadRail<T extends string>(ids: ReadonlyArray<T>): Array<T> {
   try {
     return railOrder(JSON.parse(localStorage.getItem(RAIL_KEY) ?? "[]"), ids);

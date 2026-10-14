@@ -60,6 +60,23 @@ export const MEDIA_ACCESS_CHANNEL = "uncut:media-access";
 export const ASK_MEDIA_ACCESS_CHANNEL = "uncut:ask-media-access";
 export const OPEN_PRIVACY_SETTINGS_CHANNEL = "uncut:open-privacy-settings";
 export const CAPTURE_SOURCES_CHANNEL = "uncut:capture-sources";
+// D209: the window's size for the welcome card or the editor.
+export const WINDOW_MODE_CHANNEL = "uncut:window-mode";
+// D209: the floating mini recorder (state from the app window, its buttons back to it).
+export const MINI_RECORDER_CHANNEL = "uncut:mini-recorder";
+export const MINI_RECORDER_STATE_CHANNEL = "uncut:mini-recorder-state";
+export const MINI_RECORDER_ACTION_CHANNEL = "uncut:mini-recorder-action";
+
+/** What the mini recorder shows; null closes it. */
+export interface MiniRecorderState {
+  readonly name: string;
+  readonly phase: "countdown" | "recording" | "paused" | "saving";
+  /** Seconds recorded so far (pauses left out), at the moment `at` (Date.now()). */
+  readonly seconds: number;
+  readonly at: number;
+  readonly count?: number | undefined;
+}
+export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel";
 export const CHOOSE_DISPLAY_SOURCE_CHANNEL = "uncut:choose-display-source";
 
 export type MediaAccessKind = "microphone" | "camera" | "screen";
@@ -72,4 +89,6 @@ export interface CaptureSource {
   readonly kind: "screen" | "window";
   /** A small picture of it (a data: URL), "" when there's none. */
   readonly thumbnail: string;
+  /** A window's app icon (a data: URL), the fallback when its picture is empty (D209). */
+  readonly icon?: string;
 }
