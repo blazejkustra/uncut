@@ -105,6 +105,17 @@ import {
   type Media,
   type Project,
   type Track,
+  clipFx,
+  colourLut,
+  fitRect,
+  fxBox,
+  fxOverlayHtml,
+  hasOverlay,
+  needsPicturePass,
+  shakeExpr,
+  shakeZoom,
+  type ClipFx,
+  type ColourLut,
 } from "@uncut/core";
 
 export type Quality = ExportQuality;
@@ -160,6 +171,21 @@ interface LayerBase {
   readonly alpha?: ReadonlyArray<number>;
 }
 
+/**
+ * A clip's picture effects (D136): what they draw (core clipFx), the clip's start (frame), the size
+ * (output px) the picture is made before them, and output px per canvas px. They run on the picture
+ * before its box (fxGraph); the box (geometry) is always there when they are.
+ */
+export interface LayerFx {
+  readonly fx: ClipFx;
+  readonly start: number;
+  readonly w: number;
+  readonly h: number;
+  readonly k: number;
+  /** The colour table (core colourLut), when the colour changes. */
+  readonly lut?: ColourLut;
+}
+
 /** A clip's box for each frame from f0 (absent: the plain full frame, drawn as before D75). */
 export interface Geometry {
   readonly frames: ReadonlyArray<Placement>;
@@ -181,8 +207,9 @@ export type VisualLayer =
       readonly cycle?: { readonly length: number; readonly offset: number };
       /** A held clip (D94): the source time (s) of its media's last frame, where its source stops. */
       readonly last?: number;
+      readonly fx?: LayerFx;
     })
-  | (LayerBase & { readonly kind: "image"; readonly file: string; readonly fills: boolean })
+  | (LayerBase & { readonly kind: "image"; readonly file: string; readonly fills: boolean; readonly fx?: LayerFx })
   | (LayerBase & {
       readonly kind: "raster";
       /** HTML of each distinct look, at canvas size. */
@@ -817,21 +844,45 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const path = fileOf(media);
         // The box at every frame (D75), moved by a push or zoom (D79): plain frames (no transform,
         // no move) keep the full-frame chain.
+        // A zoom pulse (D136) is in the box too.
         const boxes = Array.from({ length: f1 - f0 }, (_, k) => {
           const fx = fxAt(f0 + k);
-          return moveBox(clipBox(item, project.canvas, media.probe, f0 + k - start), fx.shift, fx.zoom, fx.shiftY);
+          return moveBox(fxBox(item, clipBox(item, project.canvas, media.probe, f0 + k - start), f0 + k - start, fps), fx.shift, fx.zoom, fx.shiftY);
         });
-        const plainAt = boxes.map((b) => isPlainBox(b, project.canvas));
+        // Picture effects (D136) run before the box, so a clip with them always has one.
+        const effects = clipFx(item);
+        const picture = needsPicturePass(effects) || effects?.blur !== undefined;
+        const plainAt = boxes.map((b) => !picture && isPlainBox(b, project.canvas));
         const rest = baseBox(item, project.canvas, media.probe);
-        const geometry = plainAt.every(Boolean) ? {} : { geometry: { frames: boxes.map((b) => placementOf(b, kx, ky, rest)) } };
+        const placements = boxes.map((b) => placementOf(b, kx, ky, rest));
+        const geometry = plainAt.every(Boolean) ? {} : { geometry: { frames: placements } };
         const alpha = boxes.some((b) => b.opacity !== 1) ? { alpha: boxes.map((b) => b.opacity) } : {};
+        let layerFx: { fx?: LayerFx } = {};
+        if (picture && effects) {
+          // The size the effects work at, as the preview's (core fxPictureSize): the picture's fit before
+          // any zoom (a scale, keys, a pulse or a transition zoom scale it after); its placement's size
+          // when it's never zoomed (the same within a pixel, so the box's own scale passes it through).
+          const fixed = boxes.every((b) => b.scale === 1) && placements.every((p) => p.cw === placements[0]!.cw && p.ch === placements[0]!.ch);
+          const fit = fitRect(rest, boxes[0]!.fit, media.probe);
+          const w = fixed ? placements[0]!.cw : Math.max(1, Math.round(fit.w * kx));
+          const h = fixed ? placements[0]!.ch : Math.max(1, Math.round(fit.h * ky));
+          layerFx = { fx: { fx: effects, start, w, h, k: ky, ...(effects.colour ? { lut: colourLut(effects.colour) } : {}) } };
+        }
         const layer: VisualLayer =
           media.kind === "image"
-            ? { ...base, ...alpha, kind: "image", file: path, fills: fills(media), ...geometry }
-            : { ...base, ...alpha, kind: "video", file: path, source: sourceAt(project, item, f0 - start), speed: item.speed ?? 1, fills: fills(media), ...geometry, ...(item.hold && !item.loop && media.probe?.frames ? { last: (media.probe.frames - 1) / fps } : {}) };
+            ? { ...base, ...alpha, kind: "image", file: path, fills: fills(media), ...geometry, ...layerFx }
+            : { ...base, ...alpha, kind: "video", file: path, source: sourceAt(project, item, f0 - start), speed: item.speed ?? 1, fills: fills(media), ...geometry, ...layerFx, ...(item.hold && !item.loop && media.probe?.frames ? { last: (media.probe.frames - 1) / fps } : {}) };
         // Cut at the transitions first, then each piece into passes through its media (D79 review): a
         // long looped run keeps one looped input (the loop filter) and a transition's few frames seek.
         for (const piece of split(layer, (f) => plainAt[f - f0]!)) visuals.push(...splitLoop(piece, project, start, { width, height }));
+        // Vignette, grain and letterbox bars (D136): Chromium draws them over the picture in its box
+        // (core fxOverlayHtml, as the preview does), a layer of their own right above the clip with
+        // its opacity, transitions and blur.
+        if (effects && hasOverlay(effects)) {
+          const looks = boxes.map((b, k) => fxOverlayHtml(effects, b, f0 + k - start));
+          const { states, frames } = capped(item, looks, "has film grain or a moving box");
+          visuals.push(...split({ ...base, ...alpha, kind: "raster", states, frames }));
+        }
         return;
       }
       // Text moves (rise, slide, wipe) are drawn by Chromium frame by frame; opacity is a ramp.
@@ -1137,6 +1188,8 @@ export interface CommandOptions {
   readonly loudnorm?: string | undefined;
   readonly loudness?: AudioOptions | undefined;
   readonly output: string;
+  /** The colour tables (D136) by key (core colourLut): .cube files the exporter wrote. */
+  readonly luts?: ReadonlyMap<string, string> | undefined;
   /** A soft subtitle track (D105): an .srt file muxed as mov_text with an ISO 639-2 language tag. */
   readonly subtitles?: { readonly file: string; readonly language: string; /** Shown by default (when the captions aren't burned in). */ readonly show?: boolean | undefined } | undefined;
 }
@@ -1230,6 +1283,73 @@ export function boxGraph(frames: ReadonlyArray<Placement>, input: string, output
   ];
 }
 
+/** The colour tables (D136) a plan's layers use, each once: what the exporter writes as .cube files. */
+export const planLuts = (plan: Pick<ExportPlan, "visuals">): Array<ColourLut> => [...new Map(plan.visuals.flatMap((l) => (l.kind === "video" || l.kind === "image") && l.fx?.lut ? [[l.fx.lut.key, l.fx.lut] as const] : [])).values()];
+
+/** A file path as an ffmpeg filter argument: only plain path characters (the exporter's temp files), so nothing needs escaping. */
+const filterPath = (path: string) => {
+  if (!/^[\w/.\-]+$/.test(path)) throw new Error(`can't pass ${path} to ffmpeg's lut3d`);
+  return path;
+};
+
+/**
+ * Graph lines that run a clip's picture effects (D136) from `input` to `output`, in core's order:
+ * made at the effects' size in 16-bit RGB with alpha, mirror (hflip), shake (zoomed in, then a window moved
+ * frame by frame: core shakeExpr of the frame's moment, `n` counting the layer's frames from its
+ * first, `f0`), pixelate (pixelize, block averages), colour (lut3d trilinear on core's table),
+ * posterize (lutrgb floor), RGB split (rgbashift), sharpen (a 3×3 convolution, weights over 16),
+ * glow (a thresholded copy blurred and screened on), back to 4:4:4 YUV with alpha, then blur (D133's
+ * premultiplied gblur). The preview's shader (apps/web/src/preview/fx.ts) does the same.
+ */
+export function fxGraph(lf: LayerFx, input: string, output: string, fps: number, f0: number, luts?: ReadonlyMap<string, string>): Array<string> {
+  const { fx, w, h, k } = lf;
+  // 16-bit RGB with alpha: a still's transparency is carried through (every step leaves alpha as it is).
+  const chain = [`scale=w=${w}:h=${h}:out_range=pc`, "format=gbrap16le"];
+  if (fx.mirror) chain.push("hflip");
+  if (fx.shake) {
+    const z = shakeZoom(fx.shake.amount * k, w, h);
+    const zw = Math.max(w, Math.round(w * z));
+    const zh = Math.max(h, Math.round(h * z));
+    const t = `(n+${f0 - lf.start})/${fps}`;
+    const at = (base: number, d: string, max: number) => `'min(max(floor(${n(base)}+${d}+0.5),0),${max})'`;
+    chain.push(`scale=w=${zw}:h=${zh}`, `crop=w=${w}:h=${h}:x=${at((zw - w) / 2, shakeExpr(fx.shake, "x", t, k), zw - w)}:y=${at((zh - h) / 2, shakeExpr(fx.shake, "y", t, k), zh - h)}:exact=1`);
+  }
+  if (fx.pixelate) {
+    const b = Math.max(1, Math.round(fx.pixelate * k));
+    if (b > 1) chain.push(`pixelize=w=${b}:h=${b}:mode=avg`);
+  }
+  if (lf.lut) {
+    const file = luts?.get(lf.lut.key);
+    if (!file) throw new Error(`no colour table for ${lf.lut.key}`);
+    chain.push(`lut3d=file=${filterPath(file)}:interp=trilinear`);
+  }
+  if (fx.posterize) {
+    const L = fx.posterize;
+    const e = `floor(val*${L}/(maxval+1))*maxval/${L - 1}`;
+    chain.push(`lutrgb=r='${e}':g='${e}':b='${e}'`);
+  }
+  if (fx.rgbSplit) {
+    const d = Math.round(fx.rgbSplit * k);
+    if (d > 0) chain.push(`rgbashift=rh=${d}:bh=${-d}:edge=smear`);
+  }
+  if (fx.sharpen) {
+    const a = Math.round(fx.sharpen * 16);
+    const m = `0 -${a} 0 -${a} ${16 + 4 * a} -${a} 0 -${a} 0`;
+    chain.push(`convolution=0m='${m}':1m='${m}':2m='${m}':3m='0 0 0 0 1 0 0 0 0':0rdiv=0.0625:1rdiv=0.0625:2rdiv=0.0625:3rdiv=1`);
+  }
+  const back = ["scale=out_color_matrix=bt709:out_range=tv", "format=yuva444p", ...(fx.blur ? [blurFilters(fx.blur * k)] : [])];
+  if (!fx.glow) return [`[${input}]${[...chain, ...back].join(",")}[${output}]`];
+  const g = fx.glow;
+  const T = `${n(g.threshold)}*maxval`;
+  const e = `clip((val-${T})/(maxval-${T}),0,1)*${n(g.amount)}*maxval`;
+  const sigma = Math.max(0.5, g.radius * k);
+  return [
+    `[${input}]${chain.join(",")},split=2[${output}ga][${output}gb]`,
+    `[${output}gb]lutrgb=r='${e}':g='${e}':b='${e}',gblur=sigma=${n(sigma)}:sigmaV=${n(sigma)}:steps=${BLUR_STEPS}[${output}gc]`,
+    `[${output}ga][${output}gc]blend=all_mode=screen:c3_expr=A,${back.join(",")}[${output}]`,
+  ];
+}
+
 /** The box's opacity as filters on the alpha plane: a constant, or a value per frame (sendcmd). */
 function alphaFilters(layer: VisualLayer, k: number, fps: number): Array<string> {
   if (!layer.alpha) return [];
@@ -1288,7 +1408,11 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
           : `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
         picked = [decoded, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${L}`, `${shrink}:out_color_matrix=bt709:out_range=tv`, `loop=loop=-1:size=${L}:start=0`, `trim=start_frame=${offset}:end_frame=${offset + frames}`, `settb=1/${fps}`, "setpts=N"];
       }
-      if (geo) {
+      if (geo && layer.fx) {
+        // Picture effects (D136) on the picture, then its box.
+        graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
+      } else if (geo) {
         // A box (D75): the picture made into its box, then placed by the overlay.
         graph.push(`${picked.join(",")}[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
@@ -1307,7 +1431,12 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     } else if (layer.kind === "image") {
       inputs.push("-f", "image2", "-pattern_type", "none", "-i", layer.file);
       const looped = [`loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`];
-      if (geo && same(geo.map((p) => p.cw)) && same(geo.map((p) => p.ch))) {
+      if (geo && layer.fx) {
+        // Picture effects (D136): once on the still when nothing in them moves, else per frame.
+        if (layer.fx.fx.shake) graph.push(`[${index}:v:0]${looped.join(",")},setpts=N[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        else graph.push(...fxGraph(layer.fx, `${index}:v:0`, `e${k}`, fps, layer.f0, opts.luts), `[e${k}]${looped.join(",")},setpts=N[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+        chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
+      } else if (geo && same(geo.map((p) => p.cw)) && same(geo.map((p) => p.ch))) {
         // A still in a box of one size: made into its box once, then repeated.
         graph.push(...boxGraph(geo, `${index}:v:0`, `q${k}`, fps));
         chain = [`[q${k}]${looped.join(",")}`, `setpts=N+${layer.f0}`, ...fades, ...opacity];

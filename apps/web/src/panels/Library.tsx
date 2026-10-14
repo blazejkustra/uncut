@@ -23,9 +23,10 @@ import { analysisText } from "../state/analysisText.ts";
 import { CaptureLibrary } from "./Capture.tsx";
 import { AudioLibrary, SfxLibrary } from "./Audio.tsx";
 import { TransitionsLibrary } from "./Transitions.tsx";
+import { EffectsLibrary } from "./Effects.tsx";
 import { GeneratedSection, generatedMedia, GenerateLibrary } from "./Generate.tsx";
 
-export type LibraryTab = "media" | "text" | "elements" | "audio" | "sfx" | "transitions" | "capture" | "generate";
+export type LibraryTab = "media" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate";
 
 export function Library({ project, tab, onTab }: { project: Project; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
   return tab === "text" ? (
@@ -38,6 +39,8 @@ export function Library({ project, tab, onTab }: { project: Project; tab: Librar
     <SfxLibrary project={project} />
   ) : tab === "transitions" ? (
     <TransitionsLibrary project={project} />
+  ) : tab === "effects" ? (
+    <EffectsLibrary project={project} />
   ) : tab === "capture" ? (
     <CaptureLibrary />
   ) : tab === "generate" ? (

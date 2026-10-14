@@ -18,6 +18,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles } from "@uncut/contracts";
 import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
+import { clipFx, colourLut, cubeText, fitRect, fxOverlayHtml, hasOverlay, needsPicturePass } from "@uncut/core";
 import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
@@ -31,6 +32,8 @@ import { ServerConfig } from "../app/config.ts";
 import {
   boxGraph,
   exportCommand,
+  fxGraph,
+  planLuts,
   placementOf,
   planLoudness,
   outputSize,
@@ -607,7 +610,8 @@ export const layer = Layer.effect(
           // One cue at a time in an mp4 (mov_text): overlapping cues stacked into one.
           await writeFile(subtitles.file, writeSubtitles(flattenCues(cues), plan.fps, "srt"));
         }
-        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, loudness, output: partial, subtitles });
+        const luts = await writeLuts(plan, temp);
+        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, loudness, output: partial, subtitles, luts });
         const graphFile = join(temp, "graph.txt");
         await writeFile(graphFile, cmd.graph);
         const total = plan.frames / plan.fps;
@@ -809,6 +813,17 @@ export const layer = Layer.effect(
   }),
 );
 
+/** The colour tables (D136) a plan uses, as .cube files in `dir`, by key. */
+async function writeLuts(plan: Pick<ExportPlan, "visuals">, dir: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const lut of planLuts(plan)) {
+    const file = join(dir, `lut-${lut.key}.cube`);
+    await writeFile(file, cubeText(lut));
+    out.set(lut.key, file);
+  }
+  return out;
+}
+
 /**
  * Frames of the edit as JPEGs, built the way export builds them: the canvas colour, then every
  * visual at f in visualsAt order (footage at its source time, text and backgrounds drawn by
@@ -838,6 +853,8 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
     await raster.render({ width: cw, height: ch, css: RASTER_CSS, html: "problem" in plan ? "" : plan.backgroundHtml, out: background });
     const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
     const out: Array<RenderedFrame> = [];
+    // The colour tables (D136) written so far, by key.
+    const luts = new Map<string, string>();
     for (const requested of frames) {
       const f = Math.max(0, Math.min(duration - 1, Math.floor(requested)));
       const notes: Array<string> = [];
@@ -898,17 +915,43 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
               : "";
         // A blur dissolve (D133): gblur at the frame's sigma (output px).
         const blur = v.blur ? `,${blurFilters((v.blur * H) / ch)}` : "";
-        if (v.box && media && !svg && !isPlainBox(v.box, project.canvas)) {
+        // A clip's looks and effects (D136): picture effects before its box (which it then always has), overlays after it.
+        const effects = v.item.type === "clip" && media && !svg ? clipFx(v.item) : undefined;
+        const picture = needsPicturePass(effects) || effects?.blur !== undefined;
+        const overlay = async () => {
+          if (!effects || !hasOverlay(effects) || !v.box) return;
+          const png = join(temp, `f${f}-${k}-fx.png`);
+          await draw(fxOverlayHtml(effects, v.box, local), png);
+          k++;
+          inputs.push("-f", "image2", "-pattern_type", "none", "-i", png);
+          graph.push(`[${k}:v:0]scale=${W}:${H},format=rgba,colorchannelmixer=aa=${v.opacity.toFixed(4)}${blur}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
+          graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
+          base = `b${k}`;
+        };
+        if (v.box && media && !svg && (picture || !isPlainBox(v.box, project.canvas))) {
           // A box (D75; moved by a push or zoom, D79), made as the export makes it; a wipe or iris reveals the canvas.
           const p = placementOf(v.box, W / cw, H / ch, baseBox(v.item, project.canvas, media.probe));
           const visible = Math.min(p.w, shown - p.x);
           if (visible <= 0) continue;
           k++;
           inputs.push(...input);
-          graph.push(`[${k}:v:0]${picked}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+          if (picture && effects) {
+            const lut = effects.colour ? colourLut(effects.colour) : undefined;
+            if (lut && !luts.has(lut.key)) {
+              const file = join(temp, `lut-${lut.key}.cube`);
+              await writeFile(file, cubeText(lut));
+              luts.set(lut.key, file);
+            }
+            // The effects' size as the export's: the picture's fit before any zoom (its placement's when unzoomed).
+            const fit = fitRect(baseBox(v.item, project.canvas, media.probe), v.box.fit, media.probe);
+            const zoomed = v.box.scale !== 1;
+            const lf = { fx: effects, start: starts.get(v.item.id) ?? 0, w: zoomed ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw, h: zoomed ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch, k: H / ch, ...(lut ? { lut } : {}) };
+            graph.push(`[${k}:v:0]${picked}null[e${k}]`, ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts), ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+          } else graph.push(`[${k}:v:0]${picked}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
           graph.push(`[r${k}]format=rgba${fade}${blur}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
           graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
           base = `b${k}`;
+          await overlay();
           continue;
         }
         k++;
@@ -926,6 +969,7 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         graph.push(`${full}${blur}${iris(0, 0)}${shown < W ? `,crop=w=${shown}:h=${H}:x=0:y=0,pad=${W}:${H}:0:0:color=black@0` : ""}[l${k}]`);
         graph.push(`[${base}][l${k}]overlay=format=auto[b${k}]`);
         base = `b${k}`;
+        await overlay();
       }
       graph.push(`[${base}]format=yuvj420p[out]`);
       const file = join(temp, `frame-${f}.jpg`);

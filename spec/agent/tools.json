@@ -9,23 +9,43 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "detail": { "enum": ["summary", "full"] },
-          "range": { "$ref": "#/$defs/range" }
+          "detail": {
+            "enum": [
+              "summary",
+              "full"
+            ]
+          },
+          "range": {
+            "$ref": "#/$defs/range"
+          }
         }
       },
       "returns": "revision, duration, and the project summary or full JSON"
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount; applied on export only), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number).",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount; applied on export only), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number). Looks and effects on a clip (D136) are its effects list, set with update_item: effect.look {look, intensity 0-1}, effect.color (Adjust: exposure in stops, contrast, saturation, temperature, tint, highlights, shadows, vibrance, -1 to 1) and effect.blur, effect.sharpen, effect.vignette, effect.grain, effect.glow, effect.rgb-split, effect.pixelate, effect.mirror, effect.posterize, effect.invert, effect.shake, effect.zoom-pulse, effect.letterbox; modules_list kind \"effect\" gives each one's params.",
       "inputSchema": {
         "type": "object",
-        "required": ["baseRevision", "ops", "summary"],
+        "required": [
+          "baseRevision",
+          "ops",
+          "summary"
+        ],
         "additionalProperties": false,
         "properties": {
-          "baseRevision": { "type": "integer", "minimum": 0 },
-          "ops": { "$ref": "https://uncut.dev/schema/edit-ops/0.json" },
-          "summary": { "type": "string", "minLength": 1, "description": "One line the user sees in the turn card, e.g. 'Cut the shaky parts of the ridge shot'." }
+          "baseRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ops": {
+            "$ref": "https://uncut.dev/schema/edit-ops/0.json"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One line the user sees in the turn card, e.g. 'Cut the shaky parts of the ridge shot'."
+          }
         }
       },
       "returns": "the new revision, or a conflict with the user's newer edits, or validation errors"
@@ -35,11 +55,25 @@
       "description": "Render frames of the current edit exactly as export would, and return them as images to look at.",
       "inputSchema": {
         "type": "object",
-        "required": ["frames"],
+        "required": [
+          "frames"
+        ],
         "additionalProperties": false,
         "properties": {
-          "frames": { "type": "array", "minItems": 1, "maxItems": 24, "items": { "type": "integer", "minimum": 0 } },
-          "scale": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+          "frames": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 24,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "scale": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          }
         }
       },
       "returns": "one image per frame"
@@ -51,12 +85,36 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string", "description": "A media id from project_read. Frames and range are then in project frames of that media (like an item's in)." },
-          "range": { "$ref": "#/$defs/range", "description": "Frames [start, end): of the edit, or of the media when media is given. Default: all of it." },
-          "at": { "enum": ["every", "shots"] },
-          "every": { "type": "integer", "minimum": 1, "description": "Frames between samples when at is 'every'." },
-          "columns": { "type": "integer", "minimum": 1, "maximum": 10 },
-          "max": { "type": "integer", "minimum": 1, "maximum": 60, "description": "Most cells (default 24 when every isn't given)." }
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read. Frames and range are then in project frames of that media (like an item's in)."
+          },
+          "range": {
+            "$ref": "#/$defs/range",
+            "description": "Frames [start, end): of the edit, or of the media when media is given. Default: all of it."
+          },
+          "at": {
+            "enum": [
+              "every",
+              "shots"
+            ]
+          },
+          "every": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Frames between samples when at is 'every'."
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60,
+            "description": "Most cells (default 24 when every isn't given)."
+          }
         }
       },
       "returns": "one JPEG (at most 1600 px wide) and, as text, the frame and time of every cell in order (with at: shots, each shot's frames too); at: shots while the analysis still runs: { video: { state: running | queued }, note } (call again)"
@@ -66,12 +124,41 @@
       "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. 'transcript': the speech transcribed on this Mac (a summary: language, word, filler and pause counts; transcript_read gives the words). 'beats' (also 'rhythm', 'onsets', 'tempo'): tempo (bpm), a confidence 0-1 and the beats in project frames of the media (the first ones, or those in range with the onsets there). Description comes later.",
       "inputSchema": {
         "type": "object",
-        "required": ["media"],
+        "required": [
+          "media"
+        ],
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string", "description": "A media id from project_read." },
-          "analyzers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["shots", "motion", "stability", "video", "loudness", "beats", "rhythm", "onsets", "tempo", "silence", "transcript", "description"] }, "description": "Which analyses (default: loudness with silences; name video or beats to get them; video takes longer). silence = loudness; shots, motion, stability = video; rhythm, onsets, tempo = beats." },
-          "range": { "$ref": "#/$defs/range", "description": "Only list silences, cuts, frozen stretches, per-second scores, beats and onsets overlapping these project frames of the media [start, end). The measurement is always of the whole file." }
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read."
+          },
+          "analyzers": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "shots",
+                "motion",
+                "stability",
+                "video",
+                "loudness",
+                "beats",
+                "rhythm",
+                "onsets",
+                "tempo",
+                "silence",
+                "transcript",
+                "description"
+              ]
+            },
+            "description": "Which analyses (default: loudness with silences; name video or beats to get them; video takes longer). silence = loudness; shots, motion, stability = video; rhythm, onsets, tempo = beats."
+          },
+          "range": {
+            "$ref": "#/$defs/range",
+            "description": "Only list silences, cuts, frozen stretches, per-second scores, beats and onsets overlapping these project frames of the media [start, end). The measurement is always of the whole file."
+          }
         }
       },
       "returns": "per analyzer (loudness, video, transcript, beats): { state: done | running | queued | failed | cancelled, ... }; loudness when done: { cached, hasAudio, seconds, integratedLufs, loudnessRangeLu, truePeakDbtp, silence: { thresholdDb, minSeconds, count, ranges: [{ start, end, startSeconds, endSeconds }] } }; video when done: { cached, hasVideo, seconds, sourceFps, cleanScore, stability, sharpness, exposure, frozen, measures: { shakePercent, panPerSecond, blur, brightness }, best: { start, end, startSeconds, endSeconds, cleanScore, ... }, shots, cuts: { threshold, count, list: [{ frame, seconds, score }] }, frozen: [{ start, end, startSeconds, endSeconds }], drops: [{ frame, seconds, missingSeconds }], stretches: [{ start, end, quality: good | fair | poor, cleanScore }], perSecond: { firstSecond, cleanScore: [], stability: [], sharpness: [], exposure: [], panPerSecond: [] } } (frames are project frames of the media); transcript when done: { cached, hasAudio, seconds, language, model, words, segments, fillers: { hesitation, maybe }, pauses, pauseSeconds, opening }; beats when done: { cached, hasAudio, seconds, bpm (null: no steady beat), confidence, beatCount, beatFrames, firstBeat: { frame, seconds }, lastBeat, beats: { frames: [], seconds: [], range?, count?, truncated? }, onsetCount, onsets?: { count, list: [{ frame, seconds, strength }] } (with range) }"
@@ -83,10 +170,36 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": { "type": "string" }, "description": "Media ids from project_read. Default: the media imported from folder, or all the project's video." },
-          "folder": { "type": "string", "description": "An absolute folder path: rank the project's media whose files are in it (import them first with media_import). Not together with media." },
-          "by": { "enum": ["clean", "best", "stability", "sharpness", "exposure"], "description": "What to rank by: clean (default, the whole take's cleanScore), best (its best stretch's cleanScore), or one component." },
-          "window": { "type": "integer", "minimum": 1, "maximum": 600, "description": "Length of the best stretch in seconds (default 5)." }
+          "media": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "Media ids from project_read. Default: the media imported from folder, or all the project's video."
+          },
+          "folder": {
+            "type": "string",
+            "description": "An absolute folder path: rank the project's media whose files are in it (import them first with media_import). Not together with media."
+          },
+          "by": {
+            "enum": [
+              "clean",
+              "best",
+              "stability",
+              "sharpness",
+              "exposure"
+            ],
+            "description": "What to rank by: clean (default, the whole take's cleanScore), best (its best stretch's cleanScore), or one component."
+          },
+          "window": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 600,
+            "description": "Length of the best stretch in seconds (default 5)."
+          }
         }
       },
       "returns": "{ by, ranked: [{ rank, media, name, cached, seconds, cleanScore, stability, sharpness, exposure, frozen, measures: { shakePercent, panPerSecond, blur, brightness }, shots, drops, best: { start, end, startSeconds, endSeconds, cleanScore, stability, sharpness, exposure, frozen } }], pending?: [{ media, state, progress }], failed?, skipped?, note }"
@@ -96,14 +209,36 @@
       "description": "What's said in a media file, transcribed on this Mac with whisper.cpp (language detected; pass language to force one): text lines with word indices and frames, or each word with its frames; fillers and pauses (at least 0.3 s, aligned to the silences when the loudness analysis is cached) are marked and listed. Paged: pass from = next.from for more. The first call for a file runs the transcription (and the very first one downloads the speech model) and waits up to about a minute; if it answers running, call again with the same arguments. Cached afterwards by the file's content.",
       "inputSchema": {
         "type": "object",
-        "required": ["media"],
+        "required": [
+          "media"
+        ],
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string", "description": "A media id from project_read." },
-          "range": { "$ref": "#/$defs/range", "description": "Only words overlapping these project frames of the media [start, end)." },
-          "format": { "enum": ["text", "words"], "description": "text (default): one line per sentence, 'w<first word index> [start–end] words', {fillers} and (pause n s) inline. words: each word with start and end frames." },
-          "from": { "type": "integer", "minimum": 0, "description": "The first word index to list (next.from of the previous page)." },
-          "language": { "type": "string", "pattern": "^(auto|[a-z]{2,3})$", "description": "The spoken language as a code (en, pl, ...), or auto (default: detect). A cached transcript in another language is redone." }
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read."
+          },
+          "range": {
+            "$ref": "#/$defs/range",
+            "description": "Only words overlapping these project frames of the media [start, end)."
+          },
+          "format": {
+            "enum": [
+              "text",
+              "words"
+            ],
+            "description": "text (default): one line per sentence, 'w<first word index> [start–end] words', {fillers} and (pause n s) inline. words: each word with start and end frames."
+          },
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first word index to list (next.from of the previous page)."
+          },
+          "language": {
+            "type": "string",
+            "pattern": "^(auto|[a-z]{2,3})$",
+            "description": "The spoken language as a code (en, pl, ...), or auto (default: detect). A cached transcript in another language is redone."
+          }
         }
       },
       "returns": "{ media, state, cached, language, model, seconds, words (total), segments, shown: { from, to }, text (format text) | list: [{ i, text, start, end, unsure?, filler? }] (format words), fillers: [{ i, n, text, start, end, kind: hesitation | maybe }], pauses: [{ start, end, startSeconds, endSeconds, after, edge?, silent? }], next?: { from } } or { transcript: { state: running | queued, progress, stage? } } (frames are project frames of the media)"
@@ -115,28 +250,58 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string", "description": "A media id from project_read; may be left out when exactly one media with sound is on the main track." },
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read; may be left out when exactly one media with sound is on the main track."
+          },
           "remove": {
             "type": "array",
             "minItems": 1,
             "description": "Word ranges to cut, both ends included, e.g. [{\"from\": \"w12\", \"to\": \"w20\"}, {\"from\": \"w31\"}].",
             "items": {
               "type": "object",
-              "required": ["from"],
+              "required": [
+                "from"
+              ],
               "additionalProperties": false,
               "properties": {
-                "from": { "type": ["string", "integer"], "description": "The first word: \"w12\" (or 12)." },
-                "to": { "type": ["string", "integer"], "description": "The last word (default: from)." }
+                "from": {
+                  "type": [
+                    "string",
+                    "integer"
+                  ],
+                  "description": "The first word: \"w12\" (or 12)."
+                },
+                "to": {
+                  "type": [
+                    "string",
+                    "integer"
+                  ],
+                  "description": "The last word (default: from)."
+                }
               }
             }
           },
           "pauses": {
             "type": "object",
             "additionalProperties": false,
-            "properties": { "min": { "type": "number", "minimum": 0.1, "maximum": 60, "description": "Pauses at least this many seconds long (default 0.5). A little quiet stays next to each word." } }
+            "properties": {
+              "min": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 60,
+                "description": "Pauses at least this many seconds long (default 0.5). A little quiet stays next to each word."
+              }
+            }
           },
-          "fillers": { "type": "boolean", "description": "true: also cut the hesitation fillers (English and Polish)." },
-          "dryRun": { "type": "boolean", "description": "true: only say what would be cut and the new length." }
+          "fillers": {
+            "type": "boolean",
+            "description": "true: also cut the hesitation fillers (English and Polish)."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "true: only say what would be cut and the new length."
+          }
         }
       },
       "returns": "{ media, applied, removed: [{ words?, text, pauses?, fillers?, mediaFrames: { start, end }, frames, seconds, clips }], framesRemoved, secondsSaved, revision, duration, seconds, durationBefore, notes? } (frames: the edit's, mediaFrames: project frames of the media)"
@@ -148,22 +313,59 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "media": { "type": "string", "description": "A media id from project_read; may be left out when exactly one media with sound is on the main track." },
-          "mode": { "enum": ["line", "word", "single"], "description": "line (default): a card at a time; word: the card with the speaking word accented; single: one word at a time." },
-          "look": { "type": "string", "description": "A text-style module id (default text.caption: white lines on dark boxes near the bottom). modules_list kind text-style lists them." },
+          "media": {
+            "type": "string",
+            "description": "A media id from project_read; may be left out when exactly one media with sound is on the main track."
+          },
+          "mode": {
+            "enum": [
+              "line",
+              "word",
+              "single"
+            ],
+            "description": "line (default): a card at a time; word: the card with the speaking word accented; single: one word at a time."
+          },
+          "look": {
+            "type": "string",
+            "description": "A text-style module id (default text.caption: white lines on dark boxes near the bottom). modules_list kind text-style lists them."
+          },
           "lines": {
             "type": "object",
             "additionalProperties": false,
             "description": "How words are grouped (defaults: maxChars what fits the canvas at the look's size, at most 32; maxLines 2, maxSeconds 3, pause 0.3).",
             "properties": {
-              "maxChars": { "type": "integer", "minimum": 4, "maximum": 200 },
-              "maxLines": { "enum": [1, 2] },
-              "maxSeconds": { "type": "number", "minimum": 0.1, "maximum": 30 },
-              "maxWords": { "type": "integer", "minimum": 1, "maximum": 1000 },
-              "pause": { "type": "number", "minimum": 0, "maximum": 10 }
+              "maxChars": {
+                "type": "integer",
+                "minimum": 4,
+                "maximum": 200
+              },
+              "maxLines": {
+                "enum": [
+                  1,
+                  2
+                ]
+              },
+              "maxSeconds": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 30
+              },
+              "maxWords": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "pause": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              }
             }
           },
-          "hideFillers": { "type": "boolean", "description": "Leave hesitations (um, uh, yyy) out of the captions." }
+          "hideFillers": {
+            "type": "boolean",
+            "description": "Leave hesitations (um, uh, yyy) out of the captions."
+          }
         }
       },
       "returns": "{ media, item, remade, mode, words, cards: [{ from, to, words: 'w12–w18', text }] (the first 40; frames of the edit), cardCount, revision, notes? }"
@@ -175,9 +377,21 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "format": { "enum": ["srt", "vtt"], "description": "srt (default) or vtt; taken from path's extension when it has one." },
-          "path": { "type": "string", "description": "An absolute path inside the project folder, ending in .srt or .vtt (default: next to project.json, named after the project). Paths outside it are refused: the user saves elsewhere from the Export dialog." },
-          "overwrite": { "type": "boolean", "description": "Replace a file already there (never a subtitles file the project imported)." }
+          "format": {
+            "enum": [
+              "srt",
+              "vtt"
+            ],
+            "description": "srt (default) or vtt; taken from path's extension when it has one."
+          },
+          "path": {
+            "type": "string",
+            "description": "An absolute path inside the project folder, ending in .srt or .vtt (default: next to project.json, named after the project). Paths outside it are refused: the user saves elsewhere from the Export dialog."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Replace a file already there (never a subtitles file the project imported)."
+          }
         }
       },
       "returns": "{ path, format, cues, first: [{ from, to, time, text }] (the first 5; frames of the edit), note }"
@@ -189,9 +403,26 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "path": { "type": "string", "minLength": 1, "description": "An absolute path (or ~/...) to a file or a folder." },
-          "paths": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "string", "minLength": 1 }, "description": "Several absolute paths (files or folders)." },
-          "name": { "type": "string", "minLength": 1, "description": "A display name, for a single file only." }
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An absolute path (or ~/...) to a file or a folder."
+          },
+          "paths": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Several absolute paths (files or folders)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A display name, for a single file only."
+          }
         }
       },
       "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], skipped: [{ path, reason }], failed: [{ path, message }]"
@@ -201,16 +432,53 @@
       "description": "Make an image, video or sound with a generator (D99) into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo and generate.sound bill the user's own API key; without it the result says which key is needed. Over $1 waits for the user to allow it on a card in the Agent tab.",
       "inputSchema": {
         "type": "object",
-        "required": ["generator", "prompt"],
+        "required": [
+          "generator",
+          "prompt"
+        ],
         "additionalProperties": false,
         "properties": {
-          "generator": { "enum": ["generate.svg", "generate.gpt-image", "generate.veo", "generate.sound"] },
-          "prompt": { "type": "string", "minLength": 1, "maxLength": 4000, "description": "What to make, in words (stored with the media). For generate.svg, what the content shows." },
-          "kind": { "enum": ["image", "video", "audio"], "description": "Default: the generator's own (gpt-image image, veo video, sound audio, svg image)." },
-          "size": { "type": "string", "description": "gpt-image: 1536x1024, 1024x1024 or 1024x1536. veo: 16:9 or 9:16. svg: canvas (default) or WIDTHxHEIGHT." },
-          "seconds": { "type": "number", "exclusiveMinimum": 0, "description": "veo: 4, 6 or 8. sound: 0.5 to 30 (default 5). svg video: up to 12 (default 5)." },
-          "name": { "type": "string", "minLength": 1, "description": "The file's name (without extension); default from the prompt." },
-          "content": { "type": "string", "minLength": 1, "description": "generate.svg only: the SVG document or HTML page you wrote (no network, images as data: URLs, system fonts)." }
+          "generator": {
+            "enum": [
+              "generate.svg",
+              "generate.gpt-image",
+              "generate.veo",
+              "generate.sound"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "What to make, in words (stored with the media). For generate.svg, what the content shows."
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "video",
+              "audio"
+            ],
+            "description": "Default: the generator's own (gpt-image image, veo video, sound audio, svg image)."
+          },
+          "size": {
+            "type": "string",
+            "description": "gpt-image: 1536x1024, 1024x1024 or 1024x1536. veo: 16:9 or 9:16. svg: canvas (default) or WIDTHxHEIGHT."
+          },
+          "seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "veo: 4, 6 or 8. sound: 0.5 to 30 (default 5). svg video: up to 12 (default 5)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The file's name (without extension); default from the prompt."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "description": "generate.svg only: the SVG document or HTML page you wrote (no network, images as data: URLs, system fonts)."
+          }
         }
       },
       "returns": "id, kind, name, path, frames, seconds, width, height, hasAudio, revision, model, estimatedCost (US dollars), turnSpend; or needsKey / approved: false with what to tell the user"
@@ -222,7 +490,19 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source"] }
+          "kind": {
+            "enum": [
+              "transition",
+              "move",
+              "text-style",
+              "component",
+              "effect",
+              "audio-processor",
+              "analyzer",
+              "generator",
+              "capture-source"
+            ]
+          }
         }
       },
       "returns": "manifests"
@@ -232,11 +512,23 @@
       "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do (D78). The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network, no other files, system fonts only; render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
       "inputSchema": {
         "type": "object",
-        "required": ["name", "html"],
+        "required": [
+          "name",
+          "html"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\\.html$", "description": "The file name, e.g. counter.html (it becomes graphics/counter.html)." },
-          "html": { "type": "string", "minLength": 1, "maxLength": 262144, "description": "The document's body: markup, <style> and a <script> defining render(t, info)." }
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\\.html$",
+            "description": "The file name, e.g. counter.html (it becomes graphics/counter.html)."
+          },
+          "html": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 262144,
+            "description": "The document's body: markup, <style> and a <script> defining render(t, info)."
+          }
         }
       },
       "returns": "the src to put on the item, or why it was refused"
@@ -249,9 +541,31 @@
         "additionalProperties": false,
         "minProperties": 1,
         "properties": {
-          "frame": { "type": "integer", "minimum": 0 },
-          "select": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string" }, "description": "The id of one timeline item (the editor selects one item at a time)." },
-          "panel": { "enum": ["media", "text", "elements", "audio", "inspector", "agent", "checks"], "description": "Left: media, text, elements (backgrounds and components), audio. Right: inspector, agent (this chat), checks (the taste checks list)." }
+          "frame": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "The id of one timeline item (the editor selects one item at a time)."
+          },
+          "panel": {
+            "enum": [
+              "media",
+              "text",
+              "elements",
+              "audio",
+              "inspector",
+              "agent",
+              "checks"
+            ],
+            "description": "Left: media, text, elements (backgrounds and components), audio. Right: inspector, agent (this chat), checks (the taste checks list)."
+          }
         }
       },
       "returns": "what was shown"
@@ -263,8 +577,20 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "rules": { "type": "array", "items": { "type": "string" }, "description": "Only these rule ids (e.g. [\"text-read-time\", \"trailing-period\"])." },
-          "severity": { "enum": ["warn", "info"], "description": "Only warnings, or only info notes." }
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only these rule ids (e.g. [\"text-read-time\", \"trailing-period\"])."
+          },
+          "severity": {
+            "enum": [
+              "warn",
+              "info"
+            ],
+            "description": "Only warnings, or only info notes."
+          }
         }
       },
       "returns": "{ revision, warnings, notes, checks: [{ rule, severity, message, items, frame, seconds, range, fix | hint }], disabled }"
@@ -276,9 +602,23 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "mood": { "type": "string", "description": "A mood tag, e.g. warm, calm, lo-fi, upbeat." },
-          "tempo": { "enum": ["slow", "medium", "fast", "free"], "description": "slow < 80 bpm, medium 80–109, fast from 110, free = no steady beat." },
-          "query": { "type": "string", "description": "Words to find in the title, author or moods." }
+          "mood": {
+            "type": "string",
+            "description": "A mood tag, e.g. warm, calm, lo-fi, upbeat."
+          },
+          "tempo": {
+            "enum": [
+              "slow",
+              "medium",
+              "fast",
+              "free"
+            ],
+            "description": "slow < 80 bpm, medium 80–109, fast from 110, free = no steady beat."
+          },
+          "query": {
+            "type": "string",
+            "description": "Words to find in the title, author or moods."
+          }
         }
       },
       "returns": "{ tracks: [...] }"
@@ -288,10 +628,15 @@
       "description": "Add a library track (music_list's id) to the project's media: the file is copied into the project's media/ folder (so the project stays portable) and added as audio media, as an edit on your turn. It returns the media id and its length in project frames; then put it on an audio track with timeline_edit (an audio item with fades, often ducked under the voice). A track already in the project returns its media id without copying again.",
       "inputSchema": {
         "type": "object",
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "description": "The library track id, e.g. cozy-2." }
+          "id": {
+            "type": "string",
+            "description": "The library track id, e.g. cozy-2."
+          }
         }
       },
       "returns": "{ media, frames, seconds, revision }"
@@ -301,17 +646,55 @@
       "description": "Search the sound library (D134): royalty-free music or sound effects online (Openverse without a key, or Freesound when the user stored a Freesound key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\" Uncut's bundled CC0 sound effects. Search by what it sounds like: whoosh, ui click, impact, riser, notification, applause, bass boom, bruh, airhorn, record scratch, sad trombone; for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
       "inputSchema": {
         "type": "object",
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["music", "sfx"] },
-          "query": { "type": "string", "description": "What to search for. Required unless source is included." },
-          "source": { "enum": ["openverse", "freesound", "included"], "description": "Default openverse." },
-          "license": { "enum": ["cc0"], "description": "cc0: only sounds that need no credit." },
-          "length": { "enum": ["short", "medium", "long"], "description": "short < 30 s, medium 30 s to 2 min, long > 2 min." },
-          "songs": { "type": "boolean", "description": "Music: full songs only." },
-          "category": { "type": "string", "description": "source included: whoosh, transition, ui, impact, riser, notification, crowd or meme." },
-          "page": { "type": "integer", "minimum": 1 }
+          "kind": {
+            "enum": [
+              "music",
+              "sfx"
+            ]
+          },
+          "query": {
+            "type": "string",
+            "description": "What to search for. Required unless source is included."
+          },
+          "source": {
+            "enum": [
+              "openverse",
+              "freesound",
+              "included"
+            ],
+            "description": "Default openverse."
+          },
+          "license": {
+            "enum": [
+              "cc0"
+            ],
+            "description": "cc0: only sounds that need no credit."
+          },
+          "length": {
+            "enum": [
+              "short",
+              "medium",
+              "long"
+            ],
+            "description": "short < 30 s, medium 30 s to 2 min, long > 2 min."
+          },
+          "songs": {
+            "type": "boolean",
+            "description": "Music: full songs only."
+          },
+          "category": {
+            "type": "string",
+            "description": "source included: whoosh, transition, ui, impact, riser, notification, crowd or meme."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "returns": "{ hits: [{ id, title, creator, seconds, frames, license, tags }], total, page, pages } or, for included, { sounds }"
@@ -321,10 +704,15 @@
       "description": "Add a library_search result to the project's media: the file is downloaded (or a bundled sound copied) into the project's media/ folder and added as audio media with its credits (source, creator, licence, attribution), as an edit on your turn. Returns the media id and length; then put it on an audio track with timeline_edit. A sound already in the project returns its media id.",
       "inputSchema": {
         "type": "object",
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "description": "A hit id from library_search, e.g. openverse:eab8a6e2-0ac8-4615-9e0d-ebde30523783, freesound:351256 or sfx:bass-boom." }
+          "id": {
+            "type": "string",
+            "description": "A hit id from library_search, e.g. openverse:eab8a6e2-0ac8-4615-9e0d-ebde30523783, freesound:351256 or sfx:bass-boom."
+          }
         }
       },
       "returns": "{ media, path, frames, seconds, license, revision }"
@@ -333,97 +721,317 @@
   "$defs": {
     "insertText": {
       "type": "object",
-      "required": ["op", "look", "start", "duration"],
+      "required": [
+        "op",
+        "look",
+        "start",
+        "duration"
+      ],
       "additionalProperties": false,
       "description": "Text in a look (a text-style module, D80), as one op: the item gets the look's size, weight, position and in/out moves (the rest of the look, e.g. its outline, shadow or box, applies while the item doesn't set those fields), plus the looks it comes with (a kicker above a title) on their own text tracks; it goes on the top-most text track free for [start, start + duration), else a new one on top.",
       "properties": {
-        "op": { "const": "insert_text" },
-        "look": { "type": "string", "description": "A text-style module id, e.g. text.big-title, text.caption, text.boxed-label (modules_list kind text-style lists them with their looks)." },
-        "text": { "type": "string", "description": "Markup: **bold**, [[accent]], `mono`, \\n for a line break. Default: the look's placeholder." },
-        "start": { "type": "integer", "minimum": 0 },
-        "duration": { "type": "integer", "minimum": 1 },
-        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "The new item's id (default: the look's name, numbered)." },
-        "style": { "type": "object", "description": "Style fields over the look's, canvas px: size, weight, font, color, align, tracking, lineHeight, uppercase, stroke {width, color}, shadow {x, y, blur, color, opacity}, background {color, opacity, padding, radius, wrap box|lines}; false for stroke, shadow or background removes the look's." },
-        "transform": { "type": "object", "additionalProperties": false, "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number", "exclusiveMinimum": 0 } }, "description": "The text box's top-left and width in canvas px, over the look's." },
-        "animation": { "description": "In/out moves instead of the look's (frames), or null for none.", "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "properties": { "in": { "type": "object" }, "out": { "type": "object" } } }] },
-        "alone": { "type": "boolean", "description": "Leave out the looks it comes with." }
+        "op": {
+          "const": "insert_text"
+        },
+        "look": {
+          "type": "string",
+          "description": "A text-style module id, e.g. text.big-title, text.caption, text.boxed-label (modules_list kind text-style lists them with their looks)."
+        },
+        "text": {
+          "type": "string",
+          "description": "Markup: **bold**, [[accent]], `mono`, \\n for a line break. Default: the look's placeholder."
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "The new item's id (default: the look's name, numbered)."
+        },
+        "style": {
+          "type": "object",
+          "description": "Style fields over the look's, canvas px: size, weight, font, color, align, tracking, lineHeight, uppercase, stroke {width, color}, shadow {x, y, blur, color, opacity}, background {color, opacity, padding, radius, wrap box|lines}; false for stroke, shadow or background removes the look's."
+        },
+        "transform": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "w": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "description": "The text box's top-left and width in canvas px, over the look's."
+        },
+        "animation": {
+          "description": "In/out moves instead of the look's (frames), or null for none.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "type": "object"
+                },
+                "out": {
+                  "type": "object"
+                }
+              }
+            }
+          ]
+        },
+        "alone": {
+          "type": "boolean",
+          "description": "Leave out the looks it comes with."
+        }
       }
     },
     "detachAudio": {
       "type": "object",
-      "required": ["op", "item"],
+      "required": [
+        "op",
+        "item"
+      ],
       "additionalProperties": false,
       "description": "Detach audio (D123): the clip's sound becomes an audio item (same media, in point, speed and start; the clip's volume, fades and volume keys move to it) on the first audio track free for that stretch (or a new one, or `track`), and the clip gets mute: true. Captions and transcript cuts keep following the clip on main.",
       "properties": {
-        "op": { "const": "detach_audio" },
-        "item": { "type": "string", "description": "The clip's id." },
-        "id": { "type": "string", "description": "The new audio item's id (default audio-N)." },
-        "track": { "type": "string", "description": "An audio track that is free there (default: picked or made)." }
+        "op": {
+          "const": "detach_audio"
+        },
+        "item": {
+          "type": "string",
+          "description": "The clip's id."
+        },
+        "id": {
+          "type": "string",
+          "description": "The new audio item's id (default audio-N)."
+        },
+        "track": {
+          "type": "string",
+          "description": "An audio track that is free there (default: picked or made)."
+        }
       }
     },
     "setSpeed": {
       "type": "object",
-      "required": ["op", "item", "speed"],
+      "required": [
+        "op",
+        "item",
+        "speed"
+      ],
       "additionalProperties": false,
       "description": "Change the speed of a clip or an audio item (D125): 0.1 to 10 (2 = twice as fast). It keeps playing the same stretch of its media, so its duration becomes duration x old speed / new speed (main clips after it ripple; on a free track the next item must leave room). keepPitch false lets the pitch follow the speed (like tape); true keeps it (the default).",
       "properties": {
-        "op": { "const": "set_speed" },
-        "item": { "type": "string" },
-        "speed": { "type": "number", "minimum": 0.1, "maximum": 10 },
-        "keepPitch": { "type": "boolean" }
+        "op": {
+          "const": "set_speed"
+        },
+        "item": {
+          "type": "string"
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        "keepPitch": {
+          "type": "boolean"
+        }
       }
     },
     "editCaptions": {
       "type": "object",
-      "required": ["op", "item"],
+      "required": [
+        "op",
+        "item"
+      ],
       "additionalProperties": false,
       "description": "Change a captions item (D82) as one op: fix words (by transcript_read's word id; \"\" hides a word, null goes back to the transcript's), force a new card at a word (or stop forcing one), switch the mode, change the grouping or hide fillers. It becomes one update_item.",
       "properties": {
-        "op": { "const": "edit_captions" },
-        "item": { "type": "string", "description": "The captions item's id." },
+        "op": {
+          "const": "edit_captions"
+        },
+        "item": {
+          "type": "string",
+          "description": "The captions item's id."
+        },
         "words": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "object", "required": ["word", "text"], "additionalProperties": false, "properties": { "word": { "type": ["string", "integer"], "description": "\"w12\" (or 12)." }, "text": { "type": ["string", "null"] } } }
+          "items": {
+            "type": "object",
+            "required": [
+              "word",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "word": {
+                "type": [
+                  "string",
+                  "integer"
+                ],
+                "description": "\"w12\" (or 12)."
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
         },
         "breaks": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "object", "required": ["word"], "additionalProperties": false, "properties": { "word": { "type": ["string", "integer"] }, "on": { "type": "boolean", "description": "true (default): a card starts at this word; false: no forced start." } } }
+          "items": {
+            "type": "object",
+            "required": [
+              "word"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "word": {
+                "type": [
+                  "string",
+                  "integer"
+                ]
+              },
+              "on": {
+                "type": "boolean",
+                "description": "true (default): a card starts at this word; false: no forced start."
+              }
+            }
+          }
         },
-        "mode": { "enum": ["line", "word", "single"] },
-        "lines": { "type": "object", "description": "Grouping settings over the item's (null for a field: its default): maxChars, maxLines (1 or 2), maxSeconds, maxWords, pause." },
-        "hideFillers": { "type": "boolean" },
-        "cover": { "type": "boolean", "description": "true: stretch the captions over the whole main track again (after clips were added past them)." }
+        "mode": {
+          "enum": [
+            "line",
+            "word",
+            "single"
+          ]
+        },
+        "lines": {
+          "type": "object",
+          "description": "Grouping settings over the item's (null for a field: its default): maxChars, maxLines (1 or 2), maxSeconds, maxWords, pause."
+        },
+        "hideFillers": {
+          "type": "boolean"
+        },
+        "cover": {
+          "type": "boolean",
+          "description": "true: stretch the captions over the whole main track again (after clips were added past them)."
+        }
       }
     },
     "insertDeviceFrame": {
       "type": "object",
-      "required": ["op", "start", "duration"],
+      "required": [
+        "op",
+        "start",
+        "duration"
+      ],
       "additionalProperties": false,
       "description": "A device frame (component.device-frame) with footage under it, as one op: the footage is a clip on a free video track above main (else a new one), its box the frame's screen (cover, the screen's rounded corners); the frame goes on the video track above it; both from start for duration. Default box: centred, 86% of the canvas height (a browser 80% of its width).",
       "properties": {
-        "op": { "const": "insert_device_frame" },
-        "media": { "type": "string", "description": "Video or image media for the screen; leave it out for the frame alone." },
-        "device": { "enum": ["phone", "android", "browser"], "description": "Default phone." },
-        "start": { "type": "integer", "minimum": 0 },
-        "duration": { "type": "integer", "minimum": 1 },
-        "in": { "type": "integer", "minimum": 0, "description": "Where the clip starts in its media (project frames)." },
-        "box": { "type": "object", "additionalProperties": false, "description": "The frame's box in canvas pixels: x, y (its top-left) and h (the width follows the device's shape).", "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "h": { "type": "number", "exclusiveMinimum": 0 } } },
-        "frameId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
-        "clipId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
-        "color": { "type": "string", "description": "The frame's colour (a theme token or CSS colour)." },
-        "url": { "type": "string", "description": "browser: the address in its bar." },
-        "hold": { "type": "boolean", "description": "Footage shorter than the frame holds its last frame (a freeze) instead of looping." }
+        "op": {
+          "const": "insert_device_frame"
+        },
+        "media": {
+          "type": "string",
+          "description": "Video or image media for the screen; leave it out for the frame alone."
+        },
+        "device": {
+          "enum": [
+            "phone",
+            "android",
+            "browser"
+          ],
+          "description": "Default phone."
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "in": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Where the clip starts in its media (project frames)."
+        },
+        "box": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The frame's box in canvas pixels: x, y (its top-left) and h (the width follows the device's shape).",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "h": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "frameId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "clipId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "color": {
+          "type": "string",
+          "description": "The frame's colour (a theme token or CSS colour)."
+        },
+        "url": {
+          "type": "string",
+          "description": "browser: the address in its bar."
+        },
+        "hold": {
+          "type": "boolean",
+          "description": "Footage shorter than the frame holds its last frame (a freeze) instead of looping."
+        }
       }
     },
     "range": {
       "type": "object",
-      "required": ["start", "end"],
+      "required": [
+        "start",
+        "end"
+      ],
       "additionalProperties": false,
       "properties": {
-        "start": { "type": "integer", "minimum": 0 },
-        "end": { "type": "integer", "minimum": 1 }
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     }
   }

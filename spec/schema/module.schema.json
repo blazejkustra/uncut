@@ -111,6 +111,17 @@
             }
           }
         },
+        "filters": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "Colour looks for the Effects tab's filters (D136): numbers Uncut's colour maths draws (channel mixer, mono, adjust, curves, split toning, fade). A clip given one carries the whole look, so it keeps drawing when the plugin is removed.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "look"],
+            "additionalProperties": false,
+            "properties": { "id": { "$ref": "#/$defs/contributionId" }, "name": { "type": "string", "minLength": 1, "maxLength": 60 }, "description": { "type": "string", "maxLength": 300 }, "look": {"type": "object", "additionalProperties": false, "properties": {"mixer": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "number", "minimum": -4, "maximum": 4}, "description": "Channel mixer rows: r, g, b from r, g, b."}, "mono": {"type": "number", "minimum": 0, "maximum": 1}, "adjust": {"type": "object", "additionalProperties": false, "properties": {"exposure": {"type": "number", "minimum": -2, "maximum": 2, "default": 0, "description": "Exposure in stops"}, "contrast": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Contrast, -1 to 1 (0 = unchanged)"}, "saturation": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Saturation, -1 to 1 (0 = unchanged)"}, "temperature": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Temperature, -1 to 1 (0 = unchanged)"}, "tint": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Tint, -1 to 1 (0 = unchanged)"}, "highlights": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Highlights, -1 to 1 (0 = unchanged)"}, "shadows": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Shadows, -1 to 1 (0 = unchanged)"}, "vibrance": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Vibrance, -1 to 1 (0 = unchanged)"}}}, "curve": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "red": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "green": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "blue": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "shadowTint": {"type": "object", "required": ["color", "amount"], "additionalProperties": false, "properties": {"color": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 1}}, "amount": {"type": "number", "minimum": 0, "maximum": 1}}}, "highlightTint": {"type": "object", "required": ["color", "amount"], "additionalProperties": false, "properties": {"color": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 1}}, "amount": {"type": "number", "minimum": 0, "maximum": 1}}}, "fade": {"type": "number", "minimum": 0, "maximum": 0.5}}} }
+          }
+        },
         "rules": {
           "type": "array",
           "maxItems": 50,
@@ -143,7 +154,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "panel": { "enum": ["media", "capture", "text", "components", "transitions", "audio", "generate"] },
+        "panel": { "enum": ["media", "capture", "text", "components", "transitions", "effects", "audio", "generate"] },
         "icon": { "type": "string", "description": "A lucide icon name." },
         "thumbnail": { "type": "string" }
       }
