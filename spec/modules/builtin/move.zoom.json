@@ -26,9 +26,15 @@
           "linear",
           "in",
           "out",
-          "inOut"
+          "inOut",
+          "spring",
+          "spring.snap",
+          "spring.settle",
+          "spring.land",
+          "spring.bounce"
         ],
-        "default": "out"
+        "default": "out",
+        "description": "How the scale moves: linear, in, out, inOut (cubic) or a spring (spring.snap, spring.settle or spring, spring.land, spring.bounce: fitted to the move's duration, may overshoot) (D192)."
       },
       "fade": {
         "type": "boolean",

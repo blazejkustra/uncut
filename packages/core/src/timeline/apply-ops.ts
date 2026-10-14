@@ -1,7 +1,8 @@
 // Reference engine for edit ops: applies them atomically, records who made
 // them, and refuses an agent edit that would overwrite newer user edits (D6).
 import { keyDbAt } from "../audio/audio.ts";
-import { KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
+import { DEFAULT_KEY_FPS, hasSpringKeys, KEY_PROPS, keyAt, keysOf } from "../visual/box.ts";
+import { isSpringName, springSettleTime } from "../visual/spring.ts";
 import { itemUsesMedia } from "./mediaPlan.ts";
 import type { Edit, FieldSet, Id, Item, LogEntry, Mutable, Op, Problem, Project, Session, Track } from "./types.ts";
 
@@ -125,7 +126,7 @@ function applyOp(project: Draft, op: Op) {
         if (item.start !== undefined) item.start += op.frames;
         if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
         // Keys stay on their moment: they shift with the new start, and ones now before it go.
-        if (item.keys && op.frames > 0) item.keys = withCutKey(item.keys, op.frames).map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
+        if (item.keys && op.frames > 0) item.keys = withCutKey(item.keys, op.frames, project.canvas.fps, item.duration + op.frames).map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
         else if (item.keys) item.keys = item.keys.map((k) => ({ ...k, frame: k.frame - op.frames }));
         if (item.gainKeys?.length) {
           // The envelope keeps its value at the new start: a key goes there when keys were cut off.
@@ -133,7 +134,7 @@ function applyOp(project: Draft, op: Op) {
           const kept = item.gainKeys.map((k) => ({ ...k, frame: k.frame - op.frames })).filter((k) => k.frame >= 0);
           item.gainKeys = kept.some((k) => k.frame === 0) || kept.length === item.gainKeys.length ? kept : [{ frame: 0, db: at }, ...kept];
         }
-      } else if (item.keys?.some((k) => k.frame > item.duration)) item.keys = withCutKey(item.keys, item.duration).filter((k) => k.frame <= item.duration);
+      } else if (item.keys?.some((k) => k.frame > item.duration)) item.keys = withCutKey(item.keys, item.duration, project.canvas.fps, item.duration + op.frames).filter((k) => k.frame <= item.duration);
       if (item.keys?.length === 0) delete item.keys;
       return;
     }
@@ -163,7 +164,7 @@ function applyOp(project: Draft, op: Op) {
       if (item.fadeIn !== undefined) item.fadeIn = Math.min(item.fadeIn, item.duration);
       if (second.fadeOut !== undefined) second.fadeOut = Math.min(second.fadeOut, second.duration);
       if (item.keys) {
-        const keys = withCutKey(item.keys, op.at);
+        const keys = withCutKey(item.keys, op.at, project.canvas.fps, op.at + second.duration);
         second.keys = keys.filter((k) => k.frame >= op.at).map((k) => ({ ...k, frame: k.frame - op.at }));
         item.keys = keys.filter((k) => k.frame <= op.at);
       }
@@ -319,8 +320,12 @@ type Keys = NonNullable<Item["keys"]>;
  * `at`, so neither side jumps; and when the segment crossing the cut is eased (in / out / inOut),
  * it is baked into linear keys on every frame of that segment, so both halves keep the same motion
  * frame for frame (a split eased key can't be expressed with the whole-segment eases).
+ * Spring keys (D192) reach past their segment (a spring runs on until it settles, and later keys
+ * add to it), so a cut while one is moving first bakes every keyed property into linear keys on
+ * every frame from the first key until the last spring has settled (bakeSprings).
  */
-function withCutKey(keys: Keys, at: number): Keys {
+function withCutKey(input: Keys, at: number, fps: number = DEFAULT_KEY_FPS, end = Infinity): Keys {
+  const keys = bakeSprings(input, at, fps, end);
   const add = new Map<number, Record<string, number>>();
   const put = (frame: number, p: string, v: number) => add.set(frame, { ...(add.get(frame) ?? {}), [p]: Math.round(v * 1e6) / 1e6 });
   for (const p of KEY_PROPS) {
@@ -340,4 +345,31 @@ function withCutKey(keys: Keys, at: number): Keys {
   }
   // A baked segment moves linearly from frame to frame: the key it starts from mustn't ease it again.
   return out.sort((a, b) => a.frame - b.frame);
+}
+
+/**
+ * Keys with springs (D192) as linear keys on every frame from the first key until the slowest
+ * spring has settled after the last key, values as keyAt gives them (to 1e-6), when a cut at `at`
+ * falls in that stretch; otherwise the keys as they are (before it nothing moves yet, after it
+ * everything has settled, so the plain cut key keeps both sides). Never past `limit` (the item's
+ * last frame before the cut: keys can't go past an item's end; past it nothing shows).
+ */
+function bakeSprings(keys: Keys, at: number, fps: number, limit: number): Keys {
+  if (!hasSpringKeys(keys)) return keys;
+  const rate = Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_KEY_FPS;
+  const frames = keys.map((k) => k.frame);
+  const first = Math.min(...frames);
+  // Settled to a millionth of each step, so holding the last baked value is no visible jump.
+  const settle = Math.max(...keys.map((k) => (isSpringName(k.ease) ? springSettleTime(k.ease, 1e-6) : 0)));
+  const end = Math.min(Math.max(...frames) + Math.ceil(settle * rate), Math.max(limit, ...frames));
+  if (at <= first || at >= end) return keys;
+  const props = KEY_PROPS.filter((p) => keysOf(keys, p).length > 0);
+  const out: Array<Keys[number]> = [];
+  for (let f = first; f <= end; f++) {
+    const values: Record<string, number> = {};
+    for (const p of props) values[p] = Math.round(keyAt(keys, p, f, rate)! * 1e6) / 1e6;
+    const own = keys.findLast((k) => k.frame === f);
+    out.push({ ...(own ?? {}), frame: f, ...values, ease: "linear" });
+  }
+  return out;
 }

@@ -7,7 +7,8 @@
 // server.mjs, the renderer or the plugin SDK), followed through node_modules the way Node resolves
 // them; licences from each package.json. Rust: the crates in native/media/Cargo.lock, licences
 // from the local cargo registry when it's there. Music from assets/music/library.json; fonts from
-// assets/fonts/OFL.txt. No author fields (they carry email addresses).
+// assets/fonts/OFL.txt; three.js from assets/graphic-libs (D193). No author fields (they carry
+// email addresses).
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -131,6 +132,14 @@ export function render(): string {
   for (const t of sfx.sounds) {
     s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
   }
+
+  // Vendored graphic libraries (D193): three.js; Uncut's own (confetti, globe, spring, random) need no notice.
+  const three = readFileSync(join(ROOT, "assets/graphic-libs/three.js"), "utf8").match(/^\/\* three\.js (\d+\.\d+\.\d+) \(MIT/)?.[1];
+  if (!three) throw new Error("assets/graphic-libs/three.js has no vendoring header: run node scripts/vendor-three.ts");
+  s += section("Graphic libraries: three.js (MIT)");
+  s += `three.js ${three} (https://threejs.org), shipped in Resources/graphic-libs (minified, its licence in\n`;
+  s += "three.LICENSE.txt beside it) and inlined into graphics that load it. Its licence:\n\n";
+  s += readFileSync(join(ROOT, "assets/graphic-libs/three.LICENSE.txt"), "utf8").trimEnd() + "\n";
 
   s += section("Electron and Chromium");
   s += `Uncut runs on Electron ${String(electron.version)} (MIT, https://github.com/electron/electron).\n`;

@@ -8,6 +8,7 @@ import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, Re
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer, withChips } from "./Composer.tsx";
+import { CardItem, PlanBar, QuestionCard, StoryboardApproval } from "./AgentCards.tsx";
 import { actions, agentImageUrl, getState, useApp, type Project } from "../state/store.ts";
 import { cancelTake, clock, getRecorder, loadSources, refreshAccess, startTake, stopTake, useRecorder } from "../capture/recorder.ts";
 
@@ -57,6 +58,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   return (
     <ProjectContext.Provider value={project}>
     <div className="agent" data-testid="agent-panel">
+      {agent?.plan && <PlanBar plan={agent.plan} waiting={!!agent.approval?.storyboard} online={online} busy={running !== null} />}
       <div className="agent-thread" ref={thread} data-testid="agent-thread">
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
         {turns.length === 0 ? (
@@ -184,6 +186,8 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
               <WorkLog key={g.at} steps={g.items} />
             ) : g.item.kind === "thinking" ? (
               <Thinking key={g.at} item={g.item} />
+            ) : g.item.kind === "card" && g.item.card ? (
+              <CardItem key={g.at} card={g.item.card} />
             ) : (
               <Reply key={g.at} text={friendly(g.item.text)} live={!!g.item.live} />
             ),
@@ -207,7 +211,16 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
               ))}
             </div>
           )}
-          {approval && (approval.screen ? <ScreenApprovalCard approval={approval} screen={approval.screen} online={online} /> : <ApprovalCard approval={approval} online={online} />)}
+          {approval &&
+            (approval.screen ? (
+              <ScreenApprovalCard approval={approval} screen={approval.screen} online={online} />
+            ) : approval.question ? (
+              <QuestionCard key={approval.id} approval={approval} question={approval.question} online={online} />
+            ) : approval.storyboard ? (
+              <StoryboardApproval key={approval.id} approval={approval} storyboard={approval.storyboard} online={online} />
+            ) : (
+              <ApprovalCard approval={approval} online={online} />
+            ))}
           {t.error && (
             <p className="err" data-testid="agent-turn-error">
               {t.error}

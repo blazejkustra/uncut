@@ -5,6 +5,7 @@
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "../audio/audio.ts";
 import { clipBox, EASES, moveBox, type ClipBox, type Ease } from "../visual/box.ts";
+import { isSpringName, springEase } from "../visual/spring.ts";
 import { fxBox, fxSkips } from "../visual/fx.ts";
 import { captionAt } from "../text/captions.ts";
 import { componentBox } from "../visual/components.ts";
@@ -240,6 +241,18 @@ export function bounceOut(p: number): number {
 const clamp01 = (p: number) => Math.min(1, Math.max(0, p));
 
 /**
+ * A move's ease from its params.ease (D192): a cubic ease by name (linear, in, out, inOut) or a
+ * spring preset (springEase: the spring fitted to the move's duration, overshoot included);
+ * anything else (or none) is `fallback`, the move's own curve.
+ */
+export function moveEase(params: { readonly [key: string]: unknown } | undefined, fallback: (p: number) => number): (p: number) => number {
+  const e = params?.ease;
+  if (isSpringName(e)) return springEase(e);
+  if (typeof e === "string" && Object.hasOwn(EASES, e)) return EASES[e as Ease];
+  return fallback;
+}
+
+/**
  * A word-by-word move's word progress (D81): n words arrive one after another, each over 1/n of the
  * move; p is the move's share (0 → 1 in; 1 → 0 out, words leaving first-to-last). In, word i is at
  * clamp(p·n − i): none on the first frame, then ceil(local·n / duration) words have started.
@@ -251,7 +264,7 @@ export function wordProgress(n: number, p: number, out: boolean): Array<number> 
 /** A zoom move's scale (D81): `scale` → 1 over the move in, 1 → `scale` out, shaped by the ease (time share t). */
 export function zoomScale(p: number, out: boolean, params: { readonly [key: string]: unknown } | undefined): number {
   const scale = typeof params?.scale === "number" && params.scale > 0 ? params.scale : ZOOM_DEFAULTS.scale;
-  const ease = EASES[(typeof params?.ease === "string" && params.ease in EASES ? params.ease : ZOOM_DEFAULTS.ease) as Ease];
+  const ease = moveEase(params, EASES[ZOOM_DEFAULTS.ease]);
   return out ? 1 + (scale - 1) * ease(1 - p) : scale + (1 - scale) * ease(p);
 }
 
@@ -262,6 +275,9 @@ export function zoomScale(p: number, out: boolean, params: { readonly [key: stri
  * linearly; rise and slide-left also move (eased) by 4 % of the height / 5 % of the width; wipe
  * reveals the box from the left. On text (an item with `text`), word-by-word reveals the words in
  * turn and zoom scales the text about its centre, fading unless params.fade is false (D81).
+ * params.ease (D192, moveEase) reshapes a move's motion (not its fade, which stays linear): a cubic
+ * ease or a spring preset fitted to the move's duration, so rise, slide-left, zoom, scale, pop,
+ * bounce and blur may overshoot and settle; wipe's reveal and pop's starting size stay in range.
  */
 export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial<Pick<Item, "text">>, local: number, canvas: Pick<Canvas, "width" | "height">, { skipIn = false, skipOut = false } = {}): { opacity: number; motion: Motion } {
   let opacity = 1;
@@ -277,7 +293,7 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
   let fade = 1;
   const isText = typeof item.text === "string";
   const apply = (module: string, p: number, out: boolean, params: { readonly [key: string]: unknown } | undefined) => {
-    const e = easeOut(p);
+    const e = moveEase(params, easeOut)(p);
     if (module === "move.fade") opacity *= p;
     else if (module === "move.rise") {
       opacity *= p;
@@ -285,7 +301,7 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
     } else if (module === "move.slide-left") {
       opacity *= p;
       dx += (out ? -1 : 1) * (1 - e) * canvas.width * 0.05;
-    } else if (module === "move.wipe") reveal = Math.min(reveal, e);
+    } else if (module === "move.wipe") reveal = Math.min(reveal, clamp01(e));
     else if (module === ZOOM_MOVE && isText) {
       scale *= zoomScale(p, out, params);
       if (params?.fade !== false) opacity *= p;
@@ -300,13 +316,13 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
       chars = chars === undefined ? shown : Math.min(chars, shown);
     } else if (module === BOUNCE_MOVE && isText) {
       opacity *= p;
-      dy -= (1 - bounceOut(p)) * canvas.height * 0.08;
+      dy -= (1 - moveEase(params, bounceOut)(p)) * canvas.height * 0.08;
     } else if (module === BLUR_MOVE && isText) {
       opacity *= p;
-      blur += (1 - e) * 2.5;
-    } else if (module === SCALE_MOVE && isText) scale *= e;
+      blur += Math.max(0, 1 - e) * 2.5;
+    } else if (module === SCALE_MOVE && isText) scale *= Math.max(0, e);
     else if (module === POP_MOVE && isText) {
-      scale *= 0.4 + 0.6 * backOut(p);
+      scale *= Math.max(0, 0.4 + 0.6 * moveEase(params, backOut)(p));
       fade *= Math.min(1, p * 3);
     }
   };

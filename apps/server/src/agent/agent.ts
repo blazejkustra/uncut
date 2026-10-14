@@ -14,14 +14,14 @@
 // moved in on first open and renamed agent/turns.migrated-<time>.json; one that can't be read is
 // left alone and turns are refused until it can be.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { brandColourRule, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
@@ -39,7 +39,9 @@ import { BEATS_NOTE, beatsOut } from "./agentBeats.ts";
 import type { BeatsResult } from "../analysis/beats.ts";
 import { isLanguage, type TranscriptResult } from "../analysis/transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
-import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
+import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
+import { answerOut, beatGrid, gateOf, gateRefusal, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, reviewOf, reviewVerdict, type GridItem } from "./agentPlan.ts";
+import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
 import { accessLine, bigChange, checksOut, doingLabel, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
@@ -48,11 +50,14 @@ import { canonicalPath } from "../export/subtitleSources.ts";
 import { ProjectFormat } from "../project/format.ts";
 import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
+import { MediaCore } from "../media/mediaCore.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { applyDeclared, appliedNote, Capture } from "../capture/capture.ts";
 import { uploadedTake } from "../capture/takes.ts";
 import { CONFIRM_OVER, Generator, needsKeyLine, TURN_CAP } from "../generate/generate.ts";
 
+/** D189: render_frames with phone true: frames this wide (a phone in a feed). */
+const PHONE_WIDTH = 360;
 /** How long an approval card waits for the user (D99). */
 const APPROVAL_MS = 120_000;
 import { Keys, providerName } from "../generate/keys.ts";
@@ -101,10 +106,13 @@ export interface AgentShape {
     effort?: AgentEffort | undefined;
     access?: AgentAccess | undefined;
     images?: ReadonlyArray<AgentImage> | undefined;
+    skipStoryboard?: boolean | undefined;
   }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;
   /** The user's answer to the running turn's approval card (D99). */
-  readonly approve: (id: string, allow: boolean, source?: string) => Effect.Effect<{ readonly accepted: boolean }>;
+  readonly approve: (id: string, allow: boolean, source?: string, extra?: CardAnswer) => Effect.Effect<{ readonly accepted: boolean }>;
+  /** D188: the user's own edit of the brief or the storyboard. */
+  readonly planSave: (input: { readonly brief?: Brief | undefined; readonly storyboard?: Storyboard | undefined }) => Effect.Effect<AgentPlan, AgentError>;
   /** D144: the renderer's answer to an allowed screen_record (the uploaded take, or what went wrong). */
   readonly screenTake: (answer: { readonly id: string; readonly path?: string | undefined; readonly source?: string | undefined; readonly problem?: string | undefined }) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
@@ -117,6 +125,13 @@ export interface AgentShape {
 }
 
 export class Agent extends Context.Service<Agent, AgentShape>()("uncut/Agent") {}
+
+/** What a question or storyboard card answers besides Allow / Don't (D187, D188). */
+export interface CardAnswer {
+  readonly answer?: AgentAnswer | undefined;
+  readonly beats?: ReadonlyArray<StoryboardBeat> | undefined;
+  readonly note?: string | undefined;
+}
 
 // ---- environment (D41) ----
 
@@ -187,7 +202,7 @@ const modelFor = (asked: string | undefined) => (asked && AGENT_MODELS.some((m) 
 // ---- history ----
 
 type StoredTurn = { -readonly [K in keyof Omit<AgentTurn, "undo">]: Omit<AgentTurn, "undo">[K] } & {
-  items: Array<{ kind: "text" | "step" | "thinking"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean; error?: string; doing?: string }>;
+  items: Array<{ kind: "text" | "step" | "thinking" | "card"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean; error?: string; doing?: string; card?: AgentCard }>;
   edits: Array<AgentEdit>;
 };
 
@@ -216,6 +231,8 @@ interface Loaded {
   readonly saved: Map<string, string>;
   // The revisions a turn started and ended at (history.db's columns; not part of AgentTurn).
   readonly bounds: Map<string, { start?: number; end?: number }>;
+  // D188: brief.json, storyboard.json and reviews/ as last read or written.
+  plan: AgentPlan;
 }
 
 /**
@@ -287,12 +304,39 @@ interface Running {
   readonly images: ReadonlyArray<{ readonly mimeType: string; readonly data: string }>;
   // A tool call's input as it streams (stream index → JSON so far), for the now line (D182).
   readonly inputs: Map<number, { at: number; tool: string; json: string; shown: string }>;
+  // D188: "Edit freely" with Settings' skip: storyboard_propose approves itself, the build doesn't wait.
+  readonly skipStoryboard: boolean;
+  // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
+  looked: { sheet: boolean; phone: boolean };
+  // D189: review rounds in this turn.
+  reviewRounds: number;
 }
 
 const historyFile = (dir: string) => join(dir, "agent", "turns.json");
 
 const isString = (v: unknown): v is string => typeof v === "string";
 const STATUSES = new Set(["running", "done", "error", "cancelled"]);
+
+/** A card item read back (D186–D190): the known fields, normalised. */
+function storedCard(raw: unknown): AgentCard {
+  const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const type = (["question", "brief", "storyboard", "review", "brand"] as const).find((t) => t === c.type) ?? "brand";
+  const q = c.question && typeof c.question === "object" ? (c.question as Record<string, unknown>) : undefined;
+  const a = c.answer && typeof c.answer === "object" ? (c.answer as Record<string, unknown>) : undefined;
+  const brief = normBrief(c.brief);
+  const storyboard = normStoryboard(c.storyboard);
+  const review = normReview(c.review);
+  return {
+    type,
+    ...(q && isString(q.question) ? { question: { question: q.question, options: (Array.isArray(q.options) ? q.options : []).filter((o): o is { label: string; detail?: string } => !!o && typeof o === "object" && isString(o.label)).map((o) => ({ label: o.label, ...(isString(o.detail) ? { detail: o.detail } : {}) })), multi: q.multi === true, freeText: q.freeText !== false } } : {}),
+    ...(a ? { answer: { choices: Array.isArray(a.choices) ? a.choices.filter(isString) : [], ...(isString(a.text) ? { text: a.text } : {}) } } : {}),
+    ...(isString(c.outcome) ? { outcome: c.outcome } : {}),
+    ...(brief ? { brief } : {}),
+    ...(storyboard ? { storyboard } : {}),
+    ...(review ? { review } : {}),
+    ...(isString(c.text) ? { text: c.text } : {}),
+  };
+}
 
 /** A turn read back from disk, or undefined when it isn't one. Turns cut off by a quit say so. */
 function storedTurn(raw: unknown): StoredTurn | undefined {
@@ -301,8 +345,8 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
   if (!isString(t.id) || !isString(t.prompt) || !isString(t.startedAt) || !isString(t.status) || !STATUSES.has(t.status)) return undefined;
   const items = Array.isArray(t.items)
     ? t.items
-        .filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step" || i.kind === "thinking") && isString(i.text))
-        .map(({ live: _live, doing: _doing, error, ...i }) => (isString(error) ? { ...i, error } : i))
+        .filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step" || i.kind === "thinking" || (i.kind === "card" && !!i.card && typeof i.card === "object")) && isString(i.text))
+        .map(({ live: _live, doing: _doing, error, card, ...i }) => ({ ...i, ...(isString(error) ? { error } : {}), ...(i.kind === "card" ? { card: storedCard(card) } : {}) }))
     : [];
   const edits = Array.isArray(t.edits)
     ? t.edits.filter((e): e is AgentEdit => !!e && typeof e === "object" && typeof e.revision === "number" && isString(e.summary) && Array.isArray(e.lines))
@@ -557,6 +601,7 @@ export const layer = Layer.effect(
     const format = yield* ProjectFormat;
     const exporter = yield* Exporter;
     const media = yield* MediaLibrary;
+    const mediaCore = yield* MediaCore;
     const analysis = yield* Analysis;
     const config = yield* ServerConfig;
     const plugins = yield* Plugins;
@@ -582,7 +627,7 @@ export const layer = Layer.effect(
     const testRun = isTestRun(process.env, config.keysFd);
     const approvalMs = () => (testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? Number(process.env.UNCUT_APPROVAL_MS) : APPROVAL_MS);
     // The running turn's one open approval card (D99) and how to answer it.
-    let approval: { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped", source?: string) => void } | undefined;
+    let approval: { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void } | undefined;
     // D144: allowed screen_record calls waiting for the renderer's take, by card id.
     const screenWaits = new Map<string, { readonly turnId: string; readonly done: (answer: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => void }>();
 
@@ -598,6 +643,7 @@ export const layer = Layer.effect(
         running: running && running.owner === owner ? running.turn.id : null,
         turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
         ...(owner.ui ? { ui: owner.ui } : {}),
+        plan: owner.plan,
         ...(approval && running && running.owner === owner && running.turn.id === approval.card.turnId ? { approval: approval.card } : {}),
         ...(() => {
           const live = running && running.owner === owner ? [...screenWaits].find(([, w]) => w.turnId === running!.turn.id)?.[0] : undefined;
@@ -711,10 +757,12 @@ export const layer = Layer.effect(
           // The history this opening writes to may not hold what was saved before (an in-memory
           // history from a locked history.db, now a healthy file): save every turn again.
           same.saved.clear();
+          same.plan = yield* Effect.promise(() => readPlan(v.dir));
           loaded = same;
           return same;
         }
         const history = yield* Effect.promise(() => loadAgentHistory(v.dir));
+        const plan = yield* Effect.promise(() => readPlan(v.dir));
         loaded = {
           dir: v.dir,
           openId: v.openId,
@@ -730,6 +778,7 @@ export const layer = Layer.effect(
           ui: undefined,
           saved: new Map(history.turns.map((t) => [t.id, JSON.stringify(t)])),
           bounds: new Map(),
+          plan,
         };
         return loaded;
       }),
@@ -1513,7 +1562,10 @@ export const layer = Layer.effect(
           return textResult(`Couldn't write ${src}: ${(error as Error).message}`, true);
         }
         const hasRender = /\brender\s*(=|\(|:)|function\s+render\b/.test(html);
-        return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
+        // D193: the bundled libraries it loads, and any marker that names none.
+        const libs = graphicLibsUsed(html);
+        const libNote = libs.unknown.length ? { libraries: `${libs.unknown.map((x) => `uncut:lib/${x}`).join(", ")} ${libs.unknown.length === 1 ? "isn't a bundled library" : "aren't bundled libraries"} and won't load (bundled: ${GRAPHIC_LIBS.join(", ")}).` } : libs.known.length ? { libraries: `Loads ${libs.known.join(", ")}.` } : {};
+        return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...libNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
       });
 
     /**
@@ -1668,21 +1720,22 @@ export const layer = Layer.effect(
     };
 
     /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string) => void, edit?: AgentApproval["edit"]) =>
+    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard }) =>
       Effect.promise(
         () =>
           new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
-            const ms = approvalMs();
-            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}) };
+            // A question or a storyboard may take thinking over (QUESTION_MS); UNCUT_APPROVAL_MS shortens both in tests.
+            const ms = more && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : more ? QUESTION_MS : approvalMs();
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}) };
             let settled = false;
-            const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string) => {
+            const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
               r.abort.signal.removeEventListener("abort", onStop);
               if (approval?.card.id === card.id) approval = undefined;
               // Registered before the card goes away, so a take that comes back at once is heard.
-              onAnswer?.(card, a, source);
+              onAnswer?.(card, a, source, extra);
               publish();
               resolve(a);
             };
@@ -1819,6 +1872,229 @@ export const layer = Layer.effect(
         });
       });
 
+    // ---- the production process (U7–U9, U15–U17, U19; D186–D191) ----
+
+    /** A card in the turn's history (D186–D190): the question and its answer, the brief, the storyboard, a review. */
+    const addCard = (r: Running, card: AgentCard, text: string) => {
+      r.turn.items.push({ kind: "card", text: text.slice(0, 300), card });
+      persist(r.owner);
+      publish();
+    };
+    const brandDirs = (v: ProjectView) => ({ dataDir: config.dataDir, projectDir: v.dir });
+    const refreshPlan = (r: Running, v: ProjectView) => Effect.promise(async () => (r.owner.plan = await readPlan(v.dir)));
+
+    /** ask_user (D187): a question card; waits for the answer (QUESTION_MS). */
+    const askUserTool = (r: Running, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const q = questionOf(args);
+        if ("problem" in q) return textResult(q.problem, true);
+        let got: AgentAnswer | undefined;
+        const a = yield* askUser(r, q.question, 0, undefined, (_card, answer, _source, extra) => {
+          if (answer === "allow") got = extra?.answer;
+        }, undefined, { question: q });
+        const outcome = a === "allow" ? "answered" : a === "deny" ? "skipped" : a;
+        const out = answerOut(q, outcome, got);
+        addCard(r, { type: "question", question: q, ...("choices" in out || "text" in out ? { answer: { choices: "choices" in out ? (out.choices ?? []) : [], ...("text" in out && out.text ? { text: out.text } : {}) } } : {}), outcome: out.answered ? "answered" : "skipped" }, q.question);
+        return textResult(out);
+      });
+
+    /** brief_write (D188): brief.json, a Brief card. */
+    const briefWrite = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const brief = normBrief(args);
+        if (!brief || !brief.film.trim()) return textResult("film is the video in one sentence; write the whole brief (film, audience, duration, formats, assets, visual, hardLines, deliverables).", true);
+        const saved = yield* Effect.tryPromise({ try: () => writeBrief(v.dir, { ...brief, by: "agent" }), catch: (e) => e as Error }).pipe(Effect.map((b) => ({ ok: true as const, b })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
+        if (!saved.ok) return textResult(`Couldn't save the brief: ${saved.message}`, true);
+        yield* refreshPlan(r, v);
+        addCard(r, { type: "brief", brief: saved.b }, brief.film);
+        const sb = r.owner.plan.storyboard;
+        return textResult({ saved: "brief.json", next: sb?.status === "approved" ? "The storyboard is approved: if the brief changed what it shows, propose it again with storyboard_propose." : "Now propose the storyboard with storyboard_propose; build once the user approves it." });
+      });
+
+    /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
+    const storyboardPropose = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const beats = normBeats(args.beats);
+        if (!beats.length) return textResult("beats is the shot list: each {start, end (seconds), title, entry, exit, purpose, assets, sound}.", true);
+        const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 600) : "";
+        const write = (sb: Storyboard) => Effect.promise(() => writeStoryboard(v.dir, sb).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), sb)));
+        if (r.skipStoryboard) {
+          const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
+          yield* refreshPlan(r, v);
+          addCard(r, { type: "storyboard", storyboard: sb, outcome: "auto" }, summary || "Storyboard");
+          return textResult({ approved: true, by: "setting", message: "Approved by the user's setting (Edit freely skips the storyboard approval). Build it scene by scene." });
+        }
+        const proposed = yield* write({ summary, beats, status: "proposed" });
+        yield* refreshPlan(r, v);
+        let extra: CardAnswer | undefined;
+        const a = yield* askUser(r, summary || "Storyboard", 0, undefined, (_card, _a, _s, x) => {
+          extra = x;
+        }, undefined, { storyboard: proposed });
+        if (a === "allow") {
+          const edited = extra?.beats ? normBeats(extra.beats) : [];
+          const final = yield* write({ summary, beats: edited.length ? edited : beats, status: "approved", approvedBy: "user" });
+          yield* refreshPlan(r, v);
+          addCard(r, { type: "storyboard", storyboard: final, outcome: "approved" }, summary || "Storyboard");
+          return textResult({ approved: true, ...(edited.length ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." } : { message: "Approved. Build it scene by scene." }) });
+        }
+        if (a === "deny") {
+          const note = extra?.note?.trim().slice(0, 2000) ?? "";
+          const final = yield* write({ summary, beats, status: "declined", ...(note ? { note } : {}) });
+          yield* refreshPlan(r, v);
+          addCard(r, { type: "storyboard", storyboard: final, outcome: "declined" }, summary || "Storyboard");
+          return textResult({ approved: false, ...(note ? { change: note } : {}), next: note ? "Change the storyboard as asked and propose it again; don't build until it's approved." : "The user didn't approve it and said nothing: ask what to change (ask_user); don't build." });
+        }
+        addCard(r, { type: "storyboard", storyboard: proposed, outcome: "skipped" }, summary || "Storyboard");
+        return textResult({ approved: false, message: a === "stopped" ? "The turn was stopped." : "Nobody answered in 15 minutes.", next: "Don't build. End the turn saying the storyboard waits for approval on the Plan card." }, a !== "timeout");
+      });
+
+    /** review_submit (D189): the critic's round, with the determinism check of the graphics. */
+    const reviewSubmit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        if (!r.looked.sheet || !r.looked.phone) {
+          const missing = [!r.looked.sheet ? "a contact_sheet of the edit (no media)" : "", !r.looked.phone ? "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)" : ""].filter(Boolean).join(" and ");
+          return textResult(`Look before you score: ${missing}${r.reviewRounds ? " since the last round" : ""}, then review_submit.`, true);
+        }
+        const project = v.session.project as Project;
+        const { starts } = layout(project);
+        const graphics = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items.filter((i) => i.type === "graphic" && typeof i.src === "string")).slice(0, 4);
+        const checked: Array<string> = [];
+        const differed: Array<string> = [];
+        for (const g of graphics) {
+          const frame = (starts.get(g.id) ?? 0) + Math.floor(g.duration / 2);
+          const twice = yield* Effect.all([exporter.renderFrames([frame], 480), exporter.renderFrames([frame], 480)]).pipe(
+            Effect.map(([a, b]) => ({ ok: true as const, same: createHash("sha256").update(a[0]!.jpeg).digest("hex") === createHash("sha256").update(b[0]!.jpeg).digest("hex") })),
+            Effect.catch(() => Effect.succeed({ ok: false as const })),
+          );
+          const name = g.name ?? g.src!.replace(/^graphics\//, "");
+          if (!twice.ok) continue;
+          checked.push(name);
+          if (!twice.same) differed.push(name);
+        }
+        const round = r.reviewRounds + 1;
+        const review = reviewOf(args, round, { ...r.looked }, { checked, differed }, v.session.revision, r.turn.id);
+        if ("problem" in review) return textResult(review.problem, true);
+        yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
+        r.reviewRounds = round;
+        r.looked = { sheet: false, phone: false };
+        yield* refreshPlan(r, v);
+        addCard(r, { type: "review", review }, `Review round ${round}`);
+        const verdict = reviewVerdict(review.scores, round, differed);
+        return textResult({ round, passed: verdict.passed, determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check", next: verdict.next });
+      });
+
+    /** brand_read (D186): the kit and skills, or one of the kit's files. */
+    const brandRead = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const all = yield* Effect.promise(() => readBrand(brandDirs(v)));
+        const id = typeof args.kit === "string" ? args.kit : all.active.kit;
+        const kit = all.kits.find((k) => k.id === id);
+        if (!kit) {
+          return textResult({
+            kit: null,
+            kits: all.kits.map((k) => ({ id: k.id, name: k.name, scope: k.scope })),
+            message: typeof args.kit === "string" ? `There's no kit "${args.kit}".` : "This project has no brand kit.",
+            next: "Don't invent a logo, colours or fonts. Ask the user (ask_user): pick one of their kits (they choose it in the Brand panel), or give you the logo files and colours, which you can save with brand_write.",
+          });
+        }
+        const files = all.files[kit.id] ?? {};
+        if (typeof args.file === "string") {
+          const path = files[args.file];
+          if (!path) return textResult(`The kit has no file "${args.file}". Its files: ${Object.keys(files).join(", ") || "(none)"}.`, true);
+          const ext = path.toLowerCase().split(".").pop() ?? "";
+          const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext];
+          if (mime) {
+            const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
+            if (data && data.length <= 5 * 1024 * 1024) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path} (media_import this path to place it).` }, { type: "image" as const, data: data.toString("base64"), mimeType: mime }] };
+          }
+          if (ext === "svg") {
+            const text = yield* Effect.promise(() => readFile(path, "utf8").catch(() => ""));
+            return textResult({ file: args.file, path, svg: text.slice(0, 20000), note: "media_import this path to place it (an SVG is drawn sharp at its box's size)." });
+          }
+          return textResult({ file: args.file, path, note: "media_import this path to use it." });
+        }
+        return textResult({ kit: kitLines(kit, files).join("\n"), colors: kit.colors, fonts: kit.fonts, logos: Object.fromEntries(Object.entries(kit.logos).map(([k, name]) => [k, { name, path: files[name!] ?? null }])), files, skills: all.skills.filter((s) => all.active.skills.includes(s.id)).map((s) => ({ name: s.name, description: s.description, body: s.body })), next: "Use these by default: media_import a logo's path to place it, the colours by role in backgrounds, text and graphics (and the project's theme), the fonts in text style.font and graphics CSS, the tone in every line of copy." });
+      });
+
+    /** brand_write (D186, D190): merged into a kit; a new kit (with a name) becomes the project's when it has none. */
+    const brandWrite = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const dirs = brandDirs(v);
+        const all = yield* Effect.promise(() => readBrand(dirs));
+        let base = typeof args.kit === "string" ? all.kits.find((k) => k.id === args.kit) : undefined;
+        if (typeof args.kit === "string" && !base) return textResult(`There's no kit "${args.kit}". brand_read lists them; pass name (and no kit) to make a new one.`, true);
+        const fresh = !base && typeof args.name === "string" && args.name.trim() !== "" && !all.kits.some((k) => k.id === slug(String(args.name)));
+        if (!base && !fresh) base = all.kits.find((k) => k.id === (typeof args.name === "string" ? slug(args.name) : all.active.kit));
+        if (!base && !fresh) return textResult("No kit to write into: pass kit (an id from brand_read) or name for a new kit.", true);
+        const start: BrandKit = base ?? { id: slug(String(args.name)), name: String(args.name).trim().slice(0, 80), scope: args.scope === "global" ? "global" : "project", logos: {}, colors: [], fonts: [], tone: "", taglines: [], urls: [], dos: [], donts: [], examples: [] };
+        const merged = mergeKit(start, args);
+        if ("problem" in merged) return textResult(merged.problem, true);
+        const saved = yield* Effect.tryPromise({ try: () => saveKit(dirs, merged), catch: (e) => e as Error }).pipe(Effect.map((k) => ({ ok: true as const, k })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
+        if (!saved.ok) return textResult(`Couldn't save the kit: ${saved.message}`, true);
+        if (fresh && !all.active.kit) yield* Effect.promise(() => writeActive(v.dir, { kit: saved.k.id, skills: all.active.skills }).catch(() => {}));
+        const what = args.style ? `Style guide written into ${saved.k.name}` : fresh ? `New kit ${saved.k.name}` : `Saved the kit ${saved.k.name}`;
+        addCard(r, { type: "brand", text: what }, what);
+        return textResult({ saved: saved.k.id, kit: kitLines(saved.k, (yield* Effect.promise(() => readBrand(dirs))).files[saved.k.id] ?? {}).join("\n"), ...(fresh && !all.active.kit ? { note: "It's now this project's kit." } : {}) });
+      });
+
+    /** reference_frames (D190): a contact sheet of a file on disk that isn't imported. */
+    const referenceFrames = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        if (typeof args.path !== "string" || !args.path.trim()) return textResult("path is the reference file's absolute path.", true);
+        const path = isAbsolute(args.path) ? args.path : resolve(v.dir, args.path);
+        const count = Number.isInteger(args.count) && (args.count as number) >= 1 && (args.count as number) <= MAX_CELLS ? (args.count as number) : 16;
+        const probed = yield* mediaCore.probeMany([path]).pipe(Effect.map((list) => list[0]), Effect.catch(() => Effect.succeed(undefined)));
+        if (!probed || !probed.ok) return textResult(`Couldn't read ${shortName(path)}: ${probed && !probed.ok ? probed.message : "it isn't a media file Uncut can open"}.`, true);
+        const info = probed.info;
+        if (info.kind === "audio") return textResult(`${shortName(path)} is a sound file, with no picture to read a style from.`, true);
+        if (info.kind === "image") {
+          const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
+          const ext = path.toLowerCase().split(".").pop() ?? "";
+          const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext];
+          if (!data || !mime || data.length > 5 * 1024 * 1024) return textResult(`${shortName(path)} is a picture Uncut can't hand over (${mime ? "over 5 MB" : "not PNG, JPEG, WebP or GIF"}).`, true);
+          return { content: [{ type: "text" as const, text: `The reference ${shortName(path)}, ${info.width ?? "?"}×${info.height ?? "?"}. Read its grammar (palette, type, layout, grain), not its content.` }, { type: "image" as const, data: data.toString("base64"), mimeType: mime }] };
+        }
+        const seconds = info.durationSeconds ?? 0;
+        if (!seconds) return textResult(`${shortName(path)} has no known length.`, true);
+        const fps = info.fpsValue && info.fpsValue > 0 ? info.fpsValue : 30;
+        const times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * seconds);
+        const grid = sheetLayout(count, info.width && info.height ? info.width / info.height : 16 / 9);
+        const sheet = yield* exporter.mediaFrames(path, times, CELL_WIDTH, fps).pipe(
+          Effect.flatMap((pulled) => exporter.sheetImage(pulled.map((p, i) => ({ jpeg: p.jpeg, caption: `${i + 1}   ${clock(p.seconds)}` })), grid)),
+          Effect.map((jpeg) => ({ ok: true as const, jpeg })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+        );
+        if (!sheet.ok) return textResult(`Couldn't make the sheet: ${sheet.message}`, true);
+        return {
+          content: [
+            { type: "text" as const, text: `The reference ${shortName(path)}: ${seconds.toFixed(1)} s, ${info.width ?? "?"}×${info.height ?? "?"}, ${count} frames spread evenly (cell n at ${times.map((t) => clock(t)).join(", ")}). Read its grammar (palette as hex, type, shot lengths, transitions, camera, grain), never its content; then brand_write the style.` },
+            { type: "image" as const, data: sheet.jpeg.toString("base64"), mimeType: "image/jpeg" },
+          ],
+        };
+      });
+
+    /** beat_grid (D191): the music's beats, downbeats and hits in timeline frames, and snaps. */
+    const beatGridTool = (v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const project = v.session.project as Project;
+        const fps = project.canvas.fps;
+        const audio = project.tracks.filter((t) => t.kind === "audio").flatMap((t) => t.items.filter((i) => i.type === "audio" && typeof i.media === "string"));
+        const item = typeof args.item === "string" ? audio.find((i) => i.id === args.item) : [...audio].sort((a, b) => b.duration - a.duration)[0];
+        if (!item) return textResult(typeof args.item === "string" ? `There's no audio item "${args.item}" on an audio track.` : "There's no music on the timeline yet: add it (music_add or library_add, then timeline_edit) first.", true);
+        const m = project.media.find((x) => x.id === item.media);
+        if (!m) return textResult(`The media of ${item.id} is missing.`, true);
+        const range = args.range as { start?: unknown; end?: unknown } | undefined;
+        if (range !== undefined && (typeof range !== "object" || !Number.isInteger(range.start) || !Number.isInteger(range.end))) return textResult("range is { start, end } in timeline frames.", true);
+        const snap = Array.isArray(args.snap) ? args.snap.filter((f): f is number => Number.isInteger(f) && f >= 0).slice(0, 60) : undefined;
+        const [answer] = yield* requestAndWait([{ target: targetOf(v.dir, m, fps), analyzer: "beats" }]);
+        const outcome = answer!.outcome;
+        if (!outcome) return textResult({ item: item.id, beats: pendingOut(answer!.jobId), note: "Finding the beats is still running: call beat_grid again with the same arguments." });
+        if (outcome.state !== "done") return textResult(`Couldn't find the beats of ${m.name}: ${outcome.state === "failed" ? outcome.error : cancelledNote}`, true);
+        const result = outcome.result as BeatsResult;
+        if (!result.hasAudio || !result.bpm) return textResult({ item: item.id, bpm: null, note: "No steady beat in this sound (speech, ambience or silence): cut on the picture and the words instead." });
+        return textResult(beatGrid(result, { id: item.id, media: m.id, start: (layout(project).starts.get(item.id) ?? item.start ?? 0), in: item.in ?? 0, duration: item.duration, speed: item.speed ?? 1 } satisfies GridItem, fps, range as { start: number; end: number } | undefined, snap));
+      });
+
     const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
       Effect.gen(function* () {
         const v = view();
@@ -1839,13 +2115,15 @@ export const layer = Layer.effect(
             const frames = Array.isArray(args.frames) ? args.frames : [];
             if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0)) return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
             const canvas = v.session.project.canvas;
-            const scale = typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_WIDTH / canvas.width);
+            // D189: phone true draws them 360 px wide, as in a feed on a phone.
+            const scale = args.phone === true ? Math.min(1, PHONE_WIDTH / canvas.width) : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_WIDTH / canvas.width);
             const width = Math.max(64, Math.round(canvas.width * scale));
             const rendered = yield* exporter.renderFrames(frames as Array<number>, width).pipe(
               Effect.map((list) => ({ ok: true as const, list })),
               Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
             );
             if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
+            if (width <= PHONE_WIDTH + 40) r.looked.phone = true;
             const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
             // Frames past the last one are drawn as the last one: say so, not silently.
             const clamped = rendered.list.flatMap((r, i) => (r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : []));
@@ -1858,10 +2136,30 @@ export const layer = Layer.effect(
               ],
             };
           }
+          case "ask_user":
+            return yield* askUserTool(r, args);
+          case "brief_write":
+            return yield* briefWrite(r, v, args);
+          case "storyboard_propose":
+            return yield* storyboardPropose(r, v, args);
+          case "review_submit":
+            return yield* reviewSubmit(r, v, args);
+          case "brand_read":
+            return yield* brandRead(v, args);
+          case "brand_write":
+            return yield* brandWrite(r, v, args);
+          case "reference_frames":
+            return yield* referenceFrames(v, args);
+          case "beat_grid":
+            return yield* beatGridTool(v, args);
           case "media_import":
             return yield* mediaImport(r, v, args);
-          case "contact_sheet":
-            return yield* contactSheet(v, args);
+          case "contact_sheet": {
+            const out = yield* contactSheet(v, args);
+            // D189: a sheet of the edit counts as the critic's look.
+            if (args.media === undefined && !out.isError) r.looked.sheet = true;
+            return out;
+          }
           case "ui_show":
             return uiShow(r, v, args);
           case "project_check": {
@@ -1873,7 +2171,10 @@ export const layer = Layer.effect(
             // The allowed plugins' rules too (D103): data rules run here, process plugins are asked (5 s each).
             const contributed = yield* plugins.contributions;
             const asked = yield* plugins.processChecks(v.session.project, v.dir);
-            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: pluginCheckRules(contributed.rules), found: asked.checks, notes: asked.notes }));
+            // D186: with a brand kit, its colours are a rule too.
+            const kit: BrandKit | undefined = (yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => undefined)))?.kit;
+            const brandRules = kit && kit.colors.length ? [brandColourRule(kit.name, [...kit.colors.map((c) => c.hex), ...(kit.style?.palette.map((c) => c.hex) ?? [])])] : [];
+            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules], found: asked.checks, notes: asked.notes }));
           }
           case "music_list": {
             if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
@@ -1904,6 +2205,9 @@ export const layer = Layer.effect(
           case "subtitles_export":
             return yield* subtitlesExport(v, args);
           case "timeline_edit": {
+            // D188: once a brief exists, the build waits for an approved storyboard.
+            const gated = gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard));
+            if (gated) return textResult(gated, true);
             const { baseRevision, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);
             if (!Array.isArray(args.ops)) return textResult("ops must be a list of edit ops.", true);
@@ -2381,7 +2685,7 @@ export const layer = Layer.effect(
     /** The plugins' tool names now (D97): a session started with other ones is started again. */
     const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => extra.map((t) => t.name).sort().join(",")));
 
-    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "edit", images = [] }) =>
+    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "edit", images = [], skipStoryboard = false }) =>
       Effect.gen(function* () {
         const owner = yield* ensureLoaded;
         if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -2417,7 +2721,20 @@ export const layer = Layer.effect(
           .slice(0, 50)
           .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
         const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), note].filter(Boolean);
-        const message = [text, contextBlock(project, pointed), context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
+        // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
+        const skip = access === "edit" && skipStoryboard;
+        const planBlock = yield* Effect.promise(async () => {
+          try {
+            owner.plan = await readPlan(v.dir);
+            const all = await readBrand({ dataDir: config.dataDir, projectDir: v.dir });
+            const kit = all.kits.find((k) => k.id === all.active.kit);
+            return planContext({ kit, files: kit ? (all.files[kit.id] ?? {}) : {}, skills: all.skills.filter((x) => all.active.skills.includes(x.id)), others: all.kits.map((k) => ({ id: k.id, name: k.name })) }, owner.plan, gateOf(owner.plan, skip));
+          } catch (error) {
+            console.error(`[uncut] couldn't read the brand kit or plan of ${v.dir}: ${(error as Error).message}`);
+            return "";
+          }
+        });
+        const message = [text, contextBlock(project, pointed), planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
 
         // The session to use: the live one when it's still this opening's with the same tools, model
         // and effort (D184: another choice starts another claude that resumes the conversation).
@@ -2487,6 +2804,9 @@ export const layer = Layer.effect(
           access,
           images: decoded.map((img) => ({ mimeType: img.mimeType, data: img.data })),
           inputs: new Map(),
+          skipStoryboard: skip,
+          looked: { sheet: false, phone: false },
+          reviewRounds: 0,
         };
         running = r;
         persist(owner);
@@ -2501,11 +2821,27 @@ export const layer = Layer.effect(
       cancel: Effect.sync(() => {
         if (running) stop(running);
       }),
-      approve: (id, allow, source) =>
+      approve: (id, allow, source, extra) =>
         Effect.sync(() => {
           if (approval?.card.id !== id) return { accepted: false };
-          approval.answer(allow ? "allow" : "deny", source);
+          approval.answer(allow ? "allow" : "deny", source, extra);
           return { accepted: true };
+        }),
+      planSave: ({ brief, storyboard }) =>
+        Effect.gen(function* () {
+          const owner = yield* ensureLoaded;
+          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+          const saved = yield* Effect.tryPromise({
+            try: async () => {
+              if (brief) await writeBrief(owner.dir, { ...brief, by: "user" });
+              if (storyboard) await writeStoryboard(owner.dir, storyboard.status === "approved" ? { ...storyboard, approvedBy: "user" } : storyboard);
+              return readPlan(owner.dir);
+            },
+            catch: (error) => new AgentError({ reason: "failed", message: `Couldn't save the plan: ${(error as Error).message}` }),
+          });
+          owner.plan = saved;
+          publish();
+          return saved;
         }),
       screenTake: ({ id, path, source, problem }) =>
         Effect.sync(() => {

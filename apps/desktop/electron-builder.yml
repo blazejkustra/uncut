@@ -38,6 +38,10 @@ extraResources:
   - from: ../../assets/sfx
     to: sfx
     filter: ["*.m4a", "library.json"]
+  # The libraries graphics load with uncut:lib/ markers (D193): three.js (MIT, its licence beside it) and Uncut's own.
+  - from: ../../assets/graphic-libs
+    to: graphic-libs
+    filter: ["*.js", "*.LICENSE.txt"]
   # The server validates projects against these; schemas are bundled into server.mjs.
   - from: ../../spec/modules/builtin
     to: modules/builtin

@@ -12,6 +12,7 @@
     "./edit-log": "./src/timeline/edit-log.ts",
     "./timeline": "./src/timeline/timeline.ts",
     "./box": "./src/visual/box.ts",
+    "./spring": "./src/visual/spring.ts",
     "./fx": "./src/visual/fx.ts",
     "./audio": "./src/audio/audio.ts",
     "./render": "./src/visual/render.ts",

@@ -19,7 +19,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
 import { clipFx, colourLut, cubeText, fitRect, fxOverlayHtml, hasOverlay, needsPicturePass } from "@uncut/core";
-import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, resolveGraphicLibs, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
 import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -28,6 +28,7 @@ import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { sheetHtml, type SheetLayout } from "../agent/agentFootage.ts";
+import { loadGraphicLibs } from "./graphicLibs.ts";
 import { ServerConfig } from "../app/config.ts";
 import {
   boxGraph,
@@ -213,9 +214,12 @@ export function plainFsError(error: unknown, where: string): string {
 /**
  * A project's graphic files (D78), read once: src → its HTML. Only files inside the project's
  * graphics/ folder (by realpath, so a symlink can't reach out), named as the format says, at most
- * MAX_GRAPHIC_BYTES; anything else is left out (the plan then warns that it isn't drawn).
+ * MAX_GRAPHIC_BYTES; anything else is left out (the plan then warns that it isn't drawn). Its
+ * uncut:lib/ markers come back resolved with `libs` (D193, core resolveGraphicLibs: the bundled
+ * libraries inlined; the size cap is the author's file's): the preview route, the export and
+ * render_frames all read graphics here, so they all draw the same document.
  */
-export async function readGraphics(dir: string, project: Project): Promise<Map<string, string>> {
+export async function readGraphics(dir: string, project: Project, libs: Readonly<Record<string, string>> = {}): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const srcs = new Set(project.tracks.flatMap((t) => t.items).filter((i) => i.type === "graphic" && typeof i.src === "string").map((i) => i.src!));
   if (!srcs.size) return out;
@@ -230,7 +234,7 @@ export async function readGraphics(dir: string, project: Project): Promise<Map<s
       if (!real.startsWith(`${folder}/`)) continue;
       const s = await stat(real);
       if (!s.isFile() || s.size > MAX_GRAPHIC_BYTES) continue;
-      out.set(src, await readFile(real, "utf8"));
+      out.set(src, resolveGraphicLibs(await readFile(real, "utf8"), libs));
     } catch {}
   }
   return out;
@@ -716,7 +720,7 @@ export const layer = Layer.effect(
         const bin = (yield* Effect.promise(ffmpegBin))!;
         if (codec === "hevc" && !canHevc(yield* Effect.promise(() => capsOf(bin)))) return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make HEVC videos. Choose H.264." });
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
-        const graphics = yield* Effect.promise(() => readGraphics(dir, project));
+        const graphics = yield* Effect.promise(async () => readGraphics(dir, project, await loadGraphicLibs(config.graphicLibsDir)));
         // Ducking (D85) needs the key media's loudness envelopes, noise removal (D88) its track's:
         // the cached ones now; the job measures the rest before rendering (one quick ffmpeg pass each).
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
@@ -787,7 +791,7 @@ export const layer = Layer.effect(
         const bin = yield* Effect.promise(ffmpegBin);
         if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
         return yield* Effect.tryPromise({
-          try: async (signal) => renderFramesWith(bin, project, mediaPath, await readGraphics(dir, project), frames, width, signal),
+          try: async (signal) => renderFramesWith(bin, project, mediaPath, await readGraphics(dir, project, await loadGraphicLibs(config.graphicLibsDir)), frames, width, signal),
           catch: (error) => new ExportError({ reason: "missing-media", message: (error as Error).message }),
         });
       });
