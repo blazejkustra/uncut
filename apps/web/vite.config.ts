@@ -11,9 +11,9 @@ const csp: Plugin = {
       attrs: {
         "http-equiv": "Content-Security-Policy",
         // Thumbnails, footage and waveforms come from the local server's token-protected /media routes;
-        // the bundled fonts are data: URLs (D77); graphic items are sandboxed iframes served by the
+        // the bundled fonts are data: URLs (D77); the composer previews attached images as data: URLs (D201); graphic items are sandboxed iframes served by the
         // local server with their own CSP (D78).
-        content: "default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' http://127.0.0.1:*; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src data:; frame-src http://127.0.0.1:*",
+        content: "default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: http://127.0.0.1:*; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src data:; frame-src http://127.0.0.1:*",
       },
       injectTo: "head",
     },

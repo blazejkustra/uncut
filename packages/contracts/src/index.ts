@@ -770,8 +770,12 @@ export const AGENT_IMAGES_MAX = 4;
 export const AgentImage = Schema.Struct({ name: Schema.String, mimeType: Schema.Literals(AGENT_IMAGE_TYPES), data: Schema.String });
 export type AgentImage = typeof AgentImage.Type;
 
-/** An edit the agent made in a turn: its summary and every op in words (core describeOp). */
-export const AgentEdit = Schema.Struct({ revision: Schema.Number, summary: Schema.String, lines: Schema.Array(Schema.String) });
+/**
+ * An edit the agent made in a turn: its summary and every op in words (core describeOp). D203: `at`
+ * is the index in the turn's items of the step (tool call) that made it, so the thread shows the
+ * edit where it happened; `media` the ids of the media it added (an import's thumbnails).
+ */
+export const AgentEdit = Schema.Struct({ revision: Schema.Number, summary: Schema.String, lines: Schema.Array(Schema.String), at: Schema.optional(Schema.Number), media: Schema.optional(Schema.Array(Schema.String)) });
 export type AgentEdit = typeof AgentEdit.Type;
 
 export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "cancelled"]);

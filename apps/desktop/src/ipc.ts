@@ -10,6 +10,7 @@ export const SHOW_IN_FOLDER_CHANNEL = "uncut:show-in-folder";
 export const APP_STATE_CHANNEL = "uncut:app-state";
 export const MENU_COMMAND_CHANNEL = "uncut:menu-command";
 export const COPY_TEXT_CHANNEL = "uncut:copy-text";
+export const CLIPBOARD_PATHS_CHANNEL = "uncut:clipboard-paths";
 export const CHOOSE_MEDIA_CHANNEL = "uncut:choose-media";
 export const CHOOSE_SAVE_PATH_CHANNEL = "uncut:choose-save-path";
 // Environments (Phase 9, D106).

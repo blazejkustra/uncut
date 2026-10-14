@@ -489,7 +489,7 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
   };
   const state = (cls: string, text: string) => <span className={`plan-state ${cls}`}>{text}</span>;
   return (
-    <div className="plan-strip" data-testid="agent-plan">
+    <div className="plan-chip-wrap" data-testid="agent-plan">
       <button className={`plan-chip-btn ${open ? "on" : ""}`} data-testid="plan-chip" aria-expanded={open} onClick={() => (setOpen(!open), setShown(undefined))}>
         <ClipboardList />
         Plan
