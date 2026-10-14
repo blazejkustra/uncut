@@ -99,6 +99,7 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
           <Section
             title="Filter"
             testId="multi-filter"
+            remember="filter"
             action={
               anyLook ? (
                 <button className="icon-btn" title="Remove the filter from all" data-testid="multi-filter-remove" onClick={() => send(all(fxClips.filter((i) => lookOf(i)), (p, id) => planSetLook(p, id, undefined), (k) => `Remove the filter from ${k} clips`))}>
@@ -130,6 +131,7 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
           <Section
             title="Adjust"
             testId="multi-adjust"
+            remember="adjust"
             action={
               adjusted ? (
                 <button className="icon-btn" title="Reset all" data-testid="multi-adjust-reset" onClick={() => send(all(fxClips, (p, id) => planAdjust(p, id, "reset"), (k) => `Reset the adjustments of ${k} clips`))}>
@@ -155,7 +157,7 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
             ))}
           </Section>
           {modules.length > 0 && (
-            <Section title="Effects" testId="multi-effects">
+            <Section title="Effects" testId="multi-effects" remember="effects">
               {modules.map((module) => {
                 const info = effectInfo(module)!;
                 const having = fxClips.filter((i) => (i.effects ?? []).some((e) => e.module === module));

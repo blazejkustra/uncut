@@ -8,8 +8,8 @@ import { clipBox, EASES, moveBox, type ClipBox, type Ease } from "../visual/box.
 import { fxBox, fxSkips } from "../visual/fx.ts";
 import { captionAt } from "../text/captions.ts";
 import { componentBox } from "../visual/components.ts";
-import { WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "../text/looks.ts";
-import { SOLID, wordCount, type Motion } from "../visual/render.ts";
+import { BLUR_MOVE, BOUNCE_MOVE, LOOP_DEFAULTS, POP_MOVE, PULSE_MOVE, SCALE_MOVE, TYPEWRITER, WIGGLE_MOVE, WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "../text/looks.ts";
+import { charCount, SOLID, wordCount, type Motion } from "../visual/render.ts";
 import { dipColor, incomingFx, outgoingFx, overlaps, WIPE, type MaskShape, type TransitionFx } from "../visual/transitions.ts";
 import type { Canvas, Item, Media, Project, Track } from "./types.ts";
 
@@ -211,7 +211,7 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
 
 // The built-in moves (spec/modules/builtin/move.*.json) the preview and export draw. word-by-word
 // and zoom (D81) draw on text; on other items they show the item without motion.
-export const DRAWN_MOVES = ["move.fade", "move.rise", "move.slide-left", "move.wipe", WORD_BY_WORD, ZOOM_MOVE] as const;
+export const DRAWN_MOVES = ["move.fade", "move.rise", "move.slide-left", "move.wipe", WORD_BY_WORD, ZOOM_MOVE, TYPEWRITER, BOUNCE_MOVE, BLUR_MOVE, SCALE_MOVE, POP_MOVE, PULSE_MOVE, WIGGLE_MOVE] as const;
 
 /**
  * Whether an in/out move changes the item's opacity (linearly over its frames, as animationAt does):
@@ -220,10 +220,23 @@ export const DRAWN_MOVES = ["move.fade", "move.rise", "move.slide-left", "move.w
  */
 export function moveFades(item: Partial<Pick<Item, "text">>, move: { readonly module: string; readonly params?: { readonly [key: string]: unknown } | undefined }): boolean {
   if (move.module === "move.fade" || move.module === "move.rise" || move.module === "move.slide-left") return true;
+  // Bounce and blur fade linearly on text (D163); pop's quick fade is drawn in the HTML (motion.fade), not a ramp.
+  if ((move.module === BOUNCE_MOVE || move.module === BLUR_MOVE) && typeof item.text === "string") return true;
   return move.module === ZOOM_MOVE && typeof item.text === "string" && move.params?.fade !== false;
 }
 
 const easeOut = (p: number) => 1 - (1 - p) ** 3;
+/** Back-out: overshoots a little past 1 before settling (a pop, D163). */
+const backOut = (p: number) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2;
+/** Bounce-out: lands and bounces three times, smaller each time (a bounce, D163). */
+export function bounceOut(p: number): number {
+  const n = 7.5625;
+  const d = 2.75;
+  if (p < 1 / d) return n * p * p;
+  if (p < 2 / d) return n * (p -= 1.5 / d) * p + 0.75;
+  if (p < 2.5 / d) return n * (p -= 2.25 / d) * p + 0.9375;
+  return n * (p -= 2.625 / d) * p + 0.984375;
+}
 const clamp01 = (p: number) => Math.min(1, Math.max(0, p));
 
 /**
@@ -258,6 +271,10 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
   let scale = 1;
   let words: Array<number> | undefined;
   let wordStyle: WordStyle | undefined;
+  let chars: number | undefined;
+  let blur = 0;
+  let rotate = 0;
+  let fade = 1;
   const isText = typeof item.text === "string";
   const apply = (module: string, p: number, out: boolean, params: { readonly [key: string]: unknown } | undefined) => {
     const e = easeOut(p);
@@ -276,6 +293,21 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
       const next = wordProgress(wordCount(item.text!), p, out);
       words = words ? words.map((w, i) => Math.min(w, next[i]!)) : next;
       if (!wordStyle) wordStyle = typeof params?.style === "string" && ["pop", "fade", "rise"].includes(params.style) ? (params.style as WordStyle) : "pop";
+    } else if (module === TYPEWRITER && isText) {
+      // D163: floor(p·n) characters show: none on the first frame in, all of them at the end.
+      const n = charCount(item.text!);
+      const shown = Math.floor(p * n + 1e-9);
+      chars = chars === undefined ? shown : Math.min(chars, shown);
+    } else if (module === BOUNCE_MOVE && isText) {
+      opacity *= p;
+      dy -= (1 - bounceOut(p)) * canvas.height * 0.08;
+    } else if (module === BLUR_MOVE && isText) {
+      opacity *= p;
+      blur += (1 - e) * 2.5;
+    } else if (module === SCALE_MOVE && isText) scale *= e;
+    else if (module === POP_MOVE && isText) {
+      scale *= 0.4 + 0.6 * backOut(p);
+      fade *= Math.min(1, p * 3);
     }
   };
   const a = item.animation;
@@ -287,7 +319,15 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
     const left = item.duration - 1 - at;
     if (left < a.out.duration) apply(a.out.module, clamp01(left / a.out.duration), true, a.out.params);
   }
-  const motion: { dx?: number; dy?: number; reveal?: number; scale?: number; words?: Array<number>; wordStyle?: WordStyle } = {};
+  // A loop (D163): one period every `duration` frames for the item's whole length (phase from the
+  // frame number, so equal phases draw byte-equal HTML and the export dedupes them).
+  if (a?.loop && a.loop.duration > 0 && isText) {
+    const wave = Math.sin((2 * Math.PI * (at % a.loop.duration)) / a.loop.duration);
+    const amount = typeof a.loop.params?.amount === "number" ? a.loop.params.amount : LOOP_DEFAULTS[a.loop.module] ?? 0;
+    if (a.loop.module === PULSE_MOVE) scale *= 1 + amount * (1 - Math.cos((2 * Math.PI * (at % a.loop.duration)) / a.loop.duration)) / 2;
+    else if (a.loop.module === WIGGLE_MOVE) rotate += amount * wave;
+  }
+  const motion: { dx?: number; dy?: number; reveal?: number; scale?: number; words?: Array<number>; wordStyle?: WordStyle; chars?: number; blur?: number; rotate?: number; fade?: number } = {};
   if (dx) motion.dx = dx;
   if (dy) motion.dy = dy;
   if (reveal < 1) motion.reveal = reveal;
@@ -296,5 +336,9 @@ export function animationAt(item: Pick<Item, "duration" | "animation"> & Partial
     motion.words = words;
     motion.wordStyle = wordStyle ?? "pop";
   }
+  if (chars !== undefined && chars < charCount(item.text!)) motion.chars = chars;
+  if (blur > 0) motion.blur = Math.round(blur * 1000) / 1000;
+  if (rotate) motion.rotate = Math.round(rotate * 1000) / 1000;
+  if (fade < 1) motion.fade = fade;
   return { opacity, motion };
 }

@@ -3,7 +3,7 @@
   "id": "component.sticker",
   "kind": "component",
   "name": "Sticker",
-  "description": "An emoji (or a few characters) that pops in.",
+  "description": "An emoji, or a drawn sticker from Uncut's set, that pops in.",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -21,6 +21,19 @@
         "maxLength": 16,
         "x-group": "Content",
         "description": "The emoji."
+      },
+      "art": {
+        "enum": [
+          "burst",
+          "arrow",
+          "heart",
+          "bubble",
+          "new",
+          "sparkle",
+          "check"
+        ],
+        "x-group": "Content",
+        "description": "A drawn sticker from Uncut's set (instead of the emoji)."
       },
       "pop": {
         "type": "boolean",

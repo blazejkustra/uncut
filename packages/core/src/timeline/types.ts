@@ -236,6 +236,8 @@ export type Op =
   | { readonly op: "add_media"; readonly media: Media }
   // Another file (a re-shot recording, D98), name, probe or source of a media entry, in place.
   | { readonly op: "update_media"; readonly media: Id; readonly set: FieldSet }
+  // F8 (D167): a media entry out of the project (no item may still use it; its file stays on disk).
+  | { readonly op: "delete_media"; readonly media: Id }
   | { readonly op: "update_project"; readonly set: FieldSet };
 
 export type OpName = Op["op"];

@@ -1,0 +1,14 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.bounce",
+  "kind": "move",
+  "name": "Bounce",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "description": "Text: drops in from above and bounces as it lands, fading in (in); leaves the same way, reversed (out)."
+}

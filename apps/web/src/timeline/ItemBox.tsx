@@ -156,8 +156,9 @@ export function ItemBox({
       )}
       {edges && sound && (
         <>
-          <div className="fade-handle in" data-fade="in" data-testid="fade-in-handle" title="Drag to fade in" style={{ left: Math.min(px - 10, Math.max(6, fadeIn)) }} />
-          <div className="fade-handle out" data-fade="out" data-testid="fade-out-handle" title="Drag to fade out" style={{ right: Math.min(px - 10, Math.max(6, fadeOut)) }} />
+          {/* F27 (D169): 12 px squares (a wider hit area), clear of the 6 px trim edges. */}
+          <div className="fade-handle in" data-fade="in" data-testid="fade-in-handle" title="Drag to fade in" style={{ left: Math.min(px - 13, Math.max(13, fadeIn)) }} />
+          <div className="fade-handle out" data-fade="out" data-testid="fade-out-handle" title="Drag to fade out" style={{ right: Math.min(px - 13, Math.max(13, fadeOut)) }} />
         </>
       )}
     </div>

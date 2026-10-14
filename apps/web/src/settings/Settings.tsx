@@ -10,6 +10,8 @@ import { playback, usePlayback } from "../preview/playback.ts";
 import { actions, projectOf, useApp, type SettingsSection } from "../state/store.ts";
 import { ProjectSettings } from "./ProjectSettings.tsx";
 import { ShortcutList } from "./Shortcuts.tsx";
+import { DefaultLengths } from "./DefaultLengths.tsx";
+import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
   { id: "project", label: "Project", icon: Clapperboard },
@@ -74,6 +76,11 @@ function AppSettings() {
           <input type="checkbox" data-testid="settings-snapping" checked={snapping} onChange={playback.toggleSnapping} />
           Snap to the playhead, item edges and beats
         </label>
+      </div>
+      <DefaultLengths />
+      <div className="group">
+        <div className="group-label">Captions</div>
+        <DefaultCaptionStyleRow />
       </div>
       <div className="group">
         <div className="group-label">Layout</div>

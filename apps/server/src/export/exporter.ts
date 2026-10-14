@@ -16,7 +16,7 @@ import { access, copyFile, link, mkdir, mkdtemp, readdir, readFile, realpath, re
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
-import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles } from "@uncut/contracts";
+import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
 import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
 import { clipFx, colourLut, cubeText, fitRect, fxOverlayHtml, hasOverlay, needsPicturePass } from "@uncut/core";
 import { baseBox, canvasBox, componentHtml, irisRadius, maskGeq, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
@@ -48,6 +48,7 @@ import {
   svgClipHtml,
   blurFilters,
   untaggedFilter,
+  canHevc,
   type Caps,
   type ExportPlan,
   type RasterOutput,
@@ -73,6 +74,8 @@ export interface ExportInput {
   readonly burnCaptions?: boolean | undefined;
   /** G7 (D127): only frames [from, to) of the edit (core sliceProject). */
   readonly range?: { readonly from: number; readonly to: number } | undefined;
+  /** F4 (D171): the Advanced row: codec, bitrate, size by the shorter side, frame rate. */
+  readonly video?: ExportVideo | undefined;
 }
 
 /** How long an export waits to measure a ducking key's loudness that isn't cached (D85). */
@@ -611,7 +614,7 @@ export const layer = Layer.effect(
           await writeFile(subtitles.file, writeSubtitles(flattenCues(cues), plan.fps, "srt"));
         }
         const luts = await writeLuts(plan, temp);
-        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, loudnorm, loudness, output: partial, subtitles, luts });
+        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, video: { codec: job.codec, bitrateMbps: job.bitrateMbps, fps: job.fps }, loudnorm, loudness, output: partial, subtitles, luts });
         const graphFile = join(temp, "graph.txt");
         await writeFile(graphFile, cmd.graph);
         const total = plan.frames / plan.fps;
@@ -704,8 +707,14 @@ export const layer = Layer.effect(
           if (!input.overwrite && (yield* Effect.promise(() => exists(subtitlesFile)))) return yield* new ExportError({ reason: "exists", message: `${basename(subtitlesFile)} already exists in that folder.` });
         }
         if (!(yield* Effect.promise(ffmpegBin))) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, and Uncut needs it to export." });
-        const size = outputSize(project.canvas, input.quality);
+        // F4 (D171): H.264 unless HEVC is asked for; the Advanced size, rate and bitrate when given.
+        const video = input.video ?? {};
+        const codec = video.codec ?? "h264";
+        const bad = (x: number | undefined, lo: number, hi: number) => x !== undefined && !(Number.isFinite(x) && x >= lo && x <= hi);
+        if (bad(video.bitrateMbps, 0.1, 500) || bad(video.shortSide, 16, 8192) || bad(video.fps, 1, 120)) return yield* new ExportError({ reason: "invalid-settings", message: "Those video settings can't be used: a bitrate of 0.1 to 500 Mb/s, a size of 16 to 8192 px and 1 to 120 fps." });
+        const size = outputSize(project.canvas, input.quality, video.shortSide);
         const bin = (yield* Effect.promise(ffmpegBin))!;
+        if (codec === "hevc" && !canHevc(yield* Effect.promise(() => capsOf(bin)))) return yield* new ExportError({ reason: "no-codec", message: "This ffmpeg can't make HEVC videos. Choose H.264." });
         const sized = yield* Effect.promise(() => withPictureSizes(bin, project, mediaPath));
         const graphics = yield* Effect.promise(() => readGraphics(dir, project));
         // Ducking (D85) needs the key media's loudness envelopes, noise removal (D88) its track's:
@@ -725,13 +734,15 @@ export const layer = Layer.effect(
           name: project.name,
           output,
           quality: input.quality,
+          codec,
+          ...(video.bitrateMbps !== undefined ? { bitrateMbps: video.bitrateMbps } : {}),
           loudness: input.loudness,
           ...(targetLufs !== undefined ? { targetLufs } : {}),
           phase: "queued",
           progress: 0,
           width: size.width,
           height: size.height,
-          fps: project.canvas.fps,
+          fps: video.fps ?? project.canvas.fps,
           seconds: Math.round((plan.frames / plan.fps) * 100) / 100,
           startedAt: new Date().toISOString(),
           ...(plan.warnings.length ? { warnings: plan.warnings } : {}),

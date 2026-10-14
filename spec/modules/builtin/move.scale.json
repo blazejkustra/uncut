@@ -1,0 +1,14 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.scale",
+  "kind": "move",
+  "name": "Scale in",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "description": "Text: grows from nothing to its size about its centre (in), or shrinks to nothing (out)."
+}

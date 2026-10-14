@@ -9,6 +9,7 @@ import type { FieldSet, Item, TextBackground, TextShadow, TextStroke, TimedModul
 
 import { findItem, lockOf, type Plan } from "../timeline/edit.ts";
 import { layoutOf, uniqueId, type ProjectModel, type Track } from "../state/project.ts";
+import { defaultFrames } from "../settings/defaults.ts";
 
 type Problem = { readonly problem: string };
 type Style = NonNullable<Item["style"]>;
@@ -223,17 +224,36 @@ export function planMany(project: ProjectModel, ids: ReadonlyArray<string>, make
   return { ops, summary: ids.length > 1 && ops.length ? `${summary} (${ids.length} items)` : summary };
 }
 
-export type AnimationSlot = "in" | "out";
-/** The moves the Inspector offers: the built-in move modules the preview draws (core DRAWN_MOVES). */
-export const MOVES = [
+export type AnimationSlot = "in" | "out" | "loop";
+/**
+ * The moves the Inspector offers for In and Out: the built-in move modules the preview draws (core
+ * DRAWN_MOVES). One module plays forwards in and backwards out; `out` names it on the Out list (D163).
+ */
+export const MOVES: ReadonlyArray<{ readonly id: string; readonly label: string; readonly out?: string }> = [
   { id: "", label: "None" },
-  { id: "move.fade", label: "Fade" },
-  { id: "move.rise", label: "Rise" },
+  { id: "move.fade", label: "Fade", out: "Fade out" },
+  { id: "move.rise", label: "Rise", out: "Rise out" },
   { id: "move.slide-left", label: "Slide left" },
-  { id: "move.wipe", label: "Wipe" },
+  { id: "move.wipe", label: "Wipe", out: "Wipe out" },
   { id: "move.word-by-word", label: "Word by word" },
   { id: "move.zoom", label: "Zoom" },
-] as const;
+  { id: "move.typewriter", label: "Typewriter", out: "Erase" },
+  { id: "move.bounce", label: "Bounce", out: "Bounce out" },
+  { id: "move.blur", label: "Blur in", out: "Blur out" },
+  { id: "move.scale", label: "Scale in", out: "Scale out" },
+  { id: "move.pop", label: "Pop", out: "Pop out" },
+];
+/** The loop moves (the Loop section, D163): they repeat every loop length while the text shows. */
+export const LOOPS: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
+  { id: "", label: "None" },
+  { id: "move.pulse", label: "Pulse" },
+  { id: "move.wiggle", label: "Wiggle" },
+];
+/** A move's name on a slot's list. */
+export const moveLabel = (id: string, slot: AnimationSlot): string => {
+  const m: { readonly label: string; readonly out?: string } | undefined = [...MOVES, ...LOOPS].find((x) => x.id === id);
+  return m ? (slot === "out" && m.out ? m.out : m.label) : id;
+};
 
 /**
  * Set or clear the in or out animation. The duration is clamped to 1 frame…the item's length
@@ -250,7 +270,7 @@ export function planAnimation(project: ProjectModel, itemId: string, slot: Anima
   }
   else delete animation[slot];
   if (JSON.stringify(animation) === JSON.stringify(item.animation ?? {})) return { ops: [], summary: "" };
-  const words = move?.module ? `${MOVES.find((m) => m.id === move.module)?.label ?? move.module} ${slot}` : `no ${slot} animation`;
+  const words = move?.module ? (slot === "loop" ? `${moveLabel(move.module, slot)} loop` : `${moveLabel(move.module, slot)}${slot === "out" && moveLabel(move.module, "out") !== moveLabel(move.module, "in") ? "" : ` ${slot}`}`) : `no ${slot} animation`;
   return planUpdate(project, itemId, { animation: Object.keys(animation).length ? animation : null }, `Animate text: ${words.toLowerCase()}`);
 }
 
@@ -297,14 +317,12 @@ export const BACKGROUNDS = [
 ] as const;
 export type BackgroundProps = { readonly color: string; readonly to?: string; readonly angle?: number };
 
-const BACKGROUND_SECONDS = 3;
-
 export type PlannedAdd = (Plan & { readonly itemId: string; readonly start: number }) | Problem;
 
 /**
  * A background (component.solid), D53 amended by D146: it is drawn behind everything. Its time:
  * the selected text item's; else, with the playhead over the footage, the whole edit (frame 0 to
- * the end); else (past the footage) the stretch from the playhead to the end, at least 3 s. Where:
+ * the end); else (past the footage) the stretch from the playhead to the end, at least a text's default length (F30, 3 s). Where:
  * at the end of the main track when that's where it starts (an empty project, or the playhead at
  * main's end): a card in the sequence. Otherwise on a video track below main (the nearest one free
  * for that stretch), so the footage and everything else stay over it; if none is free, a new
@@ -323,7 +341,7 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
   let duration: number;
   if (sel && sel.item.type === "text") [start, duration] = [sel.start, sel.item.duration];
   else if (at < mainEnd) [start, duration] = [0, end];
-  else [start, duration] = [at, Math.max(BACKGROUND_SECONDS * fps, end - at)];
+  else [start, duration] = [at, Math.max(defaultFrames("text", fps), end - at)];
   const taken = new Set<string>();
   const itemId = uniqueId(project, "background", taken);
   taken.add(itemId);

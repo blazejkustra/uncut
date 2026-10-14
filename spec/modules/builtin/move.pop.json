@@ -1,0 +1,14 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.pop",
+  "kind": "move",
+  "name": "Pop",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "description": "Text: pops in from 40 % with an overshoot, quickly appearing (in); pops out the same way, reversed (out)."
+}

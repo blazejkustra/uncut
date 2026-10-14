@@ -24,6 +24,8 @@ import quoteJson from "../../../../spec/modules/builtin/text.quote.json" with { 
 import chapterJson from "../../../../spec/modules/builtin/text.chapter.json" with { type: "json" };
 import wordByWordJson from "../../../../spec/modules/builtin/move.word-by-word.json" with { type: "json" };
 import zoomJson from "../../../../spec/modules/builtin/move.zoom.json" with { type: "json" };
+import pulseJson from "../../../../spec/modules/builtin/move.pulse.json" with { type: "json" };
+import wiggleJson from "../../../../spec/modules/builtin/move.wiggle.json" with { type: "json" };
 
 /** A look's stroke: width in em of the font size. */
 export interface LookStroke {
@@ -132,3 +134,20 @@ export const WORD_STYLES: ReadonlyArray<WordStyle> = (wordByWordJson as { params
 const zoomParams = (zoomJson as { params: { properties: { scale: { default: number }; ease: { default: string } } } }).params.properties;
 /** move.zoom's defaults (its manifest's): the scale it starts from (in) or ends at (out), and the ease. */
 export const ZOOM_DEFAULTS = { scale: zoomParams.scale.default, ease: zoomParams.ease.default as "linear" | "in" | "out" | "inOut" };
+
+// ---- more text moves (F21, D163) ----
+
+export const TYPEWRITER = "move.typewriter";
+export const BOUNCE_MOVE = "move.bounce";
+export const BLUR_MOVE = "move.blur";
+export const SCALE_MOVE = "move.scale";
+export const POP_MOVE = "move.pop";
+/** Loop moves (the animation's `loop` slot): they repeat every loop length for as long as the text shows. */
+export const PULSE_MOVE = "move.pulse";
+export const WIGGLE_MOVE = "move.wiggle";
+export const LOOP_MOVES = [PULSE_MOVE, WIGGLE_MOVE] as const;
+/** The loop moves' default amount (their manifests'): pulse's growth share, wiggle's largest tilt in degrees. */
+export const LOOP_DEFAULTS: Readonly<Record<string, number>> = {
+  [PULSE_MOVE]: (pulseJson as { params: { properties: { amount: { default: number } } } }).params.properties.amount.default,
+  [WIGGLE_MOVE]: (wiggleJson as { params: { properties: { amount: { default: number } } } }).params.properties.amount.default,
+};
