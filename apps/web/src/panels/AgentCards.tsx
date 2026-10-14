@@ -207,6 +207,7 @@ const BLOCKER_NAMES: Readonly<Record<string, string>> = {
   blank: "Blank frame",
   "off-centre": "Off-centre",
   "unverified-fix": "Fix not seen",
+  sound: "Sound",
   other: "Blocker",
 };
 
@@ -226,7 +227,7 @@ function ReviewBody({ review }: { review: Review }) {
               {b.at !== undefined && <span className="defect-at">{seconds(b.at)}</span>}
               <span className="grow">
                 {b.what}
-                {b.source === "check" && <span className="muted"> (Uncut's layout check)</span>}
+                {b.source === "check" && <span className="muted"> (Uncut's {b.kind === "sound" ? "sound" : "layout"} check)</span>}
               </span>
             </div>
           ))}

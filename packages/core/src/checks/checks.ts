@@ -12,6 +12,7 @@ import { trackAudible } from "../audio/audio.ts";
 import { DUCK } from "../audio/effects.ts";
 import { duckEntry } from "../audio/ducking.ts";
 import { libraryTrackOf } from "../audio/music.ts";
+import { bundledSfxOf } from "../audio/library.ts";
 import { textLook } from "../text/looks.ts";
 import { overlaps } from "../visual/transitions.ts";
 import { safeMargin, textPlacement, wordCount } from "../visual/render.ts";
@@ -245,6 +246,195 @@ function familyOf(project: Project, item: Item) {
 export const FOOTNOTE_LOOK = "text.footnote";
 /** A footnote for the crowding rule (D96): in the Footnote look and no bigger than the look's own size. */
 const isFootnote = (ctx: CheckContext, item: Item) => item.style?.preset === FOOTNOTE_LOOK && textPlacement(item, ctx.project).size <= textLook(FOOTNOTE_LOOK).size * ctx.project.canvas.height + 0.5;
+
+// ---- sound design (D207, issue #31) ----
+//
+// What the evidence showed (argent-cloud-2: 16 sound effects in 21.5 s from 7 files, a UI click 7
+// times, also as "typing" and on every text line, two booms, a slow lo-fi loop under a punchy cut)
+// as objective rules over the timeline alone: how many effects play in any 10 s, the same file over
+// and over, big hits, effects at the music's level or above, effects that land on nothing that
+// changes on screen, clicks on text, meme sounds, and a slow track under fast cuts. The sound sheet
+// is the same analysis as lines, for the critic, which can't hear (it reads the sheet blindfold).
+
+/** At most this many sound effects start in any 10 s (fewer in a shorter video, pro rata, at least 2). */
+export const SFX_PER_10S = 4;
+/** The same effect file this many times or more reads as a loop. */
+export const SFX_REPEAT_MAX = 3;
+/** Big hits (impacts, booms): at most one in any 15 s. */
+export const SFX_HITS_PER_15S = 1;
+/** An effect sits at least this many dB under the music it plays over (−6 to −12 dB). */
+export const SFX_UNDER_MUSIC_DB = 6;
+/** Where an effect's fix puts it: this many dB under the music. */
+export const SFX_FIX_UNDER_DB = 9;
+/** A visual event this close (s) before an effect's start, or this close after, counts as its hit. */
+export const SFX_SYNC_BEFORE_S = 0.1;
+export const SFX_SYNC_AFTER_S = 0.2;
+/** Under this tempo a track is slow (bpm), and cuts closer than this (s) on average are fast. */
+export const SLOW_BPM = 95;
+export const FAST_CUT_S = 2;
+
+const SFX_NAME = /\b(sfx|fx|whoosh|swoosh|swish|whip|click|tap|pop|boom|hit|impact|riser|rise|ding|chime|glitch|notification|swipe|thud|stinger|sting|blip|beep|typing|keyboard)\b/i;
+const SFX_TRACK = /\b(sfx|fx|effects?|sound effects?)\b/i;
+const MEME_NAME = /\b(bruh|airhorn|air horn|scratch|trombone|crickets|laugh|laughter|applause|vine|fahh?|oof|meme)\b/i;
+const HIT_NAME = /\b(boom|impact|hit|thud|slam|bass drop)\b/i;
+const fileName = (m: Media) => m.path.replace(/\\/g, "/").split("/").pop() ?? "";
+
+export type SfxKind = "whoosh" | "riser" | "ui" | "hit" | "meme" | "other";
+
+/** One sound effect on the timeline. */
+export interface PlacedSfx {
+  readonly item: Item;
+  readonly track: Track;
+  readonly start: number;
+  readonly media: Media;
+  /** The sound's name in messages: the bundled effect's id, else the media's name. */
+  readonly label: string;
+  /** What gives the sound its identity (the same file in numbered copies is one). */
+  readonly sound: string;
+  readonly kind: SfxKind;
+  /** item gain + track gain, dB. */
+  readonly gain: number;
+  /** From Uncut's pack (peak-normalised to −3 dBFS), so its level against the music is known. */
+  readonly bundled: boolean;
+}
+
+/** A sound effect's kind, from the bundled pack's category or the file's name. */
+function sfxKind(m: Media): SfxKind {
+  const b = bundledSfxOf(m);
+  const c = b?.category;
+  const name = `${fileName(m)} ${m.name}`;
+  if (c === "meme" || c === "crowd" || MEME_NAME.test(name)) return c === "meme" && b?.id === "bass-boom" ? "hit" : "meme";
+  if (c === "whoosh" || c === "transition" || /whoosh|swoosh|swish|whip|swipe|transition|glitch/i.test(name)) return "whoosh";
+  if (c === "riser" || /riser|rise|build/i.test(name)) return "riser";
+  if (c === "impact" || HIT_NAME.test(name)) return "hit";
+  if (c === "ui" || c === "notification" || /click|tap|pop|ding|chime|blip|beep|notification|typing|keyboard/i.test(name)) return "ui";
+  return "other";
+}
+
+const trackGain = (t: Track) => t.mixer?.gainDb ?? 0;
+
+/** Music items (bundled tracks, files named like music, long sounds on a music track), with their gain. */
+function musicItems(ctx: CheckContext) {
+  const out: Array<{ item: Item; track: Track; start: number; media: Media; gain: number; bpm: number | null | undefined }> = [];
+  for (const track of ctx.project.tracks) {
+    if (track.kind !== "audio" || !audible(ctx, track) || isSpeechTrack(ctx, track)) continue;
+    const musicTrack = isMusicTrack(ctx, track);
+    for (const item of track.items) {
+      const m = soundOf(ctx, item);
+      if (!m || item.type !== "audio" || bundledSfxOf(m)) continue;
+      const lib = libraryTrackOf(m);
+      if (lib || MUSIC_NAME.test(fileName(m)) || (musicTrack && item.duration > 6 * ctx.fps)) out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: lib?.bpm });
+    }
+  }
+  return out;
+}
+
+/** The sound effects: bundled ones, files or tracks named like effects, short sounds off the music and voice. */
+export function sfxItems(ctx: CheckContext): Array<PlacedSfx> {
+  const music = new Set(musicItems(ctx).map((m) => m.item.id));
+  const out: Array<PlacedSfx> = [];
+  for (const track of ctx.project.tracks) {
+    if (track.kind !== "audio" || !audible(ctx, track) || isSpeechTrack(ctx, track)) continue;
+    for (const item of track.items) {
+      const m = soundOf(ctx, item);
+      if (!m || item.type !== "audio" || music.has(item.id) || libraryTrackOf(m)) continue;
+      const bundled = bundledSfxOf(m);
+      const named = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
+      if (!bundled && !named && item.duration > 3 * ctx.fps) continue;
+      out.push({ item, track, start: startOf(ctx, item), media: m, label: bundled?.id ?? m.name, sound: bundled?.id ?? m.path, kind: sfxKind(m), gain: (item.gainDb ?? 0) + trackGain(track), bundled: !!bundled });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/** Something that changes on screen: a cut, a text or graphic arriving or leaving, a keyframe. */
+export interface VisualEvent {
+  readonly frame: number;
+  readonly what: string;
+  /** A text arriving (a click on it isn't a click the viewer sees). */
+  readonly text: boolean;
+  /**
+   * A component or graphic animates inside itself (a tap indicator, a cursor in a render(t)
+   * graphic): Uncut can't see when, so the event spans until here (a component's first second, a
+   * graphic's whole length) and an effect anywhere in it counts as landing.
+   */
+  readonly until?: number;
+}
+
+export function visualEvents(ctx: CheckContext): Array<VisualEvent> {
+  const out: Array<VisualEvent> = [];
+  for (const track of ctx.project.tracks) {
+    if (track.hidden || track.kind === "audio") continue;
+    for (const item of track.items) {
+      if (item.type === "captions") continue;
+      const s = startOf(ctx, item);
+      const name = item.type === "text" ? `"${textLabel(item.text)}"` : (item.name ?? item.id);
+      const text = item.type === "text";
+      if (s > 0) out.push({ frame: s, what: track.role === "main" ? `the cut to ${name}` : `${name} appearing`, text });
+      if (item.type === "component" || item.type === "graphic") out.push({ frame: s, until: item.type === "graphic" ? s + item.duration : s + Math.min(item.duration, ctx.fps), what: `${name}'s own animation`, text: false });
+      if (item.animation?.in?.duration) out.push({ frame: s + item.animation.in.duration, what: `${name} landing`, text });
+      for (const k of item.keys ?? []) if (k.frame > 0) out.push({ frame: s + k.frame, what: `${name}'s move at its key`, text: false });
+      const end = s + item.duration;
+      if (end < ctx.end && track.role !== "main") out.push({ frame: end, what: `${name} leaving`, text });
+    }
+  }
+  return out.sort((a, b) => a.frame - b.frame);
+}
+
+/** The visual events an effect lands on: whooshes over their first second, risers at their end, the rest at their start. */
+function hitsOf(ctx: CheckContext, s: PlacedSfx, events: ReadonlyArray<VisualEvent>) {
+  const before = Math.round(SFX_SYNC_BEFORE_S * ctx.fps);
+  const after = Math.max(2, Math.round(SFX_SYNC_AFTER_S * ctx.fps));
+  const end = s.start + s.item.duration;
+  const [a, b] = s.kind === "whoosh" ? [s.start - before, s.start + Math.min(s.item.duration, ctx.fps)] : s.kind === "riser" ? [end - Math.round(0.4 * ctx.fps), end + after] : [s.start - before, s.start + after];
+  return events.filter((e) => (e.until !== undefined ? e.frame <= b && e.until >= a : e.frame >= a && e.frame <= b));
+}
+
+/** The most effects that start in any `window` frames, and where that window begins. */
+function busiest(starts: ReadonlyArray<number>, window: number) {
+  let best = { count: 0, from: 0, to: 0 };
+  for (let i = 0, j = 0; i < starts.length; i++) {
+    while (starts[i]! - starts[j]! >= window) j++;
+    if (i - j + 1 > best.count) best = { count: i - j + 1, from: starts[j]!, to: starts[i]! };
+  }
+  return best;
+}
+
+/** The music playing at a frame (the loudest, if several). */
+const musicAt = (music: ReturnType<typeof musicItems>, frame: number) => music.filter((m) => frame >= m.start && frame < m.start + m.item.duration).sort((a, b) => b.gain - a.gain)[0];
+
+const dbText = (db: number) => `${db > 0 ? "+" : db < 0 ? "−" : ""}${Math.abs(Math.round(db * 10) / 10)} dB`;
+
+/**
+ * The sound as lines (D207): music, voices and every effect with its time, kind, level, what it
+ * lands on, then the counts. The critic reads it (it can't hear), and so can the agent.
+ */
+export function soundSheet(project: Project, options: { readonly speechMedia?: Iterable<Id> } = {}): Array<string> {
+  const ctx = checkContext(project, options);
+  const fps = ctx.fps;
+  const lines: Array<string> = [];
+  const music = musicItems(ctx);
+  for (const m of music) lines.push(`music ${secs(m.start, fps)} to ${secs(m.start + m.item.duration, fps)}: ${m.media.name}${m.bpm ? `, ${m.bpm} BPM` : m.bpm === null ? ", no steady beat" : ""}, at ${dbText(m.gain)}${m.item.fadeIn ? ", fades in" : ""}${m.item.fadeOut ? ", fades out" : ""}${duckEntry(m.track) ? ", ducked under the voice" : ""}`);
+  for (const track of ctx.project.tracks) {
+    if (!isSpeechTrack(ctx, track) || !audible(ctx, track)) continue;
+    const spoken = track.items.filter((i) => soundOf(ctx, i));
+    if (spoken.length) lines.push(`voice on ${track.name}: ${spoken.map((i) => `${secs(startOf(ctx, i), fps)} to ${secs(startOf(ctx, i) + i.duration, fps)}`).join(", ")}`);
+  }
+  const sfx = sfxItems(ctx);
+  const events = visualEvents(ctx);
+  for (const s of sfx) {
+    const hits = hitsOf(ctx, s, events);
+    const under = musicAt(music, s.start);
+    lines.push(`sound effect ${secs(s.start, fps)} (f ${s.start}): ${s.label} (${s.kind}), ${secs(s.item.duration, fps)}, at ${dbText(s.gain)}${under ? ` (${dbText(s.gain - under.gain)} against the music)` : ""}; ${hits.length ? `lands on ${hits.slice(0, 2).map((e) => `${e.what} (f ${e.frame})`).join(" and ")}` : "lands on nothing that changes on screen"}`);
+  }
+  const length = Math.max(1, ctx.end);
+  if (!music.length && !sfx.length) lines.push("No music and no sound effects.");
+  else lines.push(`${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; the bar is at most ${SFX_PER_10S}), ${new Set(sfx.map((s) => s.sound)).size} different`);
+  return lines;
+}
+
+/** The sound rule's findings that fail a critic round (density and level), by key. */
+export const SOUND_HARD = /^sound:(density|loud):/;
 
 // ---- the rules ----
 
@@ -625,7 +815,7 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
     severity: "info",
     check: (ctx) => {
       if (ctx.end <= 0 || ctx.project.tracks.some((t) => sounds(ctx, t) && audible(ctx, t))) return [];
-      return [{ key: "silent", message: "Nothing makes a sound, so the export carries a silent track.", hint: "Add a cozy track from the Audio tab's library, with fades." }];
+      return [{ key: "silent", message: "Nothing makes a sound, so the export carries a silent track.", hint: "Add a track from the Audio tab's library whose tempo fits the cutting, with fades." }];
     },
   },
   {
@@ -692,6 +882,121 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
       }),
   },
   {
+    id: "sound",
+    title: "Sound design",
+    description: `Sound effects are few and earn their place: at most ${SFX_PER_10S} in any 10 s, each on something that changes on screen, the same file at most ${SFX_REPEAT_MAX - 1} times, one big hit per 15 s, ${SFX_UNDER_MUSIC_DB} to 12 dB under the music, no clicks on text, no meme sounds unless asked, and music whose tempo fits the cutting.`,
+    severity: "warn",
+    check: (ctx) => {
+      const out: Array<Omit<Check, "id" | "severity"> & { severity?: CheckSeverity }> = [];
+      const fps = ctx.fps;
+      const sfx = sfxItems(ctx);
+      const music = musicItems(ctx);
+      const events = visualEvents(ctx);
+      const length = Math.max(1, ctx.end);
+      // Density: the busiest 10 s (a shorter video pro rata, at least 2).
+      const window = Math.min(10 * fps, length);
+      const limit = Math.max(2, Math.floor((SFX_PER_10S * window) / (10 * fps)));
+      const dense = busiest(sfx.map((s) => s.start), 10 * fps);
+      if (dense.count > limit) {
+        const inWindow = sfx.filter((s) => s.start >= dense.from && s.start <= dense.to);
+        out.push({
+          key: `sound:density:${dense.from}`,
+          message: `${dense.count} sound effects start between ${secs(dense.from, fps)} and ${secs(dense.to, fps)}; at most ${limit} in any ${secs(window, fps)}, so each one means something.`,
+          itemIds: inWindow.map((s) => s.item.id),
+          frame: dense.from,
+          range: { start: dense.from, end: dense.to + 1 },
+          hint: "Keep the effects on the moments that matter (the reveal, a real click, the end card) and delete the rest; a cut on the beat needs no whoosh.",
+        });
+      }
+      // The same file over and over.
+      const bySound = new Map<string, Array<PlacedSfx>>();
+      for (const s of sfx) bySound.set(s.sound, [...(bySound.get(s.sound) ?? []), s]);
+      for (const [sound, uses] of bySound) {
+        if (uses.length < SFX_REPEAT_MAX) continue;
+        out.push({
+          key: `sound:repeat:${sound}`,
+          message: `${uses[0]!.label} plays ${uses.length} times (${uses.map((s) => secs(s.start, fps)).join(", ")}); the same sound again and again reads as a template.`,
+          itemIds: uses.map((s) => s.item.id),
+          frame: uses[0]!.start,
+          hint: `Keep it on at most ${SFX_REPEAT_MAX - 1} real events, or use different sounds for different kinds of event.`,
+        });
+      }
+      // Big hits.
+      const hits = sfx.filter((s) => s.kind === "hit");
+      const heavy = busiest(hits.map((s) => s.start), 15 * fps);
+      if (heavy.count > SFX_HITS_PER_15S) {
+        const these = hits.filter((s) => s.start >= heavy.from && s.start <= heavy.to);
+        out.push({
+          key: `sound:hits:${heavy.from}`,
+          message: `${these.length} big hits (${these.map((s) => `${s.label} at ${secs(s.start, fps)}`).join(", ")}) within 15 s; a boom lands once, on the moment that matters most.`,
+          itemIds: these.map((s) => s.item.id),
+          frame: heavy.from,
+          hint: "Keep one hit for the reveal or the logo; the others go, or become something softer.",
+        });
+      }
+      for (const s of sfx) {
+        // Level against the music it plays over.
+        const under = musicAt(music, s.start);
+        if (under && s.gain - under.gain > -SFX_UNDER_MUSIC_DB) {
+          const target = Math.round((under.gain - SFX_FIX_UNDER_DB - trackGain(s.track)) * 10) / 10;
+          const ok = !s.track.locked && !s.item.locked && target >= -60;
+          // Only the pack's level is known (peak-normalised): another file's may already be quiet,
+          // so it's a soft "level" finding to listen to or measure, never a hard one.
+          out.push({
+            key: `sound:${s.bundled ? "loud" : "level"}:${s.item.id}`,
+            ...(s.bundled ? {} : { severity: "info" as const }),
+            message: s.bundled
+              ? `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; effects sit ${SFX_UNDER_MUSIC_DB} to 12 dB under the music (the pack's effects are peak-normalised, so at the same gain they jump out).`
+              : `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; its own loudness is unknown, so check it sits ${SFX_UNDER_MUSIC_DB} to 12 dB under the music (media_analyze loudness, or listen).`,
+            itemIds: [s.item.id],
+            frame: s.start,
+            ...(ok ? { fix: { summary: `Put ${s.label} ${SFX_FIX_UNDER_DB} dB under the music`, ops: [{ op: "update_item" as const, item: s.item.id, set: { gainDb: target } }] } } : { hint: "Turn it down in the Inspector." }),
+          });
+        }
+        // What it lands on.
+        const on = hitsOf(ctx, s, events);
+        if (!on.length) {
+          const near = events.reduce<VisualEvent | undefined>((best, e) => (!best || Math.abs(e.frame - s.start) < Math.abs(best.frame - s.start) ? e : best), undefined);
+          out.push({
+            key: `sound:sync:${s.item.id}`,
+            message: `${s.label} at ${secs(s.start, fps)} lands on nothing that changes on screen${near ? ` (the nearest is ${near.what} at ${secs(near.frame, fps)})` : ""}.`,
+            itemIds: [s.item.id],
+            frame: s.start,
+            hint: s.kind === "whoosh" ? "Start a whoosh 1 to 2 frames before the cut or move it carries, or delete it." : s.kind === "riser" ? "End a riser on the reveal it builds to, or delete it." : "Move it onto the frame its event happens (1 to 2 frames early), or delete it.",
+          });
+        } else if (s.kind === "ui" && on.every((e) => e.text)) {
+          out.push({
+            key: `sound:click-text:${s.item.id}`,
+            message: `${s.label} at ${secs(s.start, fps)} clicks on a text (${on[0]!.what}); a click belongs on a click the viewer sees, and a text arriving or typing isn't one.`,
+            itemIds: [s.item.id],
+            frame: s.start,
+            hint: "Delete it, or put it where a cursor or a finger presses something.",
+          });
+        }
+        if (s.kind === "meme") {
+          out.push({ key: `sound:meme:${s.item.id}`, severity: "info", message: `${s.label} at ${secs(s.start, fps)} is a meme sound; use one only when the user asked for that joke.`, itemIds: [s.item.id], frame: s.start, hint: "Delete it unless the brief asks for meme humour." });
+        }
+      }
+      // A slow track under fast cuts.
+      const slow = music.find((m) => typeof m.bpm === "number" && m.bpm < SLOW_BPM && m.item.duration >= Math.min(length, 8 * fps));
+      if (slow) {
+        const cuts = events.filter((e) => e.frame >= slow.start && e.frame < slow.start + slow.item.duration && !e.what.endsWith("leaving") && !e.what.endsWith("landing") && e.until === undefined);
+        const avg = slow.item.duration / fps / Math.max(1, cuts.length + 1);
+        if (cuts.length >= 4 && avg < FAST_CUT_S) {
+          out.push({
+            key: `sound:pace:${slow.item.id}`,
+            severity: "info",
+            message: `${slow.media.name} is ${slow.bpm} BPM under something new every ${avg.toFixed(1)} s; a slow loop under fast cutting feels sluggish.`,
+            itemIds: [slow.item.id],
+            frame: slow.start,
+            hint: "Pick music whose tempo fits the cutting (music_list tempo fast, 110 to 130 BPM for a punchy promo) and cut on its beats (beat_grid), or slow the cutting down.",
+          });
+        }
+      }
+      return out;
+    },
+  },
+  {
     id: "canvas-format",
     title: "Canvas for the feed",
     description: "Phone feeds show 4:5 (1080×1350) biggest; 16:9 suits YouTube, decks and sites.",
@@ -718,17 +1023,7 @@ export const disabledChecks = (project: Pick<Project, "checks">): ReadonlyArray<
  */
 export function projectChecks(project: Project, options: { readonly rules?: ReadonlyArray<CheckRule>; readonly disabled?: ReadonlyArray<string>; readonly speechMedia?: Iterable<Id> } = {}): Array<Check> {
   const off = new Set([...disabledChecks(project), ...(options.disabled ?? [])]);
-  const { starts, duration } = layout(project);
-  const end = project.tracks.some((t) => t.items.some((i) => i.type !== "captions")) ? duration : 0;
-  const texts: Array<Placed> = [];
-  const speech = new Set<Id>(options.speechMedia ?? []);
-  for (const track of project.tracks) {
-    for (const item of track.items) if (item.type === "captions" && item.source) speech.add(item.source);
-    if (track.hidden || track.kind !== "text") continue;
-    for (const item of track.items) if (item.type === "text") texts.push({ item, track, start: starts.get(item.id) ?? 0 });
-  }
-  texts.sort((a, b) => a.start - b.start);
-  const ctx: CheckContext = { project, fps: project.canvas.fps, starts, end, texts, scale: Math.min(project.canvas.width, project.canvas.height) / 1080, media: new Map(project.media.map((m) => [m.id, m])), speech, audible: new Map() };
+  const ctx = checkContext(project, options);
   const out: Array<Check> = [];
   for (const rule of allRules(options.rules)) {
     if (off.has(rule.id)) continue;
@@ -740,6 +1035,21 @@ export function projectChecks(project: Project, options: { readonly rules?: Read
   }
   const rank = (c: Check) => (c.severity === "warn" ? 0 : 1);
   return out.sort((a, b) => rank(a) - rank(b) || (a.frame ?? Infinity) - (b.frame ?? Infinity));
+}
+
+/** What every rule gets (projectChecks, soundSheet). */
+function checkContext(project: Project, options: { readonly speechMedia?: Iterable<Id> } = {}): CheckContext {
+  const { starts, duration } = layout(project);
+  const end = project.tracks.some((t) => t.items.some((i) => i.type !== "captions")) ? duration : 0;
+  const texts: Array<Placed> = [];
+  const speech = new Set<Id>(options.speechMedia ?? []);
+  for (const track of project.tracks) {
+    for (const item of track.items) if (item.type === "captions" && item.source) speech.add(item.source);
+    if (track.hidden || track.kind !== "text") continue;
+    for (const item of track.items) if (item.type === "text") texts.push({ item, track, start: starts.get(item.id) ?? 0 });
+  }
+  texts.sort((a, b) => a.start - b.start);
+  return { project, fps: project.canvas.fps, starts, end, texts, scale: Math.min(project.canvas.width, project.canvas.height) / 1080, media: new Map(project.media.map((m) => [m.id, m])), speech, audible: new Map() };
 }
 
 /** The built-in rules with a module's added (same id: the module's replaces the built-in one). */

@@ -40,7 +40,8 @@
     "./checks": "./src/checks/checks.ts",
     "./music": "./src/audio/music.ts",
     "./library": "./src/audio/library.ts",
-    "./contributions": "./src/plugins/contributions.ts"
+    "./contributions": "./src/plugins/contributions.ts",
+    "./skills": "./src/skills/skills.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

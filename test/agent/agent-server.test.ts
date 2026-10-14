@@ -118,7 +118,7 @@ test("an empty project: a turn adds a title through MCP, live and saved, and the
   assert.equal(first!.resume, null, "the first turn starts a conversation");
   assert.equal(first!.tools, "default", "D194: claude gets its built-in tools");
   assert.equal(first!.allowed, "mcp__uncut");
-  assert.match(first!.prompt, /^make a 5 s title card that says Kraków from above\n\n<brand>\nNo brand kit is chosen for this project\. The user has no kits yet\.\n<\/brand>\n\n<editor-context>\nPlayhead: frame 0/);
+  assert.match(first!.prompt, /^make a 5 s title card that says Kraków from above\n\n<brand>\nNo brand kit is chosen for this project\. The user has no kits yet\.\nNo skills are on for this project\. Uncut's: builtin-[^\n]*\n<\/brand>\n\n<editor-context>\nPlayhead: frame 0/);
   // Saves are queued; give the last one a moment to land.
   const saved = () => readAgentHistory(dir);
   for (let i = 0; i < 50 && saved().turns[0]?.status !== "done"; i++) await new Promise((r) => setTimeout(r, 50));
