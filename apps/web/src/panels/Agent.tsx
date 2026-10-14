@@ -1,14 +1,21 @@
-// The Agent tab (D28, D48): turn cards with the agent's steps, reply and edit list, "Undo turn",
-// the note about edits made by hand, and a prompt box. Everything shown comes from the server's
-// agent.subscribe stream; this component only sends prompts, cancels and undoes turns.
-import type { AgentApproval, AgentTurn, SetupCheck } from "@uncut/contracts";
-import { ArrowUp, Check, Copy, LoaderCircle, MousePointer2, Pencil, RefreshCw, Sparkles, Square, TriangleAlert, Undo2, X } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+// The Agent tab (D28, D48, D139-D142): turn cards with the agent's thinking, steps (a work log),
+// reply and edit list, "Undo turn", the note about edits made by hand, and the composer. Live: text
+// and thinking stream in, a line says what it's doing now. Names, never ids (AG5). Everything shown
+// comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
+import type { AgentApproval, AgentItem, AgentTurn, SetupCheck } from "@uncut/contracts";
+import { friendlyText } from "@uncut/core/mentions";
+import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TriangleAlert, Undo2, X } from "lucide-react";
+import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { frameTimecode } from "../state/format.ts";
-import { usePlayback } from "../preview/playback.ts";
-import { itemLabel } from "../state/project.ts";
+import { Composer, withChips } from "./Composer.tsx";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
+
+/** The project, for names instead of ids in what the cards show (AG5). */
+const ProjectContext = createContext<Project | undefined>(undefined);
+const useFriendly = () => {
+  const project = useContext(ProjectContext);
+  return (text: string) => friendlyText(project as never, text);
+};
 
 // Prompts that work on an empty project: text needs no media (D48).
 const EXAMPLES = [
@@ -19,8 +26,6 @@ const EXAMPLES = [
 
 export function AgentPanel({ project, online }: { project: Project; online: boolean }) {
   const { agent, setupChecks, setupChecking, agentError } = useApp();
-  const [draft, setDraft] = useState("");
-  const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
   // Is Claude Code there and signed in? Onboarding may have checked already; otherwise check once.
@@ -41,20 +46,15 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
     if (el && turns.length) el.scrollTop = el.scrollHeight;
   }, [agent, turns.length]);
 
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || running || !online || blocked) return;
-    setDraft("");
-    if (!(await actions.agentSend(text))) setDraft((now) => now || text);
-  };
   // An example goes into the prompt box, ready to send or change. Focus moves there now, so the
   // next Enter sends it rather than pressing the example again.
   const pick = (example: string) => {
-    setDraft(example);
-    input.current?.focus();
+    actions.setAgentDraft(example, []);
+    document.getElementById("agent-input")?.focus();
   };
 
   return (
+    <ProjectContext.Provider value={project}>
     <div className="agent" data-testid="agent-panel">
       <div className="agent-thread" ref={thread} data-testid="agent-thread">
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
@@ -77,34 +77,9 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           </button>
         </div>
       )}
-      <div className="composer">
-        <ContextLine project={project} />
-        <textarea
-          ref={input}
-          id="agent-input"
-          data-testid="agent-input"
-          rows={3}
-          value={draft}
-          spellCheck={false}
-          disabled={!online || blocked}
-          placeholder={blocked ? "Set up Claude Code to use the agent" : "Ask for an edit in plain words"}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends, ⇧Enter is a new line. Not while an input method is composing.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        <div className="composer-foot">
-          <span className="composer-who">{agent?.provider ?? "Claude Code"}, your subscription</span>
-          <button className="send" data-testid="agent-send" title="Send (Enter)" disabled={!draft.trim() || running !== null || !online || blocked} onClick={() => void send()}>
-            <ArrowUp />
-          </button>
-        </div>
-      </div>
+      <Composer project={project} online={online} blocked={blocked} turns={turns} running={running} provider={agent?.provider ?? "Claude Code"} />
     </div>
+    </ProjectContext.Provider>
   );
 }
 
@@ -166,14 +141,11 @@ function ClaudeStatus({ check, checking }: { check: SetupCheck; checking: boolea
 }
 
 function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: boolean; online: boolean; approval?: AgentApproval | undefined }) {
+  const friendly = useFriendly();
   const undone = t.undo.state === "undone";
   const status =
-    t.status === "running" ? (
-      <>
-        <LoaderCircle className="spin" />
-        Working
-      </>
-    ) : undone ? (
+    // While it runs, the now line in the card says what it's doing (D139).
+    t.status === "running" ? null : undone ? (
       "Undone"
     ) : t.status === "cancelled" ? (
       "Stopped"
@@ -192,27 +164,21 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
   return (
     <div className="turn-wrap" data-testid="agent-turn" data-turn={t.id} data-status={t.status} data-undo={t.undo.state}>
       <div className="msg-user" data-testid="agent-prompt">
-        {t.prompt}
+        {withChips(t.prompt, (t.mentions ?? []).map((m) => m.label))}
       </div>
       {t.note && <ManualNote note={t.note} />}
       <div className={`turn ${t.status} ${undone ? "undone" : ""}`}>
         <div className="turn-body">
-          {t.items.map((item, i) =>
-            item.kind === "step" ? (
-              <div key={i} className="step" data-testid="agent-step" data-status={item.status}>
-                {item.status === "error" ? <X className="bad" /> : item.status === "running" ? <LoaderCircle className="spin" /> : <Check />}
-                <span>{item.text}</span>
-              </div>
+          {groupItems(t.items).map((g) =>
+            g.kind === "steps" ? (
+              <WorkLog key={g.at} steps={g.items} />
+            ) : g.item.kind === "thinking" ? (
+              <Thinking key={g.at} item={g.item} />
             ) : (
-              <Reply key={i} text={item.text} />
+              <Reply key={g.at} text={friendly(g.item.text)} live={!!g.item.live} />
             ),
           )}
-          {t.status === "running" && t.items.length === 0 && (
-            <div className="step muted">
-              <LoaderCircle className="spin" />
-              <span>Starting Claude Code…</span>
-            </div>
-          )}
+          {t.status === "running" && <NowLine turn={t} waiting={!!approval} />}
           {t.edits.length > 0 && (
             <div className="turn-edits" data-testid="agent-edits">
               <div className="turn-edits-label">
@@ -221,10 +187,10 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
               </div>
               {t.edits.map((e) => (
                 <div key={e.revision} className="turn-edit" data-testid="agent-edit">
-                  <div className="turn-edit-summary">{e.summary}</div>
+                  <div className="turn-edit-summary">{friendly(e.summary)}</div>
                   {e.lines.map((line, i) => (
                     <div key={i} className="turn-edit-line">
-                      {line}
+                      {friendly(line)}
                     </div>
                   ))}
                 </div>
@@ -297,6 +263,7 @@ function ApprovalCard({ approval, online }: { approval: AgentApproval; online: b
 
 /** D6: the edits by hand the agent was told about with this prompt. */
 function ManualNote({ note }: { note: string }) {
+  const friendly = useFriendly();
   const lines = note.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
   return (
     <div className="manual-note" data-testid="agent-note">
@@ -306,7 +273,7 @@ function ManualNote({ note }: { note: string }) {
       </div>
       {lines.map((line, i) => (
         <div key={i} className="manual-note-line">
-          {line}
+          {friendly(line)}
         </div>
       ))}
     </div>
@@ -314,7 +281,7 @@ function ManualNote({ note }: { note: string }) {
 }
 
 /** The little markdown agents write: paragraphs, "- " bullets, **bold** and `code`. */
-function Reply({ text }: { text: string }) {
+function Reply({ text, live = false }: { text: string; live?: boolean }) {
   const inline = (s: string): ReactNode =>
     s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) =>
       part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
@@ -326,7 +293,7 @@ function Reply({ text }: { text: string }) {
       ),
     );
   return (
-    <div className="reply" data-testid="agent-reply">
+    <div className={`reply ${live ? "live" : ""}`} data-testid="agent-reply" data-live={live ? "true" : undefined}>
       {text.split(/\n{2,}/).map((block, i) => {
         const lines = block.split("\n");
         if (lines.every((l) => /^\s*[-*] /.test(l))) {
@@ -353,18 +320,89 @@ function Reply({ text }: { text: string }) {
   );
 }
 
-/** What the agent is told about where you are: the playhead and the selected item. */
-function ContextLine({ project }: { project: Project }) {
-  const frame = usePlayback((s) => Math.floor(s.frame));
-  const selected = usePlayback((s) => s.selected);
-  const item = selected ? project.tracks.flatMap((t) => t.items).find((i) => i.id === selected) : undefined;
+type Group = { kind: "steps"; at: number; items: Array<AgentItem> } | { kind: "one"; at: number; item: AgentItem };
+
+/** Consecutive steps make one work log; text and thinking stand alone. */
+function groupItems(items: ReadonlyArray<AgentItem>): Array<Group> {
+  const out: Array<Group> = [];
+  items.forEach((item, at) => {
+    const last = out.at(-1);
+    if (item.kind === "step" && last?.kind === "steps") last.items.push(item);
+    else if (item.kind === "step") out.push({ kind: "steps", at, items: [item] });
+    else out.push({ kind: "one", at, item });
+  });
+  return out;
+}
+
+const StepIcon = ({ status }: { status?: string | undefined }) => (status === "error" ? <X className="bad" /> : status === "running" ? <LoaderCircle className="spin" /> : <Check />);
+
+/** Tool calls in a row (D139): one line ("Added title, and 3 more"), opened for every step. */
+function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {
+  const friendly = useFriendly();
+  const [open, setOpen] = useState(false);
+  const one = (s: AgentItem, i: number) => (
+    <div key={i} className="step" data-testid="agent-step" data-status={s.status}>
+      <StepIcon status={s.status} />
+      <span>{friendly(s.text)}</span>
+    </div>
+  );
+  if (steps.length === 1) return <div className="worklog">{one(steps[0]!, 0)}</div>;
+  const failed = steps.filter((s) => s.status === "error").length;
+  const runningNow = steps.some((s) => s.status === "running");
+  const lead = steps.at(-1)!;
   return (
-    <div className="composer-ctx" data-testid="agent-context">
-      <MousePointer2 />
-      <span className="ellipsis">
-        Playhead {frameTimecode(frame, project.canvas.fps)}
-        {item ? `, selected ${itemLabel(project, item)}` : ""}
-      </span>
+    <div className={`worklog ${open ? "open" : ""}`} data-testid="agent-worklog" data-count={steps.length}>
+      <button className="worklog-head" data-testid="agent-worklog-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown /> : <ChevronRight />}
+        <StepIcon status={runningNow ? "running" : failed === steps.length ? "error" : "done"} />
+        <span className="ellipsis grow">
+          {friendly(lead.text)}, and {steps.length - 1} more
+          {failed ? <span className="worklog-failed">, {failed} didn't work</span> : null}
+        </span>
+      </button>
+      {open && <div className="worklog-steps">{steps.map(one)}</div>}
+      {/* Kept for tests and screen readers: every step, even folded. */}
+      {!open && <div className="sr-only">{steps.map(one)}</div>}
+    </div>
+  );
+}
+
+/** A thinking summary (D139): folded to one line, opened for all of it; the latest line while it streams. */
+function Thinking({ item }: { item: AgentItem }) {
+  const [open, setOpen] = useState(false);
+  const lines = item.text.trim().split("\n").filter(Boolean);
+  return (
+    <div className={`thinking ${open ? "open" : ""}`} data-testid="agent-thinking" data-live={item.live ? "true" : undefined}>
+      <button className="thinking-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <Brain />
+        <span className="ellipsis grow">{item.live ? (lines.at(-1) ?? "Thinking") : open ? "Thinking" : (lines[0] ?? "Thinking")}</span>
+        {open ? <ChevronDown /> : <ChevronRight />}
+      </button>
+      {open && <div className="thinking-body">{item.text}</div>}
+    </div>
+  );
+}
+
+/** What the agent is doing now (D139): the running step, writing, thinking, or starting. */
+function NowLine({ turn, waiting }: { turn: AgentTurn; waiting: boolean }) {
+  const friendly = useFriendly();
+  const last = turn.items.at(-1);
+  const step = [...turn.items].reverse().find((i) => i.kind === "step" && i.status === "running");
+  const what = waiting
+    ? "Waiting for your answer"
+    : step
+      ? friendly(step.text)
+      : last?.kind === "thinking" && last.live
+        ? "Thinking"
+        : last?.kind === "text" && last.live
+          ? "Writing"
+          : turn.items.length === 0
+            ? "Starting Claude Code"
+            : "Working";
+  return (
+    <div className="now-line" data-testid="agent-now">
+      <LoaderCircle className="spin" />
+      <span className="ellipsis">{what}…</span>
     </div>
   );
 }

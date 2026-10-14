@@ -1,6 +1,9 @@
-// The agent (D40, D41, D48): one turn at a time for the open project. A turn runs `claude -p`
-// with no built-in tools and one MCP server (mcp.ts) that forwards tool calls to this server's
-// /agent routes (agentBridge.ts) under a token that lives as long as the turn. Agent edits go
+// The agent (D40, D41, D48, D139): one turn at a time for the open project, in one long-lived
+// `claude -p --input-format stream-json` per open project chat (a session): each message is a
+// stream-json user line, each turn ends at its `result`, Stop is an interrupt control request
+// (SIGINT/SIGKILL if it isn't honoured). Claude has no built-in tools and one MCP server (mcp.ts)
+// that forwards tool calls to this server's /agent routes (agentBridge.ts) under a token that
+// lives as long as the session; a call is only taken while a turn runs, and goes to that turn. Agent edits go
 // through Projects like the user's (same validation, saving and undo stack, live in the editor),
 // attributed to the agent and tagged with the turn, so a turn can be undone (D7). Before each
 // turn the agent is told what the user changed by hand since it last looked (D6).
@@ -17,9 +20,10 @@ import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { AGENT_UI_PANELS, AgentError, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import { captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
+import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -62,6 +66,21 @@ import { besideServer } from "../paths.ts";
 
 export const PROVIDER = "Claude Code";
 const KILL_AFTER_MS = 1500;
+/** After closing claude's input, how long it may take to exit. */
+const GRACEFUL_MS = 5000;
+const envMs = (name: string, fallback: number) => {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+/** How long a Stop waits for claude to answer its interrupt before killing the session (UNCUT_AGENT_INTERRUPT_MS). */
+const interruptMs = () => envMs("UNCUT_AGENT_INTERRUPT_MS", 3000);
+/** A session with no turn for this long is closed; the next message resumes it (UNCUT_AGENT_IDLE_MS). */
+const idleMs = () => envMs("UNCUT_AGENT_IDLE_MS", 15 * 60_000);
+/** JSON with sorted keys: the same args however claude ordered them. */
+const canonical = (value: unknown): string =>
+  Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(",")}}` : JSON.stringify(value ?? null);
+/** Live text and thinking are published at most this often. */
+const STREAM_PUBLISH_MS = 80;
 
 /** An MCP tools/call result. */
 export interface McpResult {
@@ -72,12 +91,12 @@ export interface McpResult {
 export interface AgentShape {
   /** The open project's agent now (null: nothing open), then every change. */
   readonly changes: Stream.Stream<AgentState | null>;
-  readonly send: (input: { prompt: string; frame?: number | undefined; selected?: string | undefined }) => Effect.Effect<{ turnId: string }, AgentError>;
+  readonly send: (input: { prompt: string; frame?: number | undefined; selected?: string | undefined; mentions?: ReadonlyArray<AgentMention> | undefined }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;
   /** The user's answer to the running turn's approval card (D99). */
   readonly approve: (id: string, allow: boolean) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
-  /** For the bridge: the tool list, or undefined when `token` isn't the running turn's. */
+  /** For the bridge: the tool list, or undefined when `token` isn't the live session's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
   /** For the bridge: whether `token` is the running turn's (no rescan, unlike tools). */
   readonly authorized: (token: string | null) => Effect.Effect<boolean>;
@@ -98,7 +117,7 @@ export const findClaude = async (env: NodeJS.ProcessEnv = process.env) => env.UN
 // ---- history ----
 
 type StoredTurn = { -readonly [K in keyof Omit<AgentTurn, "undo">]: Omit<AgentTurn, "undo">[K] } & {
-  items: Array<{ kind: "text" | "step"; text: string; tool?: string; status?: "running" | "done" | "error" }>;
+  items: Array<{ kind: "text" | "step" | "thinking"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean }>;
   edits: Array<AgentEdit>;
 };
 
@@ -129,19 +148,60 @@ interface Loaded {
   readonly bounds: Map<string, { start?: number; end?: number }>;
 }
 
+/**
+ * One long-lived claude for the open project's chat (D139): its MCP config folder and token live
+ * as long as it does. Spawned by the first message, kept between turns, closed after an idle
+ * while, when the project closes or opens again, when the plugins' tool list changes, or when it
+ * dies (the next message starts another with --resume).
+ */
+interface ClaudeSession {
+  readonly owner: Loaded;
+  readonly openId: number;
+  readonly dir: string;
+  readonly token: string;
+  // The plugin tools it was started with (sorted names): another list needs another session.
+  readonly toolsKey: string;
+  // The --resume it was started with.
+  readonly resumed: string | undefined;
+  child: ChildProcess | undefined;
+  // The turn whose message it is working on.
+  turn: Running | undefined;
+  gotInit: boolean;
+  closed: boolean;
+  stderr: string;
+  idleTimer: NodeJS.Timeout | undefined;
+  killTimer: NodeJS.Timeout | undefined;
+  // Turns written to it so far.
+  gens: number;
+}
+
 interface Running {
   readonly turn: StoredTurn;
   readonly owner: Loaded;
   readonly openId: number;
-  token: string;
-  child: ChildProcess | undefined;
-  readonly mcpDir: string;
+  // The session it runs in (another one when a stale --resume had to start fresh).
+  session: ClaudeSession;
+  // The message as claude gets it (prompt, <context>, <editor-context>).
+  readonly message: string;
+  // Claude answered something for this message: its note was delivered.
+  delivered: boolean;
   // Aborted when the turn stops or ends: a plugin call still running is cancelled (D97).
   readonly abort: AbortController;
   cancelled: boolean;
-  killTimer: NodeJS.Timeout | undefined;
+  // A Stop that the interrupt didn't end in time kills the session.
+  interruptTimer: NodeJS.Timeout | undefined;
   // tool_use id → index into turn.items
   readonly steps: Map<string, number>;
+  // Live output (D139): the streamed message's blocks (stream index → item), and per message id
+  // the streamed text/thinking items its full message replaces (not appends).
+  blocks: Map<number, number>;
+  messageId: string;
+  readonly streamed: Map<string, Array<{ kind: "text" | "thinking"; at: number; used: boolean }>>;
+  // This session's turn number (1, 2, …).
+  readonly gen: number;
+  // The tool calls claude announced in this turn's stream (name + canonical args): a soft log, a
+  // bridge call that matches none still runs.
+  readonly announced: Array<{ name: string; args: string; used: boolean }>;
   // The revision the turn's note covers: the agent has seen it once claude actually started.
   readonly noteRevision: number;
   // Why the turn was stopped when it wasn't the user's Stop (shown on the card).
@@ -159,7 +219,9 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
   const t = raw as Record<string, unknown>;
   if (!isString(t.id) || !isString(t.prompt) || !isString(t.startedAt) || !isString(t.status) || !STATUSES.has(t.status)) return undefined;
   const items = Array.isArray(t.items)
-    ? t.items.filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step") && isString(i.text))
+    ? t.items
+        .filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step" || i.kind === "thinking") && isString(i.text))
+        .map(({ live: _live, ...i }) => i)
     : [];
   const edits = Array.isArray(t.edits)
     ? t.edits.filter((e): e is AgentEdit => !!e && typeof e === "object" && typeof e.revision === "number" && isString(e.summary) && Array.isArray(e.lines))
@@ -172,6 +234,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     status: interrupted ? "error" : (t.status as StoredTurn["status"]),
     items: items.map((i) => (i.status === "running" ? { ...i, status: "error" as const } : i)),
     edits,
+    ...(Array.isArray(t.mentions) ? { mentions: t.mentions.filter((m): m is { kind: "media" | "item" | "track" | "marker"; label: string } => !!m && typeof m === "object" && isString(m.label) && ["media", "item", "track", "marker"].includes(m.kind)).map((m) => ({ kind: m.kind, label: m.label })) } : {}),
     ...(isString(t.note) ? { note: t.note } : {}),
     ...(isString(t.finishedAt) ? { finishedAt: t.finishedAt } : {}),
     ...(interrupted ? { error: "Interrupted: Uncut stopped while the agent was working." } : isString(t.error) ? { error: t.error } : {}),
@@ -428,6 +491,9 @@ export const layer = Layer.effect(
     const loadLock = yield* Semaphore.make(1);
     let loaded: Loaded | undefined;
     let running: Running | undefined;
+    let session: ClaudeSession | undefined;
+    // Every claude still running, the live one and any closing (graceful or killed, not yet gone).
+    const sessions = new Set<ClaudeSession>();
     // UNCUT_APPROVAL_MS shortens the approval wait in test runs only (as D99's base URLs).
     const testRun = isTestRun(process.env, config.keysFd);
     const approvalMs = () => (testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? Number(process.env.UNCUT_APPROVAL_MS) : APPROVAL_MS);
@@ -481,16 +547,50 @@ export const layer = Layer.effect(
       }
     };
 
-    /** Stop the running turn: its token stops working now, the process gets SIGINT, then SIGKILL. */
-    const stop = (r: Running, reason?: string) => {
-      if (r.cancelled) return;
+    /**
+     * Close a session: "graceful" ends claude's input (it exits when it has nothing left), "kill"
+     * sends the group SIGINT, then SIGKILL. Either way SIGKILL follows if it lingers. A turn still
+     * in it ends when the process does (the close handler).
+     */
+    const closeSession = (s: ClaudeSession, how: "graceful" | "kill") => {
+      if (session === s) session = undefined;
+      clearTimeout(s.idleTimer);
+      if (s.closed && how === "graceful") return;
+      s.closed = true;
+      const child = s.child;
+      if (!child || child.exitCode !== null || child.signalCode !== null) return;
+      if (how === "graceful") {
+        try {
+          child.stdin?.end();
+        } catch {}
+      } else killGroup(child, "SIGINT");
+      clearTimeout(s.killTimer);
+      s.killTimer = setTimeout(() => killGroup(child, "SIGKILL"), how === "graceful" ? GRACEFUL_MS : KILL_AFTER_MS);
+    };
+
+    /**
+     * Stop the running turn: its tool calls stop being taken now. Claude gets an interrupt control
+     * request and the turn ends at the result that answers it; if none comes in time (or `hard`:
+     * the project closed) the session is killed and the turn ends with it.
+     */
+    const stop = (r: Running, reason?: string, hard = false) => {
+      if (r.cancelled) {
+        if (hard) closeSession(r.session, "kill");
+        return;
+      }
       r.cancelled = true;
       r.stopReason = reason;
-      r.token = "";
       r.abort.abort();
-      if (!r.child) return;
-      killGroup(r.child, "SIGINT");
-      r.killTimer = setTimeout(() => r.child && killGroup(r.child, "SIGKILL"), KILL_AFTER_MS);
+      const s = r.session;
+      if (hard || !s.child || !s.child.stdin?.writable) return closeSession(s, "kill");
+      try {
+        s.child.stdin.write(`${JSON.stringify({ type: "control_request", request_id: `stop-${randomBytes(4).toString("hex")}`, request: { subtype: "interrupt" } })}\n`);
+      } catch {
+        return closeSession(s, "kill");
+      }
+      r.interruptTimer = setTimeout(() => {
+        if (r.turn.status === "running") closeSession(s, "kill");
+      }, interruptMs());
     };
 
     /** The agent for the project open now, loading its history when another one opened. */
@@ -498,13 +598,16 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const v = yield* projects.view;
         if (!v) {
-          if (running) stop(running, "Stopped: the project was closed.");
+          if (running) stop(running, "Stopped: the project was closed.", true);
+          if (session) closeSession(session, "kill");
           loaded = undefined;
           return undefined;
         }
         if (loaded && loaded.openId === v.openId) return loaded;
         // The running turn's edits can't reach another opening: stop it (it saves as stopped).
-        if (running && running.openId !== v.openId) stop(running, "Stopped: the project was closed or opened again.");
+        if (running && running.openId !== v.openId) stop(running, "Stopped: the project was closed or opened again.", true);
+        // Nor can the session's tools: the next message starts another (with --resume).
+        if (session && session.openId !== v.openId) closeSession(session, "kill");
         // The same folder again (reopened, or back to it mid-turn): keep its Loaded, so the turns
         // array and turns.json keep one owner. What the agent was due to hear is carried over.
         const same = [loaded, running?.owner].find((o) => o !== undefined && o.dir === v.dir);
@@ -569,10 +672,13 @@ export const layer = Layer.effect(
     // A server that stops takes its agent with it: on a normal shutdown (the finalizer) and on
     // any exit that skips it (bin.ts's 1 s exit timer, a crash), synchronously.
     const killRunning = () => {
-      if (!running) return;
-      running.cancelled = true;
-      if (running.child) killGroup(running.child, "SIGKILL");
-      rmSync(running.mcpDir, { recursive: true, force: true });
+      if (running) running.cancelled = true;
+      for (const s of new Set([session, running?.session, ...sessions])) {
+        if (!s) continue;
+        s.closed = true;
+        if (s.child) killGroup(s.child, "SIGKILL");
+        rmSync(s.dir, { recursive: true, force: true });
+      }
     };
     process.on("exit", killRunning);
     yield* Effect.addFinalizer(() =>
@@ -590,12 +696,16 @@ export const layer = Layer.effect(
       ...(isError ? { isError: true } : {}),
     });
 
-    const tokenOk = (given: string | null, r: Running | undefined): r is Running => {
-      if (!r || r.cancelled || !given || !r.token) return false;
+    /** The live session's token (tools/list works between turns: claude lists tools when it starts). */
+    const sessionTokenOk = (given: string | null) => {
+      const s = session;
+      if (!s || s.closed || !given || !s.token) return false;
       const a = Buffer.from(given);
-      const b = Buffer.from(r.token);
+      const b = Buffer.from(s.token);
       return a.length === b.length && timingSafeEqual(a, b);
     };
+    /** A tool call is taken only for the turn running in that session now. */
+    const tokenOk = (given: string | null, r: Running | undefined): r is Running => !!r && !r.cancelled && sessionTokenOk(given) && r.session === session && session?.turn === r;
 
     // ---- tools ----
 
@@ -1743,34 +1853,256 @@ export const layer = Layer.effect(
 
     // ---- running claude ----
 
+    // Live deltas are published together, at most every STREAM_PUBLISH_MS; anything else at once.
+    let publishTimer: NodeJS.Timeout | undefined;
+    const publishNow = () => {
+      clearTimeout(publishTimer);
+      publishTimer = undefined;
+      publish();
+    };
+    const publishSoon = () => {
+      if (publishTimer) return;
+      publishTimer = setTimeout(publishNow, STREAM_PUBLISH_MS);
+    };
+
+    const armIdle = (s: ClaudeSession) => {
+      clearTimeout(s.idleTimer);
+      if (s.closed) return;
+      s.idleTimer = setTimeout(() => {
+        if (!s.turn) closeSession(s, "graceful");
+      }, idleMs());
+      s.idleTimer.unref?.();
+    };
+
     const finish = (r: Running, patch: Partial<StoredTurn>) => {
       if (r.turn.status !== "running") return;
       r.abort.abort();
-      clearTimeout(r.killTimer);
+      clearTimeout(r.interruptTimer);
       Object.assign(r.turn, patch, { finishedAt: new Date().toISOString() });
       if (r.turn.seconds === undefined) r.turn.seconds = Math.round((Date.now() - Date.parse(r.turn.startedAt)) / 100) / 10;
       const ok = patch.status === "done";
-      for (const item of r.turn.items) if (item.status === "running") item.status = ok ? "done" : "error";
+      for (const item of r.turn.items) {
+        if (item.status === "running") item.status = ok ? "done" : "error";
+        delete item.live;
+      }
+      // A streamed block that never got any words (whitespace, an empty thinking) isn't shown.
+      for (let i = r.turn.items.length - 1; i >= 0; i--) {
+        const item = r.turn.items[i]!;
+        if (item.kind !== "step" && !item.text.trim()) r.turn.items.splice(i, 1);
+        else if (item.kind !== "step") item.text = item.text.trim();
+      }
       const now = view();
       if (now && now.openId === r.openId) r.owner.bounds.set(r.turn.id, { ...r.owner.bounds.get(r.turn.id), end: now.session.revision });
-      r.token = "";
-      rmSync(r.mcpDir, { recursive: true, force: true });
+      if (r.session.turn === r) r.session.turn = undefined;
+      armIdle(r.session);
       if (running === r) running = undefined;
       persist(r.owner);
-      publish();
+      publishNow();
     };
 
-    const spawnClaude = (r: Running, bin: string, prompt: string, resume: boolean) => {
-      const cfg = join(r.mcpDir, "mcp.json");
-      // The MCP server runs on the same runtime as this server: Node in development, the
-      // Electron binary in Node mode in the packaged app (bin.ts took ELECTRON_RUN_AS_NODE out of
-      // our environment, so it is set again for this one child).
-      const mcpEntry = process.env.UNCUT_MCP_ENTRY || besideServer("./mcp.mjs");
-      const args = ["-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--mcp-config", cfg, "--allowedTools", "mcp__uncut", "--permission-mode", "dontAsk", "--append-system-prompt", SYSTEM_PROMPT];
-      if (process.env.UNCUT_AGENT_MODEL) args.push("--model", process.env.UNCUT_AGENT_MODEL);
-      if (resume && r.owner.sessionId) args.push("--resume", r.owner.sessionId);
+    /** The turn's note reached claude (it answered this message): the next turn needn't repeat it. */
+    const delivered = (r: Running) => {
+      if (r.delivered) return;
+      r.delivered = true;
+      r.owner.agentSeen = Math.max(r.owner.agentSeen, r.noteRevision);
+      r.owner.carried = undefined;
+      r.owner.pending = "";
+      trackPending();
+      persist(r.owner);
+    };
 
-      let child: ChildProcess;
+    const label = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name));
+
+    /** Live output (D139): a stream_event of the message claude is writing. */
+    const onStream = (r: Running, event: Record<string, any>) => {
+      const items = r.turn.items;
+      if (event.type === "message_start") {
+        r.messageId = isString(event.message?.id) ? event.message.id : `msg-${items.length}`;
+        r.blocks = new Map();
+        return;
+      }
+      const index = Number(event.index);
+      if (event.type === "content_block_start") {
+        const block = (event.content_block ?? {}) as Record<string, any>;
+        if (block.type === "text" || block.type === "thinking") {
+          const kind = block.type as "text" | "thinking";
+          r.blocks.set(index, items.length);
+          const list = r.streamed.get(r.messageId) ?? [];
+          list.push({ kind, at: items.length, used: false });
+          r.streamed.set(r.messageId, list);
+          items.push({ kind, text: isString(block.text) ? block.text : isString(block.thinking) ? block.thinking : "", live: true });
+          publishSoon();
+        } else if (block.type === "tool_use" && isString(block.name) && isString(block.id)) {
+          // The step shows as soon as claude starts writing the call; its words follow the input.
+          const tool = block.name.replace(/^mcp__uncut__/, "");
+          r.steps.set(block.id, items.length);
+          items.push({ kind: "step", tool, text: label(tool, {}), status: "running" });
+          publishSoon();
+        }
+        return;
+      }
+      if (event.type === "content_block_delta") {
+        const at = r.blocks.get(index);
+        const item = at === undefined ? undefined : items[at];
+        if (!item) return;
+        const delta = (event.delta ?? {}) as Record<string, any>;
+        if (delta.type === "text_delta" && isString(delta.text)) item.text += delta.text;
+        else if (delta.type === "thinking_delta" && isString(delta.thinking)) item.text += delta.thinking;
+        else return;
+        publishSoon();
+        return;
+      }
+      if (event.type === "content_block_stop") {
+        const at = r.blocks.get(index);
+        const item = at === undefined ? undefined : items[at];
+        if (item?.live) {
+          delete item.live;
+          publishSoon();
+        }
+      }
+    };
+
+    /** A full assistant message: replaces what was streamed of it, adds what wasn't (a block this turn already shows word for word isn't added twice). */
+    const onAssistant = (r: Running, msg: Record<string, any>) => {
+      const items = r.turn.items;
+      const id = isString(msg.message?.id) ? msg.message.id : undefined;
+      const slots = id ? r.streamed.get(id) : undefined;
+      const take = (kind: "text" | "thinking") => {
+        const slot = slots?.find((x) => x.kind === kind && !x.used);
+        if (slot) slot.used = true;
+        return slot ? items[slot.at] : undefined;
+      };
+      for (const c of (msg.message?.content ?? []) as Array<Record<string, any>>) {
+        if (c.type === "text" && isString(c.text)) {
+          const item = take("text");
+          if (item) {
+            item.text = c.text.trim();
+            delete item.live;
+          } else if (c.text.trim() && !items.some((i) => i.kind === "text" && !i.live && i.text.trim() === c.text.trim())) items.push({ kind: "text", text: c.text.trim() });
+        } else if (c.type === "thinking" && isString(c.thinking)) {
+          const item = take("thinking");
+          if (item) {
+            if (c.thinking.trim()) item.text = c.thinking.trim();
+            delete item.live;
+          } else if (c.thinking.trim() && !items.some((i) => i.kind === "thinking" && i.text.trim() === c.thinking.trim())) items.push({ kind: "thinking", text: c.thinking.trim() });
+        } else if (c.type === "tool_use" && isString(c.name)) {
+          const tool = c.name.replace(/^mcp__uncut__/, "");
+          r.announced.push({ name: tool, args: canonical(c.input ?? {}), used: false });
+          const at = r.steps.get(String(c.id));
+          const step = at === undefined ? undefined : items[at];
+          if (step) step.text = label(tool, c.input);
+          else {
+            r.steps.set(String(c.id), items.length);
+            items.push({ kind: "step", tool, text: label(tool, c.input), status: "running" });
+          }
+        }
+      }
+      publishNow();
+    };
+
+    /** One stream-json line from a session's claude. */
+    const onLine = (s: ClaudeSession, line: string) => {
+      let msg: Record<string, any>;
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (msg.type === "system" && msg.subtype === "init") {
+        s.gotInit = true;
+        if (isString(msg.session_id) && msg.session_id !== s.owner.sessionId) {
+          s.owner.sessionId = msg.session_id;
+          persist(s.owner);
+        }
+        const status = (msg.mcp_servers as Array<{ name?: string; status?: string }> | undefined)?.find((x) => x.name === "uncut")?.status;
+        if (status === "failed") {
+          const r = s.turn;
+          if (r && !r.cancelled) r.turn.error = "Uncut's tools didn't start for Claude Code, so it couldn't see or edit the project.";
+          closeSession(s, "kill");
+        }
+        return;
+      }
+      if (msg.type === "control_response" || msg.type === "control_request" || msg.type === "keep_alive") return;
+      const r = s.turn;
+      if (!r || r.turn.status !== "running") return;
+      // Work from a subagent (none today) isn't the turn's own.
+      if (msg.parent_tool_use_id) return;
+      if (msg.type === "stream_event" || msg.type === "assistant" || msg.type === "user" || msg.type === "result") delivered(r);
+      if (msg.type === "stream_event") onStream(r, (msg.event ?? {}) as Record<string, any>);
+      else if (msg.type === "assistant") onAssistant(r, msg);
+      else if (msg.type === "user") {
+        const content = msg.message?.content;
+        for (const c of (Array.isArray(content) ? content : []) as Array<Record<string, any>>) {
+          if (c.type !== "tool_result") continue;
+          const at = r.steps.get(String(c.tool_use_id));
+          const item = at === undefined ? undefined : r.turn.items[at];
+          if (item) item.status = c.is_error ? "error" : "done";
+        }
+        publishNow();
+      } else if (msg.type === "result") {
+        // A Stop that crossed a successful result doesn't relabel the finished turn.
+        if (r.cancelled && msg.is_error) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
+        if (r.turn.error) return finish(r, { status: "error" });
+        if (!msg.is_error) return finish(r, { status: "done", ...(typeof msg.duration_ms === "number" ? { seconds: Math.round(msg.duration_ms / 100) / 10 } : {}) });
+        const why = (isString(msg.result) && msg.result.trim()) || (Array.isArray(msg.errors) && msg.errors.filter(isString).join(" ")) || msg.subtype || "it reported an error";
+        return finish(r, { status: "error", error: `Claude Code stopped: ${why}` });
+      }
+    };
+
+    /** Write a turn's message to its session's claude, as one stream-json user line. */
+    const writeTurn = (s: ClaudeSession, r: Running) => {
+      // One turn in flight: the next is written only once the last one's result was consumed.
+      if (s.turn && s.turn !== r && s.turn.turn.status === "running") {
+        closeSession(s, "kill");
+        return finish(r, { status: "error", error: "Claude Code was still on the last message." });
+      }
+      s.turn = r;
+      r.session = s;
+      clearTimeout(s.idleTimer);
+      try {
+        s.child!.stdin!.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`);
+      } catch (error) {
+        closeSession(s, "kill");
+        finish(r, { status: "error", error: `Couldn't reach Claude Code: ${(error as Error).message}` });
+      }
+    };
+
+    /**
+     * Start a session's claude. The MCP server runs on the same runtime as this server: Node in
+     * development, the Electron binary in Node mode in the packaged app (bin.ts took
+     * ELECTRON_RUN_AS_NODE out of our environment, so it is set again for this one child).
+     */
+    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean): ClaudeSession | string => {
+      let dir: string;
+      try {
+        dir = mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`));
+      } catch (error) {
+        return `Can't prepare the agent's tools: ${(error as Error).message}`;
+      }
+      const cfg = join(dir, "mcp.json");
+      const token = randomBytes(24).toString("base64url");
+      const resumed = resume ? owner.sessionId : undefined;
+      const mcpEntry = process.env.UNCUT_MCP_ENTRY || besideServer("./mcp.mjs");
+      const args = [
+        "-p",
+        "--input-format", "stream-json",
+        "--output-format", "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--tools", "",
+        "--strict-mcp-config",
+        "--mcp-config", cfg,
+        "--allowedTools", "mcp__uncut",
+        "--permission-mode", "dontAsk",
+        "--append-system-prompt", SYSTEM_PROMPT,
+        // Thinking as summaries in the stream, as t3code asks for it (an unknown setting is ignored).
+        "--settings", JSON.stringify({ showThinkingSummaries: true }),
+      ];
+      if (process.env.UNCUT_AGENT_MODEL) args.push("--model", process.env.UNCUT_AGENT_MODEL);
+      // Not in `claude --help` (2.1.299): only when asked for, as an unknown flag stops claude.
+      if (process.env.UNCUT_AGENT_THINKING_DISPLAY) args.push("--thinking-display", process.env.UNCUT_AGENT_THINKING_DISPLAY);
+      if (resumed) args.push("--resume", resumed);
+      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, resumed, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
       try {
         writeFileSync(
           cfg,
@@ -1779,75 +2111,22 @@ export const layer = Layer.effect(
               uncut: {
                 command: process.execPath,
                 args: [mcpEntry],
-                env: { UNCUT_BRIDGE: bridgeUrl, UNCUT_AGENT_TOKEN: r.token, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) },
+                env: { UNCUT_BRIDGE: bridgeUrl, UNCUT_AGENT_TOKEN: token, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) },
               },
             },
           }),
           { mode: 0o600 },
         );
-        // Its own process group, so a cancel also stops the MCP server claude started.
-        child = spawn(bin, args, { cwd: r.owner.dir, env: agentEnv(process.env), stdio: ["pipe", "pipe", "pipe"], detached: true });
+        // Its own process group, so closing it also stops the MCP server claude started.
+        s.child = spawn(bin, args, { cwd: owner.dir, env: agentEnv(process.env), stdio: ["pipe", "pipe", "pipe"], detached: true });
       } catch (error) {
-        return finish(r, { status: "error", error: `Couldn't start Claude Code: ${(error as Error).message}` });
+        rmSync(dir, { recursive: true, force: true });
+        return `Couldn't start Claude Code: ${(error as Error).message}`;
       }
-      r.child = child;
-      // The prompt goes over stdin: no length limit, and a prompt starting with "-" stays a prompt.
+      const child = s.child;
+      sessions.add(s);
       child.stdin!.on("error", () => {});
-      child.stdin!.end(prompt);
-
       let buffer = "";
-      let stderr = "";
-      let gotInit = false;
-      let final: { is_error?: boolean; result?: unknown; duration_ms?: unknown } | undefined;
-      const onLine = (line: string) => {
-        let msg: Record<string, any>;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          return;
-        }
-        if (msg.type === "system" && msg.subtype === "init") {
-          gotInit = true;
-          // claude has the prompt, so the note in it has been delivered. (Before this, a failed
-          // start or an early Stop leaves the note for the next turn.)
-          r.owner.agentSeen = Math.max(r.owner.agentSeen, r.noteRevision);
-          r.owner.carried = undefined;
-          r.owner.pending = "";
-          trackPending();
-          persist(r.owner);
-          if (isString(msg.session_id) && msg.session_id !== r.owner.sessionId) {
-            r.owner.sessionId = msg.session_id;
-            persist(r.owner);
-          }
-          const status = (msg.mcp_servers as Array<{ name?: string; status?: string }> | undefined)?.find((s) => s.name === "uncut")?.status;
-          if (status === "failed") {
-            stop(r);
-            r.cancelled = false; // not the user's doing: report it as an error
-            r.turn.error = "Uncut's tools didn't start for Claude Code, so it couldn't see or edit the project.";
-          }
-        } else if (msg.type === "assistant") {
-          for (const c of (msg.message?.content ?? []) as Array<Record<string, any>>) {
-            if (c.type === "text" && isString(c.text) && c.text.trim()) r.turn.items.push({ kind: "text", text: c.text.trim() });
-            if (c.type === "tool_use" && isString(c.name)) {
-              const tool = c.name.replace(/^mcp__uncut__/, "");
-              r.steps.set(String(c.id), r.turn.items.length);
-              r.turn.items.push({ kind: "step", tool, text: stepLabel(tool, c.input, plugins.owner(tool)?.name), status: "running" });
-            }
-          }
-          publish();
-        } else if (msg.type === "user") {
-          const content = msg.message?.content;
-          for (const c of (Array.isArray(content) ? content : []) as Array<Record<string, any>>) {
-            if (c.type !== "tool_result") continue;
-            const at = r.steps.get(String(c.tool_use_id));
-            const item = at === undefined ? undefined : r.turn.items[at];
-            if (item) item.status = c.is_error ? "error" : "done";
-          }
-          publish();
-        } else if (msg.type === "result") {
-          final = msg;
-        }
-      };
       // Decoded as a stream, so a character split across two chunks ("ó" in "Kraków") stays whole.
       child.stdout!.setEncoding("utf8");
       child.stderr!.setEncoding("utf8");
@@ -1857,35 +2136,49 @@ export const layer = Layer.effect(
         while ((i = buffer.indexOf("\n")) >= 0) {
           const line = buffer.slice(0, i).trim();
           buffer = buffer.slice(i + 1);
-          if (line) onLine(line);
+          if (line) onLine(s, line);
         }
       });
-      child.stderr!.on("data", (chunk: string) => (stderr = (stderr + chunk).slice(-4000)));
+      child.stderr!.on("data", (chunk: string) => (s.stderr = (s.stderr + chunk).slice(-4000)));
       let settled = false;
       const settle = (code: number | null, startError?: Error) => {
         if (settled) return;
         settled = true;
-        if (buffer.trim()) onLine(buffer.trim());
+        if (buffer.trim()) onLine(s, buffer.trim());
+        s.closed = true;
+        sessions.delete(s);
+        clearTimeout(s.idleTimer);
+        clearTimeout(s.killTimer);
+        if (session === s) session = undefined;
+        rmSync(s.dir, { recursive: true, force: true });
+        const r = s.turn;
+        s.turn = undefined;
+        if (!r || r.turn.status !== "running") return;
         if (startError) return finish(r, { status: "error", error: `Couldn't start Claude Code (${bin}): ${startError.message}` });
         if (r.cancelled) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
-        // A stored session can be gone (another Mac, a cleaned ~/.claude): start a fresh one, once.
-        const output = `${stderr}\n${isString(final?.result) ? final.result : ""}`;
-        if (resume && !gotInit && /no conversation found/i.test(output)) {
-          r.owner.sessionId = undefined;
-          return spawnClaude(r, bin, prompt, false);
-        }
         if (r.turn.error) return finish(r, { status: "error" });
-        if (final && !final.is_error) {
-          return finish(r, { status: "done", ...(typeof final.duration_ms === "number" ? { seconds: Math.round(final.duration_ms / 100) / 10 } : {}) });
+        // A stored session can be gone (another Mac, a cleaned ~/.claude): start a fresh one, once.
+        if (s.resumed && !s.gotInit && /no conversation found/i.test(s.stderr)) {
+          s.owner.sessionId = undefined;
+          persist(s.owner);
+          const fresh = spawnSession(s.owner, bin, s.toolsKey, false);
+          if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });
+          session = fresh;
+          return writeTurn(fresh, r);
         }
-        const why = (isString(final?.result) && final.result.trim()) || stderr.trim().split("\n").slice(-3).join(" ") || `exit code ${code}`;
+        // It died mid-turn (a crash, a kill): the next message starts another with --resume.
+        const why = s.stderr.trim().split("\n").slice(-3).join(" ") || `exit code ${code}`;
         return finish(r, { status: "error", error: `Claude Code stopped: ${why}` });
       };
       child.once("error", (error) => settle(null, error));
       child.once("close", (code) => settle(code));
+      return s;
     };
 
-    const send: AgentShape["send"] = ({ prompt, frame, selected }) =>
+    /** The plugins' tool names now (D97): a session started with other ones is started again. */
+    const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => extra.map((t) => t.name).sort().join(",")));
+
+    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions }) =>
       Effect.gen(function* () {
         const owner = yield* ensureLoaded;
         if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -1904,52 +2197,68 @@ export const layer = Layer.effect(
         if (!bin) {
           return yield* new AgentError({ reason: "not-installed", message: "Claude Code isn't installed. Install it, sign in once with `claude`, then try again." });
         }
+        const toolsKey = yield* toolsKeyNow;
         if (running) return yield* new AgentError({ reason: "busy", message: "The agent is still working on the last message." });
         const v = view();
         if (!v || v.openId !== owner.openId) return yield* new AgentError({ reason: "no-project", message: "The project was closed." });
 
         const note = joinNotes(owner.carried, noteFor(v, owner.agentSeen));
-        const project = v.session.project;
-        const context = [
-          frame !== undefined ? playheadLine(project, frame) : "",
-          selected ? `Selected item: ${selected}.` : "",
-          note,
-        ].filter(Boolean);
-        const fullPrompt = context.length ? `${text}\n\n<editor-context>\n${context.join("\n")}\n</editor-context>` : text;
+        const project = v.session.project as Project;
+        // What the prompt's @labels point at (D140), only those still in the prompt.
+        const pointed = (mentions ?? [])
+          .filter((m) => text.includes(`@${m.label}`))
+          .slice(0, 50)
+          .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
+        const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", note].filter(Boolean);
+        const message = [text, contextBlock(project, pointed), context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
+
+        // The session to use: the live one when it's still this opening's with the same tools.
+        let s = session;
+        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || !s.child || s.child.exitCode !== null)) {
+          closeSession(s, "graceful");
+          s = undefined;
+        }
+        if (!s) {
+          const started = spawnSession(owner, bin, toolsKey, true);
+          if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
+          s = session = started;
+        }
 
         const turn: StoredTurn = {
           id: `turn-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`,
           prompt: text,
+          ...(pointed.length ? { mentions: pointed.map((m) => ({ kind: m.kind, label: m.label })) } : {}),
           ...(note ? { note } : {}),
           startedAt: new Date().toISOString(),
           status: "running",
           items: [],
           edits: [],
         };
-        const mcpDir = yield* Effect.try({
-          try: () => mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`)),
-          catch: (error) => new AgentError({ reason: "failed", message: `Can't prepare the agent's tools: ${(error as Error).message}` }),
-        });
         owner.turns.push(turn);
         owner.bounds.set(turn.id, { start: v.session.revision });
         const r: Running = {
           turn,
           owner,
           openId: owner.openId,
-          token: randomBytes(24).toString("base64url"),
-          child: undefined,
-          mcpDir,
+          session: s,
+          message,
+          delivered: false,
           abort: new AbortController(),
           cancelled: false,
-          killTimer: undefined,
+          interruptTimer: undefined,
           steps: new Map(),
+          blocks: new Map(),
+          messageId: "",
+          streamed: new Map(),
+          announced: [],
+          gen: ++s.gens,
           noteRevision: v.session.revision,
           stopReason: undefined,
         };
         running = r;
         persist(owner);
-        publish();
-        spawnClaude(r, bin, fullPrompt, true);
+        publishNow();
+        writeTurn(s, r);
         return { turnId: turn.id };
       });
 
@@ -1980,19 +2289,28 @@ export const layer = Layer.effect(
           publish();
           return snapshot;
         }),
-      // The built-in tools, then the plugins' (D97; the folders are scanned again for each turn's list).
+      // The built-in tools, then the plugins' (D97; the folders are scanned again for each list).
+      // Any time the session lives: claude lists its tools when it starts.
       tools: (token) =>
         Effect.suspend(() => {
-          if (!tokenOk(token, running)) return Effect.succeed(undefined);
+          if (!sessionTokenOk(token)) return Effect.succeed(undefined);
           return Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => [...mcpTools(), ...extra]));
         }),
       authorized: (token) => Effect.sync(() => tokenOk(token, running)),
+      // A call goes to the running turn only: none while idle, none while a stopped turn's result
+      // is still pending (r.cancelled). The next turn is written only after this one's result
+      // (send refuses while one runs, writeTurn checks), so a call can only reach the turn running
+      // when it arrives (gen). Announcements are a soft log: a call not announced still runs.
       call: (token, name, args) =>
         Effect.suspend(() => {
           const r = running;
           if (!tokenOk(token, r)) return Effect.succeed(undefined);
           const input = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-          return runTool(r, String(name), input).pipe(Effect.tap(() => Effect.sync(publish)));
+          const key = canonical(input);
+          const slot = r.announced.find((x) => !x.used && x.name === String(name).replace(/^mcp__uncut__/, "") && x.args === key);
+          if (slot) slot.used = true;
+          else if (process.env.UNCUT_AGENT_DEBUG) console.error(`[uncut] agent call ${String(name)} wasn't announced in turn ${r.gen}'s stream (run anyway)`);
+          return runTool(r, String(name), input).pipe(Effect.tap(() => Effect.sync(publishNow)));
         }),
     });
   }),

@@ -2,7 +2,7 @@
 // that drives the real MCP server (dist/mcp.mjs) over the real bridge. Covers D40 (turns, live edits
 // through the same engine), D41 (no API key or parent-session variables reach claude), D6 (manual-edit
 // note, refusal of stale edits), D7 (undo a turn as one step; refused when later edits build on it),
-// cancel, history across reopen, missing Claude Code, and the bridge's per-turn token.
+// Stop (an interrupt, D139), history across reopen, missing Claude Code, and the bridge's session token.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -189,7 +189,7 @@ test("D7: Undo turn reverts exactly that turn, as one undoable step; a turn late
   assert.ok(item(onDisk(), "title-1"), "nothing changed");
 });
 
-test("cancel stops claude (and its MCP server), revokes the turn's token, and keeps what was done", { skip, timeout: 30000 }, async () => {
+test("Stop interrupts the turn (D139): claude keeps running for the next message, the session's token takes no call between turns, and what was done stays", { skip, timeout: 30000 }, async () => {
   nextTurn([{ tool: "project_read" }, { sleep: 60000 }]);
   const { turnId } = await client.ok("agent.send", { prompt: "take your time" });
   await agent.until(() => turnById(turnId)?.items.some((i: any) => i.status === "done"), 15000);
@@ -197,9 +197,10 @@ test("cancel stops claude (and its MCP server), revokes the turn's token, and ke
   assert.equal(busy.reason, "busy", "one turn at a time");
   const { pid, mcpPid, mcpToken } = sent().at(-1)!;
   assert.ok(alive(pid) && alive(mcpPid));
-  // While the turn runs, the bridge still wants its token: not the app's, not a guess, not none.
+  assert.equal(new Set(sent().map((r) => r.pid)).size, 1, "every message so far went to one claude");
+  // While the turn runs, the bridge still wants the session's token: not the app's, not a guess, not none.
   const base = `http://127.0.0.1:${server.ready.port}/agent`;
-  assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200, "the turn's own token works");
+  assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200, "the session's own token works");
   for (const headers of [{}, { "x-uncut-agent-token": "nope" }, { "x-uncut-agent-token": server.ready.token }] as Array<Record<string, string>>) {
     assert.equal((await fetch(`${base}/tools`, { headers })).status, 401);
     const call = await fetch(`${base}/call`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ name: "timeline_edit", args: {} }) });
@@ -208,17 +209,23 @@ test("cancel stops claude (and its MCP server), revokes the turn's token, and ke
   const started = Date.now();
   await client.ok("agent.cancel");
   await agent.until(() => turnById(turnId)?.status === "cancelled", 10000);
-  assert.ok(Date.now() - started < 5000);
-  for (let i = 0; i < 50 && (alive(pid) || alive(mcpPid)); i++) await new Promise((r) => setTimeout(r, 100));
-  assert.equal(alive(pid), false, "the claude process is gone");
-  assert.equal(alive(mcpPid), false, "so is the MCP server it started");
-  assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 401, "the turn's token is revoked");
+  assert.ok(Date.now() - started < 2500, "the interrupt ended it, not the kill fallback");
+  assert.deepEqual(turnById(turnId).items.map((i: any) => [i.kind, i.text]), [["step", "Read the timeline"]], "what was done stays");
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(alive(pid) && alive(mcpPid), "claude and its MCP server keep running for the next message");
+  // Between turns the token lists tools (claude may ask) but no call is taken.
+  assert.equal((await fetch(`${base}/tools`, { headers: { "x-uncut-agent-token": mcpToken } })).status, 200);
+  const idle = await fetch(`${base}/call`, { method: "POST", headers: { "x-uncut-agent-token": mcpToken, "content-type": "application/json" }, body: JSON.stringify({ name: "project_read", args: {} }) });
+  assert.equal(idle.status, 401, "no turn, no call");
   assert.equal(latest().running, null);
 });
 
 test("the history survives closing and reopening the project; old turns keep their Undo turn state (history.db)", { skip, timeout: 30000 }, async () => {
+  const { pid, mcpPid } = sent().at(-1)!;
   await client.ok("project.close");
   await agent.until((s) => s === null);
+  for (let i = 0; i < 50 && (alive(pid) || alive(mcpPid)); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual([alive(pid), alive(mcpPid)], [false, false], "closing the project closes its claude");
   const mark = agent.values.length;
   await client.ok("project.open", { dir });
   await agent.until((s, i) => i >= mark && s?.dir === dir && s.turns.length === 3);

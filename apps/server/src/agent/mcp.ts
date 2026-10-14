@@ -75,5 +75,5 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     else send({ id: msg.id, error: { code: -32000, message: error.message } });
   });
 });
-// claude closes stdin when the turn ends.
+// claude closes stdin when its session ends (idle, project closed, D139).
 process.stdin.on("end", () => process.exit(0));

@@ -498,13 +498,15 @@ export class GenerateError extends Schema.TaggedError<GenerateError>()("Generate
 export const AGENT_BRIDGE_PATH = "/agent";
 export const AGENT_TOKEN_HEADER = "x-uncut-agent-token";
 
-/** One thing in a turn, in order: a piece of the agent's reply, or a tool it used. */
+/** One thing in a turn, in order: a piece of the agent's reply, its thinking (a summary), or a tool it used. */
 export const AgentItem = Schema.Struct({
-  kind: Schema.Literals(["text", "step"]),
-  // The reply text, or the step in words ("Read the timeline", the edit's summary).
+  kind: Schema.Literals(["text", "step", "thinking"]),
+  // The reply text, the thinking summary, or the step in words ("Read the timeline", the edit's summary).
   text: Schema.String,
   tool: Schema.optional(Schema.String),
   status: Schema.optional(Schema.Literals(["running", "done", "error"])),
+  // Still streaming in (D139): text and thinking grow as Claude writes them.
+  live: Schema.optional(Schema.Boolean),
 });
 export type AgentItem = typeof AgentItem.Type;
 
@@ -513,6 +515,21 @@ export const AgentEdit = Schema.Struct({ revision: Schema.Number, summary: Schem
 export type AgentEdit = typeof AgentEdit.Type;
 
 export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "cancelled"]);
+
+/**
+ * Something the user pointed at in the composer (D140): an @mention or an "Add to chat" chip. The
+ * prompt holds "@label"; the agent gets the label with the real id in a <context> block.
+ */
+export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker"]);
+export const AgentMention = Schema.Struct({
+  kind: AgentMentionKind,
+  id: Schema.String,
+  label: Schema.String,
+  // Add to chat (D141): the stretch of the timeline it covers, in project frames, or the frame it was picked at.
+  range: Schema.optional(Schema.Struct({ start: Schema.Int, end: Schema.Int })),
+  frame: Schema.optional(Schema.Int),
+});
+export type AgentMention = typeof AgentMention.Type;
 
 /** Whether "Undo turn" can run now, and why not when it can't. */
 export const AgentUndo = Schema.Struct({
@@ -523,6 +540,8 @@ export const AgentUndo = Schema.Struct({
 export const AgentTurn = Schema.Struct({
   id: Schema.String,
   prompt: Schema.String,
+  // What the prompt's @labels point at (D140), for the card's chips.
+  mentions: Schema.optional(Schema.Array(Schema.Struct({ kind: AgentMentionKind, label: Schema.String }))),
   // The manual-edit note the agent got with this prompt (D6), shown on the card.
   note: Schema.optional(Schema.String),
   startedAt: Schema.String,
@@ -904,6 +923,8 @@ const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     // Where the user is, for the prompt's editor context.
     frame: Schema.optional(Schema.Int),
     selected: Schema.optional(Schema.String),
+    // @mentions and Add to chat chips (D140, D141).
+    mentions: Schema.optional(Schema.Array(AgentMention)),
   }),
   success: Schema.Struct({ turnId: Schema.String }),
   error: AgentError,

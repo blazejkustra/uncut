@@ -108,7 +108,7 @@ test("media_analyze beats: bpm, confidence and the first beats in project frames
   assert.equal(turn.status, "done", turn.error);
   assert.deepEqual(
     turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
-    ["Read the timeline", "Found the beats in m-song", "Found the beats in m-song", "Found the beats in m-song", "Found the beats in m-still"],
+    ["Read the timeline", "Found the beats in Song.wav", "Found the beats in Song.wav", "Found the beats in Song.wav", "Found the beats in Still.mp4"],
   );
   const [read, first, again, ranged, still] = results;
   assert.equal(jsonOf(read!).canvas.fps, 30);

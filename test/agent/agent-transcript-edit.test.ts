@@ -130,7 +130,7 @@ test("transcript_edit: dryRun changes nothing; applying cuts words and pauses as
   assert.equal(turn.status, "done", turn.error);
   assert.deepEqual(
     turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
-    ["Planned cutting words", "Cut words and pauses over 0.5 s from m-talk", "Cut words"],
+    ["Planned cutting words", "Cut words and pauses over 0.5 s from Talk.mp4", "Cut words"],
   );
 
   const dry = jsonOf(results[0]!);
