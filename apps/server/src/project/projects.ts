@@ -71,6 +71,8 @@ export interface AgentEditInput {
   readonly ops: ReadonlyArray<unknown>;
   readonly baseRevision: number;
   readonly summary: string;
+  /** D206: check the edit exactly as it would be made (schema, rules, D6) and return the result without saving it. */
+  readonly dryRun?: boolean;
 }
 
 export interface Canvas {
@@ -451,7 +453,7 @@ export const layer = Layer.effect(
     const editUnlocked = (
       p: OpenProject,
       { ops, baseRevision, summary }: { ops: ReadonlyArray<unknown>; baseRevision?: number | undefined; summary?: string | undefined },
-      agent?: { readonly turnId: string },
+      agent?: { readonly turnId: string; readonly dryRun?: boolean | undefined },
     ) =>
       Effect.gen(function* () {
         const opProblems = format.validateOps(ops);
@@ -498,6 +500,8 @@ export const layer = Layer.effect(
         }
         const problems = format.validate(written);
         if (problems.length) return yield* refused("The edit would make the project invalid", problems);
+        // D206: a dry run stops here, with everything checked and nothing saved (the revision stays).
+        if (agent?.dryRun) return { dir: p.dir, project: written, revision: p.session.revision, canUndo: p.past.length > 0, canRedo: p.future.length > 0 } satisfies ProjectSnapshot;
         const entry = applied.log.at(-1)!;
         const typed = ops as ReadonlyArray<Op>;
         const lines = typed.map((op) => describeOp(op, written, summary));
@@ -649,8 +653,8 @@ export const layer = Layer.effect(
           : undefined,
       ),
 
-      agentEdit: (openId, { turnId, ops, baseRevision, summary }) =>
-        lock.withPermits(1)(Effect.flatMap(openingIs(openId), (p) => editUnlocked(p, { ops, baseRevision, summary }, { turnId }))),
+      agentEdit: (openId, { turnId, ops, baseRevision, summary, dryRun }) =>
+        lock.withPermits(1)(Effect.flatMap(openingIs(openId), (p) => editUnlocked(p, { ops, baseRevision, summary }, { turnId, dryRun }))),
 
       undoTurn: (openId, turnId, label) =>
         lock.withPermits(1)(

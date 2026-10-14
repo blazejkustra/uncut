@@ -101,6 +101,8 @@ export interface AgentImportInput {
   readonly paths: ReadonlyArray<string>;
   /** Display names to use instead of the file name, by path. */
   readonly names?: ReadonlyMap<string, string> | undefined;
+  /** D205: store files inside the project relative to it (a copy from another project in media/imports). */
+  readonly relativePaths?: boolean | undefined;
 }
 
 export interface AgentImport {
@@ -545,10 +547,10 @@ export const layer = Layer.effect(
         return { jobId: yield* queueJob(open, paths, { ...(paths.every((p) => p.startsWith(uploads)) ? { relativePaths: true } : {}), ...(drop ? { drop } : {}) }) };
       });
 
-    const importForAgent = ({ openId, dir, turnId, paths, names }: AgentImportInput) =>
+    const importForAgent = ({ openId, dir, turnId, paths, names, relativePaths }: AgentImportInput) =>
       Effect.gen(function* () {
         const added = yield* Deferred.make<AgentImport, string>();
-        yield* queueJob({ openId, dir }, paths, { agent: { turnId }, names, added });
+        yield* queueJob({ openId, dir }, paths, { agent: { turnId }, names, added, ...(relativePaths ? { relativePaths } : {}) });
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 

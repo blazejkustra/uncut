@@ -24,7 +24,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount; applied on export only), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number). Looks and effects on a clip (D136) are its effects list, set with update_item: effect.look {look, intensity 0-1}, effect.color (Adjust: exposure in stops, contrast, saturation, temperature, tint, highlights, shadows, vibrance, -1 to 1) and effect.blur, effect.sharpen, effect.vignette, effect.grain, effect.glow, effect.rgb-split, effect.pixelate, effect.mirror, effect.posterize, effect.invert, effect.shake, effect.zoom-pulse, effect.letterbox; modules_list kind \"effect\" gives each one's params.",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount; applied on export only), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number). Looks and effects on a clip (D136) are its effects list, set with update_item: effect.look {look, intensity 0-1}, effect.color (Adjust: exposure in stops, contrast, saturation, temperature, tint, highlights, shadows, vibrance, -1 to 1) and effect.blur, effect.sharpen, effect.vignette, effect.grain, effect.glow, effect.rgb-split, effect.pixelate, effect.mirror, effect.posterize, effect.invert, effect.shake, effect.zoom-pulse, effect.letterbox; modules_list kind \"effect\" gives each one's params. Overlaps (D206): {\"op\":\"place_item\", \"track\", \"item\" (a new item, or an id to move), \"start\", \"place\": \"after\" | \"free-track\" | \"ripple\"} (see $defs/placeItem) puts it where asked when that's free, else after the item in the way, on another track of that kind that is free there (a new one when none is), or pushes that track's later items along; the result's placed says where each went. A set_transition with allowTrim: true (see $defs/setTransitionTrim) trims exactly the spare media an overlapping transition lacks; without it, a lack is refused with the frames missing. dryRun: true checks the edit and returns the planned ops, lines, diff (added, removed, moved items) and conflicts without changing anything. A refusal gives each problem a fix (a start frame, a track, a free id): use it as it is.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -45,10 +45,14 @@
             "type": "string",
             "minLength": 1,
             "description": "One line the user sees in the turn card, e.g. 'Cut the shaky parts of the ridge shot'."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Check the edit and return what it would do (planned ops, lines, diff, new length) or its conflicts with fixes; nothing changes."
           }
         }
       },
-      "returns": "the new revision, or a conflict with the user's newer edits, or validation errors"
+      "returns": "the new revision (and placed, when place_item or allowTrim moved anything), or a conflict with the user's newer edits, or the problems each with a fix; with dryRun the planned result"
     },
     {
       "name": "render_frames",
@@ -402,7 +406,7 @@
     },
     {
       "name": "media_import",
-      "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed. At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
+      "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed; a file inside another Uncut project (from media_search) is copied into this project's media/imports so the other project can move or go (D205). At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -776,6 +780,56 @@
         }
       },
       "returns": "id, name, path, frames, seconds, width, height, source, revision; or approved: false with what to tell the user"
+    },
+    {
+      "name": "argent_boot",
+      "description": "Boot an iOS simulator or Android emulator with Argent so you can record the app (D204). Without device it lists the bootable ones by name (and the running ones). With a device (an id or a name from that list) the user is asked on a card in the Agent tab first (the device, its platform and what happens next): nothing boots without their Boot. A device the user allowed once in this chat boots again without asking. Not in Look only. After it boots, record with argent_record {device, bundleId (the app to open), flow or seconds}.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "A bootable device's id or name; leave it out to list them."
+          },
+          "bundleId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The app you will open and record after it boots (shown on the card)."
+          }
+        }
+      },
+      "returns": "bootable and running devices; or booted: true with the device id to record; or approved: false with what to do instead"
+    },
+    {
+      "name": "media_search",
+      "description": "Search the user's media from their other projects on this Mac (D205): captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and when it was made. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Words to match in the name, file, project, device or app, e.g. \"argent demo\"; empty lists the newest."
+          },
+          "kind": {
+            "enum": [
+              "video",
+              "image",
+              "audio",
+              "capture",
+              "import",
+              "generated"
+            ],
+            "description": "Only this kind of media or this origin."
+          }
+        }
+      },
+      "returns": "found: [{ path, name, kind, origin, seconds, size, project, device, app, created, import }]"
     },
     {
       "name": "ask_user",
@@ -1600,6 +1654,95 @@
         "end": {
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "placeItem": {
+      "type": "object",
+      "required": [
+        "op",
+        "track",
+        "item",
+        "place"
+      ],
+      "additionalProperties": false,
+      "description": "Place an item without fighting overlaps (D206). On a free track: at start when that stretch is free; otherwise place \"after\" puts it at the first free frame after what is in the way, \"free-track\" keeps the start on another track of the same kind that is free there (a new track next to it when none is), \"ripple\" moves the track's items from start on later by what is needed. On the main track it goes in at index (or the cut at start) and the rest ripples.",
+      "properties": {
+        "op": {
+          "const": "place_item"
+        },
+        "track": {
+          "type": "string",
+          "description": "The track to put it on (for a move, default: its own)."
+        },
+        "item": {
+          "description": "A new item ({id, type, duration, …} as insert_item takes) or the id of an item to move.",
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The frame it should start at (free tracks)."
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Main track: the slot."
+        },
+        "place": {
+          "enum": [
+            "after",
+            "free-track",
+            "ripple"
+          ]
+        }
+      }
+    },
+    "setTransitionTrim": {
+      "type": "object",
+      "required": [
+        "op",
+        "item",
+        "transition",
+        "allowTrim"
+      ],
+      "additionalProperties": false,
+      "description": "set_transition that may trim the clips at the cut (D206): an overlapping transition needs spare media on both sides (half its length); allowTrim: true trims exactly what is missing off the incoming clip's start and the outgoing clip's end before it is set.",
+      "properties": {
+        "op": {
+          "const": "set_transition"
+        },
+        "item": {
+          "type": "string"
+        },
+        "transition": {
+          "type": "object",
+          "required": [
+            "module",
+            "duration"
+          ],
+          "properties": {
+            "module": {
+              "type": "string"
+            },
+            "duration": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "params": {
+              "type": "object"
+            }
+          }
+        },
+        "allowTrim": {
+          "type": "boolean"
         }
       }
     }

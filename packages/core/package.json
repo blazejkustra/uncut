@@ -21,6 +21,7 @@
     "./mediaPlan": "./src/timeline/mediaPlan.ts",
     "./place": "./src/timeline/place.ts",
     "./arrange": "./src/timeline/arrange.ts",
+    "./agentPlace": "./src/timeline/agentPlace.ts",
     "./slice": "./src/timeline/slice.ts",
     "./export": "./src/export.ts",
     "./transcript": "./src/text/transcript.ts",

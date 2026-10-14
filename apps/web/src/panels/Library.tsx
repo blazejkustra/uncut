@@ -28,6 +28,7 @@ import { TransitionsLibrary } from "./Transitions.tsx";
 import { EffectsLibrary } from "./Effects.tsx";
 import { StickerPicker } from "./Stickers.tsx";
 import { GeneratedSection, generatedMedia, GenerateLibrary } from "./Generate.tsx";
+import { RecentSection } from "./RecentMedia.tsx";
 import { TranscriptPanel } from "./Transcript.tsx";
 import { BrandLibrary } from "./Brand.tsx";
 
@@ -529,6 +530,7 @@ function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => vo
         </div>
       ) : null}
       <GeneratedSection project={project} {...(onEdit ? { onEdit } : {})} />
+      <RecentSection project={project} />
       {dragging && <div className="drop-hint">Drop to import</div>}
       {confirm && (
         <RemoveMediaConfirm
