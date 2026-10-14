@@ -22,10 +22,13 @@ import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../app/config.ts";
 
-export const PROVIDERS: ReadonlyArray<{ readonly id: KeyProvider; readonly name: string; readonly usedBy: ReadonlyArray<string> }> = [
+export const PROVIDERS: ReadonlyArray<{ readonly id: KeyProvider; readonly name: string; readonly usedBy: ReadonlyArray<string>; readonly note?: string }> = [
   { id: "openai", name: "OpenAI", usedBy: ["GPT Image"] },
   { id: "google", name: "Google", usedBy: ["Veo"] },
   { id: "elevenlabs", name: "ElevenLabs", usedBy: ["Sound effects"] },
+  // D134: the sound library's second source, with the user's own API key (a shipped key would break
+  // Freesound's non-commercial API terms).
+  { id: "freesound", name: "Freesound", usedBy: ["Music and sound effects search"], note: "Freesound's API is free for non-commercial use only" },
 ];
 export const providerName = (id: KeyProvider) => PROVIDERS.find((p) => p.id === id)?.name ?? id;
 
@@ -138,7 +141,7 @@ export function keyStore(options: { readonly file: string; readonly crypter: Cry
   const storage = options.crypter ? ("keychain" as const) : ("memory" as const);
   const list = async (): Promise<Array<KeyInfo>> => {
     const stored = options.crypter ? (await readFileKeys()).keys : undefined;
-    return PROVIDERS.map((p) => ({ provider: p.id, name: p.name, set: stored ? Boolean(stored[p.id]) : memory.has(p.id), storage, usedBy: [...p.usedBy] }));
+    return PROVIDERS.map((p) => ({ provider: p.id, name: p.name, set: stored ? Boolean(stored[p.id]) : memory.has(p.id), storage, usedBy: [...p.usedBy], ...(p.note ? { note: p.note } : {}) }));
   };
   return {
     storage,

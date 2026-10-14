@@ -111,11 +111,11 @@ test("transitions: the panel, drag onto a cut, the marker and Inspector, length 
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 
-  // The panel: six tiles, each with its default length.
+  // The panel: the first six tiles (D73, D79; D133's follow), each with its default length.
   await page.click("[data-testid=rail-transitions]");
   await page.waitForSelector("[data-testid=transitions-library]");
   const tiles = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => [(e as HTMLElement).dataset.module, e.querySelector(".tile-name")!.textContent, e.querySelector("[data-testid=transition-default]")!.textContent]));
-  assert.deepEqual(tiles, [
+  assert.deepEqual(tiles.slice(0, 6), [
     ["transition.crossfade", "Crossfade", "0.5 s"],
     ["transition.dip-to-black", "Dip to black", "0.8 s"],
     ["transition.wipe", "Wipe", "0.5 s"],
@@ -124,7 +124,7 @@ test("transitions: the panel, drag onto a cut, the marker and Inspector, length 
     ["transition.zoom", "Zoom", "0.5 s"],
   ]);
   assert.equal(await page.$$eval("[data-testid=cut-point]", (els) => els.map((e) => Number((e as HTMLElement).dataset.frame)).join()), "60,120,180");
-  await page.screenshot({ path: out("transitions-panel.png") });
+  await page.screenshot({ path: out("transitions-panel-cuts.png") });
 
   // Drag the crossfade tile over the timeline: every cut fits it (30 frames of handle each side).
   await page.setDragInterception(true);

@@ -44,10 +44,16 @@ import {
   baseBox,
   canvasBox,
   clipBox,
+  blurs,
   fadesIn,
   IRIS,
+  maskGeq,
+  maskOf,
   moveBox,
+  movesIncoming,
   movesOutgoing,
+  reveals,
+  type MaskShape,
   transitionAt,
   isPlainBox,
   type ClipBox,
@@ -141,6 +147,10 @@ interface LayerBase {
   readonly wipe?: { readonly st: number; readonly d: number };
   /** An iris transition into it (D79): shown inside a circle at the canvas's centre, radius 0 at frame `st` to the half diagonal at st + d. */
   readonly iris?: { readonly st: number; readonly d: number };
+  /** A reveal shape into it (D133): shown inside core's maskDistance shape, share 0 at frame `st` to 1 at st + d. */
+  readonly mask?: { readonly shape: MaskShape; readonly st: number; readonly d: number };
+  /** A blur dissolve (D133): the Gaussian sigma in output px for each frame from f0; absent when never blurred. */
+  readonly blur?: ReadonlyArray<number>;
   /**
    * Its box for each frame from f0 (D75): a clip's (absent: the plain full frame, drawn as before
    * D75), or the canvas moved by a push or zoom for text, backgrounds and graphics (D79).
@@ -308,6 +318,18 @@ export const wipeAt = (wipe: VisualLayer["wipe"], f: number) => (wipe ? Math.min
 /** An iris's mask is computed at 1/this of the output size, then scaled up (D79 review: geq per pixel is costly). */
 export const IRIS_MASK_STEP = 4;
 
+/** gblur's passes for a blur dissolve (D133): more is closer to a true Gaussian (Chromium's CSS blur). */
+export const BLUR_STEPS = 3;
+
+/** The transparent margin a blurred layer gets (px, even): 3 sigma, where a Gaussian has all but 0.3 % of its weight. */
+export const blurPad = (sigma: number) => 2 * Math.ceil((3 * sigma + 1) / 2);
+
+/** A blur dissolve's filters at one sigma (output px), as the export's (render_frames). */
+export const blurFilters = (sigma: number) => {
+  const pad = blurPad(sigma);
+  return `pad=w=iw+${2 * pad}:h=ih+${2 * pad}:x=${pad}:y=${pad}:color=black@0,premultiply=inplace=1,gblur=sigma=${n(sigma)}:steps=${BLUR_STEPS},unpremultiply=inplace=1,crop=w=iw-${2 * pad}:h=ih-${2 * pad}:x=${pad}:y=${pad}`;
+};
+
 /** The share of the half diagonal an iris shows at frame f (core visualsAt's `iris`; 1 when whole). */
 export const irisAt = (iris: VisualLayer["iris"], f: number) => (iris ? Math.min(1, Math.max(0, (f - iris.st) / iris.d)) : 1);
 
@@ -325,7 +347,7 @@ export const rampsAt = (ramps: ReadonlyArray<Ramp>, f: number) =>
 function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, source?: number): VisualLayer {
   const a = from - layer.f0;
   const b = to - layer.f0;
-  const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}), ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}) };
+  const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}), ...(layer.blur ? { blur: layer.blur.slice(a, b) } : {}), ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}) };
   if (layer.kind === "raster") return { ...layer, ...common, ...compactStates(layer.states, layer.frames.slice(a, b)) };
   if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
   if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
@@ -361,6 +383,8 @@ export const rasterLooks = (plan: Pick<ExportPlan, "visuals">) => [...new Set(pl
  */
 interface Cuts {
   readonly revealEnd?: number;
+  /** Always cut here too (D133: where a blur starts or stops). */
+  readonly always?: ReadonlyArray<number>;
   readonly moves: ReadonlyArray<number>;
   /** The item's frames whose box is plain (no geometry needed), when it has geometry. */
   readonly plain?: (f: number) => boolean;
@@ -372,7 +396,7 @@ function splitAt(layer: VisualLayer, cuts: Cuts, fps: number): Array<VisualLayer
     return true;
   };
   const inside = (c: number) => c > layer.f0 && c < layer.f1;
-  const reveal = cuts.revealEnd !== undefined && inside(cuts.revealEnd) && (layer.wipe || layer.iris) ? [cuts.revealEnd] : [];
+  const reveal = [...(cuts.revealEnd !== undefined && inside(cuts.revealEnd) && (layer.wipe || layer.iris || layer.mask) ? [cuts.revealEnd] : []), ...(layer.blur ? (cuts.always ?? []).filter(inside) : [])];
   const candidates = [...new Set([...reveal, ...cuts.moves.filter(inside)])].sort((a, b) => a - b);
   // A move's cut is kept only where the frames on its two sides differ in needing geometry.
   const kept: Array<number> = [];
@@ -391,8 +415,12 @@ function splitAt(layer: VisualLayer, cuts: Cuts, fps: number): Array<VisualLayer
   for (let i = 0; i + 1 < points.length; i++) {
     const [a, b] = [points[i]!, points[i + 1]!];
     let slice = points.length === 2 ? layer : sliceLayer(layer, a, b, fps);
-    if (cuts.revealEnd !== undefined && a >= cuts.revealEnd && (slice.wipe || slice.iris)) {
-      const { wipe, iris, ...rest } = slice;
+    if (cuts.revealEnd !== undefined && a >= cuts.revealEnd && (slice.wipe || slice.iris || slice.mask)) {
+      const { wipe, iris, mask, ...rest } = slice;
+      slice = rest as VisualLayer;
+    }
+    if (slice.blur && slice.blur.every((b) => b === 0)) {
+      const { blur, ...rest } = slice;
       slice = rest as VisualLayer;
     }
     if (slice.geometry && cuts.plain) {
@@ -737,20 +765,25 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       if (f1 <= f0) return;
       const ramps = opacityRamps(item, start, span);
       const reveal = { st: span.from, d: 2 * span.half };
-      const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: reveal } : {}), ...(span.into === IRIS ? { iris: reveal } : {}) };
-      // The transitions at its cuts (D79): what they do at each frame, and where its layer is cut.
+      const shape = span.half > 0 ? maskOf(span.into) : undefined;
+      // The transitions at its cuts (D79, D133): what they do at each frame, and where its layer is cut.
       const fxAt = (f: number) => transitionAt(span, f, project.canvas);
-      const revealEnd = span.half > 0 && !fadesIn(span.into!) ? Math.ceil(span.from + 2 * span.half) : undefined;
-      const outStart = span.nextHalf > 0 && movesOutgoing(span.next!) ? Math.ceil(span.to - 2 * span.nextHalf) : undefined;
-      const pushIn = span.half > 0 && span.into !== IRIS && !span.wipe && revealEnd !== undefined ? revealEnd : undefined;
-      const moves = [pushIn, outStart].filter((c): c is number => c !== undefined);
-      const split = (layer: VisualLayer, plain?: (f: number) => boolean) => splitAt(layer, { moves, ...(revealEnd !== undefined && pushIn === undefined ? { revealEnd } : {}), ...(plain ? { plain } : {}) }, fps);
+      // A blur dissolve (D133): sigma per frame in output px (core's blur is in canvas px).
+      const sigmas = blurs(span.into) || blurs(span.next) ? Array.from({ length: f1 - f0 }, (_, k) => ((fxAt(f0 + k).blur ?? 0) * height) / project.canvas.height) : undefined;
+      const base = { item, track, f0, f1, ramps, ...(span.wipe ? { wipe: reveal } : {}), ...(span.into === IRIS ? { iris: reveal } : {}), ...(shape ? { mask: { shape, ...reveal } } : {}), ...(sigmas?.some((b) => b > 0) ? { blur: sigmas } : {}) };
+      const inEnd = span.half > 0 ? Math.ceil(span.from + 2 * span.half) : undefined;
+      const revealEnd = inEnd !== undefined && reveals(span.into!) ? inEnd : undefined;
+      const moveIn = inEnd !== undefined && movesIncoming(span.into!) ? inEnd : undefined;
+      const outStart = span.nextHalf > 0 ? Math.ceil(span.to - 2 * span.nextHalf) : undefined;
+      const moves = [moveIn, outStart !== undefined && movesOutgoing(span.next!) ? outStart : undefined].filter((c): c is number => c !== undefined);
+      const always = [inEnd !== undefined && blurs(span.into) ? inEnd : undefined, outStart !== undefined && blurs(span.next) ? outStart : undefined].filter((c): c is number => c !== undefined);
+      const split = (layer: VisualLayer, plain?: (f: number) => boolean) => splitAt(layer, { moves, always, ...(revealEnd !== undefined ? { revealEnd } : {}), ...(plain ? { plain } : {}) }, fps);
       // Text, backgrounds and graphics have no box: a push or zoom moves the canvas (core canvasBox).
       const kx = width / project.canvas.width;
       const ky = height / project.canvas.height;
       const canvasMoves = Array.from({ length: f1 - f0 }, (_, k) => {
         const fx = fxAt(f0 + k);
-        return fx.shift || (fx.zoom !== undefined && fx.zoom !== 1) ? moveBox(canvasBox(project.canvas), fx.shift, fx.zoom) : undefined;
+        return fx.shift || fx.shiftY || (fx.zoom !== undefined && fx.zoom !== 1) ? moveBox(canvasBox(project.canvas), fx.shift, fx.zoom, fx.shiftY) : undefined;
       });
       const canvasGeometry = canvasMoves.some(Boolean) ? { geometry: { frames: canvasMoves.map((b) => placementOf(b ?? canvasBox(project.canvas), kx, ky, canvasBox(project.canvas))) } } : {};
       const canvasStill = (f: number) => !canvasMoves[f - f0];
@@ -760,7 +793,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         const looks: Array<string> = [];
         for (let f = f0; f < f1; f++) {
           const fx = fxAt(f);
-          const box = moveBox(clipBox(item, project.canvas, media.probe, f - start), fx.shift, fx.zoom);
+          const box = moveBox(clipBox(item, project.canvas, media.probe, f - start), fx.shift, fx.zoom, fx.shiftY);
           looks.push(svgClipHtml(item, box, mediaToken(media.id), box.opacity));
         }
         // Only its box changes (keys): drawn on every frame, like a clip's, never capped.
@@ -786,7 +819,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         // no move) keep the full-frame chain.
         const boxes = Array.from({ length: f1 - f0 }, (_, k) => {
           const fx = fxAt(f0 + k);
-          return moveBox(clipBox(item, project.canvas, media.probe, f0 + k - start), fx.shift, fx.zoom);
+          return moveBox(clipBox(item, project.canvas, media.probe, f0 + k - start), fx.shift, fx.zoom, fx.shiftY);
         });
         const plainAt = boxes.map((b) => isPlainBox(b, project.canvas));
         const rest = baseBox(item, project.canvas, media.probe);
@@ -814,7 +847,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
           // Its box moved by a push or zoom (D79), drawn into the HTML like its keys.
           const own = componentBox(item, project.canvas, local);
           const fx = fxAt(f);
-          const parts = componentParts(item, target, local, { opacity: own?.opacity ?? 1, motion, fps, ...(own ? { box: moveBox(own, fx.shift, fx.zoom) } : {}) })!;
+          const parts = componentParts(item, target, local, { opacity: own?.opacity ?? 1, motion, fps, ...(own ? { box: moveBox(own, fx.shift, fx.zoom, fx.shiftY) } : {}) })!;
           wrappers.push(parts.wrapper);
           looks.push(parts.body);
         } else looks.push(isText ? textHtml(item, project, { motion }) : solidHtml(item, project));
@@ -1260,7 +1293,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         graph.push(`${picked.join(",")}[p${k}]`, ...boxGraph(geo, `p${k}`, `q${k}`, fps));
         chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
       } else {
-        const alpha = !layer.fills || fades.length > 0 || !!layer.wipe || !!layer.iris || opacity.length > 0;
+        const alpha = !layer.fills || fades.length > 0 || !!layer.wipe || !!layer.iris || !!layer.mask || opacity.length > 0;
         chain = [
           ...picked,
           `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2:out_color_matrix=bt709:out_range=tv`,
@@ -1317,7 +1350,29 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     // expressions see the same frame time, so they agree on X.
     let at = "";
     let fmt = "auto";
-    if (geo && (layer.wipe || layer.iris)) {
+    if (layer.blur) {
+      // A blur dissolve (D133): gblur's sigma set frame by frame (sendcmd), as the preview's CSS
+      // blur draws it: on premultiplied colour, with transparency past the layer's edges (padded
+      // by 3 sigma, cropped back), so its edges soften into what's under it.
+      const pad = blurPad(Math.max(...layer.blur));
+      const commands: Array<string> = [];
+      layer.blur.forEach((b, i) => {
+        if (i > 0 && b === layer.blur![i - 1]) return;
+        // sigmaV too: gblur copies sigma into it only when it starts.
+        const at = n(Math.max(0, layer.f0 + i - 0.5) / fps);
+        commands.push(`${at} gblur@g${k} sigma ${n(b)}`, `${at} gblur@g${k} sigmaV ${n(b)}`);
+      });
+      chain.push(
+        "format=yuva444p",
+        `pad=w=iw+${2 * pad}:h=ih+${2 * pad}:x=${pad}:y=${pad}:color=black@0`,
+        "premultiply=inplace=1",
+        `sendcmd=c='${commands.join(";")}'`,
+        `gblur@g${k}=sigma=${n(layer.blur[0]!)}:sigmaV=${n(layer.blur[0]!)}:steps=${BLUR_STEPS}`,
+        "unpremultiply=inplace=1",
+        `crop=w=iw-${2 * pad}:h=ih-${2 * pad}:x=${pad}:y=${pad}`,
+      );
+    }
+    if (geo && (layer.wipe || layer.iris || layer.mask)) {
       // A boxed layer is put on a transparent canvas first: a wipe or iris reveals the canvas.
       const place = placeAt(layer, geo, fps);
       graph.push(`${chain.join(",")}[x${k}]`);
@@ -1346,6 +1401,21 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
       const mh = Math.ceil(H / step);
       graph.push(
         `color=c=black:s=${mw}x${mh}:r=${fps},format=gray,trim=end_frame=${frames},settb=1/${fps},setpts=N+${layer.f0},geq=lum='255*clip((${r}-hypot((X+0.5)*${step}-${n(W / 2)},(Y+0.5)*${step}-${n(H / 2)}))/${step}+0.5,0,1)',scale=w=${mw * step}:h=${mh * step}:flags=bilinear,crop=w=${W}:h=${H}:x=0:y=0[im${k}]`,
+      );
+      graph.push(`[ia${k}]alphaextract[ie${k}]`, `[ie${k}][im${k}]blend=all_mode=multiply[ik${k}]`, `[ic${k}][ik${k}]alphamerge[ir${k}]`);
+      chain = [`[ir${k}]null`];
+    } else if (layer.mask) {
+      // A reveal shape (D133): core's signed distance as a coverage mask, made like the iris's (at
+      // 1/IRIS_MASK_STEP of the size, a soft edge one coarse pixel wide, scaled up on the same grid).
+      const { shape, st, d } = layer.mask;
+      const step = IRIS_MASK_STEP;
+      const mw = Math.ceil(W / step);
+      const mh = Math.ceil(H / step);
+      const P = `clip((T*${fps}+0.0001-${n(st)})/${n(d)},0,1)`;
+      const sd = maskGeq(shape, P, W, H, `(X+0.5)*${step}`, `(Y+0.5)*${step}`);
+      graph.push(`${chain.join(",")},split=2[ic${k}][ia${k}]`);
+      graph.push(
+        `color=c=black:s=${mw}x${mh}:r=${fps},format=gray,trim=end_frame=${frames},settb=1/${fps},setpts=N+${layer.f0},geq=lum='255*clip(${sd}/${step}+0.5,0,1)',scale=w=${mw * step}:h=${mh * step}:flags=bilinear,crop=w=${W}:h=${H}:x=0:y=0[im${k}]`,
       );
       graph.push(`[ia${k}]alphaextract[ie${k}]`, `[ie${k}][im${k}]blend=all_mode=multiply[ik${k}]`, `[ic${k}][ik${k}]alphamerge[ir${k}]`);
       chain = [`[ir${k}]null`];

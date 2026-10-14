@@ -125,6 +125,13 @@ export function render(): string {
     s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
   }
 
+  const sfx = readJson(join(ROOT, "assets/sfx/library.json")) as { sounds: Array<{ file: string; title: string; author: string; source: string; license: string; licenseChecked?: string; trimmed?: string }> };
+  s += section("Sound effects (CC0 1.0, public domain)");
+  s += "Shipped in Resources/sfx. Each sound's licence was checked on its Freesound page.\n\n";
+  for (const t of sfx.sounds) {
+    s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
+  }
+
   s += section("Electron and Chromium");
   s += `Uncut runs on Electron ${String(electron.version)} (MIT, https://github.com/electron/electron).\n`;
   s += "Electron includes Chromium, Node.js and their dependencies under their own licences (BSD-style\n";

@@ -2,7 +2,7 @@
 // then run an RpcServer for that one socket.
 import { homedir, hostname } from "node:os";
 
-import { PluginError, ProjectError, RPC_METHODS, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import { LibraryError, PluginError, ProjectError, RPC_METHODS, WS_PATH, WsRpcGroup } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -24,6 +24,7 @@ import { copyComponent } from "../plugins/contributions.ts";
 import { Capture } from "../capture/capture.ts";
 import { Generator } from "../generate/generate.ts";
 import { Keys } from "../generate/keys.ts";
+import { Library } from "../library/library.ts";
 import { Projects } from "../project/projects.ts";
 import { Recents } from "../project/recents.ts";
 import { Settings } from "./settings.ts";
@@ -48,10 +49,11 @@ interface Services {
   readonly capture: typeof Capture.Service;
   readonly generator: typeof Generator.Service;
   readonly keys: typeof Keys.Service;
+  readonly sounds: typeof Library.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys }: Services) =>
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds }: Services) =>
   WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -85,6 +87,16 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         const copied = yield* Effect.promise(() => copyLibraryTrack(config.musicDir, open.dir, track));
         if ("problem" in copied) return yield* new ProjectError({ reason: "io", message: copied.problem, details: [] });
         return { path: copied.path };
+      }),
+    // The sound library (D134): online search (Openverse, Freesound with the user's key) and add.
+    [RPC_METHODS.librarySearch]: (query) => sounds.search(query),
+    [RPC_METHODS.libraryState]: () => sounds.state,
+    [RPC_METHODS.libraryAdd]: ({ id }) =>
+      Effect.gen(function* () {
+        const open = yield* projects.current;
+        if (!open) return yield* new LibraryError({ reason: "no-project", message: "No project is open" });
+        const added = yield* sounds.add(id, open.dir);
+        return { path: added.path, seconds: added.seconds, name: added.name, source: { ...added.source } as Record<string, unknown> };
       }),
     [RPC_METHODS.setupCheck]: () => setup.check,
     [RPC_METHODS.setupState]: () => Effect.map(settings.onboarded, (onboarded) => ({ onboarded })),
@@ -169,7 +181,8 @@ export const layer = Layer.unwrap(
     const capture = yield* Capture;
     const generator = yield* Generator;
     const keys = yield* Keys;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys }).pipe(
+    const sounds = yield* Library;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

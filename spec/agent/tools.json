@@ -295,6 +295,39 @@
         }
       },
       "returns": "{ media, frames, seconds, revision }"
+    },
+    {
+      "name": "library_search",
+      "description": "Search the sound library (D134): royalty-free music or sound effects online (Openverse without a key, or Freesound when the user stored a Freesound key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\" Uncut's bundled CC0 sound effects. Search by what it sounds like: whoosh, ui click, impact, riser, notification, applause, bass boom, bruh, airhorn, record scratch, sad trombone; for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["music", "sfx"] },
+          "query": { "type": "string", "description": "What to search for. Required unless source is included." },
+          "source": { "enum": ["openverse", "freesound", "included"], "description": "Default openverse." },
+          "license": { "enum": ["cc0"], "description": "cc0: only sounds that need no credit." },
+          "length": { "enum": ["short", "medium", "long"], "description": "short < 30 s, medium 30 s to 2 min, long > 2 min." },
+          "songs": { "type": "boolean", "description": "Music: full songs only." },
+          "category": { "type": "string", "description": "source included: whoosh, transition, ui, impact, riser, notification, crowd or meme." },
+          "page": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "returns": "{ hits: [{ id, title, creator, seconds, frames, license, tags }], total, page, pages } or, for included, { sounds }"
+    },
+    {
+      "name": "library_add",
+      "description": "Add a library_search result to the project's media: the file is downloaded (or a bundled sound copied) into the project's media/ folder and added as audio media with its credits (source, creator, licence, attribution), as an edit on your turn. Returns the media id and length; then put it on an audio track with timeline_edit. A sound already in the project returns its media id.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "A hit id from library_search, e.g. openverse:eab8a6e2-0ac8-4615-9e0d-ebde30523783, freesound:351256 or sfx:bass-boom." }
+        }
+      },
+      "returns": "{ media, path, frames, seconds, license, revision }"
     }
   ],
   "$defs": {

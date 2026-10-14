@@ -23,6 +23,9 @@ export const RPC_METHODS = {
   mediaThumbnails: "media.thumbnails",
   mediaJobs: "media.jobs",
   musicAdd: "music.add",
+  librarySearch: "library.search",
+  libraryAdd: "library.add",
+  libraryState: "library.state",
   setupCheck: "setup.check",
   setupState: "setup.state",
   setupComplete: "setup.complete",
@@ -231,6 +234,12 @@ export const GRAPHIC_PATH = "/media/graphic";
 // GET /media/library/<file>?token=…: a track of the bundled music library (D91), for the Audio
 // tab's preview; only the files core MUSIC_TRACKS lists.
 export const MUSIC_FILE_PATH = "/media/library";
+// GET /media/sfx/<file>?token=…: a sound of the bundled sound-effects pack (D134), for the Sound
+// effects tab's preview; only the files core SFX_SOUNDS lists.
+export const SFX_FILE_PATH = "/media/sfx";
+// GET /library/preview/<source>/<id>?token=…: an online library hit's preview (D134), streamed
+// through the server from the URL its search gave (only hits of a recent search), never saved.
+export const LIBRARY_PREVIEW_PATH = "/library/preview";
 export interface Waveform {
   readonly version: 1;
   /** Peaks per second. */
@@ -406,7 +415,7 @@ export const GenerateKind = Schema.Literals(["image", "video", "audio"]);
 export type GenerateKind = typeof GenerateKind.Type;
 
 /** A provider whose API key the user can store (Settings › Keys). */
-export const KeyProvider = Schema.Literals(["openai", "google", "elevenlabs"]);
+export const KeyProvider = Schema.Literals(["openai", "google", "elevenlabs", "freesound"]);
 export type KeyProvider = typeof KeyProvider.Type;
 
 /** One provider's key: whether one is stored, never the key itself. */
@@ -419,6 +428,8 @@ export const KeyInfo = Schema.Struct({
   storage: Schema.Literals(["keychain", "memory"]),
   // What it's used for ("GPT Image").
   usedBy: Schema.Array(Schema.String),
+  // A line about the provider's terms, when they matter (Freesound: non-commercial API, D134).
+  note: Schema.optional(Schema.String),
 });
 export type KeyInfo = typeof KeyInfo.Type;
 
@@ -790,6 +801,85 @@ const MusicAddRpc = Rpc.make(RPC_METHODS.musicAdd, {
   error: ProjectError,
 });
 
+// ---- sound library (D134) ----
+
+export const LibraryHitSchema = Schema.Struct({
+  source: Schema.Literals(["openverse", "freesound"]),
+  id: Schema.String,
+  title: Schema.String,
+  creator: Schema.String,
+  creatorUrl: Schema.optional(Schema.String),
+  landingUrl: Schema.String,
+  provider: Schema.optional(Schema.String),
+  license: Schema.Literals(["cc0", "by"]),
+  licenseVersion: Schema.String,
+  licenseUrl: Schema.String,
+  attribution: Schema.String,
+  seconds: Schema.optional(Schema.Number),
+  tags: Schema.Array(Schema.String),
+  filetype: Schema.optional(Schema.String),
+});
+
+/** Why a search has no fresh results: the source's request limit (Openverse without an account: 20 a minute, 200 a day). */
+export const LibraryLimit = Schema.Struct({
+  scope: Schema.Literals(["minute", "day"]),
+  // When searching works again (ISO 8601), as far as Uncut knows.
+  until: Schema.String,
+});
+export type LibraryLimit = typeof LibraryLimit.Type;
+
+export const LibrarySearchResult = Schema.Struct({
+  hits: Schema.Array(LibraryHitSchema),
+  total: Schema.Number,
+  page: Schema.Number,
+  pages: Schema.Number,
+  source: Schema.Literals(["openverse", "freesound"]),
+  // Answered from Uncut's cache of recent searches (no request went out).
+  cached: Schema.Boolean,
+  limit: Schema.optional(LibraryLimit),
+  // Searches left before the source's limit, when it says (Openverse's headers).
+  left: Schema.optional(Schema.Struct({ minute: Schema.optional(Schema.Number), day: Schema.optional(Schema.Number) })),
+});
+export type LibrarySearchResult = typeof LibrarySearchResult.Type;
+
+export const LibraryState = Schema.Struct({
+  // The sources that can search now: Openverse always, Freesound with the user's key.
+  sources: Schema.Array(Schema.Literals(["openverse", "freesound"])),
+  limit: Schema.optional(LibraryLimit),
+});
+export type LibraryState = typeof LibraryState.Type;
+
+export class LibraryError extends Schema.TaggedError<LibraryError>()("LibraryError", {
+  reason: Schema.Literals(["bad-request", "no-key", "network", "refused", "limit", "no-project", "io"]),
+  message: Schema.String,
+}) {}
+
+// Searches the online library (Openverse, or Freesound with the user's key): CC0 and CC BY only.
+const LibrarySearchRpc = Rpc.make(RPC_METHODS.librarySearch, {
+  payload: Schema.Struct({
+    kind: Schema.Literals(["music", "sfx"]),
+    query: Schema.String,
+    source: Schema.optional(Schema.Literals(["openverse", "freesound"])),
+    license: Schema.optional(Schema.Literals(["cc0", "by"])),
+    length: Schema.optional(Schema.Literals(["short", "medium", "long"])),
+    songs: Schema.optional(Schema.Boolean),
+    page: Schema.optional(Schema.Number),
+  }),
+  success: LibrarySearchResult,
+  error: LibraryError,
+});
+
+// Downloads a hit of a recent search into the open project's media/ folder (or copies a bundled
+// sound effect, id "sfx:<id>"); returns its relative path, length and the media's source (its
+// credits). The renderer adds the media and the timeline item in one edit.
+const LibraryAddRpc = Rpc.make(RPC_METHODS.libraryAdd, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ path: Schema.String, seconds: Schema.Number, name: Schema.String, source: Schema.Record(Schema.String, Schema.Unknown) }),
+  error: LibraryError,
+});
+
+const LibraryStateRpc = Rpc.make(RPC_METHODS.libraryState, { payload: Empty, success: LibraryState });
+
 // Recent import jobs, now and on every change.
 const MediaJobsRpc = Rpc.make(RPC_METHODS.mediaJobs, { payload: Empty, success: Schema.Array(ImportJob), stream: true });
 
@@ -1006,6 +1096,9 @@ export const WsRpcGroup = RpcGroup.make(
   MediaJobsRpc,
   MediaThumbnailsRpc,
   MusicAddRpc,
+  LibrarySearchRpc,
+  LibraryAddRpc,
+  LibraryStateRpc,
   SetupCheckRpc,
   SetupStateRpc,
   SetupCompleteRpc,

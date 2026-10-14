@@ -111,7 +111,7 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
       ["generate.veo", false, "Needs your Google key"],
       ["generate.sound", false, "Needs your ElevenLabs key"],
     ]);
-    assert.deepEqual((await client.ok("keys.list")).map((k: any) => [k.provider, k.set, k.storage]), [["openai", false, "memory"], ["google", false, "memory"], ["elevenlabs", false, "memory"]]);
+    assert.deepEqual((await client.ok("keys.list")).map((k: any) => [k.provider, k.set, k.storage]), [["openai", false, "memory"], ["google", false, "memory"], ["elevenlabs", false, "memory"], ["freesound", false, "memory"]]);
     assert.equal((await client.fail("generate.start", { generator: "generate.svg", prompt: "x" })).reason, "no-project");
 
     const agent = client.subscribe("agent.subscribe");

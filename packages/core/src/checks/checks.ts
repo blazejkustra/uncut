@@ -13,7 +13,7 @@ import { DUCK } from "../audio/effects.ts";
 import { duckEntry } from "../audio/ducking.ts";
 import { libraryTrackOf } from "../audio/music.ts";
 import { textLook } from "../text/looks.ts";
-import { DIP_TO_BLACK } from "../visual/transitions.ts";
+import { overlaps } from "../visual/transitions.ts";
 import { safeMargin, textPlacement, wordCount } from "../visual/render.ts";
 import { layout, visualsAt } from "../timeline/timeline.ts";
 import type { Id, Item, Media, Op, Project, Track } from "../timeline/types.ts";
@@ -585,7 +585,7 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
         track.role !== "main"
           ? []
           : track.items
-              .filter((i) => i.transitionIn && i.transitionIn.module !== DIP_TO_BLACK && i.transitionIn.duration > ctx.fps)
+              .filter((i) => i.transitionIn && overlaps(i.transitionIn.module) && i.transitionIn.duration > ctx.fps)
               .map((i) => ({
                 key: `long-transition:${i.id}`,
                 message: `The ${secs(i.transitionIn!.duration, ctx.fps)} transition into ${i.name ?? i.id} is long; hard cuts or very short crossfades keep the pace.`,

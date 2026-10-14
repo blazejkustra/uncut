@@ -112,6 +112,8 @@ test("no Checks tab or export checks line (K1); the music library adds a track i
 
     // The music library: five tracks; mood, tempo and search narrow them; clearing brings them back.
     await page.click("[data-testid=rail-audio]");
+    // The bundled tracks are the library's Included view (D134: Online comes first).
+    await page.click("[data-testid=library-view-included]");
     await waitFor(page, "[data-testid=music-library]");
     assert.deepEqual(await rows(page, "[data-testid=music-row]"), MUSIC_TRACKS.map((t) => t.id));
     await page.click('[data-testid=music-mood][data-mood="calm"]');

@@ -32,6 +32,7 @@
     "./ducking": "./src/audio/ducking.ts",
     "./checks": "./src/checks/checks.ts",
     "./music": "./src/audio/music.ts",
+    "./library": "./src/audio/library.ts",
     "./contributions": "./src/plugins/contributions.ts"
   },
   "dependencies": {
