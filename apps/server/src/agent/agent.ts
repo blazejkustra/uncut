@@ -22,7 +22,7 @@ import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type BrandSkill, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, SOUND_HARD, soundSheet, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
-import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
+import { aliasOf, clipNote, filterFolderSounds, filterSfx, hitKey, libraryMediaOf, limitSentence, onlyWhenAsked } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
 import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
@@ -1758,8 +1758,18 @@ export const layer = Layer.effect(
         const fps = view()?.session.project.canvas.fps ?? 30;
         if (args.source === "included") {
           if (kind !== "sfx") return textResult('The bundled music is music_list; source "included" is for sound effects.', true);
-          const sfx = filterSfx({ query, category: typeof args.category === "string" ? args.category : undefined });
-          return textResult({ sounds: sfx.map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0", ...(s.category === "meme" || s.category === "crowd" ? { onlyWhenAsked: true } : {}) })), note: "Bundled CC0 sounds (no credit needed). library_add copies one into the project. Sound effects go only on real visual events, at most 4 in any 10 s, 6 to 12 dB under the music; onlyWhenAsked ones (memes, crowds) only when the user asked for that joke (D207)." });
+          const category = typeof args.category === "string" ? args.category : undefined;
+          const sfx = filterSfx({ query, category });
+          // D208: the user's own sound folders too (their files, referenced until added).
+          const folders = category ? [] : yield* sounds.folders.list().pipe(Effect.catch(() => Effect.succeed([])));
+          const yours = query ? filterFolderSounds(folders, query).slice(0, 30) : [];
+          const alias = query ? aliasOf(query) : undefined;
+          return textResult({
+            sounds: sfx.map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0", ...(onlyWhenAsked(s) ? { onlyWhenAsked: true } : {}) })),
+            ...(yours.length ? { yours: yours.map((f) => ({ id: `folder:${f.id}`, title: f.name, folder: f.folderName, file: f.rel })) } : {}),
+            ...(alias?.clip ? { clip: clipNote(alias) } : {}),
+            note: "Bundled CC0 sounds (no credit needed); `yours` are files from the user's own sound folders (theirs to use). library_add copies one into the project. Sound effects go only on real visual events, at most 4 in any 10 s, 6 to 12 dB under the music; onlyWhenAsked ones (memes, crowds) only when the user asked for that joke (D207).",
+          });
         }
         if (!query) return textResult("query must say what to search for, e.g. whoosh, bass boom, upbeat piano.", true);
         if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound") return textResult('source must be "openverse", "freesound" or "included".', true);
@@ -1779,6 +1789,8 @@ export const layer = Layer.effect(
           page: result.page,
           pages: result.pages,
           hits: result.hits.map((h) => ({ id: hitKey(h), title: h.title, creator: h.creator, seconds: h.seconds, ...(h.seconds ? { frames: Math.round(h.seconds * fps) } : {}), license: h.license === "by" ? `CC BY ${h.licenseVersion}` : "CC0", tags: h.tags.slice(0, 6) })),
+          ...(result.searched ? { searched: result.searched } : {}),
+          ...(result.note ? { clip: result.note } : {}),
           note: "CC BY sounds need credit in the video's description (project_read lists credits). library_add downloads one into the project.",
         });
       });
@@ -1787,7 +1799,7 @@ export const layer = Layer.effect(
     const libraryAdd = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         const id = typeof args.id === "string" ? args.id.trim() : "";
-        if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…) or a bundled sound (sfx:…).", true);
+        if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…), a bundled sound (sfx:…) or one of the user's (folder:…).", true);
         const fps = v.session.project.canvas.fps;
         const already = libraryMediaOf(v.session.project, id);
         if (already) return textResult({ media: already.id, frames: already.probe?.frames, revision: v.session.revision, note: `It's already in the project as ${already.id}: put it on an audio track with timeline_edit.` });
@@ -1816,7 +1828,7 @@ export const layer = Layer.effect(
           path: media.path,
           frames: media.probe.frames,
           seconds: a.seconds,
-          license: a.source.license === "by" ? `CC BY ${a.source.licenseVersion}: credit "${a.source.title}" by ${a.source.creator} (project_read's credits has the line)` : "CC0",
+          license: !("license" in a.source) ? "the user's own file" : a.source.license === "by" ? `CC BY ${a.source.licenseVersion}: credit "${a.source.title}" by ${a.source.creator} (project_read's credits has the line)` : "CC0",
           revision: snapshot.revision,
           next: `Put it on an audio track free at that moment with timeline_edit, e.g. {"op":"insert_item","track":"<audio track>","item":{"id":"sfx-1","type":"audio","media":"${media.id}","in":0,"start":<frame>,"duration":${media.probe.frames}}} (add a track first when none is free: {"op":"add_track","track":{"id":"sfx","kind":"audio","name":"Sound effects"}}).`,
         });

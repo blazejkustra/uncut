@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, type SoundFolderInfo, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -385,6 +385,8 @@ export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH
 export const musicUrl = (file: string) => serverUrl(MUSIC_FILE_PATH, file);
 /** A sound of the bundled sound-effects pack (D134), for the Sound effects tab's preview. */
 export const sfxUrl = (file: string) => serverUrl(SFX_FILE_PATH, file);
+/** A file of the user's sound folders (D208), by its id (the server knows its path). */
+export const folderSoundUrl = (id: string) => serverUrl(LIBRARY_FOLDER_PATH, id);
 /** An online library hit's preview (D134), streamed through the server (only hits of a recent search). */
 export const libraryPreviewUrl = (source: string, id: string) => serverUrl(LIBRARY_PREVIEW_PATH, `${source}/${id}`);
 /** The peaks of a media item's sound, made and cached by the server (D54). */
@@ -996,6 +998,26 @@ export const actions = {
   async libraryState(): Promise<LibraryState | undefined> {
     const result = await call((c) => c["library.state"]({}));
     return result.ok ? result.value : undefined;
+  },
+  /** The user's sound folders (D208), indexed again with rescan; the error in words. */
+  async soundFolders(rescan = false): Promise<ReadonlyArray<SoundFolderInfo> | { readonly error: string }> {
+    const result = await call((c) => c["library.folders"]({ ...(rescan ? { rescan: true } : {}) }));
+    return result.ok ? result.value : { error: plainError(result.error) };
+  },
+  /** Add a folder of sounds (the native dialog; the server's disk on a remote); undefined when cancelled. */
+  async addSoundFolder(): Promise<ReadonlyArray<SoundFolderInfo> | { readonly error: string } | undefined> {
+    let path: string | null;
+    if (isRemote()) {
+      const picked = await pickRemote("parent");
+      path = typeof picked === "string" ? picked : null;
+    } else path = await bridge.chooseFolder("sounds");
+    if (!path) return undefined;
+    const result = await call((c) => c["library.folderAdd"]({ path }));
+    return result.ok ? result.value : { error: plainError(result.error) };
+  },
+  async removeSoundFolder(id: string): Promise<ReadonlyArray<SoundFolderInfo> | { readonly error: string }> {
+    const result = await call((c) => c["library.folderRemove"]({ id }));
+    return result.ok ? result.value : { error: plainError(result.error) };
   },
   /** An online search (D134): the result, or the error in words. */
   async searchLibrary(query: LibraryQuery): Promise<LibrarySearchResult | { readonly error: string }> {

@@ -10,6 +10,9 @@
 import sfxJson from "../../../../assets/sfx/library.json" with { type: "json" };
 import type { Media, Project } from "../timeline/types.ts";
 import { libraryTrackOf, MUSIC_TRACKS } from "./music.ts";
+import { expandQuery, matchesQuery, scoreSound, SOUND_ALIASES } from "./search.ts";
+
+export { aliasOf, clipNote, expandQuery, matchesQuery, normalizeText, rankSounds, scoreSound, SOUND_ALIASES, squash, synonymsOf, wordsOf, type ExpandedQuery, type Rankable, type SoundAlias } from "./search.ts";
 
 export type LibraryKind = "music" | "sfx";
 export type LibrarySource = "openverse" | "freesound";
@@ -84,31 +87,27 @@ export const MUSIC_GENRES: ReadonlyArray<{ readonly id: string; readonly name: s
 
 /**
  * Sound-effect categories: a chip, the words it searches for online (each checked on Openverse to
- * return CC0 / CC BY results: "vine boom" or "meme" don't, "bass boom" and "bruh" do) and the
- * bundled sounds that belong to it. Memes come as sounds of their own (MEME_SOUNDS).
+ * return CC0 / CC BY results, D134 and D208), and the bundled sounds that belong to it. Memes come
+ * as sounds of their own (MEME_SOUNDS).
  */
 export const SFX_CATEGORIES: ReadonlyArray<{ readonly id: string; readonly name: string; readonly query: string }> = [
   { id: "whoosh", name: "Whoosh", query: "whoosh" },
   { id: "transition", name: "Transitions", query: "swoosh transition" },
+  { id: "swipe", name: "Swipes", query: "swipe" },
   { id: "ui", name: "UI clicks", query: "ui click" },
+  { id: "pop", name: "Pops", query: "pop" },
   { id: "impact", name: "Impacts", query: "impact" },
   { id: "riser", name: "Risers", query: "riser" },
   { id: "notification", name: "Notifications", query: "notification" },
+  { id: "success", name: "Success", query: "success" },
+  { id: "glitch", name: "Glitch", query: "glitch" },
+  { id: "typing", name: "Typing", query: "keyboard typing" },
   { id: "crowd", name: "Laughs and applause", query: "applause" },
   { id: "meme", name: "Memes", query: "bass boom" },
 ];
 
-/** Meme sounds by what people call them, mapped to searches that find CC0 / CC BY sound-alikes. */
-export const MEME_SOUNDS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly query: string }> = [
-  { id: "boom", name: "Boom", query: "bass boom" },
-  { id: "bruh", name: "Bruh", query: "bruh" },
-  { id: "airhorn", name: "Airhorn", query: "airhorn" },
-  { id: "scratch", name: "Record scratch", query: "record scratch" },
-  { id: "trombone", name: "Sad trombone", query: "sad trombone" },
-  { id: "crickets", name: "Crickets", query: "crickets" },
-  { id: "ding", name: "Ding", query: "ding" },
-  { id: "laugh", name: "Laugh", query: "laugh" },
-];
+/** Meme sounds by what people call them (SOUND_ALIASES with a chip), mapped to searches that find CC0 / CC BY sound-alikes. */
+export const MEME_SOUNDS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly query: string }> = SOUND_ALIASES.filter((a) => a.chip).map((a) => ({ id: a.id, name: a.name, query: a.online }));
 
 /** A bundled sound effect (assets/sfx/library.json). */
 export interface SfxSound {
@@ -116,30 +115,46 @@ export interface SfxSound {
   readonly file: string;
   readonly title: string;
   readonly category: string;
+  readonly tags: ReadonlyArray<string>;
   readonly seconds: number;
   readonly bytes: number;
   readonly trimmed?: string;
+  /** Integrated loudness and sample peak after levelling (make-sfx). */
+  readonly lufs: number;
+  readonly peakDb: number;
+  /** 48 peaks, 0 to 100, for the list's waveform. */
+  readonly peaks: ReadonlyArray<number>;
   readonly author: string;
+  /** Where it came from: a Freesound sound page, or a Kenney pack page (with the file in the pack). */
+  readonly provider: "freesound" | "kenney";
   readonly source: string;
+  readonly sourceFile?: string;
   readonly license: string;
   readonly licenseChecked: string;
+  /** How the licence was checked. */
+  readonly licenseProof: string;
 }
 
 export const SFX_SOUNDS: ReadonlyArray<SfxSound> = (sfxJson as { sounds: ReadonlyArray<SfxSound> }).sounds;
 export const sfxSound = (id: string) => SFX_SOUNDS.find((s) => s.id === id);
+/** Meme and crowd sounds: only when the user asks for that joke (D207). */
+export const onlyWhenAsked = (s: Pick<SfxSound, "category">) => s.category === "meme" || s.category === "crowd";
 
-/** Bundled sounds matching words and a category; all when neither is given. */
+/** Bundled sounds matching words (spellings, synonyms and meme names too, D208) and a category, best first; all when neither is given. */
 export function filterSfx({ query, category }: { readonly query?: string | undefined; readonly category?: string | undefined } = {}): Array<SfxSound> {
-  const words = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-  return SFX_SOUNDS.filter((s) => {
+  const q = expandQuery(query ?? "");
+  const found = SFX_SOUNDS.filter((s) => {
     if (category && s.category !== category) return false;
-    const hay = `${s.title} ${s.author} ${s.category} ${SFX_CATEGORIES.find((c) => c.id === s.category)?.name ?? ""}`.toLowerCase();
-    return words.every((w) => hay.includes(w));
+    const categoryName = SFX_CATEGORIES.find((c) => c.id === s.category)?.name ?? "";
+    return matchesQuery({ id: s.id, title: s.title, tags: s.tags, category: s.category, extra: `${s.author} ${categoryName}` }, q);
   });
+  if (!q.groups.length) return found;
+  const scored = found.map((s, i) => ({ s, i, score: (q.alias?.bundled.includes(s.id) ? 10 - q.alias.bundled.indexOf(s.id) : 0) + scoreSound({ ...s, license: "cc0" }, q) }));
+  return scored.sort((a, b) => b.score - a.score || a.i - b.i).map((e) => e.s);
 }
 
 /** The modules a library media's source carries. */
-export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", bundled: "library.bundled" } as const;
+export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", bundled: "library.bundled", folder: "library.folder" } as const;
 
 /** What a media item added from the library records about itself (its `source`). */
 export interface LibraryCredit {
@@ -196,7 +211,7 @@ export function creditOf(hit: LibraryHit, extra: { readonly fileUrl?: string; re
 /** The source a bundled sound effect's media gets. */
 export function sfxCredit(s: SfxSound): LibraryCredit {
   const hit = { title: s.title, creator: s.author, license: "cc0" as const, licenseVersion: "1.0", licenseUrl: licenseUrl("cc0", "1.0") };
-  return { module: LIBRARY_MODULES.bundled, libraryId: `sfx:${s.id}`, ...hit, landingUrl: s.source, provider: "freesound", attribution: attributionLine(hit) };
+  return { module: LIBRARY_MODULES.bundled, libraryId: `sfx:${s.id}`, ...hit, landingUrl: s.source, provider: s.provider, attribution: attributionLine(hit) };
 }
 
 /** The media in a project that came from the library entry `libraryId` (re-adding it reuses it). */
@@ -275,3 +290,58 @@ export function limitSentence(source: LibrarySource, limit: { readonly scope: "m
 
 /** A sound's length for a list: "0.7 s" under 10 s, else "1:56". */
 export const lengthLabel = (seconds: number) => (seconds < 10 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`);
+
+// ---- the user's sound folders (D208) ----
+
+/** A sound file in one of the user's folders: indexed by the server, referenced (not copied) until added. */
+export interface FolderSound {
+  /** Stable for the file's path: 16 hex characters. */
+  readonly id: string;
+  /** The folder's id. */
+  readonly folder: string;
+  /** The file's name without its extension, as the list shows it. */
+  readonly name: string;
+  /** Its path inside the folder (subfolders are tags). */
+  readonly rel: string;
+  readonly ext: string;
+  readonly bytes: number;
+}
+
+/** A folder of the user's sounds. */
+export interface SoundFolder {
+  readonly id: string;
+  readonly path: string;
+  readonly name: string;
+  readonly sounds: ReadonlyArray<FolderSound>;
+  /** The folder can't be read now (moved, unplugged). */
+  readonly missing?: boolean;
+  /** More audio files than an index holds: the rest aren't listed. */
+  readonly truncated?: boolean;
+}
+
+/** Audio files a folder's index lists. */
+export const FOLDER_AUDIO_EXTENSIONS: ReadonlyArray<string> = ["wav", "mp3", "m4a", "aac", "aif", "aiff", "flac", "ogg", "oga", "opus", "caf"];
+export const FOLDER_ID = /^[a-f0-9]{16}$/;
+export const parseFolderKey = (key: string) => (/^folder:([a-f0-9]{16})$/.exec(key)?.[1]);
+
+/** A folder sound's words: its name, the subfolders it sits in, its type. */
+const folderWords = (s: FolderSound) => `${s.rel.split("/").slice(0, -1).join(" ")} ${s.ext}`;
+
+/** The folders' sounds matching words (spellings, synonyms and meme names too), best first; all when no words. */
+export function filterFolderSounds(folders: ReadonlyArray<SoundFolder>, query = "", folder?: string): Array<FolderSound & { readonly folderName: string }> {
+  const q = expandQuery(query);
+  const all = folders.filter((f) => !folder || f.id === folder).flatMap((f) => f.sounds.map((s) => ({ ...s, folderName: f.name })));
+  if (!q.groups.length) return all;
+  return all
+    .filter((s) => matchesQuery({ title: s.name, extra: folderWords(s) }, q) || (q.alias && q.alias.variants.concat(q.alias.name).some((v) => normalizeTextRun(v).length > 2 && normalizeTextRun(s.name).includes(normalizeTextRun(v)))))
+    .map((s, i) => ({ s, i, score: scoreSound({ title: s.name, tags: folderWords(s).split(" ") }, q) }))
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .map((e) => e.s);
+}
+function normalizeTextRun(t: string) {
+  return t
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .replace(/([a-z])\1+/g, "$1");
+}

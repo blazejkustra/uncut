@@ -294,7 +294,7 @@ export interface PlacedSfx {
   readonly kind: SfxKind;
   /** item gain + track gain, dB. */
   readonly gain: number;
-  /** From Uncut's pack (peak-normalised to −3 dBFS), so its level against the music is known. */
+  /** From Uncut's pack (levelled to −20 LUFS, peaks under −1 dBFS, D208), so its level against the music is known. */
   readonly bundled: boolean;
 }
 
@@ -304,10 +304,10 @@ function sfxKind(m: Media): SfxKind {
   const c = b?.category;
   const name = `${fileName(m)} ${m.name}`;
   if (c === "meme" || c === "crowd" || MEME_NAME.test(name)) return c === "meme" && b?.id === "bass-boom" ? "hit" : "meme";
-  if (c === "whoosh" || c === "transition" || /whoosh|swoosh|swish|whip|swipe|transition|glitch/i.test(name)) return "whoosh";
+  if (c === "whoosh" || c === "transition" || c === "swipe" || c === "glitch" || /whoosh|swoosh|swish|whip|swipe|transition|glitch/i.test(name)) return "whoosh";
   if (c === "riser" || /riser|rise|build/i.test(name)) return "riser";
   if (c === "impact" || HIT_NAME.test(name)) return "hit";
-  if (c === "ui" || c === "notification" || /click|tap|pop|ding|chime|blip|beep|notification|typing|keyboard/i.test(name)) return "ui";
+  if (c === "ui" || c === "notification" || c === "pop" || c === "success" || c === "typing" || /click|tap|pop|ding|chime|blip|beep|notification|typing|keyboard/i.test(name)) return "ui";
   return "other";
 }
 

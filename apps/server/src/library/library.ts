@@ -10,12 +10,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { link, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import { LibraryError, type LibraryLimit, type LibrarySearchResult, type LibraryState } from "@uncut/contracts";
-import { creditOf, hitKey, limitSentence, parseHitKey, sfxCredit, sfxSound, type LibraryCredit, type LibraryHit, type LibraryQuery, type LibrarySource } from "@uncut/core/library";
+import { type SoundFolder, creditOf, expandQuery, hitKey, LIBRARY_MODULES, limitSentence, parseFolderKey, parseHitKey, rankSounds, sfxCredit, sfxSound, type LibraryCredit, type LibraryHit, type LibraryQuery, type LibrarySource } from "@uncut/core/library";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,7 +29,8 @@ import { MediaCore } from "../media/mediaCore.ts";
 import { runProbe } from "../media/probe.ts";
 import { which } from "../app/setup.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
-import { copyBundledFile, serialisedFor } from "../media/music.ts";
+import { copyBundledFile, copyIntoProject, serialisedFor } from "../media/music.ts";
+import { FolderError, soundFolders } from "./folders.ts";
 import { freesoundDetailUrl, freesoundHit, freesoundUrl, openverseDetailUrl, openverseHit, openverseUrl, PAGE_SIZE } from "./sources.ts";
 
 /** Openverse's anonymous limits (its x-ratelimit headers say the same). */
@@ -105,13 +107,24 @@ export interface LibraryOptions {
   readonly now?: () => number;
   /** How long a whole download or preview may take (default TOTAL_MS; tests shorten it). */
   readonly totalMs?: number;
+  /** Where the user's sound folders are listed (D208): <dataDir>/sound-folders.json. */
+  readonly dataDir?: string;
+}
+
+/** What a sound from the user's own folder records (D208): where it came from, no licence (it's the user's). */
+export interface FolderSource {
+  readonly module: typeof LIBRARY_MODULES.folder;
+  readonly libraryId: string;
+  readonly title: string;
+  readonly origin: string;
+  readonly folder: string;
 }
 
 export interface Added {
   readonly path: string;
   readonly seconds: number;
   readonly name: string;
-  readonly source: LibraryCredit;
+  readonly source: LibraryCredit | FolderSource;
 }
 
 const fail = (reason: LibraryError["reason"], message: string) => new LibraryError({ reason, message });
@@ -145,6 +158,7 @@ export function soundLibrary(options: LibraryOptions) {
   const cache = new Map<string, { readonly at: number; readonly result: LibrarySearchResult }>();
   const known = new Map<string, { readonly hit: LibraryHit; readonly fileUrl: string }>();
   let lastLeft: Partial<Record<LibrarySource, { minute?: number; day?: number }>> = {};
+  const folders = soundFolders({ dataDir: options.dataDir ?? join(tmpdir(), `uncut-sound-folders-${process.pid}`), now });
 
   const remember = (entries: ReadonlyArray<{ hit: LibraryHit; fileUrl: string }>) => {
     for (const e of entries) {
@@ -204,16 +218,12 @@ export function soundLibrary(options: LibraryOptions) {
     return (await options.freesoundKey().catch(() => undefined)) ? ["openverse", "freesound"] : ["openverse"];
   }
 
-  async function search(raw: LibraryQuery): Promise<LibrarySearchResult> {
-    const source: LibrarySource = raw.source ?? "openverse";
-    const query = raw.query.replace(/\s+/g, " ").trim();
-    if (!query) throw fail("bad-request", "Type what to search for.");
-    if (query.length > MAX_QUERY) throw fail("bad-request", `Searches are at most ${MAX_QUERY} characters.`);
-    const q: LibraryQuery = { ...raw, query, source, page: Math.min(50, Math.max(1, Math.floor(raw.page ?? 1))) };
-    const cacheKey = JSON.stringify([source, q.kind, query.toLowerCase(), q.license ?? "", q.length ?? "", q.kind === "music" && q.songs ? 1 : 0, q.page]);
+  /** One page from a source for words as sent (cached), its hits parsed and remembered. */
+  async function fetchPage(source: LibrarySource, q: LibraryQuery, tag: string | undefined): Promise<LibrarySearchResult> {
+    const cacheKey = JSON.stringify([source, q.kind, q.query.toLowerCase(), tag ?? "", q.license ?? "", q.length ?? "", q.kind === "music" && q.songs ? 1 : 0, q.page]);
     const hit = cache.get(cacheKey);
     if (hit && now() - hit.at < CACHE_MS) return { ...hit.result, cached: true, ...(limiters[source].limit() ? { limit: limiters[source].limit()! } : {}) };
-    const url = source === "openverse" ? openverseUrl(q) : freesoundUrl(q);
+    const url = source === "openverse" ? openverseUrl(q) : freesoundUrl(q, tag);
     const reply = await getJson(source, url);
     if ("limit" in reply) return { hits: [], total: 0, page: q.page!, pages: 0, source, cached: false, limit: reply.limit };
     const body = (reply.json ?? {}) as { results?: unknown; result_count?: unknown; page_count?: unknown; count?: unknown };
@@ -227,6 +237,37 @@ export function soundLibrary(options: LibraryOptions) {
     cache.set(cacheKey, { at: now(), result });
     while (cache.size > MAX_CACHED_SEARCHES) cache.delete(cache.keys().next().value!);
     return result;
+  }
+
+  /**
+   * A search in people's words (D208): a meme name searches for what finds it (and says when the
+   * results are sound-alikes of a clip nobody may give away); when nothing is found, one variant is
+   * tried (letters held long written twice: "whooooosh" as "whoosh"); hits ranked by how well they
+   * match, their licence and their length.
+   */
+  async function search(raw: LibraryQuery): Promise<LibrarySearchResult> {
+    const source: LibrarySource = raw.source ?? "openverse";
+    const query = raw.query.replace(/\s+/g, " ").trim();
+    if (!query) throw fail("bad-request", "Type what to search for.");
+    if (query.length > MAX_QUERY) throw fail("bad-request", `Searches are at most ${MAX_QUERY} characters.`);
+    const page = Math.min(50, Math.max(1, Math.floor(raw.page ?? 1)));
+    const expanded = expandQuery(query);
+    const tag = source === "freesound" ? expanded.alias?.tag : undefined;
+    let sent = expanded.online;
+    let result = await fetchPage(source, { ...raw, query: sent, source, page }, tag);
+    const variant = query.replace(/([a-z])\1{2,}/gi, "$1$1");
+    if (!result.limit && result.hits.length === 0 && page === 1 && !expanded.alias && variant.toLowerCase() !== query.toLowerCase()) {
+      sent = variant;
+      result = await fetchPage(source, { ...raw, query: sent, source, page }, undefined);
+    }
+    const hits = rankSounds(result.hits, expanded.alias ? `${query} ${expanded.alias.online}` : query, raw.kind);
+    return {
+      ...result,
+      hits,
+      ...(sent.toLowerCase() !== query.toLowerCase() ? { searched: sent } : {}),
+      ...(expanded.alias ? { alias: expanded.alias.name } : {}),
+      ...(expanded.note ? { note: expanded.note } : {}),
+    };
   }
 
   /** A hit by its key: from a recent search, else asked for by id (one request). */
@@ -267,6 +308,18 @@ export function soundLibrary(options: LibraryOptions) {
       const copied = await copyBundledFile(options.sfxDir, projectDir, s.file);
       if ("problem" in copied) throw fail("io", copied.problem);
       return { path: copied.path, seconds: s.seconds, name: s.title, source: sfxCredit(s) };
+    }
+    const folderSound = parseFolderKey(id);
+    if (folderSound) {
+      // D208: a file of the user's folder, copied into the project's media/ (its own name and type).
+      const found = await folders.resolve(folderSound);
+      if (!found) throw fail("bad-request", "That sound isn't in your folders any more. Rescan them in Folders.");
+      const fileName = `${fileStem({ title: found.sound.name, creator: "" })}.${found.sound.ext}`;
+      const copied = await copyIntoProject(found.path, projectDir, fileName);
+      if ("problem" in copied) throw fail("io", copied.problem);
+      const seconds = await options.probeSeconds(join(projectDir, copied.path)).catch(() => undefined);
+      if (!seconds || !(seconds > 0)) throw fail("refused", `${found.sound.name} isn't a sound Uncut can read.`);
+      return { path: copied.path, seconds, name: found.sound.name, source: { module: LIBRARY_MODULES.folder, libraryId: id, title: found.sound.name, origin: found.path, folder: found.folder.name } };
     }
     const { hit, fileUrl } = await lookup(id, signal);
     return serialisedFor(projectDir, () => download(hit, fileUrl, projectDir, signal, outer));
@@ -350,7 +403,18 @@ export function soundLibrary(options: LibraryOptions) {
     return { sources: await sources(), ...(limit ? { limit } : {}) };
   }
 
-  return { search, add, preview, state, lookup, limiters };
+  const folderCall = <A>(run: () => Promise<A>) =>
+    run().catch((error: unknown) => {
+      throw error instanceof FolderError ? fail("bad-request", error.message) : fail("io", (error as Error)?.message ?? String(error));
+    });
+  const soundFolderApi = {
+    list: (rescan?: boolean) => folderCall(() => folders.list(rescan)),
+    add: (path: string) => folderCall(() => folders.add(path)),
+    remove: (id: string) => folderCall(() => folders.remove(id)),
+    resolve: folders.resolve,
+  };
+
+  return { search, add, preview, state, lookup, limiters, folders: soundFolderApi };
 }
 
 /** GET following redirects by hand (at most 5), each hop https (or a loopback stub in tests), through guardedFetch. */
@@ -384,6 +448,13 @@ export interface LibraryShape {
   readonly search: (query: LibraryQuery) => Effect.Effect<LibrarySearchResult, LibraryError>;
   readonly add: (id: string, projectDir: string, signal?: AbortSignal) => Effect.Effect<Added, LibraryError>;
   readonly preview: SoundLibrary["preview"];
+  /** The user's sound folders (D208). */
+  readonly folders: {
+    readonly list: (rescan?: boolean) => Effect.Effect<ReadonlyArray<SoundFolder>, LibraryError>;
+    readonly add: (path: string) => Effect.Effect<ReadonlyArray<SoundFolder>, LibraryError>;
+    readonly remove: (id: string) => Effect.Effect<ReadonlyArray<SoundFolder>, LibraryError>;
+    readonly resolve: SoundLibrary["folders"]["resolve"];
+  };
 }
 
 export class Library extends Context.Service<Library, LibraryShape>()("uncut/Library") {}
@@ -399,6 +470,7 @@ export const layer = Layer.effect(
     allowBaseOverrides(isTestRun(process.env, config.keysFd));
     const lib = soundLibrary({
       sfxDir: config.sfxDir,
+      dataDir: config.dataDir,
       freesoundKey: () => Effect.runPromise(keys.get("freesound").pipe(Effect.catch(() => Effect.succeed(undefined)))),
       probeSeconds: async (path) => {
         const [outcome] = await Effect.runPromise(mediaCore.probeMany([path]).pipe(Effect.catch(() => Effect.succeed([]))));
@@ -423,6 +495,12 @@ export const layer = Layer.effect(
       search: (q) => Effect.tryPromise({ try: () => lib.search(q), catch: asLibraryError }),
       add: (id, dir, signal) => Effect.tryPromise({ try: () => lib.add(id, dir, signal), catch: asLibraryError }),
       preview: lib.preview,
+      folders: {
+        list: (rescan) => Effect.tryPromise({ try: () => lib.folders.list(rescan), catch: asLibraryError }),
+        add: (path) => Effect.tryPromise({ try: () => lib.folders.add(path), catch: asLibraryError }),
+        remove: (id) => Effect.tryPromise({ try: () => lib.folders.remove(id), catch: asLibraryError }),
+        resolve: lib.folders.resolve,
+      },
     });
   }),
 );

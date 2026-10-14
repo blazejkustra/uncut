@@ -154,7 +154,8 @@ test("the sound library: online music and sound effects, previews, adds with cre
   assert.equal(q.get("license"), "cc0,by");
   assert.equal(q.get("license_type"), "commercial,modification");
   assert.equal(q.get("excluded_source"), "wikimedia_audio");
-  assert.deepEqual(await rows("[data-testid=library-row]"), [`openverse:${SONG}`, `openverse:${LOOP}`]);
+  // Ranked (D208): both match "lofi"; the CC0 loop comes before the CC BY song.
+  assert.deepEqual(await rows("[data-testid=library-row]"), [`openverse:${LOOP}`, `openverse:${SONG}`]);
   const songRow = `[data-testid=library-row][data-id="openverse:${SONG}"]`;
   assert.equal(await page.$eval(`${songRow} .music-meta`, (el) => el.textContent), "Some Artist, 6.0 s, jamendo");
   assert.equal(await page.$eval(`${songRow} [data-testid=library-license]`, (el) => el.textContent), "CC BY");
@@ -229,13 +230,14 @@ test("the sound library: online music and sound effects, previews, adds with cre
   await page.click("[data-testid=rail-sfx]");
   await waitFor("[data-testid=sfx-browser][data-view=online]");
   const chips = await page.$$eval("[data-testid=sfx-chip]", (els) => els.map((e) => e.textContent));
-  assert.deepEqual(chips, ["Whoosh", "Transitions", "UI clicks", "Impacts", "Risers", "Notifications", "Laughs and applause", "Memes"]);
+  assert.deepEqual(chips, ["Whoosh", "Transitions", "Swipes", "UI clicks", "Pops", "Impacts", "Risers", "Notifications", "Success", "Glitch", "Typing", "Laughs and applause", "Memes"]);
   await page.click("[data-testid=sfx-chip][data-chip=meme]");
   await waitFor("[data-testid=meme-chips]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
   assert.equal(searches.at(-1)!.get("q"), "bass boom", "Memes searches for a sound-alike that exists");
   await page.click("[data-testid=meme-chip][data-chip=bruh]");
-  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=sfx-search]")!.value === "bruh");
+  // D208: a meme chip searches by its name; the server sends what finds it.
+  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=sfx-search]")!.value === "Bruh");
   await waitUntil(() => searches.at(-1)!.get("q") === "bruh");
   await page.click("[data-testid=meme-chip][data-chip=boom]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
