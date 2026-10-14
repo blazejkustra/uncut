@@ -418,7 +418,7 @@ test("the agent: modules_list shows components with params and placement, truthf
   for (const c of COMPONENTS) assert.ok(SYSTEM_PROMPT.includes(c.id), c.id);
   assert.match(SYSTEM_PROMPT, /insert_device_frame/);
   assert.match(SYSTEM_PROMPT, /graphic_write/);
-  assert.match(SYSTEM_PROMPT, /component\.follow-card, component\.steps, component\.zoom-pan\) and effects are saved but don't draw yet/);
+  assert.match(SYSTEM_PROMPT, /component\.follow-card, component\.steps, component\.zoom-pan\) and effect\.stabilize are saved but don't draw yet/);
   // The edit log names components.
   assert.equal(describeOp({ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90 } }, p), "Added end card end-1 on track overlay");
   const withCard = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90, props: { title: "x" } } }]);

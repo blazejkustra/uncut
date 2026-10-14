@@ -5,6 +5,7 @@
 // black keeps the clips apart and puts a black layer over the main track across the cut.
 import { sourceAt } from "../audio/audio.ts";
 import { clipBox, EASES, moveBox, type ClipBox, type Ease } from "../visual/box.ts";
+import { fxBox, fxSkips } from "../visual/fx.ts";
 import { captionAt } from "../text/captions.ts";
 import { componentBox } from "../visual/components.ts";
 import { WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "../text/looks.ts";
@@ -190,7 +191,8 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
       opacity *= anim.opacity;
       const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
       const media = pictureMedia(project, item);
-      const own = media ? clipBox(item, project.canvas, media.probe, f - start) : componentBox(item, project.canvas, f - start);
+      // A zoom pulse (D136) is the clip's box zoom at this frame.
+      const own = media ? (fxSkips(media) ? clipBox(item, project.canvas, media.probe, f - start) : fxBox(item, clipBox(item, project.canvas, media.probe, f - start), f - start, project.canvas.fps)) : componentBox(item, project.canvas, f - start);
       const box = own && moveBox(own, fx.shift, fx.zoom, fx.shiftY);
       if (box) opacity *= box.opacity;
       // A graphic (D78) has no box: transform.opacity alone applies.

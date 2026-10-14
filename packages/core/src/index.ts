@@ -11,6 +11,8 @@ export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_SRC, graphicDocument, graphicInf
 export type { GraphicInfo } from "./visual/graphics.ts";
 export { baseBox, canvasBox, clipBox, EASES, fitRect, FITS, hasKeys, isPlainBox, keyAt, keysOf, KEY_PROPS, moveBox } from "./visual/box.ts";
 export type { ClipBox, Ease, Fit, KeyProp, Rect } from "./visual/box.ts";
+export { ADJUST, ADJUST_INFO, ADJUST_KEYS, adjustOf, adjustWord, clipFx, colourFn, colourLut, cubeText, DRAWN_FX, EFFECTS, effectInfo, effectParams, fxBox, fxOverlayHtml, fxOverlayInner, fxPictureSize, fxSkips, fxWords, GRAIN_HOLD, GRAIN_STATES, hasOverlay, isNeutral, LOOK, lookDefOf, lookInfo, LOOKS, LUT_SIZE, lutAt, needsPicturePass, NO_ADJUST, planAdjust, planEffect, planRemoveEffect, planSetLook, posterize, pulseZoom, shakeAt, shakeExpr, shakeWindow, shakeZoom, STABILIZE, visibleRect } from "./visual/fx.ts";
+export type { Adjust, AdjustInfo, AdjustKey, ClipFx, ColourLut, ColourSpec, Curve, EffectGroup, EffectInfo, EffectParam, LookDef, LookInfo } from "./visual/fx.ts";
 export { BLINDS, blurs, CROSSFADE, cutsOf, defaultFrames, DIP_TO_BLACK, dipColor, DRAWN_TRANSITIONS, fadesIn, handleAfter, handleBefore, incomingFx, IRIS, irisRadius, maskClipPath, maskDistance, maskGeq, maskOf, maskRings, movesIncoming, movesOutgoing, reveals, outgoingFx, overlaps, PUSH_LEFT, transitionInfo, transitionLimits, transitionName, TRANSITION_LIMITS, TRANSITIONS, WIPE, ZOOM, ZOOM_SCALE } from "./visual/transitions.ts";
 export type { Cut, MaskShape, TransitionFx, TransitionInfo, TransitionKind, TransitionLimits } from "./visual/transitions.ts";
 export { anySolo, audibleAt, audibleTracks, mixNote, trackHasSound, audioSpan, dbToGain, fadeAt, gainToDb, heldPast, itemGain, keyDbAt, masterGain, MAX_DB, outputGains, panGains, SILENCE_DB, soundMedia, sourceAt, trackAudible, trackPan } from "./audio/audio.ts";
@@ -43,4 +45,4 @@ export type { Credits, LibraryCredit, LibraryHit, LibraryKind, LibraryLength, Li
 export { planReshoot } from "./timeline/reshoot.ts";
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
 export { BUILTIN_CONTRIBUTION_IDS, componentGraphicHtml, componentGraphicName, componentProblem, mergeContributions, NO_CONTRIBUTIONS, pluginCheckRules, pluginRuleEntries, readContributions } from "./plugins/contributions.ts";
-export type { Contributions, FromPlugin, PluginComponent, PluginLook, PluginRule, RuleSpec } from "./plugins/contributions.ts";
+export type { Contributions, FromPlugin, PluginComponent, PluginFilter, PluginLook, PluginRule, RuleSpec } from "./plugins/contributions.ts";

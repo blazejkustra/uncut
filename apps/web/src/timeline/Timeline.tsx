@@ -33,7 +33,7 @@ import { Playhead } from "./Playhead.tsx";
 import { COMPONENT_DRAG_TYPE, draggedComponent, secondsFor, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
-import { CUT_DROP_PX, hasFiles, MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE, useDraggedTransition } from "./dnd.ts";
+import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE, useDraggedTransition } from "./dnd.ts";
 import { openMenu } from "./ContextMenu.tsx";
 import { emptyMenu, itemMenu, trackMenu, type MenuUi } from "./menus.ts";
 import { TrackHead } from "./TrackHead.tsx";
@@ -564,8 +564,16 @@ export function Timeline({ project }: { project: ProjectModel }) {
     for (const c of cuts) if (Math.abs(c.frame - f) * ppf <= CUT_DROP_PX && (!best || Math.abs(c.frame - f) < Math.abs(best.frame - f))) best = c;
     return best;
   };
+  /** The timeline item under a pointer (an Effects tile dropped there goes on it, D136). */
+  const itemAt = (x: number, y: number) => document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.testid === "timeline-item")?.dataset.item;
   const onDragOver = (e: React.DragEvent) => {
     const types = [...e.dataTransfer.types];
+    if (online && types.includes(EFFECT_DRAG_TYPE)) {
+      if (!itemAt(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      return;
+    }
     if (online && types.includes(TRANSITION_DRAG_TYPE)) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
@@ -588,6 +596,14 @@ export function Timeline({ project }: { project: ProjectModel }) {
     setDropLane(undefined);
     setDropSpan(undefined);
     setDraggedText(undefined);
+    const effect = e.dataTransfer.getData(EFFECT_DRAG_TYPE);
+    if (effect) {
+      e.preventDefault();
+      setDraggedEffect(undefined);
+      const id = itemAt(e.clientX, e.clientY);
+      if (id) void actions.applyFx(effect, id);
+      return;
+    }
     const module = e.dataTransfer.getData(TRANSITION_DRAG_TYPE);
     if (module) {
       e.preventDefault();

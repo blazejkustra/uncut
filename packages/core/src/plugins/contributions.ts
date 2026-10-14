@@ -12,6 +12,7 @@ import { TEXT_STYLES, type TextLook } from "../text/looks.ts";
 import { COMPONENTS } from "../visual/components.ts";
 import { SOLID, textPlacement, wordCount } from "../visual/render.ts";
 import type { ModuleManifest } from "../timeline/types.ts";
+import type { LookDef } from "../visual/fx.ts";
 
 /** Which plugin a contribution came from (the grids' source label). */
 export interface FromPlugin {
@@ -49,13 +50,22 @@ export interface PluginRule extends FromPlugin {
   readonly rule: RuleSpec;
 }
 
+/** A colour look for the Effects tab's filters (D136, `contributes.filters`): numbers core's colour maths draws. */
+export interface PluginFilter extends FromPlugin {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly look: LookDef;
+}
+
 export interface Contributions {
   readonly looks: ReadonlyArray<PluginLook>;
   readonly components: ReadonlyArray<PluginComponent>;
   readonly rules: ReadonlyArray<PluginRule>;
+  readonly filters: ReadonlyArray<PluginFilter>;
 }
 
-export const NO_CONTRIBUTIONS: Contributions = { looks: [], components: [], rules: [] };
+export const NO_CONTRIBUTIONS: Contributions = { looks: [], components: [], rules: [], filters: [] };
 
 /** Every id a built-in look, component or check rule has (contributions can't take one). */
 export const BUILTIN_CONTRIBUTION_IDS: ReadonlySet<string> = new Set([...Object.keys(TEXT_STYLES), ...COMPONENTS.map((c) => c.id), ...CHECK_IDS]);
@@ -89,6 +99,7 @@ type RawContributes = {
   readonly looks?: ReadonlyArray<{ id: string; name: string; description?: string; look: Record<string, unknown> }>;
   readonly components?: ReadonlyArray<{ id: string; name: string; description?: string; params?: Record<string, unknown>; template: string; css?: string }>;
   readonly rules?: ReadonlyArray<{ id: string; title: string; description?: string; severity?: CheckSeverity; hint?: string; rule: RuleSpec }>;
+  readonly filters?: ReadonlyArray<{ id: string; name: string; description?: string; look: LookDef }>;
 };
 
 /**
@@ -159,7 +170,12 @@ export function readContributions(
     if (!accept(entry.id, "check")) continue;
     rules.push({ id: entry.id, title: entry.title, description: entry.description ?? "", severity: entry.severity ?? "warn", ...(entry.hint ? { hint: entry.hint } : {}), rule: entry.rule, ...from });
   }
-  return { contributions: { looks, components, rules }, warnings };
+  const filters: Array<PluginFilter> = [];
+  for (const entry of raw.filters ?? []) {
+    if (!accept(entry.id, "filter")) continue;
+    filters.push({ id: entry.id, name: entry.name, description: entry.description ?? "", look: entry.look, ...from });
+  }
+  return { contributions: { looks, components, rules, filters }, warnings };
 }
 
 /**
@@ -170,7 +186,7 @@ export function readContributions(
 export function mergeContributions(list: ReadonlyArray<Contributions>): Contributions {
   const seen = new Set<string>();
   const fresh = <T extends { readonly id: string }>(x: T) => !seen.has(x.id) && (seen.add(x.id), true);
-  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh) };
+  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh), filters: list.flatMap((c) => c.filters ?? []).filter(fresh) };
 }
 
 // ---- rules ----

@@ -16,6 +16,7 @@ import { getPlayback, playback } from "../preview/playback.ts";
 import { draftOf, findItem, nearestCut, planDelete, planRippleDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
 import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 import { musicInProject, musicTrack } from "@uncut/core/music";
+import { planEffect, planSetLook, type LookDef } from "@uncut/core/fx";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
@@ -981,6 +982,20 @@ export const actions = {
     const plan = planDetachAudio(project, itemId, takenIds(project));
     if (await timelineEdit(plan)) playback.select("itemId" in plan ? plan.itemId : undefined);
   },
+  /**
+   * Effects tab (D136): "look:<id>" puts a look on the clip ("look:" takes it off), "effect:<module>"
+   * adds an effect; on `itemId` (a drop) or else the selected clip.
+   */
+  applyFx: (what: string, itemId?: string) =>
+    itemEdit((project) => {
+      const target = itemId ?? getPlayback().selected ?? "";
+      const [kind, id = ""] = what.split(/:(.*)/s);
+      if (kind === "look") {
+        const custom = state.contributions?.filters?.find((f) => f.id === id);
+        return planSetLook(project, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {});
+      }
+      return planEffect(project, target, id);
+    }),
   /** Speed (G9, D125): presets and custom, keep pitch or not; the item's length follows. */
   setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => planSetSpeed(project, itemId, speed, keepPitch)),
   /** Rename a timeline item (T7): its own name, shown on the timeline and in the Inspector; "" goes back to the media's. */

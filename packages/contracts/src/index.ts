@@ -334,6 +334,8 @@ export const PluginContributions = Schema.Struct({
   looks: Schema.Array(Schema.Unknown),
   components: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, params: Schema.Unknown, defaults: Schema.Unknown })),
   rules: Schema.Array(Schema.Unknown),
+  // D136: colour looks for the Effects tab (core LookDef numbers).
+  filters: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, look: Schema.Unknown }))),
 });
 export type PluginContributions = typeof PluginContributions.Type;
 
