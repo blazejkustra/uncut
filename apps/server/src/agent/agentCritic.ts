@@ -31,7 +31,7 @@ export const criticMs = () => {
 /** In the critic's system prompt, so a test (and a log) can tell its process from the builder's. */
 export const CRITIC_MARKER = "[uncut-critic]";
 
-export const BLOCKER_KINDS = ["placeholder", "missing-asset", "font", "overflow", "illegible", "brand-colour", "invented", "blank", "off-centre", "unverified-fix", "other"] as const;
+export const BLOCKER_KINDS = ["placeholder", "missing-asset", "font", "overflow", "illegible", "brand-colour", "invented", "blank", "off-centre", "unverified-fix", "sound", "other"] as const;
 /** The score a blocker kind caps. */
 const BLOCKER_SCORE: Readonly<Record<string, keyof ReviewScores>> = {
   placeholder: "brand",
@@ -44,13 +44,14 @@ const BLOCKER_SCORE: Readonly<Record<string, keyof ReviewScores>> = {
   "off-centre": "readability",
   blank: "variety",
   "unverified-fix": "readability",
+  sound: "sound",
 };
 const SCORE_NAMES: Readonly<Record<keyof ReviewScores, string>> = {
   hook: "hook: the first 2 s make a stranger stop scrolling (motion or a claim on frame 0, no slow fade from black)",
   readability: "readability: every word can be read at 360 px wide on a phone, in the time it's on screen; nothing clipped, overflowing or off-centre",
   motion: "motion: moves have intent and settle (springs, eases), no linear drifts, nothing jittery",
   variety: "variety: shots change every 1 to 3 s, no two scenes look the same, no empty or held frames that say nothing",
-  sound: "sound: cuts and big moments land on the beat, sound effects are sparing and fit",
+  sound: "sound (from the <sound> sheet, you can't hear it): music whose tempo fits the cutting, cuts and big moments on its beats; sound effects few (at most 4 in any 10 s, the same file at most twice, one big hit), each on something that changes on screen, 6 to 12 dB under the music; no meme sounds or clicks on text unless the brief asks; the voice never masked",
   brand: "brand: the kit's colours, fonts and logo files exactly, real product footage and copy where the brief planned them, nothing invented",
 };
 
@@ -66,6 +67,9 @@ Hard blockers fail the video whatever the scores; list every one you see:
 - invented: a logo, product UI, screen, metric, quote or customer that the brief and kit don't provide
 - blank: a black or blank frame, or one that shows nothing for longer than a beat
 - off-centre: an element meant to be centred (a button glyph, a title, a logo) visibly off its centre
+- sound: from the <sound> sheet: sound effects crowded (more than 4 in any 10 s), at or above the music's level, landing on nothing, a meme sound or a click on text the brief didn't ask for
+Sound, blindfold first: read the <sound> sheet alone before looking at the frames. Would those sounds by themselves feel like a meme reel or a click track? Then check each effect's time against the frames: does something change on screen right there?
+The editor follows the skills in <skill-checklists>: check every line on the frames; a line the video fails is a defect (or a blocker when it is one of the kinds above), quoting the line.
 Uncut's layout checks are listed as facts about the project: confirm what you see.
 From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim.
 Answer with one JSON object and nothing else:
@@ -96,6 +100,11 @@ export interface CriticFinding {
   readonly frame?: number;
   readonly hard: boolean;
 }
+/** An active skill's review checklist (D207). */
+export interface CriticSkill {
+  readonly name: string;
+  readonly checklist: ReadonlyArray<string>;
+}
 export interface CriticInput {
   readonly round: number;
   readonly canvas: { readonly width: number; readonly height: number; readonly fps: number };
@@ -108,6 +117,10 @@ export interface CriticInput {
   readonly checks: ReadonlyArray<CriticFinding>;
   readonly determinism: { readonly checked: ReadonlyArray<string>; readonly differed: ReadonlyArray<string> };
   readonly images: ReadonlyArray<CriticImage>;
+  /** D207: the project's skills with their checklists. */
+  readonly skills?: ReadonlyArray<CriticSkill>;
+  /** D207: the sound as lines (core soundSheet), since the critic can't hear. */
+  readonly sound?: ReadonlyArray<string>;
 }
 
 const join2 = (xs: ReadonlyArray<string> | undefined) => (xs ?? []).filter(Boolean).join("; ");
@@ -126,6 +139,11 @@ export function criticText(input: CriticInput): string {
   parts.push(`<brand>\n${input.kit.length ? input.kit.join("\n") : "No brand kit: judge brand on consistency and on nothing being invented."}\n</brand>`);
   const sb = input.storyboard;
   if (sb) parts.push(`<storyboard ${sb.status}>\n${sb.summary}\n${sb.beats.map((x, i) => `${i + 1}. ${x.start} to ${x.end} s ${x.title}: ${x.entry} to ${x.exit} (${x.purpose})${x.assets.length ? ` real assets: ${x.assets.join(", ")}` : ""}${x.sound ? `, on ${x.sound}` : ""}`).join("\n")}\n</storyboard>`);
+  const skills = (input.skills ?? []).filter((x) => x.checklist.length);
+  if (skills.length) parts.push(`<skill-checklists>\n${skills.map((x) => `${x.name}:\n${x.checklist.map((l) => `- ${l}`).join("\n")}`).join("\n")}\n</skill-checklists>`);
+  // Uncut's sound findings go with the sheet (they can't be seen on the frames).
+  const soundChecks = input.checks.filter((c) => c.rule === "sound").map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`);
+  parts.push(`<sound>\n${[...(input.sound?.length ? input.sound : ["No sound sheet."]), ...soundChecks].join("\n")}\n</sound>`);
   parts.push(`<rubric>\n${REVIEW_SCORES.map((k) => `- ${SCORE_NAMES[k]}`).join("\n")}\nPass: every score ${REVIEW_PASS} or more, no blockers, every claimed fix verified.\n</rubric>`);
   const prev = input.previous;
   if (prev) {
@@ -133,7 +151,8 @@ export function criticText(input: CriticInput): string {
     parts.push(`<last-round ${prev.round}>\n${found.join("\n") || "nothing listed"}\n</last-round>`);
   }
   if (input.claims.length) parts.push(`<claimed-fixes>\nThe editor says it fixed these. Check each on the new frames.\n${input.claims.map((c) => `${c.defect}${c.at !== undefined ? ` (at ${c.at} s)` : ""}${c.was ? `, was: ${c.was}` : ""}; the editor: ${c.what}`).join("\n")}\n</claimed-fixes>`);
-  if (input.checks.length) parts.push(`<layout-checks>\n${input.checks.map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`).join("\n")}\n</layout-checks>`);
+  const layout = input.checks.filter((c) => c.rule !== "sound");
+  if (layout.length) parts.push(`<layout-checks>\n${layout.map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`).join("\n")}\n</layout-checks>`);
   if (input.determinism.differed.length) parts.push(`Graphics that drew differently twice at the same frame: ${input.determinism.differed.join(", ")}.`);
   parts.push(`<images>\n${input.images.map((im, i) => `Image ${i + 1}: ${im.label}`).join("\n")}\n</images>`);
   parts.push("Answer with the JSON object only.");
@@ -227,7 +246,7 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
   let n = 0;
   const id = () => `d${++n}`;
   for (const b of answer.blockers) blockers.push({ id: id(), ...b, source: "critic" });
-  for (const c of ctx.checks.filter((x) => x.hard)) blockers.push({ id: id(), kind: c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : "overflow", what: c.message, ...(c.frame !== undefined ? { at: Math.round((c.frame / ctx.fps) * 100) / 100 } : {}), source: "check" });
+  for (const c of ctx.checks.filter((x) => x.hard)) blockers.push({ id: id(), kind: c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : c.rule === "sound" ? "sound" : "overflow", what: c.message, ...(c.frame !== undefined ? { at: Math.round((c.frame / ctx.fps) * 100) / 100 } : {}), source: "check" });
   const fixes = ctx.claims.map((c) => {
     const said = answer.fixes.find((f) => f.defect === c.defect);
     return { defect: c.defect, what: c.what, ...(c.at !== undefined ? { at: c.at } : {}), verified: said?.verified === true, ...(said?.note ? { note: said.note } : said ? {} : { note: "The critic didn't confirm it on the new frames." }) };

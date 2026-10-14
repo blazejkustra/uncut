@@ -882,7 +882,7 @@
     },
     {
       "name": "brief_write",
-      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes.",
+      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes. The first brief turns on the skills for the film (skills, else Uncut's suggestion) and returns their text.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -950,6 +950,15 @@
           "notes": {
             "type": "string",
             "maxLength": 4000
+          },
+          "skills": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "The skills (ids from <brand>) that fit this film, when none are on yet: e.g. builtin-launch-promo, builtin-product-demo. Motion craft and Sound design are always added (and Brand application with a kit). Leave it out and Uncut suggests a set from the brief."
           }
         }
       },

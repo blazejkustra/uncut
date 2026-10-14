@@ -66,7 +66,8 @@ test("a project kit and skill win over the user's with the same id", async () =>
   await saveSkill(d, { id: "promo", name: "Project promo", scope: "project", description: "", body: "p" });
   const state = await readBrand(d);
   assert.deepEqual(state.kits.map((k) => [k.id, k.name, k.scope]), [["acme", "Project Acme", "project"], ["other", "Zed", "global"]]);
-  assert.deepEqual(state.skills.map((s) => [s.id, s.scope, s.body]), [["promo", "project", "p"]]);
+  // D207: Uncut's built-in skills are listed too (read-only, their own ids).
+  assert.deepEqual(state.skills.filter((s) => !s.builtin).map((s) => [s.id, s.scope, s.body]), [["promo", "project", "p"]]);
   // Without the project only the user's are seen.
   const alone = await readBrand({ dataDir: d.dataDir });
   assert.equal(alone.kits.find((k) => k.id === "acme")!.name, "Global Acme");

@@ -118,9 +118,10 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     await page.waitForFunction(() => !document.querySelector("[data-testid=brand-skill-editor]"), { timeout: 10000 }).catch(() => {});
     if (await page.$("[data-testid=brand-back]")) await page.click("[data-testid=brand-back]");
     await page.select("[data-testid=brand-kit-select]", "argent");
-    const skillBox = await page.waitForSelector("[data-testid^=brand-skill-check-]");
+    // D207: the user's copy of the built-in Launch promo (built-ins are listed after the user's own).
+    const skillBox = await page.waitForSelector("[data-testid=brand-skill-check-launch-promo-copy]");
     await skillBox!.click();
-    await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid^=brand-skill-check-]")!.checked);
+    await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=brand-skill-check-launch-promo-copy]")!.checked);
     await page.screenshot({ path: out("brand-panel") });
     const kitFile = JSON.parse(readFileSync(join(root, "data", "brand", "kits", "argent", "kit.json"), "utf8"));
     assert.deepEqual(kitFile.colors.map((c: { hex: string }) => c.hex), ["#0b1d3a", "#f5a623", "#ffffff"]);
@@ -141,7 +142,7 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     assert.equal(await text(page, "[data-testid=agent-card][data-type=question] [data-testid=agent-card-answer]"), "9:16, and a 16:9 cut later");
     const first = runs().at(-1);
     assert.match(first.prompt, /<brand>\nKit "Argent" \(argent, the user's\)\nColours: #0b1d3a background; #f5a623 accent; #ffffff text/);
-    assert.match(first.prompt, /Skill "Launch promo 20 s"/);
+    assert.match(first.prompt, /Skill "Launch promo copy"/);
 
     // ---- U15/U9: brief, then the storyboard card: edit a beat, approve with edits; the build goes through ----
     const brief = { film: "Argent Cloud runs your app's QA on real devices in the cloud", audience: "React Native developers", duration: "10 s", formats: ["9:16 1080x1920", "16:9 later"], assets: ["Argent logo (kit)", "dashboard recording"], visual: "Dark navy, amber accent, product first, springy UI motion", hardLines: ["Never invent product UI, metrics or logos", "Only the real dashboard recording"], deliverables: ["promo-9x16.mp4"] };
