@@ -10,7 +10,7 @@ import type React from "react";
 import { useState } from "react";
 
 import { actions, brandFileUrl, getState, useApp } from "../state/store.ts";
-import { SKILL_TEMPLATES } from "./brandTemplates.ts";
+import { BUILTIN_SKILLS } from "@uncut/core/skills";
 
 const COLOR_ROLES = ["background", "surface", "text", "primary", "accent", "muted"] as const;
 const FONT_ROLES = ["headline", "body", "mono"] as const;
@@ -77,6 +77,7 @@ const emptyKit = (id: string, name: string, scope: BrandScope): BrandKit => ({ i
 type View =
   | { readonly kind: "list" }
   | { readonly kind: "kit"; readonly id: string; readonly scope: BrandScope; readonly draft: KitDraft }
+  | { readonly kind: "builtin"; readonly id: string }
   | { readonly kind: "skill"; readonly id: string | undefined; readonly scope: BrandScope; readonly draft: { readonly name: string; readonly scope: BrandScope; readonly description: string; readonly body: string } };
 
 export function BrandLibrary() {
@@ -90,10 +91,13 @@ export function BrandLibrary() {
 
   const openKit = (k: BrandKit) => setView({ kind: "kit", id: k.id, scope: k.scope, draft: draftOfKit(k) });
   const openSkill = (s: BrandSkill) => setView({ kind: "skill", id: s.id, scope: s.scope, draft: { name: s.name, scope: s.scope, description: s.description, body: s.body } });
-  const newSkill = (t?: (typeof SKILL_TEMPLATES)[number]) => {
+  // D207: a built-in skill is read-only; New skill from one (or its Duplicate) opens a copy to edit.
+  const newSkill = (t?: Pick<BrandSkill, "name" | "description" | "body">) => {
     setSkillMenu(false);
-    setView({ kind: "skill", id: undefined, scope: "global", draft: { name: t?.name ?? "", scope: "global", description: t?.description ?? "", body: t?.body ?? "" } });
+    setView({ kind: "skill", id: undefined, scope: "global", draft: { name: t ? `${t.name} copy` : "", scope: "global", description: t?.description ?? "", body: t?.body ?? "" } });
   };
+  const builtins = brand?.skills.filter((s) => s.builtin) ?? [];
+  const yours = brand?.skills.filter((s) => !s.builtin) ?? [];
 
   const createKit = async () => {
     if (!newKit || !brand) return;
@@ -132,6 +136,8 @@ export function BrandLibrary() {
           onDraft={(f) => setView((v) => (v.kind === "kit" && v.id === view.id && v.scope === view.scope ? { ...v, draft: f(v.draft) } : v))}
           onClose={() => setView({ kind: "list" })}
         />
+      ) : view.kind === "builtin" ? (
+        <BuiltinSkillView skill={brand.skills.find((s) => s.id === view.id)} online={online} onDuplicate={(s) => newSkill(s)} onClose={() => setView({ kind: "list" })} />
       ) : view.kind === "skill" ? (
         <SkillEditor brand={brand} view={view} hasProject={hasProject} online={online} onDraft={(draft) => setView({ ...view, draft })} onClose={() => setView({ kind: "list" })} />
       ) : (
@@ -184,19 +190,30 @@ export function BrandLibrary() {
                 <button className="chip-btn" data-testid="brand-skill-new-blank" onClick={() => newSkill()}>
                   Blank
                 </button>
-                {SKILL_TEMPLATES.map((t) => (
-                  <button key={t.id} className="chip-btn" data-testid={`brand-skill-new-${t.id}`} onClick={() => newSkill(t)}>
+                {BUILTIN_SKILLS.map((t) => (
+                  <button key={t.id} className="chip-btn" data-testid={`brand-skill-new-${t.id.replace(/^builtin-/, "")}`} onClick={() => newSkill(t)}>
                     {t.name}
                   </button>
                 ))}
               </div>
             )}
-            {brand.skills.length === 0 && <div className="muted small">No skills yet</div>}
-            {brand.skills.map((s) => (
+            <span className="lib-label brand-sub" data-testid="brand-skills-yours">Yours</span>
+            {yours.length === 0 && <div className="muted small">No skills of your own yet; duplicate a built-in one to make it yours</div>}
+            {yours.map((s) => (
               <button key={`${s.scope}:${s.id}`} className="brand-row" data-testid={`brand-skill-${s.id}`} onClick={() => openSkill(s)}>
                 <span className="brand-row-top">
                   <span className="brand-row-name ellipsis">{s.name}</span>
                   <span className="brand-tag">{SCOPE_LABEL[s.scope]}</span>
+                </span>
+                {s.description && <span className="brand-desc">{s.description}</span>}
+              </button>
+            ))}
+            <span className="lib-label brand-sub" data-testid="brand-skills-builtin">Built-in</span>
+            {builtins.map((s) => (
+              <button key={s.id} className="brand-row" data-testid={`brand-skill-${s.id}`} onClick={() => setView({ kind: "builtin", id: s.id })}>
+                <span className="brand-row-top">
+                  <span className="brand-row-name ellipsis">{s.name}</span>
+                  <span className="brand-tag">Built-in</span>
                 </span>
                 {s.description && <span className="brand-desc">{s.description}</span>}
               </button>
@@ -293,7 +310,7 @@ function ThisProject({ brand, hasProject, online }: { brand: BrandState; hasProj
       </select>
       {brand.skills.length > 0 && (
         <div className="brand-checks">
-          {brand.skills.map((s) => {
+          {[...brand.skills.filter((s) => !s.builtin), ...brand.skills.filter((s) => s.builtin)].map((s) => {
             const on = brand.active.skills.includes(s.id);
             return (
               <label key={s.id} className="check-row">
@@ -765,5 +782,46 @@ function SkillEditor({ brand, view, hasProject, online, onDraft, onClose }: { br
         <textarea className="gen-prompt brand-text brand-mono" data-testid="brand-skill-body" spellCheck={false} value={d.body} onChange={(e) => set({ body: e.target.value })} />
       </div>
     </EditorFrame>
+  );
+}
+
+/** D207: a built-in skill, read-only: its recipe and a Duplicate that opens an editable copy. */
+function BuiltinSkillView({ skill, online, onDuplicate, onClose }: { skill: BrandSkill | undefined; online: boolean; onDuplicate: (s: BrandSkill) => void; onClose: () => void }) {
+  return (
+    <div
+      className="brand-editor"
+      data-testid="brand-builtin-skill"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <div className="brand-editor-head">
+        <button className="icon-btn" title="Back" data-testid="brand-back" onClick={onClose}>
+          <ChevronLeft />
+        </button>
+        <span className="ellipsis">{skill?.name ?? "Skill"}</span>
+        <span className="brand-tag">Built-in</span>
+      </div>
+      <div className="brand-body">
+        <div className="lib-section">
+          {skill?.description && <div className="brand-desc">{skill.description}</div>}
+          <div className="muted small">Uncut's own recipe, read-only. Tick it under This project to use it; duplicate it to change it.</div>
+          <pre className="brand-skill-read selectable" data-testid="brand-builtin-body">
+            {skill?.body ?? ""}
+          </pre>
+        </div>
+      </div>
+      <div className="brand-foot">
+        <span className="brand-foot-gap" />
+        <button className="btn ghost" data-testid="brand-cancel" onClick={onClose}>
+          Close
+        </button>
+        <button className="btn primary" data-testid="brand-duplicate" disabled={!online || !skill} onClick={() => skill && onDuplicate(skill)}>
+          Duplicate
+        </button>
+      </div>
+    </div>
   );
 }

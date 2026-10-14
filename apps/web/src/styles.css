@@ -1451,6 +1451,8 @@ body.tile-dragging, body.tile-dragging * { cursor: grabbing !important; user-sel
 .brand-text { width: 100%; min-height: 44px; font-size: 12px; }
 .brand-text.mono { font-family: var(--mono); }
 .brand-mono { font-family: var(--mono); font-size: 12px; line-height: 1.5; min-height: 320px; white-space: pre-wrap; }
+.brand-sub { margin-top: 8px; }
+.brand-skill-read { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 0; padding: 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
 .brand-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .brand-editor-head { display: flex; align-items: center; gap: 4px; padding: 0 10px 6px; font-weight: 500; min-width: 0; }
 .brand-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }

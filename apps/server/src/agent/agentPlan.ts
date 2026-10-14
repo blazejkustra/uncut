@@ -10,8 +10,8 @@ import type { BeatsResult } from "../analysis/beats.ts";
 /** How long a question or storyboard card waits for the user (they may be thinking it over). */
 export const QUESTION_MS = 15 * 60_000;
 export { REVIEW_PASS, REVIEW_ROUNDS } from "./agentCritic.ts";
-/** Skills' bodies in a message, at most this many characters together. */
-export const SKILLS_CHARS = 8000;
+/** Skills' bodies in a message, at most this many characters together (D207: room for a film skill, Motion craft, Sound design and Brand application). */
+export const SKILLS_CHARS = 14000;
 
 const line = (label: string, value: string | ReadonlyArray<string> | undefined) => {
   const v = Array.isArray(value) ? value.filter(Boolean).join("; ") : typeof value === "string" ? value.trim() : "";
@@ -78,7 +78,7 @@ export function gateRefusal(plan: AgentPlan, gate: BuildGate): string | undefine
  * The <brand> and <plan> blocks of a message: the project's kit and skills (or that there is none
  * and the user's kits by name), the brief, the storyboard and the last review.
  */
-export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly<Record<string, string>>; skills: ReadonlyArray<BrandSkill>; others: ReadonlyArray<{ id: string; name: string }> }, plan: AgentPlan, gate: BuildGate): string {
+export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly<Record<string, string>>; skills: ReadonlyArray<BrandSkill>; others: ReadonlyArray<{ id: string; name: string }>; available?: ReadonlyArray<Pick<BrandSkill, "id" | "name" | "description">> }, plan: AgentPlan, gate: BuildGate): string {
   const parts: Array<string> = [];
   const b: Array<string> = [];
   if (brand.kit) b.push(...kitLines(brand.kit, brand.files));
@@ -88,6 +88,11 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
     const body = s.body.length > budget ? `${s.body.slice(0, Math.max(0, budget))}…` : s.body;
     budget -= body.length;
     b.push(`Skill "${s.name}"${s.description ? ` (${s.description})` : ""}:\n${body}`);
+  }
+  // D207: no skill on yet: what there is, so brief_write's skills can pick (Uncut suggests a set otherwise).
+  if (!brand.skills.length && brand.available?.length) {
+    const own = brand.available.filter((s) => !s.id.startsWith("builtin-"));
+    b.push(`No skills are on for this project. Uncut's: ${brand.available.filter((s) => s.id.startsWith("builtin-")).map((s) => s.id).join(", ")}${own.length ? `; the user's: ${own.map((s) => `${s.id} (${s.name})`).join(", ")}` : ""}. brief_write turns on the ones that fit the brief (its skills, else Uncut's suggestion).`);
   }
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
   const p: Array<string> = [];

@@ -20,8 +20,8 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type BrandSkill, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, SOUND_HARD, soundSheet, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
@@ -46,6 +46,7 @@ import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, ru
 import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
 import { decide, LOOK_DISALLOWED, namedFolders, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
 import { downloadToProject } from "./agentDownload.ts";
+import { BUILTIN_IDS, skillChecklist, suggestSkills } from "@uncut/core/skills";
 import { emptyAddedTracks, KEEP_REVISIONS, restoreGraphics, trashGraphics, unusedGraphics } from "./agentCleanup.ts";
 import { accessLine, TOOLS_LINE, bigChange, checksOut, doingLabel, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
@@ -1758,7 +1759,7 @@ export const layer = Layer.effect(
         if (args.source === "included") {
           if (kind !== "sfx") return textResult('The bundled music is music_list; source "included" is for sound effects.', true);
           const sfx = filterSfx({ query, category: typeof args.category === "string" ? args.category : undefined });
-          return textResult({ sounds: sfx.map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0" })), note: "Bundled CC0 sounds (no credit needed). library_add copies one into the project." });
+          return textResult({ sounds: sfx.map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0", ...(s.category === "meme" || s.category === "crowd" ? { onlyWhenAsked: true } : {}) })), note: "Bundled CC0 sounds (no credit needed). library_add copies one into the project. Sound effects go only on real visual events, at most 4 in any 10 s, 6 to 12 dB under the music; onlyWhenAsked ones (memes, crowds) only when the user asked for that joke (D207)." });
         }
         if (!query) return textResult("query must say what to search for, e.g. whoosh, bass boom, upbeat piano.", true);
         if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound") return textResult('source must be "openverse", "freesound" or "included".', true);
@@ -2274,7 +2275,34 @@ export const layer = Layer.effect(
         yield* refreshPlan(r, v);
         addCard(r, { type: "brief", brief: saved.b }, brief.film);
         const sb = r.owner.plan.storyboard;
-        return textResult({ saved: "brief.json", next: sb?.status === "approved" ? "The storyboard is approved: if the brief changed what it shows, propose it again with storyboard_propose." : "Now propose the storyboard with storyboard_propose; build once the user approves it." });
+        // D207: the skills for this brief. The project's choice stays when it has one (the user's
+        // ticks in the Brand tab, or an earlier brief); else the agent's pick or Uncut's suggestion,
+        // always with Motion craft and Sound design (and Brand application with a kit).
+        const skills = yield* Effect.promise(async () => {
+          try {
+            const all = await readBrand(brandDirs(v));
+            const on = all.skills.filter((x) => all.active.skills.includes(x.id));
+            if (on.length) return { kept: true as const, on, unknown: [] as Array<string> };
+            const asked = Array.isArray(args.skills) ? args.skills.filter((x): x is string => typeof x === "string") : [];
+            const unknown = asked.filter((id) => !all.skills.some((x) => x.id === id));
+            const base = asked.length - unknown.length > 0 ? asked.filter((id) => !unknown.includes(id)) : suggestSkills(saved.b, { hasKit: !!all.active.kit });
+            const ids = [...new Set([...base, BUILTIN_IDS.motion, BUILTIN_IDS.sound, ...(all.active.kit ? [BUILTIN_IDS.brand] : [])])];
+            await writeActive(v.dir, { kit: all.active.kit, skills: ids });
+            return { kept: false as const, on: ids.flatMap((id) => all.skills.filter((x) => x.id === id)), unknown };
+          } catch (error) {
+            console.error(`[uncut] couldn't choose the skills of ${v.dir}: ${(error as Error).message}`);
+            return undefined;
+          }
+        });
+        const skillsOut = skills
+          ? {
+              skills: skills.on.map((x) => ({ id: x.id, name: x.name, ...(skills.kept ? {} : { body: x.body }) })),
+              skillsNote: skills.kept
+                ? "These skills were already on for this project (the user changes them in the Brand tab): follow them."
+                : `Uncut turned these skills on for this brief (the user can change them in the Brand tab). Follow every rule in them from the storyboard on; the critic checks their review checklists.${skills.unknown.length ? ` No skill has the id ${skills.unknown.join(", ")}.` : ""}`,
+            }
+          : {};
+        return textResult({ saved: "brief.json", ...skillsOut, next: sb?.status === "approved" ? "The storyboard is approved: if the brief changed what it shows, propose it again with storyboard_propose." : "Now propose the storyboard with storyboard_propose; build once the user approves it." });
       });
 
     /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
@@ -2407,15 +2435,16 @@ export const layer = Layer.effect(
           ...evidence.fixed.map((f, i) => ({ label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s), the moment of claimed fix ${fixFrames[i]!.defect}, rendered after the fix`, jpeg: f.jpeg })),
         ];
         // Uncut's layout checks (D196) and the safe-area ones, as facts.
-        const keep = new Set(["text-edge", "small-text"]);
+        // D207: and the sound rule (density and level fail a round as "sound" blockers; the rest the critic confirms).
+        const keep = new Set(["text-edge", "small-text", "sound"]);
         // D198: a font that isn't there is a hard finding too (a "font" blocker).
         const fontCheck = yield* fontsRule(v);
-        const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)) }).map((c) => ({ rule: c.id, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) }));
-        const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string> }) as { kit?: BrandKit; files: Record<string, string> }));
+        const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)) }).map((c) => ({ rule: c.id, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && SOUND_HARD.test(c.key)) }));
+        const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as { kit?: BrandKit; files: Record<string, string>; skills: Array<BrandSkill> }));
         const round = r.reviewRounds + 1;
         // The review's number across the project (the card's "round n"); the limit counts this turn's.
         const number = r.owner.plan.reviews.length + 1;
-        const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images };
+        const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: brand.skills.map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project) };
         const bin = yield* Effect.promise(() => findClaude());
         if (!bin) return textResult("Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.", true);
         const answer = yield* Effect.tryPromise({ try: (signal) => runCritic({ bin, env: sessionEnv(process.env), model: r.session.model, message: criticMessage(input), signal: AbortSignal.any([signal, r.abort.signal]) }), catch: (e) => e as Error }).pipe(
@@ -3471,7 +3500,7 @@ export const layer = Layer.effect(
             owner.plan = await readPlan(v.dir);
             const all = await readBrand({ dataDir: config.dataDir, projectDir: v.dir });
             const kit = all.kits.find((k) => k.id === all.active.kit);
-            return planContext({ kit, files: kit ? (all.files[kit.id] ?? {}) : {}, skills: all.skills.filter((x) => all.active.skills.includes(x.id)), others: all.kits.map((k) => ({ id: k.id, name: k.name })) }, owner.plan, gateOf(owner.plan, skip));
+            return planContext({ kit, files: kit ? (all.files[kit.id] ?? {}) : {}, skills: all.skills.filter((x) => all.active.skills.includes(x.id)), others: all.kits.map((k) => ({ id: k.id, name: k.name })), available: all.skills }, owner.plan, gateOf(owner.plan, skip));
           } catch (error) {
             console.error(`[uncut] couldn't read the brand kit or plan of ${v.dir}: ${(error as Error).message}`);
             return "";

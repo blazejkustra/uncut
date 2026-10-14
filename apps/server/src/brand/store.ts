@@ -14,6 +14,8 @@ import { basename, extname, join } from "node:path";
 
 import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
 
+import { BUILTIN_SKILLS, isBuiltinId } from "@uncut/core/skills";
+
 import { writeAtomic } from "../project/atomicWrite.ts";
 
 /** Ids of kits and skills: lowercase letters, digits and dashes (also their folder or file name). */
@@ -232,9 +234,10 @@ export async function readBrand(dirs: BrandDirs): Promise<BrandState> {
   const kits = new Map<string, { kit: BrandKit; files: Record<string, string> }>();
   for (const k of await kitsIn(globalBrandDir(dirs.dataDir), "global")) kits.set(k.kit.id, k);
   if (dirs.projectDir) for (const k of await kitsIn(projectBrandDir(dirs.projectDir), "project")) kits.set(k.kit.id, k);
-  const skills = new Map<string, BrandSkill>();
-  for (const s of await skillsIn(globalBrandDir(dirs.dataDir), "global")) skills.set(s.id, s);
-  if (dirs.projectDir) for (const s of await skillsIn(projectBrandDir(dirs.projectDir), "project")) skills.set(s.id, s);
+  // D207: Uncut's built-in skills first (read-only; the user's own never use a builtin- id).
+  const skills = new Map<string, BrandSkill>(BUILTIN_SKILLS.map((s) => [s.id, { ...s, scope: "global" as const, builtin: true }]));
+  for (const s of await skillsIn(globalBrandDir(dirs.dataDir), "global")) if (!isBuiltinId(s.id)) skills.set(s.id, s);
+  if (dirs.projectDir) for (const s of await skillsIn(projectBrandDir(dirs.projectDir), "project")) if (!isBuiltinId(s.id)) skills.set(s.id, s);
   const active = dirs.projectDir ? await readActive(dirs.projectDir) : { kit: null, skills: [] };
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
   return {
@@ -273,7 +276,9 @@ export async function deleteKit(dirs: BrandDirs, id: string, scope: BrandScope):
 
 export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<BrandSkill> {
   if (skill.scope === "project" && !dirs.projectDir) throw new Error("Open a project to keep a skill in it.");
+  // D207: built-in skills are read-only; a duplicate gets an id of its own.
   const id = BRAND_ID.test(skill.id) ? skill.id : slug(skill.name);
+  if (skill.builtin || isBuiltinId(id)) throw new Error("Uncut's built-in skills can't be changed: duplicate it and edit the copy.");
   const norm = normSkill({ ...skill, updatedAt: new Date().toISOString() }, skill.scope, id);
   if (!norm) throw new Error("That skill isn't valid.");
   const dir = join(scopeDir(skill.scope, dirs), "skills");
@@ -285,6 +290,7 @@ export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<Bra
 
 export async function deleteSkill(dirs: BrandDirs, id: string, scope: BrandScope): Promise<void> {
   if (!BRAND_ID.test(id)) throw new Error("No such skill.");
+  if (isBuiltinId(id)) throw new Error("Uncut's built-in skills can't be deleted; untick it under This project to stop using it.");
   if (scope === "project" && !dirs.projectDir) throw new Error("Open a project first.");
   await rm(join(scopeDir(scope, dirs), "skills", `${id}.json`), { force: true });
 }

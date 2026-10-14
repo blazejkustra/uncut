@@ -616,6 +616,8 @@ export const BrandSkill = Schema.Struct({
   description: Schema.String,
   body: Schema.String,
   updatedAt: Schema.optional(Schema.String),
+  // D207: one of Uncut's built-in skills (read-only; scope "global", id "builtin-…").
+  builtin: Schema.optional(Schema.Boolean),
 });
 export type BrandSkill = typeof BrandSkill.Type;
 /** What the open project uses (`<project>/brand/active.json`): one kit (or none) and its skills. */
