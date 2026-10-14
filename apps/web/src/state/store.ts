@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -85,6 +85,8 @@ export interface AppStateShape {
   readonly captureError?: string;
   /** Devices whose Record or Stop is on its way to the server. */
   readonly captureBusy?: ReadonlyArray<string>;
+  /** D143: devices booting for "Boot and record" (their id before the boot). */
+  readonly captureBooting?: ReadonlyArray<string>;
   /** The last take the Capture tab added (its media id and name). */
   readonly captureSaved?: { readonly mediaId: string; readonly name: string; readonly seconds: number };
   /** The Generate tab (D99): the generators and whether each has its key, the server's generation jobs, a prompt to edit. */
@@ -247,6 +249,9 @@ export function textPresets(): ReadonlyArray<TextPreset> {
   }
   return list;
 }
+
+/** Outside React: called after every state change (D144: the recorder watches an agent take). */
+export const subscribeApp = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
 
 export const useApp = () =>
   useSyncExternalStore(
@@ -1160,7 +1165,18 @@ export const actions = {
     });
   },
   /** Allow or Don't on the running turn's approval card (D99). */
-  agentApprove: (id: string, allow: boolean) => call((c) => c["agent.approve"]({ id, allow })),
+  /** Whether the server took the answer (false: the card was no longer open). */
+  async agentApprove(id: string, allow: boolean, source?: string): Promise<boolean> {
+    const result = await call((c) => c["agent.approve"]({ id, allow, ...(source ? { source } : {}) }));
+    return result.ok && result.value.accepted;
+  },
+  /** D144: the take an allowed screen_record recorded (uploaded), or why there's none. */
+  agentScreenTake: (id: string, answer: { readonly path?: string; readonly source?: string; readonly problem?: string }) => call((c) => c["agent.screenTake"]({ id, ...answer })),
+  /** D144: a take's file up to the active server's media/uploads/ (the agent's screen_record imports it). */
+  async uploadTake(blob: Blob, kind: TakeKind): Promise<{ readonly path: string } | { readonly message: string }> {
+    const ext = blob.type.startsWith("audio/") ? "webm" : blob.type.includes("mp4") ? "mp4" : "webm";
+    return uploadOne(new File([blob], takeUploadName(kind, ext), { type: blob.type }));
+  },
   async agentUndoTurn(turnId: string) {
     set({ agentError: undefined });
     const result = (await call((c) => c["agent.undoTurn"]({ turnId }))) as Result<ProjectSnapshot>;
@@ -1334,12 +1350,40 @@ export const actions = {
     if (result.ok) set({ captureChecking: false, capture: result.value, captureError: undefined });
     else set({ captureChecking: false, captureError: plainError(result.error) });
   },
-  async startCapture(device: string) {
+  async startCapture(device: string, options: CaptureOptions = {}) {
     set({ captureError: undefined, captureSaved: undefined, captureBusy: [...(state.captureBusy ?? []), device] });
-    const result = await call((c) => c["capture.start"]({ device }));
+    const result = await call((c) => c["capture.start"]({ device, ...options }));
     set({ captureBusy: (state.captureBusy ?? []).filter((d) => d !== device) });
     if (!result.ok) set({ captureError: plainError(result.error) });
     await actions.checkCapture();
+  },
+  /**
+   * D143: a take that replays a saved flow; it ends with the flow and lands in Media as one edit.
+   * The row shows its timer while the flow runs (the server lists it as recording).
+   */
+  async recordFlow(device: string, flow: string, options: CaptureOptions = {}) {
+    set({ captureError: undefined, captureSaved: undefined, captureBusy: [...(state.captureBusy ?? []), device] });
+    const pending = call((c) => c["capture.record"]({ device, flow, ...(options.showTouches !== undefined ? { showTouches: options.showTouches } : {}), ...(options.orientation ? { orientation: options.orientation } : {}), ...(options.bundleId ? { bundleId: options.bundleId } : {}) }), 12 * 60 * 1000);
+    await new Promise((r) => setTimeout(r, 400));
+    await actions.checkCapture();
+    const result = await pending;
+    set({ captureBusy: (state.captureBusy ?? []).filter((d) => d !== device) });
+    if (result.ok) set({ captureSaved: result.value });
+    else set({ captureError: plainError(result.error) });
+    await actions.checkCapture();
+  },
+  /** D143: "Boot and record": Argent boots the simulator or AVD (only on this click), then the take starts. */
+  async bootAndRecord(device: string, options: CaptureOptions = {}, flow?: string) {
+    set({ captureError: undefined, captureSaved: undefined, captureBooting: [...(state.captureBooting ?? []), device] });
+    const booted = await call((c) => c["capture.boot"]({ device }), 10 * 60 * 1000);
+    set({ captureBooting: (state.captureBooting ?? []).filter((d) => d !== device) });
+    if (!booted.ok) {
+      set({ captureError: plainError(booted.error) });
+      return void (await actions.checkCapture());
+    }
+    await actions.checkCapture();
+    if (flow) await actions.recordFlow(booted.value.device, flow, options);
+    else await actions.startCapture(booted.value.device, options);
   },
   /** Stops a recording; the server adds the take to the project as one edit (⌘Z removes it). */
   async stopCapture(device: string) {

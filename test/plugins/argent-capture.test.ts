@@ -5,7 +5,8 @@
 // both stop the recording, Argent missing or too old, a device that can't be recorded. Then on the
 // bundled server: the Capture tab's RPCs (one ⌘Z removes the take) and an agent turn with the
 // scripted claude (record, place, re-shoot with a shorter take that trims the clip, Undo turn).
-// Every test checks the fake's log: never a server stop, a stop-all or a boot.
+// Every test checks the fake's log: never a server stop or a stop-all, and no boot except D143's
+// argent_capture_boot test (the Capture tab's "Boot and record" click), which asserts exactly one.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -14,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 
-import { toDevice, compareVersions } from "../../plugins/argent-capture/server.ts";
+import { toDevice, compareVersions, prepOf } from "../../plugins/argent-capture/server.ts";
 import { BUNDLE, connect, killAll, startServer } from "../helpers/server.ts";
 
 const PLUGIN_DIR = resolve("plugins/argent-capture");
@@ -35,9 +36,10 @@ after(() => {
 const logOf = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { argv: Array<string>; forbidden?: boolean }) : []);
 const calls = (file: string, tool: string) => logOf(file).filter((e) => e.argv[0] === "run" && e.argv[1] === tool && !(e as { completed?: string }).completed);
 const completedStops = (file: string) => logOf(file).filter((e) => (e as { completed?: string }).completed === "screen-recording-stop");
-const assertNothingForbidden = (file: string) => {
+const assertNothingForbidden = (file: string, boots = 0) => {
   const bad = logOf(file).filter((e) => e.forbidden);
-  assert.deepEqual(bad, [], "never a server stop, a stop-all or a boot");
+  assert.deepEqual(bad, [], "never a server stop or a stop-all");
+  assert.equal(logOf(file).filter((e) => (e as { boot?: boolean }).boot).length, boots, `${boots} boots`);
 };
 const seconds = (file: string) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }).trim());
 
@@ -193,6 +195,88 @@ test("the plugin: list, a timed take, a flow take, refusals, cancel and exit sto
     for (let i = 0; i < 100 && calls(s.log, "screen-recording-stop").length === stops; i++) await sleep(50);
     assert.equal(calls(s.log, "screen-recording-stop").length, stops + 1, "exiting stops the recording");
     assertNothingForbidden(s.log);
+  } finally {
+    plugin.child.kill("SIGKILL");
+  }
+});
+
+test("D143: bootable devices, Boot (only when asked), and the options: rotate, open an app, max length, trim", { timeout: 120000 }, async () => {
+  assert.equal(toDevice({ platform: "ios", udid: "B", name: "iPad", state: "Shutdown", runtimeKind: "mobile" })!.bootable, true);
+  assert.equal(toDevice({ platform: "ios", udid: "C", name: "Apple TV", state: "Shutdown", runtimeKind: "tv" })!.bootable, undefined);
+  assert.equal(toDevice({ platform: "ios", udid: "D", name: "iPhone", state: "Booting", runtimeKind: "mobile" })!.bootable, undefined);
+  assert.deepEqual(prepOf({ orientation: "LandscapeLeft", bundleId: "com.example.app" }), { orientation: "LandscapeLeft", bundleId: "com.example.app" });
+  assert.throws(() => prepOf({ orientation: "Sideways" }), /orientation must be one of/);
+  assert.throws(() => prepOf({ bundleId: "com.x; rm -rf /" }), /bundleId must look like/);
+
+  const s = setup("boot");
+  const plugin = startPlugin({ ARGENT_BIN: FAKE_ARGENT, FAKE_ARGENT_LOG: s.log, FAKE_ARGENT_STATE: s.state });
+  try {
+    await plugin.request("initialize", { protocolVersion: "2025-06-18", capabilities: {} });
+    // Listing boots nothing: the shut-down iPad and the AVD that isn't running are bootable; the
+    // AVD whose emulator runs (Pixel_8_API_35, emulator-5554) isn't listed twice.
+    const list = await plugin.call("argent_list_devices", {});
+    const byId = Object.fromEntries(list.structuredContent.devices.map((d: any) => [d.id, d]));
+    assert.equal(byId["SIM-IPAD-OFF"].bootable, true);
+    assert.deepEqual(byId["avd:Pixel_Tablet_API_35"], { id: "avd:Pixel_Tablet_API_35", platform: "android", name: "Pixel Tablet API 35", state: "stopped", recordable: false, reason: "Not running", bootable: true });
+    assert.equal(byId["avd:Pixel_8_API_35"], undefined);
+    assert.equal(byId["SIM-APPLE-TV"].bootable, undefined);
+    assertNothingForbidden(s.log, 0);
+    // The agent can't boot: it's not one of its tools, and recording a shut-down simulator is refused.
+    const off = await plugin.call("argent_record", { device: "SIM-IPAD-OFF", seconds: 1 }, metaOf(s));
+    assert.match(textOf(off), /can't be recorded: Not booted/);
+    const tools = await plugin.request("tools/list", {});
+    assert.ok(!JSON.stringify(tools).includes("boot-device"));
+    // Booting something not bootable is refused without a boot.
+    const tv = await plugin.call("argent_capture_boot", { device: "SIM-APPLE-TV" });
+    assert.equal(tv.isError, true);
+    assert.match(textOf(tv), /can't be booted/);
+    // Booting a device that's already running boots nothing and returns it.
+    const already = await plugin.call("argent_capture_boot", { device: "SIM-IPHONE-16" });
+    assert.equal(already.structuredContent.device, "SIM-IPHONE-16");
+    assertNothingForbidden(s.log, 0);
+
+    // The click: the iPad boots (one boot-device with its udid), then records with every option.
+    const booted = await plugin.call("argent_capture_boot", { device: "SIM-IPAD-OFF" });
+    assert.ok(!booted.isError, textOf(booted));
+    assert.deepEqual(booted.structuredContent, { device: "SIM-IPAD-OFF", name: "iPad Air" });
+    assert.deepEqual(JSON.parse(calls(s.log, "boot-device")[0]!.argv[3]!), { udid: "SIM-IPAD-OFF" });
+    const started = await plugin.call("argent_capture_start", { device: "SIM-IPAD-OFF", orientation: "LandscapeLeft", bundleId: "com.example.app", maxSeconds: 30, trimStatic: true, showTouches: true }, metaOf(s));
+    assert.ok(!started.isError, textOf(started));
+    assert.equal(started.structuredContent.limitSeconds, 30);
+    await sleep(1100);
+    const stopped = await plugin.call("argent_capture_stop", { device: "SIM-IPAD-OFF" }, metaOf(s));
+    assert.ok(!stopped.isError, textOf(stopped));
+    assert.ok(existsSync(stopped.structuredContent.path));
+    // In order: boot, rotate, open the app, start (with the options), stop.
+    const order = logOf(s.log).filter((e) => e.argv[0] === "run" && e.argv[1] !== "list-devices" && !(e as { completed?: string }).completed).map((e) => e.argv[1]);
+    assert.deepEqual(order, ["boot-device", "rotate", "launch-app", "screen-recording-start", "screen-recording-stop"]);
+    assert.deepEqual(JSON.parse(calls(s.log, "rotate")[0]!.argv[3]!), { udid: "SIM-IPAD-OFF", orientation: "LandscapeLeft" });
+    assert.deepEqual(JSON.parse(calls(s.log, "launch-app")[0]!.argv[3]!), { udid: "SIM-IPAD-OFF", bundleId: "com.example.app" });
+    assert.deepEqual(JSON.parse(calls(s.log, "screen-recording-start")[0]!.argv[3]!), { udid: "SIM-IPAD-OFF", timeLimitSeconds: 30, trimStatic: true, showTouches: true });
+
+    // An AVD: boot-device with its name; the emulator's new serial comes back to record.
+    const avd = await plugin.call("argent_capture_boot", { device: "avd:Pixel_Tablet_API_35" });
+    assert.deepEqual(avd.structuredContent, { device: "emulator-5556", name: "Pixel Tablet API 35" });
+    assert.deepEqual(JSON.parse(calls(s.log, "boot-device")[1]!.argv[3]!), { avdName: "Pixel_Tablet_API_35" });
+    const after = await plugin.call("argent_list_devices", {});
+    const now = Object.fromEntries(after.structuredContent.devices.map((d: any) => [d.id, d]));
+    assert.equal(now["emulator-5556"].recordable, true);
+    assert.equal(now["avd:Pixel_Tablet_API_35"], undefined);
+    assert.equal(now["SIM-IPAD-OFF"].recordable, true);
+
+    // An app that isn't installed: the take doesn't start, and says why.
+    const missing = await plugin.call("argent_capture_start", { device: "emulator-5556", bundleId: "com.missing.app" }, metaOf(s));
+    assert.equal(missing.isError, true);
+    assert.match(textOf(missing), /launch-app failed: App com\.missing\.app is not installed/);
+    assert.equal(calls(s.log, "screen-recording-start").length, 1);
+
+    // The agent's argent_record takes orientation and bundleId too (a flow take here).
+    writeFileSync(join(s.flowsDir, "tour.yaml"), "# fake-seconds: 0.6\nsteps: []\n");
+    const flowTake = await plugin.call("argent_record", { device: "emulator-5556", flow: "tour", orientation: "Portrait", bundleId: "com.example.app" }, metaOf(s));
+    assert.ok(!flowTake.isError, textOf(flowTake));
+    assert.deepEqual(JSON.parse(calls(s.log, "rotate")[1]!.argv[3]!), { udid: "emulator-5556", orientation: "Portrait" });
+    assert.deepEqual(JSON.parse(calls(s.log, "launch-app").at(-1)!.argv[3]!), { udid: "emulator-5556", bundleId: "com.example.app" });
+    assertNothingForbidden(s.log, 2);
   } finally {
     plugin.child.kill("SIGKILL");
   }

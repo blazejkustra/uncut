@@ -88,6 +88,29 @@ export function fileBase(spec: Pick<GenerateSpec, "name" | "prompt">, now = new 
   return `${words || "generated"} ${stamp}`;
 }
 
+/**
+ * The media's display name (D145, like G4's renames): the given name, else the prompt as a short
+ * phrase in sentence case without a leading article ("A yellow sun over a navy sea." → "Yellow
+ * sun over a navy sea"), cut at a word near 48 characters; " 2", " 3" when the project has it.
+ * The file keeps its own unique name (fileBase).
+ */
+export function displayNameOf(spec: Pick<GenerateSpec, "name" | "prompt">, taken: ReadonlySet<string> = new Set()) {
+  const given = spec.name?.replace(/\.[A-Za-z0-9]{2,4}$/, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  let base = given && /[\p{L}\p{N}]/u.test(given) ? given : "";
+  if (!base) {
+    let p = spec.prompt.replace(/\s+/g, " ").trim().replace(/^(a|an|the)\s+/i, "");
+    if (p.length > 48) {
+      const cut = p.slice(0, 48);
+      p = cut.includes(" ", 20) ? cut.slice(0, cut.lastIndexOf(" ")) : cut;
+    }
+    p = p.replace(/[\s.,;:!?-]+$/, "");
+    base = p ? p[0]!.toUpperCase() + p.slice(1) : "Generated";
+  }
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
+  return name;
+}
+
 const cancelled = (signal: AbortSignal) => signal.aborted;
 
 export const layer = Layer.effect(
@@ -224,7 +247,9 @@ export const layer = Layer.effect(
         }
         status("Adding it to Media…");
         const source = { module: spec.generator, prompt: spec.prompt, model: made.model, kind: spec.kind, ...(spec.size ? { size: spec.size } : {}), ...(spec.seconds !== undefined ? { seconds: spec.seconds } : {}) };
-        const result = yield* media.importCapture({ openId: target.openId, dir: target.dir, path: made.path, name: basename(made.path), source, turnId: target.turnId }).pipe(Effect.mapError((e) => failed(`It was made but couldn't be added: ${e.message}`)));
+        const open = Effect.runSync(projects.view);
+        const names = new Set(open && open.openId === target.openId ? open.session.project.media.map((m) => m.name) : []);
+        const result = yield* media.importCapture({ openId: target.openId, dir: target.dir, path: made.path, name: displayNameOf(spec, names), source, turnId: target.turnId }).pipe(Effect.mapError((e) => failed(`It was made but couldn't be added: ${e.message}`)));
         const entry = result.entries[0];
         if (!entry) {
           yield* Effect.promise(() => rm(made.path, { force: true }));

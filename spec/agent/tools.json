@@ -716,6 +716,36 @@
         }
       },
       "returns": "{ media, path, frames, seconds, license, revision }"
+    },
+    {
+      "name": "screen_record",
+      "description": "Record the user's screen or a window (a browser window shows as its page title) on this Mac for some seconds, as media of this turn (D144). The user is always asked first on a card in the Agent tab, where they pick the screen or window (yours preselected by name) and can say no; nothing is ever recorded without their Record. The result gives the media id and the source's name, or that the user said no.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "seconds"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The screen or window to suggest, by (part of) its name, e.g. \"Chrome\" or \"Screen 1\". The user can pick another."
+          },
+          "seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 300,
+            "description": "How long to record, after a 3-2-1 countdown."
+          },
+          "withMic": {
+            "type": "boolean",
+            "description": "Record the microphone too (default false)."
+          }
+        }
+      },
+      "returns": "id, name, path, frames, seconds, width, height, source, revision; or approved: false with what to tell the user"
     }
   ],
   "$defs": {

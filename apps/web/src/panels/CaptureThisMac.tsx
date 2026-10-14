@@ -1,5 +1,6 @@
-// The Capture tab's This Mac section (D114): a voiceover from the microphone, a camera take, a
-// screen or window. Each says whether macOS allows it (not asked yet, off with how to turn it on,
+// The Capture tab's This Mac section (D114, first on the tab since D143): a screen or window (a
+// browser window by its page title; the default part, D144), a voiceover from the microphone, a
+// camera take. Each says whether macOS allows it (not asked yet, off with how to turn it on,
 // or allowed), then its devices, a 3-2-1 countdown, a timer with Stop and Cancel. The recording
 // itself is apps/web/src/capture/recorder.ts.
 import { AppWindow, CircleDot, Monitor, Mic, RefreshCw, Settings2, Square, Video, X } from "lucide-react";
@@ -61,7 +62,7 @@ function Access({ kind, children }: { kind: MediaAccessKind; children: React.Rea
 }
 
 /** Record, then 3-2-1, then the timer with Stop and Cancel, then saving. */
-function TakeControls({ mode, disabled, onRecord }: { mode: TakeMode; disabled: boolean; onRecord: () => void }) {
+function TakeControls({ mode, disabled, onRecord, label = "Record" }: { mode: TakeMode; disabled: boolean; onRecord: () => void; label?: string }) {
   const phase = useRecorder((s) => s.phase);
   const count = useRecorder((s) => s.count);
   const startedAt = useRecorder((s) => s.startedAt);
@@ -77,7 +78,7 @@ function TakeControls({ mode, disabled, onRecord }: { mode: TakeMode; disabled: 
     return (
       <button className="btn primary capture-record" data-testid="capture-take-record" disabled={disabled || phase !== "idle"} onClick={onRecord}>
         <CircleDot />
-        Record
+        {label}
       </button>
     );
   }
@@ -240,15 +241,24 @@ function ScreenPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id
           </button>
         </div>
         {sourcesError && <div className="inline-error small">{sourcesError}</div>}
-        <div className="capture-sources" data-testid="capture-sources">
-          {(sources ?? []).map((s) => (
-            <button key={s.id} className={`capture-source${picked === s.id ? " active" : ""}`} data-testid="capture-source" data-id={s.id} disabled={busy} title={s.name} onClick={() => setPicked(s.id)}>
-              {s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="capture-source-icon">{s.kind === "screen" ? <Monitor /> : <AppWindow />}</span>}
-              <span className="capture-source-name">{s.name}</span>
-            </button>
-          ))}
-          {sources && sources.length === 0 && !loading && <div className="small muted">No screens or windows to record.</div>}
-        </div>
+        {(["screen", "window"] as const).map((kind) => {
+          const group = (sources ?? []).filter((s) => s.kind === kind);
+          if (!group.length) return null;
+          return (
+            <React.Fragment key={kind}>
+              <div className="capture-sources-group small muted">{kind === "screen" ? "Screens" : "Windows"}</div>
+              <div className="capture-sources" data-testid="capture-sources" data-kind={kind}>
+                {group.map((s) => (
+                  <button key={s.id} className={`capture-source${picked === s.id ? " active" : ""}`} data-testid="capture-source" data-id={s.id} disabled={busy} title={s.name} onClick={() => setPicked(s.id)}>
+                    {s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="capture-source-icon">{s.kind === "screen" ? <Monitor /> : <AppWindow />}</span>}
+                    <span className="capture-source-name">{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            </React.Fragment>
+          );
+        })}
+        {sources && sources.length === 0 && !loading && <div className="small muted">No screens or windows to record.</div>}
         <label className="check-row">
           <input type="checkbox" data-testid="capture-screen-with-mic" checked={withMic && micAllowed} disabled={busy || !micAllowed} onChange={(e) => setWithMic(e.target.checked)} />
           Record the microphone too{micAllowed ? "" : " (allow it under Microphone first)"}
@@ -258,7 +268,7 @@ function ScreenPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id
           <input type="checkbox" data-testid="capture-screen-place" checked={place} disabled={busy} onChange={(e) => setPlace(e.target.checked)} />
           Also put it on the timeline at the playhead
         </label>
-        <TakeControls mode="screen" disabled={!canRecord || !source} onRecord={() => void startTake({ mode: "screen", source, withMic: withMic && micAllowed, mic: mic || undefined, place })} />
+        <TakeControls mode="screen" label="Record screen" disabled={!canRecord || !source} onRecord={() => void startTake({ mode: "screen", source, withMic: withMic && micAllowed, mic: mic || undefined, place })} />
       </Access>
     </div>
   );
@@ -271,7 +281,7 @@ export function CaptureThisMac() {
   const message = useRecorder((s) => s.message);
   const recordedMs = useRecorder((s) => s.recordedMs);
   // Back on the tab mid-take: show the part that has its Stop.
-  const [mode, setMode] = useState<TakeMode>(() => getRecorder().mode ?? "voiceover");
+  const [mode, setMode] = useState<TakeMode>(() => getRecorder().mode ?? "screen");
   const [mic, setMic] = useState("");
   const mics = useRecorder((s) => s.mics);
   useEffect(() => {
@@ -283,9 +293,9 @@ export function CaptureThisMac() {
   const busy = phase !== "idle";
   const canRecord = app.connection === "connected" && !!app.snapshot && !busy;
   const tabs: Array<{ id: TakeMode; label: string }> = [
+    { id: "screen", label: "Screen" },
     { id: "voiceover", label: "Microphone" },
     { id: "camera", label: "Camera" },
-    { id: "screen", label: "Screen" },
   ];
   return (
     <div className="lib-section capture-this-mac" data-testid="capture-this-mac" data-phase={phase} {...(recordedMs !== undefined ? { "data-recorded-ms": recordedMs } : {})}>

@@ -4,8 +4,10 @@
 // `argent` CLI. No other dependencies: it runs on Uncut's own Node (D97), from this folder.
 //
 // Argent is found at $ARGENT_BIN, else on PATH. It's only ever asked for its version, the device
-// list, a recording's start and stop, and a flow run: never to start, stop or reset its shared
-// tool-server (other agents on this Mac use it), never to boot or shut down a device.
+// list, a recording's start and stop, a flow run, a rotation and an app launch before a take, and
+// (D143) a boot when the user clicks "Boot and record" in the Capture tab (argent_capture_boot,
+// never an agent tool): never to start, stop or reset its shared tool-server (other agents on this
+// Mac use it), never to shut down a device.
 //
 // Uncut passes the project in each tools/call's _meta (D98): uncut/projectDir, uncut/captureDir
 // (<project>/media/captures, where takes are written) and uncut/flowsDir (<project>/flows). A
@@ -34,6 +36,9 @@ const MAX_SECONDS = 600;
 // How long a flow may run before the plugin gives up on it (and stops the recording).
 const FLOW_TIMEOUT_MS = (MAX_SECONDS + 20) * 1000;
 const CALL_TIMEOUT_MS = 60_000;
+// A cold Android boot can take minutes (Argent's own default budget is 8).
+const BOOT_TIMEOUT_MS = 9 * 60_000;
+export const ORIENTATIONS = ["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"] as const;
 
 // ---- small helpers ----
 
@@ -144,10 +149,10 @@ const running = new Map<ChildProcess, boolean>();
 const lastLine = (run: Run) => (run.stderr.trim() || run.stdout.trim()).split("\n").filter(Boolean).at(-1)?.slice(0, 400) ?? `exit code ${run.code}`;
 
 /** `argent run <tool> --args <json> --json`, parsed. */
-async function argentTool(tool: string, payload: Json, options: { cwd?: string; signal?: AbortSignal } = {}): Promise<Json> {
+async function argentTool(tool: string, payload: Json, options: { cwd?: string; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<Json> {
   const run = await runArgent(["run", tool, "--args", JSON.stringify(payload), "--json"], options);
   if (run.aborted) throw new Error("cancelled");
-  if (run.timedOut) throw new Error(`argent ${tool} didn't answer within ${CALL_TIMEOUT_MS / 1000} s`);
+  if (run.timedOut) throw new Error(`argent ${tool} didn't answer within ${Math.round((options.timeoutMs ?? CALL_TIMEOUT_MS) / 1000)} s`);
   if (run.code !== 0) throw new Error(`argent ${tool} failed: ${lastLine(run)}`);
   try {
     const parsed = JSON.parse(run.stdout) as unknown;
@@ -181,6 +186,8 @@ export interface Device {
   readonly state: string;
   readonly recordable: boolean;
   readonly reason?: string;
+  /** D143: off now, but Argent can boot it (a shut-down simulator, an AVD that isn't running). */
+  readonly bootable?: boolean;
 }
 
 /** One entry of `argent run list-devices` as Uncut shows it, and whether it can be recorded. */
@@ -195,7 +202,7 @@ export function toDevice(raw: Json): Device | undefined {
     if (raw.kind === "device") return no("Physical iPhones can't be recorded yet");
     if (id.startsWith("remote:") || raw.remote === true) return no("Remote simulators can't be recorded yet");
     if (raw.runtimeKind === "tv" || /tvOS/i.test(String(raw.runtime ?? ""))) return no("tvOS simulators can't be recorded yet");
-    if (state !== "Booted") return no("Not booted");
+    if (state !== "Booted") return state === "Shutdown" ? { ...no("Not booted"), bootable: true } : no("Not booted");
     return { id, platform, name, state, recordable: true };
   }
   if (platform === "android") {
@@ -212,7 +219,14 @@ async function listDevices(): Promise<{ argent: ArgentInfo; devices: ReadonlyArr
   if (!argent.installed || argent.problem) return { argent, devices: [] };
   const result = await argentTool("list-devices", {});
   const raw = Array.isArray(result.devices) ? (result.devices as Array<Json>) : [];
-  return { argent, devices: raw.map(toDevice).filter((d): d is Device => !!d) };
+  const devices = raw.map(toDevice).filter((d): d is Device => !!d);
+  // AVDs that aren't running (one that is shows as its emulator) can be booted (D143).
+  const running = new Set(raw.flatMap((d) => (d.platform === "android" && str(d.avdName) ? [str(d.avdName)!] : [])));
+  const avds = (Array.isArray(result.avds) ? (result.avds as Array<Json>) : []).flatMap((a) => {
+    const name = str(a.name);
+    return name && !running.has(name) ? [{ id: `avd:${name}`, platform: "android", name: name.replace(/_/g, " "), state: "stopped", recordable: false, reason: "Not running", bootable: true } satisfies Device] : [];
+  });
+  return { argent, devices: [...devices, ...avds] };
 }
 
 async function recordableDevice(id: string): Promise<Device> {
@@ -223,6 +237,42 @@ async function recordableDevice(id: string): Promise<Device> {
   if (!device) throw new Refusal(`There's no device ${id}. argent_list_devices lists the ones Argent sees${devices.length ? `: ${devices.map((d) => d.id).join(", ")}` : " (none right now)"}.`);
   if (!device.recordable) throw new Refusal(`${device.name} (${device.id}) can't be recorded: ${device.reason}.`);
   return device;
+}
+
+/** D143: what to do on the device before a take: turn it, open an app (in that order). */
+export interface Prep {
+  readonly orientation?: (typeof ORIENTATIONS)[number];
+  readonly bundleId?: string;
+}
+
+export function prepOf(args: Json): Prep {
+  const orientation = str(args.orientation);
+  if (orientation !== undefined && !(ORIENTATIONS as ReadonlyArray<string>).includes(orientation)) throw new Refusal(`orientation must be one of ${ORIENTATIONS.join(", ")}.`);
+  const bundleId = str(args.bundleId);
+  if (bundleId !== undefined && !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,200}$/.test(bundleId)) throw new Refusal("bundleId must look like com.example.app (letters, digits, dots, dashes, underscores).");
+  return { ...(orientation ? { orientation: orientation as Prep["orientation"] } : {}), ...(bundleId ? { bundleId } : {}) };
+}
+
+async function prepare(device: Device, prep: Prep, signal?: AbortSignal) {
+  const opts = signal ? { signal } : {};
+  if (prep.orientation) await argentTool("rotate", { udid: device.id, orientation: prep.orientation }, opts);
+  if (prep.bundleId) await argentTool("launch-app", { udid: device.id, bundleId: prep.bundleId }, opts);
+}
+
+/** D143: boots a shut-down simulator or an AVD; returns the id to record (an AVD's emulator serial). */
+async function bootDevice(id: string): Promise<{ device: string; name: string }> {
+  const { argent, devices } = await listDevices();
+  if (!argent.installed) throw new Refusal(`Argent isn't installed. Install it with: ${INSTALL}`);
+  if (argent.problem) throw new Refusal(argent.problem);
+  const device = devices.find((d) => d.id === id);
+  if (!device) throw new Refusal(`There's no device ${id} any more. Look for devices again.`);
+  if (device.recordable) return { device: device.id, name: device.name };
+  if (!device.bootable) throw new Refusal(`${device.name} can't be booted from Uncut: ${device.reason ?? "not supported"}.`);
+  const payload: Json = device.id.startsWith("avd:") ? { avdName: device.id.slice(4) } : { udid: device.id };
+  const result = await argentTool("boot-device", payload, { timeoutMs: BOOT_TIMEOUT_MS });
+  const booted = str(result.udid) ?? str(result.serial) ?? (device.id.startsWith("avd:") ? undefined : device.id);
+  if (!booted) throw new Error("argent booted the emulator but didn't say its serial");
+  return { device: booted, name: device.name };
 }
 
 // ---- recordings ----
@@ -285,7 +335,7 @@ async function sweepScratch(captureDir: string) {
   }
 }
 
-async function startRecording(device: Device, context: Context, options: { showTouches: boolean; limitSeconds: number; name?: string | undefined }, signal?: AbortSignal): Promise<Recording> {
+async function startRecording(device: Device, context: Context, options: { showTouches: boolean; limitSeconds: number; name?: string | undefined; trimStatic?: boolean }, signal?: AbortSignal): Promise<Recording> {
   if (!context.captureDir) throw new Refusal("No project is open, so there's nowhere to save a recording. Open a project first.");
   if (recordings.has(device.id)) throw new Refusal(`${device.name} is already being recorded. Stop that recording first.`);
   await mkdir(context.captureDir, { recursive: true });
@@ -297,7 +347,7 @@ async function startRecording(device: Device, context: Context, options: { showT
   const recording: Recording = { device: device.id, startedAt: Date.now(), scratch, captureDir: context.captureDir, label: device.name, ...(options.name ? { name: options.name } : {}) };
   recordings.set(device.id, recording);
   try {
-    await argentTool("screen-recording-start", { udid: device.id, timeLimitSeconds: Math.max(1, Math.min(MAX_SECONDS, Math.ceil(options.limitSeconds))), trimStatic: false, showTouches: options.showTouches }, { cwd: scratch, ...(signal ? { signal } : {}) });
+    await argentTool("screen-recording-start", { udid: device.id, timeLimitSeconds: Math.max(1, Math.min(MAX_SECONDS, Math.ceil(options.limitSeconds))), trimStatic: options.trimStatic === true, showTouches: options.showTouches }, { cwd: scratch, ...(signal ? { signal } : {}) });
   } catch (error) {
     recordings.delete(device.id);
     // Cancelled (or it failed) while starting: it may have started anyway, so stop it.
@@ -448,7 +498,8 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * One take: start the recording, play the flow or wait the seconds, stop it. The recording is
  * stopped whatever happens (a failed flow, a cancelled call); only a finished take is kept.
  */
-async function recordTake(device: Device, context: Context, plan: { seconds?: number; flowFile?: string; showTouches: boolean; name?: string | undefined }, signal: AbortSignal): Promise<Take> {
+async function recordTake(device: Device, context: Context, plan: { seconds?: number; flowFile?: string; showTouches: boolean; name?: string | undefined; prep?: Prep }, signal: AbortSignal): Promise<Take> {
+  if (plan.prep) await prepare(device, plan.prep, signal);
   const recording = await startRecording(device, context, { showTouches: plan.showTouches, limitSeconds: plan.flowFile ? MAX_SECONDS : (plan.seconds ?? 0) + 5, name: plan.name }, signal);
   let failure: unknown;
   try {
@@ -504,9 +555,10 @@ async function recordTool({ args, context, signal }: Call): Promise<Result> {
   if (saveFlow && !flowArg) throw new Refusal("saveFlow names a copy of the flow you replay; pass flow too.");
   if (!context.captureDir) throw new Refusal("No project is open, so there's nowhere to save a recording.");
   const flowFile = flowArg ? await resolveFlow(flowArg, context, "arg") : undefined;
+  const prep = prepOf(args);
   const device = await recordableDevice(deviceId);
   const flow = flowFile ? await keepFlow(flowFile, context, saveFlow) : undefined;
-  const take = await recordTake(device, context, { ...(seconds !== undefined ? { seconds } : {}), ...(flowFile ? { flowFile } : {}), showTouches: bool(args.showTouches, false), name: str(args.name) }, signal);
+  const take = await recordTake(device, context, { ...(seconds !== undefined ? { seconds } : {}), ...(flowFile ? { flowFile } : {}), showTouches: bool(args.showTouches, false), name: str(args.name), prep }, signal);
   const source = { module: MODULE_ID, device: device.id, ...(flow ? { flow } : {}) };
   return takeResult(take, device, flow, { media: { path: take.path, ...(str(args.name) ? { name: str(args.name) } : {}), source } });
 }
@@ -537,9 +589,12 @@ async function reshootTool({ args, context, signal }: Call): Promise<Result> {
 async function captureStartTool({ args, context }: Call): Promise<Result> {
   const deviceId = str(args.device);
   if (!deviceId) throw new Refusal("Pass device.");
+  const prep = prepOf(args);
+  const max = typeof args.maxSeconds === "number" && Number.isFinite(args.maxSeconds) ? Math.max(1, Math.min(MAX_SECONDS, Math.ceil(args.maxSeconds))) : MAX_SECONDS;
   const device = await recordableDevice(deviceId);
-  const recording = await startRecording(device, context, { showTouches: bool(args.showTouches, false), limitSeconds: MAX_SECONDS });
-  const info = { device: device.id, startedAt: new Date(recording.startedAt).toISOString(), limitSeconds: MAX_SECONDS };
+  await prepare(device, prep);
+  const recording = await startRecording(device, context, { showTouches: bool(args.showTouches, false), limitSeconds: max, trimStatic: bool(args.trimStatic, false) });
+  const info = { device: device.id, startedAt: new Date(recording.startedAt).toISOString(), limitSeconds: max };
   return text(JSON.stringify(info), info);
 }
 async function captureStopTool({ args }: Call): Promise<Result> {
@@ -548,6 +603,14 @@ async function captureStopTool({ args }: Call): Promise<Result> {
   const take = (await stopRecording(deviceId))!;
   const info = { path: take.path, seconds: take.seconds, bytes: take.bytes, device: deviceId, ...(take.warning ? { warning: take.warning } : {}) };
   return text(JSON.stringify(info), { ...info, uncut: { media: { path: take.path, source: { module: MODULE_ID, device: deviceId } } } });
+}
+
+/** The Capture tab's "Boot and record" (D143): only ever on the user's click, never the agent's. */
+async function captureBootTool({ args }: Call): Promise<Result> {
+  const deviceId = str(args.device);
+  if (!deviceId) throw new Refusal("Pass device.");
+  const info = await bootDevice(deviceId);
+  return text(JSON.stringify(info), info);
 }
 
 async function captureListTool(): Promise<Result> {
@@ -562,6 +625,7 @@ const TOOLS: Record<string, (call: Call) => Promise<Result>> = {
   argent_capture_start: captureStartTool,
   argent_capture_stop: captureStopTool,
   argent_capture_list: captureListTool,
+  argent_capture_boot: captureBootTool,
 };
 
 // ---- MCP over stdio (@uncut/plugin-sdk) ----
