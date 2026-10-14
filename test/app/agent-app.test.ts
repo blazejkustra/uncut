@@ -42,7 +42,7 @@ async function newProject(app: LaunchedApp) {
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
   await page.click("[data-testid=create]");
   await waitFor(page, "[data-testid=editor]");
-  return page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  return page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
 }
 
 before(async () => {

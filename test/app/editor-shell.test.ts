@@ -54,6 +54,8 @@ async function createThroughForm(page: Page, name: string) {
   await page.waitForFunction((dir: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === dir, {}, projects);
   await page.click("[data-testid=create]");
   await page.waitForFunction((n: string) => document.title === n, {}, name);
+  // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
+  await page.click("[data-testid=tab-inspector]");
 }
 const rect = (page: Page, selector: string) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON());
 const serverPid = (app: LaunchedApp) => Number(execFileSync("pgrep", ["-P", String(app.proc.pid), "-f", "server/server.mjs"], { encoding: "utf8" }).trim());
@@ -98,6 +100,10 @@ test("errors, drafts, the New project form, reload failures and the minimum wind
     await page.click("[data-testid=inspector-name]", { clickCount: 3 });
     await page.type("[data-testid=inspector-name]", "Draft");
     await meta(page, "KeyO");
+    // Leaving with a value being typed asks first (U12); Discard drops it.
+    await waitFor(page, "[data-testid=leave-dialog][data-reason=open-project]");
+    assert.deepEqual(await page.$$eval("[data-testid=leave-item]", (els) => els.map((e) => e.textContent)), ["A value being typed"]);
+    await page.click("[data-testid=leave-drop]");
     await page.waitForFunction(() => document.title === "Alpha");
     await page.click("[data-testid=timeline]");
     await sleep(300);
@@ -145,6 +151,7 @@ test("errors, drafts, the New project form, reload failures and the minimum wind
     await page.waitForFunction((dir: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === dir, {}, projects);
     await page.click("[data-testid=create]");
     await page.waitForFunction(() => document.title === "Gamma");
+    await page.click("[data-testid=tab-inspector]");
     assert.equal(await exists(page, "new-project-modal"), false);
 
     // The minimum window size: nothing spills out of its panel, with and without a banner.
@@ -220,7 +227,7 @@ test("a rename sent while the server is frozen ends up exactly as the server has
     await page.click("[data-testid=recent]"); // Alpha 2, the newest still on disk
     await waitFor(page, "[data-testid=editor]");
     const name = await page.title();
-    const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+    const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
     const pid = serverPid(app);
     await page.click("[data-testid=inspector-name]", { clickCount: 3 });
     await page.type("[data-testid=inspector-name]", "InFlight");

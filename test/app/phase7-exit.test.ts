@@ -244,7 +244,7 @@ async function exitCheck() {
   await page.waitForFunction((d: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === d, {}, join(root, "projects"));
   await page.click("[data-testid=create]");
   await waitFor("[data-testid=editor]");
-  dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   mkdirSync(join(dir, "flows"), { recursive: true });
   writeFileSync(join(dir, "flows", `${FLOW}.yaml`), FLOW_YAML);
   step("project created");

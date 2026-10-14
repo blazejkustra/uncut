@@ -28,6 +28,7 @@ import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
 import { planAddComponent, planAddGraphic } from "../preview/components.ts";
 import { planRemoveGainKey } from "../audio/sound.ts";
 import { planFitToVideo, planRemoveMedia } from "@uncut/core/mediaPlan";
+import { rememberSideTab } from "../editor/layout.ts";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
@@ -597,8 +598,25 @@ export async function start() {
  * "unknown", not "didn't happen": nothing is rolled back here, the subscription will show
  * what the server did. Returns the error (if any) for callers that show it inline.
  */
+// U12 (D178): asked before leaving the project or the environment; state/leave.tsx sets it (it
+// imports this module, so it registers itself instead of being imported here).
+type LeaveGate = (reason: "close-project" | "open-project" | "new-project" | "environment") => Promise<boolean>;
+let confirmLeave: LeaveGate = () => Promise.resolve(true);
+export const setLeaveGate = (gate: LeaveGate) => void (confirmLeave = gate);
+
+// Project changes sent and not answered yet, and item edits queued behind them (U12: leaving waits for them).
+let inflight = 0;
+let queuedEdits = 0;
+export const pendingSaves = () => inflight + queuedEdits;
+
 async function change(run: Parameters<Connection["call"]>[0], { inline = false } = {}): Promise<CallError | undefined> {
-  const result = (await call(run)) as Result<ProjectSnapshot>;
+  inflight++;
+  let result: Result<ProjectSnapshot>;
+  try {
+    result = (await call(run)) as Result<ProjectSnapshot>;
+  } finally {
+    inflight--;
+  }
   if (result.ok) {
     const renamed = state.snapshot && projectOf(state.snapshot).name !== projectOf(result.value).name;
     applyFromCall(result.value);
@@ -693,7 +711,10 @@ const settled = () => new Promise<void>((resolve) => setTimeout(resolve, 25));
  * (a typing burst, a drag), so the server refuses it if the agent changed the item since (D6).
  */
 function itemEdit(makePlan: (project: ProjectModel) => Plan | { readonly problem: string }, origin: { readonly baseRevision?: number | undefined; readonly dir?: string | undefined } = {}): Promise<boolean> {
+  queuedEdits++;
+  let started = false;
   const run = async () => {
+    if (!started) (started = true, queuedEdits--);
     while (adding) await settled();
     const snapshot = state.snapshot;
     if (!snapshot || (origin.dir !== undefined && origin.dir !== snapshot.dir)) return false;
@@ -787,11 +808,16 @@ export const actions = {
     if (id === state.environment.id && name.trim()) set({ environment: { ...state.environment, name: name.trim() } });
   },
   async removeEnvironment(id: string) {
+    // Removing the one on screen goes back to Local (the window reloads): ask first (U12).
+    if (id === state.environment.id && !(await confirmLeave("environment"))) return;
     await bridge.removeEnvironment(id);
     await actions.loadEnvironments();
   },
   /** The window reloads into the other environment: nothing carries over (D106). */
-  switchEnvironment: (id: string) => (id === state.environment.id ? Promise.resolve(false) : bridge.switchEnvironment(id)),
+  async switchEnvironment(id: string): Promise<boolean> {
+    if (id === state.environment.id || !(await confirmLeave("environment"))) return false;
+    return bridge.switchEnvironment(id);
+  },
 
   // ---- the remote file browser (D107) ----
   listFolder: async (dir?: string): Promise<{ readonly listing: FileListing } | { readonly problem: string }> => {
@@ -850,8 +876,12 @@ export const actions = {
 
   /** Creates and opens the project (replacing any open one); returns the error for the form. */
   async createProject(input: { parentDir: string; name: string; canvas: Canvas }): Promise<string | undefined> {
+    // It replaces the open project: ask first when that one has work in progress (U12).
+    if (state.snapshot && !(await confirmLeave("new-project"))) return undefined;
     const result = await call((c) => c["project.create"](input));
     if (result.ok) {
+      // U14 (D180): a new project opens on the Agent tab.
+      rememberSideTab(result.value.dir, "agent");
       applyFromCall(result.value);
       set({ newProjectOpen: false, welcomeError: undefined, notice: undefined });
       void refreshRecents();
@@ -863,6 +893,7 @@ export const actions = {
 
   /** Opens a project. The error shows where the user is: the welcome card or the editor banner. */
   async openProject(dir: string) {
+    if (state.snapshot && state.snapshot.dir !== dir && !(await confirmLeave("open-project"))) return;
     const result = await call((c) => c["project.open"]({ dir }));
     if (result.ok) {
       applyFromCall(result.value);
@@ -882,6 +913,7 @@ export const actions = {
 
   async closeProject() {
     if (!state.snapshot) return;
+    if (!(await confirmLeave("close-project"))) return;
     const result = await call((c) => c["project.close"]({}));
     if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });
     set({ snapshot: null, changedOnDisk: false, reloadProblem: undefined, notice: undefined, welcomeError: undefined });

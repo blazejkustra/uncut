@@ -9,6 +9,8 @@ import {
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
+  CLOSE_ANSWER_CHANNEL,
+  CLOSE_REQUEST_CHANNEL,
   COPY_TEXT_CHANNEL,
   DOWNLOAD_EXPORT_CHANNEL,
   ENVIRONMENT_ADD_CHANNEL,
@@ -26,6 +28,7 @@ import {
   SHOW_IN_FOLDER_CHANNEL,
   SILENT_AUDIO_CHANNEL,
   type AppState,
+  type CloseAnswer,
   type FolderPurpose,
   type MediaAccessKind,
   type MenuCommand,
@@ -58,6 +61,9 @@ contextBridge.exposeInMainWorld("uncut", {
     }
   },
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
+  // U12 (D178): asked before the window closes or the app quits.
+  onCloseRequest: (listener: (kind: "window" | "quit") => void) => subscribe(CLOSE_REQUEST_CHANNEL, listener),
+  answerClose: (answer: CloseAnswer) => ipcRenderer.send(CLOSE_ANSWER_CHANNEL, answer),
   // Environments (Phase 9, D106): Local and the remote servers; switching reloads the window.
   environments: () => ipcRenderer.invoke(ENVIRONMENTS_CHANNEL),
   addEnvironment: (input: { name: string; url: string; token: string }) => ipcRenderer.invoke(ENVIRONMENT_ADD_CHANNEL, input),

@@ -211,7 +211,7 @@ async function exitCheck() {
   await page.waitForFunction((d: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === d, {}, join(root, "projects"));
   await page.click("[data-testid=create]");
   await waitFor("[data-testid=editor]");
-  dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   const transcript = talkTranscript(fixture);
   if (!WHISPER_IT) await writeCached(dir, await fingerprint(fixture.talk), "transcript", transcript);
 
@@ -344,7 +344,7 @@ async function exitCheck() {
   await page.screenshot({ path: out("phase5-agent.png") });
 
   // The Transcript tab after the cut: the cut words are gone, one block per piece.
-  await page.click("[data-testid=bottom-transcript]");
+  await page.click("[data-testid=rail-transcript]");
   await page.waitForFunction((n) => document.querySelectorAll("[data-testid=tx-block]").length === n, { timeout: 20000 }, talk.length);
   const wordsLeft = WHISPER_IT ? 1 : transcript.words.length - 2 - target.length;
   await page.waitForFunction((n) => document.querySelectorAll("[data-testid=tx-word]").length >= n, { timeout: 20000 }, wordsLeft);

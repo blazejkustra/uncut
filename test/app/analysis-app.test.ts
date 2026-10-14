@@ -66,7 +66,7 @@ test("Analyze on a media tile: progress while it runs, Stop leaves nothing in th
   await waitFor(page, "[data-testid=media-empty]");
   await page.click("[data-testid=import]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 2, { timeout: 60000 });
-  const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
 
   assert.equal(await page.$("[data-testid=media-tile][data-id=m-still] [data-testid=analyze]"), null, "no Analyze for a clip without sound");
   await page.click("[data-testid=media-tile][data-id=m-talk] [data-testid=analyze]");

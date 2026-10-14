@@ -76,7 +76,8 @@ function MenuList({ items, x, y, label, level, onClose, onBack }: { items: MenuI
     const nx = x + r.width > window.innerWidth - 4 ? Math.max(4, (level > 0 ? x - r.width - 180 : x - r.width)) : x;
     const ny = y + r.height > window.innerHeight - 4 ? Math.max(4, window.innerHeight - r.height - 4) : y;
     setPos({ x: nx, y: ny });
-    el.focus();
+    // Not scrolled to: it's drawn where it fits only after this render (U13).
+    el.focus({ preventScroll: true });
   }, [x, y, level]);
   const choose = (index: number) => {
     const entry = items[index];
@@ -171,7 +172,7 @@ function MenuList({ items, x, y, label, level, onClose, onBack }: { items: MenuI
           onClose={onClose}
           onBack={() => {
             setSub(undefined);
-            ref.current?.focus();
+            ref.current?.focus({ preventScroll: true });
           }}
         />
       )}

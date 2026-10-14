@@ -1,6 +1,6 @@
 // The left rail: the library's tabs. A long press (LONG_PRESS_MS without moving) picks a tab up;
 // dragging it over another moves it there; the order is remembered on this Mac (S2, D117).
-import { AudioWaveform, Blend, CircleDot, Film, Music, Palette, Shapes, Sparkles, Type, type LucideIcon } from "lucide-react";
+import { AudioWaveform, Blend, CircleDot, Film, Music, Palette, ScrollText, Shapes, Sparkles, Type, type LucideIcon } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -11,6 +11,8 @@ export const LONG_PRESS_MS = 350;
 
 const TABS: ReadonlyArray<{ readonly id: LibraryTab; readonly label: string; readonly title: string; readonly icon: LucideIcon }> = [
   { id: "media", label: "Media", title: "Media", icon: Film },
+  // U11 (D177): the transcript of what's said on the main track, next to the media it comes from.
+  { id: "transcript", label: "Transcript", title: "Transcript", icon: ScrollText },
   { id: "text", label: "Text", title: "Text", icon: Type },
   { id: "elements", label: "Elements", title: "Elements", icon: Shapes },
   { id: "audio", label: "Audio", title: "Audio", icon: Music },

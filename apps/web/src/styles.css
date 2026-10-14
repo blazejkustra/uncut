@@ -22,6 +22,9 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 var(--font); }
+/* U13: only panels scroll. The window's root can't (clip also refuses scripted scrolls and focus scrolls). */
+html, body { overflow: hidden; }
+#root { overflow: clip; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.45; }
 input { font: inherit; color: inherit; }
@@ -98,12 +101,13 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 
 /* Editor grid (wireframe) */
 .app {
-  display: grid; height: 100vh; position: relative;
+  display: grid; height: 100vh; position: relative; overflow: clip;
   /* Side panels and the timeline shrink with the window down to the minimum (1024×640). */
   /* The panels' sizes: these defaults, or what the user dragged them to (editor/layout.ts, G5). */
   --lib-col: clamp(200px, 20vw, 272px); --side-col: clamp(260px, 24vw, 320px); --bottom-row: clamp(170px, 30vh, 280px);
   grid-template-columns: 56px var(--lib-col) minmax(0, 1fr) var(--side-col);
-  grid-template-rows: 40px auto minmax(0, 1fr) var(--bottom-row);
+  /* The bottom row gives way too (U13): banners on a short window never push the grid past the window. */
+  grid-template-rows: 40px auto minmax(0, 1fr) minmax(0, var(--bottom-row));
   /* The timeline spans the whole window; the rail and the left panel sit above it (S1, T4). */
   grid-template-areas: "top top top top" "banners banners banners banners" "rail lib stage side" "bottom bottom bottom bottom";
 }
@@ -144,7 +148,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .banner.warn { background: #2a2310; color: #f6d77b; }
 .banner.error { background: #2a1414; color: #f8b4b4; }
 
-.rail { grid-area: rail; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-right: 1px solid var(--border); }
+.rail { grid-area: rail; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-right: 1px solid var(--border); min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.rail button { flex: none; }
 .rail button { width: 48px; padding: 7px 0 5px; border-radius: var(--radius-sm); color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .rail button span { font-size: 9.5px; }
 .rail button.active { color: var(--fg); background: var(--raised); }
@@ -364,6 +369,10 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .confirm-title { font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
 .confirm-text { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* U12 (D178): leaving with work in progress, over everything (Settings, Environments, the wizard). */
+.modal-layer.leave-layer { z-index: 200; align-items: center; justify-content: center; }
+.leave { width: 400px; }
+.leave-list { margin: 8px 0 16px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .btn.danger { background: #c94a4a; color: #fff; border-color: transparent; font-weight: 500; }
 .btn.danger:not(:disabled):hover { background: #d95a5a; }
 .import-report { margin: 0 14px 8px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); }
@@ -630,12 +639,19 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 [data-testid=settings-defaults] .kv-row .num-field { width: 150px; }
 
 /* Transcript panel (D32, D69) */
-.tx-body { padding: 12px 18px 24px; }
+/* U11 (D177): the Transcript in the left column: its tools wrap above the words, which scroll. */
+.library.tx-panel { overflow: hidden; }
+.tx-toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 12px 10px; border-bottom: 1px solid var(--border); }
+.tx-toolbar .tx-status { flex-basis: 100%; min-height: 0; }
+.tx-toolbar .tx-status:empty { display: none; }
+.tx-toolbar .btn { padding-left: 8px; padding-right: 8px; }
+.tx-panel .tx-popover { left: 0; right: auto; }
+.tx-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px 24px; }
 .tx-doc { max-width: 920px; }
 .tx-block { margin-bottom: 14px; }
 .tx-head { display: flex; gap: 8px; align-items: baseline; font-size: 11px; color: var(--dim); margin-bottom: 3px; min-width: 0; }
 .tx-head .mono { font-family: var(--mono); font-size: 10px; flex: none; }
-.tx-words { margin: 0; font-size: 14px; line-height: 1.8; color: var(--fg); user-select: none; -webkit-user-select: none; }
+.tx-words { margin: 0; font-size: 13px; line-height: 1.8; color: var(--fg); user-select: none; -webkit-user-select: none; }
 .tx-word { border-radius: 3px; padding: 1px 1px; cursor: text; }
 .tx-word:hover { background: var(--raised); }
 .tx-word.filler.hesitation { color: var(--warn); text-decoration: underline dotted rgb(251 191 36 / 55%); text-underline-offset: 4px; }
@@ -1163,6 +1179,8 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px 
 /* Preview zoom and pan (G6): the picture can be bigger than its area; the area clips it. */
 .stage-canvas { overflow: hidden; position: relative; }
 .stage-canvas.hand, .stage-canvas.hand .frame * { cursor: grab; }
+/* U10: a middle-button (or hand) drag pans the preview. */
+.stage-canvas.panning, .stage-canvas.panning * { cursor: grabbing !important; }
 .zoom-select { height: 24px; background: var(--panel-2); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; padding: 0 4px; }
 /* The full-window preview (G7b). */
 .stage.fullscreen { position: fixed; inset: 0; z-index: 45; background: #000; }

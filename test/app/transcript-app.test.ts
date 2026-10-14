@@ -98,14 +98,14 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   await waitFor(page, "[data-testid=media-empty]");
   await page.click("[data-testid=import]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 1, { timeout: 60000 });
-  const dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  const dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   await page.$eval("[data-testid=media-tile][data-id=m-talk] [data-testid=add-to-timeline]", (el) => (el as HTMLElement).click());
   await waitFor(page, "[data-testid=timeline-item][data-duration='180']");
   await untilSaved(dir, [["clip-1", 0, 180]]);
   await writeCached(dir, await fingerprint(join(root, "Talk.mp4")), "transcript", TRANSCRIPT);
 
-  // The Transcript tab: the words, the hesitation and the long pause marked.
-  await page.click("[data-testid=bottom-transcript]");
+  // The Transcript tab (a rail tab, U11): the words, the hesitation and the long pause marked.
+  await page.click("[data-testid=rail-transcript]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=tx-word]").length === 8, { timeout: 15000 });
   const texts = await page.$$eval("[data-testid=tx-word]", (els) => els.map((el) => el.textContent));
   assert.deepEqual(texts, ["Hello", "um", "this", "is", "a", "test.", "Second", "part."]);
@@ -159,11 +159,12 @@ test("Transcript tab: words in edit order, click to seek, select + ⌫ cuts as o
   assert.deepEqual(await page.$$eval("[data-testid=timeline-item]", (els) => els.map((el) => [(el as HTMLElement).dataset.start, (el as HTMLElement).dataset.duration])), [["0", "82"], ["82", "37"]]);
 
   // A clip whose media has no transcript, with whisper.cpp missing: its block points to Setup.
+  await page.click("[data-testid=rail-media]");
   await page.click("[data-testid=import-plus]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 2, { timeout: 60000 });
   await page.$eval("[data-testid=media-tile][data-id=m-other] [data-testid=add-to-timeline]", (el) => (el as HTMLElement).click());
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 3);
-  await page.click("[data-testid=bottom-transcript]");
+  await page.click("[data-testid=rail-transcript]");
   // (Other.mp4's sound differs from Talk.mp4's: the same content would share the cached transcript.)
   await waitFor(page, "[data-testid=tx-block][data-media=m-other] [data-testid=tx-no-whisper]");
   assert.equal(await page.$$eval("[data-testid=tx-word]", (els) => els.length), 8, "the talk's words are still there");

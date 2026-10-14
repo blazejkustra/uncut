@@ -73,16 +73,21 @@ export function useViewport(area: RefObject<HTMLDivElement | null>, fitScale: nu
     return () => el.removeEventListener("wheel", onWheel);
   }, [area]);
 
-  /** A press with the hand on: drag pans. Returns true when it took the press. */
+  /**
+   * A press with the hand on, or a middle-button press (U10) at any zoom: drag pans. Returns true
+   * when it took the press. Only the view moves; the project never changes.
+   */
   const handDown = (e: React.PointerEvent<HTMLElement>) => {
-    if (!hand || e.button !== 0) return false;
+    if (!(e.button === 1 || (hand && e.button === 0))) return false;
     e.preventDefault();
     e.stopPropagation();
     const start = { x: e.clientX, y: e.clientY, pan: live.current.pan };
     const target = e.currentTarget;
     target.setPointerCapture(e.pointerId);
+    target.classList.add("panning");
     const move = (ev: PointerEvent) => setPan({ x: start.pan.x + ev.clientX - start.x, y: start.pan.y + ev.clientY - start.y });
     const up = () => {
+      target.classList.remove("panning");
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
