@@ -130,7 +130,8 @@ test("an empty project: a turn adds a title through MCP, live and saved, and the
 test("D41: claude runs without API keys or a parent Claude Code session's variables", { skip }, () => {
   const env = sent()[0]!.env;
   for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"]) assert.ok(!env.includes(name), `${name} reached claude`);
-  assert.deepEqual(env.filter((k) => k.startsWith("CLAUDE_CODE_")), [], "CLAUDE_CODE_* reached claude");
+  // Only Uncut's own switches (D181), never one from outside (CLAUDE_CODE_ENTRYPOINT, CLAUDE_CODE_OAUTH_TOKEN).
+  assert.deepEqual(env.filter((k) => k.startsWith("CLAUDE_CODE_")).sort(), ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS"], "CLAUDE_CODE_* from outside reached claude");
   assert.ok(env.includes("HOME") && env.includes("FAKE_PLAN"), "the rest of the environment is passed on");
   assert.ok(!env.includes("UNCUT_TOKEN") && !env.includes("ELECTRON_RUN_AS_NODE"));
 });

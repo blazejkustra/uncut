@@ -375,7 +375,7 @@ test("the composer (D140-D142): @ picks media, Add to chat from the timeline, th
   await waitFor(page, '[data-testid=agent-reply][data-live="true"]', 20000);
   await waitFor(page, "[data-testid=agent-thinking]");
   await waitFor(page, "[data-testid=agent-worklog]");
-  assert.match(await text(page, "[data-testid=agent-now]"), /Writing…/);
+  assert.match(await text(page, "[data-testid=agent-now]"), /Writing reply…/);
   await page.screenshot({ path: "test-output/agent-live.png" });
   writeFileSync(gate, "[]");
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 30000 });

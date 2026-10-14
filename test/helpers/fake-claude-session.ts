@@ -12,7 +12,12 @@
 //   { text, slow: ms } stream the text in pieces, ms apart (a test can look mid-stream)
 //   { crash: true }    exit at once, mid-turn, with no result (and a line on stderr)
 //   { exit: true }     finish the turn, then exit (as an idle claude that went away)
+//   { missing: name, args } claude's own failure for a tool it doesn't have (bare name): the call
+//     shows, then an is_error tool_result "No such tool available" (the MCP server isn't asked)
+//   { tool, args, slowInput: ms } the call's input streams in pieces, ms apart (input_json_delta)
 // $FAKE_LINGER: stdin closing doesn't end it.
+// $FAKE_NO_THINKING_DISPLAY: started with --thinking-display, it says commander's unknown-option
+//   error on stderr and exits 1 before init (as a claude that doesn't know the flag).
 // $FAKE_RESUME_GONE=<id>: started with --resume <id>, it says "No conversation found" and exits.
 // Every message appends { prompt, resume, message, env, pid, mcpPid, mcpToken, system, tools,
 // allowed, partial } to $FAKE_PROMPT_LOG (resume: the session it continued, null for the very
@@ -22,7 +27,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { createInterface } from "node:readline";
 
 type Step =
-  | { tool: string; args?: unknown }
+  | { tool: string; args?: unknown; slowInput?: number }
+  | { missing: string; args?: unknown }
   | { text: string; split?: boolean; slow?: number }
   | { think: string }
   | { sleep: number }
@@ -42,13 +48,18 @@ const partial = argv.includes("--include-partial-messages");
 const resume = flag("--resume") ?? null;
 const out = (msg: unknown) => process.stdout.write(`${JSON.stringify(msg)}\n`);
 
+if (process.env.FAKE_NO_THINKING_DISPLAY && argv.includes("--thinking-display")) {
+  if (process.env.FAKE_PROMPT_LOG) appendFileSync(process.env.FAKE_PROMPT_LOG, `${JSON.stringify({ refused: "--thinking-display", argv })}\n`);
+  process.stderr.write("error: unknown option '--thinking-display'\n", () => process.exit(1));
+  await new Promise(() => {});
+}
 if (resume && process.env.FAKE_RESUME_GONE === resume) {
   process.stderr.write(`No conversation found with session ID: ${resume}\n`, () => process.exit(1));
   await new Promise(() => {});
 }
 
 const sessionId = resume ?? "fake-session";
-const cfg = JSON.parse(readFileSync(flag("--mcp-config")!, "utf8")).mcpServers.uncut as { command: string; args: Array<string>; env: Record<string, string> };
+const cfg = JSON.parse(readFileSync(flag("--mcp-config")!, "utf8")).mcpServers.uncut as { command: string; args: Array<string>; env: Record<string, string>; alwaysLoad?: boolean };
 const server = spawn(cfg.command, cfg.args, { env: { ...process.env, ...cfg.env }, stdio: ["pipe", "pipe", "inherit"] });
 const waiting = new Map<number, (m: RpcReply) => void>();
 let rpcId = 0;
@@ -122,7 +133,7 @@ async function assistant(block: { type: "text"; text: string } | { type: "thinki
   return id;
 }
 
-async function playTurn(prompt: string) {
+async function playTurn(prompt: string, images: Array<{ media_type: string; bytes: number }>) {
   const counter = `${process.env.FAKE_PLAN}.turn`;
   const n = existsSync(counter) ? Number(readFileSync(counter, "utf8")) : 0;
   writeFileSync(counter, String(n + 1));
@@ -131,7 +142,24 @@ async function playTurn(prompt: string) {
   if (process.env.FAKE_PROMPT_LOG) {
     appendFileSync(
       process.env.FAKE_PROMPT_LOG,
-      `${JSON.stringify({ prompt, resume: continued, message: messages, env: Object.keys(process.env), pid: process.pid, mcpPid: server.pid, mcpToken: cfg.env.UNCUT_AGENT_TOKEN, system: flag("--append-system-prompt"), tools: flag("--tools"), allowed: flag("--allowedTools"), partial })}\n`,
+      `${JSON.stringify({
+        prompt,
+        resume: continued,
+        message: messages,
+        env: Object.keys(process.env),
+        // D181: the values that matter for isolation and tool loading.
+        envValues: Object.fromEntries(["ENABLE_TOOL_SEARCH", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR"].map((k) => [k, process.env[k] ?? null])),
+        argv,
+        alwaysLoad: cfg.alwaysLoad ?? null,
+        images,
+        pid: process.pid,
+        mcpPid: server.pid,
+        mcpToken: cfg.env.UNCUT_AGENT_TOKEN,
+        system: flag("--append-system-prompt"),
+        tools: flag("--tools"),
+        allowed: flag("--allowedTools"),
+        partial,
+      })}\n`,
     );
   }
   continued = sessionId;
@@ -184,6 +212,14 @@ async function playTurn(prompt: string) {
       out({ type: "result", subtype: "error_during_execution", is_error: true, result: step.fail, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId });
       return;
     }
+    if ("missing" in step) {
+      steps++;
+      const useId = `toolu_${process.pid}_${messages}_${steps}`;
+      const id = `msg_${process.pid}_${++msgCount}`;
+      out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: step.missing, input: step.args ?? {} }] }, parent_tool_use_id: null, session_id: sessionId });
+      out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: useId, is_error: true, content: `<tool_use_error>Error: No such tool available: ${step.missing}</tool_use_error>` }] }, parent_tool_use_id: null, session_id: sessionId });
+      continue;
+    }
     steps++;
     const args = JSON.parse(JSON.stringify(step.args ?? {}).replaceAll('"$rev"', String(rev)));
     const useId = `toolu_${process.pid}_${messages}_${steps}`;
@@ -191,7 +227,15 @@ async function playTurn(prompt: string) {
     if (partial) {
       out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, parent_tool_use_id: null, session_id: sessionId });
       out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: {} } }, parent_tool_use_id: null, session_id: sessionId });
-      out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(args) } }, parent_tool_use_id: null, session_id: sessionId });
+      const json = JSON.stringify(args);
+      if ("slowInput" in step && step.slowInput) {
+        // In 4 pieces, ms apart: a test can look at the now line while the input streams.
+        const size = Math.ceil(json.length / 4);
+        for (let k = 0; k < json.length; k += size) {
+          out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(k, k + size) } }, parent_tool_use_id: null, session_id: sessionId });
+          await pause(step.slowInput);
+        }
+      } else out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json } }, parent_tool_use_id: null, session_id: sessionId });
       out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null, session_id: sessionId });
     }
     out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: `mcp__uncut__${step.tool}`, input: args }] }, parent_tool_use_id: null, session_id: sessionId });
@@ -208,16 +252,16 @@ async function playTurn(prompt: string) {
 }
 
 // Messages are played one at a time, in order; control requests are answered at once.
-const queue: Array<string> = [];
+const queue: Array<{ prompt: string; images: Array<{ media_type: string; bytes: number }> }> = [];
 let busy = false;
 const pump = async () => {
   if (busy) return;
   busy = true;
   while (queue.length) {
-    const prompt = queue.shift()!;
+    const next = queue.shift()!;
     abort = new AbortController();
     try {
-      await playTurn(prompt);
+      await playTurn(next.prompt, next.images);
     } catch (error) {
       if (!(error instanceof Interrupted)) throw error;
       out({ type: "result", subtype: "error_during_execution", is_error: true, result: "Interrupted by the user", duration_ms: 1, num_turns: 0, session_id: sessionId });
@@ -248,7 +292,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (msg.type === "user") {
     const content = msg.message?.content;
     const prompt = typeof content === "string" ? content : Array.isArray(content) ? content.filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n") : "";
-    queue.push(prompt);
+    const images = Array.isArray(content) ? content.filter((c: any) => c.type === "image").map((c: any) => ({ media_type: c.source?.media_type, bytes: Buffer.from(String(c.source?.data ?? ""), "base64").length })) : [];
+    queue.push({ prompt, images });
     void pump();
   }
 });

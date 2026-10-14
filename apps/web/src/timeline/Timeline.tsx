@@ -35,7 +35,7 @@ import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
 import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, onTransitionDrop, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE, useDraggedTransition, useTilePointer } from "./dnd.ts";
 import { openMenu } from "./ContextMenu.tsx";
-import { emptyMenu, itemMenu, trackMenu, type MenuUi } from "./menus.ts";
+import { emptyMenu, itemMenu, rulerMenu, trackMenu, type MenuUi } from "./menus.ts";
 import { TrackHead } from "./TrackHead.tsx";
 import { useTimelineWheel } from "./wheel.ts";
 
@@ -83,8 +83,9 @@ const selectionIds = () => {
 };
 
 export function Timeline({ project }: { project: ProjectModel }) {
-  const { thumbIds, connection, snapshot } = useApp();
+  const { thumbIds, connection, snapshot, agent } = useApp();
   const online = connection === "connected";
+  const flash = useAgentFlash(project, snapshot?.revision, agent);
   const zoom = usePlayback((s) => s.zoom);
   const selected = usePlayback((s) => s.selected);
   const also = usePlayback((s) => s.also);
@@ -791,7 +792,19 @@ export function Timeline({ project }: { project: ProjectModel }) {
             onPointerDown={(e) => onEmptyDown(e)}
             onContextMenu={(e) => onEmptyMenu(e)}
           >
-            <div className="tl-ruler" data-testid="ruler" onPointerDown={scrub}>
+            <div
+              className="tl-ruler"
+              data-testid="ruler"
+              onPointerDown={scrub}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // On the playhead: the playhead's frame; elsewhere on the ruler: the frame under the pointer.
+                const onHead = (e.target as Element).closest?.(".playhead");
+                const frame = onHead ? Math.floor(getPlayback().frame) : Math.max(0, Math.round(frameAt(e.clientX)));
+                openMenu(e.clientX, e.clientY, rulerMenu(frame, { markIn, markOut, end }), "Ruler");
+              }}
+            >
               {ticks.map((s) => (
                 <div key={s} className="tick" style={{ left: s * fps * ppf }}>
                   <span>{rulerLabel(s)}</span>
@@ -842,7 +855,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                         ppf={ppf}
                         thumbIds={thumbIds}
                         beats={item.media ? beatMap.get(item.media) : undefined}
-                        className={`${selection.has(item.id) ? "selected" : ""} ${dragged && (drag.mode === "move" || drag.mode === "group") ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
+                        className={`${selection.has(item.id) ? "selected" : ""} ${flash.has(item.id) ? "agent-flash" : ""} ${dragged && (drag.mode === "move" || drag.mode === "group") ? "landing" : ""} ${dragged && (drag.mode === "start" || drag.mode === "end") ? "trimming" : ""} ${dragged && drag.refused ? "refused" : ""}`}
                         data={{ "data-testid": "timeline-item", "data-item": item.id, "data-start": server?.start ?? start, "data-duration": server?.item.duration ?? duration }}
                         labelInset={track.role === "main" && item.transitionIn ? Math.max(14, item.transitionIn.duration * ppf) / 2 + 4 : 0}
                         edges={editable && item.type !== "captions"}
@@ -906,4 +919,34 @@ export function Timeline({ project }: { project: ProjectModel }) {
       )}
     </section>
   );
+}
+
+/**
+ * U6 (D185): the items an agent edit just added or changed, for a moment. An edit is the agent's
+ * when the running turn lists its revision; the snapshot and the agent state come separately, in
+ * either order, so each arrival checks the latest diff.
+ */
+function useAgentFlash(project: ProjectModel, revision: number | undefined, agent: ReturnType<typeof useApp>["agent"]): ReadonlySet<string> {
+  const [flash, setFlash] = useState<ReadonlySet<string>>(() => new Set());
+  const seen = useRef<Map<string, string> | undefined>(undefined);
+  const diff = useRef<{ revision: number; ids: Array<string>; shown: boolean } | undefined>(undefined);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const turn = agent?.running ? agent.turns.find((t) => t.id === agent.running) : undefined;
+  const revisions = turn ? turn.edits.map((e) => e.revision).join(",") : "";
+  useEffect(() => {
+    const now = new Map(project.tracks.flatMap((t) => t.items.map((i) => [i.id, JSON.stringify(i)] as const)));
+    const before = seen.current;
+    seen.current = now;
+    if (before && revision !== undefined) diff.current = { revision, ids: [...now].filter(([id, json]) => before.get(id) !== json).map(([id]) => id), shown: false };
+  }, [project, revision]);
+  useEffect(() => {
+    const d = diff.current;
+    if (!d || d.shown || !d.ids.length || !revisions.split(",").includes(String(d.revision))) return;
+    d.shown = true;
+    setFlash(new Set(d.ids));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFlash(new Set()), 1800);
+  }, [revisions, revision]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return flash;
 }
