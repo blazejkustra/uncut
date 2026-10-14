@@ -28,6 +28,12 @@ import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts
 import { clipState, planClipBox, resizeBox, type Corner } from "../timeline/clip.ts";
 import { Transport } from "./Transport.tsx";
 import { useViewport } from "./viewport.ts";
+import { clipFx, fxOverlayInner, fxPictureSize, fxSkips, hasOverlay, needsPicturePass, visibleRect, type ClipFx } from "@uncut/core/fx";
+import { FxRenderer } from "./fx.ts";
+import { EFFECT_DRAG_TYPE, setDraggedEffect } from "../timeline/dnd.ts";
+
+/** Renderers kept for reuse when clips with effects leave the canvas (D136). */
+const FX_POOL = 4;
 
 /** Fits a w×h box inside its container, like object-fit: contain. */
 function useFit(width: number, height: number) {
@@ -158,6 +164,13 @@ class Compositor {
   private readonly graphics = new Map<string, { wrap: HTMLDivElement; frame: HTMLIFrameElement; src: string; loaded: boolean; sent: string }>();
   // Whether the server has each graphic's document: "ok", being asked, or when to ask again (D78).
   private readonly graphicCheck = new Map<string, "ok" | "pending" | number>();
+  // Clip looks and effects (D136): each clip's compiled effects (by its effects' JSON), its WebGL
+  // canvas over the hidden picture element, and its overlay (vignette, grain, bars).
+  private readonly fxOf = new Map<string, { key: string; fx: ClipFx | undefined }>();
+  private readonly fxCanvas = new Map<string, FxRenderer>();
+  private readonly fxOverlay = new Map<string, { el: HTMLDivElement; html: string }>();
+  private readonly fxPool: Array<FxRenderer> = [];
+  private fxBroken = false;
   private graphicSeq = 0;
   private textKey = "";
   // The text being edited in place: hidden while the editor sits over it.
@@ -186,6 +199,7 @@ class Compositor {
     this.unsubscribe();
     playback.setFollower(undefined);
     for (const id of [...this.els.keys()]) this.drop(id);
+    for (const r of this.fxPool.splice(0)) r.dispose();
     for (const el of this.solids.values()) el.remove();
     this.solids.clear();
     this.clearOverlays();
@@ -230,6 +244,112 @@ class Compositor {
     this.boxes.get(id)?.remove();
     this.boxes.delete(id);
     this.els.delete(id);
+    this.dropFx(id);
+  }
+
+  /** A clip's effects canvas and overlay off the canvas (its picture element shown again). */
+  private dropFx(id: string) {
+    if (this.fxCanvas.has(id)) {
+      this.releaseFx(id);
+      const el = this.els.get(id);
+      if (el) el.style.visibility = "";
+    }
+    this.fxOverlay.get(id)?.el.remove();
+    this.fxOverlay.delete(id);
+  }
+
+  /** A clip's effects canvas off the canvas, its renderer kept for the next clip (a few: a context and shaders each). */
+  private releaseFx(id: string) {
+    const r = this.fxCanvas.get(id)!;
+    this.fxCanvas.delete(id);
+    r.canvas.remove();
+    r.onRestored = undefined;
+    r.canvas.style.filter = "";
+    if (this.fxPool.length < FX_POOL && !r.lost) this.fxPool.push(r);
+    else r.dispose();
+  }
+
+  /** A clip's compiled effects (D136), remade only when its effects change. */
+  private effectsOf(item: Item): ClipFx | undefined {
+    const key = item.effects?.length ? JSON.stringify(item.effects) : "";
+    const known = this.fxOf.get(item.id);
+    if (known && known.key === key) return known.fx;
+    const fx = key ? clipFx(item) : undefined;
+    this.fxOf.set(item.id, { key, fx });
+    return fx;
+  }
+
+  /**
+   * Draws a clip's looks and effects (D136): picture effects through its WebGL canvas (laid over the
+   * picture element, which is hidden but keeps playing), blur as CSS on what's shown, overlays on top.
+   */
+  private drawFx(item: Item, el: MediaEl, wrap: HTMLDivElement, box: ClipBox, opacity: number, frame: number, fps: number, start: number): void {
+    const media = this.project?.media.find((m) => m.id === item.media);
+    // SVG stills don't take looks or effects (D138; the planners refuse them too).
+    const fx = fxSkips(media) ? undefined : this.effectsOf(item);
+    const picture = !this.fxBroken && needsPicturePass(fx);
+    let shown: HTMLElement = el;
+    if (picture && fx) {
+      let r = this.fxCanvas.get(item.id);
+      if (!r) {
+        try {
+          r = this.fxPool.pop() ?? new FxRenderer();
+        } catch {
+          this.fxBroken = true;
+          return this.drawFx(item, el, wrap, box, opacity, frame, fps, start);
+        }
+        r.canvas.className = "pv-fx-canvas";
+        r.canvas.dataset.fx = item.id;
+        r.onRestored = () => this.render();
+        r.drawn = false;
+        this.fxCanvas.set(item.id, r);
+        el.after(r.canvas);
+      }
+      const c = r.canvas;
+      setStyle(c, "left", el.style.left);
+      setStyle(c, "top", el.style.top);
+      setStyle(c, "width", el.style.width);
+      setStyle(c, "height", el.style.height);
+      c.style.opacity = el.style.opacity;
+      const size = fxPictureSize(box, media?.probe);
+      const ready = el instanceof HTMLVideoElement ? el.readyState >= 2 : el.complete && el.naturalWidth > 0;
+      const ok = ready && r.render(el, fx, size.w, size.h, (Math.floor(frame) - start) / fps, 1, this.fxOf.get(item.id)?.key);
+      // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
+      const drawn = ok || (r.drawn && !r.lost);
+      el.style.visibility = drawn ? "hidden" : "";
+      c.style.visibility = drawn ? "" : "hidden";
+      if (drawn) shown = c;
+    } else if (this.fxCanvas.has(item.id)) {
+      this.releaseFx(item.id);
+      el.style.visibility = "";
+    }
+    // Blur (an effect) on what's shown, as the export blurs the picture before its box.
+    const blur = fx?.blur ? `blur(${px(fx.blur)})` : "";
+    if (shown.style.filter !== blur) shown.style.filter = blur;
+    if (shown !== el && el.style.filter) el.style.filter = "";
+    // Vignette, grain and bars: core's HTML over the picture's visible part, with the clip's opacity.
+    const html = fx && hasOverlay(fx) ? fxOverlayInner(fx, visibleRect(box), Math.floor(frame) - start) : "";
+    let o = this.fxOverlay.get(item.id);
+    if (!html) {
+      if (o) {
+        o.el.remove();
+        this.fxOverlay.delete(item.id);
+      }
+      return;
+    }
+    if (!o) {
+      const div = document.createElement("div");
+      div.className = "pv-fx-overlay";
+      div.dataset.fxOverlay = item.id;
+      o = { el: div, html: "" };
+      this.fxOverlay.set(item.id, o);
+    }
+    if (o.el.parentElement !== wrap || o.el !== wrap.lastElementChild) wrap.append(o.el);
+    if (o.html !== html) {
+      o.html = html;
+      o.el.innerHTML = html;
+    }
+    o.el.style.opacity = String(opacity);
   }
 
   /** The wrapper of a clip's media element (its box). */
@@ -250,6 +370,9 @@ class Compositor {
     if (kind === "image") {
       el = document.createElement("img");
       el.alt = "";
+      // CORS mode (as the <video>), so a look's WebGL pass may read it (D136).
+      el.crossOrigin = "anonymous";
+      el.addEventListener("load", () => this.fxCanvas.has(item.id) && this.render());
     } else {
       const video = document.createElement("video");
       // Muted until the mix routes its sound (a clip with sound); CORS mode so Web Audio may hear it.
@@ -264,7 +387,10 @@ class Compositor {
           wanted.set(video, want);
           video.currentTime = want;
         } else wanted.delete(video);
+        // A paused clip with effects (D136) draws the frame the seek landed on.
+        if (this.fxCanvas.has(item.id)) this.render();
       });
+      video.addEventListener("loadeddata", () => this.fxCanvas.has(item.id) && this.render());
       el = video;
     }
     el.dataset.item = item.id;
@@ -524,6 +650,7 @@ class Compositor {
       el.style.opacity = String(c.opacity);
       wrap.style.zIndex = String(z.get(c.item.id));
       if (c.box) placeBox(wrap, el, c.box, project.canvas, c.wipe, c.iris, c.mask, c.blur);
+      if (c.box) this.drawFx(c.item, el, wrap, c.box, c.opacity, frame, fps, starts.get(c.item.id)!);
       if (!(el instanceof HTMLVideoElement)) return;
       // A looped clip's media starts over by itself; drive() reseeks only if it drifts (D75).
       el.loop = c.item.loop === true;
@@ -834,8 +961,16 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   };
 
   /** A component dragged from Elements (D76): dropped on the canvas, it's added at the playhead, centred where it lands. */
+  /** The clip on the canvas under a pointer (an Effects tile dropped there goes on it, D136): the topmost box there. */
+  const clipAt = (x: number, y: number) => document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.matches(".pv-box[data-item]"))?.dataset.item;
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     const types = [...e.dataTransfer.types];
+    if (types.includes(EFFECT_DRAG_TYPE)) {
+      if (getState().connection !== "connected" || !clipAt(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      return;
+    }
     if ((!types.includes(COMPONENT_DRAG_TYPE) && !types.includes(TEXT_DRAG_TYPE)) || getState().connection !== "connected") return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -849,6 +984,14 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   };
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     setDropGhost(undefined);
+    const effect = e.dataTransfer.getData(EFFECT_DRAG_TYPE);
+    if (effect) {
+      e.preventDefault();
+      setDraggedEffect(undefined);
+      const id = clipAt(e.clientX, e.clientY);
+      if (id) void actions.applyFx(effect, id);
+      return;
+    }
     setDraggedText(undefined);
     const rect = frameRef.current!.getBoundingClientRect();
     const at = { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale };

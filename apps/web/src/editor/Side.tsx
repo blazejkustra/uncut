@@ -15,6 +15,8 @@ import { hasSpeed, NamesEditor, SpeedEditor } from "../inspector/speed.tsx";
 import { BackgroundEditor } from "../inspector/background.tsx";
 import { CaptionsEditor } from "../inspector/captions.tsx";
 import { ClipBoxEditor } from "../inspector/clip.tsx";
+import { EffectsEditor } from "../inspector/effects.tsx";
+import { fxSkips } from "@uncut/core/fx";
 import { TextEditor } from "../inspector/text.tsx";
 import { TransitionInspector } from "../inspector/transition.tsx";
 import { playback, usePlayback } from "../preview/playback.ts";
@@ -119,6 +121,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
       {isDrawnComponent(item) && <ComponentEditor project={project} item={item} locked={locked} />}
       {isBoxed(project, item) && <ClipBoxEditor project={project} item={item} locked={locked} />}
+      {item.type === "clip" && media && media.kind !== "audio" && !fxSkips(media) && <EffectsEditor project={project} item={item} locked={locked} />}
       {hasSpeed(project, item) && <SpeedEditor project={project} item={item} locked={locked} />}
       {hasSound(project, item) && <AudioEditor project={project} item={item} locked={locked} />}
       {item.mute && (

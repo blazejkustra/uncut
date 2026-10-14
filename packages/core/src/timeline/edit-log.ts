@@ -2,6 +2,7 @@
 // the agent gets before its next turn (D6). The same entries feed the
 // "You made N edits by hand" line in the Agent tab.
 import { componentInfo } from "../visual/components.ts";
+import { fxWords } from "../visual/fx.ts";
 import { DUCK, effectName, effectSummary, LIMITER, targetWords } from "../audio/effects.ts";
 import type { Id, Op, Project, Session } from "./types.ts";
 
@@ -149,7 +150,8 @@ function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, projec
           ? `keys ${props.map((p) => `${p} at ${keys.filter((k) => typeof k[p] === "number").map((k) => secs(Number(k.frame), fps)).join(", ")}`).join("; ")}`
           : "no keys",
       );
-    } else if (key === "loop") parts.push(value === true ? "looped" : "not looped");
+    } else if (key === "effects") parts.push(fxWords(value));
+    else if (key === "loop") parts.push(value === true ? "looped" : "not looped");
     else if (key === "hold") parts.push(value === true ? "holding its last frame" : "not holding its last frame");
     else if (key === "animation") {
       const a = (value ?? {}) as Record<string, { module?: string; duration?: number } | undefined>;

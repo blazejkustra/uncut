@@ -22,3 +22,12 @@ export const useDraggedTransition = () =>
 export const CUT_DROP_PX = 40;
 /** Files dragged in from Finder (T9). */
 export const hasFiles = (types: ReadonlyArray<string>) => types.includes("Files");
+
+/**
+ * The drag type an Effects tab tile carries (D136): "look:<id>" or "effect:<module>"; kept here too
+ * (drag data can't be read while dragging over). Dropped on a clip (timeline or canvas), it goes on it.
+ */
+export const EFFECT_DRAG_TYPE = "application/x-uncut-effect";
+let draggedEffect: string | undefined;
+export const setDraggedEffect = (what: string | undefined) => void (draggedEffect = what);
+export const getDraggedEffect = () => draggedEffect;

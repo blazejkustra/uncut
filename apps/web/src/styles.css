@@ -163,6 +163,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 /* A clip's box (D75): the wrapper clips and rounds the picture; core places both per frame (full frame by default). */
 .pv-box { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; }
 .pv-box > video, .pv-box > img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; max-width: none; }
+.pv-box > canvas.pv-fx-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.pv-box > .pv-fx-overlay { position: absolute; inset: 0; pointer-events: none; }
 .pv-box.sel-clip, .pv-comp.sel-clip { cursor: move; }
 .pv-clip-sel { position: absolute; outline: calc(1px / var(--pv-scale)) solid var(--select); pointer-events: none; }
 .pv-handle { position: absolute; width: calc(10px / var(--pv-scale)); height: calc(10px / var(--pv-scale)); margin: calc(-5px / var(--pv-scale)) 0 0 calc(-5px / var(--pv-scale)); background: #fff; border: calc(1px / var(--pv-scale)) solid var(--select); border-radius: 2px; pointer-events: auto; box-sizing: border-box; }
@@ -590,6 +592,19 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 
 /* Transitions (D73, D133): library tiles with an animated thumbnail (Transitions.tsx draws each
    frame with core's maths on a 160×90 stage scaled into the tile), cut points and markers on the main lane. */
+/* Effects tab (D136): thumbnails drawn by the preview's renderer; the tile on the selected clip is outlined. */
+.fx-tile { cursor: pointer; }
+.fx-tile:focus-visible { outline: 1px solid var(--select); outline-offset: 1px; }
+.fx-tile.active { border-color: var(--select); box-shadow: inset 0 0 0 1px var(--select); }
+.fx-thumb { aspect-ratio: 16 / 9; background: #0d0d0d; }
+.fx-thumb canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.fx-thumb-overlay { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; pointer-events: none; }
+.fx-none svg.lucide { width: 22px; height: 22px; color: var(--dim); }
+.fx-entry { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 6px; border-top: 1px solid var(--border); }
+.fx-entry:first-child { border-top: 0; }
+.fx-entry-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--fg); }
+.fx-entry-head .icon-btn { width: 22px; height: 22px; }
+.fx-entry-head .icon-btn svg.lucide { width: 14px; height: 14px; }
 .tr-tile { cursor: pointer; }
 .tr-tile:focus-visible { outline: 1px solid var(--select); outline-offset: 1px; }
 .tr-thumb-wrap { position: relative; }

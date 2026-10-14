@@ -2,7 +2,8 @@
   "manifest": "uncut.module/0",
   "id": "effect.color",
   "kind": "effect",
-  "name": "Colour",
+  "name": "Adjust",
+  "description": "Exposure, contrast, saturation, temperature, tint, highlights, shadows and vibrance",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -15,17 +16,65 @@
     "additionalProperties": false,
     "properties": {
       "exposure": {
-        "type": "number"
+        "type": "number",
+        "minimum": -2,
+        "maximum": 2,
+        "default": 0,
+        "description": "Exposure in stops"
       },
       "contrast": {
-        "type": "number"
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Contrast, -1 to 1 (0 = unchanged)"
       },
       "saturation": {
-        "type": "number"
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Saturation, -1 to 1 (0 = unchanged)"
       },
       "temperature": {
-        "type": "number"
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Temperature, -1 to 1 (0 = unchanged)"
+      },
+      "tint": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Tint, -1 to 1 (0 = unchanged)"
+      },
+      "highlights": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Highlights, -1 to 1 (0 = unchanged)"
+      },
+      "shadows": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Shadows, -1 to 1 (0 = unchanged)"
+      },
+      "vibrance": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "default": 0,
+        "description": "Vibrance, -1 to 1 (0 = unchanged)"
       }
     }
+  },
+  "ui": {
+    "panel": "effects",
+    "icon": "sliders-horizontal"
   }
 }

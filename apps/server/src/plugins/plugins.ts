@@ -222,7 +222,7 @@ export async function discoverPlugins(
       // Ids are checked per plugin here; across plugins only allowed ones claim ids (mergeContributions).
       const read = readContributions(manifest, { reserved: reserved.moduleIds, moves });
       warnings.push(...read.warnings);
-      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length > 0;
+      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length > 0;
       // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent; a
       // plugin that contributes looks, components or checks (D103) is used without tools.
       if (!declared.length && manifest.kind !== "analyzer" && !contributes) warnings.push("It has no agent tools, so the agent can't use it.");
@@ -297,13 +297,14 @@ export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabil
 
 /** A plugin's contributions in words for Settings (names), or undefined when it has none. */
 const contributesOf = (c: Contributions) =>
-  c.looks.length || c.components.length || c.rules.length ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title) } : undefined;
+  c.looks.length || c.components.length || c.rules.length || c.filters.length ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}) } : undefined;
 
 /** A plugin's contributions for the agent's modules_list (ids, names and what each is). */
 const contributesFor = (c: Contributions) => ({
   looks: c.looks.map((l) => ({ id: l.id, name: l.name, description: l.description })),
   components: c.components.map((x) => ({ id: x.id, name: x.name, description: x.description, params: x.params })),
   checks: c.rules.map((r) => ({ id: r.id, title: r.title, description: r.description, severity: r.severity })),
+  ...(c.filters.length ? { filters: c.filters.map((f) => ({ id: f.id, name: f.name, description: f.description, note: `effect.look with look "${f.id}" and its definition as custom (the clip carries it)`, custom: f.look })) } : {}),
 });
 
 export function pluginInfos(
