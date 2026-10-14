@@ -11,7 +11,7 @@ import { Minus, Plus, Smartphone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { findItem } from "../timeline/edit.ts";
-import { ColorPicker, dropDraft, Group, NumberField, origin, send, showDraft, TYPING_PAUSE_MS } from "./ItemEditors.tsx";
+import { ColorPicker, dropDraft, Group, NumberField, origin, send, showDraft, TYPING_PAUSE_MS } from "../inspector/fields.tsx";
 import { type PreviewDraft } from "../preview/playback.ts";
 import type { ProjectModel } from "../state/project.ts";
 import { planAlignScreen, planComponentProps, planDevice, planScreenFootage, screenClipOf } from "../preview/components.ts";

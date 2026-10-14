@@ -15,9 +15,11 @@ import { bridge } from "../state/bridge.ts";
 import { timecode } from "../state/format.ts";
 import { TEXT_PRESETS, type TextPreset } from "../state/project.ts";
 import { BACKGROUNDS } from "../preview/text.ts";
-import { actions, activeAnalyses, activeJobs, isRemote, mediaUrl, musicUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
+import { actions, activeAnalyses, activeJobs, getState, isRemote, mediaUrl, musicUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
 import { COMPONENT_DRAG_TYPE, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
-import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../timeline/Timeline.tsx";
+import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../timeline/dnd.ts";
+import { openMenu } from "../timeline/ContextMenu.tsx";
+import { RenameField } from "../timeline/RenameField.tsx";
 import { secondsLabel } from "../timeline/edit.ts";
 import { usePlayback } from "../preview/playback.ts";
 import { analysisText } from "../state/analysisText.ts";
@@ -685,6 +687,28 @@ export function mediaMeta(m: MediaItem) {
 function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online: boolean }) {
   const app = useApp();
   const { thumbIds } = app;
+  // G4: renamed in place (double-click the name, or Rename in its menu).
+  const [renaming, setRenaming] = useState(false);
+  const tileRef = useRef<HTMLDivElement>(null);
+  // "Show in Media" (T7): scrolled into view and flashed.
+  const focusSeq = app.mediaFocus?.id === item.id ? app.mediaFocus.seq : undefined;
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (focusSeq === undefined) return;
+    tileRef.current?.scrollIntoView({ block: "nearest" });
+    setFlash(true);
+    const t = setTimeout(() => setFlash(false), 1200);
+    return () => clearTimeout(t);
+  }, [focusSeq]);
+  const menu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const local = !isRemote();
+    openMenu(e.clientX, e.clientY, [
+      { id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) },
+      { id: "media-rename", label: "Rename", disabled: !online, run: () => setRenaming(true) },
+      ...(local ? [{ id: "media-reveal", label: "Reveal in Finder", run: () => void actions.showInFolder(item.path.startsWith("/") ? item.path : `${getState().snapshot?.dir ?? ""}/${item.path}`) }] : []),
+    ], "Media");
+  };
   // Analysis (D66) runs on demand: the Analyze button, or the agent's media_analyze.
   const analysis = activeAnalyses(app, item.id)[0];
   const hasSound = item.kind === "audio" || (item.kind === "video" && item.probe?.hasAudio !== false);
@@ -695,11 +719,13 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
   const seconds = item.probe?.frames ? item.probe.frames / fps : undefined;
   return (
     <div
-      className="tile"
+      className={`tile ${flash ? "flash" : ""}`}
       data-testid="media-tile"
       data-id={item.id}
       title={item.path}
-      draggable={online}
+      ref={tileRef}
+      onContextMenu={menu}
+      draggable={online && !renaming}
       onDragStart={(e) => {
         e.dataTransfer.setData(MEDIA_DRAG_TYPE, item.id);
         e.dataTransfer.effectAllowed = "copy";
@@ -750,8 +776,8 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
           </div>
         )}
       </div>
-      <div className="tile-name" data-testid="tile-name">
-        {item.name}
+      <div className="tile-name" data-testid="tile-name" onDoubleClick={() => online && setRenaming(true)}>
+        {renaming ? <RenameField testId="media-rename" value={item.name} onDone={(name) => (name !== undefined && name.trim() && name !== item.name && void actions.renameMedia(item.id, name), setRenaming(false))} /> : item.name}
       </div>
       <div className="tile-sub" data-testid="tile-meta">
         {mediaMeta(item)}

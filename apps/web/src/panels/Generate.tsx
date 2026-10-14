@@ -8,7 +8,7 @@ import { AudioLines, Check, Film, Image as ImageIcon, LoaderCircle, Plus, Refres
 import React, { useEffect, useState } from "react";
 
 import { actions, mediaUrl, thumbUrl, useApp, type GenerateDraft, type MediaItem, type Project } from "../state/store.ts";
-import { MEDIA_DRAG_TYPE } from "../timeline/Timeline.tsx";
+import { MEDIA_DRAG_TYPE } from "../timeline/dnd.ts";
 
 const KIND_LABEL: Record<GenerateKind, string> = { image: "Picture", video: "Video", audio: "Sound" };
 const SIZE_LABEL: Record<string, string> = { canvas: "Project canvas", "1536x1024": "1536×1024 landscape", "1024x1024": "1024×1024 square", "1024x1536": "1024×1536 portrait", "16:9": "16:9 landscape", "9:16": "9:16 portrait", "1920x1080": "1920×1080", "1080x1920": "1080×1920", "1080x1350": "1080×1350", };

@@ -70,9 +70,9 @@ export function fadeAt(item: Pick<Item, "duration" | "fadeIn" | "fadeOut">, loca
   return g;
 }
 
-/** The item's media, if the item can make sound: an audio item, or a clip whose media has audio. */
+/** The item's media, if the item can make sound: an audio item, or a clip whose media has audio; never a muted one (D123: a clip whose sound was detached). */
 export function soundMedia(project: Pick<Project, "media">, item: Item) {
-  if (item.type !== "clip" && item.type !== "audio") return undefined;
+  if ((item.type !== "clip" && item.type !== "audio") || item.mute) return undefined;
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   if (!media || media.kind === "image") return undefined;
   if (media.kind === "audio" || media.probe?.hasAudio) return media;

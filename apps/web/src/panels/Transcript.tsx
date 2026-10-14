@@ -19,7 +19,7 @@ import { analysisText } from "../state/analysisText.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import type { ProjectModel } from "../state/project.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "../state/store.ts";
-import { BottomTabs } from "../timeline/Timeline.tsx";
+import { BottomTabs } from "../timeline/BottomTabs.tsx";
 import {
   doneTranscripts,
   getTranscripts,

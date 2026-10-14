@@ -29,9 +29,9 @@ import { MASTER_EXPORT_NOTE } from "./sound.ts";
 import { displayTracks, type ProjectModel, type Track } from "../state/project.ts";
 import { dbLabel, levelY, panShort, panWords, planAddEffect, planBypassEffect, planDuck, planEffectParams, planLoudnessTarget, planMasterGain, planMasterLimiter, planMoveEffect, planRemoveEffect, planTrackGain, planTrackPan, planVoicePreset, soundTrack, yLevel } from "./sound.ts";
 import { useDuckCurves, useDuckState } from "./ducking.ts";
-import { NumberField } from "../panels/ItemEditors.tsx";
+import { NumberField } from "../inspector/fields.tsx";
 import { actions, getState, projectOf, useApp } from "../state/store.ts";
-import { BottomTabs } from "../timeline/Timeline.tsx";
+import { BottomTabs } from "../timeline/BottomTabs.tsx";
 
 type Problem = { readonly problem: string };
 

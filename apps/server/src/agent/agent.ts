@@ -34,7 +34,7 @@ import type { BeatsResult } from "../analysis/beats.ts";
 import { isLanguage, type TranscriptResult } from "../analysis/transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { checksOut, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { checksOut, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
 import { Exporter } from "../export/exporter.ts";
@@ -1568,7 +1568,10 @@ export const layer = Layer.effect(
             // edit_captions (D82) becomes the update_item of the captions it changes.
             const captions = expandCaptionEdits(v.session.project as Project, texts.ops);
             if ("problem" in captions) return textResult({ refused: captions.problem, revision: v.session.revision }, true);
-            const ops = captions.ops;
+            // detach_audio (D123) and set_speed (D125) become the item ops that do them.
+            const arranged = expandArrangeOps(v.session.project as Project, captions.ops);
+            if ("problem" in arranged) return textResult({ refused: arranged.problem, revision: v.session.revision }, true);
+            const ops = arranged.ops;
             if (!r.owner.seen.has(baseRevision)) {
               return textResult(
                 { refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`, revision: v.session.revision },
