@@ -2,7 +2,7 @@
 // it's dropped on the canvas or the timeline), the generic params Inspector and the device frame's
 // footage. Like every other editor (D52, D53), each gesture is one project.edit: validated, one
 // ⌘Z, labelled in History and listed in the agent's next note.
-import { alignScreen, componentDefaults, componentInfo, componentRest, deviceSpec, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenTransform, type Device } from "@uncut/core/components";
+import { alignScreen, componentDefaults, componentInfo, defaultComponentBox, componentRest, deviceSpec, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenTransform, type Device } from "@uncut/core/components";
 import type { FieldSet, Item, Op } from "@uncut/core/types";
 
 import { findItem, type Plan } from "../timeline/edit.ts";
@@ -60,9 +60,10 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
   const taken = new Set<string>();
   const itemId = uniqueId(project, c.id.replace(/^component\./, ""), taken);
   taken.add(itemId);
-  let transform: Item["transform"];
+  // Dropped on the canvas: centred on the drop point; else where it goes on this canvas's aspect (F7, D152).
+  let transform: Item["transform"] = defaultComponentBox(c.id, project);
   if (at && !c.block.fullFrame) {
-    const size = naturalSize({ component: c.id, props: componentDefaults(c.id) }, project.canvas);
+    const size = transform ? { width: transform.w!, height: transform.h! } : naturalSize({ component: c.id, props: componentDefaults(c.id) }, project.canvas);
     transform = { x: Math.round(at.x - size.width / 2), y: Math.round(at.y - size.height / 2), w: Math.round(size.width), h: Math.round(size.height) };
   }
   const item: Item = { id: itemId, type: "component", component: c.id, duration, props: componentDefaults(c.id), ...(transform ? { transform } : {}) };

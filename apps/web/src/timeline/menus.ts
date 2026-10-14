@@ -92,6 +92,12 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
       ? [{ id: "mute", label: item.mute ? "Unmute" : "Mute", checked: !!item.mute, disabled: off || many || locked, run: () => void actions.toggleItem(item.id, "mute") }]
       : []),
     { id: "lock", label: item.locked ? "Unlock" : "Lock", checked: !!item.locked, disabled: off || many || track.locked, run: () => void actions.toggleItem(item.id, "locked") },
+    // D157: a kicker and its title (or any items grouped here) move, trim and delete together.
+    ...(item.group
+      ? ["-" as const, { id: "ungroup", label: "Ungroup", disabled: off || locked, run: () => void actions.grouping(ids, false) }]
+      : many && track.role !== "main"
+        ? ["-" as const, { id: "group", label: `Group ${ids.length} items`, disabled: off || locked, run: () => void actions.grouping(ids, true) }]
+        : []),
   ];
 }
 

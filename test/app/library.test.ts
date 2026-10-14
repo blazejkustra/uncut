@@ -71,7 +71,7 @@ test("import the drone clips, drop an image, see tiles with thumbnails, undo", {
   await page.click("[data-testid=undo]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile]").length === 2, { timeout: 60000 });
   assert.deepEqual(await tiles(), [
-    { id: "m-dji-20261010132228-0005-d", name: "DJI_20261010132228_0005_D.MP4", meta: "3840×2160, 59.94 fps", dur: "05:35" },
+    { id: "m-dji-0005", name: "DJI 0005", meta: "3840×2160, 59.94 fps", dur: "05:35" },
     { id: "m-first-flight", name: "first-flight.mp4", meta: "1920×1080, 30 fps", dur: "00:51" },
   ]);
   // Thumbnails load from the server (not file://) and are real images.

@@ -6,7 +6,7 @@
 // Keys: a property with keys is edited at the playhead (the key there changes, or a key is added
 // there); a property without keys edits the transform. The diamonds add or remove a key at the
 // playhead.
-import { baseBox, clipBox, keysOf, type ClipBox, type Fit, type KeyProp, type Rect } from "@uncut/core/box";
+import { baseBox, clipBox, EASES, keysOf, type ClipBox, type Ease, type Fit, type KeyProp, type Rect } from "@uncut/core/box";
 import { componentBox, componentInfo, componentRest, isDrawnComponent } from "@uncut/core/components";
 import { pictureMedia } from "@uncut/core/timeline";
 import type { FieldSet, Item } from "@uncut/core/types";
@@ -214,4 +214,68 @@ export function resizeBox(from: Rect, corner: Corner, dx: number, dy: number, fr
     h = Math.max(16, from.h * k);
   }
   return { x: left ? from.x + from.w - w : from.x, y: top ? from.y + from.h - h : from.y, w, h };
+}
+
+// ---- keyframes on the timeline and their eases (Fable QA round 2, F5, D148) ----
+
+export const EASE_NAMES: ReadonlyArray<readonly [Ease, string]> = [
+  ["linear", "Linear"],
+  ["in", "Ease in"],
+  ["out", "Ease out"],
+  ["inOut", "Ease in-out"],
+];
+
+/** The frames (from the item's start) where an item has box keys, each once, in order. */
+export function keyFrames(item: Pick<Item, "keys">): Array<number> {
+  return [...new Set((item.keys ?? []).filter((k) => KEYED.some((p) => typeof k[p] === "number")).map((k) => k.frame))].sort((a, b) => a - b);
+}
+
+/** The ease a key at `local` leaves with (the motion to the next key), or undefined when there is no key there. */
+export function keyEase(item: Pick<Item, "keys">, local: number): Ease | undefined {
+  const at = (item.keys ?? []).findLast((k) => k.frame === local && KEYED.some((p) => typeof k[p] === "number"));
+  if (!at) return undefined;
+  return typeof at.ease === "string" && at.ease in EASES ? (at.ease as Ease) : "linear";
+}
+
+/**
+ * The project frame of the previous (dir −1) or next (+1) key from `frame`: of the given items (the
+ * selection), or of every item with keys when none is given. Undefined when there is none that way.
+ */
+export function nearbyKey(project: ProjectModel, frame: number, dir: -1 | 1, ids?: ReadonlyArray<string>): number | undefined {
+  const f = Math.round(frame);
+  let best: number | undefined;
+  const items = ids?.length ? ids.map((id) => findItem(project, id)).filter((p) => p !== undefined) : project.tracks.flatMap((t) => t.items.map((i) => findItem(project, i.id)!));
+  for (const p of items) {
+    for (const k of keyFrames(p.item)) {
+      const at = p.start + k;
+      if (dir < 0 ? at < f && (best === undefined || at > best) : at > f && (best === undefined || at < best)) best = at;
+    }
+  }
+  return best;
+}
+
+/** Set the ease of the key at `local` (every property keyed there): how it moves on to the next key. */
+export function planKeyEase(project: ProjectModel, itemId: string, local: number, ease: Ease): Plan | Problem {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That clip isn't in the project any more." };
+  const keys = placed.item.keys ?? [];
+  if (!keys.some((k) => k.frame === local)) return { problem: "Move the playhead onto a key to set its ease." };
+  if (keyEase(placed.item, local) === ease) return { ops: [], summary: "" };
+  const next = keys.map((k) => {
+    if (k.frame !== local) return k;
+    const { ease: _old, ...rest } = k;
+    return (ease === "linear" ? rest : { ...rest, ease }) as Key;
+  });
+  const name = EASE_NAMES.find(([e]) => e === ease)![1].toLowerCase();
+  return planUpdate(project, itemId, { keys: next }, `Set the key at ${secs(local, project.canvas.fps)} to ${name}`);
+}
+
+/** Reset position (F15, D151): a boxed item back to the full frame (planResetBox); a text or graphic back to where its look puts it (no x, y or width). */
+export function planResetPosition(project: ProjectModel, itemId: string): Plan | Problem {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That item isn't in the project any more." };
+  if (isBoxed(project, placed.item)) return planResetBox(project, itemId);
+  const { x: _x, y: _y, w: _w, ...rest } = placed.item.transform ?? {};
+  if (!placed.item.transform || (_x === undefined && _y === undefined && _w === undefined)) return { problem: "It's already where it starts." };
+  return planUpdate(project, itemId, { transform: Object.keys(rest).length ? rest : null }, `Reset the position of ${placed.item.name ?? itemId}`);
 }

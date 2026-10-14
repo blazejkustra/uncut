@@ -2,7 +2,7 @@
 import { transitionInfo, transitionLimits, transitionName, TRANSITIONS } from "@uncut/core/transitions";
 import { Blend, X } from "lucide-react";
 
-import { findItem } from "../timeline/edit.ts";
+import { cutFit, findItem } from "../timeline/edit.ts";
 import { itemLabel, type ProjectModel } from "../state/project.ts";
 import { actions } from "../state/store.ts";
 import { NumberField, Group } from "./fields.tsx";
@@ -24,17 +24,20 @@ export function TransitionInspector({ project, placed, online }: { project: Proj
         <span className="ellipsis">{tr ? transitionName(tr.module) : "Cut"}</span>
       </div>
       <div className="insp-sub">
-        Between {itemLabel(project, prev)} and {itemLabel(project, item)} on {track.name}.{" "}
-        {tr ? "Drag the marker's edges on the timeline to change its length; ⌫ removes it." : "A hard cut. Pick a transition here or click one in the Transitions panel."}
+        Between {itemLabel(project, prev)} and {itemLabel(project, item)} on {track.name}
       </div>
       <Group label="Transition">
         <select className="field input" data-testid="insp-transition-type" value={tr?.module ?? ""} disabled={locked} onChange={(e) => set(e.target.value ? { module: e.target.value } : null)}>
           <option value="">None (cut)</option>
-          {TRANSITIONS.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
+          {TRANSITIONS.map((t) => {
+            // F9 (D153): a transition that doesn't fit this cut is listed, but can't be picked.
+            const fit = t.id === tr?.module ? undefined : cutFit(project, item.id, t.id);
+            return (
+              <option key={t.id} value={t.id} disabled={!!fit && !fit.fits} data-fit={fit ? (fit.fits ? "yes" : "no") : undefined}>
+                {fit && !fit.fits ? `${t.name} (${fit.short.toLowerCase()})` : t.name}
+              </option>
+            );
+          })}
           {tr && !transitionInfo(tr.module) && <option value={tr.module}>{transitionName(tr.module)} (draws as a crossfade)</option>}
         </select>
         {tr && transitionInfo(tr.module) && <div className="hint-line muted small">{transitionInfo(tr.module)!.description}</div>}

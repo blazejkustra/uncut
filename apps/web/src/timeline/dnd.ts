@@ -31,3 +31,30 @@ export const EFFECT_DRAG_TYPE = "application/x-uncut-effect";
 let draggedEffect: string | undefined;
 export const setDraggedEffect = (what: string | undefined) => void (draggedEffect = what);
 export const getDraggedEffect = () => draggedEffect;
+
+// ---- transition tiles dragged with the pointer (F16, D154) ----
+// The tiles aren't HTML5-draggable: a press that moves becomes a pointer drag, so real (and
+// synthetic) pointer events drive it the same way. While it runs the pointer is here (the timeline
+// shows the cut it would land on and a ghost of the transition there); on release the timeline's
+// drop handler puts it on that cut.
+let tilePointer: { readonly x: number; readonly y: number } | undefined;
+const pointerListeners = new Set<() => void>();
+export function setTilePointer(at: { readonly x: number; readonly y: number } | undefined) {
+  tilePointer = at;
+  for (const l of pointerListeners) l();
+}
+export const useTilePointer = () =>
+  useSyncExternalStore(
+    (l) => (pointerListeners.add(l), () => void pointerListeners.delete(l)),
+    () => tilePointer,
+  );
+let transitionDrop: ((module: string, x: number, y: number) => boolean) | undefined;
+/** The timeline registers what a release over it does; returns the unregister. */
+export function onTransitionDrop(handler: (module: string, x: number, y: number) => boolean) {
+  transitionDrop = handler;
+  return () => {
+    if (transitionDrop === handler) transitionDrop = undefined;
+  };
+}
+/** A tile released at (x, y): true when the timeline took it. */
+export const dropTransition = (module: string, x: number, y: number) => transitionDrop?.(module, x, y) ?? false;

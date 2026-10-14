@@ -133,3 +133,27 @@ export function mentionCandidates(project: Project): Array<Mention & { readonly 
   for (const mk of project.markers ?? []) out.push({ kind: "marker", id: `frame:${mk.frame}`, label: mk.label ?? `Marker ${secs(mk.frame, fps)}`, frame: mk.frame, detail: "Marker" });
   return out;
 }
+
+// Camera-style file names (Fable QA round 2, F13, D150): "DJI_20261013182112_0042_D.MP4" is what
+// a drone writes, not what a person calls the clip. On import such a file gets a short display
+// name ("DJI 0042"); the file itself is untouched and any other name stays as it is.
+const CAMERA_PREFIX = /^(DJI|IMG|MVI|DSC|DSCF|MAH|VID|PXL|GOPR)[_-]?(?:(\d{8})[_-](\d{6,9})|(?:\d{8,14}[_-])?(\d{3,}))(?:[_-][A-Z0-9]{1,4})?$/i;
+const GOPRO = /^(G[XHL])\d{2}(\d{4})$/i;
+const SONY = /^(C\d{4})(?:M\d{2})?$/i;
+
+/** A short display name for a camera-style file name ("DJI 0042", "IMG 1234", "GX 0042", "C0001"), or undefined for other names. */
+export function cameraName(fileName: string): string | undefined {
+  const stem = fileName.replace(/\.[A-Za-z0-9]{2,4}$/, "");
+  const cam = CAMERA_PREFIX.exec(stem);
+  if (cam) {
+    const prefix = cam[1]!.toUpperCase();
+    // A date and a time (VID_20240101_123456): the time is the clip's number.
+    const digits = cam[3] ?? cam[4]!;
+    return `${prefix} ${digits.length > 6 ? digits.slice(-4) : digits}`;
+  }
+  const gopro = GOPRO.exec(stem);
+  if (gopro) return `${gopro[1]!.toUpperCase()} ${gopro[2]}`;
+  const sony = SONY.exec(stem);
+  if (sony) return sony[1]!.toUpperCase();
+  return undefined;
+}

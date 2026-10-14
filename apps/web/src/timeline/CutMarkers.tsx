@@ -7,6 +7,7 @@ import React from "react";
 import { playback } from "../preview/playback.ts";
 import { itemLabel, type ProjectModel } from "../state/project.ts";
 import { planSetTransition, secondsLabel } from "./edit.ts";
+import { transitionSeconds } from "./transitionLength.ts";
 
 export function CutMarkers({
   view,
@@ -38,11 +39,19 @@ export function CutMarkers({
         const tr = cut.item.transitionIn;
         const isSel = selectedCut === cut.item.id;
         // What a drop here would do: the planner's checks (locks on either clip, the cut's limits).
-        const fit = transitionDragged ? planSetTransition(view, cut.item.id, { module: transitionDragged }) : undefined;
+        const seconds = transitionSeconds();
+        const fit = transitionDragged ? planSetTransition(view, cut.item.id, { module: transitionDragged, ...(seconds ? { duration: Math.round(seconds * fps) } : {}) }) : undefined;
         const dropState = fit ? ("problem" in fit ? "invalid" : "valid") : undefined;
         const target = transitionDragged && dropCut === cut.item.id;
+        // F16 (D154): the transition as it would land, straddling the cut, at the length it would get.
+        const landing = target && fit && !("problem" in fit) ? (fit.ops[0] as { transition?: { duration: number } } | undefined)?.transition?.duration ?? cut.item.transitionIn?.duration : undefined;
+        const ghost =
+          landing !== undefined ? (
+            <div key={`ghost-${cut.item.id}`} className="tr-ghost" data-testid="transition-drop-ghost" data-item={cut.item.id} data-duration={landing} style={{ left: cut.frame * ppf - Math.max(landing * ppf, 14) / 2, width: Math.max(landing * ppf, 14) }} />
+          ) : null;
         if (!tr) {
-          return (
+          return [
+            ghost,
             <div
               key={`cut-${cut.item.id}`}
               className={`cut-point ${isSel ? "selected" : ""} ${dropState ?? ""} ${target ? "target" : ""}`}
@@ -57,12 +66,13 @@ export function CutMarkers({
                 e.stopPropagation();
                 playback.selectCut(cut.item.id);
               }}
-            />
-          );
+            />,
+          ];
         }
         const w = tr.duration * ppf;
         const state = resizing?.id === cut.item.id ? (resizing.refused ? "refused" : "resizing") : "";
-        return (
+        return [
+          ghost,
           <div
             key={`tr-${cut.item.id}`}
             className={`tr-marker ${isSel ? "selected" : ""} ${dropState ?? ""} ${target ? "target" : ""} ${state}`}
@@ -82,8 +92,8 @@ export function CutMarkers({
                 <div className="tr-edge end" data-tr-edge="end" data-testid="transition-edge-end" />
               </>
             )}
-          </div>
-        );
+          </div>,
+        ];
       })}
     </>
   );

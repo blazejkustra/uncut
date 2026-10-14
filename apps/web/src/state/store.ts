@@ -13,10 +13,12 @@ import { bridge, type AppInfo, type EnvironmentInfo, type EnvironmentTest, type 
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
-import { draftOf, findItem, nearestCut, planDelete, planRippleDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
+import { draftOf, findItem, nearestCut, planDelete, planGrouping, planLayer, withOverlayRipple, planRippleDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
+import { planResetPosition } from "../timeline/clip.ts";
 import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 import { musicInProject, musicTrack } from "@uncut/core/music";
-import { planEffect, planSetLook, type LookDef } from "@uncut/core/fx";
+import { effectInfo, lookInfo, planEffect, planSetLook, type LookDef } from "@uncut/core/fx";
+import { planForAll } from "../timeline/multi.ts";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
 import { itemName } from "@uncut/core/mentions";
 import { type Check, type CheckRule } from "@uncut/core/checks";
@@ -630,7 +632,17 @@ async function addPlanned(plan: (project: ProjectModel) => Planned | { readonly 
   if (error) return;
   playback.pause();
   playback.select(planned.itemId);
-  playback.seek(planned.start);
+  playback.seek(planned.show ?? planned.start);
+  // F20 (D158): the timeline scrolls to show what was added.
+  revealItem(planned.itemId);
+}
+
+/** Scroll the timeline so an item is in view (after it was added somewhere off screen). */
+export function revealItem(itemId: string) {
+  requestAnimationFrame(() => {
+    const el = document.querySelector<HTMLElement>(`[data-testid=timeline-item][data-item="${CSS.escape(itemId)}"]`);
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
 }
 
 /**
@@ -735,6 +747,13 @@ async function uploadOne(file: File): Promise<{ readonly path: string } | { read
     // A folder (or a file that went away) can't be read as a body.
     return { message: file.size === 0 && file.type === "" ? "Folders can't be uploaded; drop the files inside." : `The upload stopped: ${(error as Error).message}` };
   }
+}
+
+/** A speed change (G9, D125); with linked overlays on (F11, D156), what's over a main clip follows its footage. */
+export function speedPlan(project: ProjectModel, itemId: string, speed: number, keepPitch?: boolean): Plan | { readonly problem: string } {
+  const plan = planSetSpeed(project, itemId, speed, keepPitch);
+  if ("problem" in plan || !getPlayback().linkOverlays || findItem(project, itemId)?.track.role !== "main") return plan;
+  return withOverlayRipple(project, plan);
 }
 
 export const actions = {
@@ -1010,25 +1029,35 @@ export const actions = {
   },
   /**
    * Effects tab (D136): "look:<id>" puts a look on the clip ("look:" takes it off), "effect:<module>"
-   * adds an effect; on `itemId` (a drop) or else the selected clip.
+   * adds an effect; on `itemId` (a drop) or else the selected clip. With several items selected
+   * (and the drop on one of them), on every selected clip, as one edit (F2, D147).
    */
   applyFx: (what: string, itemId?: string) =>
     itemEdit((project) => {
-      const target = itemId ?? getPlayback().selected ?? "";
+      const { selected, also } = getPlayback();
+      const selection = selected === undefined ? [] : [selected, ...also];
+      const targets = itemId === undefined ? selection : selection.length > 1 && selection.includes(itemId) ? selection : [itemId];
       const [kind, id = ""] = what.split(/:(.*)/s);
-      if (kind === "look") {
-        const custom = state.contributions?.filters?.find((f) => f.id === id);
-        return planSetLook(project, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {});
-      }
-      return planEffect(project, target, id);
+      const custom = kind === "look" ? state.contributions?.filters?.find((f) => f.id === id) : undefined;
+      const one = (p: ProjectModel, target: string) => (kind === "look" ? planSetLook(p, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {}) : planEffect(p, target, id));
+      if (targets.length <= 1) return one(project, targets[0] ?? "");
+      const look = lookInfo(id)?.name ?? custom?.name ?? id;
+      const effect = effectInfo(id)?.name.toLowerCase() ?? id;
+      return planForAll(project, targets, one, (n) => (kind !== "look" ? `Add ${effect} to ${n} clips` : id ? `Filter ${look} on ${n} clips` : `Remove the filter from ${n} clips`));
     }),
   /** Speed (G9, D125): presets and custom, keep pitch or not; the item's length follows. */
-  setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => planSetSpeed(project, itemId, speed, keepPitch)),
+  setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => speedPlan(project, itemId, speed, keepPitch)),
   /** Rename a timeline item (T7): its own name, shown on the timeline and in the Inspector; "" goes back to the media's. */
   renameItem: (itemId: string, name: string) => itemEdit(() => ({ ops: [{ op: "update_item", item: itemId, set: { name: name.trim() ? name.trim() : null } }], summary: name.trim() ? `Rename ${itemId} to ${name.trim()}` : `Reset the name of ${itemId}` })),
   renameTrack: (trackId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_track", track: trackId, set: { name: name.trim() } }], summary: `Rename track to ${name.trim()}` })) : Promise.resolve(false)),
   /** G4: a media item's display name (its file stays where it is), shown everywhere it appears. */
   renameMedia: (mediaId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_media", media: mediaId, set: { name: name.trim() } }], summary: `Rename media to ${name.trim()}` })) : Promise.resolve(false)),
+  /** Group or ungroup items (F19, D157): see planGrouping. */
+  grouping: (ids: ReadonlyArray<string>, group: boolean) => itemEdit((project) => planGrouping(project, ids, group)),
+  /** Bring forward / Send backward (F15, D151): one layer up or down (see planLayer). */
+  layer: (itemId: string, dir: -1 | 1) => itemEdit((project) => planLayer(project, itemId, dir)),
+  /** Reset position (F15, D151): see planResetPosition. */
+  resetPosition: (itemId: string) => itemEdit((project) => planResetPosition(project, itemId)),
   /** Ripple delete (T7): delete and close the gaps on their tracks. */
   async rippleDelete(ids: ReadonlyArray<string>) {
     if (!state.snapshot) return;

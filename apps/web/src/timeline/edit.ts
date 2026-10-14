@@ -5,7 +5,7 @@
 import { applyEdit, createSession, EditError } from "@uncut/core/apply-ops";
 import { soundMedia } from "@uncut/core/audio";
 import { timelineProblems } from "@uncut/core/rules";
-import { cutsOf, defaultFrames, overlaps, transitionInfo, transitionLimits, transitionName, type Cut } from "@uncut/core/transitions";
+import { cutsOf, defaultFrames, handleAfter, handleBefore, overlaps, transitionInfo, transitionLimits, transitionName, type Cut } from "@uncut/core/transitions";
 import { busySpans, mainSlot, nearestFreeSpot, withLinkedAudio } from "@uncut/core/arrange";
 import type { Op, TimedModule } from "@uncut/core/types";
 
@@ -281,9 +281,12 @@ export type NewTrackSide = "top" | "bottom";
 /**
  * Move an item onto a new track (D122): dragged above the top lane a new track of its kind goes on
  * top of the others; below the bottom lane, under them (a video or text track just above the audio
- * tracks, an audio track at the very bottom). It keeps its start (snapped like a move).
+ * tracks, an audio track at the very bottom). `{ index }` (F6, D149): the new track goes at that
+ * index of project.tracks (the timeline passes it when the item is dragged onto a lane that can't
+ * take it, e.g. a clip from Main onto a text track: a new video track under that text track). It
+ * keeps its start (snapped like a move).
  */
-export function planMoveToNewTrack(project: ProjectModel, itemId: string, side: NewTrackSide, desiredStart: number, snap?: Snap): MovePlan | { readonly problem: string } {
+export function planMoveToNewTrack(project: ProjectModel, itemId: string, side: NewTrackSide | { readonly index: number }, desiredStart: number, snap?: Snap): MovePlan | { readonly problem: string } {
   const placed = findItem(project, itemId);
   if (!placed) return { problem: "That item isn't in the project any more." };
   const locked = lockOf(placed);
@@ -302,7 +305,18 @@ export function planMoveToNewTrack(project: ProjectModel, itemId: string, side: 
   // Audio tracks always show under the rest, so "top" for audio is just above the first audio track.
   const firstAudio = project.tracks.findIndex((t) => t.kind === "audio");
   const lastVisual = project.tracks.reduce((n, t, i) => (t.kind !== "audio" ? i : n), -1);
-  const index = kind === "audio" ? (side === "top" ? (firstAudio === -1 ? project.tracks.length : firstAudio) : project.tracks.length) : side === "top" ? 0 : lastVisual + 1;
+  const index =
+    typeof side === "object"
+      ? Math.max(0, Math.min(project.tracks.length, side.index))
+      : kind === "audio"
+        ? side === "top"
+          ? firstAudio === -1
+            ? project.tracks.length
+            : firstAudio
+          : project.tracks.length
+        : side === "top"
+          ? 0
+          : lastVisual + 1;
   const leaving = track.role === "main" ? dropTransitions([track.items[placed.index + 1]]) : [];
   return {
     ops: [{ op: "add_track", track: { id, kind, name }, index }, ...leaving, { op: "move_item", item: item.id, track: id, start }],
@@ -311,6 +325,21 @@ export function planMoveToNewTrack(project: ProjectModel, itemId: string, side: 
     start,
     ...(snapped ? { snapAt: snapped.at } : {}),
   };
+}
+
+/**
+ * Where a new track goes when an item is dragged onto a lane that can't take it (F6, D149): a
+ * picture (clip, element, graphic) onto a text track lands on a new video track right under it (so
+ * the text stays over it); a text onto a video track, on a new text track right over it. Nothing
+ * for audio, captions, audio lanes or a lane that takes the item (that's a plain move).
+ */
+export function newTrackIndexOver(project: ProjectModel, item: Item, over: Track): number | undefined {
+  const kind = TRACK_KINDS[item.type];
+  if (item.type === "captions" || kind === "audio" || over.kind === "audio") return undefined;
+  if (fitsTrack(item, over) && !over.locked) return undefined;
+  const at = project.tracks.findIndex((t) => t.id === over.id);
+  if (at === -1) return undefined;
+  return kind === "text" ? at : at + 1;
 }
 
 export interface GroupMovePlan extends Plan {
@@ -595,4 +624,183 @@ export function draftOf(project: ProjectModel, ops: ReadonlyArray<Op>): { readon
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `Can't do that: ${first?.message ?? (error as Error).message}.` };
   }
+}
+
+/**
+ * Bring forward / Send backward (F15, D151): a picture or text on the canvas moves one layer up
+ * (dir −1, towards the top of the track list, drawn over more) or down (+1). When the next track
+ * that way is of its kind, unlocked, not main and free over its time, it moves there; otherwise it
+ * goes onto a new track of its kind just past that track (so it passes it). A track it leaves empty
+ * goes. Main clips stay where they are (the main track is the base), and so do captions and sounds.
+ */
+export function planLayer(project: ProjectModel, itemId: string, dir: -1 | 1): MovePlan | { readonly problem: string } {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That item isn't in the project any more." };
+  const locked = lockOf(placed);
+  if (locked) return { problem: locked };
+  const { item, track, start } = placed;
+  if (track.role === "main") return { problem: "Clips on the main track are the base layer: drag one up off Main to put it over the others." };
+  if (item.type === "captions" || track.kind === "audio") return { problem: "Only pictures and text have layers." };
+  // Visual tracks in drawing order (top first), as the timeline lists them.
+  const visual = project.tracks.filter((t) => t.kind !== "audio");
+  const at = visual.findIndex((t) => t.id === track.id);
+  const next = visual[at + dir];
+  const alone = track.items.length === 1;
+  if (!next && alone) return { problem: dir < 0 ? "It's already on top." : "It's already at the bottom." };
+  const end = start + item.duration;
+  const free = (t: Track) => t.items.every((i) => i.id === item.id || (i.start ?? 0) + i.duration <= start || end <= (i.start ?? 0));
+  const gone: Array<Op> = alone ? [{ op: "delete_track", track: track.id }] : [];
+  const word = dir < 0 ? "forward" : "backward";
+  if (next && fitsTrack(item, next) && !next.locked && next.role !== "main" && free(next)) {
+    return { ops: [{ op: "move_item", item: item.id, track: next.id, start }, ...gone], summary: `${dir < 0 ? "Bring" : "Send"} ${item.name ?? item.id} ${word}`, track: next.id, start };
+  }
+  const kind = TRACK_KINDS[item.type];
+  const id = uniqueId(project, kind === "text" ? "text-track" : "video-track");
+  const used = new Set(project.tracks.map((t) => t.name));
+  const base = kind === "text" ? "Text" : "Video";
+  let name = base;
+  for (let n = 2; used.has(name); n++) name = `${base} ${n}`;
+  // Past `next` (or at the very top / bottom of the visual tracks when there is none that way).
+  const pivot = next ?? track;
+  const pivotIndex = project.tracks.findIndex((t) => t.id === pivot.id);
+  const index = dir < 0 ? (next ? pivotIndex : 0) : pivotIndex + 1;
+  return {
+    ops: [{ op: "add_track", track: { id, kind, name }, index }, { op: "move_item", item: item.id, track: id, start }, ...gone],
+    summary: `${dir < 0 ? "Bring" : "Send"} ${item.name ?? item.id} ${word}`,
+    track: id,
+    start,
+  };
+}
+
+/**
+ * Whether a transition fits a cut (F9, D153), for the Transitions tiles and the cut's type list: it
+ * fits (with the longest it can be there, and whether `wanted` frames get shortened to it), or
+ * not, with a short word for a tile ("Needs 0.3 s more footage", "Clips too short") and the
+ * planner's sentence.
+ */
+export type CutFit = { readonly fits: true; readonly max: number; readonly clamped: boolean } | { readonly fits: false; readonly short: string; readonly problem: string };
+export function cutFit(project: ProjectModel, cutId: string, module: string, wanted?: number): CutFit {
+  const limits = transitionLimits(project, cutId, module);
+  if (!("problem" in limits)) return { fits: true, max: limits.max, clamped: wanted !== undefined && wanted > limits.max };
+  const placed = findItem(project, cutId);
+  const prev = placed && placed.track.role === "main" ? placed.track.items[placed.index - 1] : undefined;
+  const info = transitionInfo(module);
+  if (placed && prev && info && overlaps(module) && /footage/.test(limits.problem)) {
+    const have = Math.min(handleBefore(project.media, placed.item), handleAfter(project.media, prev));
+    const need = Math.max(1, Math.ceil(info.minFrames / 2) - have);
+    return { fits: false, short: `Needs ${secondsLabel(need, project.canvas.fps)} more footage`, problem: limits.problem };
+  }
+  return { fits: false, short: /too short/.test(limits.problem) ? "Clips too short" : "Doesn't fit here", problem: limits.problem };
+}
+
+/**
+ * Overlays follow the footage under them (F11, D156). When `plan` changes main clips' lengths (a
+ * speed, a trim), every item on another track that starts over a main clip keeps its moment of
+ * that clip's footage: its new start is where that source frame plays now (clamped into the clip
+ * when the frame was trimmed away); one that starts after the main track's end keeps its distance
+ * from that end. Items keep their lengths; captions (they follow the speech already), sounds linked
+ * to a clip (D123) and locked items stay. If the moves don't fit (an overlap), the plan is returned
+ * as it was. The moves join the plan's ops: one edit, one ⌘Z.
+ */
+export function withOverlayRipple<P extends Plan>(project: ProjectModel, plan: P): P {
+  if (!plan.ops.length) return plan;
+  const draft = draftOf(project, plan.ops);
+  if ("problem" in draft) return plan;
+  const after = draft.project;
+  const mainBefore = project.tracks.find((t) => t.role === "main");
+  const mainAfter = after.tracks.find((t) => t.role === "main");
+  if (!mainBefore || !mainAfter) return plan;
+  const before = layoutOf(project).starts;
+  const now = layoutOf(after).starts;
+  const endOf = (track: Track, starts: ReadonlyMap<string, number>) => track.items.reduce((n, i) => Math.max(n, (starts.get(i.id) ?? 0) + i.duration), 0);
+  const end0 = endOf(mainBefore, before);
+  const end1 = endOf(mainAfter, now);
+  const changed = mainBefore.items.some((i) => {
+    const j = mainAfter.items.find((x) => x.id === i.id);
+    return !j || j.duration !== i.duration || (j.speed ?? 1) !== (i.speed ?? 1) || (j.in ?? 0) !== (i.in ?? 0) || before.get(i.id) !== now.get(i.id);
+  });
+  if (!changed) return plan;
+  /** Where frame `f` of the old timeline plays in the new one. */
+  const map = (f: number): number => {
+    for (const clip of mainBefore.items) {
+      const s0 = before.get(clip.id) ?? 0;
+      if (f < s0 || f >= s0 + clip.duration) continue;
+      const next = mainAfter.items.find((x) => x.id === clip.id);
+      if (!next) return f;
+      const s1 = now.get(next.id) ?? 0;
+      // The source frame under f, and where it is in the clip now.
+      const source = (clip.in ?? 0) + (f - s0) * (clip.speed ?? 1);
+      const local = (source - (next.in ?? 0)) / (next.speed ?? 1);
+      return s1 + Math.min(next.duration - 1, Math.max(0, Math.round(local)));
+    }
+    return f >= end0 ? f + (end1 - end0) : f;
+  };
+  const moves: Array<Op> = [];
+  const touched = new Set(plan.ops.flatMap((o) => ("item" in o && typeof o.item === "string" ? [o.item] : [])));
+  for (const track of after.tracks) {
+    if (track.role === "main" || track.locked) continue;
+    for (const item of track.items) {
+      if (item.type === "captions" || item.linkedTo || item.locked || touched.has(item.id)) continue;
+      const s = item.start ?? 0;
+      const to = Math.max(0, map(s));
+      if (to !== s) moves.push({ op: "move_item", item: item.id, start: to });
+    }
+  }
+  if (!moves.length) return plan;
+  const ops = [...plan.ops, ...moves];
+  if ("problem" in draftOf(project, ops)) return plan;
+  return { ...plan, ops, summary: `${plan.summary} (${moves.length === 1 ? "1 overlay follows" : `${moves.length} overlays follow`})` };
+}
+
+// ---- groups (F19, D157): a kicker and its title move, trim and delete together ----
+
+/** `ids` with every item that shares a group with one of them (the given ones first, in order). */
+export function withGroups(project: ProjectModel, ids: ReadonlyArray<string>): Array<string> {
+  const groups = new Set(ids.map((id) => findItem(project, id)?.item.group).filter((g): g is string => !!g));
+  const out = [...ids];
+  if (!groups.size) return out;
+  for (const t of project.tracks) for (const i of t.items) if (i.group && groups.has(i.group) && !out.includes(i.id)) out.push(i.id);
+  return out;
+}
+
+/**
+ * Trim a group (D157): the dragged item's edge moves by `delta` (planTrim, snapping and limits as
+ * for one item), then every other member's same edge by the same frames, each within its own
+ * limits; one edit. No ops when nothing moves.
+ */
+export function planGroupTrim(project: ProjectModel, itemId: string, edge: "start" | "end", delta: number, snap?: Snap): TrimPlan | { readonly problem: string } {
+  const first = planTrim(project, itemId, edge, delta, snap);
+  if ("problem" in first || !first.ops.length) return first;
+  const placed = findItem(project, itemId)!;
+  const moved = edge === "end" ? first.duration - placed.item.duration : first.start - placed.start;
+  let current = draftOf(project, first.ops);
+  if ("problem" in current) return first;
+  const ops = [...first.ops];
+  for (const id of withGroups(project, [itemId]).filter((id) => id !== itemId)) {
+    const p = planTrim(current.project, id, edge, moved);
+    if ("problem" in p || !p.ops.length) continue;
+    const next = draftOf(current.project, p.ops);
+    if ("problem" in next) continue;
+    current = next;
+    ops.push(...p.ops);
+  }
+  return { ...first, ops, summary: ops.length > first.ops.length ? `Trim group ${placed.item.group}` : first.summary };
+}
+
+/** Group the selected free-track items, or ungroup the group of `ids` (D157). */
+export function planGrouping(project: ProjectModel, ids: ReadonlyArray<string>, group: boolean): Plan | { readonly problem: string } {
+  const placed = withGroups(project, ids).map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined);
+  for (const p of placed) {
+    const locked = lockOf(p);
+    if (locked) return { problem: locked };
+  }
+  if (group) {
+    const free = placed.filter((p) => p.track.role !== "main" && p.item.type !== "captions");
+    if (free.length < 2) return { problem: "Select two or more items off the main track to group them." };
+    const id = `group-${free[0]!.item.id}`;
+    return { ops: free.map((p) => ({ op: "update_item", item: p.item.id, set: { group: id } }) as Op), summary: `Group ${free.length} items` };
+  }
+  const grouped = placed.filter((p) => p.item.group);
+  if (!grouped.length) return { problem: "That isn't a group." };
+  return { ops: grouped.map((p) => ({ op: "update_item", item: p.item.id, set: { group: null } }) as Op), summary: `Ungroup ${grouped.length} items` };
 }

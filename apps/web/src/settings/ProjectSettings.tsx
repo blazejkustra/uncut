@@ -10,13 +10,15 @@ import { shortPath } from "../state/format.ts";
 import { actions, getState, MAX_NAME_LENGTH, plainError, useApp, type Project } from "../state/store.ts";
 import { ASPECTS, aspectOf, canvasSide, FPS_CHOICES, planCanvas, type Canvas } from "./canvas.ts";
 
-const canvasEdit = (patch: Partial<Canvas>) => actions.itemEdit((p) => planCanvas(p, patch));
+const canvasEdit = (patch: Partial<Canvas>, keepPositions = false) => actions.itemEdit((p) => planCanvas(p, patch, { keepPositions }));
 
 export function ProjectSettings({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
   const { appInfo, environment } = useApp();
   const { width, height, fps } = project.canvas;
   const hasItems = project.tracks.some((t) => t.items.length);
   const aspect = aspectOf(project.canvas);
+  // F10 (D155): a new size rescales what's on the canvas unless this is on.
+  const [keep, setKeep] = useState(false);
   return (
     <div data-testid="project-settings">
       <ProjectName snapshot={snapshot} project={project} online={online} />
@@ -24,7 +26,7 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
         <div className="group-label">Aspect</div>
         <div className="seg aspect-seg" data-testid="canvas-aspect">
           {ASPECTS.map((a) => (
-            <button key={a.id} className={aspect === a.id ? "active" : ""} data-testid="canvas-aspect-option" data-aspect={a.id} aria-pressed={aspect === a.id} disabled={!online} onClick={() => void canvasEdit({ width: a.width, height: a.height })}>
+            <button key={a.id} className={aspect === a.id ? "active" : ""} data-testid="canvas-aspect-option" data-aspect={a.id} aria-pressed={aspect === a.id} disabled={!online} onClick={() => void canvasEdit({ width: a.width, height: a.height }, keep)}>
               {a.label}
             </button>
           ))}
@@ -33,26 +35,34 @@ export function ProjectSettings({ snapshot, project, online }: { snapshot: Proje
       <div className="group">
         <div className="group-label">Resolution</div>
         <div className="field-row">
-          <SizeField k="W" testId="canvas-width" value={width} online={online} onCommit={(v) => void canvasEdit({ width: v })} />
-          <SizeField k="H" testId="canvas-height" value={height} online={online} onCommit={(v) => void canvasEdit({ height: v })} />
+          <SizeField k="W" testId="canvas-width" value={width} online={online} onCommit={(v) => void canvasEdit({ width: v }, keep)} />
+          <SizeField k="H" testId="canvas-height" value={height} online={online} onCommit={(v) => void canvasEdit({ height: v }, keep)} />
         </div>
+        {hasItems && (
+          <label className="check-row" title="Off: clip boxes, text and elements are rescaled with the canvas">
+            <input type="checkbox" data-testid="canvas-keep-positions" checked={keep} disabled={!online} onChange={(e) => setKeep(e.target.checked)} />
+            Keep positions
+          </label>
+        )}
       </div>
       <div className="group">
         <div className="group-label">Frame rate</div>
-        <select
-          className="field input"
-          data-testid="canvas-fps"
-          value={fps}
-          disabled={!online || hasItems}
-          title={hasItems ? "The frame rate can only change while the timeline is empty" : undefined}
-          onChange={(e) => void canvasEdit({ fps: Number(e.target.value) as Canvas["fps"] })}
-        >
-          {FPS_CHOICES.map((f) => (
-            <option key={f} value={f}>
-              {f} fps
-            </option>
-          ))}
-        </select>
+        {/* A disabled control gets no hover, so the reason is on a wrapper (F10, D155). */}
+        <span className="fps-wrap" data-testid="canvas-fps-why" title={hasItems ? "Every time in the project is counted in frames, so the frame rate is set while the timeline is empty" : undefined}>
+          <select
+            className="field input"
+            data-testid="canvas-fps"
+            value={fps}
+            disabled={!online || hasItems}
+            onChange={(e) => void canvasEdit({ fps: Number(e.target.value) as Canvas["fps"] })}
+          >
+            {FPS_CHOICES.map((f) => (
+              <option key={f} value={f}>
+                {f} fps
+              </option>
+            ))}
+          </select>
+        </span>
       </div>
       <div className="group">
         <div className="group-label">Background</div>

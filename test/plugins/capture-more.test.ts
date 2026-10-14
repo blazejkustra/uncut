@@ -133,8 +133,10 @@ test("D143 + D144 on the server: boot on request, options, a flow take; the agen
     assert.match(card.text, /^Record "Docs" for 2 s$/);
     assert.equal(card.estimate, 0);
     assert.deepEqual(await client.ok("agent.approve", { id: card.id, allow: true, source: "Docs - Example" }), { accepted: true });
-    await agent.until((s) => !s?.approval, 10000);
     // The server now waits for that take (the renderer cancels its take once this goes away).
+    // The card's removal and the wait can reach the client in two publishes (seen under a busy
+    // machine): wait for both rather than reading the first state without the card.
+    await agent.until((s) => !s?.approval && s?.screenTake === card.id, 10000);
     assert.equal(agent.values.at(-1).screenTake, card.id);
     // The same card answered again (or a stale one) isn't accepted: the renderer starts nothing.
     assert.deepEqual(await client.ok("agent.approve", { id: card.id, allow: true }), { accepted: false });
