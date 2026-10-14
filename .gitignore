@@ -3,9 +3,11 @@ node_modules/
 *.uncut/.cache/
 test-output/
 
-# Prose stays private (planning notes, specs), never committed
+# Prose stays private (planning notes, specs), never committed; only the root README and CONTRIBUTING are published
 planning/
 *.md
+!/README.md
+!/CONTRIBUTING.md
 fixtures/
 *.mp4
 *.MP4
