@@ -1,0 +1,22 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "transition.zoom-out",
+  "kind": "transition",
+  "name": "Zoom out",
+  "description": "The next clip fades in while settling from 125 % to its size.",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "transition": {
+    "minFrames": 4,
+    "maxFrames": 30
+  },
+  "ui": {
+    "panel": "transitions",
+    "icon": "blend"
+  }
+}

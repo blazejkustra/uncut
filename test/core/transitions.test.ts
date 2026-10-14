@@ -50,8 +50,9 @@ test("the drawn transitions match their manifests; dip to black is a built-in mo
     const d = defaultFrames(t, 30);
     assert.ok(d >= t.minFrames && d <= t.maxFrames);
   }
-  assert.deepEqual(TRANSITIONS.map((t) => t.id), ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"]);
-  assert.deepEqual(TRANSITIONS.map((t) => defaultFrames(t, 30)), [15, 24, 15, 15, 15, 15]);
+  // The first six (D73, D79) keep their order; D133's follow (test/core/transitions-more.test.ts).
+  assert.deepEqual(TRANSITIONS.slice(0, 6).map((t) => t.id), ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"]);
+  assert.deepEqual(TRANSITIONS.slice(0, 6).map((t) => defaultFrames(t, 30)), [15, 24, 15, 15, 15, 15]);
   // Every built-in transition's limits (drawn or not) are known to the renderer, as the manifests say.
   const builtins = [...modules.values()].filter((m) => m.kind === "transition" && m.builtin);
   assert.deepEqual(Object.keys(TRANSITION_LIMITS).sort(), builtins.filter((m) => m.transition).map((m) => m.id).sort());

@@ -34,6 +34,10 @@ extraResources:
   - from: ../../assets/music
     to: music
     filter: ["*.m4a", "library.json"]
+  # The bundled CC0 sound-effects pack (D134): the sounds and library.json (titles, licences).
+  - from: ../../assets/sfx
+    to: sfx
+    filter: ["*.m4a", "library.json"]
   # The server validates projects against these; schemas are bundled into server.mjs.
   - from: ../../spec/modules/builtin
     to: modules/builtin

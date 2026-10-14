@@ -588,51 +588,25 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .history-turn-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 2px 6px 6px 21px; }
 .history-reason { line-height: 1.4; }
 
-/* Transitions (D73): library tiles with a looping preview, cut points and markers on the main lane. */
+/* Transitions (D73, D133): library tiles with an animated thumbnail (Transitions.tsx draws each
+   frame with core's maths on a 160×90 stage scaled into the tile), cut points and markers on the main lane. */
 .tr-tile { cursor: pointer; }
 .tr-tile:focus-visible { outline: 1px solid var(--select); outline-offset: 1px; }
-.tr-thumb { background: #0d0d0d; }
-.tr-thumb > span { position: absolute; inset: 0; }
+.tr-thumb-wrap { position: relative; }
+.tr-thumb { background: #0d0d0d; display: block; aspect-ratio: 16 / 9; }
+.tr-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; }
+.tr-stage > span { position: absolute; inset: 0; }
 /* Shot A: blue with a white circle; shot B: amber with a dark square. */
 .tr-thumb .tr-a { background: #2563eb; }
 .tr-thumb .tr-a i { position: absolute; left: 22%; top: 50%; width: 30%; aspect-ratio: 1; transform: translateY(-50%); border-radius: 50%; background: #fff; }
 .tr-thumb .tr-b { background: #f59e0b; }
 .tr-thumb .tr-b i { position: absolute; right: 22%; top: 50%; width: 26%; aspect-ratio: 1; transform: translateY(-50%); background: #3b1d00; }
-.tr-thumb .tr-k { background: #000; opacity: 0; }
-/* At rest each tile is a still of its idea: A and B half blended; A → black → B across the tile;
-   B wiped in over the left half of A (with its edge); B in a circle at the centre (iris); A pushed
-   half out to the left by B (push); A zoomed in under B half faded in (zoom, D79). Hovered or
-   focused, it plays as a loop from A to B and back, unless reduced motion is asked for. */
-.tr-thumb.crossfade .tr-b { opacity: 0.5; }
-.tr-thumb.wipe .tr-b { clip-path: inset(0 50% 0 0); }
-.tr-thumb.wipe .tr-k { opacity: 1; background: linear-gradient(90deg, transparent calc(50% - 1px), #fff calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)); }
-.tr-thumb.dip .tr-b { clip-path: inset(0 0 0 50%); }
-.tr-thumb.dip .tr-k { opacity: 1; background: linear-gradient(90deg, transparent 8%, #000 42%, #000 58%, transparent 92%); }
-.tr-thumb.iris .tr-b { clip-path: circle(36% at 50% 50%); }
-.tr-thumb.push .tr-a { transform: translateX(-30%); }
-.tr-thumb.push .tr-b { transform: translateX(70%); }
-.tr-thumb.zoom .tr-a { transform: scale(1.35); }
-.tr-thumb.zoom .tr-b { opacity: 0.35; }
-@media (prefers-reduced-motion: no-preference) {
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.crossfade .tr-b { animation: tr-fade 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.wipe .tr-b { animation: tr-wipe 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.wipe .tr-k { opacity: 0; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.dip .tr-b { clip-path: none; animation: tr-dip-b 2.4s steps(1, end) infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.dip .tr-k { background: #000; animation: tr-dip-k 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.iris .tr-b { animation: tr-iris 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.push .tr-a { animation: tr-push-a 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.push .tr-b { animation: tr-push-b 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.zoom .tr-a { animation: tr-zoom 2.4s ease-in-out infinite; }
-  .tr-tile:is(:hover, :focus-visible) .tr-thumb.zoom .tr-b { animation: tr-fade 2.4s ease-in-out infinite; }
-}
-@keyframes tr-fade { 0%, 20% { opacity: 0; } 50%, 80% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes tr-wipe { 0%, 20% { clip-path: inset(0 100% 0 0); } 50%, 80% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 100% 0 0); } }
-@keyframes tr-iris { 0%, 20% { clip-path: circle(0% at 50% 50%); } 50%, 80% { clip-path: circle(72% at 50% 50%); } 100% { clip-path: circle(0% at 50% 50%); } }
-@keyframes tr-push-a { 0%, 20% { transform: translateX(0); } 50%, 80% { transform: translateX(-100%); } 100% { transform: translateX(0); } }
-@keyframes tr-push-b { 0%, 20% { transform: translateX(100%); } 50%, 80% { transform: translateX(0); } 100% { transform: translateX(100%); } }
-@keyframes tr-zoom { 0%, 20% { transform: scale(1); } 50%, 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
-@keyframes tr-dip-b { 0% { opacity: 0; } 35% { opacity: 1; } 90% { opacity: 0; } }
-@keyframes tr-dip-k { 0%, 15% { opacity: 0; } 35% { opacity: 1; } 55%, 75% { opacity: 0; } 90% { opacity: 1; } 100% { opacity: 0; } }
+.tr-thumb .tr-k { opacity: 0; }
+.tr-search { position: relative; display: flex; align-items: center; }
+.tr-search .input { flex: 1; padding-right: 26px; }
+.tr-search .icon-btn { position: absolute; right: 2px; }
+.tr-length { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tr-length .muted { margin-right: 2px; }
 
 /* Cut points and markers sit in the top half of the main lane, so the clips' trim edges stay
    reachable below them (a drag over the timeline makes the cut points full height). */
@@ -829,6 +803,30 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .music-row .music-meta { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .music-row .icon-btn svg.lucide { width: 14px; height: 14px; }
 .music-row .icon-btn.playing { color: var(--select); }
+/* The sound library (D134). */
+.lib-head-actions { display: inline-flex; align-items: center; gap: 2px; }
+.lib-head-actions .icon-btn svg.lucide { width: 15px; height: 15px; }
+.icon-btn.done { color: var(--ok); }
+.sound-browser { display: flex; flex-direction: column; gap: 8px; }
+.lib-search { position: relative; }
+.lib-search svg.lucide { position: absolute; left: 8px; top: 50%; width: 13px; height: 13px; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
+.lib-search .input { width: 100%; height: 28px; padding-left: 26px; }
+.lib-views button { flex: 1; }
+.lib-filters { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.lib-filters select.input { height: 24px; padding: 0 6px; font-size: 11px; flex: 1 1 90px; min-width: 0; }
+.lib-results { display: flex; flex-direction: column; min-height: 24px; }
+.lib-results[data-busy="true"] .lib-row { opacity: 0.6; }
+.lib-busy { width: 14px; height: 14px; margin: 6px auto; color: var(--muted); }
+.lib-more { align-self: center; margin-top: 6px; font-size: 12px; }
+.lib-limit { padding: 8px 10px; border-radius: var(--radius-sm); background: rgb(251 191 36 / 10%); color: var(--warn); font-size: 12px; line-height: 1.4; }
+.lib-limit.error { background: rgb(248 113 113 / 10%); color: var(--error); }
+.lib-license { flex: none; font: 600 9.5px var(--mono); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-strong); color: var(--muted); }
+.lib-license.by { color: var(--warn); border-color: rgb(251 191 36 / 35%); }
+.lib-wave { display: flex; align-items: center; gap: 1px; height: 16px; margin-top: 2px; }
+.lib-wave i { flex: 1; min-width: 1px; background: var(--border-strong); border-radius: 1px; }
+.lib-wave i.on { background: var(--select); }
+.lib-notice { font-size: 11px; color: var(--dim); }
+.lib-notice a { color: var(--muted); }
 .music-licence { margin: 4px 0 0; font-size: 11px; color: var(--dim); line-height: 1.45; }
 
 /* The Capture tab (D98). */

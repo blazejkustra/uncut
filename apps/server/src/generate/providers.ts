@@ -10,6 +10,8 @@ import { rm, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+import { retryOnReset } from "../library/net.ts";
+
 import type { GenerateKind, KeyProvider } from "@uncut/contracts";
 
 export interface GenerateInput {
@@ -143,7 +145,9 @@ export async function followRedirects(provider: string, start: URL, apiOrigin: s
     const withKey = url.origin === apiOrigin;
     let res: Response;
     try {
-      res = await guardedFetch(url.href, { headers: withKey ? keyHeaders : {}, redirect: "manual", signal });
+      const at = url;
+      // A GET: once more if a kept-alive socket was dropped under it.
+      res = await retryOnReset(() => guardedFetch(at.href, { headers: withKey ? keyHeaders : {}, redirect: "manual", signal }), signal);
     } catch (error) {
       if (signal.aborted) throw error;
       throw new Error(`Couldn't reach ${provider}: ${redact((error as Error).message, key)}`);

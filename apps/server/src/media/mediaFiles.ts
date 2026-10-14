@@ -3,10 +3,12 @@
 // references can be served, looked up by media id; the footage is streamed from where it is
 // (D12), never copied. Single byte ranges are honoured (206), which <video> needs to seek.
 import { open as openFile, type FileHandle } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { MEDIA_FILE_PATH, MUSIC_FILE_PATH } from "@uncut/contracts";
+import { LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
 import { MUSIC_TRACKS } from "@uncut/core/music";
+import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -14,6 +16,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "../app/config.ts";
 import { Projects } from "../project/projects.ts";
+import { Library, MAX_PREVIEW_BYTES } from "../library/library.ts";
 import { presentedToken, tokensMatch } from "../app/auth.ts";
 
 // The lookup is an exact match against the project's media ids; this only rejects junk early.
@@ -134,6 +137,7 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const projects = yield* Projects;
+    const sounds = yield* Library;
     const authorised = (request: HttpServerRequest.HttpServerRequest) => {
       const url = HttpServerRequest.toURL(request);
       return Option.isSome(url) && tokensMatch(presentedToken(request.headers, url.value), config.token) ? url.value : undefined;
@@ -169,6 +173,58 @@ export const layer = Layer.unwrap(
           const track = MUSIC_TRACKS.find((t) => t.file === file);
           if (!track) return notFound();
           return yield* serveFile(request, join(config.musicDir, track.file));
+        }),
+      ),
+      // The bundled sound-effects pack (D134), for the Sound effects tab's preview: only its files.
+      HttpRouter.add(
+        "GET",
+        `${SFX_FILE_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const file = decode(url.pathname.slice(SFX_FILE_PATH.length + 1));
+          const sound = SFX_SOUNDS.find((s) => s.file === file);
+          if (!sound) return notFound();
+          return yield* serveFile(request, join(config.sfxDir, sound.file));
+        }),
+      ),
+      // An online library hit's preview (D134): streamed through from the file URL its search gave
+      // (only hits of a recent search, so nothing else can be fetched through it), never saved.
+      HttpRouter.add(
+        "GET",
+        `${LIBRARY_PREVIEW_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const [source, id] = (decode(url.pathname.slice(LIBRARY_PREVIEW_PATH.length + 1)) ?? "").split("/");
+          if ((source !== "openverse" && source !== "freesound") || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return notFound();
+          const controller = new AbortController();
+          const res = yield* Effect.promise(() => sounds.preview(`${source}:${id}`, request.headers["range"], controller.signal).catch(() => "failed" as const));
+          if (res === undefined) return notFound();
+          if (res === "failed" || !res.body || (res.status !== 200 && res.status !== 206)) {
+            if (res !== "failed") void res.body?.cancel().catch(() => {});
+            return HttpServerResponse.text("The preview couldn't be loaded", { status: 502, headers: CORS });
+          }
+          const type = res.headers.get("content-type") ?? "";
+          const pass: Record<string, string> = { "cache-control": "no-store", ...CORS };
+          for (const h of ["content-length", "content-range", "accept-ranges"]) {
+            const v = res.headers.get(h);
+            if (v) pass[h] = v;
+          }
+          // At most MAX_PREVIEW_BYTES go through (a preview, not a download).
+          let sent = 0;
+          const body = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream).pipe(
+            new Transform({
+              transform(chunk: Buffer, _e, done) {
+                sent += chunk.length;
+                done(sent > MAX_PREVIEW_BYTES ? new Error("preview too large") : null, chunk);
+              },
+            }),
+          );
+          body.on("close", () => controller.abort());
+          return HttpServerResponse.raw(body, { status: res.status, contentType: type, headers: pass });
         }),
       ),
     );

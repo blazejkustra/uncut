@@ -310,8 +310,8 @@ export function KeyRows() {
   const offline = connection !== "connected";
   return (
     <div className="wiz-plugins wiz-keys" data-testid="keys">
-      <div className="wiz-section">Keys for generators (optional)</div>
-      <div className="wiz-sub">Only GPT Image, Veo and Sound effects need one; they bill your own account. A key stays in this Mac's Keychain and never goes to the agent or into a project. The SVG generator needs none.</div>
+      <div className="wiz-section">Keys (optional)</div>
+      <div className="wiz-sub">GPT Image, Veo and Sound effects bill your own account. A key stays in this Mac's Keychain and never goes to the agent or into a project.</div>
       {keys.map((k) => (
         <KeyRow key={k.provider} info={k} offline={offline} />
       ))}
@@ -347,6 +347,11 @@ function KeyRow({ info: k, offline }: { info: KeyInfo; offline: boolean }) {
             For {k.usedBy.join(", ")}
             {k.set && k.storage === "memory" ? ". Kept until Uncut quits" : ""}
           </div>
+          {k.note && (
+            <div className="wiz-sub" data-testid={`key-note-${k.provider}`}>
+              {k.note}
+            </div>
+          )}
         </div>
         {k.set ? (
           <>

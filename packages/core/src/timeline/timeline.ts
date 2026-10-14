@@ -9,7 +9,7 @@ import { captionAt } from "../text/captions.ts";
 import { componentBox } from "../visual/components.ts";
 import { WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "../text/looks.ts";
 import { SOLID, wordCount, type Motion } from "../visual/render.ts";
-import { incomingFx, outgoingFx, overlaps, WIPE, type TransitionFx } from "../visual/transitions.ts";
+import { dipColor, incomingFx, outgoingFx, overlaps, WIPE, type MaskShape, type TransitionFx } from "../visual/transitions.ts";
 import type { Canvas, Item, Media, Project, Track } from "./types.ts";
 
 export interface Visual {
@@ -22,13 +22,19 @@ export interface Visual {
   readonly wipe?: number;
   /** An iris transition into it (D79): the share of the canvas's half diagonal a circle at its centre shows (0–1; transitions.ts irisRadius). Absent when whole. */
   readonly iris?: number;
+  /** A reveal shape into it (D133, transitions.ts maskDistance): the incoming clip shows inside it at share p. Absent when whole. */
+  readonly mask?: { readonly shape: MaskShape; readonly p: number };
   /**
    * A push or zoom transition moving it (D79): `shift` canvas px to the right, `zoom` its picture
    * scaled about its box's centre. Already in `box` when it has one; an item without one (text, a
    * background, a graphic) moves as the whole canvas. Absent when not moved.
    */
   readonly shift?: number;
+  /** A vertical push or slide (D133): canvas px down, like `shift`. */
+  readonly shiftY?: number;
   readonly zoom?: number;
+  /** A blur dissolve (D133): Gaussian sigma in canvas px. */
+  readonly blur?: number;
   /** Source time in seconds (0 for items without media); a looped clip wraps at its media's end. */
   readonly source: number;
   /**
@@ -100,7 +106,7 @@ export function transitionShare(span: Pick<Span, "from" | "to" | "half" | "nextH
  * incomingFx / outgoingFx): opacity, a wipe or iris reveal, a push shift or a zoom. Nothing on
  * frames outside them.
  */
-export function transitionAt(span: Span, f: number, canvas: { readonly width: number }): TransitionFx {
+export function transitionAt(span: Span, f: number, canvas: { readonly width: number; readonly height: number }): TransitionFx {
   let fx: TransitionFx = { opacity: 1 };
   if (span.half > 0) {
     const p = transitionShare(span, f, "in");
@@ -123,14 +129,19 @@ export interface Dip {
   readonly half: number;
 }
 
-/** The black layers of the dips to black on a main track, in cut order. */
+/**
+ * The colour layers of the dips (to black, to white) and flashes on a main track, in cut order
+ * (D133: the colour is the transition's; a flash overlaps the clips, a dip doesn't, the layer is
+ * the same).
+ */
 export function dipsOf(track: Track, starts: ReadonlyMap<string, number>): Array<Dip> {
   if (track.role !== "main") return [];
   const out: Array<Dip> = [];
   track.items.forEach((item, index) => {
     const tr = item.transitionIn;
-    if (index === 0 || !tr || overlaps(tr.module) || !(tr.duration > 0)) return;
-    out.push({ item: { id: dipId(item.id), type: "component", component: SOLID, duration: tr.duration, props: { color: "#000000" } }, cut: starts.get(item.id)!, half: tr.duration / 2 });
+    const color = tr && dipColor(tr.module);
+    if (index === 0 || !tr || !color || !(tr.duration > 0)) return;
+    out.push({ item: { id: dipId(item.id), type: "component", component: SOLID, duration: tr.duration, props: { color } }, cut: starts.get(item.id)!, half: tr.duration / 2 });
   });
   return out;
 }
@@ -180,12 +191,13 @@ export function visualsAt(project: Pick<Project, "tracks" | "canvas"> & Partial<
       const source = item.media ? sourceAt({ media: project.media ?? [], canvas: project.canvas }, item, f - start) : 0;
       const media = pictureMedia(project, item);
       const own = media ? clipBox(item, project.canvas, media.probe, f - start) : componentBox(item, project.canvas, f - start);
-      const box = own && moveBox(own, fx.shift, fx.zoom);
+      const box = own && moveBox(own, fx.shift, fx.zoom, fx.shiftY);
       if (box) opacity *= box.opacity;
       // A graphic (D78) has no box: transform.opacity alone applies.
       if (item.type === "graphic" && typeof item.transform?.opacity === "number") opacity *= Math.min(1, Math.max(0, item.transform.opacity));
-      const moved = { ...(fx.shift ? { shift: fx.shift } : {}), ...(fx.zoom !== undefined && fx.zoom !== 1 ? { zoom: fx.zoom } : {}) };
-      out.push({ item, track, opacity, motion: anim.motion, source, ...(fx.wipe !== undefined ? { wipe: fx.wipe } : {}), ...(fx.iris !== undefined ? { iris: fx.iris } : {}), ...moved, ...(box ? { box } : {}) });
+      const moved = { ...(fx.shift ? { shift: fx.shift } : {}), ...(fx.shiftY ? { shiftY: fx.shiftY } : {}), ...(fx.zoom !== undefined && fx.zoom !== 1 ? { zoom: fx.zoom } : {}) };
+      const extra = { ...(fx.mask ? { mask: fx.mask } : {}), ...(fx.blur ? { blur: fx.blur } : {}) };
+      out.push({ item, track, opacity, motion: anim.motion, source, ...(fx.wipe !== undefined ? { wipe: fx.wipe } : {}), ...(fx.iris !== undefined ? { iris: fx.iris } : {}), ...moved, ...extra, ...(box ? { box } : {}) });
     });
     // Dips to black: a black layer over the main track's clips, under the tracks above it.
     for (const dip of dipsOf(track, starts)) {

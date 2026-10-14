@@ -19,6 +19,8 @@ import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_UI_PANELS, AgentError, type AgentEdit, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import { captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
+import { mediaIdFor } from "@uncut/core/music";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -49,6 +51,7 @@ import { CONFIRM_OVER, Generator, needsKeyLine, TURN_CAP } from "../generate/gen
 /** How long an approval card waits for the user (D99). */
 const APPROVAL_MS = 120_000;
 import { Keys, providerName } from "../generate/keys.ts";
+import { Library } from "../library/library.ts";
 import { isTestRun } from "../generate/providers.ts";
 import { Projects, type ProjectView } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
@@ -413,6 +416,7 @@ export const layer = Layer.effect(
     const plugins = yield* Plugins;
     const generator = yield* Generator;
     const keys = yield* Keys;
+    const sounds = yield* Library;
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
@@ -1354,6 +1358,83 @@ export const layer = Layer.effect(
         });
       });
 
+    /**
+     * library_search (D134): the online library (Openverse; Freesound with the user's key), CC0 and
+     * CC BY only, or with source "included" the bundled sound effects. Same cache and limits as the
+     * panel's searches.
+     */
+    const librarySearch = (args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const kind = args.kind === "sfx" ? "sfx" : args.kind === "music" ? "music" : undefined;
+        if (!kind) return textResult('kind must be "music" or "sfx".', true);
+        const query = typeof args.query === "string" ? args.query.trim() : "";
+        const fps = view()?.session.project.canvas.fps ?? 30;
+        if (args.source === "included") {
+          if (kind !== "sfx") return textResult('The bundled music is music_list; source "included" is for sound effects.', true);
+          const sfx = filterSfx({ query, category: typeof args.category === "string" ? args.category : undefined });
+          return textResult({ sounds: sfx.map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0" })), note: "Bundled CC0 sounds (no credit needed). library_add copies one into the project." });
+        }
+        if (!query) return textResult("query must say what to search for, e.g. whoosh, bass boom, upbeat piano.", true);
+        if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound") return textResult('source must be "openverse", "freesound" or "included".', true);
+        const length = args.length === "short" || args.length === "medium" || args.length === "long" ? args.length : undefined;
+        const outcome = yield* sounds
+          .search({ kind, query, ...(args.source ? { source: args.source as "openverse" | "freesound" } : {}), ...(args.license === "cc0" ? { license: "cc0" as const } : {}), ...(length ? { length } : {}), ...(args.songs === true ? { songs: true } : {}), ...(typeof args.page === "number" ? { page: args.page } : {}) })
+          .pipe(
+            Effect.map((result) => ({ ok: true as const, result })),
+            Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+          );
+        if (!outcome.ok) return textResult(outcome.error.message, true);
+        const { result } = outcome;
+        if (result.limit) return textResult({ hits: [], limit: limitSentence(result.source, result.limit), note: "Use the bundled sounds meanwhile (music_list, or library_search with source included)." }, true);
+        return textResult({
+          source: result.source,
+          total: result.total,
+          page: result.page,
+          pages: result.pages,
+          hits: result.hits.map((h) => ({ id: hitKey(h), title: h.title, creator: h.creator, seconds: h.seconds, ...(h.seconds ? { frames: Math.round(h.seconds * fps) } : {}), license: h.license === "by" ? `CC BY ${h.licenseVersion}` : "CC0", tags: h.tags.slice(0, 6) })),
+          note: "CC BY sounds need credit in the video's description (project_read lists credits). library_add downloads one into the project.",
+        });
+      });
+
+    /** library_add (D134): a hit (or a bundled sound effect) downloaded into media/ and added as audio media with its credits, an edit on the turn. */
+    const libraryAdd = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const id = typeof args.id === "string" ? args.id.trim() : "";
+        if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…) or a bundled sound (sfx:…).", true);
+        const fps = v.session.project.canvas.fps;
+        const already = libraryMediaOf(v.session.project, id);
+        if (already) return textResult({ media: already.id, frames: already.probe?.frames, revision: v.session.revision, note: `It's already in the project as ${already.id}: put it on an audio track with timeline_edit.` });
+        const added = yield* sounds.add(id, v.dir, r.abort.signal).pipe(
+          Effect.map((a) => ({ ok: true as const, a })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+        );
+        if (!added.ok) return textResult(added.error.message, true);
+        const fresh = view();
+        if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
+        const { a } = added;
+        const media = { id: mediaIdFor(a.name, projectIds(fresh.session.project)), kind: "audio" as const, name: a.name, path: a.path, source: { ...a.source }, probe: { frames: Math.max(1, Math.floor(a.seconds * fps)), hasAudio: true } };
+        const summary = `Added ${a.name} from the sound library`;
+        const outcome = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops: [{ op: "add_media", media }], baseRevision: fresh.session.revision, summary }).pipe(
+          Effect.map((snapshot) => ({ ok: true as const, snapshot })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+        );
+        if (!outcome.ok) return textResult({ refused: outcome.error.message, details: outcome.error.details }, true);
+        const { snapshot } = outcome;
+        r.turn.edits.push({ revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media } as Op, snapshot.project as Project)] });
+        persist(r.owner);
+        publish();
+        r.owner.seen.add(snapshot.revision);
+        return textResult({
+          media: media.id,
+          path: media.path,
+          frames: media.probe.frames,
+          seconds: a.seconds,
+          license: a.source.license === "by" ? `CC BY ${a.source.licenseVersion}: credit "${a.source.title}" by ${a.source.creator} (project_read's credits has the line)` : "CC0",
+          revision: snapshot.revision,
+          next: `Put it on an audio track free at that moment with timeline_edit, e.g. {"op":"insert_item","track":"<audio track>","item":{"id":"sfx-1","type":"audio","media":"${media.id}","in":0,"start":<frame>,"duration":${media.probe.frames}}} (add a track first when none is free: {"op":"add_track","track":{"id":"sfx","kind":"audio","name":"Sound effects"}}).`,
+        });
+      });
+
     const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
       const project = v.session.project;
       const said: Array<string> = [];
@@ -1538,6 +1619,10 @@ export const layer = Layer.effect(
           }
           case "music_add":
             return yield* musicAdd(r, v, args);
+          case "library_search":
+            return yield* librarySearch(args);
+          case "library_add":
+            return yield* libraryAdd(r, v, args);
           case "graphic_write":
             return yield* graphicWrite(v, args);
           case "generate_media":
