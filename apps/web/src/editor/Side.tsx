@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { hasSound } from "../audio/sound.ts";
 import { AgentPanel } from "../panels/Agent.tsx";
-import { ComponentEditor } from "../panels/ComponentEditor.tsx";
+import { ComponentEditor } from "../inspector/component.tsx";
 import { HistoryPanel } from "../panels/History.tsx";
 import { AudioEditor } from "../inspector/audio.tsx";
 import { hasSpeed, NamesEditor, SpeedEditor } from "../inspector/speed.tsx";

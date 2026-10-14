@@ -9,6 +9,7 @@
 // dragged and resized by its corners (D75); a component dropped from Elements lands where it's dropped.
 import { heldPast } from "@uncut/core/audio";
 import type { ClipBox } from "@uncut/core/box";
+import type { Op } from "@uncut/core/types";
 import { visualsAt, type Visual } from "@uncut/core/timeline";
 import { componentHtml, isDrawnComponent } from "@uncut/core/components";
 import { graphicInfo } from "@uncut/core/graphics";
@@ -21,7 +22,8 @@ import { draftOf, findItem, lockOf } from "../timeline/edit.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, graphicUrl, mediaUrl, textPresets } from "../state/store.ts";
-import { COMPONENT_DRAG_TYPE, draggedComponent, TEXT_DRAG_TYPE } from "./components.ts";
+import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, planAddComponent, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
+import { planAddText } from "../state/project.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 import { clipState, planClipBox, resizeBox, type Corner } from "../timeline/clip.ts";
 import { Transport } from "./Transport.tsx";
@@ -674,6 +676,8 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   const compositor = useRef<Compositor | undefined>(undefined);
   const drag = useRef<CanvasDrag | undefined>(undefined);
   const [guides, setGuides] = useState<ReadonlyArray<Guide>>([]);
+  // A tile dragged over the canvas (X2, D132): the element as it would land there, drawn faint with an outline.
+  const [dropGhost, setDropGhost] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState<InlineEdit | undefined>();
   useEffect(() => {
     const c = new Compositor(dir, frameRef.current!, mediaRef.current!, textRef.current!);
@@ -818,8 +822,17 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     if ((!types.includes(COMPONENT_DRAG_TYPE) && !types.includes(TEXT_DRAG_TYPE)) || getState().connection !== "connected") return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
+    const rect = frameRef.current!.getBoundingClientRect();
+    const at = { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale };
+    const ghost = dropGhostHtml(project, types.includes(TEXT_DRAG_TYPE) ? { text: draggedText() } : { component: draggedComponent() }, at);
+    if (ghost !== dropGhost) setDropGhost(ghost);
+  };
+  const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropGhost(undefined);
   };
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    setDropGhost(undefined);
+    setDraggedText(undefined);
     const rect = frameRef.current!.getBoundingClientRect();
     const at = { x: (e.clientX - rect.left) * scale, y: (e.clientY - rect.top) * scale };
     // A Text tab preset (D80): added at the playhead, where it's dropped.
@@ -858,6 +871,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           onPointerCancel={(e) => endDrag(e, false)}
           onDoubleClick={onDoubleClick}
           onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
           onDrop={onDrop}
         >
           {/* Everything is laid out at canvas size and scaled down as one (D56): the text's
@@ -877,6 +891,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
                 style={g.axis === "x" ? { left: `${(g.at / width) * 100}%` } : { top: `${(g.at / height) * 100}%` }}
               />
             ))}
+            {dropGhost && <div className="pv-drop-ghost" data-testid="drop-ghost" dangerouslySetInnerHTML={{ __html: dropGhost }} />}
             {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
             <ClipSelection project={project} />
             </div>
@@ -886,6 +901,27 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       <Transport project={project} view={view} full={full} onFull={() => setFull(!full)} />
     </main>
   );
+}
+
+/**
+ * What a library tile dragged over the canvas would add at `at` (X2, D132): the element its drop
+ * makes (the same planner), drawn by core (textHtml / componentHtml) as the export would, for the
+ * faint ghost under the pointer. Undefined when the plan is refused or there's nothing to draw.
+ */
+function dropGhostHtml(project: ProjectModel, what: { text?: string | undefined; component?: string | undefined }, at: { x: number; y: number }): string | undefined {
+  const frame = getPlayback().frame;
+  if (what.text !== undefined) {
+    const preset = textPresets().find((p) => p.id === what.text);
+    if (!preset) return undefined;
+    const plan = planAddText(project, preset, frame, at);
+    if ("problem" in plan) return undefined;
+    return (plan.ops as ReadonlyArray<Op>).flatMap((op) => (op.op === "insert_item" ? [textHtml(op.item as Item, { ...project, textLooks: project.textLooks ?? 1 }).replace(/ data-item="[^"]*"/, "")] : [])).join("");
+  }
+  if (!what.component) return undefined;
+  const plan = planAddComponent(project, what.component, frame, { at });
+  if ("problem" in plan) return undefined;
+  const item = (plan.ops as ReadonlyArray<Op>).flatMap((op) => (op.op === "insert_item" && (op.item as Item).type === "component" ? [op.item as Item] : []))[0];
+  return item ? componentHtml(item, project, 0, { fps: project.canvas.fps })?.replace(/ data-item="[^"]*"/, "") : undefined;
 }
 
 /**

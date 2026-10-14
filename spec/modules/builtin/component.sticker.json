@@ -1,0 +1,56 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "component.sticker",
+  "kind": "component",
+  "name": "Sticker",
+  "description": "An emoji (or a few characters) that pops in.",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "params": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "emoji": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16,
+        "x-group": "Content",
+        "description": "The emoji."
+      },
+      "pop": {
+        "type": "boolean",
+        "x-group": "Motion",
+        "description": "Pop in over its first half second."
+      },
+      "tilt": {
+        "type": "number",
+        "minimum": -45,
+        "maximum": 45,
+        "x-unit": "°",
+        "x-group": "Layout",
+        "description": "A tilt."
+      }
+    }
+  },
+  "component": {
+    "size": {
+      "width": 300,
+      "height": 300
+    },
+    "animated": true,
+    "defaults": {
+      "emoji": "🔥",
+      "pop": true,
+      "tilt": -8
+    }
+  },
+  "ui": {
+    "panel": "components",
+    "icon": "sticker"
+  }
+}

@@ -26,6 +26,7 @@ import terminalJson from "../../../../spec/modules/builtin/component.terminal.js
 import agentLogJson from "../../../../spec/modules/builtin/component.agent-log.json" with { type: "json" };
 import compareTableJson from "../../../../spec/modules/builtin/component.compare-table.json" with { type: "json" };
 
+import { calloutJson, countdownJson, drawCallout, drawCountdown, drawImageFrame, drawLowerThird, drawProgressBar, drawShape, drawSticker, drawSubscribe, imageFrameJson, lowerThirdJson, progressBarJson, shapeJson, stickerJson, subscribeJson } from "./elements.ts";
 import { baseBox, clipBox, EASES, type ClipBox, type Rect } from "./box.ts";
 import { DEFAULT_THEME, DM_MONO, DM_SANS, esc, markup, num, resolveColor, SOLID, type Motion, type RenderTarget } from "./render.ts";
 import type { Canvas, FieldSet, Item, Media, ModuleManifest, Op, Project, Track } from "../timeline/types.ts";
@@ -40,7 +41,7 @@ export interface ComponentBlock {
 }
 
 /** What a renderer gets: the item's props, its box size (canvas px), the local frame and the target. */
-interface Draw {
+export interface Draw {
   readonly item: Item;
   readonly props: { readonly [key: string]: unknown };
   readonly w: number;
@@ -437,6 +438,15 @@ const info = (json: unknown, render: ComponentInfo["render"]): ComponentInfo => 
 
 /** The components the preview and export draw, in the Elements panel's order. */
 export const COMPONENTS: ReadonlyArray<ComponentInfo> = [
+  // The general elements (D130) first, then the ones made for product videos.
+  info(shapeJson, drawShape),
+  info(lowerThirdJson, drawLowerThird),
+  info(calloutJson, drawCallout),
+  info(progressBarJson, drawProgressBar),
+  info(countdownJson, drawCountdown),
+  info(subscribeJson, drawSubscribe),
+  info(stickerJson, drawSticker),
+  info(imageFrameJson, drawImageFrame),
   info(endCardJson, drawEndCard),
   info(deviceFrameJson, drawDeviceFrame),
   info(codeBlockJson, drawCodeBlock),
@@ -456,7 +466,6 @@ export const DRAWN_COMPONENTS: ReadonlyArray<string> = [SOLID, ...COMPONENTS.map
  * isn't): saved, shown to the agent with showsInPreview false, not offered in the panel.
  */
 export const UNDRAWN_COMPONENTS: Readonly<Record<string, string>> = {
-  "component.callout": "not drawn yet",
   "component.follow-card": "not drawn yet",
   "component.steps": "not drawn yet",
   "component.zoom-pan": "not drawn: zoom and pan a clip with its scale and x / y keys instead (D75)",
