@@ -27,6 +27,7 @@ export const SHORTCUTS: ReadonlyArray<Shortcut> = [
   { group: "Playback", keys: ["I", "O"], does: "Mark in or out at the playhead" },
   { group: "Edit", keys: ["S", "⌘B"], does: "Split at the playhead" },
   { group: "Edit", keys: ["⌫", "Delete"], does: "Delete the selection" },
+  { group: "Edit", keys: ["⇧⌫"], does: "Ripple delete: delete and close the gap" },
   { group: "Edit", keys: ["⌘A"], does: "Select everything on the timeline" },
   { group: "Edit", keys: ["⌘C", "⌘X", "⌘V"], does: "Copy, cut, paste at the playhead" },
   { group: "Edit", keys: ["⌘D"], does: "Duplicate the selection" },
@@ -34,6 +35,9 @@ export const SHORTCUTS: ReadonlyArray<Shortcut> = [
   { group: "Edit", keys: ["Esc"], does: "Deselect" },
   { group: "Timeline", keys: ["+", "−"], does: "Zoom the timeline in or out (also ⌘= and ⌘−)" },
   { group: "Timeline", keys: ["⌘0"], does: "Fit the project in the timeline" },
+  { group: "Timeline", keys: ["⌘ scroll", "Pinch"], does: "Zoom the timeline around the pointer" },
+  { group: "Timeline", keys: ["⇧ scroll"], does: "Scroll the timeline sideways" },
+  { group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item" },
   { group: "App", keys: ["⌘E"], does: "Export" },
   { group: "App", keys: ["⌘,"], does: "Settings" },
   { group: "App", keys: ["?"], does: "Keyboard shortcuts" },
@@ -71,7 +75,7 @@ export async function paste(at = getPlayback().frame) {
 }
 
 /** ⌫ / ⌘X: delete the selection (several items in one edit). */
-async function deleteSelection() {
+export async function deleteSelection() {
   const ids = selection();
   const snapshot = getState().snapshot;
   if (ids.length > 1 && snapshot) {
@@ -80,7 +84,7 @@ async function deleteSelection() {
 }
 
 /** ⌘D: a copy of the selection right after it (on main: after the clip; elsewhere: where it ends). */
-async function duplicate() {
+export async function duplicate() {
   const snapshot = getState().snapshot;
   const project = snapshot && projectOf(snapshot);
   const ids = selection();
@@ -155,7 +159,7 @@ export function useEditorKeys(fps: number) {
         done();
         // In the Transcript panel ⌫ cuts the selected words (D69), never the timeline item it doesn't show.
         // The Mixer (D83) shows no selection, so ⌫ there deletes nothing.
-        if (!e.repeat && bottom !== "mixer") void (bottom === "transcript" ? cutSelectedWords() : deleteSelection());
+        if (!e.repeat && bottom !== "mixer") void (bottom === "transcript" ? cutSelectedWords() : e.shiftKey ? actions.rippleDelete(selection()) : deleteSelection());
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {

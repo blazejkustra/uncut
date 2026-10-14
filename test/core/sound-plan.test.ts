@@ -108,19 +108,21 @@ test("the agent's note lists volume and fade changes in words", () => {
   assert.equal(describeOp({ op: "update_item", item: "audio-1", set: { gainDb: -6, fadeIn: 30 } }, s.project), "Changed the sound of song.m4a (audio-1): volume −6 dB, fade in 1.0 s");
 });
 
-test("adding audio: at the playhead when the first audio track is free there, else after its last sound", () => {
+test("adding audio (D124): at the playhead on the first audio track free there, else on a new track", () => {
   // audio-1 covers 30..150; the song is 600 frames.
   const at = (frame: number) => {
     const plan = planAddMedia(project, "m-song", frame);
     assert.ok("ops" in plan);
-    return plan.start;
+    return plan;
   };
-  assert.equal(at(150), 150, "free from 150 on");
-  assert.equal(at(100), 150, "taken at 100: after the last sound");
+  assert.equal(at(150).start, 150, "free from 150 on");
+  const busy = at(100);
+  assert.equal(busy.start, 100, "taken at 100: still at the playhead, on a new track");
+  assert.equal((busy.ops[0] as { op: string; track: { name: string } }).track.name, "Audio 2");
   const noTrack: Project = { ...project, tracks: project.tracks.filter((t) => t.kind !== "audio") };
   const plan = planAddMedia(noTrack, "m-song", 45);
   assert.ok("ops" in plan);
   assert.equal(plan.start, 45, "a new track is free everywhere");
   const p = apply(noTrack, plan);
-  assert.deepEqual(p.tracks.at(-1)!.items, [{ id: "audio-2", type: "audio", media: "m-song", in: 0, duration: 600, start: 45 }]);
+  assert.deepEqual(p.tracks.at(-1)!.items, [{ id: "audio-1", type: "audio", media: "m-song", in: 0, duration: 600, start: 45 }]);
 });

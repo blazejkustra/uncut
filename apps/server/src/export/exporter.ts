@@ -19,6 +19,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles } from "@uncut/contracts";
 import { decodeEnvelope, denoiseMediaIds, duckMediaIds, flattenCues, subtitleCues, subtitleFormatOf, subtitleLanguageTag, targetOfChoice, writeSubtitles, type SpeechEnvelope, type SubtitleFormat } from "@uncut/core";
 import { baseBox, canvasBox, componentHtml, irisRadius, moveBox, graphicDocument, graphicInfo, GRAPHIC_SRC, isDrawnComponent, isPlainBox, isSvg, layout, MAX_GRAPHIC_BYTES, solidHtml, SOLID, textHtml, visualsAt, type Media, type Project } from "@uncut/core";
+import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -66,6 +67,8 @@ export interface ExportInput {
   readonly subtitles?: ExportSubtitles | undefined;
   /** D105: draw captions and Subtitles tracks into the picture (default true). */
   readonly burnCaptions?: boolean | undefined;
+  /** G7 (D127): only frames [from, to) of the edit (core sliceProject). */
+  readonly range?: { readonly from: number; readonly to: number } | undefined;
 }
 
 /** How long an export waits to measure a ducking key's loudness that isn't cached (D85). */
@@ -663,7 +666,13 @@ export const layer = Layer.effect(
 
     const start = (input: ExportInput) =>
       Effect.gen(function* () {
-        const { dir, project, mediaPath } = yield* current;
+        const { dir, project: whole, mediaPath } = yield* current;
+        // A part of the timeline (D127): the project cut to it, so the picture, the sound, captions
+        // and the subtitles file all start at its first frame.
+        const sliced = input.range ? sliceProject(whole, input.range) : whole;
+        if ("problem" in sliced) return yield* new ExportError({ reason: "empty", message: sliced.problem });
+        const project = sliced;
+        const range = input.range ? clampRange(whole, input.range) : undefined;
         const output = input.output.trim();
         if (!isAbsolute(output) || !/\.mp4$/i.test(output)) return yield* new ExportError({ reason: "invalid-path", message: "Choose where to save the video: a .mp4 file." });
         const folder = yield* Effect.promise(() => stat(dirname(output)).then((s) => s.isDirectory(), () => false));
@@ -724,6 +733,7 @@ export const layer = Layer.effect(
           ...(subtitlesFile ? { subtitlesFile } : {}),
           ...(input.subtitles?.track ? { subtitleTrack: subtitleLanguageTag(input.subtitles.language) } : {}),
           ...(burnCaptions ? {} : { burnCaptions: false }),
+          ...(range ? { range } : {}),
         };
         const controller = new AbortController();
         controllers.set(id, controller);

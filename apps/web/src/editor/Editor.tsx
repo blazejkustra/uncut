@@ -14,6 +14,7 @@ import { usePlayback } from "../preview/playback.ts";
 import { Stage } from "../preview/Preview.tsx";
 import { actions, projectOf, useApp, type Project } from "../state/store.ts";
 import { Timeline } from "../timeline/Timeline.tsx";
+import { ContextMenuHost } from "../timeline/ContextMenu.tsx";
 import { useEditorKeys } from "./keys.ts";
 import { layoutStyle, useLayout } from "./layout.ts";
 import { Rail } from "./Rail.tsx";
@@ -44,6 +45,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   return (
     <div className="app" data-testid="editor" style={layoutStyle(sizes)}>
       <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} />
+      <ContextMenuHost />
       <div className="banners">
         {!online && (
           <div className="banner" data-testid="connection-banner" data-state={connection}>

@@ -6,6 +6,7 @@ import { applyEdit, createSession, EditError } from "@uncut/core/apply-ops";
 import { soundMedia } from "@uncut/core/audio";
 import { timelineProblems } from "@uncut/core/rules";
 import { cutsOf, defaultFrames, overlaps, transitionInfo, transitionLimits, transitionName, type Cut } from "@uncut/core/transitions";
+import { busySpans, mainSlot, nearestFreeSpot, withLinkedAudio } from "@uncut/core/arrange";
 import type { Op, TimedModule } from "@uncut/core/types";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
@@ -140,20 +141,21 @@ export function snapPlayhead(project: ProjectModel, frame: number, snap: BeatSna
   return best === undefined ? { frame } : { frame: best, snapAt: best };
 }
 
-/** Snap targets in frames: 0, the playhead, every other item's start and end, and the beats of other items (D70). */
-export function snapTargets(project: ProjectModel, playhead: number, exclude: string, beats?: BeatSnap): Array<number> {
+/** Snap targets in frames: 0, the playhead, markers, every other item's start and end, and the beats of other items (D70). `exclude`: one id or several (a group move). */
+export function snapTargets(project: ProjectModel, playhead: number, exclude: string | ReadonlySet<string>, beats?: BeatSnap): Array<number> {
   const { starts } = layoutOf(project);
-  const targets = new Set([0, Math.floor(playhead)]);
+  const skip = typeof exclude === "string" ? new Set([exclude]) : exclude;
+  const targets = new Set([0, Math.floor(playhead), ...(project.markers ?? []).map((m) => m.frame)]);
   for (const track of project.tracks) {
     for (const item of track.items) {
-      if (item.id === exclude) continue;
+      if (skip.has(item.id)) continue;
       const s = starts.get(item.id) ?? 0;
       targets.add(s);
       targets.add(s + item.duration);
     }
   }
   // The moved item's own beats move with it.
-  for (const b of beatTargets(project, beats, (item) => item.id !== exclude)) targets.add(b);
+  for (const b of beatTargets(project, beats, (item) => !skip.has(item.id))) targets.add(b);
   return [...targets];
 }
 
@@ -169,7 +171,7 @@ export function trimSnapTargets(project: ProjectModel, playhead: number, itemId:
   if (!placed) return [];
   const own = edge === "start" ? placed.start : placed.start + placed.item.duration;
   const { starts } = layoutOf(project);
-  const targets = new Set([0, Math.floor(playhead)]);
+  const targets = new Set([0, Math.floor(playhead), ...(project.markers ?? []).map((m) => m.frame)]);
   const ripples = (track: Track, index: number) => track.role === "main" && placed.track.role === "main" && index > placed.index;
   for (const track of project.tracks) {
     track.items.forEach((item, index) => {
@@ -206,21 +208,9 @@ function nearestSnap(edges: ReadonlyArray<number>, snap: Snap | undefined): { sh
 }
 
 /** Free-track items other than `exclude`, in time order (array order on a free track isn't time). */
-const others = (track: Track, exclude: string) =>
-  track.items.filter((i) => i.id !== exclude).map((i) => ({ start: i.start ?? 0, end: (i.start ?? 0) + i.duration })).sort((a, b) => a.start - b.start);
+const others = (track: Track, exclude: string) => busySpans(track, exclude);
 
-/**
- * Where an item `duration` long can go on a free track nearest to `start` without overlapping
- * anything (D52: a move onto another item snaps to the closest free spot). There is always room
- * after the last item.
- */
-export function nearestFreeSpot(track: Track, exclude: string, start: number, duration: number): number {
-  const busy = others(track, exclude);
-  const fits = (s: number) => s >= 0 && busy.every((b) => s + duration <= b.start || s >= b.end);
-  if (fits(start)) return start;
-  const candidates = [0, ...busy.flatMap((b) => [b.start - duration, b.end])].filter(fits);
-  return candidates.reduce((best, c) => (Math.abs(c - start) < Math.abs(best - start) ? c : best), Math.max(0, ...busy.map((b) => b.end)));
-}
+export { nearestFreeSpot };
 
 /** set_transition null for each of these main items that has a transition in. */
 const dropTransitions = (items: ReadonlyArray<Item | undefined>): Array<Op> =>
@@ -261,13 +251,7 @@ export function planMove(project: ProjectModel, itemId: string, trackId: string,
     // Slots among the other main items, back to back; the index is after the item is taken out
     // (move_item removes it first).
     const rest = target.items.filter((i) => i.id !== item.id);
-    const middle = desiredStart + item.duration / 2;
-    let t = 0;
-    let index = 0;
-    for (const other of rest) {
-      if (t + other.duration / 2 < middle) index++;
-      t += other.duration;
-    }
+    const index = mainSlot(rest, desiredStart + item.duration / 2);
     if (target.id === track.id && index === placed.index) return { ops: [], summary: "", track: target.id, index };
     // The cuts the clip leaves and joins change, so the transitions at them go (D52): its own,
     // the one into the clip after it, and the one into the clip it lands before.
@@ -289,6 +273,129 @@ export function planMove(project: ProjectModel, itemId: string, trackId: string,
     start: landing,
     ...(snapAt !== undefined ? { snapAt } : {}),
   };
+}
+
+/** Where a dragged item lands when it's dropped above the top lane or below the bottom one: a new track there (D122). */
+export type NewTrackSide = "top" | "bottom";
+
+/**
+ * Move an item onto a new track (D122): dragged above the top lane a new track of its kind goes on
+ * top of the others; below the bottom lane, under them (a video or text track just above the audio
+ * tracks, an audio track at the very bottom). It keeps its start (snapped like a move).
+ */
+export function planMoveToNewTrack(project: ProjectModel, itemId: string, side: NewTrackSide, desiredStart: number, snap?: Snap): MovePlan | { readonly problem: string } {
+  const placed = findItem(project, itemId);
+  if (!placed) return { problem: "That item isn't in the project any more." };
+  const locked = lockOf(placed);
+  if (locked) return { problem: locked };
+  const { item, track } = placed;
+  const kind = TRACK_KINDS[item.type];
+  if (item.type === "captions") return { problem: "Captions stay on their own track." };
+  let start = Math.max(0, Math.round(desiredStart));
+  const snapped = nearestSnap([start, start + item.duration], snap);
+  if (snapped) start = Math.max(0, start + snapped.shift);
+  const id = uniqueId(project, kind === "audio" ? "audio-track" : kind === "text" ? "text-track" : "video-track");
+  const used = new Set(project.tracks.map((t) => t.name));
+  const base = kind === "audio" ? "Audio" : kind === "text" ? "Text" : "Video";
+  let name = base;
+  for (let n = 2; used.has(name); n++) name = `${base} ${n}`;
+  // Audio tracks always show under the rest, so "top" for audio is just above the first audio track.
+  const firstAudio = project.tracks.findIndex((t) => t.kind === "audio");
+  const lastVisual = project.tracks.reduce((n, t, i) => (t.kind !== "audio" ? i : n), -1);
+  const index = kind === "audio" ? (side === "top" ? (firstAudio === -1 ? project.tracks.length : firstAudio) : project.tracks.length) : side === "top" ? 0 : lastVisual + 1;
+  const leaving = track.role === "main" ? dropTransitions([track.items[placed.index + 1]]) : [];
+  return {
+    ops: [{ op: "add_track", track: { id, kind, name }, index }, ...leaving, { op: "move_item", item: item.id, track: id, start }],
+    summary: `Move ${item.id} to a new track`,
+    track: id,
+    start,
+    ...(snapped ? { snapAt: snapped.at } : {}),
+  };
+}
+
+export interface GroupMovePlan extends Plan {
+  readonly snapAt?: number;
+  /** The frames the group moved by (after snapping). */
+  readonly delta: number;
+}
+
+/**
+ * Move several selected items together (T8, D126): every one by the same number of frames (snapped
+ * when any of their edges comes near a target that isn't in the group) and the same number of lanes
+ * (`laneOffset`, in the timeline's lane order `lanes`), so they keep their offsets in time and
+ * across tracks. Only free-track items move in a group: the main track is magnetic, so a selection
+ * with main clips is refused. Each must land on a free, compatible, unlocked track where nothing
+ * outside the group is in the way; captions never move.
+ */
+export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>, delta: number, laneOffset: number, lanes: ReadonlyArray<string>, snap?: Snap): GroupMovePlan | { readonly problem: string } {
+  const placed = [...new Set(ids)].map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined && p.item.type !== "captions");
+  if (!placed.length) return { problem: "Nothing to move." };
+  for (const p of placed) {
+    const locked = lockOf(p);
+    if (locked) return { problem: locked };
+  }
+  if (placed.some((p) => p.track.role === "main")) return { problem: "Main clips move one at a time: leave them out of the group to move the rest." };
+  let shift = Math.round(delta);
+  const minStart = Math.min(...placed.map((p) => p.start));
+  shift = Math.max(shift, -minStart);
+  const snapped = nearestSnap(placed.flatMap((p) => [p.start + shift, p.start + p.item.duration + shift]), snap);
+  if (snapped) shift = Math.max(-minStart, shift + snapped.shift);
+  const group = new Set(placed.map((p) => p.item.id));
+  const ops: Array<Op> = [];
+  const landing = new Map<string, Array<{ start: number; end: number }>>();
+  for (const p of placed) {
+    const from = lanes.indexOf(p.track.id);
+    const toId = laneOffset && from !== -1 ? lanes[from + laneOffset] : p.track.id;
+    const target = project.tracks.find((t) => t.id === toId);
+    if (!target) return { problem: "There's no track there for all of them." };
+    if (target.role === "main") return { problem: "A group can't be dropped on the main track: move clips onto it one at a time." };
+    if (!fitsTrack(p.item, target)) return { problem: `A ${p.item.type} item can't go on the ${target.name} track.` };
+    if (target.locked) return { problem: lockedProblem(target) };
+    const start = p.start + shift;
+    const end = start + p.item.duration;
+    const outside = target.items.filter((i) => !group.has(i.id)).every((i) => end <= (i.start ?? 0) || start >= (i.start ?? 0) + i.duration);
+    const mine = landing.get(target.id) ?? [];
+    if (!outside || mine.some((b) => end > b.start && start < b.end)) return { problem: `Something on the ${target.name} track is in the way.` };
+    mine.push({ start, end });
+    landing.set(target.id, mine);
+    if (shift !== 0 || target.id !== p.track.id) ops.push({ op: "move_item", item: p.item.id, ...(target.id !== p.track.id ? { track: target.id } : {}), start });
+  }
+  return { ops, summary: `Move ${placed.length} items`, delta: shift, ...(snapped && shift - Math.round(delta) === snapped.shift ? { snapAt: snapped.at } : {}) };
+}
+
+/**
+ * Ripple delete (T7): delete the items and close the gaps they leave. On main that's what a delete
+ * does anyway; on a free track the later items on the same track move left by the deleted length
+ * (as long as nothing else was in the gap, which never happens: items there can't overlap).
+ */
+export function planRippleDelete(project: ProjectModel, ids: ReadonlyArray<string>): Plan | { readonly problem: string } {
+  const placed = [...new Set(ids)].map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined);
+  if (!placed.length) return { problem: "Select an item to delete it." };
+  for (const p of placed) {
+    const locked = lockOf(p);
+    if (locked) return { problem: locked };
+  }
+  const gone = new Set(placed.map((p) => p.item.id));
+  const ops: Array<Op> = [];
+  const nextOnMain = placed.filter((p) => p.track.role === "main").map((p) => p.track.items[p.index + 1]).filter((i) => i && !gone.has(i.id));
+  ops.push(...dropTransitions(nextOnMain));
+  for (const p of placed) ops.push({ op: "delete_item", item: p.item.id });
+  // Free tracks: each later item moves left by the deleted length before it.
+  for (const track of project.tracks) {
+    if (track.role === "main") continue;
+    const removed = placed.filter((p) => p.track.id === track.id);
+    if (!removed.length) continue;
+    for (const item of track.items) {
+      if (gone.has(item.id)) continue;
+      const start = item.start ?? 0;
+      const back = removed.filter((r) => r.start + r.item.duration <= start).reduce((n, r) => n + r.item.duration, 0);
+      if (back > 0) {
+        if (item.locked || track.locked) return { problem: "A locked item after it can't move to close the gap." };
+        ops.push({ op: "move_item", item: item.id, start: start - back });
+      }
+    }
+  }
+  return { ops, summary: placed.length > 1 ? `Ripple delete ${placed.length} items` : `Ripple delete ${placed[0]!.item.id}` };
 }
 
 export interface TrimPlan extends Plan {
@@ -482,7 +589,8 @@ export function planTrackFlag(project: ProjectModel, trackId: string, flag: Trac
 export function draftOf(project: ProjectModel, ops: ReadonlyArray<Op>): { readonly project: ProjectModel } | { readonly problem: string } {
   if (!ops.length) return { project };
   try {
-    return { project: applyEdit(createSession(project), { actor: "user", ops }, timelineProblems).project };
+    // D123: linked sounds follow their clips, as the server applies it.
+    return { project: applyEdit(createSession(project), { actor: "user", ops: withLinkedAudio(project, ops) }, timelineProblems).project };
   } catch (error) {
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `Can't do that: ${first?.message ?? (error as Error).message}.` };

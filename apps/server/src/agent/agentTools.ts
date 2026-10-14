@@ -41,6 +41,7 @@ import {
   type Project,
   subtitleCues,
 } from "@uncut/core";
+import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 
 import { MAX_CELLS, MAX_IMPORT, shortName } from "./agentFootage.ts";
 
@@ -83,8 +84,8 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
     .filter((t) => (TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
     .map((t) => {
       const schema = structuredClone(t.inputSchema);
-      // timeline_edit's ops: the edit ops, or the convenience ops the server expands (insert_device_frame D76, insert_text D80, edit_captions D82).
-      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }, { $ref: "#/$defs/editCaptions" }] } };
+      // timeline_edit's ops: the edit ops, or the convenience ops the server expands (insert_device_frame D76, insert_text D80, edit_captions D82, detach_audio D123, set_speed D125).
+      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }, { $ref: "#/$defs/editCaptions" }, { $ref: "#/$defs/detachAudio" }, { $ref: "#/$defs/setSpeed" }] } };
       schema.$defs = { ...toolsSpec.$defs, ...editOpsSchema.$defs };
       return { name: t.name, description: t.description, inputSchema: schema };
     });
@@ -243,7 +244,7 @@ export function projectSummary(project: Project, revision: number, range?: { sta
       ...(t.hidden ? { hidden: true } : {}),
       // The mix (D83): volume, pan, mute, solo.
       ...(t.mixer ? { mixer: t.mixer } : {}),
-      items: t.items.filter((it) => inRange(it.id, it.duration)).map((it) => (it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id) })),
+      items: t.items.filter((it) => inRange(it.id, it.duration)).map((it) => (it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) })),
     })),
     ...(project.master ? { master: project.master } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
@@ -252,6 +253,12 @@ export function projectSummary(project: Project, revision: number, range?: { sta
     ...(subtitleNote(project) ? { subtitles: subtitleNote(project) } : {}),
   };
 }
+
+/** G4: the display name of an item's media (renamed in the Media panel), next to its id. */
+const mediaNameOf = (project: Project, item: Item) => {
+  const name = item.media ? project.media.find((m) => m.id === item.media)?.name : undefined;
+  return name ? { mediaName: name } : {};
+};
 
 /** At most this many caption cards in project_read and captions_make's answer (a range narrows them). */
 export const MAX_CAPTION_CARDS = 40;
@@ -484,6 +491,49 @@ export function expandTextLooks(project: Project, ops: ReadonlyArray<unknown>, p
   return { ops: out };
 }
 
+/**
+ * timeline_edit's ops with each detach_audio (D123) and set_speed (D125) expanded into the edit
+ * ops that do it (core planDetachAudio / planSetSpeed), planned against the project as the ops
+ * before it leave it. Other ops pass through.
+ */
+export function expandArrangeOps(project: Project, ops: ReadonlyArray<unknown>): { ops: Array<unknown> } | { problem: string } {
+  const kinds = new Set(["detach_audio", "set_speed"]);
+  if (!ops.some((op) => kinds.has((op as { op?: unknown })?.op as string))) return { ops: [...ops] };
+  const out: Array<unknown> = [];
+  for (const [i, raw] of ops.entries()) {
+    const op = raw as Record<string, unknown>;
+    if (!kinds.has(op?.op as string)) {
+      out.push(raw);
+      continue;
+    }
+    const where = `ops[${i}] (${String(op.op)})`;
+    const allowed = op.op === "detach_audio" ? ["op", "item", "id", "track"] : ["op", "item", "speed", "keepPitch"];
+    const extra = Object.keys(op).filter((k) => !allowed.includes(k));
+    if (extra.length) return { problem: `${where}: unknown field ${extra.join(", ")}.` };
+    if (typeof op.item !== "string") return { problem: `${where}: item must be an item id.` };
+    let now: Project = project;
+    try {
+      if (out.length) now = applyEdit(createSession(project), { actor: "agent", ops: out as ReadonlyArray<Op> }).project;
+    } catch {}
+    if (op.op === "detach_audio") {
+      if (op.id !== undefined && typeof op.id !== "string") return { problem: `${where}: id must be a string.` };
+      if (op.track !== undefined && typeof op.track !== "string") return { problem: `${where}: track must be a track id.` };
+      const taken = takenIds(now);
+      if (typeof op.id === "string" && taken.has(op.id)) return { problem: `${where}: the id ${op.id} is taken.` };
+      const plan = planDetachAudio(now, op.item, taken, { ...(typeof op.id === "string" ? { id: op.id } : {}), ...(typeof op.track === "string" ? { track: op.track } : {}) });
+      if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
+      out.push(...plan.ops);
+    } else {
+      if (typeof op.speed !== "number") return { problem: `${where}: speed must be a number from 0.1 to 10.` };
+      if (op.keepPitch !== undefined && typeof op.keepPitch !== "boolean") return { problem: `${where}: keepPitch must be true or false.` };
+      const plan = planSetSpeed(now, op.item, op.speed, op.keepPitch as boolean | undefined);
+      if ("problem" in plan) return { problem: `${where}: ${plan.problem}` };
+      out.push(...plan.ops);
+    }
+  }
+  return { ops: out };
+}
+
 /** One finding as project_check returns it (D90): frames are the edit's. */
 const checkOut = (c: Check, fps: number) => ({
   rule: c.id,
@@ -577,7 +627,7 @@ export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop 
 - Clips (video and stills) draw in a box: transform {x, y, w, h} in canvas pixels, the box's top-left and size (no w and h = the whole canvas, as clips are by default; only w or only h = the other from the media's aspect; no x / y = centred). fit: "contain" (default: all of the picture inside the box), "cover" (fills the box, the overflow cut off) or "fill" (stretched to it). scale zooms the picture inside the box about its centre (the box clips it and doesn't grow: 1.2 is a 20 % zoom in), opacity 0–1, radius rounds the box's corners (canvas pixels). update_item replaces transform whole: send every field you keep. A picture-in-picture on a 1920x1080 canvas, on a video track above main:
   {"op":"update_item","item":"clip-2","set":{"transform":{"x":1240,"y":60,"w":620,"h":349,"fit":"cover","radius":24}}}
   Two-up: two clips at the same time on two video tracks, {"x":0,"y":0,"w":960,"h":1080,"fit":"cover"} and {"x":960,"y":0,"w":960,"h":1080,"fit":"cover"}. keys animate x, y, scale and opacity, frames from the item's start, e.g. a slow zoom in (Ken Burns): "keys":[{"frame":0,"scale":1,"ease":"inOut"},{"frame":150,"scale":1.15}]. Each property uses only the keys that set it (none: the transform's value); it holds its first value before the first key and its last after the last; a key's ease (linear by default, in, out, inOut) shapes the move from that key to the next. "loop":true on a clip starts its media over from the beginning when the clip is longer than the media. "hold":true instead keeps the media's last frame on screen for the rest of the clip (a freeze: a recording that ends before the scene does; insert_device_frame takes "hold":true for its footage). It is silent past the media's end. A transition out of a clip that is holding needs media past the cut, so only a dip to black (or a hard cut) follows a held stretch. On clips, in/out animations change only the opacity (rise and slide don't move a clip, wipe doesn't apply); rotate is saved but not drawn.
-- Sound: a clip plays its media's sound (media with probe.hasAudio); music, voiceover and effects are audio items on an audio track, e.g. {"op":"insert_item","track":"audio","item":{"id":"music-1","type":"audio","media":"m-song","in":0,"start":0,"duration":300}}. On a clip or audio item, gainDb is the volume in dB (0 or absent = as recorded, −6 about half as loud, −60 = silent, at most +12), fadeIn / fadeOut are fade lengths in frames (together no longer than the item; remove one with null), and gainKeys [{"frame":…,"db":…}] is a volume envelope in dB on top of gainDb (linear between keys). A track's mixer (the Mixer panel): mixer.gainDb is its volume, mixer.pan places it from -1 (left) through 0 (centre) to 1 (right) (the near side stays at full level and the far side fades, so a pan never makes anything louder: hard left silences the right channel and leaves the left as it was; a stereo track is balanced, not folded), mixer.mute silences it, and mixer.solo: if any track is soloed, only soloed tracks sound, in the preview and in the export (mute wins over solo; remove solo before exporting unless the user wants only those tracks). update_track replaces the whole mixer, so send the fields you want to keep, e.g. {"op":"update_track","track":"music","set":{"mixer":{"gainDb":-8,"pan":-0.3}}}. The master volume, after all tracks are summed, is master.gainDb on the project: {"op":"update_project","set":{"master":{"gainDb":-3}}} (update_project replaces master whole, so keep master.loudness and master.effects if they are set; the export's loudness target, Normal by default, normalises the result, so the master volume is heard as such only with "As mixed"). Track effects (D84) are mixer.effects, the chain in order, heard in the preview as in the export: audio.eq {lowCutHz (high-pass), highCutHz (low-pass), lowGainDb/lowHz (low shelf), midGainDb/midHz/midQ (peak), highGainDb/highHz (high shelf)}, audio.compressor {thresholdDb, ratio, attackMs, releaseMs, makeupDb} (keep it gentle: ratio 2–4), audio.voice-enhance {amount 0–1} (high-pass 80 Hz, a presence lift and gentle compression in one slot), audio.denoise {amount 0–1} (noise removal, applied on export only: the preview plays the track as recorded, so say so); any entry can carry "bypass": true. The voice preset is an EQ and a compressor: {"op":"update_track","track":"voice","set":{"mixer":{"effects":[{"module":"audio.eq","params":{"lowCutHz":80,"midGainDb":4,"midHz":3500,"midQ":0.9}},{"module":"audio.compressor","params":{"thresholdDb":-20,"ratio":2.5,"attackMs":10,"releaseMs":150,"makeupDb":2}}]}}}. Ducking (D85) is an audio.duck entry on the track that goes down: {"op":"update_track","track":"music","set":{"mixer":{"gainDb":-6,"effects":[{"module":"audio.duck","params":{"under":["voice"],"amountDb":-12,"attackMs":250,"releaseMs":600}}]}}} ducks the music 12 dB while the voice track has speech (the key media's measured loudness, mapped through the timeline: the duck is down when the speech starts and comes back over releaseMs after it; thresholdDb overrides the automatic speech level). It needs the key media's loudness analysis: timeline_edit starts it when it's missing and says so; until it's done nothing ducks. The master limiter (D86) is on by default at −1 dBTP after the master volume, in every export (As mixed too): {"op":"update_project","set":{"master":{"effects":[{"module":"audio.limiter","params":{"ceilingDb":-2}}]}}} changes the ceiling, {"module":"audio.limiter","bypass":true} turns it off (rarely wanted). master.loudness {"targetLufs":-23} is the project's loudness target (D87): the export dialog starts from it (−14 Normal for YouTube/Instagram/TikTok, the default; −16 Quieter for podcasts; −23 Broadcast; or another number from −30 to −5). project_read lists each track's mixer and the master, and its mixNote says when solo, mutes or a silent master leave little or nothing audible (a solo on a track with nothing to play is ignored). A main-track transition blends the sound too (a dip to black dips it, every other one crossfades it). A hidden track only hides the picture: its clips still sound unless the track is muted.
+- Sound: a clip plays its media's sound (media with probe.hasAudio); music, voiceover and effects are audio items on an audio track, e.g. {"op":"insert_item","track":"audio","item":{"id":"music-1","type":"audio","media":"m-song","in":0,"start":0,"duration":300}}. On a clip or audio item, gainDb is the volume in dB (0 or absent = as recorded, −6 about half as loud, −60 = silent, at most +12), fadeIn / fadeOut are fade lengths in frames (together no longer than the item; remove one with null), and gainKeys [{"frame":…,"db":…}] is a volume envelope in dB on top of gainDb (linear between keys). A track's mixer (the Mixer panel): mixer.gainDb is its volume, mixer.pan places it from -1 (left) through 0 (centre) to 1 (right) (the near side stays at full level and the far side fades, so a pan never makes anything louder: hard left silences the right channel and leaves the left as it was; a stereo track is balanced, not folded), mixer.mute silences it, and mixer.solo: if any track is soloed, only soloed tracks sound, in the preview and in the export (mute wins over solo; remove solo before exporting unless the user wants only those tracks). update_track replaces the whole mixer, so send the fields you want to keep, e.g. {"op":"update_track","track":"music","set":{"mixer":{"gainDb":-8,"pan":-0.3}}}. The master volume, after all tracks are summed, is master.gainDb on the project: {"op":"update_project","set":{"master":{"gainDb":-3}}} (update_project replaces master whole, so keep master.loudness and master.effects if they are set; the export's loudness target, Normal by default, normalises the result, so the master volume is heard as such only with "As mixed"). Track effects (D84) are mixer.effects, the chain in order, heard in the preview as in the export: audio.eq {lowCutHz (high-pass), highCutHz (low-pass), lowGainDb/lowHz (low shelf), midGainDb/midHz/midQ (peak), highGainDb/highHz (high shelf)}, audio.compressor {thresholdDb, ratio, attackMs, releaseMs, makeupDb} (keep it gentle: ratio 2–4), audio.voice-enhance {amount 0–1} (high-pass 80 Hz, a presence lift and gentle compression in one slot), audio.denoise {amount 0–1} (noise removal, applied on export only: the preview plays the track as recorded, so say so); any entry can carry "bypass": true. The voice preset is an EQ and a compressor: {"op":"update_track","track":"voice","set":{"mixer":{"effects":[{"module":"audio.eq","params":{"lowCutHz":80,"midGainDb":4,"midHz":3500,"midQ":0.9}},{"module":"audio.compressor","params":{"thresholdDb":-20,"ratio":2.5,"attackMs":10,"releaseMs":150,"makeupDb":2}}]}}}. Ducking (D85) is an audio.duck entry on the track that goes down: {"op":"update_track","track":"music","set":{"mixer":{"gainDb":-6,"effects":[{"module":"audio.duck","params":{"under":["voice"],"amountDb":-12,"attackMs":250,"releaseMs":600}}]}}} ducks the music 12 dB while the voice track has speech (the key media's measured loudness, mapped through the timeline: the duck is down when the speech starts and comes back over releaseMs after it; thresholdDb overrides the automatic speech level). It needs the key media's loudness analysis: timeline_edit starts it when it's missing and says so; until it's done nothing ducks. The master limiter (D86) is on by default at −1 dBTP after the master volume, in every export (As mixed too): {"op":"update_project","set":{"master":{"effects":[{"module":"audio.limiter","params":{"ceilingDb":-2}}]}}} changes the ceiling, {"module":"audio.limiter","bypass":true} turns it off (rarely wanted). master.loudness {"targetLufs":-23} is the project's loudness target (D87): the export dialog starts from it (−14 Normal for YouTube/Instagram/TikTok, the default; −16 Quieter for podcasts; −23 Broadcast; or another number from −30 to −5). project_read lists each track's mixer and the master, and its mixNote says when solo, mutes or a silent master leave little or nothing audible (a solo on a track with nothing to play is ignored). A main-track transition blends the sound too (a dip to black dips it, every other one crossfades it). A hidden track only hides the picture: its clips still sound unless the track is muted. mute: true on a clip or audio item silences just it. Detach audio with {"op":"detach_audio","item":"clip-3"}: the clip's sound becomes an audio item on a free audio track (the clip muted), so it can be moved, trimmed and mixed on its own; captions and transcript cuts keep following the clip. Speed: {"op":"set_speed","item":"clip-3","speed":2} (0.1–10; the item keeps the same stretch of media, so its duration changes; keepPitch false lets the pitch follow the speed). Tracks (D122): the main track is the magnetic spine (back to back, transitions, transcript cuts, captions follow it); clips on other video tracks are overlays with a start, drawn over the tracks below them (picture-in-picture, b-roll); several audio tracks play at once (music, effects, voice on their own tracks).
 - Transitions go between two neighbouring main-track items, on the incoming one: {"op":"set_transition","item":"clip-2","transition":{"module":"transition.crossfade","duration":15}} (null removes it). They draw: ${TRANSITION_DOCS}. A crossfade fades the next item in; a wipe reveals it from the left edge; an iris opens it in a circle growing from the centre; a push slides it in from the right while the outgoing one slides out to the left; a zoom scales the outgoing picture up by 20 % while the next one fades in over it; all linear. Both items must be at least twice the transition long. Every one but dip to black is centred on the cut, so video needs spare footage there: ceil(duration/2) frames before the incoming clip's in and after the outgoing clip's end in its media; a dip to black needs none. transition.cut is saved but draws as a crossfade.
 - Components (D76) are component items on a video track, drawn from their props in a box like a clip's: transform {x, y, w, h} in canvas pixels (no w and h = the component's default size, centred; an end card fills the canvas), opacity, x / y / opacity keys, in/out animations (rise and slide move them). modules_list with kind "component" gives each one's props schema and default size (component.size, canvas pixels for a canvas whose shorter side is 1080: scale it to the project's). They draw: ${COMPONENT_DOCS}. Text in them uses the bundled DM Sans and DM Mono. E.g. an end card for the last 3 s of a 1920x1080 video at 30 fps, on a free video track:
   {"op":"insert_item","track":"overlay","item":{"id":"end-card-1","type":"component","component":"component.end-card","start":600,"duration":90,"props":{"logo":{"media":"m-logo"},"title":"Argent","code":"npx @swmansion/argent init","url":"argent.example.com","background":"bg"}}}

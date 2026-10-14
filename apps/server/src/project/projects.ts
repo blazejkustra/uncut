@@ -10,6 +10,7 @@ import { isAbsolute, join } from "node:path";
 
 import { EditRefused, ProjectError, type HistoryState, type Problem, type ProjectSnapshot } from "@uncut/contracts";
 import { applyEdit, describeOp, EditConflict, EditError, TurnDependency, undoTurn, type Op, type Project, type Session } from "@uncut/core";
+import { withLinkedAudio } from "@uncut/core/arrange";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -474,7 +475,8 @@ export const layer = Layer.effect(
           try: () =>
             applyEdit(
               p.session,
-              { actor: agent ? "agent" : "user", ops: ops as ReadonlyArray<Op>, baseRevision, summary, ...(agent ? { turnId: agent.turnId } : {}) },
+              // D123: detached sounds still linked to their clip follow what the edit does to it.
+              { actor: agent ? "agent" : "user", ops: withLinkedAudio(p.session.project as Project, ops as ReadonlyArray<Op>), baseRevision, summary, ...(agent ? { turnId: agent.turnId } : {}) },
               format.validate,
             ),
           catch: (error) =>

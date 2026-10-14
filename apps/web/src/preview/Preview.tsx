@@ -71,10 +71,10 @@ function seek(el: HTMLVideoElement, t: number) {
  * Keep a <video> at `source` seconds: playing at the clip's speed (pitch kept), seeked only when
  * it drifts; paused, seeked to the frame.
  */
-function drive(el: HTMLVideoElement, source: number, playing: boolean, speed: number) {
-  if (el.playbackRate !== speed) {
+function drive(el: HTMLVideoElement, source: number, playing: boolean, speed: number, keepPitch = true) {
+  if (el.playbackRate !== speed || el.preservesPitch !== keepPitch) {
     el.playbackRate = speed;
-    el.preservesPitch = true;
+    el.preservesPitch = keepPitch;
   }
   const target = source + 0.0001;
   if (playing) {
@@ -513,7 +513,7 @@ class Compositor {
       el.loop = c.item.loop === true;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       // A held clip (D94) past its media's end sits paused on the last frame.
-      drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1);
+      drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
     });
     if (ahead && !clips.some((c) => c.item.id === ahead.id)) {
       const el = this.elementFor(ahead, "video");
@@ -527,7 +527,7 @@ class Compositor {
         // Just before it starts (while playing) it already runs, out of sight and silent, so the
         // cut doesn't wait for the decoder to start (picture and sound).
         const early = (ahead.in ?? 0) + (frame - starts.get(ahead.id)!) * speed;
-        if (playing && from - frame <= PREROLL_S * fps && early >= 0) drive(el, early / fps, true, speed);
+        if (playing && from - frame <= PREROLL_S * fps && early >= 0) drive(el, early / fps, true, speed, ahead.keepPitch !== false);
         else {
           if (!el.paused) el.pause();
           seek(el, ((ahead.in ?? 0) - preroll(ahead) * speed) / fps + 0.0001);

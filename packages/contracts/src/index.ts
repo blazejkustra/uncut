@@ -595,6 +595,10 @@ export type ExportLoudness = typeof ExportLoudness.Type;
  * measured) → rendering (progress 0–1 with an ETA) → done, failed or cancelled. It isn't tied to the
  * request that started it; exports run one at a time.
  */
+/** G7 (D127): a part of the timeline to export, frames [from, to) of the edit. */
+export const ExportRange = Schema.Struct({ from: Schema.Number, to: Schema.Number });
+export type ExportRange = typeof ExportRange.Type;
+
 export const ExportJob = Schema.Struct({
   id: Schema.String,
   projectDir: Schema.String,
@@ -623,6 +627,8 @@ export const ExportJob = Schema.Struct({
   subtitleTrack: Schema.optional(Schema.String),
   /** D105: false when captions and Subtitles tracks aren't drawn into the picture. */
   burnCaptions: Schema.optional(Schema.Boolean),
+  /** G7 (D127): only this part of the timeline, frames [from, to). */
+  range: Schema.optional(Schema.Struct({ from: Schema.Number, to: Schema.Number })),
 });
 export type ExportJob = typeof ExportJob.Type;
 
@@ -769,7 +775,8 @@ const RecentsListRpc = Rpc.make(RPC_METHODS.recentsList, { payload: Empty, succe
 // Starts an import job into the open project and returns its id right away; follow it with
 // media.jobs. Footage is referenced by its absolute path, never copied (D12); one undoable edit.
 const MediaImportRpc = Rpc.make(RPC_METHODS.mediaImport, {
-  payload: Schema.Struct({ paths: Schema.Array(Schema.String) }),
+  // T9 (D128): files dropped on the timeline also go there (frame, the lane's track), in the same edit.
+  payload: Schema.Struct({ paths: Schema.Array(Schema.String), drop: Schema.optional(Schema.Struct({ frame: Schema.Number, track: Schema.optional(Schema.String) })) }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ProjectError,
 });
@@ -826,7 +833,7 @@ const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, { payload: Schema.Str
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
 const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
-  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean) }),
+  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean), range: Schema.optional(ExportRange) }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
 });
