@@ -27,7 +27,15 @@ export interface RecorderState {
   readonly cameras: ReadonlyArray<Input>;
   /** The microphone's level now, 0 (silence, -60 dBFS or less) to 1 (0 dBFS). */
   readonly level: number;
+  /** D209: the highest level of the last PEAK_HOLD_MS (the meter's peak mark), same scale. */
+  readonly peak: number;
   readonly phase: "idle" | "countdown" | "recording" | "saving";
+  /** D209: the running take is paused (MediaRecorder.pause: the gap isn't in the file). */
+  readonly paused: boolean;
+  /** Milliseconds the take spent paused so far (left out of the timer and recordedMs). */
+  readonly pausedMs: number;
+  /** When the current pause began (Date.now()). */
+  readonly pausedAt: number | undefined;
   /** What the running take records. */
   readonly mode: TakeMode | undefined;
   /** 3, 2, 1 before the take starts. */
@@ -47,6 +55,11 @@ export interface RecorderState {
   readonly agentId: string | undefined;
 }
 
+/** How long the meter's peak mark stays before it falls back (D209). */
+export const PEAK_HOLD_MS = 1500;
+/** The meter's dB scale: -60 dBFS (0) to 0 dBFS (1). */
+export const levelDb = (level: number) => (level <= 0 ? -Infinity : level * 60 - 60);
+
 /** Shorter than this, a take is discarded (a click on Record then Stop). */
 export const MIN_TAKE_MS = 1000;
 const COUNTDOWN = 3;
@@ -56,7 +69,11 @@ let state: RecorderState = {
   mics: [],
   cameras: [],
   level: 0,
+  peak: 0,
   phase: "idle",
+  paused: false,
+  pausedMs: 0,
+  pausedAt: undefined,
   mode: undefined,
   count: undefined,
   startedAt: undefined,
@@ -150,17 +167,25 @@ export async function openMonitor(id: string | undefined) {
   ctx.createMediaStreamSource(stream).connect(analyser);
   const data = new Float32Array(analyser.fftSize);
   let last = 0;
+  let peakAt = 0;
   const tick = (t: number) => {
     if (!monitor) return;
     monitor.raf = requestAnimationFrame(tick);
     if (t - last < 60) return;
     last = t;
     analyser.getFloatTimeDomainData(data);
-    let peak = 0;
-    for (const v of data) peak = Math.max(peak, Math.abs(v));
-    const db = peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+    let sample = 0;
+    for (const v of data) sample = Math.max(sample, Math.abs(v));
+    const db = sample > 0 ? 20 * Math.log10(sample) : -Infinity;
     const level = Math.max(0, Math.min(1, (db + 60) / 60));
-    if (Math.abs(level - state.level) > 0.01) set({ level });
+    // The peak mark holds the highest level for PEAK_HOLD_MS, then follows the level down.
+    let peak = state.peak;
+    if (level >= peak) {
+      peak = level;
+      peakAt = t;
+    }
+    else if (t - peakAt > PEAK_HOLD_MS) peak = Math.max(level, peak - 0.02);
+    if (Math.abs(level - state.level) > 0.01 || peak !== state.peak) set({ level, peak });
   };
   monitor = { stream, ctx, raf: requestAnimationFrame(tick) };
   if (!state.mics.some((m) => m.label && !/^Microphone \d+$/.test(m.label))) await loadInputs();
@@ -173,7 +198,7 @@ export function closeMonitor() {
   stopStream(monitor.stream);
   void monitor.ctx.close().catch(() => {});
   monitor = undefined;
-  set({ level: 0 });
+  set({ level: 0, peak: 0 });
 }
 
 // ---- the camera preview ----
@@ -289,6 +314,9 @@ interface Running {
   chunks: Array<Blob>;
   cancelled: boolean;
   startMs: number;
+  /** performance.now() of the current pause, and the milliseconds paused before it. */
+  pauseMs: number | undefined;
+  pausedTotal: number;
   playing: boolean;
   countdown: ReturnType<typeof setTimeout> | undefined;
   /** Resolves the countdown early (cancel). */
@@ -312,7 +340,7 @@ function endTake(r: Running, patch: Partial<RecorderState>) {
   }
   if (running !== r) return;
   running = undefined;
-  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, agentId: undefined, ...patch });
+  set({ phase: "idle", mode: undefined, count: undefined, startedAt: undefined, agentId: undefined, paused: false, pausedMs: 0, pausedAt: undefined, ...patch });
 }
 
 const pickMime = (video: boolean) =>
@@ -396,9 +424,9 @@ export async function startTake(options: TakeOptions) {
     refuse("No project is open.");
     return set({ message: { kind: "error", text: "Open a project first: takes go into its media folder." } });
   }
-  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false };
+  const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, pauseMs: undefined, pausedTotal: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false };
   running = r;
-  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id });
+  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id, paused: false, pausedMs: 0, pausedAt: undefined });
   const stream = await openStreams(options, r);
   if (typeof stream === "string" || r.cancelled) {
     release(r);
@@ -434,7 +462,11 @@ export async function startTake(options: TakeOptions) {
       r.playing = true;
     }
   };
-  recorder.onstop = () => void finish(r, performance.now() - r.startMs, recorder.mimeType || mimeType);
+  recorder.onstop = () => {
+    // A take stopped while paused: the pause up to now isn't in the file either.
+    if (r.pauseMs !== undefined) (r.pausedTotal += performance.now() - r.pauseMs, (r.pauseMs = undefined));
+    void finish(r, performance.now() - r.startMs - r.pausedTotal, recorder.mimeType || mimeType);
+  };
   try {
     recorder.start(250);
   } catch (error) {
@@ -451,6 +483,33 @@ export async function stopTake() {
   if (!r.recorder || r.recorder.state === "inactive") return cancelTake();
   r.recorder.stop();
 }
+
+/** D209: Pause the running take (the timer and the file stop; the timeline it plays pauses too). */
+export function pauseTake() {
+  const r = running;
+  if (!r?.recorder || r.recorder.state !== "recording") return;
+  r.recorder.pause();
+  r.pauseMs = performance.now();
+  clearTimeout(r.autoStop);
+  if (r.playing) playback.pause();
+  set({ paused: true, pausedAt: Date.now() });
+}
+
+/** D209: Resume a paused take. */
+export function resumeTake() {
+  const r = running;
+  if (!r?.recorder || r.recorder.state !== "paused" || r.pauseMs === undefined) return;
+  r.pausedTotal += performance.now() - r.pauseMs;
+  r.pauseMs = undefined;
+  r.recorder.resume();
+  if (r.playing) playback.play();
+  if (r.options.seconds && r.options.seconds > 0) r.autoStop = setTimeout(() => void stopTake(), Math.max(0, r.options.seconds * 1000 - (performance.now() - r.startMs - r.pausedTotal)));
+  set({ paused: false, pausedMs: state.pausedMs + (Date.now() - (state.pausedAt ?? Date.now())), pausedAt: undefined });
+}
+
+/** Seconds the running take has recorded (pauses left out), for the timer. */
+export const takeSeconds = (s: Pick<RecorderState, "startedAt" | "pausedMs" | "pausedAt">, now = Date.now()) =>
+  s.startedAt === undefined ? 0 : Math.max(0, (s.pausedAt ?? now) - s.startedAt - s.pausedMs) / 1000;
 
 /** Cancel: nothing is kept. */
 export function cancelTake() {
@@ -529,3 +588,34 @@ export function closeAll() {
   closeMonitor();
   closePreview();
 }
+
+// ---- the floating mini recorder (D209) ----
+
+// While the screen is recorded the take's controls float over every app in a small window of their
+// own (always on top, left out of screen captures); its buttons come back here.
+let miniShown = "";
+function syncMini() {
+  const r = running;
+  const show = r && state.mode === "screen" && state.phase !== "idle" && !r.options.agent;
+  const mini = show
+    ? {
+        name: r.options.source?.name ?? "Screen",
+        phase: state.phase === "recording" && state.paused ? ("paused" as const) : (state.phase as "countdown" | "recording" | "saving"),
+        seconds: takeSeconds(state),
+        at: Date.now(),
+        ...(state.count !== undefined ? { count: state.count } : {}),
+      }
+    : null;
+  // Only when something it shows changes (the timer runs on its own from seconds and at).
+  const key = mini ? `${mini.name}|${mini.phase}|${mini.count ?? ""}|${state.pausedMs}|${state.startedAt ?? ""}` : "";
+  if (key === miniShown) return;
+  miniShown = key;
+  bridge.miniRecorder?.(mini);
+}
+listeners.add(syncMini);
+bridge.onMiniRecorderAction?.((action) => {
+  if (action === "stop") void stopTake();
+  else if (action === "cancel") cancelTake();
+  else if (action === "pause") pauseTake();
+  else if (action === "resume") resumeTake();
+});

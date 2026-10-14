@@ -425,6 +425,36 @@ function ContextLine({ project }: { project: Project }) {
 }
 
 type Menu = "provider" | "model" | "effort" | "access" | undefined;
+type Provider = "claude" | "codex";
+
+/**
+ * D209 (issue #23): the providers' marks. Anthropic's trademark guidelines allow its marks only in
+ * materials it approves beforehand, and OpenAI's ask for permission before its logo is used, so
+ * neither logo ships: each provider is its product's name set as a wordmark in the app's own type,
+ * with a plain monogram tile beside it (no lab colours, no drawn logo), and "Claude" never as
+ * "Claude Code" branding.
+ */
+const PROVIDERS: Record<Provider, { readonly name: string; readonly lab: string; readonly monogram: string }> = {
+  claude: { name: "Claude", lab: "Anthropic", monogram: "C" },
+  codex: { name: "Codex", lab: "OpenAI", monogram: "Cx" },
+};
+
+export function ProviderMark({ provider, size = "sm" }: { provider: Provider; size?: "sm" | "md" }) {
+  return (
+    <span className={`provider-mark ${size}`} data-testid="provider-mark" data-provider={provider} aria-hidden>
+      {PROVIDERS[provider].monogram}
+    </span>
+  );
+}
+
+const ProviderWordmark = ({ provider }: { provider: Provider }) => (
+  <span className="provider-wordmark" data-testid="provider-wordmark" data-provider={provider}>
+    {PROVIDERS[provider].name}
+  </span>
+);
+
+/** ⌘1–⌘4 pick the models in AGENT_MODELS order (like t3code's picker). */
+const MODEL_KEYS = AGENT_MODELS.slice(0, 4).map((m, i) => ({ id: m.id, key: String(i + 1) }));
 
 /**
  * The composer's bottom row (D184): provider (Claude Code; Codex to come), model (searchable, with
@@ -436,6 +466,22 @@ function ComposerChoices({ dir, provider }: { dir: string; provider: string }) {
   const [open, setOpen] = useState<Menu>(undefined);
   const [search, setSearch] = useState("");
   const row = useRef<HTMLDivElement>(null);
+  // ⌘1–⌘4: a model, while the model menu is open or the composer has the focus.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey) return;
+      const hit = MODEL_KEYS.find((k) => k.key === e.key);
+      if (!hit) return;
+      const inComposer = row.current?.closest(".composer")?.contains(document.activeElement);
+      if (open !== "model" && !inComposer) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setAgentPrefs(dir, { model: hit.id });
+      setOpen(undefined);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, dir]);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
@@ -467,17 +513,17 @@ function ComposerChoices({ dir, provider }: { dir: string; provider: string }) {
   const AccessIcon = access.icon;
   const models = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const all = [{ id: "", name: "Default", detail: "Claude Code's choice" }, ...AGENT_MODELS].filter((m) => !q || m.name.toLowerCase().includes(q) || m.detail.toLowerCase().includes(q));
+    const all = [{ id: "", name: "Default", detail: "Claude Code's choice", provider: "claude" as const, isNew: false }, ...AGENT_MODELS].filter((m) => !q || m.name.toLowerCase().includes(q) || m.detail.toLowerCase().includes(q));
     // Favourites first, in the list's order.
     return [...all.filter((m) => favourites.includes(m.id)), ...all.filter((m) => !favourites.includes(m.id))];
   }, [search, favourites]);
   return (
     <div className="composer-choices" ref={row}>
-      <button className={`choice ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" title={`${provider}, with your subscription`} onClick={() => toggle("provider")}>
-        <Bot />
+      <button className={`choice provider ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" data-provider="claude" title={`Claude, through ${provider} with your subscription`} onClick={() => toggle("provider")}>
+        <ProviderMark provider="claude" />
       </button>
       <button className={`choice model ${open === "model" ? "open" : ""}`} data-testid="agent-model" data-model={prefs.model ?? ""} title={`Model: ${model?.name ?? "Default (Claude Code's choice)"}`} onClick={() => toggle("model")}>
-        <Sparkles className="choice-icon" />
+        <ProviderWordmark provider="claude" />
         <span className="choice-label">{model?.name ?? "Default"}</span>
         <ChevronDown className="choice-caret" />
       </button>
@@ -491,25 +537,36 @@ function ComposerChoices({ dir, provider }: { dir: string; provider: string }) {
       </button>
       {open === "provider" && (
         <div className="choice-menu" role="listbox" data-testid="agent-provider-menu">
-          <button className="choice-option active" role="option" aria-selected onClick={() => setOpen(undefined)}>
-            <Bot />
+          <div className="choice-head">Agents</div>
+          <button className="choice-option active" role="option" aria-selected data-testid="agent-provider-claude" onClick={() => setOpen(undefined)}>
+            <ProviderMark provider="claude" size="md" />
             <span className="grow">
-              Claude
-              <span className="choice-detail">{provider}, with your subscription</span>
+              <ProviderWordmark provider="claude" />
+              <span className="choice-detail">Through {provider}, with your subscription</span>
             </span>
             <Check />
           </button>
           <button className="choice-option" role="option" aria-selected={false} disabled data-testid="agent-provider-codex">
-            <Bot />
+            <ProviderMark provider="codex" size="md" />
             <span className="grow">
-              Codex
+              <ProviderWordmark provider="codex" />
               <span className="choice-detail">Coming later</span>
             </span>
           </button>
+          <div className="choice-foot">Not made by or affiliated with Anthropic or OpenAI.</div>
         </div>
       )}
       {open === "model" && (
-        <div className="choice-menu" role="listbox" data-testid="agent-model-menu">
+        <div className="choice-menu model-menu" role="listbox" data-testid="agent-model-menu">
+          <div className="model-rail" data-testid="agent-model-rail">
+            <button className="model-rail-btn active" title="Claude" data-testid="agent-model-rail-claude">
+              <ProviderMark provider="claude" size="md" />
+            </button>
+            <button className="model-rail-btn" disabled title="Codex: coming later" data-testid="agent-model-rail-codex">
+              <ProviderMark provider="codex" size="md" />
+            </button>
+          </div>
+          <div className="model-list">
           <label className="choice-search">
             <Search />
             <input
@@ -528,11 +585,24 @@ function ComposerChoices({ dir, provider }: { dir: string; provider: string }) {
             const fav = favourites.includes(m.id);
             return (
               <div key={m.id || "default"} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-model-option" data-model={m.id} onClick={() => pick({ model: m.id || undefined })}>
+                <ProviderMark provider={m.provider} />
                 <span className="grow">
-                  {m.name}
+                  <span className="model-name">
+                    {m.name}
+                    {m.isNew && (
+                      <span className="new-badge" data-testid="agent-model-new">
+                        NEW
+                      </span>
+                    )}
+                  </span>
                   <span className="choice-detail">{m.detail}</span>
                 </span>
                 {on && <Check />}
+                {MODEL_KEYS.find((k) => k.id === m.id) && (
+                  <kbd className="model-key" data-testid="agent-model-key">
+                    ⌘{MODEL_KEYS.find((k) => k.id === m.id)!.key}
+                  </kbd>
+                )}
                 {m.id && (
                   <button
                     className={`icon-btn choice-star ${fav ? "on" : ""}`}
@@ -550,6 +620,7 @@ function ComposerChoices({ dir, provider }: { dir: string; provider: string }) {
             );
           })}
           {!models.length && <div className="choice-empty">No model matches</div>}
+          </div>
         </div>
       )}
       {open === "effort" && (

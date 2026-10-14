@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, safeStorage, shell, systemPreferences, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
+import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, screen, safeStorage, shell, systemPreferences, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 
 import {
   APP_INFO_CHANNEL,
@@ -42,7 +42,14 @@ import {
   type MediaAccess,
   type MediaAccessKind,
   type MenuCommand,
+  WINDOW_MODE_CHANNEL,
+  MINI_RECORDER_ACTION_CHANNEL,
+  MINI_RECORDER_CHANNEL,
+  MINI_RECORDER_STATE_CHANNEL,
+  type MiniRecorderAction,
+  type MiniRecorderState,
 } from "./ipc.ts";
+import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
 import { BACKGROUND_SWITCHES, isTestBackground, privacySettingsUrl, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
@@ -353,13 +360,122 @@ async function downloadExport(jobId: string, name: string): Promise<{ path: stri
   });
 }
 
+// ---- the floating mini recorder (D209) ----
+
+// While the screen is recorded: a small window over every app with the timer, Pause, Stop and
+// Cancel. Left out of screen captures (content protection), so it isn't in the take. In a
+// background test run it's created like the main window (invisible, untouchable) and logged.
+let mini: BrowserWindow | undefined;
+let miniState: MiniRecorderState | null = null;
+const MINI_SIZE = { width: 320, height: 64 };
+
+function showMini(state: MiniRecorderState | null) {
+  miniState = state;
+  if (!state) {
+    if (mini) {
+      if (testBackground) console.log("[test] mini recorder closed");
+      mini.destroy();
+      mini = undefined;
+    }
+    return;
+  }
+  if (mini) return mini.webContents.send(MINI_RECORDER_STATE_CHANNEL, state);
+  const area = screen.getPrimaryDisplay().workArea;
+  mini = new BrowserWindow({
+    ...MINI_SIZE,
+    x: Math.round(area.x + area.width / 2 - MINI_SIZE.width / 2),
+    y: area.y + 12,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: true,
+    transparent: true,
+    alwaysOnTop: true,
+    show: false,
+    title: "Uncut recording",
+    webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, backgroundThrottling: false },
+  });
+  const w = mini;
+  w.setAlwaysOnTop(true, "floating");
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  w.setContentProtection(true);
+  w.webContents.on("will-navigate", (event) => event.preventDefault());
+  w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  w.webContents.once("did-finish-load", () => {
+    if (mini === w && miniState) w.webContents.send(MINI_RECORDER_STATE_CHANNEL, miniState);
+  });
+  w.once("ready-to-show", () => {
+    if (!testBackground) return w.showInactive();
+    w.setOpacity(0);
+    w.setIgnoreMouseEvents(true);
+    w.showInactive();
+  });
+  w.on("closed", () => {
+    if (mini === w) mini = undefined;
+  });
+  if (testBackground) console.log(`[test] mini recorder opened: ${state.name}`);
+  if (devServerUrl) void w.loadURL(`${devServerUrl}?mini`);
+  else void w.loadFile(path.join(__dirname, "renderer", "index.html"), { search: "mini" });
+}
+
+// ---- the window's two sizes (D209) ----
+
+const windowDir = () => process.env.UNCUT_DATA_DIR || app.getPath("userData");
+let windowMode: WindowMode = "welcome";
+let windowSizes: Record<WindowMode, WindowSize> | undefined;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** The user resized or moved the window: remembered for the mode it's in. */
+function rememberWindow() {
+  if (!win || !windowSizes || win.isFullScreen() || win.isMaximized() || win.isMinimized()) return;
+  const [width, height] = win.getContentSize();
+  // A size on the way from one mode to the other isn't this mode's.
+  if (width! < WINDOW_MODES[windowMode].minWidth || height! < WINDOW_MODES[windowMode].minHeight) return;
+  const [x, y] = win.getPosition();
+  windowSizes = { ...windowSizes, [windowMode]: { width: width!, height: height!, x: x!, y: y! } };
+  clearTimeout(saveTimer);
+  const sizes = windowSizes;
+  saveTimer = setTimeout(() => writeWindowSizes(windowDir(), sizes), 300);
+}
+
+/** Welcome (compact) or editor (full): the minimum and the remembered size of that mode; its content size. */
+function setWindowMode(mode: WindowMode): { width: number; height: number } {
+  if (!win) return { width: 0, height: 0 };
+  windowSizes ??= readWindowSizes(windowDir());
+  if (mode === windowMode || win.isFullScreen()) {
+    const [width, height] = win.getContentSize();
+    return { width: width!, height: height! };
+  }
+  // The size the user left this mode at, before switching.
+  rememberWindow();
+  windowMode = mode;
+  const { minWidth, minHeight } = WINDOW_MODES[mode];
+  const want = windowSizes[mode];
+  if (win.isMaximized()) win.unmaximize();
+  win.setMinimumSize(0, 0);
+  win.setContentSize(want.width, want.height);
+  win.setMinimumSize(minWidth, minHeight);
+  if (want.x !== undefined && want.y !== undefined) win.setPosition(want.x, want.y);
+  else win.center();
+  const [width, height] = win.getContentSize();
+  return { width: width!, height: height! };
+}
+
 function createWindow() {
+  windowSizes = readWindowSizes(windowDir());
+  windowMode = "welcome";
+  const start = windowSizes.welcome;
   win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    // Below this an editor has no useful preview; the layout is checked at exactly this size.
-    minWidth: 1024,
-    minHeight: 640,
+    width: start.width,
+    height: start.height,
+    useContentSize: true,
+    ...(start.x !== undefined && start.y !== undefined ? { x: start.x, y: start.y } : {}),
+    // D209: compact while no project is open; setWindowMode switches to the editor's size.
+    minWidth: WINDOW_MODES.welcome.minWidth,
+    minHeight: WINDOW_MODES.welcome.minHeight,
     title: "Uncut",
     titleBarStyle: "hiddenInset",
     backgroundColor: "#0a0a0a",
@@ -432,11 +548,16 @@ function createWindow() {
     win?.setIgnoreMouseEvents(true);
     win?.showInactive();
   });
+  win.on("resize", rememberWindow);
+  win.on("move", rememberWindow);
   win.on("close", onWindowClose);
   // A renderer that's gone or stuck can't answer: the close goes ahead.
   contents.on("render-process-gone", () => closeWait && goClose());
   win.on("unresponsive", () => closeWait && goClose());
-  win.on("closed", () => (win = undefined));
+  win.on("closed", () => {
+    win = undefined;
+    showMini(null);
+  });
   if (devServerUrl) void win.loadURL(devServerUrl);
   else void win.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
@@ -476,19 +597,41 @@ async function askMediaAccess(kind: MediaAccessKind): Promise<MediaAccess> {
   return mediaAccess()[kind];
 }
 
+/** Tests' stand-in screen picture: a 160×100 dark frame with a green block (BGRA). */
+function standinThumbnail(): string {
+  const width = 160;
+  const height = 100;
+  const px = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const block = x > 30 && x < 70 && y > 35 && y < 75;
+      px[i] = block ? 0x80 : 0x20;
+      px[i + 1] = block ? 0xde : 0x18;
+      px[i + 2] = block ? 0x4a : 0x10;
+      px[i + 3] = 0xff;
+    }
+  return nativeImage.createFromBitmap(px, { width, height }).toDataURL();
+}
+
 /** Screens and windows to record, with small pictures; never Uncut's own window. Tests: stand-ins. */
 async function captureSources(): Promise<Array<CaptureSource>> {
   if (mediaTest) {
+    // D209: the stand-in screen has a picture drawn here (a data: URL like desktopCapturer's), the
+    // stand-in window none, so both the picture and the placeholder are on screen in tests.
     return [
-      { id: "standin:screen:1", name: "Test screen", kind: "screen", thumbnail: "" },
+      { id: "standin:screen:1", name: "Test screen", kind: "screen", thumbnail: standinThumbnail() },
       { id: "standin:window:1", name: "Test window", kind: "window", thumbnail: "" },
     ];
   }
   const own = win?.getMediaSourceId();
-  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 320, height: 200 }, fetchWindowIcons: false });
+  // thumbnailSize: without one the pictures are 150×150; the app icon is the fallback for a window
+  // whose picture is empty (macOS gives none for a minimised one, or before Screen Recording is on).
+  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 480, height: 300 }, fetchWindowIcons: true });
+  const url = (image: Electron.NativeImage | null | undefined) => (image && !image.isEmpty() ? image.toDataURL() : "");
   return sources
     .filter((s) => s.id !== own)
-    .map((s) => ({ id: s.id, name: s.name, kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const), thumbnail: s.thumbnail.isEmpty() ? "" : s.thumbnail.toDataURL() }));
+    .map((s) => ({ id: s.id, name: s.name, kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const), thumbnail: url(s.thumbnail), ...(url(s.appIcon) ? { icon: url(s.appIcon) } : {}) }));
 }
 
 app.on("second-instance", () => {
@@ -624,6 +767,21 @@ app.whenReady().then(() => {
   });
   ipcMain.on(APP_STATE_CHANNEL, (event, state: AppState) => {
     if (fromAppWindow(event)) setAppMenu(state, sendMenuCommand);
+  });
+  // D209: the mini recorder's state comes from the app window; its buttons go back there.
+  ipcMain.on(MINI_RECORDER_CHANNEL, (event, state: MiniRecorderState | null) => {
+    if (!fromAppWindow(event)) return;
+    showMini(state && typeof state === "object" && typeof state.name === "string" ? state : null);
+  });
+  ipcMain.on(MINI_RECORDER_ACTION_CHANNEL, (event, action: MiniRecorderAction) => {
+    if (!mini || event.sender !== mini.webContents || !["stop", "pause", "resume", "cancel"].includes(action)) return;
+    if (testBackground) console.log(`[test] mini recorder ${action}`);
+    win?.webContents.send(MINI_RECORDER_ACTION_CHANNEL, action);
+  });
+  // D209: the renderer asks for the editor's size before it shows a project, the compact one after.
+  handle(WINDOW_MODE_CHANNEL, (mode: unknown) => {
+    if (mode !== "welcome" && mode !== "editor") throw new Error("not a window mode");
+    return setWindowMode(mode);
   });
   setAppMenu({ projectOpen: false, recents: [] }, sendMenuCommand);
   createWindow();

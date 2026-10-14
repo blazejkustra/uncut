@@ -3,10 +3,11 @@
 // camera take. Each says whether macOS allows it (not asked yet, off with how to turn it on,
 // or allowed), then its devices, a 3-2-1 countdown, a timer with Stop and Cancel. The recording
 // itself is apps/web/src/capture/recorder.ts.
-import { AppWindow, CircleDot, Monitor, Mic, RefreshCw, Settings2, Square, Video, X } from "lucide-react";
+import { AppWindow, ChevronDown, CircleDot, Monitor, Mic, Pause, Play, RefreshCw, Settings2, Square, Video, X, type LucideIcon } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
-import { askAccess, cancelTake, clock, closeMonitor, closePreview, loadInputs, loadSources, openMonitor, openPreview, openPrivacySettings, refreshAccess, startTake, stopTake, getRecorder, useRecorder, type Resolution, type TakeMode } from "../capture/recorder.ts";
+import { askAccess, cancelTake, clock, closeMonitor, closePreview, levelDb, loadInputs, loadSources, openMonitor, openPreview, openPrivacySettings, pauseTake, refreshAccess, resumeTake, startTake, stopTake, getRecorder, takeSeconds, useRecorder, type Resolution, type TakeMode } from "../capture/recorder.ts";
+import type { CaptureSource } from "../state/bridge.ts";
 import type { MediaAccessKind } from "../state/bridge.ts";
 import { usePlayback } from "../preview/playback.ts";
 import { useApp } from "../state/store.ts";
@@ -61,98 +62,206 @@ function Access({ kind, children }: { kind: MediaAccessKind; children: React.Rea
   );
 }
 
-/** Record, then 3-2-1, then the timer with Stop and Cancel, then saving. */
-function TakeControls({ mode, disabled, onRecord, label = "Record" }: { mode: TakeMode; disabled: boolean; onRecord: () => void; label?: string }) {
+/** The meter's scale marks, dBFS. */
+const SCALE = [-60, -40, -20, -12, -6, 0];
+const pct = (db: number) => `${((db + 60) / 60) * 100}%`;
+
+/**
+ * D209: the microphone's level, green to amber to red, with a peak mark that holds for a moment
+ * and a dB scale under it.
+ */
+export function LevelMeter({ testId = "capture-mic-level", compact = false }: { testId?: string; compact?: boolean }) {
+  const level = useRecorder((s) => s.level);
+  const peak = useRecorder((s) => s.peak);
+  const db = levelDb(peak);
+  return (
+    <div className={`level-meter ${compact ? "compact" : ""}`} title="The microphone's level">
+      <div className="level-bar" data-testid={testId} data-level={level.toFixed(2)} data-peak={peak.toFixed(2)}>
+        <div className="level-fill" style={{ clipPath: `inset(0 ${100 - level * 100}% 0 0)` }} />
+        {peak > 0 && <div className={`level-peak ${peak > 0.95 ? "hot" : ""}`} data-testid="capture-level-peak" style={{ left: `calc(${peak * 100}% - 1px)` }} />}
+        <span className="level-db" data-testid="capture-level-db">{Number.isFinite(db) ? `${Math.round(db)} dB` : "-∞ dB"}</span>
+      </div>
+      {!compact && (
+        <div className="level-scale" data-testid="capture-level-scale">
+          {SCALE.map((d) => (
+            <span key={d} style={{ left: pct(d) }}>
+              {d}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The running take's seconds, ticking. */
+function useTakeSeconds() {
   const phase = useRecorder((s) => s.phase);
-  const count = useRecorder((s) => s.count);
   const startedAt = useRecorder((s) => s.startedAt);
-  const runningMode = useRecorder((s) => s.mode);
+  const pausedMs = useRecorder((s) => s.pausedMs);
+  const pausedAt = useRecorder((s) => s.pausedAt);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (phase !== "recording") return;
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
   }, [phase]);
+  return takeSeconds({ startedAt, pausedMs, pausedAt }, now);
+}
+
+/**
+ * D209: the recording bar: a big record button; then the 3-2-1; then the timer, the level meter
+ * (when the take has sound), Pause, Stop and Cancel; then saving.
+ */
+function RecordBar({ mode, disabled, onRecord, label = "Record", meter }: { mode: TakeMode; disabled: boolean; onRecord: () => void; label?: string; meter: boolean }) {
+  const phase = useRecorder((s) => s.phase);
+  const count = useRecorder((s) => s.count);
+  const paused = useRecorder((s) => s.paused);
+  const runningMode = useRecorder((s) => s.mode);
+  const seconds = useTakeSeconds();
   const mine = runningMode === mode;
   if (phase === "idle" || !mine) {
     return (
-      <button className="btn primary capture-record" data-testid="capture-take-record" disabled={disabled || phase !== "idle"} onClick={onRecord}>
-        <CircleDot />
-        {label}
-      </button>
+      <div className="record-bar idle" data-testid="capture-record-bar" data-state="idle">
+        <button className="record-button" data-testid="capture-take-record" disabled={disabled || phase !== "idle"} onClick={onRecord}>
+          <span className="record-dot" />
+          <span className="record-label">{label}</span>
+        </button>
+        {meter && <LevelMeter testId="capture-bar-level" compact />}
+      </div>
     );
   }
-  if (phase === "saving") return <div className="small muted" data-testid="capture-take-saving">Saving the take…</div>;
+  if (phase === "saving") {
+    return (
+      <div className="record-bar" data-testid="capture-record-bar" data-state="saving">
+        <span className="small muted" data-testid="capture-take-saving">
+          Saving the take…
+        </span>
+      </div>
+    );
+  }
   return (
-    <div className="capture-take-row">
-      {phase === "countdown" ? (
-        <span className="capture-countdown" data-testid="capture-countdown">
-          {count ?? ""}
-        </span>
-      ) : (
-        <span className="capture-timer" data-testid="capture-take-timer">
-          <CircleDot />
-          {clock((now - (startedAt ?? now)) / 1000)}
-        </span>
-      )}
-      {phase === "recording" && (
-        <button className="btn small-btn" data-testid="capture-take-stop" title="Stop and keep the take" onClick={() => void stopTake()}>
-          <Square />
-          Stop
+    <div className={`record-bar live ${paused ? "paused" : ""}`} data-testid="capture-record-bar" data-state={phase === "countdown" ? "countdown" : paused ? "paused" : "recording"}>
+      <div className="record-bar-row">
+        {phase === "countdown" ? (
+          <span className="capture-countdown" data-testid="capture-countdown">
+            {count ?? ""}
+          </span>
+        ) : (
+          <span className={`capture-timer ${paused ? "paused" : ""}`} data-testid="capture-take-timer">
+            <CircleDot />
+            {clock(seconds)}
+          </span>
+        )}
+        <div className="grow" />
+        {phase === "recording" && (
+          <button className="icon-btn record-ctl" data-testid={paused ? "capture-take-resume" : "capture-take-pause"} title={paused ? "Resume recording" : "Pause recording"} onClick={() => (paused ? resumeTake() : pauseTake())}>
+            {paused ? <Play /> : <Pause />}
+          </button>
+        )}
+        {phase === "recording" && (
+          <button className="record-ctl stop" data-testid="capture-take-stop" title="Stop and keep the take" onClick={() => void stopTake()}>
+            <Square />
+            Stop
+          </button>
+        )}
+        <button className="icon-btn record-ctl" data-testid="capture-take-cancel" title="Stop and keep nothing" onClick={() => cancelTake()}>
+          <X />
         </button>
-      )}
-      <button className="btn ghost small-btn" data-testid="capture-take-cancel" title="Stop and keep nothing" onClick={() => cancelTake()}>
-        <X />
-        Cancel
-      </button>
+      </div>
+      {meter && <LevelMeter testId="capture-bar-level" />}
     </div>
   );
 }
 
-function MicSelect({ value, onChange, testId, none }: { value: string; onChange: (id: string) => void; testId: string; none?: boolean }) {
+/** D209: a device picker in the app's style (a native list underneath, so the keyboard and VoiceOver work). */
+function Picker({ icon: Icon, value, onChange, testId, title, disabled, children }: { icon: LucideIcon; value: string; onChange: (v: string) => void; testId: string; title: string; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <label className={`picker ${disabled ? "disabled" : ""}`} title={title}>
+      <Icon className="picker-icon" />
+      <select data-testid={testId} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {children}
+      </select>
+      <ChevronDown className="picker-caret" />
+    </label>
+  );
+}
+
+/** D209: an option as a compact toggle chip (a real checkbox over it). */
+function Option({ testId, checked, disabled, onChange, children, title }: { testId: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void; children: React.ReactNode; title?: string }) {
+  return (
+    <label className={`opt-chip ${checked ? "on" : ""} ${disabled ? "disabled" : ""}`} title={title}>
+      <input type="checkbox" data-testid={testId} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      {children}
+    </label>
+  );
+}
+
+function MicSelect({ value, onChange, testId, disabled }: { value: string; onChange: (id: string) => void; testId: string; disabled?: boolean }) {
   const mics = useRecorder((s) => s.mics);
   return (
-    <select className="field input" data-testid={testId} value={value} onChange={(e) => onChange(e.target.value)} title="Microphone">
-      {none && <option value="">No sound</option>}
+    <Picker icon={Mic} value={value} onChange={onChange} testId={testId} title="Microphone" disabled={disabled}>
       {mics.map((m) => (
         <option key={m.id} value={m.id}>
           {m.label}
         </option>
       ))}
-    </select>
+    </Picker>
+  );
+}
+
+/** Meters the microphone while `on` (a take with sound shows the meter). */
+function useMonitor(on: boolean, mic: string) {
+  useEffect(() => {
+    if (!on) return;
+    void openMonitor(mic || undefined);
+    return () => closeMonitor();
+  }, [on, mic]);
+}
+
+/** A screen or window tile: its picture, else its app icon, else a placeholder (also when the picture fails). */
+function SourceTile({ source, active, disabled, onPick }: { source: CaptureSource; active: boolean; disabled: boolean; onPick: () => void }) {
+  const [broken, setBroken] = useState<ReadonlyArray<string>>([]);
+  const picture = [source.thumbnail, source.icon ?? ""].find((u) => u && !broken.includes(u));
+  return (
+    <button className={`capture-source${active ? " active" : ""}`} data-testid="capture-source" data-id={source.id} data-picture={picture ? (picture === source.thumbnail ? "thumbnail" : "icon") : "none"} disabled={disabled} title={source.name} onClick={onPick}>
+      {picture ? (
+        <span className={`capture-source-pic ${picture === source.thumbnail ? "" : "icon"}`}>
+          <img src={picture} alt="" data-testid="capture-source-img" onError={() => setBroken((b) => [...b, picture])} />
+        </span>
+      ) : (
+        <span className="capture-source-icon" data-testid="capture-source-placeholder">
+          {source.kind === "screen" ? <Monitor /> : <AppWindow />}
+        </span>
+      )}
+      <span className="capture-source-name">{source.name}</span>
+    </button>
   );
 }
 
 function MicPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id: string) => void; busy: boolean; canRecord: boolean }) {
   const access = useRecorder((s) => s.access?.microphone);
-  const level = useRecorder((s) => s.level);
   const fps = usePlayback((s) => s.fps);
   const frame = usePlayback((s) => s.frame);
   const [play, setPlay] = useState(true);
   const [mute, setMute] = useState(true);
   const allowed = access === "granted" || access === "unknown";
-  useEffect(() => {
-    if (!allowed) return;
-    void openMonitor(mic || undefined);
-    return () => closeMonitor();
-  }, [allowed, mic]);
+  useMonitor(allowed, mic);
   return (
     <div className="capture-part" data-testid="capture-mic">
       <Access kind="microphone">
-        <MicSelect value={mic} onChange={setMic} testId="capture-mic-device" />
-        <div className="capture-level" data-testid="capture-mic-level" data-level={level.toFixed(2)} title="The microphone's level">
-          <div style={{ width: `${Math.round(level * 100)}%` }} className={level > 0.95 ? "hot" : ""} />
+        <MicSelect value={mic} onChange={setMic} testId="capture-mic-device" disabled={busy} />
+        <LevelMeter />
+        <div className="opt-row">
+          <Option testId="capture-play-timeline" checked={play} disabled={busy} onChange={setPlay} title="Play the timeline from the playhead while recording">
+            Play timeline
+          </Option>
+          <Option testId="capture-mute-timeline" checked={mute} disabled={busy || !play} onChange={setMute} title="Mute it, so the microphone only hears you">
+            Muted
+          </Option>
         </div>
-        <label className="check-row">
-          <input type="checkbox" data-testid="capture-play-timeline" checked={play} disabled={busy} onChange={(e) => setPlay(e.target.checked)} />
-          Play the timeline while recording
-        </label>
-        <label className="check-row">
-          <input type="checkbox" data-testid="capture-mute-timeline" checked={mute} disabled={busy || !play} onChange={(e) => setMute(e.target.checked)} />
-          Mute it, so the microphone only hears you
-        </label>
         <div className="small muted">Goes on a Voiceover track at the playhead ({clock(frame / Math.max(1, fps))}).</div>
-        <TakeControls mode="voiceover" disabled={!canRecord} onRecord={() => void startTake({ mode: "voiceover", mic: mic || undefined, playTimeline: play, muteTimeline: mute })} />
+        <RecordBar mode="voiceover" meter={false} disabled={!canRecord} onRecord={() => void startTake({ mode: "voiceover", mic: mic || undefined, playTimeline: play, muteTimeline: mute })} />
       </Access>
     </div>
   );
@@ -170,6 +279,8 @@ function CameraPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id
   const video = useRef<HTMLVideoElement>(null);
   const allowed = access?.camera === "granted" || access?.camera === "unknown";
   const micAllowed = access?.microphone === "granted" || access?.microphone === "unknown";
+  const sound = withMic && micAllowed;
+  useMonitor(allowed && sound, mic);
   useEffect(() => {
     if (!allowed) return;
     void openPreview(camera || undefined, resolution);
@@ -188,30 +299,32 @@ function CameraPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id
           <video ref={video} data-testid="capture-camera-preview" autoPlay muted playsInline />
           {previewError && <div className="inline-error small">{previewError}</div>}
         </div>
-        <select className="field input" data-testid="capture-camera-device" value={camera} disabled={busy} onChange={(e) => setCamera(e.target.value)} title="Camera">
-          {cameras.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-        <div className="seg capture-resolution" data-testid="capture-camera-resolution">
-          {(["720p", "1080p"] as const).map((r) => (
-            <button key={r} className={resolution === r ? "active" : ""} data-value={r} disabled={busy} onClick={() => setResolution(r)}>
-              {r}
-            </button>
-          ))}
+        <div className="picker-row">
+          <Picker icon={Video} value={camera} onChange={setCamera} testId="capture-camera-device" title="Camera" disabled={busy}>
+            {cameras.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </Picker>
+          <div className="seg capture-resolution" data-testid="capture-camera-resolution">
+            {(["720p", "1080p"] as const).map((r) => (
+              <button key={r} className={resolution === r ? "active" : ""} data-value={r} disabled={busy} onClick={() => setResolution(r)}>
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
-        <label className="check-row">
-          <input type="checkbox" data-testid="capture-camera-with-mic" checked={withMic && micAllowed} disabled={busy || !micAllowed} onChange={(e) => setWithMic(e.target.checked)} />
-          Record sound too{micAllowed ? "" : " (allow the microphone first)"}
-        </label>
-        {withMic && micAllowed && <MicSelect value={mic} onChange={setMic} testId="capture-camera-mic" />}
-        <label className="check-row">
-          <input type="checkbox" data-testid="capture-place" checked={place} disabled={busy} onChange={(e) => setPlace(e.target.checked)} />
-          Also put it on the timeline at the playhead
-        </label>
-        <TakeControls mode="camera" disabled={!canRecord} onRecord={() => void startTake({ mode: "camera", camera: camera || undefined, resolution, withMic: withMic && micAllowed, mic: mic || undefined, place })} />
+        {sound && <MicSelect value={mic} onChange={setMic} testId="capture-camera-mic" disabled={busy} />}
+        <div className="opt-row">
+          <Option testId="capture-camera-with-mic" checked={sound} disabled={busy || !micAllowed} onChange={setWithMic} title={micAllowed ? "Record sound from a microphone too" : "Allow the microphone first"}>
+            Sound
+          </Option>
+          <Option testId="capture-place" checked={place} disabled={busy} onChange={setPlace} title="Also put it on the timeline at the playhead">
+            On the timeline
+          </Option>
+        </div>
+        <RecordBar mode="camera" meter={sound} disabled={!canRecord} onRecord={() => void startTake({ mode: "camera", camera: camera || undefined, resolution, withMic: sound, mic: mic || undefined, place })} />
       </Access>
     </div>
   );
@@ -227,6 +340,8 @@ function ScreenPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id
   const [place, setPlace] = useState(false);
   const allowed = access?.screen === "granted" || access?.screen === "unknown";
   const micAllowed = access?.microphone === "granted" || access?.microphone === "unknown";
+  const sound = withMic && micAllowed;
+  useMonitor(allowed && sound, mic);
   useEffect(() => {
     if (allowed) void loadSources();
   }, [allowed]);
@@ -249,26 +364,23 @@ function ScreenPart({ mic, setMic, busy, canRecord }: { mic: string; setMic: (id
               <div className="capture-sources-group small muted">{kind === "screen" ? "Screens" : "Windows"}</div>
               <div className="capture-sources" data-testid="capture-sources" data-kind={kind}>
                 {group.map((s) => (
-                  <button key={s.id} className={`capture-source${picked === s.id ? " active" : ""}`} data-testid="capture-source" data-id={s.id} disabled={busy} title={s.name} onClick={() => setPicked(s.id)}>
-                    {s.thumbnail ? <img src={s.thumbnail} alt="" /> : <span className="capture-source-icon">{s.kind === "screen" ? <Monitor /> : <AppWindow />}</span>}
-                    <span className="capture-source-name">{s.name}</span>
-                  </button>
+                  <SourceTile key={s.id} source={s} active={picked === s.id} disabled={busy} onPick={() => setPicked(s.id)} />
                 ))}
               </div>
             </React.Fragment>
           );
         })}
         {sources && sources.length === 0 && !loading && <div className="small muted">No screens or windows to record.</div>}
-        <label className="check-row">
-          <input type="checkbox" data-testid="capture-screen-with-mic" checked={withMic && micAllowed} disabled={busy || !micAllowed} onChange={(e) => setWithMic(e.target.checked)} />
-          Record the microphone too{micAllowed ? "" : " (allow it under Microphone first)"}
-        </label>
-        {withMic && micAllowed && <MicSelect value={mic} onChange={setMic} testId="capture-screen-mic" />}
-        <label className="check-row">
-          <input type="checkbox" data-testid="capture-screen-place" checked={place} disabled={busy} onChange={(e) => setPlace(e.target.checked)} />
-          Also put it on the timeline at the playhead
-        </label>
-        <TakeControls mode="screen" label="Record screen" disabled={!canRecord || !source} onRecord={() => void startTake({ mode: "screen", source, withMic: withMic && micAllowed, mic: mic || undefined, place })} />
+        {sound && <MicSelect value={mic} onChange={setMic} testId="capture-screen-mic" disabled={busy} />}
+        <div className="opt-row">
+          <Option testId="capture-screen-with-mic" checked={sound} disabled={busy || !micAllowed} onChange={setWithMic} title={micAllowed ? "Record the microphone too" : "Allow the microphone under Microphone first"}>
+            Microphone
+          </Option>
+          <Option testId="capture-screen-place" checked={place} disabled={busy} onChange={setPlace} title="Also put it on the timeline at the playhead">
+            On the timeline
+          </Option>
+        </div>
+        <RecordBar mode="screen" label="Record screen" meter={sound} disabled={!canRecord || !source} onRecord={() => void startTake({ mode: "screen", source, withMic: sound, mic: mic || undefined, place })} />
       </Access>
     </div>
   );

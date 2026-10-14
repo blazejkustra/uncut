@@ -225,7 +225,9 @@ export class EditRefused extends Schema.TaggedError<EditRefused>()("EditRefused"
 export const Canvas = Schema.Struct({
   width: Schema.Int,
   height: Schema.Int,
-  fps: Schema.Literals([24, 25, 30, 50, 60]),
+  // D209: the NTSC rates are stored as 23.976, 29.97 and 59.94.
+  fps: Schema.Literals([23.976, 24, 25, 29.97, 30, 50, 59.94, 60]),
+  background: Schema.optional(Schema.String),
 });
 
 export const RecentProject = Schema.Struct({
@@ -781,12 +783,13 @@ export type AgentItem = typeof AgentItem.Type;
 // ---- the composer's choices (U4, D184) ----
 
 /** The models the composer offers (Claude Code's model ids); none chosen = Claude Code's default. */
-export const AGENT_MODELS = [
-  { id: "claude-opus-5-5", name: "Opus 5.5", detail: "Most capable" },
-  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", detail: "Fast and capable" },
-  { id: "claude-fable-5-1", name: "Fable 5.1", detail: "Creative" },
-  { id: "claude-haiku-5-5", name: "Haiku 5.5", detail: "Fastest" },
-] as const;
+export const AGENT_MODELS: ReadonlyArray<{ readonly id: string; readonly name: string; readonly detail: string; readonly provider: "claude" | "codex"; readonly isNew: boolean }> = [
+  // D209: isNew marks the newest generation (a NEW badge in the model menu).
+  { id: "claude-opus-5-5", name: "Opus 5.5", detail: "Most capable", provider: "claude", isNew: true },
+  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", detail: "Fast and capable", provider: "claude", isNew: true },
+  { id: "claude-fable-5-1", name: "Fable 5.1", detail: "Creative", provider: "claude", isNew: false },
+  { id: "claude-haiku-5-5", name: "Haiku 5.5", detail: "Fastest", provider: "claude", isNew: true },
+];
 /** --effort levels (claude 2.1.299 also has xhigh; the composer offers these four). */
 export const AGENT_EFFORTS = ["low", "medium", "high", "max"] as const;
 export const AgentEffort = Schema.Literals(AGENT_EFFORTS);
@@ -1112,7 +1115,7 @@ const ServerHelloRpc = Rpc.make(RPC_METHODS.serverHello, {
 });
 
 const ProjectCreateRpc = Rpc.make(RPC_METHODS.projectCreate, {
-  payload: Schema.Struct({ parentDir: Schema.String, name: Schema.String, canvas: Schema.optional(Canvas) }),
+  payload: Schema.Struct({ parentDir: Schema.String, name: Schema.String, canvas: Schema.optional(Canvas), matchFirstClip: Schema.optional(Schema.Boolean) }),
   success: ProjectSnapshot,
   error: ProjectError,
 });

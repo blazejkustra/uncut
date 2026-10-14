@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { draftOf } from "../timeline/edit.ts";
 import { getPlayback, playback, type PreviewDraft } from "../preview/playback.ts";
 import { type ProjectModel } from "../state/project.ts";
-import { actions, getState } from "../state/store.ts";
+import { actions, endPreview, getState, previewEdits } from "../state/store.ts";
 import { swatches } from "../preview/text.ts";
 
 
@@ -38,27 +38,138 @@ export function send(make: (project: ProjectModel) => PlanResult, draft?: Previe
   void actions.itemEdit(make, from).finally(() => dropDraft(draft));
 }
 
-/** A number field: typed freely, committed on Enter or blur, Esc puts the saved value back. */
+/** Pixels the pointer moves before a press on a number field is a scrub, not a click. */
+export const SCRUB_THRESHOLD = 3;
+
+const clampTo = (v: number, min: number | undefined, max: number | undefined) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
+/** Rounded to the step's decimals (and never more than 6). */
+const roundTo = (v: number, step: number) => {
+  const decimals = Math.min(6, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
+  return Number(v.toFixed(decimals));
+};
+
+/**
+ * A number field: typed freely, committed on Enter or blur, Esc puts the saved value back.
+ * D209 (issue #21): press and drag left or right on the field or its label to scrub it (one step
+ * a pixel, ⇧ ten, ⌥ a tenth; the pointer is locked so it never hits the screen's edge). While it
+ * drags, the change shows in the preview (its edits are previewed, not sent: previewEdits); the
+ * release commits once, one ⌘Z. A press that doesn't move is a click: it focuses for typing.
+ * ↑ and ↓ step (⇧ ten) and preview; Enter or blur commits, Esc drops it.
+ */
 export function NumberField({ label, value, onCommit, testId, placeholder, step = 1, min, max, disabled }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; testId: string; placeholder?: string; step?: number; min?: number; max?: number; disabled?: boolean }) {
   const shown = value === undefined ? "" : String(value);
   const [text, setText] = useState(shown);
+  const [scrubbing, setScrubbing] = useState(false);
   const editing = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+  // A scrub just ended: the label's click that follows mustn't focus the field.
+  const dragged = useRef(false);
   useEffect(() => {
     if (!editing.current) setText(shown);
   }, [shown]);
+  const parse = (t: string) => {
+    const trimmed = t.trim();
+    // A comma is a decimal point too (typed on a Polish keyboard, say); shown values always use ".".
+    return trimmed === "" ? undefined : Number(trimmed.replace(",", "."));
+  };
+  const valid = (n: number | undefined) => n === undefined || (Number.isFinite(n) && (min === undefined || n >= min) && (max === undefined || n <= max));
   const commit = () => {
     editing.current = false;
-    const trimmed = text.trim();
-    // A comma is a decimal point too (typed on a Polish keyboard, say); shown values always use ".".
-    const n = trimmed === "" ? undefined : Number(trimmed.replace(",", "."));
-    if (n !== undefined && (!Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max))) return setText(shown);
-    if (n === value) return setText(shown);
+    const n = parse(text);
+    if (!valid(n) || n === value) {
+      endPreview(false);
+      return setText(shown);
+    }
     onCommit(n);
+    endPreview(true);
   };
+  /** Shows `n` in the field and its edit in the preview. */
+  const preview = (n: number) => {
+    setText(String(n));
+    previewEdits(() => onCommit(n));
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (disabled || e.button !== 0) return;
+    const el = input.current;
+    if (!el) return;
+    // Already typing in it: the press places the caret / selects text as usual.
+    if (document.activeElement === el && e.target === el) return;
+    e.preventDefault();
+    const start = parse(text) ?? value ?? 0;
+    const x0 = e.clientX;
+    let lastX = e.clientX;
+    let travel = 0;
+    let moved = false;
+    let current = start;
+    let locked = false;
+    const target = e.currentTarget;
+    const move = (ev: PointerEvent) => {
+      // Locked, the pointer stays put and reports how far it moved; else follow it.
+      if (!moved && Math.abs(ev.clientX - x0) < SCRUB_THRESHOLD) return;
+      // The travel up to the threshold counts too (lastX is still where the press was).
+      const dx = document.pointerLockElement === target ? ev.movementX : ev.clientX - lastX;
+      lastX = ev.clientX;
+      if (!moved) {
+        moved = true;
+        editing.current = true;
+        setScrubbing(true);
+        document.body.classList.add("scrubbing");
+        try {
+          const ask = target.requestPointerLock?.() as unknown;
+          locked = true;
+          if (ask && typeof (ask as Promise<void>).catch === "function") void (ask as Promise<void>).catch(() => (locked = false));
+        } catch {
+          locked = false;
+        }
+      }
+      const factor = ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
+      travel += dx * factor;
+      const next = roundTo(clampTo(start + Math.round(travel) * step, min, max), ev.altKey ? step / 10 : step);
+      if (next === current) return;
+      current = next;
+      preview(next);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (locked && document.pointerLockElement) document.exitPointerLock();
+      document.body.classList.remove("scrubbing");
+      if (!moved) {
+        // A click: type in it.
+        el.focus();
+        el.select();
+        return;
+      }
+      setScrubbing(false);
+      editing.current = false;
+      dragged.current = true;
+      setTimeout(() => (dragged.current = false), 0);
+      if (current === value) {
+        endPreview(false);
+        return setText(shown);
+      }
+      onCommit(current);
+      endPreview(true);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
   return (
-    <label className="field num-field">
-      <span className="k">{label}</span>
+    <label className={`field num-field ${scrubbing ? "scrubbing" : ""}`} data-scrub={testId}
+      onPointerDown={onPointerDown}
+      onClick={(e) => {
+        if (dragged.current) e.preventDefault();
+      }}
+    >
+      <span className="k" title="Drag left or right to change it (⇧ faster, ⌥ finer)">
+        {label}
+      </span>
       <input
+        ref={input}
         className="v"
         data-testid={testId}
         // Text, not type="number": Chromium shows a number input in the system locale ("0,5"),
@@ -76,16 +187,16 @@ export function NumberField({ label, value, onCommit, testId, placeholder, step 
           if (e.key === "Enter") e.currentTarget.blur();
           if (e.key === "ArrowUp" || e.key === "ArrowDown") {
             e.preventDefault();
-            const base = Number(text.trim().replace(",", "."));
-            let next = (Number.isFinite(base) ? base : (value ?? 0)) + (e.key === "ArrowUp" ? step : -step);
-            if (min !== undefined) next = Math.max(min, next);
-            if (max !== undefined) next = Math.min(max, next);
+            const base = parse(text);
+            const by = (e.shiftKey ? 10 : 1) * step;
+            const next = roundTo(clampTo((base !== undefined && Number.isFinite(base) ? base : (value ?? 0)) + (e.key === "ArrowUp" ? by : -by), min, max), step);
             editing.current = true;
-            setText(String(Math.round(next * 1e6) / 1e6));
+            preview(next);
           }
           if (e.key === "Escape") {
             editing.current = false;
             setText(shown);
+            endPreview(false);
             const el = e.currentTarget;
             requestAnimationFrame(() => el.blur());
           }
