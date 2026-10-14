@@ -1,7 +1,7 @@
 // Launches an Uncut desktop build with DevTools exposed and connects puppeteer to its window.
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 
@@ -10,7 +10,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // node --test runs test files in parallel. Several packaged apps starting at once can starve
 // each other on a busy machine, so the Electron test files
 // take turns: each holds a lock from its before() to its after(). Hooks have no timeout, so
-// waiting doesn't eat into any test's own timeout; the wait itself gives up after 10 minutes.
+// waiting doesn't eat into any test's own timeout.
+//
+// Turns are first come, first served: a waiter puts a ticket in "<lock>.queue/" (named by its
+// arrival time) and only tries the lock when its ticket is the oldest live one. Without the queue
+// the lock went to whichever waiter polled first after each release, and in a full run (13 files
+// at once, ~50 app files, some holding the lock 15-20 minutes) one file could lose every race
+// until a fixed 10 minute wait ran out (beats-app.test.ts, twice). The wait is bounded by
+// progress instead of in total: it gives up only when the same holder (or the same stuck head of
+// the queue) hasn't moved for `timeoutMs`, longer than any one file legitimately holds it.
 //
 // The lock is one file created atomically (open "wx") holding the owner's pid and process
 // start time. It is stale when that process is gone (EPERM counts as alive), when the pid now
@@ -20,12 +28,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LOCK = "test-output/.app-lock";
 const GRACE_MS = 5000;
 
+// Every waiter checks the holder and the head of the queue five times a second: remember a pid's
+// start time for a couple of seconds instead of running ps each time.
+const startTimes = new Map<number, { at: number; start: string | undefined }>();
 const startTimeOf = (pid: number) => {
+  const known = startTimes.get(pid);
+  if (known && Date.now() - known.at < 2000) return known.start;
+  let start: string | undefined;
   try {
-    return execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim() || undefined;
-  } catch {
-    return undefined;
-  }
+    start = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim() || undefined;
+  } catch {}
+  startTimes.set(pid, { at: Date.now(), start });
+  return start;
 };
 const alive = (pid: number) => {
   try {
@@ -41,9 +55,10 @@ const myStart = startTimeOf(process.pid);
 export interface LockHolder {
   pid: number;
   start?: string;
+  file?: string;
 }
 
-export function inspectLock(path = LOCK): { exists: false; holder?: undefined; stale?: undefined } | { exists: true; holder: LockHolder | undefined; stale: boolean } {
+export function inspectLock(path = LOCK, quick = false): { exists: false; holder?: undefined; stale?: undefined } | { exists: true; holder: LockHolder | undefined; stale: boolean } {
   let text: string;
   let mtime: number;
   try {
@@ -57,7 +72,7 @@ export function inspectLock(path = LOCK): { exists: false; holder?: undefined; s
     holder = JSON.parse(text);
   } catch {}
   if (!holder || !Number.isInteger(holder.pid)) return { exists: true, holder: undefined, stale: Date.now() - mtime > GRACE_MS };
-  const stale = !alive(holder.pid) || (holder.start !== undefined && startTimeOf(holder.pid) !== holder.start);
+  const stale = !alive(holder.pid) || (!quick && holder.start !== undefined && startTimeOf(holder.pid) !== holder.start);
   return { exists: true, holder, stale };
 }
 
@@ -94,37 +109,94 @@ function installInterruptHandlers() {
   }
 }
 
-export async function lockApps({ path = LOCK, timeoutMs = 10 * 60 * 1000 } = {}) {
+const QUEUE = (path: string) => `${path}.queue`;
+// Our place in the queue, removed when we get the lock, give up, or are interrupted.
+let myTicket: string | undefined;
+let arrivals = 0;
+const dropTicket = () => {
+  if (myTicket) rmSync(myTicket, { force: true });
+  myTicket = undefined;
+};
+
+/** The live tickets in arrival order; tickets of processes that are gone are removed. */
+function liveTickets(queue: string) {
+  let names: Array<string>;
+  try {
+    names = readdirSync(queue).filter((n) => n.endsWith(".ticket")).sort();
+  } catch {
+    return [];
+  }
+  // Only the head needs the full check (pid reuse); behind it a cheap "is the pid alive" is enough.
+  const live: Array<string> = [];
+  for (const name of names) {
+    const lock = inspectLock(join(queue, name), live.length > 0);
+    if (!lock.exists) continue;
+    if (lock.stale) rmSync(join(queue, name), { force: true });
+    else live.push(name);
+  }
+  return live;
+}
+
+const DEFAULT_LOCK_WAIT_MS = Number(process.env.UNCUT_TEST_LOCK_MS ?? 30 * 60 * 1000);
+
+export async function lockApps({ path = LOCK, timeoutMs = DEFAULT_LOCK_WAIT_MS } = {}) {
   installInterruptHandlers();
-  mkdirSync(dirname(path), { recursive: true });
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    try {
-      const fd = openSync(path, "wx");
-      writeSync(fd, JSON.stringify({ pid: process.pid, start: myStart }));
-      closeSync(fd);
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  const queue = QUEUE(path);
+  mkdirSync(queue, { recursive: true });
+  dropTicket();
+  const me = JSON.stringify({ pid: process.pid, start: myStart, file: process.argv[1] });
+  const ticket = join(queue, `${String(Date.now()).padStart(15, "0")}-${String(process.pid).padStart(7, "0")}-${arrivals++}.ticket`);
+  writeFileSync(ticket, me);
+  myTicket = ticket;
+  // What we're waiting on, and since when: a new holder or a new head of the queue is progress.
+  let waitingOn = "";
+  let since = Date.now();
+  try {
+    for (;;) {
+      const tickets = liveTickets(queue);
+      const head = tickets[0];
+      const lock = inspectLock(path);
+      if (lock.exists && lock.stale) {
+        const aside = `${path}.stale-${process.pid}-${Math.random().toString(36).slice(2)}`;
+        try {
+          renameSync(path, aside);
+          rmSync(aside, { force: true });
+        } catch {}
+        continue;
+      }
+      if (!lock.exists && (head === undefined || join(queue, head) === ticket)) {
+        try {
+          const fd = openSync(path, "wx");
+          writeSync(fd, me);
+          closeSync(fd);
+          return;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          continue;
+        }
+      }
+      const holder = lock.exists ? lock.holder : undefined;
+      const now = lock.exists ? `holder ${holder?.pid}:${holder?.start}` : `head ${head}`;
+      if (now !== waitingOn) {
+        waitingOn = now;
+        since = Date.now();
+      } else if (Date.now() - since > timeoutMs) {
+        const who = lock.exists
+          ? holder
+            ? `held by pid ${holder.pid} (started ${holder.start ?? "?"}${holder.file ? `, ${holder.file}` : ""})`
+            : "held by an unknown process"
+          : `free, but the first in its queue (${join(queue, head ?? "?")}) never took it`;
+        throw new Error(`Waited ${Math.round(timeoutMs / 1000)} s for the Electron test lock (${path}), ${who} all that time. Remove the file if that process is not a test run.`);
+      }
+      await sleep(200);
     }
-    const lock = inspectLock(path);
-    if (lock.exists && lock.stale) {
-      const aside = `${path}.stale-${process.pid}-${Math.random().toString(36).slice(2)}`;
-      try {
-        renameSync(path, aside);
-        rmSync(aside, { force: true });
-      } catch {}
-      continue;
-    }
-    if (Date.now() > deadline) {
-      const who = lock.holder ? `pid ${lock.holder.pid} (started ${lock.holder.start ?? "?"})` : "an unknown process";
-      throw new Error(`Waited ${Math.round(timeoutMs / 1000)} s for the Electron test lock (${path}) held by ${who}. Remove the file if that process is not a test run.`);
-    }
-    await sleep(200);
+  } finally {
+    dropTicket();
   }
 }
 
 export function unlockApps({ path = LOCK } = {}) {
+  dropTicket();
   const lock = inspectLock(path);
   if (lock.holder?.pid === process.pid && lock.holder.start === myStart) rmSync(path, { force: true });
 }
@@ -265,7 +337,8 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
   proc.stderr.on("data", (d) => (output += d));
   let browser: Browser | null | undefined;
   const kill = async () => {
-    await browser?.disconnect().catch(() => {});
+    // Bounded: a wedged DevTools connection must not hang the test file's after() hook.
+    if (browser) await Promise.race([browser.disconnect().catch(() => {}), sleep(5000)]);
     if (proc.exitCode === null && proc.signalCode === null && !spawnError) proc.kill();
     // A quit that hangs is a bug the tests should see, not wait on forever.
     const timer = setTimeout(() => proc.kill("SIGKILL"), 10000);
