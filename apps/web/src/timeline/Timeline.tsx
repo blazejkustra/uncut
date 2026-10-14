@@ -14,14 +14,14 @@
 //
 // Transitions (D73): each cut between two main-track clips can be clicked to select it; a
 // transition on it shows as a marker straddling the cut (CutMarkers).
-import { ChevronsLeftRight, Magnet, Scissors, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronsLeftRight, Link2, Magnet, Scissors, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cutsOf } from "@uncut/core/transitions";
 import { captionCards, captionExtent } from "@uncut/core/captions";
 
 import { getBeats, useBeats } from "../audio/beats.ts";
 import { useDuckCurves } from "../audio/ducking.ts";
-import { draftOf, findItem, fitsTrack, lockOf, planGroupMove, planMove, planMoveToNewTrack, planSetTransition, planTrim, secondsLabel, SNAP_PX, snapPlayhead, snapTargets, trimSnapTargets, type NewTrackSide, type Plan } from "./edit.ts";
+import { draftOf, findItem, fitsTrack, lockOf, newTrackIndexOver, withGroups, withOverlayRipple, planGroupMove, planGroupTrim, planMove, planMoveToNewTrack, planSetTransition, planTrim, secondsLabel, SNAP_PX, snapPlayhead, snapTargets, trimSnapTargets, type NewTrackSide, type Plan } from "./edit.ts";
 import { frameTimecode, rulerLabel } from "../state/format.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
 import { displayTracks, layoutOf, type Item, type ProjectModel, type Track } from "../state/project.ts";
@@ -33,7 +33,7 @@ import { Playhead } from "./Playhead.tsx";
 import { COMPONENT_DRAG_TYPE, draggedComponent, secondsFor, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
-import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE, useDraggedTransition } from "./dnd.ts";
+import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, onTransitionDrop, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE, useDraggedTransition, useTilePointer } from "./dnd.ts";
 import { openMenu } from "./ContextMenu.tsx";
 import { emptyMenu, itemMenu, trackMenu, type MenuUi } from "./menus.ts";
 import { TrackHead } from "./TrackHead.tsx";
@@ -57,8 +57,8 @@ interface DragView {
   readonly ghost?: { readonly start: number; readonly duration: number };
   /** A move: the item under the pointer, on this track. Its planned spot shows as the landing. */
   readonly float?: { readonly track: string; readonly start: number };
-  /** A move past the top or bottom lane: a new track appears there. */
-  readonly newTrack?: NewTrackSide;
+  /** A move past the top or bottom lane, or onto a lane that can't take it (F6): a new track appears there (y: the line, px in the lanes). */
+  readonly newTrack?: { readonly side: NewTrackSide | "between"; readonly y: number };
   /** A group move: the items moving. */
   readonly group?: ReadonlyArray<string>;
   readonly snapAt?: number;
@@ -98,6 +98,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
     if (!transitionDragged) setDropCut(undefined);
   }, [transitionDragged]);
   const snapping = usePlayback((s) => s.snapping);
+  const linkOverlays = usePlayback((s) => s.linkOverlays);
   const beatMap = useBeats((s) => s.map);
   const [drag, setDrag] = useState<DragView | undefined>();
   const [marquee, setMarquee] = useState<Marquee | undefined>();
@@ -241,9 +242,15 @@ export function Timeline({ project }: { project: ProjectModel }) {
       playback.selectMany(ids);
       return;
     }
-    const current = selectionIds();
+    // D157: an item in a group brings its group along (selected, moved and trimmed together).
+    const before = selectionIds();
+    const mates = withGroups(project, [item.id]);
+    const current = toggle ? before : before.includes(item.id) ? withGroups(project, before) : mates;
     const grouped = !toggle && current.length > 1 && current.includes(item.id);
+    // Just its own group: its edges trim the whole group.
+    const groupOnly = grouped && mates.length > 1 && current.length === mates.length && current.every((id) => mates.includes(id));
     if (!grouped && !toggle) playback.select(item.id);
+    else if (grouped && (!before.includes(item.id) || current.length !== before.length)) playback.selectMany([item.id, ...current.filter((id) => id !== item.id)]);
     const found = findItem(project, item.id);
     const press = found && { ...found, base: project };
     const origin = { dir: snapshot?.dir, revision: snapshot?.revision };
@@ -253,7 +260,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       return;
     }
     e.preventDefault();
-    const edge = grouped ? undefined : ((e.target as HTMLElement).dataset.edge as "start" | "end" | undefined);
+    const edge = grouped && !groupOnly ? undefined : ((e.target as HTMLElement).dataset.edge as "start" | "end" | undefined);
     // A fade handle (top corners of an item with sound): drag sets the fade's length.
     const fade = grouped ? undefined : ((e.target as HTMLElement).dataset.fade as "in" | "out" | undefined);
     const x0 = e.clientX;
@@ -272,7 +279,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       const snapOn = getPlayback().snapping && !ev.metaKey;
       const threshold = SNAP_PX / ppf;
       const beats = { beats: getBeats().map, ppf };
-      if (grouped) {
+      if (grouped && !edge) {
         const lane = laneIndexAt(ev.clientY);
         const offset = lane === -1 || lane0 === -1 ? 0 : lane - lane0;
         const ids = current;
@@ -316,8 +323,10 @@ export function Timeline({ project }: { project: ProjectModel }) {
         // The edge goes where the pointer is, also when re-planned against a newer project.
         const own = edge === "end" ? placed.start + placed.item.duration : placed.start;
         const snap = snapOn ? { targets: trimSnapTargets(base, getPlayback().frame, item.id, edge, beats), threshold } : undefined;
-        const p = planTrim(base, item.id, edge, pressEdge + delta - own, snap);
-        if ("problem" in p) return;
+        const trimmed = groupOnly ? planGroupTrim(base, item.id, edge, pressEdge + delta - own, snap) : planTrim(base, item.id, edge, pressEdge + delta - own, snap);
+        if ("problem" in trimmed) return;
+        // F11 (D156): overlays over a main clip follow its footage.
+        const p = placed.track.role === "main" && getPlayback().linkOverlays ? withOverlayRipple(base, trimmed) : trimmed;
         const draft = draftOf(base, p.ops);
         if (!("problem" in draft)) plan = p;
         // A main clip trimmed from the left keeps its start (the rest ripples on release); while
@@ -338,9 +347,22 @@ export function Timeline({ project }: { project: ProjectModel }) {
       }
       const desired = press.start + delta;
       const snap = snapOn ? { targets: snapTargets(base, getPlayback().frame, item.id, beats), threshold } : undefined;
-      // Past the top or bottom lane: onto a new track there (D122).
-      const side = laneHit(ev.clientY).side;
-      const p = side ? planMoveToNewTrack(base, item.id, side, desired, snap) : planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
+      // Past the top or bottom lane: onto a new track there (D122). Onto a lane that can't take it
+      // (a clip from Main onto a text track): a new track next to that lane (F6, D149).
+      const hit = laneHit(ev.clientY);
+      const side = hit.side;
+      const between = !side && hit.track && hit.track.id !== placed.track.id ? newTrackIndexOver(base, placed.item, hit.track) : undefined;
+      const lanesTop = lanesRef.current?.getBoundingClientRect().top ?? 0;
+      const laneRect = (id: string) => laneEls().find((l) => l.dataset.track === id)?.getBoundingClientRect();
+      const lineY = (): number => {
+        const lanes = laneEls();
+        if (side === "top") return (lanes[0]?.getBoundingClientRect().top ?? lanesTop) - lanesTop;
+        if (side === "bottom") return (lanes.at(-1)?.getBoundingClientRect().bottom ?? lanesTop) - lanesTop - 2;
+        const r = laneRect(hit.track!.id);
+        return r ? (placed.item.type === "text" ? r.top : r.bottom) - lanesTop - 1 : 0;
+      };
+      const p = side ? planMoveToNewTrack(base, item.id, side, desired, snap) : between !== undefined ? planMoveToNewTrack(base, item.id, { index: between }, desired, snap) : planMove(base, item.id, laneAt(ev.clientY, item) ?? placed.track.id, desired, snap);
+      const newTrack = side || between !== undefined ? { side: side ?? ("between" as const), y: lineY() } : undefined;
       if ("problem" in p) return setDrag({ itemId: item.id, mode: "move", view: base, refused: p.problem, tipAt: Math.max(0, desired), tip: p.problem });
       const draft = draftOf(base, p.ops);
       if (!("problem" in draft)) plan = p;
@@ -348,11 +370,11 @@ export function Timeline({ project }: { project: ProjectModel }) {
         itemId: item.id,
         mode: "move",
         view: "problem" in draft ? base : draft.project,
-        ...(side ? { newTrack: side } : { float: { track: p.track, start: Math.max(0, desired) } }),
+        ...(newTrack ? { newTrack } : { float: { track: p.track, start: Math.max(0, desired) } }),
         ...(p.snapAt !== undefined ? { snapAt: p.snapAt } : {}),
         ...("problem" in draft ? { refused: draft.problem } : {}),
         tipAt: Math.max(0, desired),
-        tip: "problem" in draft ? draft.problem : side ? `New track, ${frameTimecode(p.start ?? 0, fps)}` : p.start !== undefined ? frameTimecode(p.start, fps) : `Position ${p.index! + 1}`,
+        tip: "problem" in draft ? draft.problem : newTrack ? `New track, ${frameTimecode(p.start ?? 0, fps)}` : p.start !== undefined ? frameTimecode(p.start, fps) : `Position ${p.index! + 1}`,
       });
     };
     const move = (ev: PointerEvent) => {
@@ -386,7 +408,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
     const up = (ev: PointerEvent) => {
       stop();
       // A click on one of several selected items selects just it.
-      if (!active) return toggle ? toggleIt() : grouped ? playback.select(item.id) : undefined;
+      if (!active) return toggle ? toggleIt() : grouped ? (mates.length > 1 ? playback.selectMany(mates) : playback.select(item.id)) : undefined;
       // Another project opened meanwhile: the drag belonged to the old one.
       const now = getState().snapshot;
       if (!now || now.dir !== origin.dir) return setDrag(undefined);
@@ -509,16 +531,19 @@ export function Timeline({ project }: { project: ProjectModel }) {
    * Press on empty timeline (T8): a click moves the playhead there and clears the selection; a drag
    * draws a marquee and selects every item it touches (with ⇧ or ⌘, added to the selection).
    */
-  const onEmptyDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || e.target !== e.currentTarget) return;
+  const onEmptyDown = (e: React.PointerEvent, fromHeads = false) => {
+    if (e.button !== 0) return;
+    // From the track heads (F12): anywhere but their buttons, fields and sliders; the marquee starts at the lanes' visible left edge.
+    if (fromHeads ? (e.target as HTMLElement).closest("button, input, select, textarea, .track-volume") : e.target !== e.currentTarget) return;
     e.preventDefault();
     const lanes = lanesRef.current;
     if (!lanes) return;
     const keep = e.shiftKey || e.metaKey ? selectionIds() : [];
     const r0 = lanes.getBoundingClientRect();
-    const start = { x: e.clientX - r0.left, y: e.clientY - r0.top };
+    const headsRight = (e.currentTarget as HTMLElement).getBoundingClientRect().right;
+    const start = { x: fromHeads ? Math.max(0, headsRight - r0.left) : e.clientX - r0.left, y: e.clientY - r0.top };
     let active = false;
-    if (!keep.length) {
+    if (!keep.length && !fromHeads) {
       playback.pause();
       playback.select(undefined);
       const frame = frameAt(e.clientX);
@@ -564,6 +589,24 @@ export function Timeline({ project }: { project: ProjectModel }) {
     for (const c of cuts) if (Math.abs(c.frame - f) * ppf <= CUT_DROP_PX && (!best || Math.abs(c.frame - f) < Math.abs(best.frame - f))) best = c;
     return best;
   };
+  // A transition tile dragged with the pointer (F16, D154): the cut under it while it's over the
+  // lanes, and on release over them, the transition goes there.
+  const tilePointer = useTilePointer();
+  const overLanes = (x: number, y: number) => {
+    const r = lanesRef.current?.getBoundingClientRect();
+    const body = bodyRef.current?.getBoundingClientRect();
+    return !!r && !!body && x >= Math.max(r.left, body.left + HEAD_WIDTH) && x <= Math.min(r.right, body.right) && y >= body.top && y <= body.bottom;
+  };
+  const pointerCut = transitionDragged && tilePointer && overLanes(tilePointer.x, tilePointer.y) ? cutNear(tilePointer.x)?.item.id : undefined;
+  useEffect(() =>
+    onTransitionDrop((module, x, y) => {
+      if (!online || !overLanes(x, y)) return false;
+      const cut = cutNear(x);
+      if (!cut) return false;
+      void actions.applyTransition(module, { cut: cut.item.id });
+      return true;
+    }),
+  );
   /** The timeline item under a pointer (an Effects tile dropped there goes on it, D136). */
   const itemAt = (x: number, y: number) => document.elementsFromPoint(x, y).find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.testid === "timeline-item")?.dataset.item;
   const onDragOver = (e: React.DragEvent) => {
@@ -662,7 +705,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
     openMenu(e.clientX, e.clientY, emptyMenu(project, Math.max(0, Math.round(frameAt(e.clientX))), track, online), "Timeline");
   };
 
-  const newTrackY = drag?.newTrack ? (drag.newTrack === "top" ? 44 : (lanesRef.current?.scrollHeight ?? 0) - 2) : undefined;
+  const newTrackY = drag?.newTrack?.y;
 
   return (
     <section className="bottom">
@@ -691,6 +734,15 @@ export function Timeline({ project }: { project: ProjectModel }) {
         >
           <Magnet />
         </button>
+        <button
+          className={`icon-btn ${linkOverlays ? "on" : ""}`}
+          data-testid="link-overlays"
+          aria-pressed={linkOverlays}
+          title={linkOverlays ? "Overlays follow the footage under them when a main clip's speed or length changes" : "Overlays stay put when main clips change"}
+          onClick={playback.toggleLinkOverlays}
+        >
+          <Link2 />
+        </button>
         <div className="toolbar-sep" />
         <button className="icon-btn" data-testid="zoom-out" title="Zoom out (⌘−)" onClick={playback.zoomOut}>
           <ZoomOut />
@@ -704,7 +756,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
       </div>
       <div className="bottom-body" ref={bodyRef}>
         <div className="tl" data-testid="timeline" data-ppf={ppf} data-zoom={zoom} style={{ ["--tl-view-h" as string]: `${viewHeight}px` }}>
-          <div className="tl-heads">
+          <div className="tl-heads" data-testid="track-heads" onPointerDown={(e) => onEmptyDown(e, true)}>
             <div className="tl-corner" />
             {tracks.map((track) => (
               <TrackHead
@@ -736,7 +788,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
               setDropSpan(undefined);
             }}
             onDrop={onDrop}
-            onPointerDown={onEmptyDown}
+            onPointerDown={(e) => onEmptyDown(e)}
             onContextMenu={(e) => onEmptyMenu(e)}
           >
             <div className="tl-ruler" data-testid="ruler" onPointerDown={scrub}>
@@ -769,7 +821,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                   className={`tl-lane ${track.role === "main" ? "main" : ""} ${track.hidden ? "hidden" : ""} ${track.locked ? "locked" : ""} ${dropLane === track.id ? "drop-target" : ""}`}
                   data-testid="lane"
                   data-track={track.id}
-                  onPointerDown={onEmptyDown}
+                  onPointerDown={(e) => onEmptyDown(e)}
                   onContextMenu={(e) => onEmptyMenu(e, track)}
                 >
                   {items.map((item) => {
@@ -813,7 +865,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                       fps={fps}
                       selectedCut={selectedCut}
                       transitionDragged={transitionDragged}
-                      dropCut={dropCut}
+                      dropCut={dropCut ?? pointerCut}
                       resizing={drag?.mode === "transition" ? { id: drag.itemId.slice(3), refused: !!drag.refused } : undefined}
                       editable={editable}
                       onTransitionDown={onTransitionDown}
@@ -829,7 +881,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
                 </div>
               );
             })}
-            {newTrackY !== undefined && <div className="tl-newtrack" data-testid="new-track-line" data-side={drag?.newTrack} style={{ top: newTrackY }} />}
+            {newTrackY !== undefined && <div className="tl-newtrack" data-testid="new-track-line" data-side={drag?.newTrack?.side} style={{ top: newTrackY }} />}
             {marquee && (
               <div
                 className="marquee"

@@ -9,7 +9,8 @@ import { transcriptStore } from "../panels/transcript.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { actions, getState, isTextEntry, projectOf } from "../state/store.ts";
 import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "../timeline/clipboard.ts";
-import { findItem } from "../timeline/edit.ts";
+import { nearbyKey } from "../timeline/clip.ts";
+import { findItem, withGroups } from "../timeline/edit.ts";
 
 export interface Shortcut {
   readonly keys: ReadonlyArray<string>;
@@ -24,10 +25,11 @@ export const SHORTCUTS: ReadonlyArray<Shortcut> = [
   { group: "Playback", keys: ["⇧←", "⇧→"], does: "One second back or forward" },
   { group: "Playback", keys: ["Home", "End"], does: "Go to the start or the end" },
   { group: "Playback", keys: ["↑", "↓"], does: "Previous or next edit" },
+  { group: "Playback", keys: ["[", "]"], does: "Previous or next keyframe (of the selection, else of any item)" },
   { group: "Playback", keys: ["I", "O"], does: "Mark in or out at the playhead" },
   { group: "Edit", keys: ["S", "⌘B"], does: "Split at the playhead" },
   { group: "Edit", keys: ["⌫", "Delete"], does: "Delete the selection" },
-  { group: "Edit", keys: ["⇧⌫"], does: "Ripple delete: delete and close the gap" },
+  { group: "Edit", keys: ["⇧⌫", "⇧Delete"], does: "Ripple delete: delete and close the gap" },
   { group: "Edit", keys: ["⌘A"], does: "Select everything on the timeline" },
   { group: "Edit", keys: ["⌘C", "⌘X", "⌘V"], does: "Copy, cut, paste at the playhead" },
   { group: "Edit", keys: ["⌘D"], does: "Duplicate the selection" },
@@ -76,8 +78,9 @@ export async function paste(at = getPlayback().frame) {
 
 /** ⌫ / ⌘X: delete the selection (several items in one edit). */
 export async function deleteSelection() {
-  const ids = selection();
   const snapshot = getState().snapshot;
+  // D157: a group goes as a whole.
+  const ids = snapshot ? withGroups(projectOf(snapshot), selection()) : selection();
   if (ids.length > 1 && snapshot) {
     if (await actions.timelineEdit(planDeleteMany(projectOf(snapshot), ids))) playback.select(undefined);
   } else await actions.deleteSelected();
@@ -96,6 +99,8 @@ export async function duplicate() {
   const plan = planPaste(project, copied, end);
   if (await actions.timelineEdit(plan)) playback.selectMany("ids" in plan ? plan.ids : []);
 }
+
+const SHIFT_KEYS = new Set(["ArrowLeft", "ArrowRight", "?", "+", "Backspace", "Delete"]);
 
 export function useEditorKeys(fps: number) {
   useEffect(() => {
@@ -134,7 +139,8 @@ export function useEditorKeys(fps: number) {
         if (!e.repeat) playback.toggle();
         return;
       }
-      if (e.shiftKey && e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "?" && e.key !== "+") return;
+      // ⇧ only changes these keys (⇧⌫ / ⇧Delete: ripple delete); with any other key it does nothing.
+      if (e.shiftKey && !SHIFT_KEYS.has(e.key)) return;
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       const snapshot = s().snapshot;
       if (key === "ArrowLeft") (playback.step(e.shiftKey ? -fps : -1), done());
@@ -142,6 +148,10 @@ export function useEditorKeys(fps: number) {
       else if (key === "ArrowUp" || key === "ArrowDown") {
         done();
         const to = snapshot && nextEditPoint(projectOf(snapshot), getPlayback().frame, key === "ArrowUp" ? -1 : 1);
+        if (to !== undefined && to !== null) (playback.pause(), playback.seek(to));
+      } else if (key === "[" || key === "]") {
+        done();
+        const to = snapshot && nearbyKey(projectOf(snapshot), getPlayback().frame, key === "[" ? -1 : 1, selection());
         if (to !== undefined && to !== null) (playback.pause(), playback.seek(to));
       } else if (key === "Home") (playback.toStart(), done());
       else if (key === "End") (playback.toEnd(), done());
@@ -159,7 +169,7 @@ export function useEditorKeys(fps: number) {
         done();
         // In the Transcript panel ⌫ cuts the selected words (D69), never the timeline item it doesn't show.
         // The Mixer (D83) shows no selection, so ⌫ there deletes nothing.
-        if (!e.repeat && bottom !== "mixer") void (bottom === "transcript" ? cutSelectedWords() : e.shiftKey ? actions.rippleDelete(selection()) : deleteSelection());
+        if (!e.repeat && bottom !== "mixer") void (bottom === "transcript" ? cutSelectedWords() : e.shiftKey ? actions.rippleDelete(s().snapshot ? withGroups(projectOf(s().snapshot!), selection()) : selection()) : deleteSelection());
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {

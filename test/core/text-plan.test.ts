@@ -138,19 +138,22 @@ test("backgrounds: a title card on main, under the selected text, or on a free v
   // Nothing selected, playhead at main's end: appended there, 3 s.
   p = apply(p, planAddBackground(p, { color: "bg" }, 90, undefined));
   assert.deepEqual(p.tracks.find((t) => t.role === "main")!.items.map((i) => [i.id, i.duration]), [["background-1", 90], ["background-2", 90]]);
-  // Over footage at frame 60: a new Background track right above main (below the text).
+  // Over footage at frame 60 (D146): the whole edit, on a new Background track right below main.
   const over = planAddBackground(withFootage, { color: "#000000", to: "#3B1E54", angle: 160 }, 60, undefined);
   p = apply(withFootage, over);
-  assert.deepEqual(p.tracks.map((t) => t.id), ["text", "background-track-1", "main", "audio"]);
-  assert.deepEqual(itemIn(p, "background-1"), { id: "background-1", type: "component", component: "component.solid", duration: 90, props: { color: "#000000", to: "#3B1E54", angle: 160 }, start: 60 });
-  // In the preview's order it is drawn above the footage and below the text.
+  assert.deepEqual(p.tracks.map((t) => t.id), ["text", "main", "background-track-1", "audio"]);
+  assert.deepEqual(itemIn(p, "background-1"), { id: "background-1", type: "component", component: "component.solid", duration: 300, props: { color: "#000000", to: "#3B1E54", angle: 160 }, start: 0 });
+  // In the preview's order it is drawn under the footage (and the text).
   const { starts } = layout(p);
-  assert.deepEqual(visualsAt(p, starts, 70).map((v) => v.item.id), ["clip-1", "background-1", "title-1"]);
-  // Again at a free time on that track: reused, no new track.
+  assert.deepEqual(visualsAt(p, starts, 70).map((v) => v.item.id), ["background-1", "clip-1", "title-1"]);
+  // Again over the footage: that track is taken for the whole edit, so a second one below main.
   const again = planAddBackground(p, { color: "#FFFFFF" }, 200, undefined);
   p = apply(p, again);
-  assert.equal(p.tracks.length, 4);
-  assert.equal(p.tracks[1]!.items.length, 2);
+  assert.deepEqual(p.tracks.map((t) => [t.id, t.name]), [["text", "Text"], ["main", "Main"], ["background-track-2", "Background 2"], ["background-track-1", "Background"], ["audio", "Audio"]]);
+  assert.equal(itemIn(p, "background-2").start, 0);
+  // Past the footage (frame 320 of a 300-frame edit): from there, 3 s, on the free track below main.
+  const tail = apply(withFootage, planAddBackground(withFootage, { color: "#FFFFFF" }, 320, undefined));
+  assert.deepEqual([itemIn(tail, "background-1").start, itemIn(tail, "background-1").duration], [320, 90]);
   // Colours: gradient on and off.
   p = apply(p, planBackground(p, "background-2", { to: "#3B1E54", angle: 90 }));
   assert.deepEqual(itemIn(p, "background-2").props, { color: "#FFFFFF", to: "#3B1E54", angle: 90 });
@@ -212,15 +215,15 @@ test("animations don't fight a main-track transition: the transition blends, no 
   assert.equal(animationAt({ duration: 30, animation: { in: { module: "move.rise", duration: 10 } } }, -5, empty.canvas).opacity, 0);
 });
 
-test("backgrounds never land above a text track; labels say what they are; text presets use core's looks", () => {
+test("backgrounds never land above main (D146); labels say what they are; text presets use core's looks", () => {
   const layered: Project = {
     ...withFootage,
     tracks: [{ id: "overlay", kind: "video", name: "Overlay", items: [] }, withFootage.tracks[0]!, withFootage.tracks[1]!, withFootage.tracks[2]!],
   };
   const p = apply(layered, planAddBackground(layered, { color: "#000000" }, 60, undefined));
-  assert.deepEqual(p.tracks.map((t) => t.id), ["overlay", "text", "background-track-1", "main", "audio"], "a new track under the text, not the free overlay above it");
+  assert.deepEqual(p.tracks.map((t) => t.id), ["overlay", "text", "main", "background-track-1", "audio"], "a new track under main, not the free overlay above it");
   const { starts } = layout(p);
-  assert.deepEqual(visualsAt(p, starts, 70).map((v) => v.item.id), ["clip-1", "background-1", "title-1"]);
+  assert.deepEqual(visualsAt(p, starts, 70).map((v) => v.item.id), ["background-1", "clip-1", "title-1"]);
   const bg = itemIn(p, "background-1");
   assert.equal(itemLabel(p, bg), "Background #000000");
   assert.equal(itemLabel(p, { ...bg, props: { color: "bg", to: "#3B1E54" } }), "Gradient bg → #3B1E54");

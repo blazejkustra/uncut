@@ -123,7 +123,9 @@ export function planInsertText(project: Pick<Project, "canvas" | "theme" | "trac
   const trackId = place();
   const itemId = req.id ?? freeId(project, req.idBase ?? (Object.hasOwn(TEXT_STYLES, req.look) ? req.look.replace(/^text\./, "") : req.look.split(".").at(-1)!), taken);
   taken.add(itemId);
-  const item: Item = { id: itemId, type: "text", start, duration, text: req.text ?? look.text, transform, style: style as Item["style"], ...(animation ? { animation } : {}) };
+  // D157: a look with companions (a kicker over a title) makes one group: they move, trim and delete together.
+  const group = !req.alone && look.with?.some((w) => lookOf(w.look)) ? `group-${itemId}` : undefined;
+  const item: Item = { id: itemId, type: "text", start, duration, text: req.text ?? look.text, transform, style: style as Item["style"], ...(animation ? { animation } : {}), ...(group ? { group } : {}) };
   ops.push({ op: "insert_item", track: trackId, item } as Op);
   const itemIds = [itemId];
   if (!req.alone) {
@@ -135,7 +137,7 @@ export function planInsertText(project: Pick<Project, "canvas" | "theme" | "trac
       taken.add(id);
       const y = Math.round(transform.y + (extra.dy ?? 0) * project.canvas.height);
       const t = other.span ? { ...fields.transform, y } : { ...fields.transform, x: transform.x, y };
-      const companion: Item = { id, type: "text", start, duration, text: extra.text, transform: t, style: fields.style as Item["style"], ...(animation ? { animation } : req.animation !== null && fields.animation ? { animation: fields.animation } : {}) };
+      const companion: Item = { id, type: "text", start, duration, text: extra.text, transform: t, style: fields.style as Item["style"], ...(animation ? { animation } : req.animation !== null && fields.animation ? { animation: fields.animation } : {}), ...(group ? { group } : {}) };
       ops.push({ op: "insert_item", track: place(), item: companion } as Op);
       itemIds.push(id);
     }

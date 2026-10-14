@@ -13,7 +13,7 @@ import { Prop, Section, SliderNum } from "./controls.tsx";
 import { send, showDraft, type PlanResult } from "./fields.tsx";
 
 /** A slider that drafts while it moves and sends one edit on release. */
-function Live({ project, value, min, max, step, unit, testId, disabled, plan }: { project: ProjectModel; value: number; min: number; max: number; step: number; unit?: string; testId: string; disabled: boolean; plan: (p: ProjectModel, v: number) => PlanResult }) {
+export function Live({ project, value, min, max, step, unit, testId, disabled, plan }: { project: ProjectModel; value: number; min: number; max: number; step: number; unit?: string; testId: string; disabled: boolean; plan: (p: ProjectModel, v: number) => PlanResult }) {
   const draft = useRef<PreviewDraft | undefined>(undefined);
   return (
     <SliderNum

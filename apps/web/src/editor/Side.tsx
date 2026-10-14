@@ -16,6 +16,7 @@ import { BackgroundEditor } from "../inspector/background.tsx";
 import { CaptionsEditor } from "../inspector/captions.tsx";
 import { ClipBoxEditor } from "../inspector/clip.tsx";
 import { EffectsEditor } from "../inspector/effects.tsx";
+import { MultiInspector } from "../inspector/multi.tsx";
 import { fxSkips } from "@uncut/core/fx";
 import { TextEditor } from "../inspector/text.tsx";
 import { TransitionInspector } from "../inspector/transition.tsx";
@@ -29,7 +30,13 @@ import { findItem } from "../timeline/edit.ts";
 
 export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
   const [tab, setTab] = useState<"inspector" | "agent" | "history">("inspector");
-  const selected = findItem(project, usePlayback((s) => s.selected));
+  const selectedId = usePlayback((s) => s.selected);
+  const also = usePlayback((s) => s.also);
+  const selected = findItem(project, selectedId);
+  // F2 (D147): several items selected: what they share, edited on all of them at once.
+  // Texts only keep the text Inspector, which already restyles every selected text at once (X3).
+  const picked = selected ? [selected.item.id, ...also.filter((id) => findItem(project, id))] : [];
+  const many = picked.every((id) => findItem(project, id)?.item.type === "text") ? [] : picked;
   // A selected cut (D73): only while the clip after it is still on the main track, after another clip.
   const cutId = usePlayback((s) => s.cut);
   const cut = findItem(project, cutId);
@@ -62,6 +69,8 @@ export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot;
       <div className="side-body">
         {tab === "inspector" && cutPlaced ? (
           <TransitionInspector key={cutPlaced.item.id} project={project} placed={cutPlaced} online={online} />
+        ) : tab === "inspector" && many.length > 1 ? (
+          <MultiInspector project={project} ids={many} />
         ) : tab === "inspector" && selected ? (
           <ItemInspector key={selected.item.id} project={project} placed={selected} />
         ) : tab === "inspector" ? (
