@@ -6,7 +6,7 @@ import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
+import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
 import { MUSIC_TRACKS } from "@uncut/core/music";
 import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
@@ -38,6 +38,10 @@ const TYPES: Record<string, string> = {
   ".aif": "audio/aiff",
   ".aiff": "audio/aiff",
   ".flac": "audio/flac",
+  ".ogg": "audio/ogg",
+  ".oga": "audio/ogg",
+  ".opus": "audio/ogg",
+  ".caf": "audio/x-caf",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -223,6 +227,21 @@ export const layer = Layer.unwrap(
           const sound = SFX_SOUNDS.find((s) => s.file === file);
           if (!sound) return notFound();
           return yield* serveFile(request, join(config.sfxDir, sound.file));
+        }),
+      ),
+      // A file of the user's sound folders (D208), for the Folders view's preview: only a file the
+      // folder's index lists, still inside the folder (the id is all the client names).
+      HttpRouter.add(
+        "GET",
+        `${LIBRARY_FOLDER_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const id = decode(url.pathname.slice(LIBRARY_FOLDER_PATH.length + 1)) ?? "";
+          const found = yield* Effect.promise(() => sounds.folders.resolve(id).catch(() => undefined));
+          if (!found) return notFound();
+          return yield* serveFile(request, found.path);
         }),
       ),
       // An online library hit's preview (D134): streamed through from the file URL its search gave

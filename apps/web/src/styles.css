@@ -1024,6 +1024,14 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .lib-wave i { flex: 1; min-width: 1px; background: var(--border-strong); border-radius: 1px; }
 .lib-wave i.on { background: var(--select); }
 .lib-notice { font-size: 11px; color: var(--dim); }
+/* D208: why the results are sound-alikes, or what was searched instead; the Folders view. */
+.lib-alias { padding: 6px 8px; border-radius: var(--radius-sm); background: var(--select-soft); color: var(--muted); line-height: 1.4; }
+.lib-filters .btn svg.lucide { width: 13px; height: 13px; margin-right: 4px; vertical-align: -2px; }
+.folder-chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 2px 0 8px; }
+.folder-chip button { color: inherit; font-size: 11px; height: 20px; }
+.folder-chip-remove { display: inline-flex; align-items: center; padding: 0 4px; }
+.folder-chip-remove svg.lucide { width: 11px; height: 11px; }
+.folder-chip[data-missing="true"] { opacity: 0.6; }
 .lib-notice a { color: var(--muted); }
 .music-licence { margin: 4px 0 0; font-size: 11px; color: var(--dim); line-height: 1.45; }
 

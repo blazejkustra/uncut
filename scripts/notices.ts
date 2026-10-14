@@ -126,11 +126,13 @@ export function render(): string {
     s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
   }
 
-  const sfx = readJson(join(ROOT, "assets/sfx/library.json")) as { sounds: Array<{ file: string; title: string; author: string; source: string; license: string; licenseChecked?: string; trimmed?: string }> };
+  const sfx = readJson(join(ROOT, "assets/sfx/library.json")) as { sounds: Array<{ file: string; title: string; author: string; provider?: string; source: string; sourceFile?: string; license: string; licenseChecked?: string; licenseProof?: string; trimmed?: string }> };
   s += section("Sound effects (CC0 1.0, public domain)");
-  s += "Shipped in Resources/sfx. Each sound's licence was checked on its Freesound page.\n\n";
+  s += "Shipped in Resources/sfx (D134, D208): sounds from Freesound (each sound's page links the CC0 1.0\n";
+  s += "deed) and from Kenney's packs (kenney.nl; each pack's License.txt says Creative Commons Zero, CC0),\n";
+  s += "checked when the pack was made by scripts/make-sfx.ts. Credit isn't required; thanks to every author.\n\n";
   for (const t of sfx.sounds) {
-    s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
+    s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}${t.sourceFile ? ` (${t.sourceFile} in the pack)` : ""}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
   }
 
   // Vendored graphic libraries (D193): three.js; Uncut's own (confetti, globe, spring, random) need no notice.

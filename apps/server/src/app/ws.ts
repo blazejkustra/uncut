@@ -102,6 +102,10 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         const added = yield* sounds.add(id, open.dir);
         return { path: added.path, seconds: added.seconds, name: added.name, source: { ...added.source } as Record<string, unknown> };
       }),
+    // D208: the user's sound folders.
+    [RPC_METHODS.libraryFolders]: ({ rescan }) => sounds.folders.list(rescan),
+    [RPC_METHODS.libraryFolderAdd]: ({ path }) => sounds.folders.add(path),
+    [RPC_METHODS.libraryFolderRemove]: ({ id }) => sounds.folders.remove(id),
     [RPC_METHODS.setupCheck]: () => setup.check,
     [RPC_METHODS.setupState]: () => Effect.map(settings.onboarded, (onboarded) => ({ onboarded })),
     [RPC_METHODS.setupComplete]: () => settings.setOnboarded,

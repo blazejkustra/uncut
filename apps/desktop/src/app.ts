@@ -255,6 +255,16 @@ async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
     });
     return picked.canceled ? null : (picked.filePaths[0] ?? null);
   }
+  if (purpose === "sounds") {
+    const picked = await dialog.showOpenDialog(win, {
+      title: "Add a sound folder",
+      buttonLabel: "Add",
+      message: "Its sound files appear in the Folders view. Nothing is copied until you add a sound to a project.",
+      defaultPath: app.getPath("home"),
+      properties: ["openDirectory"],
+    });
+    return picked.canceled ? null : (picked.filePaths[0] ?? null);
+  }
   const result = await dialog.showOpenDialog(win, {
     title: purpose === "parent" ? "Choose where to save the project" : purpose === "plugin" ? "Add a plugin" : "Open a project",
     buttonLabel: purpose === "parent" ? "Choose" : purpose === "plugin" ? "Add" : "Open",

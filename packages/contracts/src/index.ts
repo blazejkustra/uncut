@@ -26,6 +26,9 @@ export const RPC_METHODS = {
   librarySearch: "library.search",
   libraryAdd: "library.add",
   libraryState: "library.state",
+  libraryFolders: "library.folders",
+  libraryFolderAdd: "library.folderAdd",
+  libraryFolderRemove: "library.folderRemove",
   setupCheck: "setup.check",
   setupState: "setup.state",
   setupComplete: "setup.complete",
@@ -288,6 +291,9 @@ export const SFX_FILE_PATH = "/media/sfx";
 // GET /library/preview/<source>/<id>?token=…: an online library hit's preview (D134), streamed
 // through the server from the URL its search gave (only hits of a recent search), never saved.
 export const LIBRARY_PREVIEW_PATH = "/library/preview";
+// GET /library/folder/<sound id>?token=…: a file of one of the user's sound folders (D208), for the
+// Folders view's preview; only files the folder's index lists, inside the folder.
+export const LIBRARY_FOLDER_PATH = "/library/folder";
 export interface Waveform {
   readonly version: 1;
   /** Peaks per second. */
@@ -1206,6 +1212,11 @@ export const LibrarySearchResult = Schema.Struct({
   limit: Schema.optional(LibraryLimit),
   // Searches left before the source's limit, when it says (Openverse's headers).
   left: Schema.optional(Schema.Struct({ minute: Schema.optional(Schema.Number), day: Schema.optional(Schema.Number) })),
+  // D208: what went online when it isn't the words typed (a meme name's search, or a variant tried
+  // after nothing was found), and why (a clip nobody may give away: free sound-alikes).
+  searched: Schema.optional(Schema.String),
+  alias: Schema.optional(Schema.String),
+  note: Schema.optional(Schema.String),
 });
 export type LibrarySearchResult = typeof LibrarySearchResult.Type;
 
@@ -1246,6 +1257,38 @@ const LibraryAddRpc = Rpc.make(RPC_METHODS.libraryAdd, {
 });
 
 const LibraryStateRpc = Rpc.make(RPC_METHODS.libraryState, { payload: Empty, success: LibraryState });
+
+// ---- the user's sound folders (D208) ----
+
+export const FolderSoundSchema = Schema.Struct({ id: Schema.String, folder: Schema.String, name: Schema.String, rel: Schema.String, ext: Schema.String, bytes: Schema.Number });
+export const SoundFolderSchema = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  name: Schema.String,
+  sounds: Schema.Array(FolderSoundSchema),
+  missing: Schema.optional(Schema.Boolean),
+  truncated: Schema.optional(Schema.Boolean),
+});
+export type SoundFolderInfo = typeof SoundFolderSchema.Type;
+
+// The user's sound folders with their audio files (indexed again when asked with rescan).
+const LibraryFoldersRpc = Rpc.make(RPC_METHODS.libraryFolders, {
+  payload: Schema.Struct({ rescan: Schema.optional(Schema.Boolean) }),
+  success: Schema.Array(SoundFolderSchema),
+  error: LibraryError,
+});
+// Adds a folder (an absolute path; ~ is the home folder): its audio files become a library, referenced until one is added.
+const LibraryFolderAddRpc = Rpc.make(RPC_METHODS.libraryFolderAdd, {
+  payload: Schema.Struct({ path: Schema.String }),
+  success: Schema.Array(SoundFolderSchema),
+  error: LibraryError,
+});
+// Forgets a folder (its files stay where they are).
+const LibraryFolderRemoveRpc = Rpc.make(RPC_METHODS.libraryFolderRemove, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Array(SoundFolderSchema),
+  error: LibraryError,
+});
 
 // Recent import jobs, now and on every change.
 const MediaJobsRpc = Rpc.make(RPC_METHODS.mediaJobs, { payload: Empty, success: Schema.Array(ImportJob), stream: true });
@@ -1548,6 +1591,9 @@ export const WsRpcGroup = RpcGroup.make(
   LibrarySearchRpc,
   LibraryAddRpc,
   LibraryStateRpc,
+  LibraryFoldersRpc,
+  LibraryFolderAddRpc,
+  LibraryFolderRemoveRpc,
   SetupCheckRpc,
   SetupStateRpc,
   SetupCompleteRpc,
