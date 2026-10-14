@@ -137,6 +137,17 @@ function addTrackEntries(project: ProjectModel, off: boolean, near?: Track): Men
 }
 
 /** Right-click on empty timeline (a lane's background or below the tracks) at `frame`. */
+/** D183: right-click on the ruler or the playhead: that moment, or the In/Out range, into the chat. */
+export function rulerMenu(frame: number, marks: { readonly markIn?: number | undefined; readonly markOut?: number | undefined; readonly end: number }): MenuItems {
+  const hasRange = marks.markIn !== undefined || marks.markOut !== undefined;
+  const start = marks.markIn ?? 0;
+  const end = marks.markOut ?? marks.end;
+  return [
+    { id: "add-moment-to-chat", label: "Add this moment to chat", run: () => actions.addMomentToChat(frame) },
+    ...(hasRange ? [{ id: "add-range-to-chat", label: "Add range to chat", disabled: end <= start, run: () => actions.addRangeToChat(start, end) }] : []),
+  ];
+}
+
 export function emptyMenu(project: ProjectModel, frame: number, track: Track | undefined, online: boolean): MenuItems {
   const off = !online;
   const label = track ? itemsLabel(project, track) : undefined;

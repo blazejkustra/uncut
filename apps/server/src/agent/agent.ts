@@ -20,7 +20,7 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_UI_PANELS, AgentError, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
 import { captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
@@ -40,7 +40,7 @@ import type { BeatsResult } from "../analysis/beats.ts";
 import { isLanguage, type TranscriptResult } from "../analysis/transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { checksOut, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { accessLine, bigChange, checksOut, doingLabel, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
 import { Exporter } from "../export/exporter.ts";
@@ -92,7 +92,16 @@ export interface McpResult {
 export interface AgentShape {
   /** The open project's agent now (null: nothing open), then every change. */
   readonly changes: Stream.Stream<AgentState | null>;
-  readonly send: (input: { prompt: string; frame?: number | undefined; selected?: string | undefined; mentions?: ReadonlyArray<AgentMention> | undefined }) => Effect.Effect<{ turnId: string }, AgentError>;
+  readonly send: (input: {
+    prompt: string;
+    frame?: number | undefined;
+    selected?: string | undefined;
+    mentions?: ReadonlyArray<AgentMention> | undefined;
+    model?: string | undefined;
+    effort?: AgentEffort | undefined;
+    access?: AgentAccess | undefined;
+    images?: ReadonlyArray<AgentImage> | undefined;
+  }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;
   /** The user's answer to the running turn's approval card (D99). */
   readonly approve: (id: string, allow: boolean, source?: string) => Effect.Effect<{ readonly accepted: boolean }>;
@@ -117,10 +126,68 @@ export { agentEnv };
 /** The claude binary: UNCUT_CLAUDE (tests, or a custom install), else the first on PATH. */
 export const findClaude = async (env: NodeJS.ProcessEnv = process.env) => env.UNCUT_CLAUDE || (await which("claude", env.PATH ?? ""));
 
+const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+
+/**
+ * D181: thinking summaries need `--thinking-display summarized` in print mode (claude 2.1.299 reads
+ * the showThinkingSummaries setting only in interactive sessions; without the flag Opus sends empty
+ * thinking blocks). A claude that refuses the flag at startup is started again without it, and this
+ * server doesn't pass it again. UNCUT_AGENT_THINKING_DISPLAY overrides the value ("off": never).
+ */
+let thinkingDisplayRefused = false;
+const thinkingDisplay = () => {
+  const asked = process.env.UNCUT_AGENT_THINKING_DISPLAY;
+  if (asked === "off" || thinkingDisplayRefused) return undefined;
+  return asked || "summarized";
+};
+
+/**
+ * The session's command line (D139, D181): no built-in tools and only Uncut's MCP server, none of
+ * the user's own Claude Code settings (--setting-sources "": no hooks, plugins, permissions, MCP
+ * servers or rules from ~/.claude; flag and managed settings still apply), Opus/Sonnet/… and effort
+ * from the composer (D184).
+ */
+export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined }) {
+  const args = [
+    "-p",
+    "--input-format", "stream-json",
+    "--output-format", "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--tools", "",
+    "--strict-mcp-config",
+    "--mcp-config", o.cfg,
+    "--setting-sources", "",
+    "--allowedTools", "mcp__uncut",
+    "--permission-mode", "dontAsk",
+    "--append-system-prompt", SYSTEM_PROMPT,
+  ];
+  if (o.model) args.push("--model", o.model);
+  if (o.effort) args.push("--effort", o.effort);
+  if (o.thinking) args.push("--thinking-display", o.thinking);
+  if (o.resume) args.push("--resume", o.resume);
+  return args;
+}
+
+/**
+ * The session's environment (D41, D181): agentEnv (no API keys, no CLAUDE_CODE_* from outside),
+ * then tool search off (every Uncut tool in the prompt, none deferred), no CLAUDE.md or rules
+ * files and no auto memory. The keychain login is untouched (no --bare, same CLAUDE_CONFIG_DIR).
+ */
+export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
+  ...agentEnv(env),
+  ENABLE_TOOL_SEARCH: "false",
+  CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+});
+
+/** The composer's model choice as claude takes it: one of AGENT_MODELS, else Claude Code's default (or UNCUT_AGENT_MODEL). */
+const modelFor = (asked: string | undefined) => (asked && AGENT_MODELS.some((m) => m.id === asked) ? asked : process.env.UNCUT_AGENT_MODEL || undefined);
+
 // ---- history ----
 
 type StoredTurn = { -readonly [K in keyof Omit<AgentTurn, "undo">]: Omit<AgentTurn, "undo">[K] } & {
-  items: Array<{ kind: "text" | "step" | "thinking"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean }>;
+  items: Array<{ kind: "text" | "step" | "thinking"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean; error?: string; doing?: string }>;
   edits: Array<AgentEdit>;
 };
 
@@ -164,6 +231,11 @@ interface ClaudeSession {
   readonly token: string;
   // The plugin tools it was started with (sorted names): another list needs another session.
   readonly toolsKey: string;
+  // The model and effort it was started with (D184): another choice starts another (with --resume).
+  readonly model: string | undefined;
+  readonly effort: string | undefined;
+  // It was started with --thinking-display (D181).
+  readonly thinking: string | undefined;
   // The --resume it was started with.
   readonly resumed: string | undefined;
   child: ChildProcess | undefined;
@@ -209,6 +281,12 @@ interface Running {
   readonly noteRevision: number;
   // Why the turn was stopped when it wasn't the user's Stop (shown on the card).
   stopReason: string | undefined;
+  // What the agent may do in this turn (D184).
+  readonly access: AgentAccess;
+  // Images to send with the message (D184).
+  readonly images: ReadonlyArray<{ readonly mimeType: string; readonly data: string }>;
+  // A tool call's input as it streams (stream index → JSON so far), for the now line (D182).
+  readonly inputs: Map<number, { at: number; tool: string; json: string; shown: string }>;
 }
 
 const historyFile = (dir: string) => join(dir, "agent", "turns.json");
@@ -224,7 +302,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
   const items = Array.isArray(t.items)
     ? t.items
         .filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step" || i.kind === "thinking") && isString(i.text))
-        .map(({ live: _live, ...i }) => i)
+        .map(({ live: _live, doing: _doing, error, ...i }) => (isString(error) ? { ...i, error } : i))
     : [];
   const edits = Array.isArray(t.edits)
     ? t.edits.filter((e): e is AgentEdit => !!e && typeof e === "object" && typeof e.revision === "number" && isString(e.summary) && Array.isArray(e.lines))
@@ -237,7 +315,9 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     status: interrupted ? "error" : (t.status as StoredTurn["status"]),
     items: items.map((i) => (i.status === "running" ? { ...i, status: "error" as const } : i)),
     edits,
-    ...(Array.isArray(t.mentions) ? { mentions: t.mentions.filter((m): m is { kind: "media" | "item" | "track" | "marker"; label: string } => !!m && typeof m === "object" && isString(m.label) && ["media", "item", "track", "marker"].includes(m.kind)).map((m) => ({ kind: m.kind, label: m.label })) } : {}),
+    ...(Array.isArray(t.mentions) ? { mentions: t.mentions.filter((m): m is { kind: AgentMention["kind"]; label: string } => !!m && typeof m === "object" && isString(m.label) && ["media", "item", "track", "marker", "moment", "range"].includes(m.kind)).map((m) => ({ kind: m.kind, label: m.label })) } : {}),
+    ...(Array.isArray(t.images) ? { images: t.images.filter((x): x is string => isString(x) && AGENT_IMAGE_NAME.test(x)) } : {}),
+    ...(isString(t.model) ? { model: t.model } : {}),
     ...(isString(t.note) ? { note: t.note } : {}),
     ...(isString(t.finishedAt) ? { finishedAt: t.finishedAt } : {}),
     ...(interrupted ? { error: "Interrupted: Uncut stopped while the agent was working." } : isString(t.error) ? { error: t.error } : {}),
@@ -1588,12 +1668,12 @@ export const layer = Layer.effect(
     };
 
     /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string) => void) =>
+    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string) => void, edit?: AgentApproval["edit"]) =>
       Effect.promise(
         () =>
           new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
             const ms = approvalMs();
-            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}) };
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}) };
             let settled = false;
             const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string) => {
               if (settled) return;
@@ -1925,6 +2005,29 @@ export const layer = Layer.effect(
         }
       });
 
+    /**
+     * D184: the turn's access. "look": only the tools that read and look (LOOK_TOOLS) run, the
+     * rest are refused with why; "ask": a big change (bigChange) waits for Allow on a card first;
+     * "edit": everything (spending over $1 still asks, D99). undefined = go ahead.
+     */
+    const allowed = (r: Running, tool: string, input: Record<string, unknown>): Effect.Effect<McpResult | undefined> =>
+      Effect.gen(function* () {
+        if (r.access === "edit") return undefined;
+        if (r.access === "look") {
+          if ((LOOK_TOOLS as ReadonlyArray<string>).includes(tool)) return undefined;
+          return textResult(`Not done: the user set this chat to "Look only", so you can read and look but not change anything (${tool} refused). Say what you would do instead; they can switch to "Edit freely" or "Ask before big changes" in the composer.`, true);
+        }
+        const v = view();
+        const big = v ? bigChange(tool, input, v.session.project as Project) : undefined;
+        if (!big) return undefined;
+        const answer = yield* askUser(r, big.text, 0, undefined, undefined, { lines: big.lines.map((l) => friendlyText(v?.session.project as Project, l)) });
+        if (answer === "allow") return undefined;
+        return textResult(
+          answer === "stopped" ? "The turn was stopped." : `Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${big.text}" (this chat asks before big changes). Don't try it again in this turn; say what you'd change and ask.`,
+          true,
+        );
+      });
+
     // ---- running claude ----
 
     // Live deltas are published together, at most every STREAM_PUBLISH_MS; anything else at once.
@@ -1958,6 +2061,7 @@ export const layer = Layer.effect(
       for (const item of r.turn.items) {
         if (item.status === "running") item.status = ok ? "done" : "error";
         delete item.live;
+        delete item.doing;
       }
       // A streamed block that never got any words (whitespace, an empty thinking) isn't shown.
       for (let i = r.turn.items.length - 1; i >= 0; i--) {
@@ -1986,6 +2090,7 @@ export const layer = Layer.effect(
     };
 
     const label = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name));
+    const doing = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, doingLabel(tool, input, plugins.owner(tool)?.name));
 
     /** Live output (D139): a stream_event of the message claude is writing. */
     const onStream = (r: Running, event: Record<string, any>) => {
@@ -1993,6 +2098,7 @@ export const layer = Layer.effect(
       if (event.type === "message_start") {
         r.messageId = isString(event.message?.id) ? event.message.id : `msg-${items.length}`;
         r.blocks = new Map();
+        r.inputs.clear();
         return;
       }
       const index = Number(event.index);
@@ -2010,7 +2116,24 @@ export const layer = Layer.effect(
           // The step shows as soon as claude starts writing the call; its words follow the input.
           const tool = block.name.replace(/^mcp__uncut__/, "");
           r.steps.set(block.id, items.length);
-          items.push({ kind: "step", tool, text: label(tool, {}), status: "running" });
+          r.inputs.set(index, { at: items.length, tool, json: "", shown: "" });
+          items.push({ kind: "step", tool, text: label(tool, {}), status: "running", doing: doing(tool, {}) });
+          publishSoon();
+        }
+        return;
+      }
+      // D182: a call's input streams in (a graphic's HTML takes a while): its name or summary,
+      // once it's there, goes on the now line.
+      if (event.type === "content_block_delta" && event.delta?.type === "input_json_delta") {
+        const input = r.inputs.get(index);
+        if (!input || !isString(event.delta.partial_json) || input.json.length > 400_000) return;
+        input.json += event.delta.partial_json;
+        const item = items[input.at];
+        if (!item || item.status !== "running") return;
+        const now = doing(input.tool, partialFields(input.json));
+        if (now !== input.shown) {
+          input.shown = now;
+          item.doing = now;
           publishSoon();
         }
         return;
@@ -2064,10 +2187,12 @@ export const layer = Layer.effect(
           r.announced.push({ name: tool, args: canonical(c.input ?? {}), used: false });
           const at = r.steps.get(String(c.id));
           const step = at === undefined ? undefined : items[at];
-          if (step) step.text = label(tool, c.input);
-          else {
+          if (step) {
+            step.text = label(tool, c.input);
+            if (step.status === "running") step.doing = doing(tool, c.input);
+          } else {
             r.steps.set(String(c.id), items.length);
-            items.push({ kind: "step", tool, text: label(tool, c.input), status: "running" });
+            items.push({ kind: "step", tool, text: label(tool, c.input), status: "running", doing: doing(tool, c.input) });
           }
         }
       }
@@ -2110,7 +2235,15 @@ export const layer = Layer.effect(
           if (c.type !== "tool_result") continue;
           const at = r.steps.get(String(c.tool_use_id));
           const item = at === undefined ? undefined : r.turn.items[at];
-          if (item) item.status = c.is_error ? "error" : "done";
+          if (!item) continue;
+          item.status = c.is_error ? "error" : "done";
+          delete item.doing;
+          // D182: a failed call shows why (the tool's answer, or claude's own "No such tool").
+          if (c.is_error) {
+            const said = isString(c.content) ? c.content : Array.isArray(c.content) ? (c.content as Array<Record<string, unknown>>).filter((x) => x.type === "text" && isString(x.text)).map((x) => x.text as string).join("\n") : "";
+            const why = said.replace(/<\/?tool_use_error>/g, "").trim();
+            item.error = (why.length > 600 ? `${why.slice(0, 597)}...` : why) || "The tool reported an error.";
+          }
         }
         publishNow();
       } else if (msg.type === "result") {
@@ -2134,7 +2267,9 @@ export const layer = Layer.effect(
       r.session = s;
       clearTimeout(s.idleTimer);
       try {
-        s.child!.stdin!.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`);
+        // Attached images (D184) go first, as image content blocks, then the text.
+        const images = r.images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mimeType, data: img.data } }));
+        s.child!.stdin!.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [...images, { type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`);
       } catch (error) {
         closeSession(s, "kill");
         finish(r, { status: "error", error: `Couldn't reach Claude Code: ${(error as Error).message}` });
@@ -2146,7 +2281,7 @@ export const layer = Layer.effect(
      * development, the Electron binary in Node mode in the packaged app (bin.ts took
      * ELECTRON_RUN_AS_NODE out of our environment, so it is set again for this one child).
      */
-    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean): ClaudeSession | string => {
+    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined }): ClaudeSession | string => {
       let dir: string;
       try {
         dir = mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`));
@@ -2157,26 +2292,9 @@ export const layer = Layer.effect(
       const token = randomBytes(24).toString("base64url");
       const resumed = resume ? owner.sessionId : undefined;
       const mcpEntry = process.env.UNCUT_MCP_ENTRY || besideServer("./mcp.mjs");
-      const args = [
-        "-p",
-        "--input-format", "stream-json",
-        "--output-format", "stream-json",
-        "--verbose",
-        "--include-partial-messages",
-        "--tools", "",
-        "--strict-mcp-config",
-        "--mcp-config", cfg,
-        "--allowedTools", "mcp__uncut",
-        "--permission-mode", "dontAsk",
-        "--append-system-prompt", SYSTEM_PROMPT,
-        // Thinking as summaries in the stream, as t3code asks for it (an unknown setting is ignored).
-        "--settings", JSON.stringify({ showThinkingSummaries: true }),
-      ];
-      if (process.env.UNCUT_AGENT_MODEL) args.push("--model", process.env.UNCUT_AGENT_MODEL);
-      // Not in `claude --help` (2.1.299): only when asked for, as an unknown flag stops claude.
-      if (process.env.UNCUT_AGENT_THINKING_DISPLAY) args.push("--thinking-display", process.env.UNCUT_AGENT_THINKING_DISPLAY);
-      if (resumed) args.push("--resume", resumed);
-      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, resumed, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
+      const thinking = thinkingDisplay();
+      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking });
+      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
       try {
         writeFileSync(
           cfg,
@@ -2185,6 +2303,8 @@ export const layer = Layer.effect(
               uncut: {
                 command: process.execPath,
                 args: [mcpEntry],
+                // D181: every Uncut tool in the prompt from the start, never deferred behind tool search.
+                alwaysLoad: true,
                 env: { UNCUT_BRIDGE: bridgeUrl, UNCUT_AGENT_TOKEN: token, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) },
               },
             },
@@ -2192,7 +2312,7 @@ export const layer = Layer.effect(
           { mode: 0o600 },
         );
         // Its own process group, so closing it also stops the MCP server claude started.
-        s.child = spawn(bin, args, { cwd: owner.dir, env: agentEnv(process.env), stdio: ["pipe", "pipe", "pipe"], detached: true });
+        s.child = spawn(bin, args, { cwd: owner.dir, env: sessionEnv(process.env), stdio: ["pipe", "pipe", "pipe"], detached: true });
       } catch (error) {
         rmSync(dir, { recursive: true, force: true });
         return `Couldn't start Claude Code: ${(error as Error).message}`;
@@ -2231,11 +2351,20 @@ export const layer = Layer.effect(
         if (startError) return finish(r, { status: "error", error: `Couldn't start Claude Code (${bin}): ${startError.message}` });
         if (r.cancelled) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
         if (r.turn.error) return finish(r, { status: "error" });
+        // D181: a claude that doesn't take --thinking-display: again without it (and never again here).
+        if (s.thinking && !s.gotInit && /thinking-display/i.test(s.stderr)) {
+          thinkingDisplayRefused = true;
+          console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
+          const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort });
+          if (typeof again === "string") return finish(r, { status: "error", error: again });
+          session = again;
+          return writeTurn(again, r);
+        }
         // A stored session can be gone (another Mac, a cleaned ~/.claude): start a fresh one, once.
         if (s.resumed && !s.gotInit && /no conversation found/i.test(s.stderr)) {
           s.owner.sessionId = undefined;
           persist(s.owner);
-          const fresh = spawnSession(s.owner, bin, s.toolsKey, false);
+          const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort });
           if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });
           session = fresh;
           return writeTurn(fresh, r);
@@ -2252,7 +2381,7 @@ export const layer = Layer.effect(
     /** The plugins' tool names now (D97): a session started with other ones is started again. */
     const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => extra.map((t) => t.name).sort().join(",")));
 
-    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions }) =>
+    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "edit", images = [] }) =>
       Effect.gen(function* () {
         const owner = yield* ensureLoaded;
         if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -2265,6 +2394,10 @@ export const layer = Layer.effect(
         }
         const text = prompt.trim();
         if (!text) return yield* new AgentError({ reason: "failed", message: "Write what you'd like the agent to do." });
+        if (images.length > AGENT_IMAGES_MAX) return yield* new AgentError({ reason: "failed", message: `Attach at most ${AGENT_IMAGES_MAX} images to a message.` });
+        const decoded = images.map((img) => ({ ...img, bytes: Buffer.from(img.data, "base64") }));
+        const tooBig = decoded.find((img) => img.bytes.length > AGENT_IMAGE_MAX || img.bytes.length === 0);
+        if (tooBig) return yield* new AgentError({ reason: "failed", message: `${tooBig.name.slice(0, 80)} is ${tooBig.bytes.length ? "over 5 MB" : "empty"}; attach a smaller image.` });
         // Wait for the login shell's PATH, or a Finder launch would miss ~/.local/bin.
         yield* Effect.promise(() => config.shellReady);
         const bin = yield* Effect.promise(() => findClaude());
@@ -2283,25 +2416,48 @@ export const layer = Layer.effect(
           .filter((m) => text.includes(`@${m.label}`))
           .slice(0, 50)
           .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
-        const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", note].filter(Boolean);
+        const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), note].filter(Boolean);
         const message = [text, contextBlock(project, pointed), context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
 
-        // The session to use: the live one when it's still this opening's with the same tools.
+        // The session to use: the live one when it's still this opening's with the same tools, model
+        // and effort (D184: another choice starts another claude that resumes the conversation).
+        const model = modelFor(askedModel);
         let s = session;
-        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || !s.child || s.child.exitCode !== null)) {
+        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || !s.child || s.child.exitCode !== null)) {
           closeSession(s, "graceful");
           s = undefined;
         }
         if (!s) {
-          const started = spawnSession(owner, bin, toolsKey, true);
+          const started = spawnSession(owner, bin, toolsKey, true, { model, effort });
           if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
           s = session = started;
         }
 
+        const turnId = `turn-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
+        // D184: attached images are kept in .cache/agent-images/ for the card (the cache can be
+        // wiped: the card then shows no thumbnail; claude already has them in its conversation).
+        const imageNames: Array<string> = [];
+        if (decoded.length) {
+          const folder = join(v.dir, ".cache", "agent-images");
+          yield* Effect.promise(async () => {
+            try {
+              await mkdir(folder, { recursive: true });
+              for (const [i, img] of decoded.entries()) {
+                const name = `${turnId}-${i}.${IMAGE_EXT[img.mimeType]}`;
+                await writeFile(join(folder, name), img.bytes);
+                imageNames.push(name);
+              }
+            } catch (error) {
+              console.error(`[uncut] couldn't keep the attached images in ${folder}: ${(error as Error).message}`);
+            }
+          });
+        }
         const turn: StoredTurn = {
-          id: `turn-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`,
+          id: turnId,
           prompt: text,
           ...(pointed.length ? { mentions: pointed.map((m) => ({ kind: m.kind, label: m.label })) } : {}),
+          ...(imageNames.length ? { images: imageNames } : {}),
+          ...(model ? { model } : {}),
           ...(note ? { note } : {}),
           startedAt: new Date().toISOString(),
           status: "running",
@@ -2328,6 +2484,9 @@ export const layer = Layer.effect(
           gen: ++s.gens,
           noteRevision: v.session.revision,
           stopReason: undefined,
+          access,
+          images: decoded.map((img) => ({ mimeType: img.mimeType, data: img.data })),
+          inputs: new Map(),
         };
         running = r;
         persist(owner);
@@ -2398,7 +2557,10 @@ export const layer = Layer.effect(
           const slot = r.announced.find((x) => !x.used && x.name === String(name).replace(/^mcp__uncut__/, "") && x.args === key);
           if (slot) slot.used = true;
           else if (process.env.UNCUT_AGENT_DEBUG) console.error(`[uncut] agent call ${String(name)} wasn't announced in turn ${r.gen}'s stream (run anyway)`);
-          return runTool(r, String(name), input).pipe(Effect.tap(() => Effect.sync(publishNow)));
+          return allowed(r, String(name).replace(/^mcp__uncut__/, ""), input).pipe(
+            Effect.flatMap((refusal) => (refusal ? Effect.succeed(refusal) : runTool(r, String(name), input))),
+            Effect.tap(() => Effect.sync(publishNow)),
+          );
         }),
     });
   }),

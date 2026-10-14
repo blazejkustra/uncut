@@ -2,13 +2,13 @@
 // reply and edit list, "Undo turn", the note about edits made by hand, and the composer. Live: text
 // and thinking stream in, a line says what it's doing now. Names, never ids (AG5). Everything shown
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
-import type { AgentApproval, AgentItem, AgentTurn, SetupCheck } from "@uncut/contracts";
+import { AGENT_MODELS, type AgentApproval, type AgentItem, type AgentTurn, type SetupCheck } from "@uncut/contracts";
 import { friendlyText } from "@uncut/core/mentions";
 import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TriangleAlert, Undo2, X } from "lucide-react";
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer, withChips } from "./Composer.tsx";
-import { actions, getState, useApp, type Project } from "../state/store.ts";
+import { actions, agentImageUrl, getState, useApp, type Project } from "../state/store.ts";
 import { cancelTake, clock, getRecorder, loadSources, refreshAccess, startTake, stopTake, useRecorder } from "../capture/recorder.ts";
 
 /** The project, for names instead of ids in what the cards show (AG5). */
@@ -154,7 +154,7 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
     ) : t.status === "error" ? (
       "Didn't finish"
     ) : (
-      `Claude Code${t.seconds !== undefined ? `, ${Math.max(1, Math.round(t.seconds))} s` : ""}`
+      `${AGENT_MODELS.find((m) => m.id === t.model)?.name ?? "Claude Code"}${t.seconds !== undefined ? `, ${Math.max(1, Math.round(t.seconds))} s` : ""}`
     );
   // D9 / D99: what generators billed to the user's keys cost in this turn (an estimate).
   const spend = t.spend ? (
@@ -165,6 +165,14 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
   const canShowUndo = t.undo.state === "available" || t.undo.state === "blocked" || t.undo.state === "unavailable";
   return (
     <div className="turn-wrap" data-testid="agent-turn" data-turn={t.id} data-status={t.status} data-undo={t.undo.state}>
+      {t.images && t.images.length > 0 && (
+        <div className="msg-images" data-testid="agent-turn-images">
+          {t.images.map((name) => {
+            const src = agentImageUrl(name);
+            return src ? <img key={name} src={src} alt="Attached image" data-testid="agent-turn-image" /> : null;
+          })}
+        </div>
+      )}
       <div className="msg-user" data-testid="agent-prompt">
         {withChips(t.prompt, (t.mentions ?? []).map((m) => m.label))}
       </div>
@@ -248,9 +256,16 @@ function ApprovalCard({ approval, online }: { approval: AgentApproval; online: b
     void actions.agentApprove(approval.id, allow);
   };
   return (
-    <div className="approval" data-testid="agent-approval" data-id={approval.id}>
+    <div className="approval" data-testid="agent-approval" data-kind={approval.edit ? "edit" : "spend"} data-id={approval.id}>
       <div className="approval-text">{approval.text}?</div>
-      <div className="approval-sub">The agent waits for your answer. Billed to your own key; no answer in 2 minutes means no.</div>
+      {approval.edit && approval.edit.lines.length > 0 && (
+        <div className="approval-lines" data-testid="agent-approval-lines">
+          {approval.edit.lines.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      )}
+      <div className="approval-sub">{approval.edit ? "This chat asks before big changes. No answer in 2 minutes means no." : "The agent waits for your answer. Billed to your own key; no answer in 2 minutes means no."}</div>
       <div className="approval-btns">
         <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={() => answer(false)}>
           Don't
@@ -429,6 +444,8 @@ type Group = { kind: "steps"; at: number; items: Array<AgentItem> } | { kind: "o
 function groupItems(items: ReadonlyArray<AgentItem>): Array<Group> {
   const out: Array<Group> = [];
   items.forEach((item, at) => {
+    // Thinking with no words (yet) isn't a row (D182).
+    if (item.kind === "thinking" && !item.text.trim()) return;
     const last = out.at(-1);
     if (item.kind === "step" && last?.kind === "steps") last.items.push(item);
     else if (item.kind === "step") out.push({ kind: "steps", at, items: [item] });
@@ -443,12 +460,12 @@ const StepIcon = ({ status }: { status?: string | undefined }) => (status === "e
 function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {
   const friendly = useFriendly();
   const [open, setOpen] = useState(false);
-  const one = (s: AgentItem, i: number) => (
-    <div key={i} className="step" data-testid="agent-step" data-status={s.status}>
-      <StepIcon status={s.status} />
-      <span>{friendly(s.text)}</span>
-    </div>
-  );
+  const one = (s: AgentItem, i: number) => <Step key={i} step={s} />;
+  // A failed step opens the log, so its ✕ and why are in view (D182).
+  const failedNow = steps.some((s) => s.status === "error");
+  useEffect(() => {
+    if (failedNow) setOpen(true);
+  }, [failedNow]);
   if (steps.length === 1) return <div className="worklog">{one(steps[0]!, 0)}</div>;
   const failed = steps.filter((s) => s.status === "error").length;
   const runningNow = steps.some((s) => s.status === "running");
@@ -459,7 +476,7 @@ function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {
         {open ? <ChevronDown /> : <ChevronRight />}
         <StepIcon status={runningNow ? "running" : failed === steps.length ? "error" : "done"} />
         <span className="ellipsis grow">
-          {friendly(lead.text)}, and {steps.length - 1} more
+          {friendly(lead.status === "running" ? (lead.doing ?? lead.text) : lead.text)}, and {steps.length - 1} more
           {failed ? <span className="worklog-failed">, {failed} didn't work</span> : null}
         </span>
       </button>
@@ -470,10 +487,31 @@ function WorkLog({ steps }: { steps: ReadonlyArray<AgentItem> }) {
   );
 }
 
-/** A thinking summary (D139): folded to one line, opened for all of it; the latest line while it streams. */
+/** One step of the work log; a failed one shows ✕, and a click shows what the tool answered (D182). */
+function Step({ step: s }: { step: AgentItem }) {
+  const friendly = useFriendly();
+  const [why, setWhy] = useState(true);
+  const failed = s.status === "error" && !!s.error;
+  return (
+    <>
+      <div className={`step ${failed ? "failed" : ""}`} data-testid="agent-step" data-status={s.status} title={failed ? (why ? "Hide why" : "Show why") : undefined} onClick={failed ? () => setWhy(!why) : undefined}>
+        <StepIcon status={s.status} />
+        <span>{friendly(s.status === "running" ? (s.doing ?? s.text) : s.text)}</span>
+      </div>
+      {failed && why && (
+        <div className="step-error" data-testid="agent-step-error">
+          {s.error}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A thinking summary (D139): folded to one line, opened for all of it; the latest line while it streams. Empty thinking is never a row (D182): the now line says Thinking. */
 function Thinking({ item }: { item: AgentItem }) {
   const [open, setOpen] = useState(false);
   const lines = item.text.trim().split("\n").filter(Boolean);
+  if (!lines.length) return null;
   return (
     <div className={`thinking ${open ? "open" : ""}`} data-testid="agent-thinking" data-live={item.live ? "true" : undefined}>
       <button className="thinking-head" onClick={() => setOpen(!open)} aria-expanded={open}>
@@ -494,11 +532,11 @@ function NowLine({ turn, waiting }: { turn: AgentTurn; waiting: boolean }) {
   const what = waiting
     ? "Waiting for your answer"
     : step
-      ? friendly(step.text)
-      : last?.kind === "thinking" && last.live
+      ? friendly(step.doing ?? step.text)
+      : last?.kind === "thinking" && (last.live || !last.text.trim())
         ? "Thinking"
         : last?.kind === "text" && last.live
-          ? "Writing"
+          ? "Writing reply"
           : turn.items.length === 0
             ? "Starting Claude Code"
             : "Working";

@@ -234,6 +234,11 @@ export const WAVEFORM_PATH = "/media/waveform";
 // sandboxed iframe: the open project's graphics/<file name>, only if one of its graphic items uses
 // it, wrapped by core graphicDocument and served with its strict CSP (inline script, no network).
 export const GRAPHIC_PATH = "/media/graphic";
+// GET /media/agent-image/<file name>?token=…: an image the user attached to an agent message (U4,
+// D184), kept in the open project's .cache/agent-images/ for the turn card's thumbnails.
+export const AGENT_IMAGE_PATH = "/media/agent-image";
+/** An attached image's file name in .cache/agent-images/: <turn id>-<n>.<ext>. */
+export const AGENT_IMAGE_NAME = /^turn-[a-z0-9]+-[a-f0-9]{6}-\d\.(png|jpg|gif|webp)$/;
 // GET /media/library/<file>?token=…: a track of the bundled music library (D91), for the Audio
 // tab's preview; only the files core MUSIC_TRACKS lists.
 export const MUSIC_FILE_PATH = "/media/library";
@@ -529,8 +534,40 @@ export const AgentItem = Schema.Struct({
   status: Schema.optional(Schema.Literals(["running", "done", "error"])),
   // Still streaming in (D139): text and thinking grow as Claude writes them.
   live: Schema.optional(Schema.Boolean),
+  // A step that failed (D182): what the tool answered, for the work log's ✕ row.
+  error: Schema.optional(Schema.String),
+  // A step while it runs (D182), in the present tense with its target ("Writing graphic s3-enter.html").
+  doing: Schema.optional(Schema.String),
 });
 export type AgentItem = typeof AgentItem.Type;
+
+// ---- the composer's choices (U4, D184) ----
+
+/** The models the composer offers (Claude Code's model ids); none chosen = Claude Code's default. */
+export const AGENT_MODELS = [
+  { id: "claude-opus-5-5", name: "Opus 5.5", detail: "Most capable" },
+  { id: "claude-sonnet-5-5", name: "Sonnet 5.5", detail: "Fast and capable" },
+  { id: "claude-fable-5-1", name: "Fable 5.1", detail: "Creative" },
+  { id: "claude-haiku-5-5", name: "Haiku 5.5", detail: "Fastest" },
+] as const;
+/** --effort levels (claude 2.1.299 also has xhigh; the composer offers these four). */
+export const AGENT_EFFORTS = ["low", "medium", "high", "max"] as const;
+export const AgentEffort = Schema.Literals(AGENT_EFFORTS);
+export type AgentEffort = typeof AgentEffort.Type;
+/**
+ * What the agent may do (D184): look (reads and looks, never changes the project), ask (big
+ * changes wait for Allow on a card: removing things, cutting by transcript, many items at once)
+ * and edit (everything, as before; spending over $1 still asks, D99).
+ */
+export const AGENT_ACCESS = ["look", "ask", "edit"] as const;
+export const AgentAccess = Schema.Literals(AGENT_ACCESS);
+export type AgentAccess = typeof AgentAccess.Type;
+/** An image attached to a message: base64 data, at most AGENT_IMAGE_MAX bytes, AGENT_IMAGES_MAX per message. */
+export const AGENT_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+export const AGENT_IMAGE_MAX = 5 * 1024 * 1024;
+export const AGENT_IMAGES_MAX = 4;
+export const AgentImage = Schema.Struct({ name: Schema.String, mimeType: Schema.Literals(AGENT_IMAGE_TYPES), data: Schema.String });
+export type AgentImage = typeof AgentImage.Type;
 
 /** An edit the agent made in a turn: its summary and every op in words (core describeOp). */
 export const AgentEdit = Schema.Struct({ revision: Schema.Number, summary: Schema.String, lines: Schema.Array(Schema.String) });
@@ -542,7 +579,7 @@ export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "can
  * Something the user pointed at in the composer (D140): an @mention or an "Add to chat" chip. The
  * prompt holds "@label"; the agent gets the label with the real id in a <context> block.
  */
-export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker"]);
+export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker", "moment", "range"]);
 export const AgentMention = Schema.Struct({
   kind: AgentMentionKind,
   id: Schema.String,
@@ -566,6 +603,10 @@ export const AgentTurn = Schema.Struct({
   mentions: Schema.optional(Schema.Array(Schema.Struct({ kind: AgentMentionKind, label: Schema.String }))),
   // The manual-edit note the agent got with this prompt (D6), shown on the card.
   note: Schema.optional(Schema.String),
+  // Images attached to the prompt (D184): file names in the project's .cache/agent-images/.
+  images: Schema.optional(Schema.Array(Schema.String)),
+  // The model it was asked of (a composer choice, D184); absent = Claude Code's default.
+  model: Schema.optional(Schema.String),
   startedAt: Schema.String,
   finishedAt: Schema.optional(Schema.String),
   status: AgentTurnStatus,
@@ -616,6 +657,8 @@ export const AgentApproval = Schema.Struct({
   // window (the agent's `source` preselected by name), Record or Don't. The renderer records and
   // answers with agent.screenTake. Absent: a spend card (D99).
   screen: Schema.optional(Schema.Struct({ source: Schema.optional(Schema.String), seconds: Schema.Number, withMic: Schema.Boolean })),
+  // D184: a big change asked for in "Ask before big changes": what it would do, in words.
+  edit: Schema.optional(Schema.Struct({ lines: Schema.Array(Schema.String) })),
 });
 export type AgentApproval = typeof AgentApproval.Type;
 
@@ -964,6 +1007,11 @@ const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     selected: Schema.optional(Schema.String),
     // @mentions and Add to chat chips (D140, D141).
     mentions: Schema.optional(Schema.Array(AgentMention)),
+    // The composer's choices (D184): a model id (absent: Claude Code's default), effort, access, images.
+    model: Schema.optional(Schema.String),
+    effort: Schema.optional(AgentEffort),
+    access: Schema.optional(AgentAccess),
+    images: Schema.optional(Schema.Array(AgentImage)),
   }),
   success: Schema.Struct({ turnId: Schema.String }),
   error: AgentError,

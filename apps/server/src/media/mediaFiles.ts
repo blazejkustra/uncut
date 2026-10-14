@@ -6,7 +6,7 @@ import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
+import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
 import { MUSIC_TRACKS } from "@uncut/core/music";
 import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
@@ -159,6 +159,20 @@ export const layer = Layer.unwrap(
           const entry = media.find((m) => m.id === id);
           if (!entry || typeof entry.path !== "string") return notFound();
           return yield* serveFile(request, isAbsolute(entry.path) ? entry.path : resolve(open.dir, entry.path));
+        }),
+      ),
+      // D184: an image attached to an agent message, from the open project's .cache/agent-images/.
+      HttpRouter.add(
+        "GET",
+        `${AGENT_IMAGE_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const name = decode(url.pathname.slice(AGENT_IMAGE_PATH.length + 1));
+          const open = yield* projects.current;
+          if (!open || !name || !AGENT_IMAGE_NAME.test(name)) return notFound();
+          return yield* serveFile(request, join(open.dir, ".cache", "agent-images", name));
         }),
       ),
       // The bundled music library (D91), for the Audio tab's preview: only the files it lists.

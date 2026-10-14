@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -20,7 +20,8 @@ import { musicInProject, musicTrack } from "@uncut/core/music";
 import { effectInfo, lookInfo, planEffect, planSetLook, type LookDef } from "@uncut/core/fx";
 import { planForAll } from "../timeline/multi.ts";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
-import { itemName } from "@uncut/core/mentions";
+import { itemName, momentLabel } from "@uncut/core/mentions";
+import { agentPrefs, DEFAULT_AGENT_PREFS } from "./agentPrefs.ts";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
 import { layoutOf, uniqueId, planAddAtPlayhead, planAddLibrarySound, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
@@ -121,7 +122,9 @@ export interface AppStateShape {
   readonly agentDraft: string;
   readonly agentMentions: ReadonlyArray<AgentMention>;
   // A message written while a turn runs: sent when that turn ends.
-  readonly agentQueued?: { readonly prompt: string; readonly mentions: ReadonlyArray<AgentMention> };
+  readonly agentQueued?: { readonly prompt: string; readonly mentions: ReadonlyArray<AgentMention>; readonly images?: ReadonlyArray<AgentImage> };
+  // Images attached in the composer (D184), sent with the next message.
+  readonly agentImages: ReadonlyArray<AgentImage>;
   // Bumped to put the caret in the composer (after Add to chat).
   readonly agentFocus: number;
   // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
@@ -199,6 +202,7 @@ let state: AppStateShape = {
   agent: null,
   agentDraft: "",
   agentMentions: [],
+  agentImages: [],
   agentFocus: 0,
   history: null,
   exportOpen: false,
@@ -288,7 +292,7 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined, agentDraft: "", agentMentions: [], agentQueued: undefined } : {}),
+    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined, agentDraft: "", agentMentions: [], agentImages: [], agentQueued: undefined } : {}),
   });
   // Then the playhead follows the project: back to the start for another project, clamped when it
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
@@ -348,6 +352,8 @@ const serverUrl = (route: string, id: string, path?: string) => {
   if (path !== undefined) url.searchParams.set("v", pathTag(path));
   return url.href;
 };
+/** An image attached to an agent message (D184), kept in the project's .cache/agent-images/. */
+export const agentImageUrl = (name: string) => serverUrl(AGENT_IMAGE_PATH, name);
 /** The poster for a media item, from the server's token-protected route (never file://). */
 export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id, path);
 /** The original file of a media item, streamed by the server with byte ranges (never file://). */
@@ -562,8 +568,8 @@ export async function start() {
           const queued = state.agentQueued;
           if (queued && was !== null && agent?.running === null) {
             set({ agentQueued: undefined });
-            void actions.agentSend(queued.prompt, queued.mentions).then((ok) => {
-              if (!ok && !state.agentDraft) set({ agentDraft: queued.prompt, agentMentions: queued.mentions });
+            void actions.agentSend(queued.prompt, queued.mentions, queued.images).then((ok) => {
+              if (!ok && !state.agentDraft) set({ agentDraft: queued.prompt, agentMentions: queued.mentions, agentImages: queued.images ?? [] });
             });
           }
         },
@@ -1192,7 +1198,7 @@ export const actions = {
   dismissNotice: () => set({ notice: undefined }),
 
   /** Start an agent turn; returns false (and says why in the Agent tab) when it didn't start. */
-  async agentSend(prompt: string, mentions: ReadonlyArray<AgentMention> = []): Promise<boolean> {
+  async agentSend(prompt: string, mentions: ReadonlyArray<AgentMention> = [], images: ReadonlyArray<AgentImage> = []): Promise<boolean> {
     if (!online()) return false;
     set({ agentError: undefined });
     // The agent works on what's on screen: stop playback so the frame it's told about stays put.
@@ -1200,7 +1206,20 @@ export const actions = {
     const { frame, selected } = getPlayback();
     // Only the chips whose @label is still in the prompt.
     const kept = mentions.filter((m, i) => prompt.includes(`@${m.label}`) && mentions.findIndex((x) => x.kind === m.kind && x.id === m.id && x.label === m.label) === i);
-    const result = await call((c) => c["agent.send"]({ prompt, frame: Math.floor(frame), ...(selected ? { selected } : {}), ...(kept.length ? { mentions: kept } : {}) }));
+    // The composer's choices for this project (D184): model, effort, access.
+    const prefs = state.snapshot ? agentPrefs(state.snapshot.dir) : DEFAULT_AGENT_PREFS;
+    const result = await call((c) =>
+      c["agent.send"]({
+        prompt,
+        frame: Math.floor(frame),
+        ...(selected ? { selected } : {}),
+        ...(kept.length ? { mentions: kept } : {}),
+        ...(prefs.model ? { model: prefs.model } : {}),
+        ...(prefs.effort ? { effort: prefs.effort } : {}),
+        access: prefs.access,
+        ...(images.length ? { images: [...images] } : {}),
+      }),
+    );
     if (result.ok) return true;
     set({ agentError: plainError(result.error) });
     // "Not installed" may be news to the setup rows too.
@@ -1211,7 +1230,23 @@ export const actions = {
   /** The composer's text and chips (D140). */
   setAgentDraft: (agentDraft: string, agentMentions?: ReadonlyArray<AgentMention>) => set({ agentDraft, ...(agentMentions ? { agentMentions } : {}) }),
   /** Hold a message until the running turn ends (D140); undefined takes it back. */
-  agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention> } | undefined) => set({ agentQueued: queued }),
+  agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention>; images?: ReadonlyArray<AgentImage> } | undefined) => set({ agentQueued: queued }),
+  /** The composer's attached images (D184). */
+  setAgentImages: (agentImages: ReadonlyArray<AgentImage>) => set({ agentImages }),
+  /** Add a moment (D183) or the In/Out range of the timeline to the chat, as a chip with its timecode. */
+  addMomentToChat(frame: number) {
+    const snap = state.snapshot;
+    if (!snap) return;
+    const label = momentLabel(Math.max(0, Math.floor(frame)), projectOf(snap).canvas.fps);
+    actions.addToChat({ kind: "moment", id: `frame:${Math.floor(frame)}`, label, frame: Math.max(0, Math.floor(frame)) });
+  },
+  addRangeToChat(start: number, end: number) {
+    const snap = state.snapshot;
+    if (!snap || end <= start) return;
+    const fps = projectOf(snap).canvas.fps;
+    const label = `${momentLabel(start, fps)}–${momentLabel(end, fps)}`;
+    actions.addToChat({ kind: "range", id: `range:${start}-${end}`, label, range: { start: Math.floor(start), end: Math.floor(end) } });
+  },
   /** Add to chat (D141) for a timeline item: its name, with the stretch of the timeline it covers. */
   addItemToChat(itemId: string, frame?: number) {
     const snap = state.snapshot;

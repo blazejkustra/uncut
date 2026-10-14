@@ -69,3 +69,21 @@ test("labels are one line without angle brackets, at most 120 characters; a mark
   assert.match(block, /@M x = a marker \(its frame is unknown\)/);
   assert.doesNotMatch(block, /NaN/);
 });
+
+test("D183: typed moments parse to frames, moments label as m:ss with tenths, and describeAt says what plays there", async () => {
+  const { describeAt, momentLabel, parseMoment } = await import("../../packages/core/src/text/mentions.ts");
+  assert.equal(parseMoment("0:12", 30), 360);
+  assert.equal(parseMoment("1:02.5", 30), 1875);
+  assert.equal(parseMoment("12s", 30), 360);
+  assert.equal(parseMoment("12.5s", 25), 313);
+  for (const bad of ["12", "0:75", "abc", "1:2", "s", ":12"]) assert.equal(parseMoment(bad, 30), undefined, bad);
+  assert.equal(momentLabel(360, 30), "0:12");
+  assert.equal(momentLabel(1875, 30), "1:02.5");
+  assert.equal(momentLabel(0, 30), "0:00");
+  assert.equal(momentLabel(3600 * 30, 30), "60:00");
+  assert.match(describeAt(project, 10, 11), /^on the timeline there: clip-1 \(clip "DJI_0005.MP4", track main, frames 0–150\); title-1 \(text "Kraków from above", track text, frames 0–90\)$/);
+  assert.equal(describeAt(project, 500, 600), "nothing on the timeline there");
+  const block = contextBlock(project, [{ kind: "moment", id: "frame:120", label: "0:04", frame: 120 }]);
+  assert.match(block, /@0:04 = the moment at frame 120 \(4\.00 s\): on the timeline there: clip-1/);
+  assert.doesNotMatch(block, /title-1/, "the title ended at frame 90");
+});

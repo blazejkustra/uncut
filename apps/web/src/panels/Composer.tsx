@@ -1,13 +1,17 @@
-// The Agent tab's composer (D140, t3code-like): a multiline box where Enter sends and ⇧Enter is a
-// new line; @ opens a picker of media, items, tracks and markers that inserts an @label chip (Add to
-// chat, D141, inserts the same); ↑ in an empty box brings back earlier prompts; while a turn runs the
-// button is Stop and Enter queues the message for when it ends. The text and chips live in the store.
-import type { AgentMention, AgentTurn } from "@uncut/contracts";
-import { mentionCandidates } from "@uncut/core/mentions";
-import { ArrowUp, AtSign, Film, Flag, ListVideo, MousePointer2, Music, Rows3, Square, X } from "lucide-react";
+// The Agent tab's composer (D140, D184, t3code-like): a multiline box where Enter sends and ⇧Enter
+// is a new line; @ opens a picker of media, items, tracks and markers that inserts an @label chip
+// (Add to chat, D141, inserts the same), and a typed time (@0:12, @12s) offers that moment (D183);
+// ↑ in an empty box brings back earlier prompts; while a turn runs the button is Stop and Enter
+// queues the message for when it ends. Images come in by paste, drop or the paperclip. The bottom
+// row picks the provider, model, effort and access, remembered per project (agentPrefs.ts). The
+// text, chips and images live in the store.
+import { AGENT_ACCESS, AGENT_EFFORTS, AGENT_IMAGE_MAX, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, type AgentAccess, type AgentEffort, type AgentImage, type AgentMention, type AgentTurn } from "@uncut/contracts";
+import { mentionCandidates, momentLabel, parseMoment } from "@uncut/core/mentions";
+import { ArrowLeftRight, ArrowUp, AtSign, Bot, Check, ChevronDown, Clock3, Eye, Film, Flag, Gauge, ListVideo, MousePointer2, Music, Paperclip, PencilLine, Rows3, Search, ShieldCheck, Sparkles, Square, Star, X } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { usePlayback } from "../preview/playback.ts";
+import { setAgentPrefs, toggleFavourite, useAgentPrefs } from "../state/agentPrefs.ts";
 import { frameTimecode } from "../state/format.ts";
 import { itemLabel } from "../state/project.ts";
 import { actions, useApp, type Project } from "../state/store.ts";
@@ -30,10 +34,50 @@ export function withChips(text: string, labels: ReadonlyArray<string>, className
   );
 }
 
-const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag } as const;
+const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag, moment: Clock3, range: ArrowLeftRight } as const;
+
+export const ACCESS_INFO: Record<AgentAccess, { name: string; short: string; detail: string; icon: typeof Eye }> = {
+  look: { name: "Look only", short: "Look only", detail: "Reads and looks, changes nothing", icon: Eye },
+  ask: { name: "Ask before big changes", short: "Ask first", detail: "Removals, transcript cuts and large edits wait for your Allow", icon: ShieldCheck },
+  edit: { name: "Edit freely", short: "Edit freely", detail: "Edits as it goes; every turn can be undone", icon: PencilLine },
+};
+const EFFORT_NAME: Record<AgentEffort, string> = { low: "Low", medium: "Medium", high: "High", max: "Max" };
+
+/** An image file as an attachment (D184), or why it can't be one. */
+async function readImage(file: File): Promise<AgentImage | string> {
+  if (!(AGENT_IMAGE_TYPES as ReadonlyArray<string>).includes(file.type)) return `${file.name || "That file"} isn't a PNG, JPEG, GIF or WebP image.`;
+  if (file.size > AGENT_IMAGE_MAX) return `${file.name || "That image"} is over 5 MB.`;
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  return { name: file.name || "Pasted image", mimeType: file.type as AgentImage["mimeType"], data: url.slice(url.indexOf(",") + 1) };
+}
 
 export function Composer({ project, online, blocked, turns, running, provider }: { project: Project; online: boolean; blocked: boolean; turns: ReadonlyArray<AgentTurn>; running: string | null; provider: string }) {
-  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus } = useApp();
+  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot } = useApp();
+  const [attachError, setAttachError] = useState<string | undefined>(undefined);
+  const [dropping, setDropping] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const addFiles = async (files: ReadonlyArray<File>) => {
+    const picked = files.filter((f) => f.type.startsWith("image/") || f.size === 0 || !f.type);
+    if (!picked.length) return;
+    const now = [...images];
+    let problem: string | undefined;
+    for (const file of picked) {
+      if (now.length >= AGENT_IMAGES_MAX) {
+        problem = `At most ${AGENT_IMAGES_MAX} images per message.`;
+        break;
+      }
+      const read = await readImage(file).catch(() => `${file.name || "That image"} couldn't be read.`);
+      if (typeof read === "string") problem = read;
+      else now.push(read);
+    }
+    setAttachError(problem);
+    actions.setAgentImages(now);
+  };
   const input = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
   const [caret, setCaret] = useState(0);
@@ -65,11 +109,15 @@ export function Composer({ project, online, blocked, turns, running, provider }:
   const before = draft.slice(0, caret);
   const query = /(?:^|\s)@([^\s@]{0,40})$/.exec(before);
   const at = query ? caret - query[1]!.length - 1 : -1;
+  const fps = project.canvas.fps;
   const matches = useMemo(() => {
     if (!query) return [];
     const q = query[1]!.toLowerCase();
-    return candidates.filter((c) => c.label.toLowerCase().includes(q)).slice(0, 8);
-  }, [candidates, query?.[1]]);
+    // D183: a typed time (@0:12, @12s, @1:02.5) offers that moment first.
+    const frame = parseMoment(q, fps);
+    const moment = frame !== undefined ? [{ kind: "moment" as const, id: `frame:${frame}`, label: momentLabel(frame, fps), frame, detail: `Moment, frame ${frame}` }] : [];
+    return [...moment, ...candidates.filter((c) => c.label.toLowerCase().includes(q)).slice(0, 8 - moment.length)];
+  }, [candidates, query?.[1], fps]);
   const pickerOpen = !!query && dismissed !== at && matches.length > 0 && !blocked;
   useEffect(() => setPick(0), [query?.[1]]);
 
@@ -77,7 +125,7 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     if (text !== draft) setDismissed(undefined);
     actions.setAgentDraft(text, next);
   };
-  const choose = (c: (typeof candidates)[number]) => {
+  const choose = (c: (typeof matches)[number]) => {
     const insert = `@${c.label} `;
     const text = draft.slice(0, at) + insert + draft.slice(caret);
     const mention: AgentMention = { kind: c.kind, id: c.id, label: c.label, ...(c.frame !== undefined ? { frame: c.frame } : {}) };
@@ -89,14 +137,21 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     const text = draft.trim();
     if (!text || !online || blocked) return;
     history.current = { at: -1, saved: "" };
+    const attached = images;
+    setAttachError(undefined);
     if (running) {
       // One message waits for the turn to end; a second one joins it.
-      actions.agentQueue({ prompt: queued ? `${queued.prompt}\n\n${text}` : text, mentions: [...(queued?.mentions ?? []), ...mentions] });
+      actions.agentQueue({ prompt: queued ? `${queued.prompt}\n\n${text}` : text, mentions: [...(queued?.mentions ?? []), ...mentions], images: [...(queued?.images ?? []), ...attached].slice(0, AGENT_IMAGES_MAX) });
       setDraft("", []);
+      actions.setAgentImages([]);
       return;
     }
     setDraft("", []);
-    if (!(await actions.agentSend(text, mentions))) actions.setAgentDraft(text, mentions);
+    actions.setAgentImages([]);
+    if (!(await actions.agentSend(text, mentions, attached))) {
+      actions.setAgentDraft(text, mentions);
+      actions.setAgentImages(attached);
+    }
   };
 
   // Earlier prompts, newest first, for ↑ / ↓.
@@ -118,7 +173,24 @@ export function Composer({ project, online, blocked, turns, running, provider }:
 
   const labels = mentions.map((m) => m.label);
   return (
-    <div className="composer" data-testid="composer">
+    <div
+      className={`composer ${dropping ? "dropping" : ""}`}
+      data-testid="composer"
+      onDragOver={(e) => {
+        if (![...e.dataTransfer.items].some((i) => i.kind === "file")) return;
+        e.preventDefault();
+        setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDropping(false);
+        void addFiles([...e.dataTransfer.files]);
+      }}
+    >
       <ContextLine project={project} />
       {queued && (
         <div className="composer-queued" data-testid="agent-queued">
@@ -154,6 +226,23 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           })}
         </div>
       )}
+      {images.length > 0 && (
+        <div className="composer-images" data-testid="agent-attachments">
+          {images.map((img, i) => (
+            <div key={i} className="composer-image" data-testid="agent-attachment" title={img.name}>
+              <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name} />
+              <button className="icon-btn" title="Remove" data-testid="agent-attachment-remove" onClick={() => actions.setAgentImages(images.filter((_, j) => j !== i))}>
+                <X />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {attachError && (
+        <div className="composer-attach-error small" data-testid="agent-attach-error">
+          {attachError}
+        </div>
+      )}
       <div className="composer-box">
         <div className="composer-hl" ref={backdrop} aria-hidden="true">
           {withChips(draft, labels)}
@@ -174,6 +263,12 @@ export function Composer({ project, online, blocked, turns, running, provider }:
             setDraft(e.target.value);
           }}
           onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
+          onPaste={(e) => {
+            const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+            if (!files.length) return;
+            e.preventDefault();
+            void addFiles(files);
+          }}
           onScroll={(e) => backdrop.current && (backdrop.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop)}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
@@ -227,6 +322,21 @@ export function Composer({ project, online, blocked, turns, running, provider }:
         />
       </div>
       <div className="composer-foot">
+        <input
+          ref={fileInput}
+          type="file"
+          accept={AGENT_IMAGE_TYPES.join(",")}
+          multiple
+          hidden
+          data-testid="agent-attach-input"
+          onChange={(e) => {
+            void addFiles([...(e.target.files ?? [])]);
+            e.target.value = "";
+          }}
+        />
+        <button className="icon-btn composer-at" title="Attach images (or paste or drop them)" data-testid="agent-attach" disabled={!online || blocked} onClick={() => fileInput.current?.click()}>
+          <Paperclip />
+        </button>
         <button
           className="icon-btn composer-at"
           title="Point at media, a clip, a track or a marker"
@@ -244,7 +354,8 @@ export function Composer({ project, online, blocked, turns, running, provider }:
         >
           <AtSign />
         </button>
-        <span className="composer-who">{provider}, your subscription</span>
+        {snapshot && <ComposerChoices dir={snapshot.dir} provider={provider} />}
+        <span className="composer-spacer" />
         {running ? (
           <button className="send stop" data-testid="agent-stop" title="Stop" disabled={!online} onClick={() => void actions.agentCancel()}>
             <Square />
@@ -271,6 +382,173 @@ function ContextLine({ project }: { project: Project }) {
         Playhead {frameTimecode(frame, project.canvas.fps)}
         {item ? `, selected ${itemLabel(project, item)}` : ""}
       </span>
+    </div>
+  );
+}
+
+type Menu = "provider" | "model" | "effort" | "access" | undefined;
+
+/**
+ * The composer's bottom row (D184): provider (Claude Code; Codex to come), model (searchable, with
+ * favourites), effort and access. Each opens a small menu above the box; Esc or a click elsewhere
+ * closes it. Remembered per project; a new model or effort applies from the next message.
+ */
+function ComposerChoices({ dir, provider }: { dir: string; provider: string }) {
+  const { prefs, favourites } = useAgentPrefs(dir);
+  const [open, setOpen] = useState<Menu>(undefined);
+  const [search, setSearch] = useState("");
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!row.current?.contains(e.target as Node)) setOpen(undefined);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(undefined);
+      }
+    };
+    window.addEventListener("pointerdown", away, true);
+    window.addEventListener("keydown", esc, true);
+    return () => {
+      window.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("keydown", esc, true);
+    };
+  }, [open]);
+  const toggle = (menu: Menu) => {
+    setSearch("");
+    setOpen(open === menu ? undefined : menu);
+  };
+  const pick = (patch: Parameters<typeof setAgentPrefs>[1]) => {
+    setAgentPrefs(dir, patch);
+    setOpen(undefined);
+  };
+  const model = AGENT_MODELS.find((m) => m.id === prefs.model);
+  const access = ACCESS_INFO[prefs.access];
+  const AccessIcon = access.icon;
+  const models = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const all = [{ id: "", name: "Default", detail: "Claude Code's choice" }, ...AGENT_MODELS].filter((m) => !q || m.name.toLowerCase().includes(q) || m.detail.toLowerCase().includes(q));
+    // Favourites first, in the list's order.
+    return [...all.filter((m) => favourites.includes(m.id)), ...all.filter((m) => !favourites.includes(m.id))];
+  }, [search, favourites]);
+  return (
+    <div className="composer-choices" ref={row}>
+      <button className={`choice ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" title={`${provider}, with your subscription`} onClick={() => toggle("provider")}>
+        <Bot />
+      </button>
+      <button className={`choice model ${open === "model" ? "open" : ""}`} data-testid="agent-model" data-model={prefs.model ?? ""} title={`Model: ${model?.name ?? "Default (Claude Code's choice)"}`} onClick={() => toggle("model")}>
+        <Sparkles className="choice-icon" />
+        <span className="choice-label">{model?.name ?? "Default"}</span>
+        <ChevronDown className="choice-caret" />
+      </button>
+      <button className={`choice ${open === "effort" ? "open" : ""}`} data-testid="agent-effort" data-effort={prefs.effort ?? ""} title={`Effort: ${prefs.effort ? EFFORT_NAME[prefs.effort] : "Auto"}`} onClick={() => toggle("effort")}>
+        <Gauge />
+        <span className="choice-label">{prefs.effort ? EFFORT_NAME[prefs.effort] : "Auto"}</span>
+      </button>
+      <button className={`choice ${open === "access" ? "open" : ""}`} data-testid="agent-access" data-access={prefs.access} title={`${access.name}: ${access.detail}`} onClick={() => toggle("access")}>
+        <AccessIcon />
+        <span className="choice-label">{access.short}</span>
+      </button>
+      {open === "provider" && (
+        <div className="choice-menu" role="listbox" data-testid="agent-provider-menu">
+          <button className="choice-option active" role="option" aria-selected onClick={() => setOpen(undefined)}>
+            <Bot />
+            <span className="grow">
+              Claude
+              <span className="choice-detail">{provider}, with your subscription</span>
+            </span>
+            <Check />
+          </button>
+          <button className="choice-option" role="option" aria-selected={false} disabled data-testid="agent-provider-codex">
+            <Bot />
+            <span className="grow">
+              Codex
+              <span className="choice-detail">Coming later</span>
+            </span>
+          </button>
+        </div>
+      )}
+      {open === "model" && (
+        <div className="choice-menu" role="listbox" data-testid="agent-model-menu">
+          <label className="choice-search">
+            <Search />
+            <input
+              autoFocus
+              value={search}
+              placeholder="Search models"
+              data-testid="agent-model-search"
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && models[0]) pick({ model: models[0].id || undefined });
+              }}
+            />
+          </label>
+          {models.map((m) => {
+            const on = (prefs.model ?? "") === m.id;
+            const fav = favourites.includes(m.id);
+            return (
+              <div key={m.id || "default"} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-model-option" data-model={m.id} onClick={() => pick({ model: m.id || undefined })}>
+                <span className="grow">
+                  {m.name}
+                  <span className="choice-detail">{m.detail}</span>
+                </span>
+                {on && <Check />}
+                {m.id && (
+                  <button
+                    className={`icon-btn choice-star ${fav ? "on" : ""}`}
+                    title={fav ? "Remove from favourites" : "Add to favourites"}
+                    data-testid="agent-model-star"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavourite(m.id);
+                    }}
+                  >
+                    <Star />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {!models.length && <div className="choice-empty">No model matches</div>}
+        </div>
+      )}
+      {open === "effort" && (
+        <div className="choice-menu" role="listbox" data-testid="agent-effort-menu">
+          {([undefined, ...AGENT_EFFORTS] as const).map((e) => {
+            const on = prefs.effort === e;
+            return (
+              <button key={e ?? "auto"} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-effort-option" data-effort={e ?? ""} onClick={() => pick({ effort: e })}>
+                <span className="grow">
+                  {e ? EFFORT_NAME[e] : "Auto"}
+                  <span className="choice-detail">{e === "low" ? "Quick answers" : e === "medium" ? "Balanced" : e === "high" ? "Thinks longer" : e === "max" ? "Thinks the longest" : "Claude Code's default"}</span>
+                </span>
+                {on && <Check />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {open === "access" && (
+        <div className="choice-menu" role="listbox" data-testid="agent-access-menu">
+          {AGENT_ACCESS.map((a) => {
+            const info = ACCESS_INFO[a];
+            const Icon = info.icon;
+            const on = prefs.access === a;
+            return (
+              <button key={a} className={`choice-option ${on ? "active" : ""}`} role="option" aria-selected={on} data-testid="agent-access-option" data-access={a} onClick={() => pick({ access: a })}>
+                <Icon />
+                <span className="grow">
+                  {info.name}
+                  <span className="choice-detail">{info.detail}</span>
+                </span>
+                {on && <Check />}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

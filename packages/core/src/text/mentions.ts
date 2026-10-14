@@ -2,9 +2,10 @@
 // pointed at in the composer (D140, D141). Ids ("m-dji-0005", "title-1") stay in the protocol and
 // the agent's prompt; what the user reads says "DJI_0005" and "Kraków from above".
 import { componentInfo } from "../visual/components.ts";
+import { layout } from "../timeline/timeline.ts";
 import type { Item, Project } from "../timeline/types.ts";
 
-export type MentionKind = "media" | "item" | "track" | "marker";
+export type MentionKind = "media" | "item" | "track" | "marker" | "moment" | "range";
 export interface Mention {
   readonly kind: MentionKind;
   readonly id: string;
@@ -90,7 +91,7 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     const key = `${m.kind}:${m.id}:${m.range?.start ?? ""}:${m.frame ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const at = `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
+    const at = m.kind === "moment" || m.kind === "range" ? "" : `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
     if (m.kind === "media") {
       const media = project.media.find((x) => x.id === m.id);
       if (!media) {
@@ -110,6 +111,12 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
       const media = item.media ? project.media.find((x) => x.id === item.media) : undefined;
       const facts = [`${item.type} on track ${track.id}${track.name && track.name !== track.id ? ` "${track.name}"` : ""}`, media ? `media ${media.id}` : "", typeof item.text === "string" ? `text "${cut(oneLine(item.text), 60)}"` : ""].filter(Boolean);
       lines.push(`@${m.label} = item ${item.id} (${facts.join(", ")})${at}`);
+    } else if (m.kind === "moment") {
+      const frame = m.frame ?? 0;
+      lines.push(`@${m.label} = the moment at frame ${frame} (${secs(frame, fps)}): ${describeAt(project, frame, frame + 1)}`);
+    } else if (m.kind === "range") {
+      const r = m.range ?? { start: 0, end: 0 };
+      lines.push(`@${m.label} = the stretch from frame ${r.start} to ${r.end} (${secs(r.start, fps)}–${secs(r.end, fps)}, end not included): ${describeAt(project, r.start, Math.max(r.start + 1, r.end))}`);
     } else if (m.kind === "track") {
       const track = project.tracks.find((t) => t.id === m.id);
       lines.push(track ? `@${m.label} = track ${track.id} (${track.kind}${track.role ? `, ${track.role}` : ""}, ${track.items.length} item${track.items.length === 1 ? "" : "s"})` : `@${m.label} = track ${m.id} (no longer in the project)`);
@@ -119,6 +126,47 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     }
   }
   return `<context>\nWhat the user's @labels point at (use the ids in tools; say the names to the user):\n${lines.join("\n")}\n</context>`;
+}
+
+/**
+ * What's on the timeline in frames [from, to) (D183): every item that plays there, top track first,
+ * with its id, type and track, and a text's words. For a moment's or a range's <context> line.
+ */
+export function describeAt(project: Project, from: number, to: number): string {
+  const { starts } = layout(project);
+  const found: Array<string> = [];
+  for (const track of project.tracks) {
+    for (const item of track.items) {
+      const start = starts.get(item.id) ?? 0;
+      if (start >= to || start + item.duration <= from) continue;
+      const words = typeof item.text === "string" && item.text.trim() ? ` "${cut(oneLine(item.text), 60)}"` : "";
+      const name = itemName(project, item);
+      found.push(`${item.id} (${item.type}${words || name === item.id ? "" : ` "${cut(name, 40)}"`}${words}, track ${track.id}${track.hidden ? ", hidden" : ""}, frames ${start}–${start + item.duration})`);
+    }
+  }
+  if (!found.length) return "nothing on the timeline there";
+  return `on the timeline there: ${found.slice(0, 12).join("; ")}${found.length > 12 ? `; and ${found.length - 12} more` : ""}`;
+}
+
+/** A moment's label (D183): m:ss, with tenths when it isn't on a whole second ("0:12", "1:02.5"). */
+export function momentLabel(frame: number, fps: number): string {
+  const tenths = Math.round((frame / fps) * 10);
+  const m = Math.floor(tenths / 600);
+  const rest = tenths - m * 600;
+  const s = Math.floor(rest / 10);
+  const t = rest % 10;
+  return `${m}:${String(s).padStart(2, "0")}${t ? `.${t}` : ""}`;
+}
+
+/** A typed moment (D183): "0:12", "1:02.5", "12s", "12.5s" → the frame at fps, or undefined. */
+export function parseMoment(text: string, fps: number): number | undefined {
+  const clock = /^(\d{1,3}):([0-5]\d)(?:\.(\d{1,2}))?$/.exec(text);
+  const plain = /^(\d{1,5})(?:\.(\d{1,2}))?s$/.exec(text);
+  let seconds: number;
+  if (clock) seconds = Number(clock[1]) * 60 + Number(clock[2]) + (clock[3] ? Number(`0.${clock[3]}`) : 0);
+  else if (plain) seconds = Number(plain[1]) + (plain[2] ? Number(`0.${plain[2]}`) : 0);
+  else return undefined;
+  return Math.round(seconds * fps);
 }
 
 /** What @ offers in the composer: media, tracks, timeline items and markers, by name. */
