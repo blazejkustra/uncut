@@ -9,7 +9,7 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
 import { canvasForClip, decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
 import { cameraName } from "@uncut/core/mentions";
-import { planPlaceTake, type TakePlacement } from "@uncut/core/place";
+import { planPlaceMulti, planPlaceTake, type MultiKind, type MultiLayoutName, type PlacedMulti, type TakePlacement } from "@uncut/core/place";
 import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -50,6 +50,8 @@ export interface MediaLibraryShape {
    * without one, the user's edit (the Capture tab: one ⌘Z removes it).
    */
   readonly importCapture: (input: CaptureImportInput) => Effect.Effect<AgentImport, ProjectError>;
+  /** D211: a multi-source take's files as one edit, placed start-aligned and grouped when `frame` is given. */
+  readonly importMulti: (input: MultiImportInput) => Effect.Effect<AgentImport, ProjectError>;
   /**
    * A re-shot recording swapped in for media `mediaId` (D98): probed, then one edit that changes
    * the media's file and trims or holds clips past the new end (core planReshoot); a new poster.
@@ -72,6 +74,16 @@ export interface CaptureImportInput {
   readonly turnId?: string | undefined;
   /** D114: also put it on the timeline at this frame, in the same edit (core planPlaceTake). */
   readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
+}
+
+/** D211: a multi-source take's files, imported (and with `frame`, placed) as one edit. */
+export interface MultiImportInput {
+  readonly openId: number;
+  readonly dir: string;
+  readonly parts: ReadonlyArray<{ readonly path: string; readonly name: string; readonly kind: MultiKind; readonly offsetMs: number; readonly source: { readonly module: string; readonly [key: string]: unknown } }>;
+  readonly frame?: number | undefined;
+  readonly layout?: MultiLayoutName | undefined;
+  readonly summary: string;
 }
 
 export interface ReplaceMediaInput {
@@ -115,6 +127,8 @@ export interface AgentImport {
   readonly subtitles?: ReadonlyArray<ImportedSubtitles>;
   /** D114: the timeline item a placed take got. */
   readonly placed?: { readonly itemId: string; readonly trackId: string; readonly start: number };
+  /** D211: a multi-source take's items and group. */
+  readonly multi?: PlacedMulti;
 }
 
 export interface ImportedSubtitles {
@@ -354,6 +368,8 @@ export const layer = Layer.effect(
       readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
       /** T9 (D128): the imported files also go on the timeline (one after another), in the same edit. */
       readonly drop?: MediaDrop | undefined;
+      /** D211: a multi-source take: each file's part, placed together at `frame` (when given). */
+      readonly multi?: { readonly parts: ReadonlyMap<string, { readonly kind: MultiKind; readonly offsetMs: number }>; readonly frame?: number | undefined; readonly layout?: MultiLayoutName | undefined; readonly summary: string } | undefined;
     }
 
     const runJob = (jobId: string, openId: number, dir: string, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
@@ -421,6 +437,7 @@ export const layer = Layer.effect(
         // lock, against the opening of the project the import was started in.
         let entries: Array<{ entry: MediaEntry; info: ProbeInfo }> = [];
         let placed: AgentImport["placed"];
+        let multiPlaced: PlacedMulti | undefined;
         let matchedDir: string | undefined;
         const snapshot = yield* projects.editIn(openId, (raw, projectDir) =>
           Effect.gen(function* () {
@@ -439,6 +456,7 @@ export const layer = Layer.effect(
             const matched = (yield* Effect.promise(() => matchPending(projectDir))) ? matchCanvas(project as unknown as Project, probed) : undefined;
             const fps = matched?.fps ?? project.canvas.fps;
             entries = [];
+            const entryPaths = new Map<string, string>();
             // T9 (D128): what a drop places, in the order dropped (new entries and media already in the project).
             const toPlace: Array<PlaceMedia> = [];
             for (const p of probed) {
@@ -468,6 +486,7 @@ export const layer = Layer.effect(
                 },
               });
               toPlace.push(entries.at(-1)!.entry);
+              entryPaths.set(entries.at(-1)!.entry.id, p.path);
             }
             // Subtitles files (D105): each a new Subtitles track (core planImportSubtitles), planned on the
             // project as it will be (the tracks planned before it count), in the same edit as the media.
@@ -502,6 +521,18 @@ export const layer = Layer.effect(
               placeOps.push(...plan.ops);
               placed = { itemId: plan.itemId, trackId: plan.trackId, start: plan.start };
             }
+            // D211: a multi-source take's parts, start-aligned and grouped, in this edit.
+            multiPlaced = undefined;
+            if (options.multi && options.multi.frame !== undefined && entries.length) {
+              const shaped = raw as Project;
+              const parts = entries.flatMap(({ entry }) => {
+                const path = entryPaths.get(entry.id);
+                const part = path ? options.multi!.parts.get(path) : undefined;
+                return part && entry.probe.frames ? [{ mediaId: entry.id, kind: part.kind, frames: entry.probe.frames, offsetMs: part.offsetMs }] : [];
+              });
+              multiPlaced = planPlaceMulti(shaped, { parts, frame: options.multi.frame, fps: shaped.canvas.fps, canvas: shaped.canvas, layout: options.multi.layout }, taken);
+              placeOps.push(...multiPlaced.ops);
+            }
             // T9 (D128): files dropped on the timeline land where they were dropped, in this edit.
             let dropped = false;
             const placeable = toPlace.filter((m) => m.kind === "image" || m.probe?.frames);
@@ -516,7 +547,7 @@ export const layer = Layer.effect(
             }
             return {
               ops: [...canvasOps, ...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
-              summary: dropped ? (placeable.length > 1 ? `Add ${placeable.length} files to the timeline` : `Add ${placeable[0]!.name} to the timeline`) : placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
+              summary: options.multi ? options.multi.summary : dropped ? (placeable.length > 1 ? `Add ${placeable.length} files to the timeline` : `Add ${placeable[0]!.name} to the timeline`) : placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
             };
           }),
           options.agent,
@@ -527,7 +558,7 @@ export const layer = Layer.effect(
         // Imported subtitles files are never written over by an export (D105).
         if (snapshot && subtitles.length) yield* Effect.promise(() => recordSubtitleSources(dir, subtitles.map((x) => x.path)).catch(() => {}));
         const inOrder = <A extends { at: number }>(list: Array<A>) => [...list].sort((a, b) => a.at - b.at).map(({ at: _, ...rest }) => rest);
-        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed), ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}), ...(snapshot && placed ? { placed } : {}) });
+        if (options.added) yield* Deferred.succeed(options.added, { snapshot, entries: entries.map((e) => e.entry), skipped: inOrder(skipped), failed: inOrder(failed), ...(subtitles.length ? { subtitles: inOrder(subtitles) } : {}), ...(snapshot && placed ? { placed } : {}), ...(snapshot && multiPlaced ? { multi: multiPlaced } : {}) });
 
         // Posters after the edit (tiles show an icon until theirs exists), into the folder of
         // the project they belong to.
@@ -601,6 +632,20 @@ export const layer = Layer.effect(
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 
+    const importMulti = ({ openId, dir, parts, frame, layout, summary }: MultiImportInput) =>
+      Effect.gen(function* () {
+        const added = yield* Deferred.make<AgentImport, string>();
+        yield* queueJob({ openId, dir }, parts.map((p) => p.path), {
+          quiet: true,
+          relativePaths: true,
+          names: new Map(parts.map((p) => [p.path, p.name])),
+          sources: new Map(parts.map((p) => [p.path, p.source])),
+          added,
+          multi: { parts: new Map(parts.map((p) => [p.path, { kind: p.kind, offsetMs: p.offsetMs }])), frame, layout, summary },
+        });
+        return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
+      });
+
     /** One file's probe, as the import job does it (the media core, ffprobe when it can't). */
     const probeFile = (path: string) =>
       Effect.gen(function* () {
@@ -668,6 +713,7 @@ export const layer = Layer.effect(
       posterFor: (id) => Effect.map(currentPosters, (m) => m.get(id)),
       importForAgent,
       importCapture,
+      importMulti,
       replaceMedia,
     });
   }),

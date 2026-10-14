@@ -1195,7 +1195,27 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .wiz-sub.warn { color: var(--warn); }
 /* This Mac (D114): microphone, camera and screen takes. */
 .capture-this-mac { display: flex; flex-direction: column; gap: 8px; }
-.capture-modes button { flex: 1; }
+.capture-modes { flex-wrap: wrap; }
+.capture-modes button { flex: 1; padding: 3px 6px; white-space: nowrap; }
+/* D211: the multi-source take's composite picture and layout presets. */
+.capture-composite { position: relative; width: 100%; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.capture-composite > div { position: absolute; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.composite-screen { background: #0d1117; }
+.composite-screen video, .composite-screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.composite-camera { background: #222; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
+.composite-camera.full { box-shadow: none; }
+.composite-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.composite-placeholder { width: 28px; height: 28px; color: var(--muted); }
+.composite-empty { inset: 0; gap: 6px; }
+.composite-empty svg { width: 16px; height: 16px; }
+.capture-layouts button { flex: 1; display: flex; align-items: center; justify-content: center; padding: 5px 4px; }
+.layout-glyph { position: relative; width: 22px; height: 13px; border: 1px solid currentColor; border-radius: 2px; }
+.layout-glyph::after { content: ""; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.layout-glyph.tl::after { left: 1px; top: 1px; }
+.layout-glyph.tr::after { right: 1px; top: 1px; }
+.layout-glyph.bl::after { left: 1px; bottom: 1px; }
+.layout-glyph.br::after { right: 1px; bottom: 1px; }
+.layout-glyph.side::after { right: 0; top: 0; width: 7px; height: 100%; border-radius: 0 1px 1px 0; }
 .capture-part { display: flex; flex-direction: column; gap: 8px; }
 .capture-part .check-row { margin-bottom: 0; }
 .capture-access { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }

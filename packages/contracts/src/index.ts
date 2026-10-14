@@ -67,6 +67,7 @@ export const RPC_METHODS = {
   captureStart: "capture.start",
   captureStop: "capture.stop",
   captureSave: "capture.save",
+  captureSaveMulti: "capture.saveMulti",
   captureBoot: "capture.boot",
   captureRecord: "capture.record",
   agentScreenTake: "agent.screenTake",
@@ -454,8 +455,8 @@ export const CaptureState = Schema.Struct({
 });
 export type CaptureState = typeof CaptureState.Type;
 
-/** D114: what a take recorded on this Mac is (the microphone's voiceover, a camera, a screen or window). */
-export const TakeKind = Schema.Literals(["voiceover", "camera", "screen"]);
+/** D114: what a take recorded on this Mac is (the microphone's voiceover, a camera, a screen or window; D210: this Mac's sound). */
+export const TakeKind = Schema.Literals(["voiceover", "camera", "screen", "system"]);
 export type TakeKind = typeof TakeKind.Type;
 
 /**
@@ -464,7 +465,15 @@ export type TakeKind = typeof TakeKind.Type;
  * uploaded (D108) is never converted or removed by it.
  */
 export const takeUploadName = (kind: TakeKind, ext: "webm" | "mp4") => `uncut-take-${kind}-${Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("")}.${ext}`;
-export const TAKE_UPLOAD_NAME = /^uncut-take-(voiceover|camera|screen)-[0-9a-f]{12}(?: \d+)?\.(?:webm|mp4)$/;
+export const TAKE_UPLOAD_NAME = /^uncut-take-(voiceover|camera|screen|system)-[0-9a-f]{12}(?: \d+)?\.(?:webm|mp4)$/;
+
+/** D211: where a multi-source take's camera goes over its screen: a corner bubble or side by side. */
+export const MultiLayout = Schema.Literals(["tl", "tr", "bl", "br", "side"]);
+export type MultiLayout = typeof MultiLayout.Type;
+
+/** D211: one source of a multi-source take: its upload, what it is, and when its recorder started after the first one's (ms). */
+export const MultiPart = Schema.Struct({ path: Schema.String, kind: TakeKind, device: Schema.optional(Schema.String), offsetMs: Schema.Number, recordedMs: Schema.optional(Schema.Number) });
+export type MultiPart = typeof MultiPart.Type;
 
 /** D143: how the Capture tab records a device: what to do first, and Argent's own options. */
 export const CaptureOrientation = Schema.Literals(["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"]);
@@ -1514,6 +1523,23 @@ const CaptureSaveRpc = Rpc.make(RPC_METHODS.captureSave, {
   error: CaptureError,
 });
 
+// D211: a multi-source take (screen, camera, microphone, this Mac's sound recorded together): each
+// part uploaded on its own, converted into media/captures/<take>/ (screen.mp4, camera.mp4, mic.m4a,
+// system.m4a) and imported as one user edit; with placeAt every part goes on the timeline there,
+// start-aligned by the parts' offsets and grouped, the camera over the screen in `layout`.
+const CaptureSaveMultiRpc = Rpc.make(RPC_METHODS.captureSaveMulti, {
+  payload: Schema.Struct({ parts: Schema.Array(MultiPart), name: Schema.optional(Schema.String), placeAt: Schema.optional(Schema.Number), layout: Schema.optional(MultiLayout) }),
+  success: Schema.Struct({
+    name: Schema.String,
+    seconds: Schema.Number,
+    folder: Schema.String,
+    media: Schema.Array(Schema.Struct({ mediaId: Schema.String, kind: TakeKind, name: Schema.String, file: Schema.String })),
+    items: Schema.Array(Schema.Struct({ itemId: Schema.String, trackId: Schema.String, kind: TakeKind, start: Schema.Number, in: Schema.Number, duration: Schema.Number })),
+    group: Schema.optional(Schema.String),
+  }),
+  error: CaptureError,
+});
+
 // Generators (D99): which there are and whether each has its key; a generation into the open
 // project (returns at once; progress on generate.jobs); cancel one.
 const GenerateListRpc = Rpc.make(RPC_METHODS.generateList, { payload: Empty, success: Schema.Array(GeneratorInfo) });
@@ -1541,6 +1567,7 @@ export const WsRpcGroup = RpcGroup.make(
   CaptureStartRpc,
   CaptureStopRpc,
   CaptureSaveRpc,
+  CaptureSaveMultiRpc,
   CaptureBootRpc,
   CaptureRecordRpc,
   PluginsListRpc,

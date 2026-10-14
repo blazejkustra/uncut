@@ -7,10 +7,10 @@
 // with its turn, or the user's from the Capture tab), { replace: {media, path, source?, overrun?} }
 // is swapped in for an existing media (a re-shoot). Anything else, or a file outside that folder,
 // is refused with a sentence.
-import { readdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { readdir, realpath, stat } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
-import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureOptions, type CaptureOrientation, type CaptureState, type ProjectSnapshot, type TakeKind } from "@uncut/contracts";
+import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureOptions, type CaptureOrientation, type CaptureState, type MultiLayout, type MultiPart, type ProjectSnapshot, type TakeKind } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,7 +23,8 @@ import { Projects } from "../project/projects.ts";
 import { ServerConfig } from "../app/config.ts";
 import { which } from "../app/setup.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
-import { convertTake, TAKE_MODULE, uploadedTake } from "./takes.ts";
+import { safeUploadName } from "../app/remote.ts";
+import { convertTake, MULTI_FILE, MULTI_PART_NAME, stamp, TAKE_MODULE, uploadedTake } from "./takes.ts";
 
 export const ARGENT_PLUGIN = "argent.capture";
 export const ARGENT_INSTALL = "npm i -g @swmansion/argent@latest";
@@ -151,6 +152,8 @@ export interface CaptureShape {
   readonly stop: (device: string) => Effect.Effect<{ mediaId: string; name: string; seconds: number }, CaptureError>;
   /** D114: a take recorded on this Mac (uploaded to media/uploads/) into the project, placed when `placeAt` is given. */
   readonly save: (input: SaveTakeInput) => Effect.Effect<SavedTake, CaptureError>;
+  /** D211: a multi-source take's parts into media/captures/<take>/, one user edit, start-aligned and grouped with `placeAt`. */
+  readonly saveMulti: (input: SaveMultiInput) => Effect.Effect<SavedMulti, CaptureError>;
   /** D144: the same for the agent's screen_record: an edit of its turn (Undo turn removes it). */
   readonly saveForTurn: (input: SaveTakeInput & { readonly turnId: string; readonly dir: string }) => Effect.Effect<SavedTake & { readonly snapshot?: ProjectSnapshot | undefined; readonly path: string }, CaptureError>;
 }
@@ -161,6 +164,23 @@ export interface SaveTakeInput {
   readonly name?: string | undefined;
   readonly device?: string | undefined;
   readonly placeAt?: number | undefined;
+}
+
+export interface SaveMultiInput {
+  readonly parts: ReadonlyArray<MultiPart>;
+  readonly name?: string | undefined;
+  readonly placeAt?: number | undefined;
+  readonly layout?: MultiLayout | undefined;
+}
+
+export interface SavedMulti {
+  readonly name: string;
+  readonly seconds: number;
+  /** The take's folder, relative to the project (media/captures/Take 20261015-101500). */
+  readonly folder: string;
+  readonly media: ReadonlyArray<{ readonly mediaId: string; readonly kind: TakeKind; readonly name: string; readonly file: string }>;
+  readonly items: ReadonlyArray<{ readonly itemId: string; readonly trackId: string; readonly kind: TakeKind; readonly start: number; readonly in: number; readonly duration: number }>;
+  readonly group?: string;
 }
 
 export interface SavedTake {
@@ -330,7 +350,7 @@ export const layer = Layer.effect(
               dir: open.dir,
               path: converted.file,
               source: { module: TAKE_MODULE[input.kind], ...(device ? { device: device.slice(0, 200) } : {}) },
-              ...(placeAt !== undefined ? { place: { frame: placeAt, placement: input.kind === "voiceover" ? ("voiceover" as const) : ("video" as const) } } : {}),
+              ...(placeAt !== undefined ? { place: { frame: placeAt, placement: input.kind === "voiceover" || input.kind === "system" ? input.kind : ("video" as const) } } : {}),
               ...(input.turnId ? { turnId: input.turnId } : {}),
             })
             .pipe(Effect.mapError((error) => failed(`The take wasn't imported: ${error.message}`)));
@@ -349,6 +369,73 @@ export const layer = Layer.effect(
     const save = (input: SaveTakeInput) => importTake(input).pipe(Effect.map(({ snapshot: _s, path: _p, ...saved }) => saved satisfies SavedTake));
     const saveForTurn = (input: SaveTakeInput & { readonly turnId: string; readonly dir: string }) => importTake(input);
 
-    return Capture.of({ state, start, stop, save, saveForTurn, boot, record });
+    const saveMulti = (input: SaveMultiInput) =>
+      saving.withPermits(1)(
+        Effect.gen(function* () {
+          const open = yield* projects.current;
+          if (!open) return yield* new CaptureError({ reason: "no-project", message: "Open a project first: takes go into its media folder." });
+          const parts = input.parts;
+          if (!parts.length || parts.length > 4) return yield* failed("A take records one to four sources.");
+          if (new Set(parts.map((p) => p.kind)).size !== parts.length) return yield* failed("Each source can be in a take once.");
+          const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) => (typeof m.path === "string" ? [m.path] : []));
+          const uploads: Array<string> = [];
+          for (const part of parts) {
+            const found = yield* Effect.promise(() => uploadedTake(part.path, open.dir, mediaPaths));
+            if ("problem" in found) return yield* failed(found.problem);
+            uploads.push(found.file);
+          }
+          const ffmpeg = yield* Effect.promise(async () => {
+            await config.shellReady;
+            return which("ffmpeg", process.env.PATH ?? "");
+          });
+          if (!ffmpeg) return yield* failed("ffmpeg isn't installed, so the take can't be saved (brew install ffmpeg). The recordings are in media/uploads.");
+          const fps = (open.project as { canvas?: { fps?: number } }).canvas?.fps ?? 30;
+          // The take's own folder: "<name> 20261015-101500" (" 2" when that's taken).
+          const base = `${str(input.name) ? safeUploadName(str(input.name)!).slice(0, 80).trim() : "Take"} ${stamp()}`;
+          let folder = "";
+          for (let n = 1; n < 100 && !folder; n++) {
+            const candidate = n === 1 ? base : `${base} ${n}`;
+            if (!(yield* Effect.promise(() => stat(join(open.dir, "media", "captures", candidate)).then(() => true, () => false)))) folder = candidate;
+          }
+          if (!folder) return yield* failed("Too many takes with that name in media/captures.");
+          const files: Array<string> = [];
+          for (const [i, part] of parts.entries()) {
+            const converted = yield* Effect.promise(() =>
+              convertTake({ ffmpeg, env: withoutApiKey(process.env), projectDir: open.dir, upload: uploads[i]!, kind: part.kind, fps, subfolder: folder, fileName: MULTI_FILE[part.kind] }).catch((error: Error) => ({ problem: `The take couldn't be saved: ${error.message}` })),
+            );
+            if ("problem" in converted) return yield* failed(converted.problem);
+            files.push(converted.file);
+          }
+          const placeAt = typeof input.placeAt === "number" && Number.isFinite(input.placeAt) && input.placeAt >= 0 ? Math.floor(input.placeAt) : undefined;
+          const result = yield* media
+            .importMulti({
+              openId: open.openId,
+              dir: open.dir,
+              parts: parts.map((part, i) => {
+                const device = str(part.device);
+                return { path: files[i]!, name: `${folder} ${MULTI_PART_NAME[part.kind]}`, kind: part.kind, offsetMs: Number.isFinite(part.offsetMs) ? Math.max(0, part.offsetMs) : 0, source: { module: TAKE_MODULE[part.kind], ...(device ? { device: device.slice(0, 200) } : {}), take: folder } };
+              }),
+              frame: placeAt,
+              layout: input.layout,
+              summary: `Record ${folder}`,
+            })
+            .pipe(Effect.mapError((error) => failed(`The take wasn't imported: ${error.message}`)));
+          if (result.entries.length !== parts.length) return yield* failed(`The take wasn't imported: ${result.failed[0]?.message ?? result.skipped[0]?.reason ?? "a part is missing"}`);
+          const byFile = new Map(parts.map((p) => [MULTI_FILE[p.kind], p.kind]));
+          const kindOf = new Map(result.entries.map((e) => [e.id, byFile.get(basename(e.path))!]));
+          const shortest = Math.min(...result.entries.map((e) => e.probe.frames ?? 0));
+          const frames = result.multi?.items[0]?.duration ?? shortest;
+          return {
+            name: folder,
+            seconds: Number((frames / fps).toFixed(2)),
+            folder: `media/captures/${folder}`,
+            media: result.entries.map((e) => ({ mediaId: e.id, kind: kindOf.get(e.id)!, name: e.name, file: e.path })),
+            items: (result.multi?.items ?? []).map((it) => ({ itemId: it.itemId, trackId: it.trackId, kind: it.kind, start: it.start, in: it.in, duration: it.duration })),
+            ...(result.multi?.group ? { group: result.multi.group } : {}),
+          } satisfies SavedMulti;
+        }),
+      );
+
+    return Capture.of({ state, start, stop, save, saveMulti, saveForTurn, boot, record });
   }),
 );

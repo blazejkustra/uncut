@@ -6,6 +6,7 @@ import {
   ASK_MEDIA_ACCESS_CHANNEL,
   CAPTURE_SOURCES_CHANNEL,
   CHOOSE_DISPLAY_SOURCE_CHANNEL,
+  SYSTEM_AUDIO_CHANNEL,
   CHOOSE_FOLDER_CHANNEL,
   CHOOSE_MEDIA_CHANNEL,
   CHOOSE_SAVE_PATH_CHANNEL,
@@ -88,7 +89,8 @@ contextBridge.exposeInMainWorld("uncut", {
   askMediaAccess: (kind: MediaAccessKind) => ipcRenderer.invoke(ASK_MEDIA_ACCESS_CHANNEL, kind),
   openPrivacySettings: (kind: MediaAccessKind) => ipcRenderer.invoke(OPEN_PRIVACY_SETTINGS_CHANNEL, kind),
   captureSources: () => ipcRenderer.invoke(CAPTURE_SOURCES_CHANNEL),
-  chooseDisplaySource: (id: string) => ipcRenderer.invoke(CHOOSE_DISPLAY_SOURCE_CHANNEL, id),
+  chooseDisplaySource: (id: string, options?: { systemAudio?: boolean }) => ipcRenderer.invoke(CHOOSE_DISPLAY_SOURCE_CHANNEL, id, options),
+  systemAudio: () => ipcRenderer.invoke(SYSTEM_AUDIO_CHANNEL),
   // D209: the compact welcome window or the editor's; resolves with the content size.
   windowMode: (mode: "welcome" | "editor") => ipcRenderer.invoke(WINDOW_MODE_CHANNEL, mode),
   // D209: the floating mini recorder. The app window sends its state (null closes it) and hears its

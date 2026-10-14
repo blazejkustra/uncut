@@ -78,6 +78,8 @@ export interface MiniRecorderState {
 }
 export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel";
 export const CHOOSE_DISPLAY_SOURCE_CHANNEL = "uncut:choose-display-source";
+// D210: whether this Mac can record its own sound.
+export const SYSTEM_AUDIO_CHANNEL = "uncut:system-audio";
 
 export type MediaAccessKind = "microphone" | "camera" | "screen";
 export type MediaAccess = "not-determined" | "granted" | "denied" | "restricted" | "unknown";
