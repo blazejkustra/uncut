@@ -1491,3 +1491,15 @@ div.card-head { cursor: default; }
 .beat .field { min-width: 0; width: 100%; box-sizing: border-box; }
 .beat-fields .beat-num { width: 56px; flex: none; }
 .beat-fields .grow { flex: 1; min-width: 0; width: auto; }
+
+/* D194: Claude Code's tools on a permission card, and a step's result in the work log. */
+.permission-card .permission-tool { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.permission-card .permission-target { margin: 0; padding: 6px 8px; border-radius: var(--radius-sm); background: rgb(0 0 0 / 25%); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px; overflow: auto; }
+.permission-card .permission-why { font-size: 11.5px; color: var(--warn); }
+.step.has-result { cursor: pointer; }
+.step.has-result:hover { color: var(--fg); }
+.step .grow { flex: 1; min-width: 0; }
+.step svg.lucide.step-chev { width: 12px; height: 12px; opacity: 0.6; }
+.step-result { margin: 2px 0 4px 19px; padding: 6px 8px; border-left: 2px solid var(--border, rgb(255 255 255 / 12%)); font-family: var(--mono); font-size: 11px; line-height: 1.45; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.agent-warning { display: flex; gap: 6px; align-items: flex-start; margin: 8px 12px 0; font-size: 12px; line-height: 1.45; }
+.agent-warning svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
