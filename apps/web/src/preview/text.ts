@@ -145,7 +145,7 @@ export function planTextBox(project: ProjectModel, itemId: string, patch: Partia
 }
 
 /** Position and box width merged into the transform (a null w makes the box fit its text). */
-export function planTransform(project: ProjectModel, itemId: string, patch: { readonly x?: number; readonly y?: number; readonly w?: number | null }, summary = "Move text"): Plan | Problem {
+export function planTransform(project: ProjectModel, itemId: string, patch: { readonly x?: number; readonly y?: number; readonly w?: number | null; readonly rotate?: number | null; readonly opacity?: number | null }, summary = "Move text"): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
   // The box as drawn: a look's width (a quote, a spanning title) is written with the position,
@@ -154,8 +154,13 @@ export function planTransform(project: ProjectModel, itemId: string, patch: { re
   const transform: Record<string, unknown> = { ...(item.transform ?? {}), x: box.x, y: box.y, ...(box.w !== undefined ? { w: box.w } : {}) };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined || (k === "w" && (v as number) <= 0)) delete transform[k];
+    // D129: rotation in degrees (to 0.1, within ±180; 0 = none), opacity 0–1 (to 0.01; 1 = none).
+    else if (k === "rotate") transform[k] = Math.round((((((v as number) + 180) % 360) + 360) % 360 - 180) * 10) / 10;
+    else if (k === "opacity") transform[k] = Math.min(1, Math.max(0, Math.round((v as number) * 100) / 100));
     else transform[k] = Math.round(v as number);
   }
+  if (transform.rotate === 0) delete transform.rotate;
+  if (transform.opacity === 1) delete transform.opacity;
   if (JSON.stringify(transform) === JSON.stringify(item.transform ?? {})) return { ops: [], summary };
   return planUpdate(project, itemId, { transform: transform as Transform }, summary);
 }
@@ -171,6 +176,51 @@ export function planCentre(project: ProjectModel, itemId: string): Plan | Proble
   const transform = { ...(item.transform ?? {}), x: margin, y: textBox(item, project).y, w: project.canvas.width - 2 * margin };
   const style = { ...(item.style ?? {}), align: "center" as const };
   return planUpdate(project, itemId, { transform, style }, "Centre text");
+}
+
+/** Where "align to the frame" puts a box (D129): an edge or the centre of the safe area, on one axis. */
+export type FrameEdge = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
+
+/**
+ * Move a text box against the canvas's safe area (D129), like a design tool's align buttons: left /
+ * right edge to the margin, top / bottom likewise, or centred on the canvas. `size` is the box as
+ * drawn (canvas px, measured), since a text box has no saved height.
+ */
+export function planFrameAlign(project: ProjectModel, itemId: string, edge: FrameEdge, size: { readonly w: number; readonly h: number }): Plan | Problem {
+  const { width, height } = project.canvas;
+  const m = safeMargin(project);
+  const patch =
+    edge === "left" ? { x: m } : edge === "right" ? { x: width - m - size.w } : edge === "hcenter" ? { x: (width - size.w) / 2 } : edge === "top" ? { y: m } : edge === "bottom" ? { y: height - m - size.h } : { y: (height - size.h) / 2 };
+  const words: Readonly<Record<FrameEdge, string>> = { left: "left", hcenter: "centre", right: "right", top: "top", vcenter: "middle", bottom: "bottom" };
+  return planTransform(project, itemId, patch, `Align text to the ${words[edge]}`);
+}
+
+/** Text case (D129): none, capitals (uppercase), lower case or title case. */
+export type TextCase = "none" | "upper" | "lower" | "title";
+export const caseOf = (item: Item): TextCase => {
+  const s = item.style ?? {};
+  if (s.case === "lower" || s.case === "title") return s.case;
+  return (s.uppercase ?? textLook(s.preset).uppercase) ? "upper" : "none";
+};
+export function planCase(project: ProjectModel, itemId: string, next: TextCase): Plan | Problem {
+  const look = textLook(itemOf(project, itemId)?.style?.preset);
+  const patch = next === "upper" ? { uppercase: look.uppercase ? null : true, case: null } : next === "none" ? { uppercase: look.uppercase ? false : null, case: null } : { case: next, uppercase: null };
+  const words: Readonly<Record<TextCase, string>> = { none: "normal case", upper: "capitals", lower: "lower case", title: "title case" };
+  return planStyle(project, itemId, patch as Parameters<typeof planStyle>[2], `Set text in ${words[next]}`);
+}
+
+/**
+ * One edit over several items (multi-select, D129): each item's plan against the same project,
+ * the ops together. A refused one refuses the whole edit (one ⌘Z, all or nothing).
+ */
+export function planMany(project: ProjectModel, ids: ReadonlyArray<string>, make: (project: ProjectModel, id: string) => Plan | Problem): Plan | Problem {
+  const plans = ids.map((id) => make(project, id));
+  const bad = plans.find((p): p is Problem => "problem" in p);
+  if (bad) return bad;
+  const ok = plans as Array<Plan>;
+  const ops = ok.flatMap((p) => p.ops);
+  const summary = ok.find((p) => p.ops.length)?.summary ?? ok[0]?.summary ?? "";
+  return { ops, summary: ids.length > 1 && ops.length ? `${summary} (${ids.length} items)` : summary };
 }
 
 export type AnimationSlot = "in" | "out";
@@ -295,15 +345,21 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
 }
 
 /** A background's colours (props merged; a null `to` makes it a plain colour again). */
-export function planBackground(project: ProjectModel, itemId: string, patch: { readonly color?: string; readonly to?: string | null; readonly angle?: number | null }): Plan | Problem {
+export function planBackground(project: ProjectModel, itemId: string, patch: { readonly color?: string; readonly to?: string | null; readonly via?: string | null; readonly angle?: number | null; readonly gradient?: "linear" | "radial" | null; readonly noise?: number | null }): Plan | Problem {
   const item = itemOf(project, itemId);
   if (!item) return { problem: "That item isn't in the project any more." };
   const props: Record<string, unknown> = { ...(item.props ?? {}) };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null || v === undefined) delete props[k];
-    else props[k] = k === "angle" ? Math.round(v as number) : v;
+    else props[k] = k === "angle" ? Math.round(v as number) : k === "noise" ? Math.min(1, Math.max(0, Math.round((v as number) * 100) / 100)) : v;
   }
-  if (props.to === undefined) delete props.angle;
+  if (props.noise === 0) delete props.noise;
+  if (props.to === undefined) {
+    delete props.angle;
+    delete props.via;
+    delete props.gradient;
+  }
+  if (props.gradient === "radial") delete props.angle;
   if (JSON.stringify(props) === JSON.stringify(item.props ?? {})) return { ops: [], summary: "" };
   return planUpdate(project, itemId, { props }, "Change the background");
 }

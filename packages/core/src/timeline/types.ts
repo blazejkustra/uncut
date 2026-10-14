@@ -70,6 +70,10 @@ export interface TextStyle {
   readonly color?: string;
   readonly align?: "left" | "center" | "right";
   readonly uppercase?: boolean;
+  /** D129: lower and title case (upper is `uppercase`); wins over uppercase when set. */
+  readonly case?: "lower" | "title";
+  /** D129: slanted (the font's italic, else a synthesized oblique). */
+  readonly italic?: boolean;
   /** D80: false = none (even when the preset's look has one); absent = the look's. */
   readonly stroke?: TextStroke | false;
   readonly shadow?: TextShadow | false;

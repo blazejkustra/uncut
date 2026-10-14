@@ -2,21 +2,22 @@
 // the Text tab's presets and the Elements tab's components and backgrounds. Which one shows is
 // the rail's choice.
 import type { ImportJob } from "@uncut/contracts";
-import { RENDER_CSS, solidBackground, textHtml } from "@uncut/core/render";
+import { RENDER_CSS, SOLID, textHtml } from "@uncut/core/render";
 import { planInsertText } from "@uncut/core/textPlan";
 import type { Item } from "@uncut/core/types";
 import { COMPONENTS, componentDefaults, componentHtml, naturalSize, screenRect, type ComponentInfo } from "@uncut/core/components";
 import { defaultFrames, TRANSITIONS, type TransitionInfo } from "@uncut/core/transitions";
 import { filterMusic, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicTempo, type MusicTempo, type MusicTrack } from "@uncut/core/music";
-import { AudioLines, Blend, Blocks, Film, Gauge, Image as ImageIcon, Layers, Music, Play, Plus, RefreshCw, Square, Type, Upload, X } from "lucide-react";
+import { AudioLines, Blend, Blocks, ChevronDown, ChevronRight, Eye, EyeOff, Film, Gauge, Image as ImageIcon, Layers, Music, Play, Plus, RefreshCw, Square, Type, Upload, X } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { bridge } from "../state/bridge.ts";
 import { timecode } from "../state/format.ts";
 import { TEXT_PRESETS, type TextPreset } from "../state/project.ts";
-import { BACKGROUNDS } from "../preview/text.ts";
 import { actions, activeAnalyses, activeJobs, getState, isRemote, mediaUrl, musicUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
-import { COMPONENT_DRAG_TYPE, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
+import { COMPONENT_DRAG_TYPE, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../preview/components.ts";
+import { setDragChip } from "./dragChip.ts";
+import { hideElement, showElement, useHiddenElements } from "./elementsGrid.ts";
 import { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../timeline/dnd.ts";
 import { openMenu } from "../timeline/ContextMenu.tsx";
 import { RenameField } from "../timeline/RenameField.tsx";
@@ -269,7 +270,7 @@ function MusicLibrary({ project, online }: { project: Project; online: boolean }
 const clockOf = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 
 /** The frame a component's thumbnail shows (a terminal mid-way, its line typed). */
-const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45, "component.agent-log": 150, "component.compare-table": 75 };
+const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45, "component.agent-log": 150, "component.compare-table": 75, "component.lower-third": 45, "component.sticker": 30, "component.progress-bar": 200, "component.subscribe": 20 };
 
 /**
  * A component's thumbnail (D76): its real HTML (core componentHtml with its default props) laid out
@@ -305,109 +306,162 @@ function ComponentThumb({ info, project }: { info: ComponentInfo; project: Proje
   );
 }
 
+/** The Background tile's element (E3, D131): one background, its colours and gradient set in the Inspector. */
+const BACKGROUND_PROPS = { color: "#0B1D3A" } as const;
+const BACKGROUND_THUMB = "linear-gradient(160deg, #0B1D3A, #3B1E54)";
+
+/** A grid tile's hide / show button (E2, D130). */
+const HideButton = ({ id, name, hidden }: { id: string; name: string; hidden: boolean }) => (
+  <button
+    className="tile-hide"
+    data-testid={hidden ? "element-show" : "element-hide"}
+    title={hidden ? `Show ${name}` : `Hide ${name}`}
+    aria-label={hidden ? `Show ${name}` : `Hide ${name}`}
+    onClick={(e) => {
+      e.stopPropagation();
+      e.currentTarget.blur();
+      if (hidden) showElement(id);
+      else hideElement(id);
+    }}
+  >
+    {hidden ? <Eye /> : <EyeOff />}
+  </button>
+);
+
 /**
- * Components (D76) and backgrounds (component.solid, D53). A component: drag it onto the canvas
- * (it lands there, at the playhead) or the timeline (at that time), or + adds it at the playhead.
- * A background is a full-frame colour or gradient under the text: with a text item selected it
- * spans that text (a title card); otherwise 3 s at the playhead.
+ * The Elements tab (D76, E2/E3 in D130/D131): one grid of elements, general ones first, then a
+ * Background (a colour or gradient under the text) and a plugin's components (D103). Drag one onto
+ * the canvas (it lands there, at the playhead) or the timeline (at that time), or + adds it at the
+ * playhead. Any tile can be hidden (its eye, or right-click); hidden ones (the dev-promo components
+ * start that way) are listed below the grid, and can be shown again. Remembered on this Mac.
  */
 function ElementsLibrary({ project }: { project: Project }) {
   const { connection, contributions } = useApp();
   const online = connection === "connected";
-  const [custom, setCustom] = useState("#1E3A5F");
+  const hidden = useHiddenElements();
+  const [showHidden, setShowHidden] = useState(false);
+  const menu = (e: React.MouseEvent, id: string, name: string, isHidden: boolean) => {
+    e.preventDefault();
+    openMenu(e.clientX, e.clientY, [isHidden ? { id: "element-show", label: "Show in the grid", run: () => showElement(id) } : { id: "element-hide", label: "Hide from the grid", run: () => hideElement(id) }], name);
+  };
+  const componentTile = (c: ComponentInfo, isHidden: boolean) => (
+    <div
+      key={c.id}
+      className={`tile comp-tile ${isHidden ? "hidden-tile" : ""}`}
+      data-testid={isHidden ? "hidden-element-tile" : "component-tile"}
+      data-component={c.id}
+      title={c.name}
+      draggable={online && !isHidden}
+      onContextMenu={(e) => menu(e, c.id, c.name, isHidden)}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(COMPONENT_DRAG_TYPE, c.id);
+        e.dataTransfer.effectAllowed = "copy";
+        setDragChip(e, c.name);
+        setDraggedComponent(c.id);
+      }}
+      onDragEnd={() => setDraggedComponent(undefined)}
+    >
+      <ComponentThumb info={c} project={project} />
+      {!isHidden && (
+        <button
+          className="tile-add"
+          data-testid="component-add"
+          disabled={!online}
+          title={`Add ${c.name.toLowerCase()} at the playhead`}
+          aria-label={`Add ${c.name.toLowerCase()}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.blur();
+            void actions.addComponent(c.id);
+          }}
+        >
+          <Plus />
+        </button>
+      )}
+      <HideButton id={c.id} name={c.name} hidden={isHidden} />
+      <div className="tile-name">{c.name}</div>
+    </div>
+  );
+  const pluginTile = (c: NonNullable<typeof contributions>["components"][number], isHidden: boolean) => (
+    <div key={c.id} className={`tile comp-tile plugin-comp-tile ${isHidden ? "hidden-tile" : ""}`} data-testid={isHidden ? "hidden-element-tile" : "plugin-component-tile"} data-component={c.id} title={c.name} onContextMenu={(e) => menu(e, c.id, c.name, isHidden)}>
+      <div className="thumb plugin-comp-thumb">
+        <Blocks />
+      </div>
+      {!isHidden && (
+        <button
+          className="tile-add"
+          data-testid="plugin-component-add"
+          disabled={!online}
+          title={`Add ${c.name.toLowerCase()} at the playhead`}
+          aria-label={`Add ${c.name.toLowerCase()}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.blur();
+            void actions.addPluginComponent(c.id);
+          }}
+        >
+          <Plus />
+        </button>
+      )}
+      <HideButton id={c.id} name={c.name} hidden={isHidden} />
+      <div className="tile-name">{c.name}</div>
+      <div className="source-label" data-testid="component-source" title={`From the plugin ${c.pluginName}`}>
+        {c.pluginName}
+      </div>
+    </div>
+  );
+  const backgroundHidden = hidden.includes(SOLID);
+  const backgroundTile = (isHidden: boolean) => (
+    <div key={SOLID} className={`tile comp-tile ${isHidden ? "hidden-tile" : ""}`} data-testid={isHidden ? "hidden-element-tile" : "background-tile"} data-component={SOLID} title="Background" onContextMenu={(e) => menu(e, SOLID, "Background", isHidden)}>
+      <div className="thumb bg-thumb" style={{ background: BACKGROUND_THUMB }} />
+      {!isHidden && (
+        <button
+          className="tile-add"
+          data-testid="background-add"
+          disabled={!online}
+          title="Add a background at the playhead"
+          aria-label="Add a background"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.blur();
+            void actions.addBackground(BACKGROUND_PROPS);
+          }}
+        >
+          <Plus />
+        </button>
+      )}
+      <HideButton id={SOLID} name="Background" hidden={isHidden} />
+      <div className="tile-name">Background</div>
+    </div>
+  );
+  const plugins = contributions?.components ?? [];
+  const hiddenCount = COMPONENTS.filter((c) => hidden.includes(c.id)).length + plugins.filter((c) => hidden.includes(c.id)).length + (backgroundHidden ? 1 : 0);
   return (
     <aside className="library" data-testid="elements-library">
       <div className="lib-head">Elements</div>
       <div className="lib-section">
-        <div className="lib-label">Components</div>
         <div className="grid2" data-testid="components-grid">
-          {COMPONENTS.map((c) => (
-            <div
-              key={c.id}
-              className="tile comp-tile"
-              data-testid="component-tile"
-              data-component={c.id}
-              title={`${c.name}: ${c.description}`}
-              draggable={online}
-              onDragStart={(e) => {
-                e.dataTransfer.setData(COMPONENT_DRAG_TYPE, c.id);
-                e.dataTransfer.effectAllowed = "copy";
-                setDraggedComponent(c.id);
-              }}
-              onDragEnd={() => setDraggedComponent(undefined)}
-            >
-              <ComponentThumb info={c} project={project} />
-              <button
-                className="tile-add"
-                data-testid="component-add"
-                disabled={!online}
-                title={`Add a ${c.name.toLowerCase()} at the playhead`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.currentTarget.blur();
-                  void actions.addComponent(c.id);
-                }}
-              >
-                <Plus />
-              </button>
-              <div className="tile-name">{c.name}</div>
-            </div>
-          ))}
+          {COMPONENTS.filter((c) => !hidden.includes(c.id)).map((c) => componentTile(c, false))}
+          {!backgroundHidden && backgroundTile(false)}
           {/* A plugin's components (D103): a named tile, never its template here (it only runs in the graphics sandbox once added). */}
-          {contributions?.components.map((c) => (
-            <button
-              key={c.id}
-              className="tile text-tile plugin-comp-tile"
-              data-testid="plugin-component-tile"
-              data-component={c.id}
-              disabled={!online}
-              title={`${c.name}${c.description ? `: ${c.description}` : ""} Adds it at the playhead.`}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                void actions.addPluginComponent(c.id);
-              }}
-            >
-              <div className="thumb plugin-comp-thumb">
-                <Blocks />
-              </div>
-              <div className="tile-name">{c.name}</div>
-              <div className="source-label" data-testid="component-source" title={`From the plugin ${c.pluginName}`}>
-                {c.pluginName}
-              </div>
-            </button>
-          ))}
+          {plugins.filter((c) => !hidden.includes(c.id)).map((c) => pluginTile(c, false))}
         </div>
       </div>
-      <div className="lib-section">
-        <div className="lib-label">Backgrounds</div>
-        <div className="grid2">
-          {BACKGROUNDS.map((bg) => (
-            <button
-              key={bg.id}
-              className="tile text-tile"
-              data-testid="background-preset"
-              data-background={bg.id}
-              disabled={!online}
-              title={`Add a ${bg.label.toLowerCase()} background`}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                void actions.addBackground(bg.props);
-              }}
-            >
-              <div className="thumb bg-thumb" style={{ background: solidBackground({ id: bg.id, type: "component", duration: 1, props: bg.props }, project) }} />
-              <div className="tile-name">{bg.label}</div>
-            </button>
-          ))}
-          <div className="tile text-tile custom-bg">
-            <label className="thumb bg-thumb" style={{ background: custom }} title="Pick a colour">
-              <input type="color" data-testid="background-custom-color" value={custom} onChange={(e) => setCustom(e.target.value.toUpperCase())} />
-            </label>
-            <button className="tile-name link-btn" data-testid="background-custom" disabled={!online} onClick={(e) => (e.currentTarget.blur(), void actions.addBackground({ color: custom }))}>
-              Add {custom}
-            </button>
-          </div>
+      {hiddenCount > 0 && (
+        <div className="lib-section">
+          <button className="lib-label hidden-toggle" data-testid="hidden-elements-toggle" aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
+            {showHidden ? <ChevronDown /> : <ChevronRight />}
+            Hidden ({hiddenCount})
+          </button>
+          {showHidden && (
+            <div className="grid2" data-testid="hidden-elements">
+              {COMPONENTS.filter((c) => hidden.includes(c.id)).map((c) => componentTile(c, true))}
+              {backgroundHidden && backgroundTile(true)}
+              {plugins.filter((c) => hidden.includes(c.id)).map((c) => pluginTile(c, true))}
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </aside>
   );
 }
@@ -500,7 +554,6 @@ function TextLibrary({ project }: { project: Project }) {
       <style>{THUMB_CSS}</style>
       <div className="lib-head">Text</div>
       <div className="lib-section">
-        <div className="lib-label">Click to add at the playhead, or drag</div>
         <div className="grid2" data-testid="text-grid">
           {presets.map((preset) => (
             <button
@@ -516,7 +569,10 @@ function TextLibrary({ project }: { project: Project }) {
               onDragStart={(e) => {
                 e.dataTransfer.setData(TEXT_DRAG_TYPE, preset.id);
                 e.dataTransfer.effectAllowed = "copy";
+                setDragChip(e, preset.label);
+                setDraggedText(preset.id);
               }}
+              onDragEnd={() => setDraggedText(undefined)}
               onClick={(e) => {
                 e.currentTarget.blur();
                 void actions.addText(preset);

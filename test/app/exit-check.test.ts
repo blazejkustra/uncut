@@ -372,10 +372,12 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await page.keyboard.type("Above the old town", { delay: 10 });
     await page.keyboard.press("Tab");
     rev = await ui.savedAfter(rev);
-    await page.click('[data-testid=insp-preset][data-preset="text.title"]');
+    await page.select("[data-testid=insp-preset]", "text.title");
     rev = await ui.savedAfter(rev);
+    await page.click("[data-testid=insp-color-swatch]");
     await page.click('[data-testid=insp-color][data-color="#F5C26B"]');
     rev = await ui.savedAfter(rev);
+    await page.keyboard.press("Escape");
     await page.click("[data-testid=insp-tab-animation]");
     await page.select("[data-testid=insp-anim-in]", "move.rise");
     rev = await ui.savedAfter(rev);
@@ -406,7 +408,12 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     rev = await ui.savedAfter(rev);
     assert.equal(saved(thanksId)!.start, videoEnd, "the end card's text starts where the footage ends");
     await page.click("[data-testid=rail-elements]");
-    await page.click('[data-testid=background-preset][data-background="dusk"]');
+    await page.hover("[data-testid=background-tile]");
+    await page.click("[data-testid=background-add]");
+    rev = await ui.savedAfter(rev);
+    // One Background element (D131): made a gradient in its Inspector.
+    await ui.waitFor("[data-testid=background-editor]");
+    await page.click("[data-testid=bg-fill][data-value=linear]");
     rev = await ui.savedAfter(rev);
     const card = mainOnDisk().at(-1)!;
     assert.deepEqual(card, { id: card.id, type: "component", component: "component.solid", duration: 3 * FPS, props: { color: "#0B1D3A", to: "#3B1E54", angle: 160 } }, "the card is on main, after the clips");

@@ -144,19 +144,12 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 
-  // The Components grid: seven tiles, each with its real HTML as the thumbnail.
+  // The Elements grid (D130): the general elements, the end card and the chart, each with its real
+  // HTML as the thumbnail; the dev-promo components start hidden (listed under the grid).
   await page.click("[data-testid=rail-elements]");
   await page.waitForSelector("[data-testid=components-grid]");
   const tiles = await page.$$eval("[data-testid=component-tile]", (els) => els.map((e) => [(e as HTMLElement).dataset.component, !!e.querySelector("[data-testid=component-thumb] .pv-comp")]));
-  assert.deepEqual(tiles, [
-    ["component.end-card", true],
-    ["component.device-frame", true],
-    ["component.code-block", true],
-    ["component.terminal", true],
-    ["component.chart", true],
-    ["component.agent-log", true],
-    ["component.compare-table", true],
-  ]);
+  assert.deepEqual(tiles, ["shape", "lower-third", "callout", "progress-bar", "countdown", "subscribe", "sticker", "image-frame", "end-card", "chart"].map((id) => [`component.${id}`, true]));
   await page.screenshot({ path: out("components-panel.png") });
 
   // Drag the end card onto the canvas at frame 90: it lands there (full frame), 3 s, on a free video track.
@@ -207,6 +200,10 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
   await goTo(0);
   await page.click("[data-testid=rail-elements]");
   const r2 = await revision();
+  // Hidden by default (D130): shown again from the hidden list first.
+  await page.click("[data-testid=hidden-elements-toggle]");
+  await page.click("[data-testid=hidden-element-tile][data-component='component.device-frame'] [data-testid=element-show]");
+  await page.waitForSelector("[data-testid=component-tile][data-component='component.device-frame']");
   await page.hover("[data-testid=component-tile][data-component='component.device-frame']");
   await page.click("[data-testid=component-tile][data-component='component.device-frame'] [data-testid=component-add]");
   await waitRevision(r2 + 1);

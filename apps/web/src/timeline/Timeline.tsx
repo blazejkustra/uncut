@@ -30,7 +30,7 @@ import { bridge } from "../state/bridge.ts";
 import { actions, getState, isRemote, projectOf, textPresets, useApp } from "../state/store.ts";
 import { DRAG_PX, ItemBox } from "./ItemBox.tsx";
 import { Playhead } from "./Playhead.tsx";
-import { COMPONENT_DRAG_TYPE, draggedComponent, setDraggedComponent, TEXT_DRAG_TYPE } from "../preview/components.ts";
+import { COMPONENT_DRAG_TYPE, draggedComponent, secondsFor, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { BottomTabs } from "./BottomTabs.tsx";
 import { CutMarkers } from "./CutMarkers.tsx";
 import { CUT_DROP_PX, hasFiles, MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE, useDraggedTransition } from "./dnd.ts";
@@ -115,6 +115,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
   const [dropping, setDropping] = useState(false);
   // The lane a media tile or a file is over while dragging (T1, T9).
   const [dropLane, setDropLane] = useState<string | undefined>();
+  // A text or element tile dragged over the lanes (X2, D132): where it would start and how long it lasts.
+  const [dropSpan, setDropSpan] = useState<{ frame: number; frames: number } | undefined>();
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
@@ -577,10 +579,15 @@ export function Timeline({ project }: { project: ProjectModel }) {
     setDropping(true);
     const lane = types.includes(MEDIA_DRAG_TYPE) || hasFiles(types) ? laneHit(e.clientY).track?.id : undefined;
     if (lane !== dropLane) setDropLane(lane);
+    const tile = types.includes(TEXT_DRAG_TYPE) ? 3 : types.includes(COMPONENT_DRAG_TYPE) ? secondsFor(draggedComponent() ?? "") : undefined;
+    const span = tile === undefined ? undefined : { frame: Math.max(0, Math.round(frameAt(e.clientX))), frames: tile * fps };
+    if (span?.frame !== dropSpan?.frame || span?.frames !== dropSpan?.frames) setDropSpan(span);
   };
   const onDrop = (e: React.DragEvent) => {
     setDropping(false);
     setDropLane(undefined);
+    setDropSpan(undefined);
+    setDraggedText(undefined);
     const module = e.dataTransfer.getData(TRANSITION_DRAG_TYPE);
     if (module) {
       e.preventDefault();
@@ -710,6 +717,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
               setDropping(false);
               setDropLane(undefined);
               setDropCut(undefined);
+              setDropSpan(undefined);
             }}
             onDrop={onDrop}
             onPointerDown={onEmptyDown}
@@ -735,6 +743,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
               )}
               <Playhead ppf={ppf} bodyRef={bodyRef} headWidth={HEAD_WIDTH} />
             </div>
+            {dropSpan && <div className="tl-drop-ghost" data-testid="timeline-drop-ghost" data-frame={dropSpan.frame} style={{ left: dropSpan.frame * ppf, width: Math.max(2, dropSpan.frames * ppf) }} />}
             {tracks.map((track) => {
               const items = (view.tracks.find((t) => t.id === track.id) ?? track).items;
               const editable = !track.locked && online;

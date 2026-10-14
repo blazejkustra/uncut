@@ -225,7 +225,7 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
 /** A background's colours in words: "Background #0B1D3A", "Gradient #0B1D3A → #3B1E54". */
 const colourName = (value: unknown) => (typeof value === "string" ? value : "default");
 export const backgroundLabel = (item: Item) =>
-  item.props?.to !== undefined ? `Gradient ${colourName(item.props?.color)} → ${colourName(item.props.to)}` : `Background ${colourName(item.props?.color)}`;
+  item.props?.to !== undefined ? `${item.props?.gradient === "radial" ? "Radial gradient" : "Gradient"} ${colourName(item.props?.color)} → ${colourName(item.props.to)}` : `Background ${colourName(item.props?.color)}`;
 
 /** What a timeline item is called: its text, a background's colour, its media's name, or its id. */
 export function itemLabel(project: ProjectModel, item: Item) {

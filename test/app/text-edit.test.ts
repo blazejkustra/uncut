@@ -169,8 +169,10 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     const amber = [245, 194, 107] as const;
     const before = await shot(page, "white");
     assert.ok(colourIn(before, amber).share < 0.001, "no amber before");
+    await page.click("[data-testid=insp-color-swatch]");
     await page.click('[data-testid=insp-color][data-color="#F5C26B"]');
     rev = await savedAfter(page, rev);
+    await page.keyboard.press("Escape");
     assert.equal(title().style.color, "#F5C26B");
     assert.deepEqual(title().style, { preset: "text.title", size: 130, weight: 700, color: "#F5C26B" }, "the rest of the style stays");
     const amberShot = await shot(page, "amber");
@@ -178,7 +180,7 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
 
     // Size by number: bigger text, bigger box.
     const h0 = await page.$eval('.pv-text[data-item="title-1"]', (el) => el.getBoundingClientRect().height);
-    await page.click("[data-testid=insp-size-num]", { clickCount: 3 });
+    await page.click("[data-testid=insp-size]", { clickCount: 3 });
     await page.keyboard.type("180");
     await page.keyboard.press("Enter");
     rev = await savedAfter(page, rev);
@@ -187,7 +189,7 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     assert.ok(Math.abs(h1 / h0 - 180 / 130) < 0.08, `box grew with the size (${h0} → ${h1})`);
 
     // Size by slider: the preview follows while dragging; one edit on release.
-    const slider = (await (await page.$("[data-testid=insp-size]"))!.boundingBox())!;
+    const slider = (await (await page.$("[data-testid=insp-size-slider]"))!.boundingBox())!;
     await page.mouse.move(slider.x + slider.width * 0.4, slider.y + slider.height / 2);
     await page.mouse.down();
     await page.mouse.move(slider.x + slider.width * 0.3, slider.y + slider.height / 2, { steps: 8 });
@@ -203,13 +205,13 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-testid")), null, "the slider lets go of focus (Space plays again)");
 
     // Preset: Lower third sets its size and weight, keeps the colour.
-    await page.click('[data-testid=insp-preset][data-preset="text.lower-third"]');
+    await page.select("[data-testid=insp-preset]", "text.lower-third");
     rev = await savedAfter(page, rev);
     assert.deepEqual(title().style, { preset: "text.lower-third", size: 54, weight: 600, color: "#F5C26B" });
     await page.select("[data-testid=insp-weight]", "800");
     rev = await savedAfter(page, rev);
     assert.equal(title().style.weight, 800);
-    await page.click('[data-testid=insp-preset][data-preset="text.title"]');
+    await page.select("[data-testid=insp-preset]", "text.title");
     rev = await savedAfter(page, rev);
     assert.equal(title().style.size, 130);
 
@@ -292,7 +294,8 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     // A background from the Elements tab, with the title selected: a title card on main, the
     // same length, filling the frame with dark blue under the (still visible) amber text.
     await page.click("[data-testid=rail-elements]");
-    await page.click('[data-testid=background-preset][data-background="dark-blue"]');
+    await page.hover("[data-testid=background-tile]");
+    await page.click("[data-testid=background-add]");
     rev = await savedAfter(page, rev);
     const main = onDisk().tracks.find((t: { id: string }) => t.id === "main");
     assert.deepEqual(main.items, [{ id: "background-1", type: "component", component: "component.solid", duration: 90, props: { color: "#0B1D3A" } }]);
@@ -312,19 +315,19 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
 
     // Its Inspector: a gradient.
     await waitFor(page, "[data-testid=background-editor]");
-    await page.click("[data-testid=bg-gradient]");
+    await page.click("[data-testid=bg-fill][data-value=linear]");
     rev = await savedAfter(page, rev);
     assert.deepEqual(main.items[0].props.color, "#0B1D3A");
     const bgProps = () => onDisk().tracks.find((t: { id: string }) => t.id === "main").items[0].props;
     assert.deepEqual(bgProps(), { color: "#0B1D3A", to: "#3B1E54", angle: 160 });
     await page.waitForFunction((sel) => document.querySelector(`${sel} .nm`)?.textContent === "Gradient #0B1D3A → #3B1E54", {}, bgItem);
-    // The checkbox keeps focus, and ⌘Z there undoes the project (it isn't a text field).
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-testid")), "bg-gradient");
+    // The Linear button keeps focus, and ⌘Z there undoes the project (it isn't a text field).
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-testid")), "bg-fill");
     await meta(page, "KeyZ");
-    await page.waitForFunction(() => !(document.querySelector<HTMLInputElement>("[data-testid=bg-gradient]")?.checked ?? true));
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=background-editor]")?.dataset.fill === "solid");
     assert.deepEqual(bgProps(), { color: "#0B1D3A" });
     await meta(page, "KeyZ", true);
-    await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=bg-gradient]")?.checked === true);
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=background-editor]")?.dataset.fill === "linear");
     assert.deepEqual(bgProps(), { color: "#0B1D3A", to: "#3B1E54", angle: 160 });
     rev = await revision(page);
 

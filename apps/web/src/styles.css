@@ -352,11 +352,11 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 /* Add to timeline: a button on the tile's thumbnail, shown on hover. */
 .tile { position: relative; }
 .tile[draggable="true"] { cursor: grab; }
-.tile-add { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; opacity: 0; transition: opacity 0.1s; }
+.tile-add { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; opacity: 0; transition: opacity 0.1s; }
 .tile-add svg.lucide { width: 14px; height: 14px; stroke-width: 2.25; }
 .tile:hover .tile-add, .tile-add:focus-visible { opacity: 1; }
 /* Analysis (D66): an Analyze button beside +, then a bar with a stop button while it runs */
-.tile-analyze { position: absolute; right: 30px; top: 4px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--fg); opacity: 0; transition: opacity 0.1s; }
+.tile-analyze { position: absolute; right: 30px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--fg); opacity: 0; transition: opacity 0.1s; }
 .tile-analyze svg.lucide { width: 13px; height: 13px; }
 .tile:hover .tile-analyze, .tile-analyze:focus-visible { opacity: 1; }
 .tile-analysis { position: absolute; left: 4px; right: 4px; bottom: 4px; display: flex; align-items: center; gap: 4px; padding: 3px 3px 3px 6px; border-radius: 3px; background: rgb(0 0 0 / 60%); }
@@ -1044,3 +1044,87 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px 
 .speed-row .small-btn.active { background: var(--select); color: #fff; border-color: transparent; }
 .tile.flash { outline: 2px solid var(--select); outline-offset: 2px; transition: outline-color 0.3s; }
 .tile-name .renaming { width: 100%; height: 18px; font-size: 11.5px; padding: 0 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--select); border-radius: 4px; }
+
+/* Property panel (D129): sections, rows, scrubbable numbers, colours, popovers. */
+.pstack { display: flex; flex-direction: column; }
+.psec { border-bottom: 1px solid var(--border); padding: 4px 14px 10px; }
+.psec-head { display: flex; align-items: center; justify-content: space-between; min-height: 30px; }
+.psec-title { display: inline-flex; align-items: center; gap: 4px; margin-left: -4px; padding: 2px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--fg); letter-spacing: 0.01em; }
+.psec-title svg.lucide { width: 12px; height: 12px; color: var(--dim); }
+.psec-head .icon-btn { width: 22px; height: 22px; }
+.psec-head .icon-btn svg.lucide { width: 14px; height: 14px; }
+.psec-body { display: flex; flex-direction: column; gap: 6px; }
+.prop { display: grid; grid-template-columns: 70px minmax(0, 1fr) 18px; align-items: center; gap: 6px; min-height: 28px; }
+.prop-k { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prop-v { min-width: 0; display: flex; align-items: center; }
+.prop-v > * { flex: 1; min-width: 0; }
+.prop-reset, .prop-reset-gap { width: 18px; height: 18px; }
+.prop-reset { display: grid; place-items: center; border-radius: 4px; color: var(--dim); opacity: 0; }
+.prop:hover .prop-reset, .prop-reset:focus-visible { opacity: 1; }
+.prop-reset:hover { color: var(--fg); background: var(--raised); }
+.prop-reset svg.lucide { width: 11px; height: 11px; }
+.prop-pair { display: flex; gap: 6px; }
+.prop-pair .pselect { flex: 1; min-width: 0; }
+.prop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.prop-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.icon-btn.square { width: 28px; height: 28px; flex: none; border: 1px solid var(--border); }
+.icon-btn.square.active { border-color: var(--select); color: var(--fg); background: var(--select-soft); }
+.icon-btn svg.lucide { width: 15px; height: 15px; }
+.pselect { height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--fg); font: 12px var(--font); text-align: left; min-width: 0; width: 100%; outline: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pselect:focus-visible, .pselect:hover:not(:disabled) { border-color: var(--border-strong); }
+.font-btn { font-size: 13px; }
+.look-row { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.look-row .icon-btn { flex: none; border: 1px solid var(--border); }
+.nfield { display: flex; align-items: center; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); min-width: 0; overflow: hidden; }
+.nfield:focus-within { border-color: var(--select); }
+.nfield.disabled { opacity: 0.5; }
+.nfield-k { flex: none; padding: 0 4px 0 8px; height: 100%; display: inline-flex; align-items: center; font-size: 11px; color: var(--dim); cursor: ew-resize; user-select: none; }
+.nfield-k:hover { color: var(--fg); }
+.nfield input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: 0; padding: 0 6px; color: var(--fg); font: 12px var(--mono); text-align: left; }
+.nfield-u { flex: none; padding-right: 8px; font-size: 11px; color: var(--dim); }
+.slider-num { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 8px; align-items: center; width: 100%; }
+.pseg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); width: 100%; }
+.pseg button { flex: 1; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--muted); font-size: 11px; }
+.pseg button svg.lucide { width: 14px; height: 14px; }
+.pseg button:not(:disabled):hover { color: var(--fg); }
+.pseg button.active { background: var(--raised); color: var(--fg); box-shadow: 0 0 0 1px var(--border-strong); }
+.frame-align { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
+.frame-align .icon-btn { flex: 1; height: 24px; }
+.cfield { display: grid; grid-template-columns: 28px minmax(0, 1fr) 64px; gap: 6px; align-items: center; width: 100%; }
+.cfield:has(> :nth-child(2):last-child) { grid-template-columns: 28px minmax(0, 1fr); }
+.cfield-swatch { width: 28px; height: 28px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: repeating-conic-gradient(#777 0 25%, #444 0 50%) 0 0 / 8px 8px; position: relative; overflow: hidden; }
+.cfield-swatch::after { content: ""; position: absolute; inset: 0; background: var(--c); opacity: var(--a); }
+.cfield-hex { height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--fg); font: 12px var(--mono); outline: 0; min-width: 0; }
+.cfield-hex:focus { border-color: var(--select); }
+.ppop { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border-strong); box-shadow: 0 12px 32px rgb(0 0 0 / 50%); max-height: 60vh; }
+.ppop-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.ppop-search { height: 28px; }
+.font-list { display: flex; flex-direction: column; overflow: auto; max-height: 320px; margin: 0 -4px; }
+.font-opt { text-align: left; padding: 6px 8px; border-radius: 4px; font-size: 15px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.font-opt:hover { background: var(--raised); }
+.font-opt.active { background: var(--select-soft); }
+.font-opt.sep { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 4px 4px; padding-top: 8px; }
+.ptoggle { width: 30px; height: 18px; border-radius: 9px; background: var(--raised); border: 1px solid var(--border-strong); position: relative; flex: none; transition: background 0.12s; }
+.ptoggle span { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform 0.12s; }
+.ptoggle.on { background: var(--select); border-color: transparent; }
+.ptoggle.on span { transform: translateX(12px); background: #fff; }
+.prop-stack { display: flex; flex-direction: column; gap: 6px; }
+.prop-toggle { display: flex; justify-content: flex-end; }
+.stop-actions { display: flex; justify-content: flex-end; }
+/* Elements grid (E1/E2, D130): + and hide on hover, hidden tiles listed below. */
+.tile-hide { position: absolute; left: 4px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--fg); opacity: 0; transition: opacity 0.1s; }
+.tile-hide svg.lucide { width: 13px; height: 13px; }
+.tile:hover .tile-hide, .tile-hide:focus-visible, .hidden-tile .tile-hide { opacity: 1; }
+.hidden-tile .thumb { opacity: 0.45; }
+.hidden-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; color: var(--muted); }
+.hidden-toggle svg.lucide { width: 12px; height: 12px; }
+/* Drag previews (X2, D132): a chip under the pointer, a ghost where it lands. */
+.drag-chip { position: fixed; left: -2000px; top: 0; display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border-strong); color: var(--fg); font: 500 12px var(--font); box-shadow: 0 6px 18px rgb(0 0 0 / 45%); }
+.drag-chip-box { position: relative; overflow: hidden; border-radius: 5px; flex: none; }
+.drag-chip-thumb { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.pv-drop-ghost { position: absolute; inset: 0; opacity: 0.6; pointer-events: none; }
+.pv-drop-ghost > * { outline: calc(2px / var(--pv-scale)) dashed var(--select); outline-offset: calc(4px / var(--pv-scale)); }
+.tl-drop-ghost { position: absolute; top: 0; bottom: 0; border-left: 2px solid var(--select); background: var(--select-soft); outline: 1px dashed var(--select); outline-offset: -1px; pointer-events: none; z-index: 8; }
+/* Small round/square buttons centre their icon: no UA padding eating the border-box (E1). */
+.prop-reset, .psec-head .icon-btn, .ptoggle, .cfield-swatch, .pseg button, .frame-align .icon-btn, .look-row .icon-btn, .icon-btn.square, .psec-title { padding: 0; }
+.psec-title { padding: 2px 4px; }
