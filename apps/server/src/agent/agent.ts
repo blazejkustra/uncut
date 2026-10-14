@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { brandColourRule, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { brandColourRule, CHECK_IDS, LAYOUT_HARD, LAYOUT_RULES, projectChecks, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
@@ -40,7 +40,8 @@ import type { BeatsResult } from "../analysis/beats.ts";
 import { isLanguage, type TranscriptResult } from "../analysis/transcription.ts";
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
-import { answerOut, beatGrid, gateOf, gateRefusal, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, reviewOf, reviewVerdict, type GridItem } from "./agentPlan.ts";
+import { answerOut, beatGrid, gateOf, gateRefusal, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, type GridItem } from "./agentPlan.ts";
+import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "./agentCritic.ts";
 import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
 import { decide, LOOK_DISALLOWED, mentionedDirs, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
 import { downloadToProject } from "./agentDownload.ts";
@@ -350,6 +351,12 @@ interface Running {
   looked: { sheet: boolean; phone: boolean };
   // D189: review rounds in this turn.
   reviewRounds: number;
+  // D196: frames of the edit the agent rendered in this turn, by revision (render_frames, contact_sheet): a fix claim needs its moment rendered at the current revision.
+  rendered: Array<{ stamp: string; frames: ReadonlyArray<number> }>;
+  // D196: graphic files written in this turn (a graphic's change doesn't move the revision).
+  graphicWrites: number;
+  // D196: the state the last failed round of this turn reviewed (a new round needs a change).
+  reviewedStamp: string | undefined;
   // D194: permission cards one at a time (a parallel call's card waits for the one open).
   permissionQueue: Promise<unknown>;
   // D194: tool_use id → tool name in this turn (to tell web results from file data).
@@ -1087,7 +1094,7 @@ export const layer = Layer.effect(
 
     // contact_sheet (D65): frames of a media file (pulled from the original, 0:v:0) or of the edit
     // (exporter.renderFrames), in a grid with each cell's frame and time, as one JPEG.
-    const contactSheet = (v: ProjectView, args: Record<string, unknown>) =>
+    const contactSheet = (v: ProjectView, args: Record<string, unknown>, onFrames?: (frames: ReadonlyArray<number>) => void) =>
       Effect.gen(function* () {
         if (args.at !== undefined && args.at !== "every" && args.at !== "shots") return textResult('at must be "every" or "shots".', true);
         const atShots = args.at === "shots";
@@ -1177,6 +1184,7 @@ export const layer = Layer.effect(
           Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
         );
         if (!sheet.ok) return textResult(`Couldn't make the contact sheet: ${sheet.message}`, true);
+        onFrames?.(sheet.shown);
         const cells = sheet.shown.map((f, i) => `${i + 1}: frame ${f} (${clock(f / fps)})`);
         const notes = columnsNote(columns, grid.columns);
         return {
@@ -2125,15 +2133,62 @@ export const layer = Layer.effect(
         return textResult({ approved: false, message: a === "stopped" ? "The turn was stopped." : "Nobody answered in 15 minutes.", next: "Don't build. End the turn saying the storyboard waits for approval on the Plan card." }, a !== "timeout");
       });
 
-    /** review_submit (D189): the critic's round, with the determinism check of the graphics. */
+    /**
+     * D196: what the edit looks like now: its revision, the graphic files written in this turn and the
+     * graphics folder's newest change (a graphic edited with Claude Code's own Write or Edit too).
+     */
+    const stampOf = (r: Running, v: ProjectView) => {
+      let newest = 0;
+      try {
+        const dir = join(v.dir, "graphics");
+        for (const name of readdirSync(dir)) newest = Math.max(newest, statSync(join(dir, name)).mtimeMs);
+      } catch {}
+      return `${v.session.revision}/${r.graphicWrites}/${newest}`;
+    };
+
+    /**
+     * review_submit (D189, D195, D196): a review round by Uncut's critic, never the agent's own
+     * scores. The agent must have looked (a contact sheet and phone-size frames) and, for each fix it
+     * claims, rendered that moment after its last change. Uncut checks graphics draw the same twice,
+     * runs the layout checks, renders the evidence itself at this revision and asks a separate claude
+     * (agentCritic.ts) that sees only those frames, the brief, the kit, the storyboard and the rubric.
+     */
     const reviewSubmit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         if (!r.looked.sheet || !r.looked.phone) {
           const missing = [!r.looked.sheet ? "a contact_sheet of the edit (no media)" : "", !r.looked.phone ? "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)" : ""].filter(Boolean).join(" and ");
-          return textResult(`Look before you score: ${missing}${r.reviewRounds ? " since the last round" : ""}, then review_submit.`, true);
+          return textResult(`Look before you ask for a review: ${missing}${r.reviewRounds ? " since the last round" : ""}, then review_submit.`, true);
         }
+        if (r.reviewRounds >= REVIEW_ROUNDS) return textResult(`That was the last review round in this turn (${REVIEW_ROUNDS}): stop fixing and tell the user what the critic still found.`, true);
         const project = v.session.project as Project;
-        const { starts } = layout(project);
+        const fps = project.canvas.fps;
+        const { starts, duration } = layout(project);
+        if (!project.tracks.some((t) => t.items.length) || duration <= 0) return textResult("The timeline is empty: there's nothing to review yet.", true);
+        const stamp = stampOf(r, v);
+        if (r.reviewedStamp === stamp) return textResult(`Nothing changed since round ${r.reviewRounds}: fix what the critic found (timeline_edit, graphic_write), look at the fixed moments, then review_submit again.`, true);
+        // The fix claims: ids from the last round, each moment rendered after the last change.
+        const prev = r.owner.plan.reviews.at(-1);
+        const findings = prev ? [...(prev.blockers ?? []), ...prev.defects] : [];
+        const claims: Array<CriticClaim> = [];
+        for (const raw of Array.isArray(args.fixes) ? args.fixes.slice(0, 10) : []) {
+          const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+          const defect = typeof o.defect === "string" ? o.defect.trim() : "";
+          const what = typeof o.what === "string" ? o.what.trim().slice(0, 300) : "";
+          if (!defect || !what) return textResult("Each fix is {defect: an id from the last review (d1, d2, …), what: what you changed}.", true);
+          const found = findings.find((x) => x.id === defect);
+          if (!found) return textResult(`There's no ${defect} in the last review${findings.length ? ` (its ids: ${findings.map((x) => x.id).filter(Boolean).join(", ")})` : ""}.`, true);
+          claims.push({ defect, what, ...(found.at !== undefined ? { at: found.at } : {}), was: found.what });
+        }
+        const near = (at: number) => [Math.max(0, Math.round((at - 0.5) * fps)), Math.round((at + 0.5) * fps)] as const;
+        const unseen = claims.filter((c) => {
+          if (c.at === undefined) return false;
+          const [lo, hi] = near(c.at);
+          return !r.rendered.some((x) => x.stamp === stamp && x.frames.some((f) => f >= lo && f <= hi));
+        });
+        if (unseen.length) {
+          return textResult(`Look at each fix before you claim it: render_frames a frame of ${unseen.map((c) => `${c.defect} (at ${c.at} s, frames ${near(c.at!).join(" to ")})`).join(", ")} after your last change, and check the defect is really gone. Frames rendered before the change don't count.`, true);
+        }
+        // Determinism (D189).
         const graphics = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items.filter((i) => i.type === "graphic" && typeof i.src === "string")).slice(0, 4);
         const checked: Array<string> = [];
         const differed: Array<string> = [];
@@ -2148,16 +2203,62 @@ export const layer = Layer.effect(
           checked.push(name);
           if (!twice.same) differed.push(name);
         }
+        // The evidence, rendered by Uncut at this revision: a contact sheet, phone-size frames, each claimed fix's moment.
+        const last = duration - 1;
+        const clampF = (f: number) => Math.max(0, Math.min(last, Math.round(f)));
+        const sb = r.owner.plan.storyboard;
+        const phoneFrames = [...new Set([0, clampF(2 * fps), ...(sb?.beats ?? []).map((b) => clampF(b.end * fps - 1)), last])].sort((a, b) => a - b).slice(0, 8);
+        const phoneWidth = Math.max(64, Math.round(project.canvas.width * Math.min(1, PHONE_WIDTH / project.canvas.width)));
+        const fixFrames = claims.flatMap((c) => (c.at === undefined ? [] : [{ defect: c.defect, frame: clampF(c.at * fps) }])).slice(0, 6);
+        const sheetCells = sheetFrames(0, duration, undefined, 16);
+        const evidence = yield* Effect.gen(function* () {
+          const cells = "refused" in sheetCells ? [0] : [...sheetCells];
+          const list = yield* exporter.renderFrames(cells, CELL_WIDTH);
+          const sheet = yield* exporter.sheetImage(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), sheetLayout(list.length, project.canvas.width / project.canvas.height));
+          const phone = yield* exporter.renderFrames(phoneFrames, phoneWidth);
+          const fixed = fixFrames.length ? yield* exporter.renderFrames(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720)) : [];
+          return { ok: true as const, sheet, shown: list.map((f) => f.frame), phone, fixed };
+        }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
+        if (!evidence.ok) return textResult(`Couldn't render the frames for the critic: ${evidence.message}`, true);
+        const images: Array<CriticImage> = [
+          { label: `contact sheet of the whole video, ${evidence.shown.length} cells left to right, top to bottom, each captioned with its number, frame and time (frames ${evidence.shown.join(", ")})`, jpeg: evidence.sheet },
+          ...evidence.phone.map((f) => ({ label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s) at ${phoneWidth} px wide, as on a phone in a feed`, jpeg: f.jpeg })),
+          ...evidence.fixed.map((f, i) => ({ label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s), the moment of claimed fix ${fixFrames[i]!.defect}, rendered after the fix`, jpeg: f.jpeg })),
+        ];
+        // Uncut's layout checks (D196) and the safe-area ones, as facts.
+        const keep = new Set(["text-edge", "small-text"]);
+        const checks: Array<CriticFinding> = projectChecks(project, { rules: LAYOUT_RULES, disabled: CHECK_IDS.filter((id) => !keep.has(id)) }).map((c) => ({ rule: c.id, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), hard: LAYOUT_HARD.has(c.id) }));
+        const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string> }) as { kit?: BrandKit; files: Record<string, string> }));
         const round = r.reviewRounds + 1;
-        const review = reviewOf(args, round, { ...r.looked }, { checked, differed }, v.session.revision, r.turn.id);
-        if ("problem" in review) return textResult(review.problem, true);
+        // The review's number across the project (the card's "round n"); the limit counts this turn's.
+        const number = r.owner.plan.reviews.length + 1;
+        const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images };
+        const bin = yield* Effect.promise(() => findClaude());
+        if (!bin) return textResult("Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.", true);
+        const answer = yield* Effect.tryPromise({ try: (signal) => runCritic({ bin, env: sessionEnv(process.env), model: r.session.model, message: criticMessage(input), signal: AbortSignal.any([signal, r.abort.signal]) }), catch: (e) => e as Error }).pipe(
+          Effect.map((text) => parseCritic(text)),
+          Effect.catch((e) => Effect.succeed({ problem: e.message })),
+        );
+        if ("problem" in answer) return textResult(`Uncut's critic couldn't review it: ${answer.problem}. This round doesn't count and nothing passed; try review_submit once more, else tell the user the review couldn't run.`, true);
+        const review = criticReview(answer, { round: number, claims, checks, determinism: { checked, differed }, looked: { ...r.looked }, revision: v.session.revision, turnId: r.turn.id, fps });
         yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
         r.reviewRounds = round;
         r.looked = { sheet: false, phone: false };
+        r.reviewedStamp = review.passed ? undefined : stamp;
         yield* refreshPlan(r, v);
         addCard(r, { type: "review", review }, `Review round ${round}`);
-        const verdict = reviewVerdict(review.scores, round, differed);
-        return textResult({ round, passed: verdict.passed, determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check", next: verdict.next });
+        return textResult({
+          round: number,
+          passed: review.passed,
+          by: "Uncut's critic (a separate Claude that sees only the frames, the brief, the kit and the storyboard)",
+          ...(args.scores !== undefined ? { yourScores: "ignored: the critic scores, not you" } : {}),
+          scores: review.scores,
+          blockers: review.blockers,
+          defects: review.defects,
+          ...(review.fixes ? { fixes: review.fixes } : {}),
+          determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
+          next: reviewNext(review, round),
+        });
       });
 
     /** brand_read (D186): the kit and skills, or one of the kit's files. */
@@ -2301,6 +2402,7 @@ export const layer = Layer.effect(
             );
             if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
             if (width <= PHONE_WIDTH + 40) r.looked.phone = true;
+            r.rendered.push({ stamp: stampOf(r, v), frames: rendered.list.map((x) => x.frame) });
             const height = Math.round((width * canvas.height) / canvas.width / 2) * 2;
             // Frames past the last one are drawn as the last one: say so, not silently.
             const clamped = rendered.list.flatMap((r, i) => (r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : []));
@@ -2334,7 +2436,7 @@ export const layer = Layer.effect(
           case "media_download":
             return yield* mediaDownload(r, v, args);
           case "contact_sheet": {
-            const out = yield* contactSheet(v, args);
+            const out = yield* contactSheet(v, args, (frames) => r.rendered.push({ stamp: stampOf(r, v), frames }));
             // D189: a sheet of the edit counts as the critic's look.
             if (args.media === undefined && !out.isError) r.looked.sheet = true;
             return out;
@@ -2353,7 +2455,7 @@ export const layer = Layer.effect(
             // D186: with a brand kit, its colours are a rule too.
             const kit: BrandKit | undefined = (yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => undefined)))?.kit;
             const brandRules = kit && kit.colors.length ? [brandColourRule(kit.name, [...kit.colors.map((c) => c.hex), ...(kit.style?.palette.map((c) => c.hex) ?? [])])] : [];
-            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules], found: asked.checks, notes: asked.notes }));
+            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES], found: asked.checks, notes: asked.notes }));
           }
           case "music_list": {
             if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
@@ -2365,8 +2467,11 @@ export const layer = Layer.effect(
             return yield* librarySearch(args);
           case "library_add":
             return yield* libraryAdd(r, v, args);
-          case "graphic_write":
-            return yield* graphicWrite(v, args);
+          case "graphic_write": {
+            const out = yield* graphicWrite(v, args);
+            if (!out.isError) r.graphicWrites++;
+            return out;
+          }
           case "generate_media":
             return yield* generateMedia(r, v, args);
           case "screen_record":
@@ -3073,6 +3178,9 @@ export const layer = Layer.effect(
           skipStoryboard: skip,
           looked: { sheet: false, phone: false },
           reviewRounds: 0,
+          rendered: [],
+          graphicWrites: 0,
+          reviewedStamp: undefined,
           permissionQueue: Promise.resolve(),
           toolNames: new Map(),
           downloads: { bytes: 0, count: 0 },

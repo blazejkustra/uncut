@@ -316,8 +316,34 @@ export function normReview(raw: unknown): Review | undefined {
   return {
     round: Math.max(1, Math.round(num(r.round, 1))),
     scores: { hook: score("hook"), readability: score("readability"), motion: score("motion"), variety: score("variety"), sound: score("sound"), brand: score("brand") },
-    defects: (Array.isArray(r.defects) ? r.defects : []).flatMap((d) => (d && typeof d === "object" ? [{ at: Math.max(0, num((d as Record<string, unknown>).at)), what: str((d as Record<string, unknown>).what, 300), ...(str((d as Record<string, unknown>).fix, 300) ? { fix: str((d as Record<string, unknown>).fix, 300) } : {}) }] : [])).slice(0, 10),
+    defects: (Array.isArray(r.defects) ? r.defects : []).flatMap((d) => (d && typeof d === "object" ? [{ at: Math.max(0, num((d as Record<string, unknown>).at)), what: str((d as Record<string, unknown>).what, 300), ...(str((d as Record<string, unknown>).fix, 300) ? { fix: str((d as Record<string, unknown>).fix, 300) } : {}), ...(str((d as Record<string, unknown>).id, 20) ? { id: str((d as Record<string, unknown>).id, 20) } : {}) }] : [])).slice(0, 10),
     ...(notes ? { notes } : {}),
+    // D195: rounds before the critic process were the agent's own.
+    by: r.by === "critic" ? "critic" : "agent",
+    ...(Array.isArray(r.blockers)
+      ? {
+          blockers: r.blockers
+            .flatMap((b) => {
+              const o = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
+              const what = str(o.what, 300);
+              return what ? [{ ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}), kind: str(o.kind, 40) || "other", what, ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), source: o.source === "check" ? "check" : "critic" }] : [];
+            })
+            .slice(0, 20),
+        }
+      : {}),
+    ...(r.evidence && typeof r.evidence === "object" ? { evidence: Object.fromEntries(Object.entries(r.evidence as Record<string, unknown>).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k.slice(0, 40), v.slice(0, 400)]] : [])).slice(0, 12)) } : {}),
+    ...(Array.isArray(r.fixes)
+      ? {
+          fixes: r.fixes
+            .flatMap((f) => {
+              const o = (f && typeof f === "object" ? f : {}) as Record<string, unknown>;
+              const defect = str(o.defect, 20);
+              return defect ? [{ defect, what: str(o.what, 300), ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), verified: o.verified === true, ...(str(o.note, 300) ? { note: str(o.note, 300) } : {}) }] : [];
+            })
+            .slice(0, 10),
+        }
+      : {}),
+    ...(str(r.error, 400) ? { error: str(r.error, 400) } : {}),
     ...(det ? { determinism: { checked: strs(det.checked, 40, 120), differed: strs(det.differed, 40, 120) } } : {}),
     ...(looked ? { looked: { sheet: looked.sheet === true, phone: looked.phone === true } } : {}),
     passed: r.passed === true,
