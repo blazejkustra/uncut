@@ -1,0 +1,29 @@
+// The brand RPCs (D186): thin wrappers over store.ts with the user's data folder and the open
+// project's folder (project kits and skills, and the project's choice, need an open project).
+import { BrandError, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import * as Effect from "effect/Effect";
+
+import type { ProjectView } from "../project/projects.ts";
+import { addKitFile, deleteKit, deleteSkill, readBrand, saveKit, saveSkill, writeActive, type BrandDirs } from "./store.ts";
+
+const failed = (error: unknown) => new BrandError({ reason: "failed", message: error instanceof Error ? error.message : String(error) });
+
+export function brandRpc(dataDir: string, view: Effect.Effect<ProjectView | undefined>) {
+  const dirs = Effect.map(view, (v): BrandDirs => ({ dataDir, projectDir: v?.dir }));
+  const run = <A>(f: (d: BrandDirs) => Promise<A>) => Effect.flatMap(dirs, (d) => Effect.tryPromise({ try: () => f(d), catch: failed }));
+  const state = (d: BrandDirs) => readBrand(d);
+  return {
+    get: run(state),
+    saveKit: (kit: BrandKit) => run(async (d): Promise<BrandState> => (await saveKit(d, kit), state(d))),
+    deleteKit: (id: string, scope: BrandScope) => run(async (d) => (await deleteKit(d, id, scope), state(d))),
+    saveSkill: (skill: BrandSkill) => run(async (d) => (await saveSkill(d, skill), state(d))),
+    deleteSkill: (id: string, scope: BrandScope) => run(async (d) => (await deleteSkill(d, id, scope), state(d))),
+    setActive: (active: BrandActive) =>
+      Effect.flatMap(dirs, (d) =>
+        d.projectDir
+          ? Effect.tryPromise({ try: async () => (await writeActive(d.projectDir!, active), state(d)), catch: failed })
+          : Effect.fail(new BrandError({ reason: "no-project", message: "Open a project to choose its kit." })),
+      ),
+    addFile: (kit: string, scope: BrandScope, path: string) => run(async (d) => ({ name: await addKitFile(d, kit, scope, path), state: await state(d) })),
+  };
+}

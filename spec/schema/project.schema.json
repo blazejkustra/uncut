@@ -193,7 +193,7 @@
       "required": ["frame"],
       "properties": {
         "frame": { "$ref": "#/$defs/frame", "description": "Frames from the item's start." },
-        "ease": { "enum": ["linear", "in", "out", "inOut"], "description": "Shapes the motion from this key to the next one that sets the same property (default linear; in, out and inOut are cubic)." },
+        "ease": { "enum": ["linear", "in", "out", "inOut", "spring", "spring.snap", "spring.settle", "spring.land", "spring.bounce"], "description": "Shapes the motion from this key to the next one that sets the same property (default linear; in, out and inOut are cubic). A spring (D192: spring.snap, spring.settle or spring, spring.land, spring.bounce) runs in real time from this key toward the next key's value and settles on its own time, overshoot included; a later key retargets it smoothly." },
         "x": { "type": "number", "description": "Clips: the box's left edge in canvas pixels." },
         "y": { "type": "number", "description": "Clips: the box's top edge in canvas pixels." },
         "scale": { "type": "number", "exclusiveMinimum": 0, "description": "Clips: the picture's zoom in the box." },

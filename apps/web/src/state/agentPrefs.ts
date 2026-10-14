@@ -76,3 +76,29 @@ export function useAgentPrefs(dir: string): { prefs: AgentPrefs; favourites: Rea
   }, []);
   return { prefs: agentPrefs(dir), favourites: favouriteModels() };
 }
+
+// D188: Settings › App › Agent "Edit freely skips the storyboard approval", remembered on this Mac.
+const SKIP_STORYBOARD_KEY = "uncut.agent.skipStoryboard";
+export function skipStoryboardSetting(): boolean {
+  try {
+    return localStorage.getItem(SKIP_STORYBOARD_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+export function setSkipStoryboard(on: boolean) {
+  try {
+    if (on) localStorage.setItem(SKIP_STORYBOARD_KEY, "1");
+    else localStorage.removeItem(SKIP_STORYBOARD_KEY);
+  } catch {}
+  window.dispatchEvent(new Event(EVENT));
+}
+export function useSkipStoryboard(): boolean {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    window.addEventListener(EVENT, on);
+    return () => window.removeEventListener(EVENT, on);
+  }, []);
+  return skipStoryboardSetting();
+}

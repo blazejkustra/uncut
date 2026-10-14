@@ -762,3 +762,65 @@ export function planDisableCheck(project: Pick<Project, "checks">, id: string, o
   const checks = next.length ? { ...rest, disabled: next } : Object.keys(rest).length ? rest : null;
   return { summary: off ? `Turn off the check "${title}"` : `Turn on the check "${title}"`, ops: [{ op: "update_project", set: { checks } }] };
 }
+
+const hex6 = (c: unknown): string | undefined => {
+  if (typeof c !== "string") return undefined;
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
+  if (!m) return undefined;
+  const h = m[1]!.toLowerCase();
+  return `#${h.length === 3 ? [...h].map((x) => x + x).join("") : h}`;
+};
+const rgbOf = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const nearest = (h: string, palette: ReadonlyArray<string>) => palette.reduce((best, p) => {
+  const [a, b] = [rgbOf(h), rgbOf(p)];
+  const d = (a[0]! - b[0]!) ** 2 + (a[1]! - b[1]!) ** 2 + (a[2]! - b[2]!) ** 2;
+  return d < best.d ? { p, d } : best;
+}, { p: palette[0]!, d: Infinity }).p;
+
+/**
+ * D186: the brand kit's colours rule (U7): text colours, outlines, text boxes and backgrounds
+ * (component.solid) written as a hex colour that isn't one of the kit's. Theme tokens (fg, accent…)
+ * are fine: the theme carries the kit. Added to project_check's rules while a kit is active; the
+ * fix moves each colour to the kit's nearest.
+ */
+export function brandColourRule(kitName: string, colors: ReadonlyArray<string>): CheckRule {
+  const palette = [...new Set(colors.map(hex6).filter((c): c is string => !!c))];
+  return {
+    id: "brand-colours",
+    title: "Brand colours",
+    description: `Colours come from the brand kit "${kitName}".`,
+    severity: "warn",
+    check: (ctx) => {
+      if (!palette.length) return [];
+      const off = (c: unknown) => {
+        const h = hex6(c);
+        return h && !palette.includes(h) ? h : undefined;
+      };
+      const out: Array<Omit<Check, "id" | "severity"> & { severity?: CheckSeverity }> = [];
+      for (const track of ctx.project.tracks) {
+        if (track.hidden) continue;
+        for (const item of track.items) {
+          const at = ctx.starts.get(item.id) ?? 0;
+          const lock = track.locked === true || item.locked === true;
+          if (item.type === "text" && item.style) {
+            const st = item.style as Record<string, unknown>;
+            const found = [off(st.color), off((st.stroke as { color?: unknown } | undefined)?.color), off((st.background as { color?: unknown } | undefined)?.color)].filter((x): x is string => !!x);
+            if (!found.length) continue;
+            const fixStyle: Record<string, unknown> = { ...st };
+            if (off(st.color)) fixStyle.color = nearest(off(st.color)!, palette);
+            if (st.stroke && typeof st.stroke === "object" && off((st.stroke as { color?: unknown }).color)) fixStyle.stroke = { ...(st.stroke as object), color: nearest(off((st.stroke as { color?: unknown }).color)!, palette) };
+            if (st.background && typeof st.background === "object" && off((st.background as { color?: unknown }).color)) fixStyle.background = { ...(st.background as object), color: nearest(off((st.background as { color?: unknown }).color)!, palette) };
+            out.push({ key: `brand-colours:${item.id}`, message: `"${textLabel(item.text)}" uses ${found.join(", ")}, not a colour of the kit "${kitName}".`, itemIds: [item.id], frame: at, ...(lock ? {} : { fix: { summary: `Use the kit's colours on "${textLabel(item.text)}"`, ops: [{ op: "update_item", item: item.id, set: { style: fixStyle } } as Op] } }) });
+          } else if (item.type === "component" && item.component === "component.solid" && item.props) {
+            const pr = item.props as Record<string, unknown>;
+            const keys = ["color", "to", "via"].filter((k) => off(pr[k]));
+            if (!keys.length) continue;
+            const props = { ...pr, ...Object.fromEntries(keys.map((k) => [k, nearest(off(pr[k])!, palette)])) };
+            out.push({ key: `brand-colours:${item.id}`, message: `A background uses ${keys.map((k) => off(pr[k])).join(", ")}, not a colour of the kit "${kitName}".`, itemIds: [item.id], frame: at, ...(lock ? {} : { fix: { summary: "Use the kit's colours on the background", ops: [{ op: "update_item", item: item.id, set: { props } } as Op] } }) });
+          }
+        }
+      }
+      return out;
+    },
+  };
+}

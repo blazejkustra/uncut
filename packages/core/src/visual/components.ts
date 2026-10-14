@@ -496,7 +496,7 @@ const sizedTransform = (item: Pick<Item, "component" | "props" | "transform">, c
 };
 
 /** A component's box at `local` frames (D75's box: transform, keys, opacity), or undefined if it isn't one drawn here. */
-export function componentBox(item: Pick<Item, "type" | "component" | "props" | "transform" | "keys">, canvas: Pick<Canvas, "width" | "height">, local: number): ClipBox | undefined {
+export function componentBox(item: Pick<Item, "type" | "component" | "props" | "transform" | "keys">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number }, local: number): ClipBox | undefined {
   if (!isDrawnComponent(item)) return undefined;
   const { size, transform } = sizedTransform(item, canvas);
   return clipBox({ transform, keys: item.keys }, canvas, size, local);

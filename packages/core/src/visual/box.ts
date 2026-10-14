@@ -13,10 +13,24 @@
 // first value, after the last the last; between two it moves from one to the next, shaped by the
 // `ease` of the key it leaves (linear when absent; in, out and inOut are cubic). A property
 // without keys takes the transform's value.
+// A key's ease may also name a spring (D192, spring.ts): the move from that key to the next one is
+// then a real-time spring that starts at the key's frame (seconds = frames / the canvas's fps, 30
+// when a caller has none) and heads for the next key's value, settling on its own time (it may run
+// past the next key's frame, overshoot included). With any spring among a property's keys its value
+// is a sum: the first key's value plus, for each move between two keys, the step (next − this)
+// times that move's progress (a spring's response; a cubic or linear ease's share of its frames,
+// 0 before, 1 after). A later move that starts before an earlier spring settled adds on top, so
+// the earlier one's rest still plays out: the motion stays continuous and keeps its velocity
+// ("sum of springs" retargeting). Without springs keyAt is exactly the plain interpolation above.
 import type { Canvas, Item, MediaProbe } from "../timeline/types.ts";
+import { isSpringName, springAt, type SpringName } from "./spring.ts";
 
 export type Fit = "contain" | "cover" | "fill";
 export type Ease = "linear" | "in" | "out" | "inOut";
+/** What a key's ease may be: a cubic ease or a spring preset (D192). */
+export type KeyEase = Ease | SpringName;
+/** The fps keyed springs run at when the caller has no canvas fps (D192). */
+export const DEFAULT_KEY_FPS = 30;
 export type KeyProp = "x" | "y" | "scale" | "opacity";
 export const KEY_PROPS: ReadonlyArray<KeyProp> = ["x", "y", "scale", "opacity"];
 export const FITS: ReadonlyArray<Fit> = ["contain", "cover", "fill"];
@@ -39,27 +53,47 @@ export interface Rect {
 type Key = NonNullable<Item["keys"]>[number];
 
 /** The keys that carry `prop`, by frame (a later key at the same frame wins). */
-export function keysOf(keys: Item["keys"], prop: KeyProp): Array<{ frame: number; value: number; ease: Ease }> {
-  const out: Array<{ frame: number; value: number; ease: Ease }> = [];
+export function keysOf(keys: Item["keys"], prop: KeyProp): Array<{ frame: number; value: number; ease: KeyEase }> {
+  const out: Array<{ frame: number; value: number; ease: KeyEase }> = [];
   for (const k of [...(keys ?? [])].sort((a, b) => a.frame - b.frame)) {
     const value = (k as Key)[prop];
     if (typeof value !== "number" || !Number.isFinite(value)) continue;
-    const ease = (typeof k.ease === "string" && k.ease in EASES ? k.ease : "linear") as Ease;
+    const ease: KeyEase = typeof k.ease === "string" && (Object.hasOwn(EASES, k.ease) || isSpringName(k.ease)) ? (k.ease as KeyEase) : "linear";
     if (out.length && out.at(-1)!.frame === k.frame) out[out.length - 1] = { frame: k.frame, value, ease };
     else out.push({ frame: k.frame, value, ease });
   }
   return out;
 }
 
-/** A keyed property at `local` frames from the item's start, or undefined when no key carries it. */
-export function keyAt(keys: Item["keys"], prop: KeyProp, local: number): number | undefined {
+/** Whether any key of `keys` eases with a spring (D192). */
+export const hasSpringKeys = (keys: Item["keys"]) => (keys ?? []).some((k) => isSpringName(k.ease));
+
+/**
+ * A keyed property at `local` frames from the item's start, or undefined when no key carries it.
+ * `fps` times spring keys (D192; DEFAULT_KEY_FPS when not given); a pure function of `local`.
+ */
+export function keyAt(keys: Item["keys"], prop: KeyProp, local: number, fps: number = DEFAULT_KEY_FPS): number | undefined {
   const list = keysOf(keys, prop);
   if (!list.length) return undefined;
   if (local <= list[0]!.frame) return list[0]!.value;
+  if (list.some((k) => isSpringName(k.ease))) {
+    // Sum of moves (see the header): each move's step times its progress at `local`.
+    const rate = Number.isFinite(fps) && fps > 0 ? fps : DEFAULT_KEY_FPS;
+    let v = list[0]!.value;
+    for (let i = 1; i < list.length; i++) {
+      const a = list[i - 1]!;
+      const b = list[i]!;
+      if (local <= a.frame) break;
+      const step = b.value - a.value;
+      if (isSpringName(a.ease)) v += step * springAt(a.ease, (local - a.frame) / rate);
+      else v += step * (local >= b.frame ? 1 : EASES[a.ease]((local - a.frame) / (b.frame - a.frame)));
+    }
+    return v;
+  }
   for (let i = 1; i < list.length; i++) {
     const a = list[i - 1]!;
     const b = list[i]!;
-    if (local < b.frame) return a.value + (b.value - a.value) * EASES[a.ease]((local - a.frame) / (b.frame - a.frame));
+    if (local < b.frame) return a.value + (b.value - a.value) * EASES[a.ease as Ease]((local - a.frame) / (b.frame - a.frame));
   }
   return list.at(-1)!.value;
 }
@@ -105,14 +139,15 @@ export function fitRect(box: Rect, fit: Fit, media?: MediaSize): Rect {
 const clampOpacity = (o: number) => Math.min(1, Math.max(0, o));
 
 /** A clip's box at `local` frames from its start, keys applied. */
-export function clipBox(item: Pick<Item, "transform" | "keys">, canvas: Pick<Canvas, "width" | "height">, media: MediaSize, local: number): ClipBox {
+export function clipBox(item: Pick<Item, "transform" | "keys">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number }, media: MediaSize, local: number): ClipBox {
   const base = baseBox(item, canvas, media);
   const t = item.transform ?? {};
-  const x = keyAt(item.keys, "x", local) ?? base.x;
-  const y = keyAt(item.keys, "y", local) ?? base.y;
-  const rawScale = keyAt(item.keys, "scale", local) ?? (typeof t.scale === "number" && t.scale > 0 ? t.scale : 1);
+  const fps = canvas.fps ?? DEFAULT_KEY_FPS;
+  const x = keyAt(item.keys, "x", local, fps) ?? base.x;
+  const y = keyAt(item.keys, "y", local, fps) ?? base.y;
+  const rawScale = keyAt(item.keys, "scale", local, fps) ?? (typeof t.scale === "number" && t.scale > 0 ? t.scale : 1);
   const scale = Math.max(0.001, rawScale);
-  const opacity = clampOpacity(keyAt(item.keys, "opacity", local) ?? (typeof t.opacity === "number" ? t.opacity : 1));
+  const opacity = clampOpacity(keyAt(item.keys, "opacity", local, fps) ?? (typeof t.opacity === "number" ? t.opacity : 1));
   const fit: Fit = t.fit && FITS.includes(t.fit) ? t.fit : "contain";
   const box = { x, y, w: base.w, h: base.h };
   const at1 = fitRect(box, fit, media);

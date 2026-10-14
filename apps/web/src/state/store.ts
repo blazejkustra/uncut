@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { AGENT_IMAGE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -21,7 +21,7 @@ import { effectInfo, lookInfo, planEffect, planSetLook, type LookDef } from "@un
 import { planForAll } from "../timeline/multi.ts";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
 import { itemName, momentLabel } from "@uncut/core/mentions";
-import { agentPrefs, DEFAULT_AGENT_PREFS } from "./agentPrefs.ts";
+import { agentPrefs, DEFAULT_AGENT_PREFS, skipStoryboardSetting } from "./agentPrefs.ts";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
 import { layoutOf, uniqueId, planAddAtPlayhead, planAddLibrarySound, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
@@ -159,6 +159,10 @@ export interface AppStateShape {
   readonly uploading?: { readonly total: number; readonly done: number; readonly name: string };
   /** Remote exports being downloaded, or where they went (D109), by job id. */
   readonly downloads: Readonly<Record<string, { readonly state: "running" } | { readonly path: string } | { readonly error: string }>>;
+  /** D186: the brand kits and skills the open project sees, and its choice (the Brand tab). */
+  readonly brand?: BrandState;
+  /** Why the last brand action failed, shown in the Brand tab. */
+  readonly brandError?: string;
 }
 
 /** What a remote environment's file browser is for (D107): each native dialog it stands in for. */
@@ -298,6 +302,8 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
   // preview of the old project ignores changes once the open folder isn't its own).
   if (switched) playback.reset();
+  // D186: the brand state follows the project (its kits, skills and choice).
+  if (switched) void actions.brandGet();
   if (snapshot) {
     const { frames, end } = layoutOf(projectOf(snapshot));
     playback.setProject(frames, projectOf(snapshot).canvas.fps, end);
@@ -316,6 +322,13 @@ async function refreshThumbs() {
 function applyFromCall(snapshot: ProjectSnapshot) {
   if (snapshot.revision <= (newestRevision.get(snapshot.dir) ?? -1)) return;
   applyFromServer(snapshot);
+}
+
+/** A brand call's answer into the state (or its reason into brandError). */
+function brandResult(result: Result<BrandState>): boolean {
+  if (result.ok) set({ brand: result.value, brandError: undefined });
+  else set({ brandError: plainError(result.error) });
+  return result.ok;
 }
 
 /** A sentence for a failed call, without validator jargon. */
@@ -564,6 +577,8 @@ export async function start() {
           const was = state.agent?.running ?? null;
           set({ agent });
           applyAgentUi(agent);
+          // A turn ended: it may have written a kit's style guide (D186).
+          if (was !== null && agent?.running == null) void actions.brandGet();
           // The turn ended: the queued message goes now (D140).
           const queued = state.agentQueued;
           if (queued && was !== null && agent?.running === null) {
@@ -585,6 +600,7 @@ export async function start() {
         },
       );
       void refreshRecents();
+      void actions.brandGet();
     },
     onDisconnect: () => {
       if (state.connection !== "server-exited") set({ connection: "reconnecting" });
@@ -1198,7 +1214,7 @@ export const actions = {
   dismissNotice: () => set({ notice: undefined }),
 
   /** Start an agent turn; returns false (and says why in the Agent tab) when it didn't start. */
-  async agentSend(prompt: string, mentions: ReadonlyArray<AgentMention> = [], images: ReadonlyArray<AgentImage> = []): Promise<boolean> {
+  async agentSend(prompt: string, mentions: ReadonlyArray<AgentMention> = [], images: ReadonlyArray<AgentImage> = [], opts: { readonly access?: AgentAccess } = {}): Promise<boolean> {
     if (!online()) return false;
     set({ agentError: undefined });
     // The agent works on what's on screen: stop playback so the frame it's told about stays put.
@@ -1216,8 +1232,10 @@ export const actions = {
         ...(kept.length ? { mentions: kept } : {}),
         ...(prefs.model ? { model: prefs.model } : {}),
         ...(prefs.effort ? { effort: prefs.effort } : {}),
-        access: prefs.access,
+        access: opts.access ?? prefs.access,
         ...(images.length ? { images: [...images] } : {}),
+        // D188: Settings › App › Agent, remembered on this Mac.
+        ...(skipStoryboardSetting() ? { skipStoryboard: true } : {}),
       }),
     );
     if (result.ok) return true;
@@ -1271,9 +1289,15 @@ export const actions = {
   },
   /** Allow or Don't on the running turn's approval card (D99). */
   /** Whether the server took the answer (false: the card was no longer open). */
-  async agentApprove(id: string, allow: boolean, source?: string): Promise<boolean> {
-    const result = await call((c) => c["agent.approve"]({ id, allow, ...(source ? { source } : {}) }));
+  async agentApprove(id: string, allow: boolean, source?: string, extra: { readonly answer?: AgentAnswer; readonly beats?: ReadonlyArray<StoryboardBeat>; readonly note?: string } = {}): Promise<boolean> {
+    const result = await call((c) => c["agent.approve"]({ id, allow, ...(source ? { source } : {}), ...(extra.answer ? { answer: extra.answer } : {}), ...(extra.beats ? { beats: [...extra.beats] } : {}), ...(extra.note ? { note: extra.note } : {}) }));
     return result.ok && result.value.accepted;
+  },
+  /** D188: the user's own brief or storyboard (approved on the Plan card); false with the reason in the Agent tab when it didn't save. */
+  async agentPlanSave(input: { readonly brief?: Brief; readonly storyboard?: Storyboard }): Promise<boolean> {
+    const result = await call((c) => c["agent.planSave"]({ ...(input.brief ? { brief: input.brief } : {}), ...(input.storyboard ? { storyboard: input.storyboard } : {}) }));
+    if (!result.ok) set({ agentError: plainError(result.error) });
+    return result.ok;
   },
   /** D144: the take an allowed screen_record recorded (uploaded), or why there's none. */
   agentScreenTake: (id: string, answer: { readonly path?: string; readonly source?: string; readonly problem?: string }) => call((c) => c["agent.screenTake"]({ id, ...answer })),
@@ -1290,6 +1314,45 @@ export const actions = {
     else set({ agentError: plainError(result.error) });
   },
   dismissAgentError: () => set({ agentError: undefined }),
+
+  // ---- brand kits and skills (D186) ----
+  /** Reads the brand state again (the project's kits and skills, the user's, and its choice). */
+  async brandGet() {
+    const result = await call((c) => c["brand.get"]({}));
+    if (result.ok) set({ brand: result.value });
+    else if (!isTransportError(result.error)) set({ brandError: plainError(result.error) });
+  },
+  /** Each brand change answers with the whole state; true when it was taken. */
+  async brandSaveKit(kit: BrandKit) {
+    return brandResult(await call((c) => c["brand.saveKit"]({ kit })));
+  },
+  async brandDeleteKit(id: string, scope: BrandScope) {
+    return brandResult(await call((c) => c["brand.deleteKit"]({ id, scope })));
+  },
+  async brandSaveSkill(skill: BrandSkill) {
+    return brandResult(await call((c) => c["brand.saveSkill"]({ skill })));
+  },
+  async brandDeleteSkill(id: string, scope: BrandScope) {
+    return brandResult(await call((c) => c["brand.deleteSkill"]({ id, scope })));
+  },
+  async brandSetActive(active: BrandActive) {
+    // Shown at once, so a second change made before the answer builds on this one, not the old state.
+    if (state.brand) set({ brand: { ...state.brand, active } });
+    return brandResult(await call((c) => c["brand.setActive"]({ kit: active.kit, skills: [...active.skills] })));
+  },
+  /** Copies a file into a kit's folder; its name there, or undefined (the reason in brandError). */
+  async brandAddFile(kit: string, scope: BrandScope, path: string): Promise<string | undefined> {
+    const result = await call((c) => c["brand.addFile"]({ kit, scope, path }));
+    if (!result.ok) return void set({ brandError: plainError(result.error) });
+    set({ brand: result.value.state, brandError: undefined });
+    return result.value.name;
+  },
+  /** Files for a kit (logos, examples, a reference): the native dialog here, the server's disk on a remote. */
+  async pickBrandFiles(): Promise<ReadonlyArray<string>> {
+    const picked = isRemote() ? await pickRemote("media") : await bridge.chooseMedia();
+    return picked === null ? [] : typeof picked === "string" ? [picked] : picked;
+  },
+  dismissBrandError: () => set({ brandError: undefined }),
 
   /** ⌘E / the Export button: the export dialog, with ffmpeg checked (it shows the fix when missing). */
   openExport() {

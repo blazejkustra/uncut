@@ -10,6 +10,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { Agent } from "../agent/agent.ts";
+import { brandRpc } from "../brand/brandRpc.ts";
 import { Analysis } from "../analysis/analysis.ts";
 import { presentedToken, tokensMatch } from "./auth.ts";
 import { defaultParentDir, listFolder } from "./files.ts";
@@ -53,8 +54,9 @@ interface Services {
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds }: Services) =>
-  WsRpcGroup.toLayer({
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds }: Services) => {
+  const brand = brandRpc(config.dataDir, projects.view);
+  return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
         version: config.version,
@@ -105,7 +107,15 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.agentSend]: (input) => agent.send(input),
     [RPC_METHODS.agentCancel]: () => agent.cancel,
     [RPC_METHODS.agentUndoTurn]: ({ turnId }) => agent.undoTurn(turnId),
-    [RPC_METHODS.agentApprove]: ({ id, allow, source }) => agent.approve(id, allow, source),
+    [RPC_METHODS.agentApprove]: ({ id, allow, source, answer, beats, note }) => agent.approve(id, allow, source, { answer, beats, note }),
+    [RPC_METHODS.agentPlanSave]: (input) => agent.planSave(input),
+    [RPC_METHODS.brandGet]: () => brand.get,
+    [RPC_METHODS.brandSaveKit]: ({ kit }) => brand.saveKit(kit),
+    [RPC_METHODS.brandDeleteKit]: ({ id, scope }) => brand.deleteKit(id, scope),
+    [RPC_METHODS.brandSaveSkill]: ({ skill }) => brand.saveSkill(skill),
+    [RPC_METHODS.brandDeleteSkill]: ({ id, scope }) => brand.deleteSkill(id, scope),
+    [RPC_METHODS.brandSetActive]: (active) => brand.setActive(active),
+    [RPC_METHODS.brandAddFile]: ({ kit, scope, path }) => brand.addFile(kit, scope, path),
     [RPC_METHODS.agentScreenTake]: (answer) => agent.screenTake(answer),
     [RPC_METHODS.exportStart]: (input) => exporter.start(input),
     [RPC_METHODS.exportJobs]: () => exporter.jobs,
@@ -166,6 +176,7 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.keysSet]: ({ provider, key }) => keys.set(provider, key),
     [RPC_METHODS.keysRemove]: ({ provider }) => keys.remove(provider),
   });
+};
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
