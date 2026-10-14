@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { drums, writeWav } from "../helpers/beats-audio.ts";
-import { beatGrid, gateOf, gateRefusal, planContext, questionOf, reviewVerdict } from "../../apps/server/src/agent/agentPlan.ts";
+import { beatGrid, gateOf, gateRefusal, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, LOOK_TOOLS } from "../../apps/server/src/agent/agentTools.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -51,7 +51,12 @@ async function setup(name: string) {
   writeFileSync(log, "");
   writeFileSync(results, "");
   const data = join(base, "data");
-  const server = await startServer({ env: { UNCUT_DATA_DIR: data, UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_RESULT_LOG: results, UNCUT_APPROVAL_MS: "8000", UNCUT_ANALYZE_WAIT_MS: "20000" } });
+  // D195: the critic's scripted answers and what each critic process got.
+  const critic = join(base, "critic.json");
+  const criticLog = join(base, "critic.jsonl");
+  writeFileSync(critic, "[]");
+  writeFileSync(criticLog, "");
+  const server = await startServer({ env: { UNCUT_DATA_DIR: data, UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_RESULT_LOG: results, FAKE_CRITIC: critic, FAKE_CRITIC_LOG: criticLog, UNCUT_APPROVAL_MS: "8000", UNCUT_ANALYZE_WAIT_MS: "20000" } });
   const client = await connect(server.ready.port, server.ready.token);
   const agent = client.subscribe("agent.subscribe");
   const snap = await client.ok("project.create", { parentDir: join(base, "projects"), name: "Promo" });
@@ -67,6 +72,9 @@ async function setup(name: string) {
     agent,
     latest,
     dir: snap.dir as string,
+    /** The critic's answers, one per critic run from now on. */
+    critic: (answers: Array<unknown>) => (writeFileSync(critic, JSON.stringify(answers)), rmSync(`${critic}.turn`, { force: true })),
+    criticRuns: (): Array<{ critic: true; text: string; images: number; resume: string | null; args: Array<string>; env: Array<string>; cwd: string }> => readFileSync(criticLog, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)),
     prompts: (): Array<{ prompt: string; system: string }> => readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.refused),
     /** Tool results since the last call. */
     results: (): Array<{ tool: string; result: { isError?: boolean; content: Content } }> => {
@@ -107,8 +115,9 @@ test("the tools, labels, Look only set and the prompt's production process", () 
   assert.ok((LOOK_TOOLS as ReadonlyArray<string>).includes("ask_user") && (LOOK_TOOLS as ReadonlyArray<string>).includes("storyboard_propose") && !(LOOK_TOOLS as ReadonlyArray<string>).includes("brand_write"));
   assert.equal(stepLabel("ask_user", { question: "Which logo?" }), "Asked: Which logo?");
   assert.equal(stepLabel("storyboard_propose", { beats: BEATS }), "Proposed a storyboard of 2 beats");
-  assert.equal(stepLabel("review_submit", { scores: { hook: 9, readability: 7 } }), "Reviewed the video (lowest score 7)");
-  for (const want of [/ask_user/, /brief_write/, /storyboard_propose/, /review_submit/, /beat_grid/, /never invent a logo/i, /hard lines/, /8 or more, at most 3 rounds/, /reference_frames/, /spring/]) assert.match(SYSTEM_PROMPT, want);
+  assert.equal(stepLabel("review_submit", { scores: { hook: 9, readability: 7 } }), "Asked the critic for a review");
+  assert.equal(stepLabel("review_submit", { fixes: [{ defect: "d1", what: "x" }] }), "Asked the critic to check 1 fix");
+  for (const want of [/ask_user/, /brief_write/, /storyboard_propose/, /review_submit/, /beat_grid/, /never invent a logo/i, /hard lines/, /You don't score your own work/, /at most 3 rounds/i, /reference_frames/, /spring/]) assert.match(SYSTEM_PROMPT, want);
   assert.ok(!/[·•]/.test(SYSTEM_PROMPT.replace(/never ·, • or \*/, "")), "no dot separators in the prompt");
 });
 
@@ -119,11 +128,6 @@ test("pure parts: question, gate, verdict, context and the beat grid", () => {
   assert.match(gateRefusal(plan, gateOf(plan, false))!, /no storyboard yet/);
   assert.equal(gateRefusal(plan, gateOf(plan, true)), undefined, "the setting skips the gate");
   assert.equal(gateRefusal({ reviews: [] }, gateOf({ reviews: [] }, false)), undefined, "no brief, no gate (small edits)");
-  const v = reviewVerdict({ hook: 9, readability: 7, motion: 8, variety: 8, sound: 8, brand: 9 }, 1, []);
-  assert.equal(v.passed, false);
-  assert.match(v.next, /round 2/);
-  assert.match(reviewVerdict({ hook: 9, readability: 7, motion: 8, variety: 8, sound: 8, brand: 9 }, 3, []).next, /last one/);
-  assert.equal(reviewVerdict({ hook: 9, readability: 9, motion: 9, variety: 9, sound: 9, brand: 9 }, 1, ["glow"]).passed, false, "a graphic that drew differently fails the round");
   const ctx = planContext({ files: {}, skills: [], others: [{ id: "argent", name: "Argent" }] }, plan, gateOf(plan, false));
   assert.match(ctx, /No brand kit is chosen[\s\S]*"Argent" \(argent\)/);
   assert.match(ctx, /waits for a storyboard/);
@@ -243,52 +247,159 @@ test("U15: a storyboard sent back with a note keeps the build waiting; the Plan 
   }
 });
 
-test("U16: the review needs a look first, saves rounds with scores and defects, and checks a graphic draws the same twice", { skip, timeout: 180000 }, async () => {
+const ev = (score: number, k: string) => ({ score, evidence: `f 0, f 45: ${k}` });
+const scoresOf = (score: number) => Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(score, k)]));
+
+test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are checked on fresh frames, and the critic never sees the builder", { skip, timeout: 240000 }, async () => {
   const s = await setup("review");
   try {
     const html = `<canvas id="c"></canvas><script>const c=document.getElementById("c");window.render=(t,info)=>{c.width=info.width;c.height=info.height;const x=c.getContext("2d");x.fillStyle="#0b1d3a";x.fillRect(0,0,c.width,c.height);x.fillStyle="#f5a623";x.fillRect(40+t*200,40,120,120);};</script>`;
-    const scores = { hook: 9, readability: 6, motion: 8, variety: 8, sound: 7, brand: 9 };
-    const t = await s.ask("review it", [
-      { tool: "graphic_write", args: { name: "box.html", html } },
-      { tool: "project_read" },
-      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "add_track", track: { id: "v2", kind: "video", name: "Graphics", items: [] }, index: 0 }, { op: "insert_item", track: "v2", item: { id: "g-1", type: "graphic", src: "graphics/box.html", start: 0, duration: 30 } }] } },
-      { tool: "review_submit", args: { scores, defects: [{ at: 0.5, what: "Title too small on a phone" }] } },
-      { tool: "contact_sheet", args: { max: 4 } },
-      { tool: "render_frames", args: { frames: [0, 15], phone: true } },
-      { tool: "review_submit", args: { scores, defects: [{ at: 0.5, what: "Title too small on a phone", fix: "Size 120" }, { at: 0.9, what: "Whoosh late" }] } },
-      { tool: "review_submit", args: { scores, defects: [] } },
+    // A centred title whose box is 40 px right of the frame's centre: Uncut's layout check.
+    const title = { id: "title-1", type: "text", start: 0, duration: 60, text: "Argent Cloud", transform: { x: 500, y: 400, w: 1000 }, style: { preset: "text.title", size: 90, weight: 700, align: "center" } };
+    // The critic: round 1 an empty phone screen (the builder's own 10s are ignored), round 2 d2
+    // fixed but d1 not, round 3 everything fixed.
+    s.critic([
+      { scores: scoresOf(9), blockers: [{ kind: "placeholder", what: "The phone screen is empty where the demo was planned", at: 0.5 }], defects: [{ at: 1, what: "The claim fades in linearly", fix: "spring.land" }], fixes: [], summary: "Empty phone." },
+      { scores: scoresOf(9), blockers: [], defects: [], fixes: [{ defect: "d2", verified: true, note: "centred now" }, { defect: "d1", verified: false, note: "the phone is still empty" }], summary: "One fix holds." },
+      `Here it is:\n\`\`\`json\n${JSON.stringify({ scores: scoresOf(9), blockers: [], defects: [], fixes: [{ defect: "d1", verified: true, note: "the recording plays in the phone" }], summary: "Ready." })}\n\`\`\``,
     ]);
+    const tenOutOfTen = { hook: 10, readability: 10, motion: 10, variety: 10, sound: 10, brand: 10 };
+    const t = await s.ask(
+      "BUILDER-SECRET-7 make the promo and review it",
+      [
+        { tool: "brief_write", args: { film: "Argent Cloud runs your app's QA in the cloud", audience: "RN teams", duration: "15 s", formats: ["4:5"], assets: ["demo recording"], visual: "Dark, amber accents", hardLines: ["Never invent UI"], deliverables: ["4:5 mp4"] } },
+        { tool: "storyboard_propose", args: { summary: "Hook then demo", beats: BEATS } },
+        { tool: "graphic_write", args: { name: "box.html", html } },
+        { tool: "project_read" },
+        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "add_track", track: { id: "v2", kind: "video", name: "Graphics", items: [] }, index: 0 }, { op: "insert_item", track: "v2", item: { id: "g-1", type: "graphic", src: "graphics/box.html", start: 0, duration: 30 } }, { op: "insert_item", track: "text", item: title }] } },
+        { tool: "review_submit", args: { scores: tenOutOfTen } },
+        { tool: "contact_sheet", args: { max: 4 } },
+        { tool: "render_frames", args: { frames: [0, 15], phone: true } },
+        // 6: round 1, with the builder's own perfect scores.
+        { tool: "review_submit", args: { scores: tenOutOfTen, defects: [] } },
+        { tool: "contact_sheet", args: { max: 4 } },
+        { tool: "render_frames", args: { frames: [0], phone: true } },
+        // 9: nothing changed since round 1.
+        { tool: "review_submit", args: {} },
+        { tool: "project_read" },
+        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Centre the title", ops: [{ op: "update_item", item: "title-1", set: { transform: { x: 460, y: 400, w: 1000 } } }] } },
+        // 12: a fix claimed with frames from before the edit.
+        { tool: "review_submit", args: { fixes: [{ defect: "d2", what: "centred the title" }, { defect: "d1", what: "put the recording in the phone" }] } },
+        // 13: an id that isn't in the last review.
+        { tool: "review_submit", args: { fixes: [{ defect: "d9", what: "something" }] } },
+        { tool: "render_frames", args: { frames: [0, 20], phone: true } },
+        // 15: round 2.
+        { tool: "review_submit", args: { fixes: [{ defect: "d2", what: "centred the title" }, { defect: "d1", what: "put the recording in the phone" }] } },
+        { tool: "project_read" },
+        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "The demo in the phone", ops: [{ op: "update_item", item: "g-1", set: { duration: 45 } }] } },
+        { tool: "contact_sheet", args: { max: 4 } },
+        { tool: "render_frames", args: { frames: [0, 15], phone: true } },
+        // 20: round 3.
+        { tool: "review_submit", args: { fixes: [{ defect: "d1", what: "the recording plays in the phone" }] } },
+      ],
+      { access: "edit", skipStoryboard: true },
+    );
     assert.equal(t.status, "done", t.error);
-    const r = s.results();
-    const early = r[3]!;
-    assert.equal(early.result.isError, true);
-    assert.match(textOf(early.result), /Look before you score: a contact_sheet of the edit .* and render_frames with phone true/);
-    const phone = r[5]!;
-    assert.match(textOf(phone.result), /at 360×202/, "phone true draws 360 px wide (a 16:9 canvas)");
+    const r = s.results().slice(2);
+    assert.match(textOf(r[3]!.result), /Look before you ask for a review/);
     const round1 = jsonOf(r[6]!.result);
     assert.equal(round1.round, 1);
-    assert.equal(round1.passed, false);
+    assert.equal(round1.passed, false, "the builder's own 10s don't pass it");
+    assert.match(round1.yourScores, /ignored/);
+    assert.deepEqual(round1.blockers.map((b: any) => [b.id, b.kind, b.source]), [["d1", "placeholder", "critic"], ["d2", "off-centre", "check"]]);
+    assert.match(round1.blockers[1].what, /40 px right of the frame's centre/);
+    assert.equal(round1.scores.brand, 5, "a placeholder blocker caps brand");
+    assert.equal(round1.scores.readability, 5, "an off-centre blocker caps readability");
+    assert.equal(round1.scores.hook, 9);
+    assert.equal(round1.defects[0].id, "d3");
+    assert.match(round1.next, /Blockers \(any one fails the round\): d1 placeholder/);
     assert.equal(round1.determinism, "1 graphic drew the same twice");
-    assert.match(round1.next, /Under 8: readability, sound[\s\S]*round 2/);
-    assert.match(textOf(r[7]!.result), /Look before you score/, "each round looks again");
+    assert.match(textOf(r[9]!.result), /Nothing changed since round 1/);
+    assert.match(textOf(r[12]!.result), /Look at each fix before you claim it: render_frames a frame of d2 \(at 0 s, frames 0 to 15\), d1 \(at 0.5 s, frames 0 to 30\)/);
+    assert.match(textOf(r[13]!.result), /There's no d9 in the last review \(its ids: d1, d2, d3\)/);
+    const round2 = jsonOf(r[15]!.result);
+    assert.equal(round2.passed, false, "a fix the critic didn't see fails the round");
+    assert.deepEqual(round2.fixes.map((f: any) => [f.defect, f.verified]), [["d2", true], ["d1", false]]);
+    assert.deepEqual(round2.blockers.map((b: any) => [b.id, b.kind]), [["d1", "unverified-fix"]]);
+    assert.match(round2.blockers[0].what, /the phone is still empty/);
+    const round3 = jsonOf(r[20]!.result);
+    assert.equal(round3.passed, true, round3.next);
+    assert.match(round3.next, /critic passed it/);
+    // Saved by the critic.
     const saved = JSON.parse(readFileSync(join(s.dir, "reviews", "review-1.json"), "utf8"));
-    assert.deepEqual(saved.scores, scores);
+    assert.equal(saved.by, "critic");
+    assert.equal(saved.blockers.length, 2);
+    assert.match(saved.evidence.hook, /f 0, f 45/);
     assert.deepEqual(saved.determinism, { checked: ["box.html"], differed: [] });
-    assert.deepEqual(saved.looked, { sheet: true, phone: true });
-    assert.equal(saved.defects[0].fix, "Size 120");
-    const card = t.items.find((i: any) => i.kind === "card" && i.card.type === "review");
-    assert.equal(card.card.review.round, 1);
-    assert.equal(s.latest().plan.reviews.length, 1);
-    // Cards come back with the history after a close and reopen.
+    // The critic: a separate claude with no tools, no MCP server, no session, none of the builder's conversation.
+    const runs = s.criticRuns();
+    assert.equal(runs.length, 3);
+    const builder = s.prompts().at(-1)!;
+    for (const run of runs) {
+      assert.equal(run.resume, null);
+      assert.equal(run.args[run.args.indexOf("--tools") + 1], "");
+      assert.ok(!run.args.includes("--mcp-config") && !run.args.includes("--resume"), run.args.join(" "));
+      assert.ok(run.args.includes("--no-session-persistence"));
+      assert.ok(!run.env.includes("ANTHROPIC_API_KEY"));
+      assert.notEqual(run.cwd, s.dir);
+      assert.ok(!run.text.includes("BUILDER-SECRET-7"), "no builder message");
+      assert.ok(!run.text.includes("editing agent inside Uncut"), "no builder system prompt");
+      assert.ok(!run.text.includes(builder.prompt.slice(0, 60)));
+      assert.ok(!/centred the title/.test(run.text) || /<claimed-fixes>/.test(run.text), "the builder's words only as fix claims");
+      assert.match(run.text, /<brief>\nfilm: Argent Cloud runs your app's QA in the cloud/);
+      assert.match(run.text, /<rubric>/);
+      assert.match(run.text, /<storyboard approved>/);
+    }
+    assert.match(runs[0]!.text, /<layout-checks>\nfails at f 0: "Argent Cloud" is centred in a box 40 px right/);
+    assert.ok(runs[0]!.images >= 3, `a contact sheet and phone frames (${runs[0]!.images})`);
+    assert.match(runs[1]!.text, /<last-round 1>\nd1 \(blocker, placeholder\) at 0.5 s: The phone screen is empty/);
+    assert.match(runs[1]!.text, /<claimed-fixes>[\s\S]*d2 \(at 0 s\)[\s\S]*the editor: centred the title/);
+    assert.match(runs[1]!.text, /Image \d+: frame 0 \(0.00 s\), the moment of claimed fix d2, rendered after the fix/);
+    assert.ok(!/layout-checks/.test(runs[1]!.text), "the title is centred now");
+    assert.equal(runs[1]!.images, runs[0]!.images + 2, "plus a fresh frame per claimed fix");
+    // Cards inline in the conversation, in the order they happened.
+    const kinds = t.items.flatMap((i: any, at: number) => (i.kind === "card" ? [[i.card.type, at]] : []));
+    assert.deepEqual(kinds.map((k: any) => k[0]), ["brief", "storyboard", "review", "review", "review"]);
+    const stepAt = (n: number) => t.items.findIndex((i: any) => i.kind === "step" && i.tool === "review_submit" && --n === 0);
+    assert.ok(kinds[2][1] > stepAt(2) && kinds[3][1] > stepAt(8) && kinds[4][1] > stepAt(9), "each review card right after its call");
+    assert.ok(kinds[0][1] < kinds[1][1] && kinds[1][1] < kinds[2][1]);
+    assert.deepEqual(s.latest().plan.reviews.map((x: any) => x.passed), [false, false, true]);
+    // Kept with the history after a close and reopen.
     await s.client.ok("project.close", {});
     await s.agent.until((v) => v === null);
     await s.client.ok("project.open", { dir: s.dir });
-    const reopened = await s.agent.until((v) => v?.dir === s.dir && v.turns.some((x: any) => x.id === t.id));
-    const state = reopened ?? s.agent.values.findLast((v: any) => v?.dir === s.dir);
-    const back = state.turns.find((x: any) => x.id === t.id);
-    const kept = back.items.find((i: any) => i.kind === "card" && i.card.type === "review");
-    assert.deepEqual(kept.card.review.scores, scores, "the review card is kept in history.db");
-    assert.equal(state.plan.reviews.length, 1, "the plan is read again on open");
+    const reopened = (await s.agent.until((v) => v?.dir === s.dir && v.turns.some((x: any) => x.id === t.id))) ?? s.agent.values.findLast((v: any) => v?.dir === s.dir);
+    const back = reopened.turns.find((x: any) => x.id === t.id);
+    const kept = back.items.filter((i: any) => i.kind === "card" && i.card.type === "review");
+    assert.equal(kept[0].card.review.blockers[0].kind, "placeholder");
+    assert.equal(kept[1].card.review.fixes[1].verified, false);
+    assert.equal(reopened.plan.reviews.length, 3);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("D195: a critic that fails or answers no JSON passes nothing and saves no round", { skip, timeout: 180000 }, async () => {
+  const s = await setup("critic-fail");
+  try {
+    s.critic([{ fail: "Overloaded" }, "Looks great to me!", { scores: { hook: { score: 9 }, readability: 9, motion: 9, variety: 9, sound: 9, brand: 9 }, blockers: [], defects: [] }]);
+    const t = await s.ask("review", [
+      { tool: "project_read" },
+      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Title", ops: [{ op: "insert_item", track: "text", item: { ...TITLE, style: { ...TITLE.style, color: "#ffffff" } } }] } },
+      { tool: "contact_sheet", args: { max: 2 } },
+      { tool: "render_frames", args: { frames: [0], phone: true } },
+      { tool: "review_submit", args: {} },
+      { tool: "review_submit", args: {} },
+      { tool: "review_submit", args: {} },
+    ]);
+    assert.equal(t.status, "done", t.error);
+    const r = s.results();
+    assert.match(textOf(r[4]!.result), /critic couldn't review it: the critic stopped: Overloaded/);
+    assert.match(textOf(r[5]!.result), /critic couldn't review it: no JSON object/);
+    const round = jsonOf(r[6]!.result);
+    assert.equal(round.passed, false, "scores without frames cited can't pass");
+    assert.equal(round.scores.hook, 7);
+    assert.equal(round.round, 1, "failed critic runs aren't rounds");
   } finally {
     await s.stop();
   }

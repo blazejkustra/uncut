@@ -1,7 +1,7 @@
 // The production process the agent follows (U7–U9, U15–U17, U19; D186–D191), pure: what each
 // message says about the brand kit, skills and plan, the build gate, ask_user's card and answer,
-// the critic's verdict, brand_write's merge and the beat grid. agent.ts runs them with its state.
-import type { AgentAnswer, AgentPlan, AgentQuestion, BrandKit, BrandSkill, BrandStyle, Review, ReviewScores } from "@uncut/contracts";
+// brand_write's merge and the beat grid (the critic is agentCritic.ts). agent.ts runs them with its state.
+import type { AgentAnswer, AgentPlan, AgentQuestion, BrandKit, BrandSkill, BrandStyle } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
 
 import { normHex, normStyle } from "../brand/store.ts";
@@ -9,10 +9,7 @@ import type { BeatsResult } from "../analysis/beats.ts";
 
 /** How long a question or storyboard card waits for the user (they may be thinking it over). */
 export const QUESTION_MS = 15 * 60_000;
-/** The critic's bar: every score at least this. */
-export const REVIEW_PASS = 8;
-/** At most this many review rounds in a turn. */
-export const REVIEW_ROUNDS = 3;
+export { REVIEW_PASS, REVIEW_ROUNDS } from "./agentCritic.ts";
 /** Skills' bodies in a message, at most this many characters together. */
 export const SKILLS_CHARS = 8000;
 
@@ -109,7 +106,11 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
   }
   if (gate.closed) p.push(sb ? "The build waits for the storyboard's approval." : "The build waits for a storyboard (storyboard_propose).");
   const last = plan.reviews.at(-1);
-  if (last) p.push(`Last review: round ${last.round}, ${REVIEW_SCORES.map((k) => `${k} ${last.scores[k]}`).join(", ")}${last.passed ? " (passed)" : ""}.`);
+  if (last) {
+    // D195: the critic's findings by id, so the next round's fix claims can name them.
+    const open = [...(last.blockers ?? []).map((b) => `${b.id ?? "?"} blocker ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`), ...last.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`)];
+    p.push(`Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.map((k) => `${k} ${last.scores[k]}`).join(", ")}${last.passed ? " (passed)" : " (not passed)"}${last.error ? `, ${last.error}` : ""}.${open.length && !last.passed ? `\n${open.join("\n")}` : ""}`);
+  }
   // Nothing planned yet: no block (a small edit needs none).
   if (p.length) parts.push(`<plan>\n${p.join("\n")}\n</plan>`);
   return parts.join("\n\n");
@@ -139,16 +140,6 @@ export function answerOut(q: AgentQuestion, outcome: "answered" | "skipped" | "t
   const choices = answer.choices.filter((c) => q.options.some((o) => o.label === c));
   const text = answer.text?.trim();
   return { answered: true, ...(choices.length ? { choices } : {}), ...(text ? { text } : {}) };
-}
-
-/** The critic's verdict on a round (D189): passed, and what to do next. */
-export function reviewVerdict(scores: ReviewScores, round: number, differed: ReadonlyArray<string>): { passed: boolean; low: Array<string>; next: string } {
-  const low = REVIEW_SCORES.filter((k) => scores[k] < REVIEW_PASS);
-  const passed = low.length === 0 && differed.length === 0;
-  const det = differed.length ? ` The graphics ${differed.map((d) => `"${d}"`).join(", ")} drew differently twice at the same frame: they use the clock, timers or Math.random; make render(t) a pure function of t (seeded random from uncut:lib/random.js).` : "";
-  if (passed) return { passed, low, next: "Every score is 8 or more: the review passed. Run project_check, fix its warnings, then tell the user in a line or two (mention the scores)." };
-  if (round >= REVIEW_ROUNDS) return { passed, low, next: `That was round ${round}, the last one in this turn: stop fixing. Tell the user which scores are still under ${REVIEW_PASS} (${low.join(", ") || "none"}) and what would raise them.${det}` };
-  return { passed, low, next: `Under ${REVIEW_PASS}: ${low.join(", ") || "none"}.${det} Fix the 3 worst defects now (timeline_edit, a new graphic), then look again (contact_sheet of the edit and render_frames with phone true) and send round ${round + 1} with review_submit. Score honestly: the user sees the scores.` };
 }
 
 /** brand_write: the kit after merging the call's fields into it (a field passed replaces that field). */
@@ -234,25 +225,4 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
     ...(snaps.length ? { snaps } : {}),
     note: "Timeline frames. Put cuts and state changes on beats, big moments (the reveal, the logo, the end card) on downbeats, and start a whoosh or hit sound 1 to 2 frames before the frame it hits. off is how far the beat is from your frame (move it by that).",
   };
-}
-
-/** A review as saved, from the call's arguments and what the server measured. */
-export function reviewOf(args: Record<string, unknown>, round: number, looked: { sheet: boolean; phone: boolean }, determinism: { checked: Array<string>; differed: Array<string> }, revision: number, turnId: string): Review | { problem: string } {
-  const sc = (args.scores && typeof args.scores === "object" ? args.scores : {}) as Record<string, unknown>;
-  const scores = {} as { -readonly [K in keyof ReviewScores]: number };
-  for (const k of REVIEW_SCORES) {
-    const v = sc[k];
-    if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 10) return { problem: `scores.${k} must be a number from 0 to 10.` };
-    scores[k] = Math.round(v * 10) / 10;
-  }
-  const defects = (Array.isArray(args.defects) ? args.defects : []).flatMap((d) => {
-    const o = (d && typeof d === "object" ? d : {}) as Record<string, unknown>;
-    const what = typeof o.what === "string" ? o.what.trim().slice(0, 300) : "";
-    const fix = typeof o.fix === "string" ? o.fix.trim().slice(0, 300) : "";
-    return what ? [{ at: typeof o.at === "number" && o.at >= 0 ? Math.round(o.at * 100) / 100 : 0, what, ...(fix ? { fix } : {}) }] : [];
-  });
-  const verdict = reviewVerdict(scores, round, determinism.differed);
-  if (!verdict.passed && !defects.length) return { problem: "A round under 8 lists its worst defects (at, what, fix): up to 3 with their time in seconds." };
-  const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : "";
-  return { round, scores, defects: defects.slice(0, 10), ...(notes ? { notes } : {}), determinism, looked, passed: verdict.passed, revision, at: new Date().toISOString(), turnId };
 }

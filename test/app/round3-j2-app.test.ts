@@ -3,8 +3,8 @@
 // - U7: the Brand tab: a new kit (name, colours), a skill from a template, the project's kit and
 //   skill; the next message carries them.
 // - U8: the agent's question card: pick an option, write a line, Send; the turn keeps the answer.
-// - U15/U9: the brief card, the Plan bar; the storyboard card: Edit a beat's title, Approve with
-//   edits; the build goes through; the Plan bar shows the storyboard approved.
+// - U15/U9: the brief card; the storyboard card: Edit a beat's title, Approve with edits; the build
+//   goes through; the Plan chip (D197) shows the storyboard approved and opens the brief card.
 // - U16: the review card with its scores and defects.
 // - Settings › App › Agent: the storyboard skip.
 // Screenshots: test-output/round3-j2-*.png.
@@ -25,6 +25,9 @@ let root = "";
 const apps = new Set<LaunchedApp>();
 const out = (name: string) => resolve("test-output", `round3-j2-${name}.png`);
 const plan = () => join(root, "plan.json");
+// D195: the critic's answer (the review is Uncut's critic's, not the agent's).
+const critic = () => join(root, "critic.json");
+const ev = (score: number) => ({ score, evidence: "f 0, f 30" });
 const turns: Array<unknown> = [];
 const nextTurn = (steps: Array<unknown>) => {
   turns.push(steps);
@@ -45,6 +48,7 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-round3-j2-")));
   mkdirSync(join(root, "projects"));
   writeFileSync(plan(), "[]");
+  writeFileSync(critic(), JSON.stringify([{ scores: { hook: ev(8), readability: ev(7), motion: ev(6), variety: ev(8), sound: ev(5), brand: ev(9) }, blockers: [], defects: [{ at: 0.4, what: "The claim is under 60 px at phone size", fix: "Size 120, two lines" }, { at: 1, what: "No sound on the first downbeat", fix: "A soft hit at frame 30" }, { at: 1.5, what: "The claim fades in linearly", fix: "spring.land on the rise" }] }]));
   writeFileSync(join(root, "prompts.jsonl"), "");
 });
 after(async () => {
@@ -63,7 +67,7 @@ const BEATS = [
 test("round 3 J2: brand kit and skill, question card, brief, storyboard approval with edits, review card", { skip, timeout: 300000 }, async () => {
   const app = await launchApp({
     command: APP,
-    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan(), FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), UNCUT_APPROVAL_MS: "120000" },
+    env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects")]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan(), FAKE_PROMPT_LOG: join(root, "prompts.jsonl"), FAKE_CRITIC: critic(), UNCUT_APPROVAL_MS: "120000" },
   });
   apps.add(app);
   const { page } = app;
@@ -149,7 +153,7 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
       { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1: the claim", ops: [{ op: "insert_item", track: "text", item: title }] } },
       { tool: "contact_sheet", args: { max: 4 } },
       { tool: "render_frames", args: { frames: [0, 30], phone: true } },
-      { tool: "review_submit", args: { scores: { hook: 8, readability: 7, motion: 6, variety: 8, sound: 5, brand: 9 }, defects: [{ at: 0.4, what: "The claim is under 60 px at phone size", fix: "Size 120, two lines" }, { at: 1, what: "No sound on the first downbeat", fix: "A soft hit at frame 30" }, { at: 1.5, what: "The claim fades in linearly", fix: "spring.land on the rise" }] } },
+      { tool: "review_submit", args: {} },
       { text: "Built scene 1; the review asks for a bigger claim and a hit on the downbeat." },
     ]);
     await send("go ahead");
@@ -176,11 +180,12 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     assert.match(await text(page, "[data-testid=agent-card][data-type=review] [data-testid=agent-review-defects]"), /The claim is under 60 px at phone size/);
     await page.$eval("[data-testid=agent-card][data-type=review]", (el) => el.scrollIntoView({ block: "center" }));
     await page.screenshot({ path: out("review") });
-    // The Plan bar: the storyboard approved, the brief readable and editable.
-    await page.click("[data-testid=plan-storyboard]");
+    // D197: the Plan chip: the storyboard approved; the brief card opened from it, edited on the card.
+    await page.click("[data-testid=plan-chip]");
+    await waitFor("[data-testid=plan-menu]");
     assert.match(await text(page, "[data-testid=plan-storyboard]"), /Approved/);
     await page.click("[data-testid=plan-brief]");
-    await waitFor("[data-testid=agent-brief-rows]");
+    await waitFor("[data-testid=agent-card][data-type=brief] [data-testid=agent-brief-rows]");
     await page.screenshot({ path: out("plan-brief") });
     await page.click("[data-testid=plan-brief-edit]");
     await waitFor("[data-testid=plan-brief-form]");

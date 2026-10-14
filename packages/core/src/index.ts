@@ -40,6 +40,7 @@ export { decodeSubtitleBytes, flattenCues, isPlainCue, isSubtitleTrack, MAX_SUBT
 export type { ImportSubtitlesPlan, ParsedCue, SubtitleCue, SubtitleFormat } from "./text/subtitles.ts";
 export { brandColourRule, CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, planDisableCheck, projectChecks, readFrames, textLabel } from "./checks/checks.ts";
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
+export { LAYOUT_HARD, LAYOUT_RULES } from "./checks/layout.ts";
 export { filterMusic, libraryTrackOf, mediaIdFor, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";
 export type { MusicTempo, MusicTrack } from "./audio/music.ts";
 export { attributionLine, bundledSfxOf, creditOf, creditsOf, creditsText, filterSfx, hitKey, LIBRARY_LENGTHS, LIBRARY_MODULES, LIBRARY_SOURCE_NAMES, LIBRARY_SOURCES, libraryMediaOf, LICENSE_NAMES, lengthLabel, licenseUrl, limitSentence, mediaCredit, MEME_SOUNDS, MUSIC_GENRES, parseHitKey, SFX_CATEGORIES, SFX_SOUNDS, sfxCredit, sfxSound } from "./audio/library.ts";

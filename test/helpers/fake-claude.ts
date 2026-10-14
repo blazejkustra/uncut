@@ -2,6 +2,7 @@
 // Stands in for `claude` in tests, so they never use a real subscription.
 //   claude --version / claude auth status --json: answers like a signed-in Claude Code.
 //   claude -p --input-format stream-json ...: the long-lived session (fake-claude-session.ts, D139).
+//   claude -p --tools "" with the critic's prompt: Uncut's critic (D195), answers from $FAKE_CRITIC.
 //   claude -p --output-format stream-json ...: reads the prompt from stdin, connects to the real
 //   MCP server from --mcp-config (exactly as claude would start it) and plays the steps listed
 //   in $FAKE_PLAN for this turn, printing stream-json like claude does.
@@ -37,6 +38,40 @@ interface RpcReply {
 }
 
 const flag = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+// The critic (D195): `--tools ""`, no --mcp-config, Uncut's critic marker in --system-prompt. Reads
+// the one stream-json user message, logs it to $FAKE_CRITIC_LOG ({ critic: true, text, images,
+// resume, args, env }) and answers with the next entry of $FAKE_CRITIC (a JSON array, one entry per
+// critic run, counted in $FAKE_CRITIC.turn): an object is sent as its JSON, a string as is,
+// { fail: msg } as an error result, { hang: true } never answers. No entry: all 9s with evidence.
+if (flag("--tools") === "" && !argv.includes("--mcp-config") && (flag("--system-prompt") ?? "").startsWith("[uncut-critic]")) {
+  const line = await new Promise<string>((resolve) => {
+    let text = "";
+    process.stdin.on("data", (d) => {
+      text += d;
+      if (text.includes("\n")) resolve(text.slice(0, text.indexOf("\n")));
+    });
+    process.stdin.on("end", () => resolve(text));
+  });
+  const msg = JSON.parse(line) as { message: { content: Array<{ type: string; text?: string }> } };
+  const text = msg.message.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+  const images = msg.message.content.filter((c) => c.type === "image").length;
+  if (process.env.FAKE_CRITIC_LOG) appendFileSync(process.env.FAKE_CRITIC_LOG, `${JSON.stringify({ critic: true, text, images, resume: flag("--resume") ?? null, args: argv, env: Object.keys(process.env), cwd: process.cwd() })}\n`);
+  let entry: unknown;
+  if (process.env.FAKE_CRITIC) {
+    const counter = `${process.env.FAKE_CRITIC}.turn`;
+    const k = existsSync(counter) ? Number(readFileSync(counter, "utf8")) : 0;
+    writeFileSync(counter, String(k + 1));
+    entry = (JSON.parse(readFileSync(process.env.FAKE_CRITIC, "utf8")) as Array<unknown>)[k];
+  }
+  const ev = (k: string) => ({ score: 9, evidence: `f 0, f 30: ${k} fine` });
+  const all9 = { scores: Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(k)])), blockers: [], defects: [], fixes: [], summary: "Fine." };
+  if (entry && typeof entry === "object" && "hang" in entry) await new Promise(() => {});
+  const fail = entry && typeof entry === "object" && "fail" in entry ? String((entry as { fail: unknown }).fail) : undefined;
+  const result = fail ?? (typeof entry === "string" ? entry : JSON.stringify(entry ?? all9));
+  process.stdout.write(`${JSON.stringify({ type: "system", subtype: "init", session_id: "fake-critic", tools: [] })}\n`);
+  process.stdout.write(`${JSON.stringify({ type: "result", subtype: "success", is_error: !!fail, result, session_id: "fake-critic" })}\n`, () => process.exit(0));
+  await new Promise(() => {});
+}
 // Persistent mode (D139): `--input-format stream-json` keeps one process for many messages.
 if (flag("--input-format") === "stream-json") {
   await import("./fake-claude-session.ts");
