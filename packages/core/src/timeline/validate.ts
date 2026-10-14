@@ -38,6 +38,12 @@ const extra = (e: ErrorObject, key: "additionalProperty" | "unevaluatedProperty"
   return value ? `: ${value}` : "";
 };
 
+/** D206: an enum error names the values it takes ("must be one of: rect, circle, line"), so the fix is in the refusal. */
+const allowedOf = (e: ErrorObject) => {
+  const values = (e.params as { allowedValues?: unknown } | undefined)?.allowedValues;
+  return e.keyword === "enum" && Array.isArray(values) ? ` (${values.map((v) => JSON.stringify(v)).join(", ")})` : "";
+};
+
 /** Load every *.json manifest in the given directories into a Map by id. */
 export async function loadModules(...dirs: ReadonlyArray<string>): Promise<Map<string, ModuleManifest>> {
   const modules = new Map<string, ModuleManifest>();
@@ -76,7 +82,7 @@ export function validateOps(ops: unknown): Array<Problem> {
     const check = opSchemas.get(op?.op);
     if (!check) return errors.push(err("unknown-op", `${path}/op`, `unknown op ${JSON.stringify(op?.op)}`));
     if (!(check(op) as boolean)) {
-      for (const e of check.errors!) errors.push(err("schema", path + (e.instancePath || ""), `${op!.op}: ${e.message}${extra(e, "additionalProperty")}`));
+      for (const e of check.errors!) errors.push(err("schema", path + (e.instancePath || ""), `${op!.op}: ${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}`));
     }
     if (op!.op === "update_item" && op!.set && typeof op!.set === "object" && "id" in op!.set) {
       errors.push(err("rename", `${path}/set/id`, "an item's id can't be changed"));
@@ -91,7 +97,7 @@ function err(code: string, path: string, message: string): Problem {
 
 export function validateProject(input: unknown, modules: Modules): Array<Problem> {
   if (!projectSchema(input)) {
-    return projectSchema.errors!.map((e) => err("schema", e.instancePath || "/", `${e.message}${extra(e, "additionalProperty")}${extra(e, "unevaluatedProperty")}`));
+    return projectSchema.errors!.map((e) => err("schema", e.instancePath || "/", `${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}${extra(e, "unevaluatedProperty")}`));
   }
   const project = input as unknown as Project;
   const errors: Array<Problem> = [];
@@ -126,7 +132,7 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
     if (!paramsCache.has(manifest.id)) paramsCache.set(manifest.id, ajv.compile(manifest.params));
     const check = paramsCache.get(manifest.id)!;
     if (!check(value ?? {})) {
-      for (const e of check.errors!) errors.push(err("params", path + e.instancePath, `${manifest.id}: ${e.message}${extra(e, "additionalProperty")}`));
+      for (const e of check.errors!) errors.push(err("params", path + e.instancePath, `${manifest.id}: ${e.message}${allowedOf(e)}${extra(e, "additionalProperty")}`));
     }
   };
   const checkMediaRefs = (value: unknown, path: string) => {

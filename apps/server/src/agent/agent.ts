@@ -21,10 +21,11 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { filterSfx, hitKey, libraryMediaOf, limitSentence } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
+import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -45,6 +46,7 @@ import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, ru
 import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
 import { decide, LOOK_DISALLOWED, namedFolders, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
 import { downloadToProject } from "./agentDownload.ts";
+import { emptyAddedTracks, KEEP_REVISIONS, restoreGraphics, trashGraphics, unusedGraphics } from "./agentCleanup.ts";
 import { accessLine, TOOLS_LINE, bigChange, checksOut, doingLabel, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
@@ -57,6 +59,7 @@ import { ProjectFormat } from "../project/format.ts";
 import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
 import { MediaCore } from "../media/mediaCore.ts";
+import { importablePath, MAX_FOUND, MediaIndex } from "../media/mediaIndex.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { applyDeclared, appliedNote, Capture } from "../capture/capture.ts";
 import { uploadedTake } from "../capture/takes.ts";
@@ -124,6 +127,8 @@ export interface AgentShape {
   /** D144: the renderer's answer to an allowed screen_record (the uploaded take, or what went wrong). */
   readonly screenTake: (answer: { readonly id: string; readonly path?: string | undefined; readonly source?: string | undefined; readonly problem?: string | undefined }) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
+  /** D206: puts back the graphics a turn's clean-up moved to the trash. */
+  readonly restoreCleanup: (turnId: string) => Effect.Effect<{ readonly restored: ReadonlyArray<string> }, AgentError>;
   /** For the bridge: the tool list, or undefined when `token` isn't the live session's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
   /** For the bridge: whether `token` is the running turn's (no rescan, unlike tools). */
@@ -372,6 +377,8 @@ interface Running {
   rendered: Array<{ stamp: string; frames: ReadonlyArray<number> }>;
   // D196: graphic files written in this turn (a graphic's change doesn't move the revision).
   graphicWrites: number;
+  // D206: tracks the agent's timeline_edits added in this turn (removed at its end when still empty).
+  readonly addedTracks: Set<string>;
   // D196: the state the last failed round of this turn reviewed (a new round needs a change).
   reviewedStamp: string | undefined;
   // D194: permission cards one at a time (a parallel call's card waits for the one open).
@@ -449,8 +456,20 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     ...(typeof t.seconds === "number" ? { seconds: t.seconds } : {}),
     ...(isString(t.undoneAt) ? { undoneAt: t.undoneAt } : {}),
     ...(typeof t.spend === "number" && Number.isFinite(t.spend) && t.spend > 0 ? { spend: t.spend } : {}),
+    ...(Array.isArray(t.graphics) ? { graphics: t.graphics.filter(isString).slice(-200) } : {}),
+    ...(t.cleanup && typeof t.cleanup === "object" ? { cleanup: cleanupOf(t.cleanup) } : {}),
   };
 }
+
+/** A stored turn-end clean-up (D206). */
+const cleanupOf = (raw: object): NonNullable<StoredTurn["cleanup"]> => {
+  const c = raw as { graphics?: unknown; tracks?: unknown; restored?: unknown };
+  return {
+    graphics: Array.isArray(c.graphics) ? c.graphics.filter(isString) : [],
+    tracks: Array.isArray(c.tracks) ? c.tracks.filter(isString) : [],
+    ...(c.restored === true ? { restored: true } : {}),
+  };
+};
 
 interface History {
   readonly sessionId: string | undefined;
@@ -690,6 +709,7 @@ export const layer = Layer.effect(
     const keys = yield* Keys;
     const capture = yield* Capture;
     const sounds = yield* Library;
+    const mediaIndex = yield* MediaIndex;
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
     const port = "port" in address ? address.port : config.port;
@@ -967,14 +987,25 @@ export const layer = Layer.effect(
         const raw: ReadonlyArray<unknown> = hasPath ? [args.path] : (args.paths as ReadonlyArray<unknown>);
         const name = typeof args.name === "string" ? args.name.trim() : undefined;
         if (args.name !== undefined && !name) return textResult("name must be a non-empty string.", true);
-        const plan = yield* Effect.promise(() => planImport(raw, v.dir));
-        if ("refused" in plan) return textResult(plan.refused, true);
+        const planned = yield* Effect.promise(() => planImport(raw, v.dir));
+        if ("refused" in planned) return textResult(planned.refused, true);
+        let plan = planned;
         if (name && plan.files.length !== 1) return textResult("name is only for importing one file; leave it out for a folder or several paths.", true);
         if (!plan.files.length) return textResult({ imported: [], ...capSkipped(plan.skipped), failed: [], note: "Nothing to import: no media files there." });
+        // D205 (D12): a file inside another project's folder is copied into this one's media/imports
+        // (that project may move or go); anything else is referenced where it is.
+        const copied: Array<string> = [];
+        const files: Array<string> = [];
+        for (const f of plan.files) {
+          const target = yield* Effect.promise(() => importablePath(f, v.dir).catch(() => ({ path: f, copied: false })));
+          files.push(target.path);
+          if (target.copied) copied.push(shownPath(target.path, v.dir));
+        }
+        plan = { ...plan, files };
         // Uninterruptible: a turn stopped mid-import still gets the edit on its card (so Undo turn
         // can take back media the job adds anyway).
         const outcome = yield* Effect.uninterruptible(
-          media.importForAgent({ openId: r.openId, dir: v.dir, turnId: r.turn.id, paths: plan.files, names: name ? new Map([[plan.files[0]!, name]]) : undefined }).pipe(
+          media.importForAgent({ openId: r.openId, dir: v.dir, turnId: r.turn.id, paths: plan.files, names: name ? new Map([[plan.files[0]!, name]]) : undefined, ...(copied.length ? { relativePaths: true } : {}) }).pipe(
             Effect.map((value) => {
               const { snapshot, entries } = value;
               const subs = value.subtitles ?? [];
@@ -1015,6 +1046,7 @@ export const layer = Layer.effect(
           ...(outcome.value.subtitles?.length ? { subtitles: outcome.value.subtitles.map((s) => ({ ...s, note: `Text items on track ${s.track}, one per cue; subtitles_export writes them (with any captions) as .srt or .vtt.` })) } : {}),
           ...capSkipped(skippedOut),
           failed,
+          ...(copied.length ? { copied, copiedNote: "These lived inside another project, so they were copied into this project's media/imports (D12)." } : {}),
           ...(entries.length ? { note: "Frames, in and duration are project frames; probe frames is each file's length in them." } : {}),
           ...(outcome.userChanges ? { userChanges: outcome.userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
         });
@@ -1822,14 +1854,14 @@ export const layer = Layer.effect(
     };
 
     /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard; readonly permission?: AgentApproval["permission"]; readonly brand?: AgentApproval["brand"] }) =>
+    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard; readonly permission?: AgentApproval["permission"]; readonly brand?: AgentApproval["brand"]; readonly boot?: AgentApproval["boot"] }) =>
       Effect.promise(
         () =>
           new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
             // A question or a storyboard may take thinking over (QUESTION_MS); UNCUT_APPROVAL_MS shortens both in tests.
             const long = !!(more?.question || more?.storyboard);
             const ms = long && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : long ? QUESTION_MS : approvalMs();
-            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}), ...(more?.permission ? { permission: more.permission } : {}), ...(more?.brand ? { brand: more.brand } : {}) };
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}), ...(more?.permission ? { permission: more.permission } : {}), ...(more?.brand ? { brand: more.brand } : {}), ...(more?.boot ? { boot: more.boot } : {}) };
             let settled = false;
             const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => {
               if (settled) return;
@@ -2079,6 +2111,131 @@ export const layer = Layer.effect(
           ...(snapshot ? { revision: snapshot.revision } : {}),
           note: "The recording is in Media (an edit of this turn: Undo turn removes it). Place it with timeline_edit.",
         });
+      });
+
+    /**
+     * argent_boot (D204): boot a simulator or emulator for a recording, never without the user's
+     * click. Without a device it lists the bootable ones by name. With one (its id or name) it asks
+     * on a card (the device, its platform, what happens next); Boot boots it through the Capture
+     * tab's boot (capture.boot, D143), Don't or no answer leaves it off. A device the user allowed
+     * once in this chat boots again without a card (Edit freely and Ask before big changes alike;
+     * Look only never gets here: allowed() refuses it).
+     */
+    const argentBoot = (r: Running, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const state = yield* capture.state.pipe(
+          Effect.map((x) => ({ ok: true as const, x })),
+          Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })),
+        );
+        if (!state.ok) return textResult({ booted: false, message: `Argent isn't available: ${state.message}`, next: "Ask the user to install Argent (Capture tab) or for a recording; don't draw a placeholder phone without asking." }, true);
+        if (!state.x.installed) return textResult({ booted: false, message: `Argent isn't installed (${state.x.install}).`, next: "Tell the user Argent is needed to record a simulator (the Capture tab installs it), or ask for a recording." }, true);
+        const kindOf = (d: { platform: string; id: string }) => (d.id.startsWith("avd:") || /android/i.test(d.platform) ? "Android emulator" : /ios/i.test(d.platform) ? "iOS simulator" : `${d.platform} device`);
+        const bootable = state.x.devices.filter((d) => d.bootable);
+        const live = state.x.devices.filter((d) => d.recordable);
+        const list = () => ({
+          bootable: bootable.map((d) => ({ device: d.id, name: d.name, kind: kindOf(d) })),
+          running: live.map((d) => ({ device: d.id, name: d.name, kind: kindOf(d) })),
+        });
+        const want = typeof args.device === "string" ? args.device.trim() : "";
+        if (!want)
+          return textResult({ ...list(), next: bootable.length ? "Pick one and call argent_boot with its device: the user is asked on a card before anything boots. A running one can be recorded now with argent_record." : live.length ? "Nothing to boot; record a running one with argent_record." : "No simulator or emulator can be booted here: ask the user." });
+        const found = live.find((d) => d.id === want || d.name.toLowerCase() === want.toLowerCase());
+        if (found) return textResult({ booted: true, device: found.id, name: found.name, already: true, next: `It's running already: argent_record {device: "${found.id}", bundleId, flow or seconds}.` });
+        const lower = want.toLowerCase();
+        const device = bootable.find((d) => d.id === want) ?? bootable.find((d) => d.name.toLowerCase() === lower) ?? (bootable.filter((d) => d.name.toLowerCase().includes(lower)).length === 1 ? bootable.find((d) => d.name.toLowerCase().includes(lower)) : undefined);
+        if (!device) return textResult({ booted: false, message: `No bootable device matches "${want.slice(0, 80)}".`, ...list() }, true);
+        const bundleId = typeof args.bundleId === "string" && /^[A-Za-z0-9_][A-Za-z0-9._-]{0,200}$/.test(args.bundleId) ? args.bundleId : undefined;
+        const kind = kindOf(device);
+        const grant = `Boot:${device.id}`;
+        if (!r.owner.grants.has(grant)) {
+          const answer = yield* askUser(r, `Boot ${device.name}`, 0, undefined, undefined, undefined, { boot: { device: device.id, name: device.name, platform: device.platform, kind, ...(bundleId ? { bundleId } : {}) } });
+          if (answer !== "allow")
+            return textResult({ booted: false, approved: false, message: answer === "deny" ? `The user didn't want ${device.name} booted.` : answer === "timeout" ? "Nobody answered the card in the Agent tab within 2 minutes, so nothing was booted." : "The turn was stopped, so nothing was booted.", next: "Don't ask again in this turn. Ask the user for a recording or footage instead of drawing a placeholder." }, true);
+          // Once per device per chat (until the project closes).
+          r.owner.grants.add(grant);
+        }
+        const booted = yield* capture.boot(device.id).pipe(
+          Effect.map((x) => ({ ok: true as const, x })),
+          Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })),
+        );
+        if (!booted.ok) return textResult({ booted: false, message: `${device.name} didn't boot: ${booted.message}` }, true);
+        return textResult({ booted: true, device: booted.x.device, name: booted.x.name || device.name, kind, next: `Record it: argent_record {device: "${booted.x.device}"${bundleId ? `, bundleId: "${bundleId}"` : ", bundleId (the app to open)"}, flow (a saved flow) or seconds}.` });
+      });
+
+    /**
+     * media_search (D205): the user's media index, captures, imports and generations from the other
+     * projects on this Mac, newest first. media_import with a result's path brings it in (copied
+     * when it lives inside another project, D12).
+     */
+    const mediaSearch = (args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const kind = typeof args.kind === "string" ? args.kind.toLowerCase() : undefined;
+        if (kind && !["video", "image", "audio", "capture", "import", "generated"].includes(kind)) return textResult("kind is video, image, audio, capture, import or generated.", true);
+        const query = typeof args.query === "string" ? args.query.slice(0, 200) : "";
+        const found = yield* mediaIndex.search({ query, ...(kind ? { kind } : {}), limit: MAX_FOUND });
+        const out = found.map((e) => ({
+          path: e.path,
+          name: e.name,
+          kind: e.kind,
+          origin: e.origin,
+          ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+          ...(e.width && e.height ? { size: `${e.width}x${e.height}` } : {}),
+          project: e.project.name,
+          ...(e.device ? { device: e.device } : {}),
+          ...(e.app ? { app: e.app } : {}),
+          created: e.created,
+          import: e.copies ? "copied into this project's media/imports" : "referenced where it is",
+        }));
+        return textResult({ found: out, note: out.length ? "Bring one in with media_import {path}; then place it with timeline_edit." : `Nothing ${query ? `matching "${query}" ` : ""}in other projects. Offer to record it (argent_boot, argent_record, screen_record) or ask the user for footage before drawing a placeholder.` });
+      });
+
+    /**
+     * D206: at the end of a turn that went well, empty tracks the agent added in it are removed (an
+     * edit of the turn, so Undo turn brings them back) and the agent's graphics that nothing uses
+     * (not the project, not the last KEEP_REVISIONS revisions of history, not another graphic) go
+     * to .cache/trash/<turn>/graphics (Undo turn or the turn's Restore puts them back).
+     */
+    const turnCleanup = (r: Running) =>
+      Effect.gen(function* () {
+        const v = view();
+        if (!v || v.openId !== r.openId || r.cancelled) return;
+        const empty = emptyAddedTracks(v.session.project as Project, r.addedTracks);
+        let tracks: Array<string> = [];
+        if (empty.length) {
+          const summary = empty.length === 1 ? "Removed an empty track" : `Removed ${empty.length} empty tracks`;
+          const done = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops: empty.map((track) => ({ op: "delete_track", track })), baseRevision: v.session.revision, summary }).pipe(
+            Effect.map((x): ProjectSnapshot | undefined => x),
+            Effect.catch(() => Effect.succeed(undefined)),
+          );
+          if (done) {
+            pushEdit(r, { revision: done.revision, summary, lines: empty.map((id) => `Removed the empty track ${id}`) });
+            r.owner.seen.add(done.revision);
+            tracks = empty;
+          }
+        }
+        // The agent's own graphics, less any the user put back from an earlier clean-up (they stay).
+        const restored = new Set(r.owner.turns.flatMap((t) => (t.cleanup?.restored ? t.cleanup.graphics : [])));
+        const candidates = new Set([...r.owner.turns.flatMap((t) => t.graphics ?? []), ...(r.turn.graphics ?? [])].filter((n) => !restored.has(n)));
+        let graphics: Array<string> = [];
+        const now = view();
+        if (candidates.size && now && now.openId === r.openId) {
+          const states: Array<unknown> = [now.session.project];
+          try {
+            withHistory(now.dir, (db) => {
+              for (const row of db.listed(KEEP_REVISIONS).rows) {
+                try {
+                  states.push(db.stateAt(row.revision));
+                } catch {}
+              }
+            });
+          } catch {}
+          graphics = yield* Effect.promise(async () => trashGraphics(now.dir, r.turn.id, await unusedGraphics(now.dir, candidates, states)).catch(() => []));
+        }
+        if (tracks.length || graphics.length) {
+          r.turn.cleanup = { graphics, tracks };
+          persist(r.owner);
+          publish();
+        }
       });
 
     // ---- the production process (U7–U9, U15–U17, U19; D186–D191) ----
@@ -2604,13 +2761,21 @@ export const layer = Layer.effect(
             return yield* libraryAdd(r, v, args);
           case "graphic_write": {
             const out = yield* graphicWrite(v, args);
-            if (!out.isError) r.graphicWrites++;
+            if (!out.isError) {
+              r.graphicWrites++;
+              // D206: the agent's own graphics, the only ones the turn-end clean-up may move.
+              if (typeof args.name === "string") r.turn.graphics = [...new Set([...(r.turn.graphics ?? []), args.name])].slice(-200);
+            }
             return out;
           }
           case "generate_media":
             return yield* generateMedia(r, v, args);
           case "screen_record":
             return yield* screenRecord(r, v, args);
+          case "argent_boot":
+            return yield* argentBoot(r, args);
+          case "media_search":
+            return yield* mediaSearch(args);
           case "media_analyze":
             return yield* mediaAnalyze(v, args);
           case "media_rank":
@@ -2625,7 +2790,9 @@ export const layer = Layer.effect(
             return yield* subtitlesExport(v, args);
           case "timeline_edit": {
             // D188: once a brief exists, the build waits for an approved storyboard.
-            const gated = gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard));
+            // D206: a dry run checks the edit and changes nothing, so the storyboard gate doesn't apply.
+            const dryRun = args.dryRun === true;
+            const gated = dryRun ? undefined : gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard));
             if (gated) return textResult(gated, true);
             const { baseRevision, summary } = args;
             if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);
@@ -2643,7 +2810,11 @@ export const layer = Layer.effect(
             // detach_audio (D123) and set_speed (D125) become the item ops that do them.
             const arranged = expandArrangeOps(v.session.project as Project, captions.ops);
             if ("problem" in arranged) return textResult({ refused: arranged.problem, revision: v.session.revision }, true);
-            const ops = arranged.ops;
+            // D206: place_item (overlaps resolved as asked) and set_transition's allowTrim.
+            const placed = expandPlacement(v.session.project as Project, arranged.ops);
+            if ("problem" in placed) return textResult({ refused: placed.problem, revision: v.session.revision }, true);
+            const ops = placed.ops;
+            const placements = placed.notes.length ? { placed: placed.notes } : {};
             if (!r.owner.seen.has(baseRevision)) {
               return textResult(
                 { refused: `baseRevision ${baseRevision} isn't a revision you read in this session. Call project_read and edit from what it returns.`, revision: v.session.revision },
@@ -2651,17 +2822,22 @@ export const layer = Layer.effect(
               );
             }
             const line = typeof summary === "string" && summary.trim() ? summary.trim() : "Edited the timeline";
-            const outcome = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops, baseRevision, summary: line }).pipe(
+            const outcome = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops, baseRevision, summary: line, dryRun }).pipe(
               Effect.map((snapshot) => ({ ok: true as const, snapshot })),
               Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
             );
             if (!outcome.ok) {
               const now = view();
               const userChanges = now ? noteFor(now, baseRevision) : "";
+              // D206: each problem with a concrete fix (a start frame, a track, an id, the missing frames).
+              const details = "details" in outcome.error && Array.isArray(outcome.error.details) ? refusalFixes(v.session.project as Project, ops, outcome.error.details as ReadonlyArray<Problem>) : [];
+              const fixes = [...new Set(details.flatMap((d) => (d.fix ? [d.fix] : [])))];
               return textResult(
                 {
+                  ...(dryRun ? { dryRun: true } : {}),
                   refused: outcome.error.message,
-                  details: outcome.error.details,
+                  details: details.length ? details : "details" in outcome.error ? outcome.error.details : [],
+                  ...(fixes.length ? { fix: fixes.slice(0, 6).join(" ") } : {}),
                   revision: now?.session.revision,
                   ...(userChanges ? { userChanges } : {}),
                 },
@@ -2669,6 +2845,30 @@ export const layer = Layer.effect(
               );
             }
             const { snapshot } = outcome;
+            if (dryRun) {
+              // D206: what the edit would do, nothing saved: the ops after the convenience ops are
+              // expanded, each as a line, the items it adds, removes or moves, and the new length.
+              const planned = snapshot.project as Project;
+              const end = projectSummary(planned, snapshot.revision).duration;
+              return textResult({
+                dryRun: true,
+                ok: true,
+                revision: v.session.revision,
+                ops,
+                lines: (ops as ReadonlyArray<Op>).map((op) => {
+                  try {
+                    return describeOp(op, planned);
+                  } catch {
+                    return String((op as { op?: unknown }).op ?? "edit");
+                  }
+                }),
+                diff: projectDiff(v.session.project as Project, planned),
+                ...placements,
+                duration: end,
+                seconds: Number((end / planned.canvas.fps).toFixed(2)),
+                note: "Nothing changed. Send the same edit without dryRun to make it.",
+              });
+            }
             const project = snapshot.project as Project;
             const lines = (ops as ReadonlyArray<Op>).map((op) => {
               try {
@@ -2678,6 +2878,8 @@ export const layer = Layer.effect(
               }
             });
             pushEdit(r, { revision: snapshot.revision, summary: line, lines });
+            // D206: tracks it made, for the turn-end clean-up.
+            for (const op of ops as ReadonlyArray<Op>) if (op.op === "add_track" && typeof (op.track as { id?: unknown }).id === "string") r.addedTracks.add((op.track as { id: string }).id);
             persist(r.owner);
             // agentSeen doesn't move: user edits made since the agent's last read (they didn't
             // touch what this edit touched, or it would have been refused) are still news. They
@@ -2692,6 +2894,7 @@ export const layer = Layer.effect(
             return textResult({
               ok: true,
               revision: snapshot.revision,
+              ...placements,
               duration: end,
               seconds: Number((end / project.canvas.fps).toFixed(2)),
               ...(ducking ? { ducking } : {}),
@@ -2738,6 +2941,8 @@ export const layer = Layer.effect(
         if (r.access === "edit") return undefined;
         if (r.access === "look") {
           if ((LOOK_TOOLS as ReadonlyArray<string>).includes(tool)) return undefined;
+          // D206: a timeline_edit dry run changes nothing.
+          if (tool === "timeline_edit" && input.dryRun === true) return undefined;
           return textResult(`Not done: the user set this chat to "Look only", so you can read and look but not change anything (${tool} refused). Say what you would do instead; they can switch to "Edit freely" or "Ask before big changes" in the composer.`, true);
         }
         const v = view();
@@ -3014,7 +3219,13 @@ export const layer = Layer.effect(
         // A Stop that crossed a successful result doesn't relabel the finished turn.
         if (r.cancelled && msg.is_error) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
         if (r.turn.error) return finish(r, { status: "error" });
-        if (!msg.is_error) return finish(r, { status: "done", ...(typeof msg.duration_ms === "number" ? { seconds: Math.round(msg.duration_ms / 100) / 10 } : {}) });
+        if (!msg.is_error) {
+          const patch = { status: "done" as const, ...(typeof msg.duration_ms === "number" ? { seconds: Math.round(msg.duration_ms / 100) / 10 } : {}) };
+          // D206: the clean-up first (unused graphics to the trash, empty tracks it made removed), then the turn ends.
+          return void Effect.runPromise(turnCleanup(r))
+            .catch((error) => console.error(`[uncut] turn clean-up failed: ${(error as Error).message}`))
+            .finally(() => finish(r, patch));
+        }
         const why = (isString(msg.result) && msg.result.trim()) || (Array.isArray(msg.errors) && msg.errors.filter(isString).join(" ")) || msg.subtype || "it reported an error";
         return finish(r, { status: "error", error: `Claude Code stopped: ${why}` });
       }
@@ -3342,6 +3553,7 @@ export const layer = Layer.effect(
           reviewRounds: 0,
           rendered: [],
           graphicWrites: 0,
+          addedTracks: new Set(),
           reviewedStamp: undefined,
           permissionQueue: Promise.resolve(),
           toolNames: new Map(),
@@ -3407,9 +3619,27 @@ export const layer = Layer.effect(
           const label = `Undid your turn "${turn.prompt.length > 80 ? `${turn.prompt.slice(0, 77)}...` : turn.prompt}"`;
           const snapshot = yield* projects.undoTurn(owner.openId, turnId, label);
           turn.undoneAt = new Date().toISOString();
+          // D206: the graphics its clean-up put in the trash come back too.
+          if (turn.cleanup?.graphics.length && !turn.cleanup.restored) {
+            yield* Effect.promise(() => restoreGraphics(owner.dir, turnId, turn.cleanup!.graphics).catch(() => []));
+            turn.cleanup = { ...turn.cleanup, restored: true };
+          }
           persist(owner);
           publish();
           return snapshot;
+        }),
+      // D206: the turn's Restore: its trashed graphics back in graphics/.
+      restoreCleanup: (turnId) =>
+        Effect.gen(function* () {
+          const owner = yield* ensureLoaded;
+          if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+          const turn = owner.turns.find((t) => t.id === turnId);
+          if (!turn?.cleanup) return yield* new AgentError({ reason: "unknown-turn", message: "That turn moved nothing to the trash." });
+          const restored = yield* Effect.promise(() => restoreGraphics(owner.dir, turnId, turn.cleanup!.graphics).catch(() => [] as Array<string>));
+          turn.cleanup = { ...turn.cleanup, restored: true };
+          persist(owner);
+          publish();
+          return { restored };
         }),
       // The built-in tools, then the plugins' (D97; the folders are scanned again for each list).
       // Any time the session lives: claude lists its tools when it starts.

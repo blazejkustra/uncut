@@ -67,6 +67,9 @@ export const RPC_METHODS = {
   captureBoot: "capture.boot",
   captureRecord: "capture.record",
   agentScreenTake: "agent.screenTake",
+  agentRestoreCleanup: "agent.restoreCleanup",
+  mediaRecent: "media.recent",
+  mediaRecentImport: "media.recentImport",
   generateList: "generate.list",
   generateStart: "generate.start",
   generateJobs: "generate.jobs",
@@ -232,6 +235,31 @@ export type RecentProject = typeof RecentProject.Type;
 // ---- media ----
 
 export const THUMB_PATH = "/media/thumb"; // GET /media/thumb/<media id>?token=…
+/** D205: a poster from the user's media index (another project's take), by index entry id. */
+export const RECENT_THUMB_PATH = "/media/recent-thumb"; // GET /media/recent-thumb/<entry id>?token=…
+
+/**
+ * D205: a capture, import or generation from any project on this Mac, from the user-level media
+ * index (<data dir>/media-index.json): where it is, what it is, which project it came from.
+ */
+export const MediaRecentEntry = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  name: Schema.String,
+  kind: Schema.Literals(["video", "image", "audio"]),
+  origin: Schema.Literals(["capture", "import", "generated"]),
+  seconds: Schema.optional(Schema.Number),
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+  project: Schema.Struct({ dir: Schema.String, name: Schema.String }),
+  device: Schema.optional(Schema.String),
+  app: Schema.optional(Schema.String),
+  created: Schema.String,
+  thumb: Schema.optional(Schema.Boolean),
+  // Importing it copies the file into this project's media/ (it lives inside another project's folder), else references it (D12).
+  copies: Schema.optional(Schema.Boolean),
+});
+export type MediaRecentEntry = typeof MediaRecentEntry.Type;
 // GET /media/file/<media id>?token=…: the original file of a media item of the open project, with
 // HTTP Range support (the preview's <video> seeks with it). Footage is streamed, never copied.
 export const MEDIA_FILE_PATH = "/media/file";
@@ -829,6 +857,11 @@ export const AgentTurn = Schema.Struct({
   undo: AgentUndo,
   // Estimated spend on API keys in this turn, US dollars (D9, D99): generators billed to the user's keys.
   spend: Schema.optional(Schema.Number),
+  // D206: graphics files the agent wrote in this turn (graphics/<name>), so only its own are ever cleaned up.
+  graphics: Schema.optional(Schema.Array(Schema.String)),
+  // D206: the turn-end clean-up: unused graphics moved to .cache/trash/<turn>/ and empty tracks the
+  // agent made removed (an edit of the turn). restored: the user put the graphics back.
+  cleanup: Schema.optional(Schema.Struct({ graphics: Schema.Array(Schema.String), tracks: Schema.Array(Schema.String), restored: Schema.optional(Schema.Boolean) })),
 });
 export type AgentTurn = typeof AgentTurn.Type;
 
@@ -881,6 +914,9 @@ export const AgentApproval = Schema.Struct({
   // it asks, and whether "Always for this session" is offered. Allow once, Always (agent.approve
   // always: true) or Deny.
   permission: Schema.optional(Schema.Struct({ tool: Schema.String, target: Schema.String, why: Schema.optional(Schema.String), always: Schema.Boolean })),
+  // D204: the agent asks to boot a simulator or emulator (argent_boot): its name, platform and kind
+  // ("iOS simulator", "Android emulator"), the app it would open next. Boot (allow) or Don't.
+  boot: Schema.optional(Schema.Struct({ device: Schema.String, name: Schema.String, platform: Schema.String, kind: Schema.String, bundleId: Schema.optional(Schema.String) })),
 });
 export type AgentApproval = typeof AgentApproval.Type;
 
@@ -1255,6 +1291,25 @@ const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
   error: Schema.Union([AgentError, EditRefused, ProjectError]),
 });
 
+// D205: recent captures, imports and generations from other projects (the user's media index), newest first.
+const MediaRecentRpc = Rpc.make(RPC_METHODS.mediaRecent, {
+  payload: Schema.Struct({ query: Schema.optional(Schema.String), kind: Schema.optional(Schema.String), limit: Schema.optional(Schema.Number) }),
+  success: Schema.Struct({ entries: Schema.Array(MediaRecentEntry) }),
+});
+// D205: one of them into the open project: copied into media/imports/ when it lives in another project's folder, else referenced (D12). One undoable edit.
+const MediaRecentImportRpc = Rpc.make(RPC_METHODS.mediaRecentImport, {
+  payload: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ mediaId: Schema.optional(Schema.String), name: Schema.String, copied: Schema.Boolean }),
+  error: ProjectError,
+});
+
+// D206: puts back the graphics a turn's clean-up moved to the trash (those still there).
+const AgentRestoreCleanupRpc = Rpc.make(RPC_METHODS.agentRestoreCleanup, {
+  payload: Schema.Struct({ turnId: Schema.String }),
+  success: Schema.Struct({ restored: Schema.Array(Schema.String) }),
+  error: AgentError,
+});
+
 // The user's answer to the running turn's approval (D99); an unknown or expired id is ignored.
 // accepted: false when the card was no longer open (answered, timed out, the turn stopped or another card replaced it).
 // D187/D188: a question card's answer, a storyboard card's edited beats or change note.
@@ -1472,6 +1527,9 @@ export const WsRpcGroup = RpcGroup.make(
   AgentUndoTurnRpc,
   AgentApproveRpc,
   AgentScreenTakeRpc,
+  AgentRestoreCleanupRpc,
+  MediaRecentRpc,
+  MediaRecentImportRpc,
   AgentPlanSaveRpc,
   BrandGetRpc,
   BrandSaveKitRpc,

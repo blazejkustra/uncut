@@ -18,6 +18,7 @@ import { ServerConfig } from "./config.ts";
 import { Exporter } from "../export/exporter.ts";
 import { graphicToken } from "../export/graphicToken.ts";
 import { MediaLibrary } from "../media/media.ts";
+import { importablePath, MediaIndex, shownEntry } from "../media/mediaIndex.ts";
 import { MediaCore } from "../media/mediaCore.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { Plugins } from "../plugins/plugins.ts";
@@ -51,10 +52,11 @@ interface Services {
   readonly generator: typeof Generator.Service;
   readonly keys: typeof Keys.Service;
   readonly sounds: typeof Library.Service;
+  readonly mediaIndex: typeof MediaIndex.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds }: Services) => {
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex }: Services) => {
   const brand = brandRpc(config.dataDir, projects.view);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
@@ -118,6 +120,19 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.brandAddFile]: ({ kit, scope, path }) => brand.addFile(kit, scope, path),
     [RPC_METHODS.brandImport]: ({ kit, scope, source }) => brand.importFiles(kit, scope, source),
     [RPC_METHODS.agentScreenTake]: (answer) => agent.screenTake(answer),
+    [RPC_METHODS.agentRestoreCleanup]: ({ turnId }) => agent.restoreCleanup(turnId),
+    // D205: the user's media index (other projects' captures, imports and generations).
+    [RPC_METHODS.mediaRecent]: (opts) => Effect.map(mediaIndex.search(opts), (found) => ({ entries: found.map(shownEntry) })),
+    [RPC_METHODS.mediaRecentImport]: ({ id }) =>
+      Effect.gen(function* () {
+        const entry = yield* mediaIndex.get(id);
+        if (!entry) return yield* new ProjectError({ reason: "missing", message: "That file isn't in the media index any more.", details: [] });
+        const open = yield* projects.current;
+        if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
+        const target = yield* Effect.tryPromise({ try: () => importablePath(entry.path, open.dir), catch: (e) => new ProjectError({ reason: "io", message: `Couldn't copy ${entry.name}: ${(e as Error).message}`, details: [] }) });
+        const imported = yield* library.importCapture({ openId: open.openId, dir: open.dir, path: target.path, name: entry.name, source: { module: "media.reuse", origin: entry.origin, from: entry.project.name, ...(entry.device ? { device: entry.device } : {}), ...(entry.app ? { app: entry.app } : {}) } });
+        return { ...(imported.entries[0] ? { mediaId: imported.entries[0].id } : {}), name: entry.name, copied: target.copied };
+      }),
     [RPC_METHODS.exportStart]: (input) => exporter.start(input),
     [RPC_METHODS.exportJobs]: () => exporter.jobs,
     [RPC_METHODS.exportCancel]: ({ jobId }) => exporter.cancel(jobId),
@@ -197,7 +212,8 @@ export const layer = Layer.unwrap(
     const generator = yield* Generator;
     const keys = yield* Keys;
     const sounds = yield* Library;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds }).pipe(
+    const mediaIndex = yield* MediaIndex;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

@@ -22,6 +22,7 @@ import * as Keys from "../generate/keys.ts";
 import * as SoundLibrary from "../library/library.ts";
 import * as Media from "../media/media.ts";
 import * as MediaFiles from "../media/mediaFiles.ts";
+import * as MediaIndex from "../media/mediaIndex.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
 import * as Thumbs from "../media/thumbs.ts";
 import * as Waveforms from "../media/waveforms.ts";
@@ -75,11 +76,13 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     host: config.host,
     port: config.port,
   });
-  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, MediaFiles.layer, GraphicFiles.layer, Waveforms.layer, AgentBridge.layer, Remote.layer), { disableLogger: true, disableListenLog: true });
+  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, Thumbs.recentLayer, MediaFiles.layer, GraphicFiles.layer, Waveforms.layer, AgentBridge.layer, Remote.layer), { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),
     Layer.provide(Capture.layer),
+    // D205: the user's media index across projects (media_search, Media › Recent from other projects).
+    Layer.provideMerge(MediaIndex.layer),
     // Generators (D99): the Generate tab and generate_media; keys through the desktop's safeStorage.
     Layer.provideMerge(Generate.layer),
     // The sound library (D134): Openverse and Freesound search, previews and downloads.
