@@ -1,8 +1,8 @@
 // The agent bridge (D40): the MCP server the agent CLI starts (mcp.ts) forwards here.
 //   GET  /agent/tools  → the MCP tool list
 //   POST /agent/call   → { name, args } → an MCP tools/call result
-// On the server's own port, but not with the app's token: each turn gets its own random token
-// (header x-uncut-agent-token), which stops working when the turn ends or is cancelled, so a
+// On the server's own port, but not with the app's token: each claude session (D139) gets its own random token
+// (header x-uncut-agent-token); a call is only taken while a turn runs in that session, so a
 // leftover MCP process (or anything else on this Mac) can't edit the project outside a turn.
 import { AGENT_BRIDGE_PATH, AGENT_TOKEN_HEADER } from "@uncut/contracts";
 import * as Effect from "effect/Effect";

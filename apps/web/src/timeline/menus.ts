@@ -44,6 +44,9 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
   const others = project.media.filter((m) => m.id !== item.media && (item.type === "audio" ? m.kind === "audio" || (m.kind === "video" && m.probe?.hasAudio) : m.kind !== "audio"));
   const local = !isRemote();
   return [
+    // D141: the item as a chip in the Agent tab's composer, with its time range.
+    { id: "add-to-chat", label: many ? `Add ${ids.length} items to chat` : "Add to chat", run: () => ids.forEach((id) => actions.addItemToChat(id)) },
+    "-",
     { id: "split", label: "Split", shortcut: "S", disabled: off || many || locked || !(frame > start && frame < start + item.duration) || item.type === "captions", run: () => void actions.split() },
     "-",
     { id: "copy", label: "Copy", shortcut: "⌘C", disabled: item.type === "captions", run: () => void copySelection() },

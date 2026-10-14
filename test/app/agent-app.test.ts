@@ -3,9 +3,11 @@
 // own runtime, so this runs the whole path without a subscription. An empty project gets a
 // title from the agent (live on the timeline and in the preview), a manual edit shows up as the
 // note on the next turn, Undo turn takes back exactly one turn, Stop cancels, and without Claude
-// Code the tab shows how to install it. Screenshots: test-output/agent-*.png.
+// Code the tab shows how to install it; the composer's @mentions, Add to chat, live view and work
+// log (D139-D142). Screenshots: test-output/agent-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -131,7 +133,8 @@ async function agentOnEmptyProject(app: LaunchedApp) {
       ["Add a 5 s title card", "done"],
     ],
   );
-  assert.match(await text(page, `${first} [data-testid=agent-edits]`), /1 edit.*Add a 5 s title card.*Added text title-1 on track text/);
+  // Names, not ids (AG5): the edit line says the title's words, not "title-1".
+  assert.match(await text(page, `${first} [data-testid=agent-edits]`), /1 edit.*Add a 5 s title card.*Added text Kraków from above on track text/);
   assert.equal(await text(page, `${first} [data-testid=agent-reply] b`), "5 s", "the reply's markdown is rendered");
   assert.equal(await page.$(`${first} [data-testid=agent-note]`), null);
   assert.equal(await page.$eval(`${first} [data-testid=agent-undo-turn]`, (b) => (b as HTMLButtonElement).disabled), false);
@@ -160,7 +163,9 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[1]?.dataset.status === "done", { timeout: 30000 });
   const second = "[data-testid=agent-turn]:nth-of-type(2)";
-  assert.match(await text(page, `${second} [data-testid=agent-note]`), /Told the agent about 2 changes you made by hand.*Added text track "Text 2" \(text-1\).*Added text lower-third-1/);
+  const note = await text(page, `${second} [data-testid=agent-note]`);
+  assert.match(note, /Told the agent about 2 changes you made by hand.*Added text track "Text 2".*Added text /);
+  assert.doesNotMatch(note, /\(text-1\)|lower-third-1/, "ids stay in the prompt, not on screen");
   const prompts = readFileSync(promptLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l));
   assert.equal(prompts[1].prompt.split("\n\n<editor-context>")[0], "add an end card\nthat thanks people");
   assert.match(prompts[1].prompt, /by hand/);
@@ -192,10 +197,25 @@ async function agentOnEmptyProject(app: LaunchedApp) {
     await waitFor(page, "[data-testid=agent-turn]:nth-of-type(3)[data-status=running] [data-testid=agent-step][data-status=done]");
     return "[data-testid=agent-turn]:nth-of-type(3)";
   })();
-  assert.equal(await page.$eval("[data-testid=agent-send]", (b) => (b as HTMLButtonElement).disabled), true, "one turn at a time");
-  await page.click(`${third} [data-testid=agent-cancel]`);
+  // One turn at a time: the button is Stop, and a message written now waits for the turn to end.
+  assert.equal(await page.$("[data-testid=agent-send]"), null);
+  await waitFor(page, "[data-testid=agent-stop]");
+  nextTurn([{ text: "Queued one done." }]);
+  await page.type("[data-testid=agent-input]", "then say hi");
+  await page.keyboard.press("Enter");
+  await waitFor(page, "[data-testid=agent-queued]");
+  assert.match(await text(page, "[data-testid=agent-queued]"), /Queued: then say hi/);
+  assert.equal(await turnCount(page), 3, "not sent yet");
+  await page.screenshot({ path: "test-output/agent-queued.png" });
+  // Stop (the composer's button): the turn is interrupted, the same claude stays for the queued message.
+  await page.click("[data-testid=agent-stop]");
   await waitFor(page, `${third}[data-status=cancelled]`, 10000);
   assert.equal(await text(page, `${third} .turn-status`), "Stopped");
+  await page.waitForFunction(() => document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[3]?.dataset.status === "done", { timeout: 20000 });
+  assert.equal(await page.$("[data-testid=agent-queued]"), null);
+  const runs = readFileSync(promptLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.match(runs.at(-1).prompt, /^then say hi/);
+  assert.equal(new Set(runs.map((r: { pid: number }) => r.pid)).size, 1, "four messages, one claude process (D139)");
   await page.screenshot({ path: "test-output/agent-stopped.png" });
   assert.deepEqual(app.errors, []);
 }
@@ -257,6 +277,132 @@ test("ui_show moves the playhead, selects and opens a panel in the editor, once 
   await page.keyboard.press("Enter");
   await waitFor(page, "[data-testid=text-library]", 30000);
   assert.equal(await page.$eval("[data-testid=rail-text]", (el) => el.classList.contains("active")), true);
+  assert.deepEqual(app.errors, []);
+});
+
+test("the composer (D140-D142): @ picks media, Add to chat from the timeline, the canvas and the Inspector, live thinking and text, a work log, a now line, ↑ history, and no m- id on screen", { skip, timeout: 180000 }, async () => {
+  const media = join(root, "media");
+  mkdirSync(media, { recursive: true });
+  const clip = (name: string, colour: string) => execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${colour}:s=320x180:r=30:d=4`, "-c:v", "libx264", "-pix_fmt", "yuv420p", join(media, name)]);
+  clip("DJI_0005.mp4", "teal");
+  clip("Harbour.mp4", "navy");
+  const probe = { frames: 120, fps: 30, width: 320, height: 180, hasAudio: false };
+  const dir = join(root, "Composer.uncut");
+  mkdirSync(dir);
+  writeFileSync(
+    join(dir, "project.json"),
+    JSON.stringify({
+      format: "uncut/0",
+      name: "Composer",
+      canvas: { width: 1920, height: 1080, fps: 30 },
+      media: [
+        { id: "m-dji-0005", kind: "video", name: "DJI_0005.mp4", path: join(media, "DJI_0005.mp4"), probe },
+        { id: "m-harbour", kind: "video", name: "Harbour.mp4", path: join(media, "Harbour.mp4"), probe },
+      ],
+      tracks: [
+        { id: "text", kind: "text", name: "Text", items: [{ id: "title-1", type: "text", start: 0, duration: 60, text: "Split from above", transform: { x: 154, y: 410 }, style: { preset: "text.title", size: 130, weight: 700 } }] },
+        { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m-dji-0005", in: 0, duration: 120 }, { id: "clip-2", type: "clip", media: "m-harbour", in: 0, duration: 120 }] },
+      ],
+    }),
+  );
+  const log = join(root, "composer-prompts.jsonl");
+  const composerPlan = join(root, "composer-plan.json");
+  writeFileSync(log, "");
+  const gate = join(root, "composer-gate.json");
+  writeFileSync(
+    composerPlan,
+    JSON.stringify([
+      [
+        { think: "The user points at DJI_0005 and the harbour clip. I'll read the timeline, check the title, then answer briefly." },
+        { tool: "project_read" },
+        { tool: "ui_show", args: { select: ["clip-2"] } },
+        { tool: "ui_show", args: { frame: 30 } },
+        { text: "I looked at m-dji-0005 and clip-2: the harbour shot is the calmer one, so it should open the video.", slow: 1500 },
+        { await: gate },
+      ],
+    ]),
+  );
+  const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data-composer"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: composerPlan, FAKE_PROMPT_LOG: log } });
+  apps.add(app);
+  const { page } = app;
+  await waitForWelcome(page);
+  await page.click("[data-testid=open-project]");
+  await waitFor(page, '[data-testid=timeline-item][data-item="clip-2"]');
+  await page.click("[data-testid=tab-agent]");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"));
+  const value = () => page.$eval("[data-testid=agent-input]", (el) => (el as HTMLTextAreaElement).value);
+
+  // AG2: @ opens the picker (names, not ids); Enter inserts the chip.
+  await page.click("[data-testid=agent-input]");
+  await page.type("[data-testid=agent-input]", "compare @dji");
+  await waitFor(page, "[data-testid=mention-picker]");
+  const options = await page.$$eval("[data-testid=mention-option]", (els) => els.map((e) => [(e as HTMLElement).dataset.kind, e.textContent]));
+  assert.deepEqual(options.map((o) => o[0]), ["media", "item"], "the media and its clip");
+  assert.ok(options.every((o) => /DJI_0005\.mp4/.test(o[1]!) && !/m-dji/.test(o[1]!)));
+  await page.screenshot({ path: "test-output/agent-mention.png" });
+  await page.keyboard.press("Enter");
+  assert.equal(await value(), "compare @DJI_0005.mp4 ");
+  assert.equal(await page.$("[data-testid=mention-picker]"), null);
+  await page.type("[data-testid=agent-input]", "with ");
+
+  // AG3: right-click a timeline clip → Add to chat.
+  await page.click('[data-testid=timeline-item][data-item="clip-2"]', { button: "right" });
+  await waitFor(page, "[data-testid=menu-add-to-chat]");
+  await page.click("[data-testid=menu-add-to-chat]");
+  await page.waitForFunction(() => (document.querySelector("[data-testid=agent-input]") as HTMLTextAreaElement).value.endsWith("@Harbour.mp4 "));
+  // ...right-click the title on the canvas → Add to chat (with the frame it was picked at).
+  await waitFor(page, '.pv-text[data-item="title-1"]');
+  await page.click('.pv-text[data-item="title-1"]', { button: "right" });
+  await waitFor(page, "[data-testid=menu-add-to-chat]");
+  await page.click("[data-testid=menu-add-to-chat]");
+  await page.waitForFunction(() => (document.querySelector("[data-testid=agent-input]") as HTMLTextAreaElement).value.endsWith("@Split from above "));
+  assert.equal(await page.$eval("[data-testid=tab-agent]", (el) => el.classList.contains("active")), true, "the Agent tab opened");
+  // ...and the Inspector's button: the Agent tab opens with the chip added.
+  await page.click("[data-testid=tab-inspector]");
+  await waitFor(page, '[data-testid=inspector-item][data-item="title-1"]');
+  await page.click("[data-testid=insp-add-to-chat]");
+  await page.waitForFunction(() => document.querySelector("[data-testid=tab-agent]")!.classList.contains("active"));
+  assert.equal(await value(), "compare @DJI_0005.mp4 with @Harbour.mp4 @Split from above @Split from above ");
+  // One Backspace takes a chip off whole.
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  assert.equal(await value(), "compare @DJI_0005.mp4 with @Harbour.mp4 @Split from above ");
+  await page.screenshot({ path: "test-output/agent-chips.png" });
+
+  // AG4: send; thinking and text stream in, steps fold into a work log, a line says what's happening.
+  await page.keyboard.press("Enter");
+  await waitFor(page, '[data-testid=agent-reply][data-live="true"]', 20000);
+  await waitFor(page, "[data-testid=agent-thinking]");
+  await waitFor(page, "[data-testid=agent-worklog]");
+  assert.match(await text(page, "[data-testid=agent-now]"), /Writing…/);
+  await page.screenshot({ path: "test-output/agent-live.png" });
+  writeFileSync(gate, "[]");
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 30000 });
+  assert.equal(await page.$("[data-testid=agent-now]"), null);
+  assert.equal(await page.$eval("[data-testid=agent-worklog]", (el) => (el as HTMLElement).dataset.count), "3");
+  assert.match(await text(page, "[data-testid=agent-worklog-toggle]"), /, and 2 more/);
+  await page.click("[data-testid=agent-worklog-toggle]");
+  await waitFor(page, ".worklog-steps [data-testid=agent-step]");
+  assert.deepEqual(await page.$$eval(".worklog-steps [data-testid=agent-step]", (els) => els.map((e) => e.textContent)), ["Read the timeline", "Selected Harbour.mp4", "Moved the playhead to frame 30"]);
+  // The card's prompt shows the chips; claude got the labels plus a <context> block with real ids.
+  assert.equal((await page.$$("[data-testid=agent-prompt] [data-testid=agent-chip]")).length, 3);
+  const sent = JSON.parse(readFileSync(log, "utf8").trim().split("\n")[0]!).prompt as string;
+  assert.match(sent, /^compare @DJI_0005\.mp4 with @Harbour\.mp4 @Split from above\n\n<context>\n/);
+  assert.match(sent, /@DJI_0005\.mp4 = media m-dji-0005 \(video/);
+  assert.match(sent, /@Harbour\.mp4 = item clip-2 \(clip on track main.*\), frames 120–240/);
+  assert.match(sent, /@Split from above = item title-1 \(text on track text.*\), frames 0–60 \(0\.00 s–2\.00 s\), picked at frame 0/);
+  // AG5: nothing in the Agent tab says "m-…" (the reply named m-dji-0005; it reads DJI_0005.mp4).
+  const panel = await page.$eval("[data-testid=agent-panel]", (el) => (el as HTMLElement).innerText);
+  assert.doesNotMatch(panel, /\bm-[a-z0-9]/);
+  assert.match(panel, /I looked at DJI_0005\.mp4 and Harbour\.mp4/);
+  await page.click("[data-testid=agent-thinking] .thinking-head");
+  await page.screenshot({ path: "test-output/agent-worklog.png" });
+
+  // ↑ in the empty box brings the last prompt back, with its chips.
+  await page.click("[data-testid=agent-input]");
+  await page.keyboard.press("ArrowUp");
+  assert.equal(await value(), "compare @DJI_0005.mp4 with @Harbour.mp4 @Split from above");
   assert.deepEqual(app.errors, []);
 });
 

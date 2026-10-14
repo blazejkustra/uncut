@@ -435,7 +435,41 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .composer:focus-within { border-color: rgb(255 255 255 / 22%); }
 .composer-ctx { display: flex; align-items: center; gap: 6px; padding: 7px 10px 0; font-size: 11px; color: var(--dim); min-width: 0; }
 .composer-ctx svg.lucide { width: 12px; height: 12px; }
-.composer textarea { resize: none; border: 0; outline: 0; background: transparent; color: var(--fg); font: 13px/1.45 var(--font); padding: 6px 10px; min-height: 58px; }
+.composer { position: relative; }
+.composer-box { position: relative; display: grid; }
+/* The textarea and its backdrop share one cell and the same metrics, so @chips sit under their text. */
+.composer-box > textarea, .composer-hl { grid-area: 1 / 1; font: 13px/1.45 var(--font); padding: 6px 10px; min-height: 58px; max-height: 180px; white-space: pre-wrap; overflow-wrap: anywhere; letter-spacing: normal; }
+.composer textarea { resize: none; border: 0; outline: 0; background: transparent; color: var(--fg); overflow-y: auto; position: relative; }
+.composer-hl { color: transparent; overflow: hidden; pointer-events: none; }
+.composer-hl mark.chip, .msg-user mark.chip { background: var(--select-soft); color: inherit; border-radius: 4px; box-shadow: 0 0 0 1px rgb(109 140 255 / 30%); }
+.msg-user mark.chip { color: #c9d4ff; padding: 0 2px; }
+.composer-at { color: var(--dim); }
+.composer-at svg.lucide { width: 14px; height: 14px; }
+.send.stop { background: var(--fg); color: #000; }
+.send.stop svg.lucide { width: 11px; height: 11px; fill: currentColor; }
+.composer-queued { display: flex; align-items: center; gap: 6px; margin: 6px 8px 0; padding: 4px 4px 4px 8px; border-radius: var(--radius-sm); background: var(--raised); font-size: 11.5px; color: var(--muted); min-width: 0; }
+.composer-queued .icon-btn svg.lucide { width: 12px; height: 12px; }
+.mention-picker { position: absolute; left: 6px; right: 6px; bottom: calc(100% + 6px); z-index: 30; background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 4px; display: flex; flex-direction: column; gap: 1px; box-shadow: 0 10px 30px rgb(0 0 0 / 50%); max-height: 260px; overflow-y: auto; }
+.mention-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; font-size: 12px; text-align: left; color: var(--fg); min-width: 0; }
+.mention-option svg.lucide { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.mention-option.active { background: var(--select-soft); }
+.mention-detail { font-size: 11px; color: var(--dim); flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.worklog-head, .thinking-head { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 12px; color: var(--muted); padding: 1px 0; text-align: left; min-width: 0; }
+.worklog-head svg.lucide, .thinking-head svg.lucide { width: 13px; height: 13px; flex: none; }
+.worklog-head:hover, .thinking-head:hover { color: var(--fg); }
+.worklog-head svg.bad { color: var(--error); }
+.worklog-failed { color: var(--error); }
+.worklog-steps { display: flex; flex-direction: column; gap: 3px; padding: 3px 0 2px 19px; }
+.thinking-head { font-style: italic; color: var(--dim); }
+.thinking[data-live="true"] .thinking-head { color: var(--muted); }
+.thinking-body { margin: 3px 0 4px 19px; padding-left: 8px; border-left: 2px solid var(--border-strong); font-size: 12px; line-height: 1.5; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.reply.live p:last-child::after { content: ""; display: inline-block; width: 6px; height: 12px; margin-left: 2px; vertical-align: -1px; background: var(--muted); animation: caret-blink 1s steps(2) infinite; }
+@keyframes caret-blink { 50% { opacity: 0; } }
+.now-line { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 4px 0 2px; min-width: 0; }
+.now-line svg.lucide { width: 13px; height: 13px; flex: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.insp-chat { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; flex: none; }
+.insp-chat svg.lucide { width: 12px; height: 12px; }
 .composer textarea::placeholder { color: var(--dim); }
 .composer-foot { display: flex; align-items: center; gap: 8px; padding: 0 6px 6px 10px; }
 .composer-who { flex: 1; font-size: 11px; color: var(--dim); }
@@ -1141,3 +1175,4 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px 
 /* Small round/square buttons centre their icon: no UA padding eating the border-box (E1). */
 .prop-reset, .psec-head .icon-btn, .ptoggle, .cfield-swatch, .pseg button, .frame-align .icon-btn, .look-row .icon-btn, .icon-btn.square, .psec-title { padding: 0; }
 .psec-title { padding: 2px 4px; }
+.worklog-head .grow, .thinking-head .grow, .mention-option .grow, .insp-title .grow { flex: 1; min-width: 0; }

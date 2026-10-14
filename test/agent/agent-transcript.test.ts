@@ -181,7 +181,7 @@ test("the first transcript downloads the model on demand (running meanwhile), th
   assert.equal(second.turn.status, "done", second.turn.error);
   assert.deepEqual(
     second.turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text),
-    ["Read the transcript of m-talk", "Read the transcript of m-talk (frames 60–100)", "Read the transcript of m-talk"],
+    ["Read the transcript of Talk.mp4", "Read the transcript of Talk.mp4 (frames 60–100)", "Read the transcript of Talk.mp4"],
   );
   const out = jsonOf(second.results[0]!);
   assert.equal(out.state, "done", JSON.stringify(out));
@@ -210,7 +210,7 @@ test("the first transcript downloads the model on demand (running meanwhile), th
     { tool: "transcript_read", args: { media: "m-talk" } },
     { tool: "media_analyze", args: { media: "m-talk", analyzers: ["transcript"] } },
   ]);
-  assert.equal(third.turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text)[2], "Transcribed m-talk");
+  assert.equal(third.turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text)[2], "Transcribed Talk.mp4");
   const aligned = jsonOf(third.results[1]!);
   const pause = aligned.pauses.find((p: any) => p.after === 1);
   assert.equal(pause.silent, true, JSON.stringify(aligned.pauses));

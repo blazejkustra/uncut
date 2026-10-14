@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
+import { GRAPHIC_PATH, UPLOAD_PATH, type FileListing, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName } from "@uncut/contracts";
@@ -18,6 +18,7 @@ import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 import { musicInProject, musicTrack } from "@uncut/core/music";
 import { planEffect, planSetLook, type LookDef } from "@uncut/core/fx";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
+import { itemName } from "@uncut/core/mentions";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
 import { layoutOf, uniqueId, planAddAtPlayhead, planAddLibrarySound, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
@@ -109,6 +110,14 @@ export interface AppStateShape {
   readonly history: HistoryState | null;
   // Why the last agent action failed (not installed, busy…), shown in the Agent tab.
   readonly agentError?: string;
+  // The composer (D140): what's typed and what its @labels point at. In the store, so Add to chat
+  // (D141) from the timeline, the canvas or the Inspector lands in it with the Agent tab closed.
+  readonly agentDraft: string;
+  readonly agentMentions: ReadonlyArray<AgentMention>;
+  // A message written while a turn runs: sent when that turn ends.
+  readonly agentQueued?: { readonly prompt: string; readonly mentions: ReadonlyArray<AgentMention> };
+  // Bumped to put the caret in the composer (after Add to chat).
+  readonly agentFocus: number;
   // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
   readonly panelRequest?: { readonly panel: AgentUiPanel; readonly seq: number };
   /** "Show in Media" (T7): the tile to scroll to and flash. */
@@ -182,6 +191,9 @@ let state: AppStateShape = {
   jobs: [],
   thumbIds: new Set(),
   agent: null,
+  agentDraft: "",
+  agentMentions: [],
+  agentFocus: 0,
   history: null,
   exportOpen: false,
   exportJobs: [],
@@ -267,7 +279,7 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined } : {}),
+    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined, agentDraft: "", agentMentions: [], agentQueued: undefined } : {}),
   });
   // Then the playhead follows the project: back to the start for another project, clamped when it
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
@@ -534,8 +546,17 @@ export async function start() {
       unsubscribeAgent = conn.subscribe(
         (c) => c["agent.subscribe"]({}),
         (agent) => {
+          const was = state.agent?.running ?? null;
           set({ agent });
           applyAgentUi(agent);
+          // The turn ended: the queued message goes now (D140).
+          const queued = state.agentQueued;
+          if (queued && was !== null && agent?.running === null) {
+            set({ agentQueued: undefined });
+            void actions.agentSend(queued.prompt, queued.mentions).then((ok) => {
+              if (!ok && !state.agentDraft) set({ agentDraft: queued.prompt, agentMentions: queued.mentions });
+            });
+          }
         },
       );
       unsubscribeHistory?.();
@@ -1096,13 +1117,15 @@ export const actions = {
   dismissNotice: () => set({ notice: undefined }),
 
   /** Start an agent turn; returns false (and says why in the Agent tab) when it didn't start. */
-  async agentSend(prompt: string): Promise<boolean> {
+  async agentSend(prompt: string, mentions: ReadonlyArray<AgentMention> = []): Promise<boolean> {
     if (!online()) return false;
     set({ agentError: undefined });
     // The agent works on what's on screen: stop playback so the frame it's told about stays put.
     playback.pause();
     const { frame, selected } = getPlayback();
-    const result = await call((c) => c["agent.send"]({ prompt, frame: Math.floor(frame), ...(selected ? { selected } : {}) }));
+    // Only the chips whose @label is still in the prompt.
+    const kept = mentions.filter((m, i) => prompt.includes(`@${m.label}`) && mentions.findIndex((x) => x.kind === m.kind && x.id === m.id && x.label === m.label) === i);
+    const result = await call((c) => c["agent.send"]({ prompt, frame: Math.floor(frame), ...(selected ? { selected } : {}), ...(kept.length ? { mentions: kept } : {}) }));
     if (result.ok) return true;
     set({ agentError: plainError(result.error) });
     // "Not installed" may be news to the setup rows too.
@@ -1110,6 +1133,32 @@ export const actions = {
     return false;
   },
   agentCancel: () => call((c) => c["agent.cancel"]({})),
+  /** The composer's text and chips (D140). */
+  setAgentDraft: (agentDraft: string, agentMentions?: ReadonlyArray<AgentMention>) => set({ agentDraft, ...(agentMentions ? { agentMentions } : {}) }),
+  /** Hold a message until the running turn ends (D140); undefined takes it back. */
+  agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention> } | undefined) => set({ agentQueued: queued }),
+  /** Add to chat (D141) for a timeline item: its name, with the stretch of the timeline it covers. */
+  addItemToChat(itemId: string, frame?: number) {
+    const snap = state.snapshot;
+    const placed = snap ? findItem(projectOf(snap), itemId) : undefined;
+    if (!snap || !placed) return;
+    actions.addToChat({ kind: "item", id: itemId, label: itemName(projectOf(snap) as never, placed.item as never), range: { start: Math.round(placed.start), end: Math.round(placed.start + placed.item.duration) }, ...(frame !== undefined ? { frame: Math.floor(frame) } : {}) });
+  },
+  /** Add to chat (D141): a chip at the end of the composer, the Agent tab open, the caret there. */
+  addToChat(mention: AgentMention) {
+    const draft = state.agentDraft;
+    const sep = draft && !/\s$/.test(draft) ? " " : "";
+    set({
+      agentDraft: `${draft}${sep}@${mention.label} `,
+      // The same thing twice is one chip: what each add knew (a frame, a range) is kept.
+      agentMentions: [
+        ...state.agentMentions.filter((m) => !(m.kind === mention.kind && m.id === mention.id && m.label === mention.label)),
+        { ...state.agentMentions.find((m) => m.kind === mention.kind && m.id === mention.id && m.label === mention.label), ...mention },
+      ],
+      agentFocus: state.agentFocus + 1,
+      panelRequest: { panel: "agent", seq: ++panelSeq },
+    });
+  },
   /** Allow or Don't on the running turn's approval card (D99). */
   agentApprove: (id: string, allow: boolean) => call((c) => c["agent.approve"]({ id, allow })),
   async agentUndoTurn(turnId: string) {
