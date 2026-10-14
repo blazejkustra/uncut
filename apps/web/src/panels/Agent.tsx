@@ -2,15 +2,17 @@
 // reply and edit list, "Undo turn", the note about edits made by hand, and the composer. Live: text
 // and thinking stream in, a line says what it's doing now. Names, never ids (AG5). Everything shown
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
-import { AGENT_MODELS, type AgentApproval, type AgentItem, type AgentTurn, type SetupCheck } from "@uncut/contracts";
+import { AGENT_MODELS, type AgentApproval, type AgentEdit, type AgentItem, type AgentTurn, type SetupCheck } from "@uncut/contracts";
 import { friendlyText } from "@uncut/core/mentions";
-import { Brain, Check, ChevronDown, ChevronRight, Copy, FolderOpen, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TerminalSquare, TriangleAlert, Undo2, X } from "lucide-react";
-import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Brain, Check, ChevronDown, ChevronRight, Copy, FileImage, Film, FolderOpen, Images, LoaderCircle, Music, Pencil, PencilLine, RefreshCw, Sparkles, Square, TerminalSquare, TriangleAlert, Undo2, X } from "lucide-react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer, withChips } from "./Composer.tsx";
 import { CardItem, PlanChip, QuestionCard, StoryboardApproval, type CardLive } from "./AgentCards.tsx";
-import { actions, agentImageUrl, getState, useApp, type Project } from "../state/store.ts";
+import { actions, agentImageUrl, getState, mediaUrl, thumbUrl, useApp, type Project } from "../state/store.ts";
 import { cancelTake, clock, getRecorder, loadSources, refreshAccess, startTake, stopTake, useRecorder } from "../capture/recorder.ts";
+import { usePlayback } from "../preview/playback.ts";
+import { followShown } from "../state/agentFollow.ts";
 
 /** The project, for names instead of ids in what the cards show (AG5). */
 const ProjectContext = createContext<Project | undefined>(undefined);
@@ -50,11 +52,32 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   }
   const live: CardLive | undefined = agent?.plan ? { plan: agent.plan, online, busy: running !== null, waiting: !!agent.approval?.storyboard } : undefined;
 
-  // Follow the newest turn as it streams in (the empty state stays scrolled to its top).
-  useEffect(() => {
+  // Follow the newest turn as it streams in, but only while the thread is scrolled to its end: someone
+  // reading further up keeps their place (D203), and a "Latest" button takes them down. A new turn
+  // (the user just sent) always goes to the end. The empty state stays scrolled to its top.
+  const stuck = useRef(true);
+  const [away, setAway] = useState(false);
+  const lastCount = useRef(turns.length);
+  useLayoutEffect(() => {
     const el = thread.current;
-    if (el && turns.length) el.scrollTop = el.scrollHeight;
+    if (!el || !turns.length) return;
+    if (turns.length !== lastCount.current) stuck.current = true;
+    lastCount.current = turns.length;
+    if (stuck.current) el.scrollTop = el.scrollHeight;
   }, [agent, turns.length]);
+  const onScroll = () => {
+    const el = thread.current;
+    if (!el) return;
+    stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    if (away === stuck.current) setAway(!stuck.current);
+  };
+  const toLatest = () => {
+    const el = thread.current;
+    if (!el) return;
+    stuck.current = true;
+    setAway(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
 
   // An example goes into the prompt box, ready to send or change. Focus moves there now, so the
   // next Enter sends it rather than pressing the example again.
@@ -72,8 +95,12 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           {agent.warning}
         </p>
       )}
-      {agent?.plan && <PlanChip plan={agent.plan} />}
-      <div className="agent-thread" ref={thread} data-testid="agent-thread">
+      <div className="plan-strip agent-strip">
+        <FollowToggle />
+        <span className="spacer" />
+        {agent?.plan && <PlanChip plan={agent.plan} />}
+      </div>
+      <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
         {turns.length === 0 ? (
           <AgentEmpty onPick={pick} disabled={blocked || !online} />
@@ -87,6 +114,12 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           </div>
         )}
       </div>
+      {away && turns.length > 0 && (
+        <button className="agent-latest" data-testid="agent-latest" onClick={toLatest}>
+          <ChevronDown />
+          {agent?.approval ? "Waiting for your answer below" : "Latest"}
+        </button>
+      )}
       {agentError && (
         <div className="agent-error inline-error small" data-testid="agent-error">
           <span>{agentError}</span>
@@ -98,6 +131,19 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
       <Composer project={project} online={online} blocked={blocked} turns={turns} running={running} provider={agent?.provider ?? "Claude Code"} />
     </div>
     </ProjectContext.Provider>
+  );
+}
+
+/** D202: whether the agent's ui_show moves the playhead (only ever when you aren't watching); remembered. */
+function FollowToggle() {
+  const { agentFollow } = useApp();
+  const playing = usePlayback((s) => s.playing);
+  const on = followShown(agentFollow, playing);
+  return (
+    <button className={`follow-toggle ${on ? "on" : ""}`} role="switch" aria-checked={on} data-testid="agent-follow" data-on={on ? "true" : "false"} title={on ? "The playhead goes to the agent's changes while you aren't watching" : "The agent's changes show as a pill over the preview"} onClick={() => actions.setAgentFollow(!on)}>
+      <span className="follow-dot" />
+      Follow agent
+    </button>
   );
 }
 
@@ -203,88 +249,113 @@ function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: Age
         </div>
       )}
       {t.note && <ManualNote note={t.note} />}
-      <div className={`turn ${t.status} ${undone ? "undone" : ""}`}>
-        <div className="turn-body">
-          {groupItems(t.items).map((g) =>
-            g.kind === "steps" ? (
-              <WorkLog key={g.at} steps={g.items} />
-            ) : g.item.kind === "thinking" ? (
-              <Thinking key={g.at} item={g.item} />
-            ) : g.item.kind === "card" && g.item.card ? (
-              <CardItem key={g.at} card={g.item.card} live={latest.has(`${t.id}:${g.at}`) ? live : undefined} />
-            ) : (
-              <Reply key={g.at} text={friendly(g.item.text)} live={!!g.item.live} />
-            ),
-          )}
-          {t.status === "running" && <NowLine turn={t} waiting={!!approval} />}
-          {t.edits.length > 0 && (
-            <div className="turn-edits" data-testid="agent-edits">
-              <div className="turn-edits-label">
-                {t.edits.length === 1 ? "1 edit" : `${t.edits.length} edits`}
-                {undone ? ", undone" : ""}
-              </div>
-              {t.edits.map((e) => (
-                <div key={e.revision} className="turn-edit" data-testid="agent-edit">
-                  <div className="turn-edit-summary">{friendly(e.summary)}</div>
-                  {e.lines.map((line, i) => (
-                    <div key={i} className="turn-edit-line">
-                      {friendly(line)}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-          {approval &&
-            (approval.screen ? (
-              <ScreenApprovalCard approval={approval} screen={approval.screen} online={online} />
-            ) : approval.question ? (
-              <QuestionCard key={approval.id} approval={approval} question={approval.question} online={online} />
-            ) : approval.storyboard ? (
-              <StoryboardApproval key={approval.id} approval={approval} storyboard={approval.storyboard} online={online} />
-            ) : approval.permission ? (
-              <PermissionCard key={approval.id} approval={approval} permission={approval.permission} online={online} />
-            ) : approval.brand ? (
-              <BrandDiffCard key={approval.id} approval={approval} brand={approval.brand} online={online} />
-            ) : (
-              <ApprovalCard approval={approval} online={online} />
-            ))}
-          {t.error && (
-            <p className="err" data-testid="agent-turn-error">
-              {t.error}
-            </p>
-          )}
-        </div>
-        <div className="turn-foot">
-          <span className="turn-status">{status}</span>
-          {spend}
-          <span className="spacer" />
-          {t.status === "running" && (
-            <button className="link-btn" data-testid="agent-cancel" disabled={!online} onClick={() => void actions.agentCancel()}>
-              <Square />
-              Stop
-            </button>
-          )}
-          {canShowUndo && (
-            <button
-              className="link-btn"
-              data-testid="agent-undo-turn"
-              data-turn={t.id}
-              disabled={!online || busy || t.undo.state !== "available"}
-              title={t.undo.state === "available" ? "Take back this turn's edits; later edits stay" : (t.undo.reason ?? "Can't undo this turn")}
-              onClick={() => void actions.agentUndoTurn(t.id)}
-            >
-              <Undo2 />
-              Undo turn
-            </button>
-          )}
-        </div>
-        {(t.undo.state === "blocked" || t.undo.state === "unavailable") && t.undo.reason && (
-          <div className="turn-undo-reason" data-testid="agent-undo-reason">
-            {t.undo.reason}
-          </div>
+      {/* D203: the turn as a stream of messages in order: replies, thinking, folded tool calls, edits
+          where they happened, imports as one row, cards; then a compact footer. */}
+      <div className={`turn ${t.status} ${undone ? "undone" : ""}`} data-testid="agent-stream">
+        {groupItems(t.items, t.edits).map((g) =>
+          g.kind === "steps" ? (
+            <WorkLog key={g.at} steps={g.items} />
+          ) : g.kind === "edit" ? (
+            <EditRow key={g.at} step={g.item} edits={g.edits} />
+          ) : g.kind === "media" ? (
+            <MediaRow key={g.at} step={g.item} edits={g.edits} />
+          ) : g.item.kind === "thinking" ? (
+            <Thinking key={g.at} item={g.item} />
+          ) : g.item.kind === "card" && g.item.card ? (
+            <CardItem key={g.at} card={g.item.card} live={latest.has(`${t.id}:${g.at}`) ? live : undefined} />
+          ) : (
+            <Reply key={g.at} text={friendly(g.item.text)} live={!!g.item.live} />
+          ),
+        )}
+        {approval &&
+          (approval.screen ? (
+            <ScreenApprovalCard approval={approval} screen={approval.screen} online={online} />
+          ) : approval.question ? (
+            <QuestionCard key={approval.id} approval={approval} question={approval.question} online={online} />
+          ) : approval.storyboard ? (
+            <StoryboardApproval key={approval.id} approval={approval} storyboard={approval.storyboard} online={online} />
+          ) : approval.permission ? (
+            <PermissionCard key={approval.id} approval={approval} permission={approval.permission} online={online} />
+          ) : approval.brand ? (
+            <BrandDiffCard key={approval.id} approval={approval} brand={approval.brand} online={online} />
+          ) : (
+            <ApprovalCard approval={approval} online={online} />
+          ))}
+        {t.status === "running" && <NowLine turn={t} waiting={!!approval} />}
+        {t.error && (
+          <p className="err" data-testid="agent-turn-error">
+            {t.error}
+          </p>
         )}
       </div>
+      <div className={`turn-foot ${undone ? "undone" : ""}`}>
+        {t.edits.length > 0 && <EditsFooter edits={t.edits} undone={undone} />}
+        <span className="turn-status">{status}</span>
+        {spend}
+        <span className="spacer" />
+        {t.status === "running" && (
+          <button className="link-btn" data-testid="agent-cancel" disabled={!online} onClick={() => void actions.agentCancel()}>
+            <Square />
+            Stop
+          </button>
+        )}
+        {canShowUndo && (
+          <button
+            className="link-btn"
+            data-testid="agent-undo-turn"
+            data-turn={t.id}
+            disabled={!online || busy || t.undo.state !== "available"}
+            title={t.undo.state === "available" ? "Take back this turn's edits; later edits stay" : (t.undo.reason ?? "Can't undo this turn")}
+            onClick={() => void actions.agentUndoTurn(t.id)}
+          >
+            <Undo2 />
+            Undo turn
+          </button>
+        )}
+      </div>
+      {(t.undo.state === "blocked" || t.undo.state === "unavailable") && t.undo.reason && (
+        <div className="turn-undo-reason" data-testid="agent-undo-reason">
+          {t.undo.reason}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** D203: the turn's edits in the footer: "3 edits", opened for every edit and its lines. */
+function EditsFooter({ edits, undone }: { edits: ReadonlyArray<AgentEdit>; undone: boolean }) {
+  const friendly = useFriendly();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  // A click anywhere else closes it.
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [open]);
+  const list = (
+    <div className="turn-edits-list">
+      {edits.map((e) => (
+        <div key={e.revision} className="turn-edit" data-testid="agent-edit">
+          <div className="turn-edit-summary">{friendly(e.summary)}</div>
+          {e.lines.map((line, i) => (
+            <div key={i} className="turn-edit-line">
+              {friendly(line)}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div className={`turn-edits ${open ? "open" : ""}`} data-testid="agent-edits" ref={box}>
+      <button className="turn-edits-label" data-testid="agent-edits-toggle" aria-expanded={open} onClick={() => setOpen(!open)} title={open ? "Hide the edits" : "Show every edit"}>
+        <PencilLine />
+        {edits.length === 1 ? "1 edit" : `${edits.length} edits`}
+        {undone ? ", undone" : ""}
+      </button>
+      {open ? <div className="turn-edits-pop">{list}</div> : <div className="sr-only">{list}</div>}
     </div>
   );
 }
@@ -577,20 +648,87 @@ function Reply({ text, live = false }: { text: string; live?: boolean }) {
   );
 }
 
-type Group = { kind: "steps"; at: number; items: Array<AgentItem> } | { kind: "one"; at: number; item: AgentItem };
+type Group =
+  | { kind: "steps"; at: number; items: Array<AgentItem> }
+  | { kind: "edit" | "media"; at: number; item: AgentItem; edits: Array<AgentEdit> }
+  | { kind: "one"; at: number; item: AgentItem };
 
-/** Consecutive steps make one work log; text and thinking stand alone. */
-function groupItems(items: ReadonlyArray<AgentItem>): Array<Group> {
+/**
+ * Consecutive tool calls make one work log; text, thinking and cards stand alone. D203: a call that
+ * edited the project is its own row, where it happened (its edit's `at`); one that added media
+ * (an import) is one row with the files as thumbnails.
+ */
+function groupItems(items: ReadonlyArray<AgentItem>, edits: ReadonlyArray<AgentEdit> = []): Array<Group> {
+  const byStep = new Map<number, Array<AgentEdit>>();
+  for (const e of edits) if (e.at !== undefined) byStep.set(e.at, [...(byStep.get(e.at) ?? []), e]);
   const out: Array<Group> = [];
   items.forEach((item, at) => {
     // Thinking with no words (yet) isn't a row (D182).
     if (item.kind === "thinking" && !item.text.trim()) return;
+    const made = item.kind === "step" ? byStep.get(at) : undefined;
+    if (made) return void out.push({ kind: made.some((e) => e.media?.length) ? "media" : "edit", at, item, edits: made });
     const last = out.at(-1);
     if (item.kind === "step" && last?.kind === "steps") last.items.push(item);
     else if (item.kind === "step") out.push({ kind: "steps", at, items: [item] });
     else out.push({ kind: "one", at, item });
   });
   return out;
+}
+
+/** D203: a call that edited the project: its summary, opened for what it changed. */
+function EditRow({ step, edits }: { step: AgentItem; edits: ReadonlyArray<AgentEdit> }) {
+  const friendly = useFriendly();
+  const [open, setOpen] = useState(false);
+  const lines = edits.flatMap((e) => e.lines);
+  return (
+    <div className={`edit-row ${open ? "open" : ""}`} data-testid="agent-edit-row">
+      <div className="step edit-step" data-testid="agent-step" data-status={step.status} data-tool={step.tool} aria-expanded={open} title={open ? "Hide the changes" : "Show the changes"} onClick={() => setOpen(!open)}>
+        {step.status === "running" ? <LoaderCircle className="spin" /> : step.status === "error" ? <X className="bad" /> : <PencilLine />}
+        <span className="grow">{friendly(step.status === "running" ? (step.doing ?? step.text) : step.text)}</span>
+        {lines.length > 0 && (open ? <ChevronDown className="step-chev" /> : <ChevronRight className="step-chev" />)}
+      </div>
+      {open && (
+        <div className="edit-lines" data-testid="agent-edit-lines">
+          {lines.map((line, i) => (
+            <div key={i}>{friendly(line)}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** D203: an import (or a generated or recorded file) as one row ("Imported 40 files"), opened to its files as thumbnails. */
+function MediaRow({ step, edits }: { step: AgentItem; edits: ReadonlyArray<AgentEdit> }) {
+  const project = useContext(ProjectContext);
+  const { thumbIds } = useApp();
+  const [open, setOpen] = useState(false);
+  const ids = edits.flatMap((e) => e.media ?? []);
+  const summary = edits.length === 1 ? edits[0]!.summary : `Added ${ids.length} files`;
+  return (
+    <div className={`media-row ${open ? "open" : ""}`} data-testid="agent-import" data-count={ids.length}>
+      <div className="step media-step" data-testid="agent-step" data-status={step.status} data-tool={step.tool} aria-expanded={open} title={open ? "Hide the files" : "Show the files"} onClick={() => setOpen(!open)}>
+        {step.status === "running" ? <LoaderCircle className="spin" /> : <Images />}
+        <span className="grow">{summary}</span>
+        {open ? <ChevronDown className="step-chev" /> : <ChevronRight className="step-chev" />}
+      </div>
+      {open && (
+        <div className="media-grid" data-testid="agent-import-grid">
+          {ids.map((id) => {
+            const m = project?.media.find((x) => x.id === id);
+            const src = !m ? undefined : thumbIds.has(id) ? thumbUrl(id, m.path) : m.kind === "image" ? mediaUrl(id, m.path) : undefined;
+            const Icon = m?.kind === "audio" ? Music : m?.kind === "image" ? FileImage : Film;
+            return (
+              <div key={id} className="media-tile" data-testid="agent-import-thumb" title={m ? m.name : "No longer in the project"}>
+                {src ? <img src={src} alt={m?.name ?? ""} loading="lazy" /> : <Icon />}
+                <span className="media-tile-name ellipsis">{m?.name ?? "Removed"}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const StepIcon = ({ status }: { status?: string | undefined }) => (status === "error" ? <X className="bad" /> : status === "running" ? <LoaderCircle className="spin" /> : <Check />);

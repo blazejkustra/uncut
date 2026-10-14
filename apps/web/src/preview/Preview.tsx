@@ -16,12 +16,14 @@ import { graphicInfo } from "@uncut/core/graphics";
 import { irisRadius, maskClipPath, overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Sparkles, X } from "lucide-react";
 
 import { Mix, PREROLL_S, setCurrentMix } from "../audio/audio.ts";
 import { draftOf, findItem, lockOf, planLayer } from "../timeline/edit.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
-import { actions, getState, graphicUrl, mediaUrl, textPresets } from "../state/store.ts";
+import { actions, getState, graphicUrl, mediaUrl, textPresets, useApp } from "../state/store.ts";
+import { changeLabel } from "../state/agentFollow.ts";
 import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, planAddComponent, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
 import { planAddText } from "../state/project.ts";
@@ -1110,8 +1112,26 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           </div>
         </div>
       </div>
+      <AgentChangePill fps={project.canvas.fps} />
       <Transport project={project} view={view} full={full} onFull={() => setFull(!full)} />
     </main>
+  );
+}
+
+/** D202: where the agent changed things while the user was watching; a click jumps there. */
+function AgentChangePill({ fps }: { fps: number }) {
+  const { agentChange } = useApp();
+  if (!agentChange) return null;
+  return (
+    <div className="agent-change" data-testid="agent-change" data-from={agentChange.from} data-to={agentChange.to}>
+      <button className="agent-change-jump" data-testid="agent-change-jump" title="Jump there" onClick={actions.agentJump}>
+        <Sparkles />
+        {changeLabel(agentChange, fps)}
+      </button>
+      <button className="icon-btn" data-testid="agent-change-dismiss" title="Dismiss" onClick={actions.dismissAgentChange}>
+        <X />
+      </button>
+    </div>
   );
 }
 

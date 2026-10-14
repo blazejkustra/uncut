@@ -17,6 +17,7 @@ import {
   CLOSE_ANSWER_CHANNEL,
   CLOSE_REQUEST_CHANNEL,
   COPY_TEXT_CHANNEL,
+  CLIPBOARD_PATHS_CHANNEL,
   DOWNLOAD_EXPORT_CHANNEL,
   ENVIRONMENT_ADD_CHANNEL,
   ENVIRONMENT_REMOVE_CHANNEL,
@@ -44,6 +45,7 @@ import {
 } from "./ipc.ts";
 import { BACKGROUND_SWITCHES, isTestBackground, privacySettingsUrl, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
+import { clipboardPaths } from "./clipboardPaths.ts";
 import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
 import { pingServer, startRelay, type Relay } from "./relay.ts";
 import { startServer, type ServerProcess } from "./server.ts";
@@ -569,6 +571,14 @@ app.whenReady().then(() => {
     // Tests shouldn't overwrite the clipboard of whoever runs them.
     if (testDialogs) console.log(`[test] copied ${text}`);
     else clipboard.writeText(text);
+  });
+  // D201: files and folders copied in Finder, as paths (the composer pastes them as path chips).
+  // Tests answer from UNCUT_TEST_CLIPBOARD (a JSON array of paths, only with UNCUT_CDP), so a run
+  // never reads whatever the person running it copied.
+  handle(CLIPBOARD_PATHS_CHANNEL, () => {
+    if (process.env.UNCUT_CDP) return process.env.UNCUT_TEST_CLIPBOARD ? (JSON.parse(process.env.UNCUT_TEST_CLIPBOARD) as Array<string>).filter((p) => typeof p === "string" && path.isAbsolute(p)) : [];
+    if (process.platform !== "darwin") return [];
+    return clipboard.read().then(clipboardPaths, () => []);
   });
   handle(MEDIA_ACCESS_CHANNEL, () => mediaAccess());
   handle(ASK_MEDIA_ACCESS_CHANNEL, (kind: unknown) => {

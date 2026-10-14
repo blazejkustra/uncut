@@ -12,6 +12,7 @@ import {
   CLOSE_ANSWER_CHANNEL,
   CLOSE_REQUEST_CHANNEL,
   COPY_TEXT_CHANNEL,
+  CLIPBOARD_PATHS_CHANNEL,
   DOWNLOAD_EXPORT_CHANNEL,
   ENVIRONMENT_ADD_CHANNEL,
   ENVIRONMENT_REMOVE_CHANNEL,
@@ -50,6 +51,8 @@ contextBridge.exposeInMainWorld("uncut", {
   showInFolder: (path: string) => ipcRenderer.invoke(SHOW_IN_FOLDER_CHANNEL, path),
   setAppState: (state: AppState) => ipcRenderer.send(APP_STATE_CHANNEL, state),
   copyText: (text: string) => ipcRenderer.invoke(COPY_TEXT_CHANNEL, text),
+  // D201: the files and folders copied in Finder, as absolute paths ([] when there are none).
+  clipboardPaths: () => ipcRenderer.invoke(CLIPBOARD_PATHS_CHANNEL),
   chooseMedia: () => ipcRenderer.invoke(CHOOSE_MEDIA_CHANNEL),
   chooseSavePath: (defaultPath: string) => ipcRenderer.invoke(CHOOSE_SAVE_PATH_CHANNEL, defaultPath),
   // The disk path of a dropped File ("" for files that don't come from disk).

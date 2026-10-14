@@ -22,6 +22,7 @@ import { planForAll } from "../timeline/multi.ts";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
 import { itemName, momentLabel } from "@uncut/core/mentions";
 import { agentPrefs, DEFAULT_AGENT_PREFS, skipStoryboardSetting } from "./agentPrefs.ts";
+import { changeRange, inputNow, mayFollow, saveFollow, savedFollow, watchInput } from "./agentFollow.ts";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
 import { layoutOf, uniqueId, planAddAtPlayhead, planAddLibrarySound, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
@@ -127,6 +128,10 @@ export interface AppStateShape {
   readonly agentImages: ReadonlyArray<AgentImage>;
   // Bumped to put the caret in the composer (after Add to chat).
   readonly agentFocus: number;
+  // D202: "Follow agent" as saved (undefined: never flipped, on unless playing).
+  readonly agentFollow: boolean | undefined;
+  // D202: an agent ui_show that didn't move the playhead (the user was watching): the pill's stretch, in frames.
+  readonly agentChange?: { readonly from: number; readonly to: number; readonly select?: string | undefined; readonly seq: number };
   // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
   readonly panelRequest?: { readonly panel: AgentUiPanel; readonly seq: number };
   /** "Show in Media" (T7): the tile to scroll to and flash. */
@@ -208,6 +213,7 @@ let state: AppStateShape = {
   agentMentions: [],
   agentImages: [],
   agentFocus: 0,
+  agentFollow: savedFollow(),
   history: null,
   exportOpen: false,
   exportJobs: [],
@@ -296,7 +302,7 @@ function applyFromServer(snapshot: ProjectSnapshot | null) {
   if (mediaChanged) void refreshThumbs();
   set({
     snapshot,
-    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined, agentDraft: "", agentMentions: [], agentImages: [], agentQueued: undefined } : {}),
+    ...(switched ? { changedOnDisk: false, reloadProblem: undefined, notice: undefined, importReport: undefined, exportOpen: false, panelRequest: undefined, agentChange: undefined, agentDraft: "", agentMentions: [], agentImages: [], agentQueued: undefined } : {}),
   });
   // Then the playhead follows the project: back to the start for another project, clamped when it
   // got shorter. After the snapshot, so nothing draws the old project at the reset playhead (the
@@ -472,12 +478,22 @@ function applyWaitingUi() {
   const snap = state.snapshot;
   if (!ui || !snap || snap.dir !== uiDir || snap.revision < ui.revision) return;
   uiWaiting = undefined;
+  // D202: only an idle user with "Follow agent" on is steered (playhead, selection); someone
+  // watching gets a pill instead. A panel request opens its panel either way (playback goes on).
+  if (ui.panel) set({ panelRequest: { panel: ui.panel, seq: ++panelSeq } });
+  if (ui.frame === undefined && ui.select === undefined) return;
+  if (!mayFollow({ saved: state.agentFollow, playing: getPlayback().playing, ...inputNow() })) {
+    const project = projectOf(snap);
+    const { starts } = layoutOf(project);
+    const range = changeRange(project.tracks.map((t) => ({ items: t.items.map((i) => ({ id: i.id, start: starts.get(i.id) ?? i.start ?? 0, duration: i.duration ?? 0 })) })), ui);
+    if (range) return set({ agentChange: { ...range, select: ui.select, seq: ++panelSeq } });
+  }
   if (ui.frame !== undefined) {
     playback.pause();
     playback.seek(ui.frame);
   }
   if (ui.select !== undefined) playback.select(ui.select);
-  if (ui.panel) set({ panelRequest: { panel: ui.panel, seq: ++panelSeq } });
+  if (state.agentChange) set({ agentChange: undefined });
 }
 
 /** The open project's analysis jobs for a media item (also joined ones, same content) that are waiting or running. */
@@ -534,6 +550,7 @@ export async function start() {
   bridge.onServerExit((message) => !isRemote() && set({ connection: "server-exited", connectionMessage: message }));
   bridge.onMenuCommand(runCommand);
   window.addEventListener("keydown", onKeyDown);
+  watchInput();
   const [appInfo, server] = await Promise.all([bridge.appInfo(), bridge.getServerConnection().then((c) => ({ ok: true as const, c }), (e: Error) => ({ ok: false as const, e }))]);
   set({ appInfo });
   if (!server.ok) {
@@ -1248,6 +1265,20 @@ export const actions = {
   },
   agentCancel: () => call((c) => c["agent.cancel"]({})),
   /** The composer's text and chips (D140). */
+  /** D202: "Follow agent" on or off, remembered on this Mac. */
+  setAgentFollow: (on: boolean) => {
+    saveFollow(on);
+    set({ agentFollow: on });
+  },
+  /** D202: the pill's jump: the playhead to where the agent changed things (playback carries on from there), its item selected. */
+  agentJump: () => {
+    const change = state.agentChange;
+    if (!change) return;
+    set({ agentChange: undefined });
+    playback.seek(change.from);
+    if (change.select !== undefined) playback.select(change.select);
+  },
+  dismissAgentChange: () => set({ agentChange: undefined }),
   setAgentDraft: (agentDraft: string, agentMentions?: ReadonlyArray<AgentMention>) => set({ agentDraft, ...(agentMentions ? { agentMentions } : {}) }),
   /** Hold a message until the running turn ends (D140); undefined takes it back. */
   agentQueue: (queued: { prompt: string; mentions: ReadonlyArray<AgentMention>; images?: ReadonlyArray<AgentImage> } | undefined) => set({ agentQueued: queued }),

@@ -15,7 +15,8 @@ import { setAgentPrefs, toggleFavourite, useAgentPrefs } from "../state/agentPre
 import { frameTimecode } from "../state/format.ts";
 import { itemLabel } from "../state/project.ts";
 import { bridge } from "../state/bridge.ts";
-import { actions, useApp, type Project } from "../state/store.ts";
+import { isAttachable, quotePaths, sortPasted } from "./pasted.ts";
+import { actions, getState, useApp, type Project } from "../state/store.ts";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -89,6 +90,22 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     }
     setAttachError(problem);
     actions.setAgentImages(now);
+  };
+  // D201: pasted files: paths (folders, SVGs, videos, fonts, anything from disk that isn't an
+  // attachable image) go in at the caret as path chips; images attach.
+  const pasteFiles = async (files: ReadonlyArray<File>, text: string, from: number, to: number) => {
+    const own = files.map((f) => ({ name: f.name, type: f.type, path: bridge.pathForFile(f) }));
+    const copied = own.some((f) => !f.path.startsWith("/")) ? await (bridge.clipboardPaths?.() ?? Promise.resolve([])).catch(() => []) : [];
+    const { paths, attach, unknown } = sortPasted(own, copied);
+    const now = getState().agentDraft;
+    const insert = paths.length ? quotePaths(paths) : attach.length ? "" : text;
+    if (insert) {
+      const head = now.slice(0, from);
+      const piece = `${head && !/\s$/.test(head) && paths.length ? " " : ""}${insert}${paths.length ? " " : ""}`;
+      caretTo.current = from + piece.length;
+      setDraft(head + piece + now.slice(to));
+    }
+    await addFiles([...attach, ...unknown].map((i) => files[i]!));
   };
   const input = useRef<HTMLTextAreaElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
@@ -200,14 +217,15 @@ export function Composer({ project, online, blocked, turns, running, provider }:
         if (!e.dataTransfer.files.length) return;
         e.preventDefault();
         setDropping(false);
-        // D198: a dropped folder or non-image file goes in as its path (a path chip); images attach.
+        // D200, D201: a dropped folder or file that isn't a PNG, JPEG, GIF or WebP (an SVG, a video,
+        // a font) goes in as its path (a path chip); those images attach.
         const files = [...e.dataTransfer.files];
-        const paths = files.flatMap((f) => (f.type.startsWith("image/") ? [] : [bridge.pathForFile(f)].filter((p) => p.startsWith("/"))));
+        const paths = files.flatMap((f) => (isAttachable(f) ? [] : [bridge.pathForFile(f)].filter((p) => p.startsWith("/"))));
         if (paths.length) {
-          const quoted = paths.map((p) => p.replace(/ /g, "\\ ")).join(" ");
+          const quoted = quotePaths(paths);
           setDraft(draft && !/\s$/.test(draft) ? `${draft} ${quoted} ` : `${draft}${quoted} `);
         }
-        void addFiles(files.filter((f) => f.type.startsWith("image/") || !bridge.pathForFile(f).startsWith("/")));
+        void addFiles(files.filter((f) => isAttachable(f) || !bridge.pathForFile(f).startsWith("/")));
       }}
     >
       <ContextLine project={project} />
@@ -283,10 +301,11 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           }}
           onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
           onPaste={(e) => {
-            const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+            const files = [...e.clipboardData.files];
             if (!files.length) return;
+            // Finder also puts the names as text; the paste is the files (D201).
             e.preventDefault();
-            void addFiles(files);
+            void pasteFiles(files, e.clipboardData.getData("text/plain"), e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
           }}
           onScroll={(e) => backdrop.current && (backdrop.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop)}
           onKeyDown={(e) => {
