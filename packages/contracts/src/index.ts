@@ -83,6 +83,7 @@ export const RPC_METHODS = {
   brandDeleteSkill: "brand.deleteSkill",
   brandSetActive: "brand.setActive",
   brandAddFile: "brand.addFile",
+  brandImport: "brand.import",
 } as const;
 
 // ---- server ----
@@ -245,6 +246,9 @@ export const GRAPHIC_PATH = "/media/graphic";
 // GET /media/agent-image/<file name>?token=…: an image the user attached to an agent message (U4,
 // D184), kept in the open project's .cache/agent-images/ for the turn card's thumbnails.
 export const AGENT_IMAGE_PATH = "/media/agent-image";
+// GET /media/brand/<kit id>/<file name>?token=…: a file of a brand kit the open project sees
+// (D198): logo thumbnails in the Brand tab and the kit's font files for the preview.
+export const BRAND_FILE_PATH = "/media/brand";
 /** An attached image's file name in .cache/agent-images/: <turn id>-<n>.<ext>. */
 export const AGENT_IMAGE_NAME = /^turn-[a-z0-9]+-[a-f0-9]{6}-\d\.(png|jpg|gif|webp)$/;
 // GET /media/library/<file>?token=…: a track of the bundled music library (D91), for the Audio
@@ -530,8 +534,12 @@ export class GenerateError extends Schema.TaggedError<GenerateError>()("Generate
 /** A colour of a kit with what it's for ("background", "text", "primary", "accent", "muted"...). */
 export const BrandColor = Schema.Struct({ hex: Schema.String, role: Schema.String, name: Schema.optional(Schema.String) });
 export type BrandColor = typeof BrandColor.Type;
-/** A typeface of a kit: its family (as installed on this Mac) and what it's for ("headline", "body", "mono"). */
-export const BrandFont = Schema.Struct({ family: Schema.String, role: Schema.String, weight: Schema.optional(Schema.Number) });
+/**
+ * A typeface of a kit: its family and what it's for ("headline", "body", "mono"). `file` (D198): a
+ * font file in the kit's folder (.woff2, .woff, .ttf, .otf) that graphics, texts and components
+ * load (preview, export, render_frames); without one the family must be bundled or installed.
+ */
+export const BrandFont = Schema.Struct({ family: Schema.String, role: Schema.String, weight: Schema.optional(Schema.Number), file: Schema.optional(Schema.String) });
 export type BrandFont = typeof BrandFont.Type;
 /**
  * A style guide (U17): the grammar of a look, not its content. Usually written by the agent from
@@ -548,7 +556,7 @@ export const BrandStyle = Schema.Struct({
   notes: Schema.optional(Schema.String),
 });
 export type BrandStyle = typeof BrandStyle.Type;
-/** Where a kit or a skill lives: the user's (every project) or this project's (`<project>/brand/`, wins on the same id). */
+/** Where a kit or a skill lives: the user's (every project; D198: where kits are made) or this project's (`<project>/brand/`, a copy pinned to it, wins on the same id). */
 export const BrandScope = Schema.Literals(["global", "project"]);
 export type BrandScope = typeof BrandScope.Type;
 /**
@@ -789,6 +797,10 @@ export const AgentUndo = Schema.Struct({
   reason: Schema.optional(Schema.String),
 });
 
+/** D198: a folder the prompt named, as Uncut listed it for the agent ("Found 12 files in ~/x"), or why it didn't. */
+export const AgentFolder = Schema.Struct({ path: Schema.String, files: Schema.Number, folders: Schema.Number, problem: Schema.optional(Schema.String) });
+export type AgentFolder = typeof AgentFolder.Type;
+
 export const AgentTurn = Schema.Struct({
   id: Schema.String,
   prompt: Schema.String,
@@ -800,6 +812,8 @@ export const AgentTurn = Schema.Struct({
   images: Schema.optional(Schema.Array(Schema.String)),
   // The model it was asked of (a composer choice, D184); absent = Claude Code's default.
   model: Schema.optional(Schema.String),
+  // D198: the folders the prompt named, listed for the agent.
+  folders: Schema.optional(Schema.Array(AgentFolder)),
   startedAt: Schema.String,
   finishedAt: Schema.optional(Schema.String),
   status: AgentTurnStatus,
@@ -856,6 +870,9 @@ export const AgentApproval = Schema.Struct({
   question: Schema.optional(AgentQuestion),
   // D188: a storyboard to approve before the build: Approve (maybe with edited beats) or Change (a note).
   storyboard: Schema.optional(Storyboard),
+  // D198: the agent wants to change a kit's colours or fonts (brand_write): each field before and
+  // after. Apply (allow) or Keep the kit (deny); no answer in 2 minutes keeps it.
+  brand: Schema.optional(Schema.Struct({ kit: Schema.String, changes: Schema.Array(Schema.Struct({ field: Schema.String, before: Schema.Array(Schema.String), after: Schema.Array(Schema.String) })) })),
   // D194: a Claude Code tool asks (Bash, a file write, ...): the tool, what it would run or touch, why
   // it asks, and whether "Always for this session" is offered. Allow once, Always (agent.approve
   // always: true) or Deny.
@@ -1252,6 +1269,10 @@ const BrandSaveSkillRpc = Rpc.make(RPC_METHODS.brandSaveSkill, { payload: Schema
 const BrandDeleteSkillRpc = Rpc.make(RPC_METHODS.brandDeleteSkill, { payload: Schema.Struct({ id: Schema.String, scope: BrandScope }), success: BrandState, error: BrandError });
 const BrandSetActiveRpc = Rpc.make(RPC_METHODS.brandSetActive, { payload: BrandActive, success: BrandState, error: BrandError });
 // Copies a file (a logo, an example frame) into a kit's folder; returns the state with the file's name in the kit's files.
+/** D198: logos and fonts from a file, a folder or an https address into a kit's folder (kit.json unchanged: the editor's draft takes them). */
+export const BrandImported = Schema.Struct({ name: Schema.String, kind: Schema.Literals(["logo", "font"]), slot: Schema.optional(Schema.Literals(["light", "dark", "mark"])), family: Schema.optional(Schema.String) });
+export type BrandImported = typeof BrandImported.Type;
+const BrandImportRpc = Rpc.make(RPC_METHODS.brandImport, { payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, source: Schema.String }), success: Schema.Struct({ files: Schema.Array(BrandImported), state: BrandState }), error: BrandError });
 const BrandAddFileRpc = Rpc.make(RPC_METHODS.brandAddFile, { payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, path: Schema.String }), success: Schema.Struct({ name: Schema.String, state: BrandState }), error: BrandError });
 // D144: the renderer's answer to an allowed screen_record: the uploaded take (media/uploads, named
 // like takeUploadName("screen", ...)) with the source's name, or what went wrong.
@@ -1455,6 +1476,7 @@ export const WsRpcGroup = RpcGroup.make(
   BrandDeleteSkillRpc,
   BrandSetActiveRpc,
   BrandAddFileRpc,
+  BrandImportRpc,
   MediaImportRpc,
   MediaJobsRpc,
   MediaThumbnailsRpc,

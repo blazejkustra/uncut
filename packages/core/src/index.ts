@@ -7,8 +7,10 @@ export { describeOp, effectsWords, manualEditsNote } from "./timeline/edit-log.t
 export { animationAt, moveEase, moveFades, wordProgress, zoomScale, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline/timeline.ts";
 export { alignScreen, bezelSvg, COMPONENT_IMAGE, COMPONENTS, componentBox, componentDefaults, componentRest, componentHtml, componentInfo, componentParts, wrapComponent, componentScale, deviceSpec, DEVICES, DRAWN_COMPONENTS, FRAME_COLOR, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenRect, screenTransform, terminalState, agentLogState, UNDRAWN_COMPONENTS } from "./visual/components.ts";
 export type { ComponentBlock, ComponentInfo, Device, DeviceFrameRequest, TerminalLine } from "./visual/components.ts";
-export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_LIBS, GRAPHIC_LIBS_DOC, GRAPHIC_SRC, graphicDocument, graphicInfo, graphicLibsUsed, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, MAX_RASTER_STATES, resolveGraphicLibs } from "./visual/graphics.ts";
+export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_LIBS, GRAPHIC_LIBS_DOC, GRAPHIC_SRC, graphicDocument, graphicInfo, graphicLibsUsed, graphicLogosUsed, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, MAX_RASTER_STATES, resolveGraphicBrand, resolveGraphicLibs } from "./visual/graphics.ts";
 export type { GraphicInfo, GraphicLib } from "./visual/graphics.ts";
+export { familiesOf, familyKey, FONT_FORMATS, FONT_MIME, fontFaceRules, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicFontFamilies, graphicFontStacks, MAX_GRAPHIC_FONT_BYTES, resolveGraphicFonts, textFamily } from "./visual/fonts.ts";
+export type { FontSource } from "./visual/fonts.ts";
 export { baseBox, canvasBox, clipBox, DEFAULT_KEY_FPS, EASES, fitRect, FITS, hasKeys, hasSpringKeys, isPlainBox, keyAt, keysOf, KEY_PROPS, moveBox } from "./visual/box.ts";
 export type { ClipBox, Ease, Fit, KeyEase, KeyProp, Rect } from "./visual/box.ts";
 export { isSpringName, SPRING_DOC, SPRING_NAMES, SPRING_PRESETS, springAt, springEase, springSettleTime, springState } from "./visual/spring.ts";

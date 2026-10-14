@@ -27,9 +27,10 @@ extraResources:
     to: server/mcp.mjs
   - from: ../../native/media/target/release/uncut-media
     to: bin/uncut-media
-  # The bundled DM Sans / DM Mono are inlined in the renderer and rasteriser (D77); their licence ships with them.
-  - from: ../../assets/fonts/OFL.txt
-    to: fonts/OFL.txt
+  # The bundled DM Sans / DM Mono are inlined in the renderer and rasteriser (D77); graphics load the files (D198); their licence ships with them.
+  - from: ../../assets/fonts
+    to: fonts
+    filter: ["*.woff2", "OFL.txt"]
   # The bundled CC0 music library (D91): the tracks and library.json (titles, licences).
   - from: ../../assets/music
     to: music

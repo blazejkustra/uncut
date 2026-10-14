@@ -103,6 +103,7 @@ const resources = app.isPackaged
       musicDir: path.join(process.resourcesPath, "music"),
       sfxDir: path.join(process.resourcesPath, "sfx"),
       graphicLibsDir: path.join(process.resourcesPath, "graphic-libs"),
+      fontsDir: path.join(process.resourcesPath, "fonts"),
       // Plugins shipped with the app (D97).
       bundledPluginsDir: path.join(process.resourcesPath, "plugins"),
       pluginSdkDir: path.join(process.resourcesPath, "plugin-sdk"),
@@ -115,6 +116,7 @@ const resources = app.isPackaged
       musicDir: path.join(repoRoot, "assets/music"),
       sfxDir: path.join(repoRoot, "assets/sfx"),
       graphicLibsDir: path.join(repoRoot, "assets/graphic-libs"),
+      fontsDir: path.join(repoRoot, "assets/fonts"),
       bundledPluginsDir: path.join(repoRoot, "plugins"),
       pluginSdkDir: path.join(repoRoot, "packages/plugin-sdk/src"),
       // Under `pnpm dev` the binary is a bare Electron: it needs this bundle to be the rasteriser.
@@ -241,6 +243,16 @@ async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
     return typeof next === "string" ? next : null;
   }
   if (!win) return null;
+  if (purpose === "brand") {
+    const picked = await dialog.showOpenDialog(win, {
+      title: "Import into the kit",
+      buttonLabel: "Import",
+      message: "Choose a logo, a font file or a folder with them.",
+      defaultPath: app.getPath("home"),
+      properties: ["openFile", "openDirectory"],
+    });
+    return picked.canceled ? null : (picked.filePaths[0] ?? null);
+  }
   const result = await dialog.showOpenDialog(win, {
     title: purpose === "parent" ? "Choose where to save the project" : purpose === "plugin" ? "Add a plugin" : "Open a project",
     buttonLabel: purpose === "parent" ? "Choose" : purpose === "plugin" ? "Add" : "Open",

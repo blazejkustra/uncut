@@ -4,7 +4,7 @@
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
 import { AGENT_MODELS, type AgentApproval, type AgentItem, type AgentTurn, type SetupCheck } from "@uncut/contracts";
 import { friendlyText } from "@uncut/core/mentions";
-import { Brain, Check, ChevronDown, ChevronRight, Copy, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TerminalSquare, TriangleAlert, Undo2, X } from "lucide-react";
+import { Brain, Check, ChevronDown, ChevronRight, Copy, FolderOpen, LoaderCircle, Pencil, RefreshCw, Sparkles, Square, TerminalSquare, TriangleAlert, Undo2, X } from "lucide-react";
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Composer, withChips } from "./Composer.tsx";
@@ -192,6 +192,16 @@ function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: Age
       <div className="msg-user" data-testid="agent-prompt">
         {withChips(t.prompt, (t.mentions ?? []).map((m) => m.label))}
       </div>
+      {t.folders && t.folders.length > 0 && (
+        <div className="msg-folders small" data-testid="agent-turn-folders">
+          {t.folders.map((f) => (
+            <div key={f.path} className="msg-folder" data-testid="agent-turn-folder" data-problem={f.problem ? "1" : undefined} title={f.path}>
+              <FolderOpen />
+              <span className="msg-folder-text">{f.problem ? `Didn't list ${f.path}: ${f.problem}` : `Found ${f.files === 1 ? "1 file" : `${f.files} files`}${f.folders ? ` and ${f.folders === 1 ? "1 folder" : `${f.folders} folders`}` : ""} in ${f.path}`}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {t.note && <ManualNote note={t.note} />}
       <div className={`turn ${t.status} ${undone ? "undone" : ""}`}>
         <div className="turn-body">
@@ -234,6 +244,8 @@ function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: Age
               <StoryboardApproval key={approval.id} approval={approval} storyboard={approval.storyboard} online={online} />
             ) : approval.permission ? (
               <PermissionCard key={approval.id} approval={approval} permission={approval.permission} online={online} />
+            ) : approval.brand ? (
+              <BrandDiffCard key={approval.id} approval={approval} brand={approval.brand} online={online} />
             ) : (
               <ApprovalCard approval={approval} online={online} />
             ))}
@@ -272,6 +284,57 @@ function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: Age
             {t.undo.reason}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** D198: the agent wants to change a kit's colours or fonts: each field before and after; Apply or Keep the kit (no answer in 2 minutes keeps it). */
+function BrandDiffCard({ approval, brand, online }: { approval: AgentApproval; brand: NonNullable<AgentApproval["brand"]>; online: boolean }) {
+  const [sent, setSent] = useState(false);
+  const answer = (allow: boolean) => {
+    setSent(true);
+    void actions.agentApprove(approval.id, allow);
+  };
+  const hex = (line: string) => /^#[0-9a-f]{6}\b/i.exec(line)?.[0];
+  const row = (line: string, kind: "gone" | "new" | "same", i: number) => (
+    <div key={i} className={`approval-diff-row ${kind}`} data-testid={`agent-brand-diff-${kind}`}>
+      {hex(line) && <span className="approval-diff-swatch" style={{ background: hex(line) }} />}
+      <span className="ellipsis">{line}</span>
+    </div>
+  );
+  return (
+    <div className="approval" data-testid="agent-approval" data-kind="brand" data-id={approval.id}>
+      <div className="approval-text">{approval.text}?</div>
+      <div className="approval-diff" data-testid="agent-brand-diff">
+        {brand.changes.map((c) => {
+          const after = new Set(c.after.map((x) => x.toLowerCase()));
+          const before = new Set(c.before.map((x) => x.toLowerCase()));
+          return (
+            <div key={c.field}>
+              <div className="approval-diff-field">{c.field}</div>
+              <div className="approval-diff-cols">
+                <div>
+                  <span className="approval-diff-label">Now</span>
+                  {c.before.map((l, i) => row(l, after.has(l.toLowerCase()) ? "same" : "gone", i))}
+                </div>
+                <div>
+                  <span className="approval-diff-label">After</span>
+                  {c.after.map((l, i) => row(l, before.has(l.toLowerCase()) ? "same" : "new", i))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="approval-sub">The kit "{brand.kit}" keeps its colours and fonts unless you apply this. No answer in 2 minutes keeps them.</div>
+      <div className="approval-btns">
+        <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={() => answer(false)}>
+          Keep the kit
+        </button>
+        <button className="btn primary" data-testid="agent-allow" disabled={!online || sent} onClick={() => answer(true)}>
+          Apply
+        </button>
       </div>
     </div>
   );

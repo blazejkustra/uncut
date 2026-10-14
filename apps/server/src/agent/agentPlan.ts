@@ -27,7 +27,7 @@ export function kitLines(kit: BrandKit, files: Readonly<Record<string, string>>)
   return [
     `Kit "${kit.name}" (${kit.id}, ${kit.scope === "global" ? "the user's" : "this project's"})`,
     line("Colours", kit.colors.map((c) => `${c.hex} ${c.role}${c.name ? ` (${c.name})` : ""}`)),
-    line("Fonts", kit.fonts.map((f) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}`)),
+    line("Fonts", kit.fonts.map((f) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}${f.file ? ` (file ${f.file}, loaded everywhere)` : ""}`)),
     logo("light", "Logo on light backgrounds"),
     logo("dark", "Logo on dark backgrounds"),
     logo("mark", "Logo mark"),
@@ -155,7 +155,17 @@ export function mergeKit(base: BrandKit, args: Record<string, unknown>): BrandKi
     if (args.colors.length && !colors.length) return { problem: "colors need hex values like #0b1d3a." };
     out.colors = colors;
   }
-  if (Array.isArray(args.fonts)) out.fonts = args.fonts.flatMap((f) => (f && typeof f === "object" && typeof (f as Record<string, unknown>).family === "string" ? [{ family: String((f as Record<string, unknown>).family).slice(0, 80), role: String((f as Record<string, unknown>).role ?? "body").slice(0, 40), ...(typeof (f as Record<string, unknown>).weight === "number" ? { weight: (f as Record<string, unknown>).weight as number } : {}) }] : []));
+  if (Array.isArray(args.fonts)) {
+    out.fonts = args.fonts.flatMap((f) => {
+      if (!f || typeof f !== "object" || typeof (f as Record<string, unknown>).family !== "string") return [];
+      const o = f as Record<string, unknown>;
+      const family = String(o.family).trim().slice(0, 80);
+      if (!family) return [];
+      // D198: `file` is a kit file, a path or an address (brand_write brings it in); a family that had a file keeps it.
+      const file = typeof o.file === "string" && o.file.trim() ? o.file.trim().slice(0, 2000) : base.fonts.find((x) => x.family.toLowerCase() === family.toLowerCase() && x.file)?.file;
+      return [{ family, role: String(o.role ?? "body").slice(0, 40), ...(typeof o.weight === "number" ? { weight: o.weight } : {}), ...(file ? { file } : {}) }];
+    });
+  }
   if (typeof args.tone === "string") out.tone = args.tone.slice(0, 4000);
   for (const k of ["taglines", "urls", "dos", "donts"] as const) if (Array.isArray(args[k])) out[k] = (args[k] as Array<unknown>).filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 40);
   if (args.style !== undefined) {
@@ -164,6 +174,21 @@ export function mergeKit(base: BrandKit, args: Record<string, unknown>): BrandKi
     if (!style.palette.length) return { problem: "style.palette needs hex colours like #0b1d3a." };
     out.style = style;
   }
+  return out;
+}
+
+/**
+ * D198: what a brand_write would change in a kit's colours and fonts that it had already (a
+ * field the kit had nothing in yet isn't a change), each as its lines before and after. A font
+ * file added to a family that's there isn't a change of the fonts.
+ */
+export function kitChanges(before: BrandKit, after: BrandKit): Array<{ field: string; before: Array<string>; after: Array<string> }> {
+  const out: Array<{ field: string; before: Array<string>; after: Array<string> }> = [];
+  const colour = (c: BrandKit["colors"][number]) => `${c.hex} ${c.role}${c.name ? ` (${c.name})` : ""}`;
+  const font = (f: BrandKit["fonts"][number]) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}`;
+  const differ = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) => a.length !== b.length || a.some((x, i) => x.toLowerCase() !== b[i]!.toLowerCase());
+  if (before.colors.length && differ(before.colors.map(colour), after.colors.map(colour))) out.push({ field: "Colours", before: before.colors.map(colour), after: after.colors.map(colour) });
+  if (before.fonts.length && differ(before.fonts.map(font), after.fonts.map(font))) out.push({ field: "Fonts", before: before.fonts.map(font), after: after.fonts.map(font) });
   return out;
 }
 
