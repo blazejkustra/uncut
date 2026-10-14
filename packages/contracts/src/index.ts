@@ -716,6 +716,8 @@ export const AgentItem = Schema.Struct({
   error: Schema.optional(Schema.String),
   // A step while it runs (D182), in the present tense with its target ("Writing graphic s3-enter.html").
   doing: Schema.optional(Schema.String),
+  // D194: what a built-in tool (WebSearch, WebFetch, Bash, Read, …) answered, at most 4,000 characters: the work log's row opens to it.
+  result: Schema.optional(Schema.String),
   // kind "card" (D186–D190): a question with its answer, the brief, the storyboard or a review.
   card: Schema.optional(AgentCard),
 });
@@ -843,6 +845,10 @@ export const AgentApproval = Schema.Struct({
   question: Schema.optional(AgentQuestion),
   // D188: a storyboard to approve before the build: Approve (maybe with edited beats) or Change (a note).
   storyboard: Schema.optional(Storyboard),
+  // D194: a Claude Code tool asks (Bash, a file write, ...): the tool, what it would run or touch, why
+  // it asks, and whether "Always for this session" is offered. Allow once, Always (agent.approve
+  // always: true) or Deny.
+  permission: Schema.optional(Schema.Struct({ tool: Schema.String, target: Schema.String, why: Schema.optional(Schema.String), always: Schema.Boolean })),
 });
 export type AgentApproval = typeof AgentApproval.Type;
 
@@ -859,6 +865,8 @@ export const AgentState = Schema.Struct({
   screenTake: Schema.optional(Schema.String),
   // D188: the project's brief, storyboard and reviews (U15, U16).
   plan: Schema.optional(AgentPlan),
+  // D194: something wrong with the agent's setup the user should know (claude didn't answer initialize).
+  warning: Schema.optional(Schema.String),
 });
 export type AgentState = typeof AgentState.Type;
 
@@ -1219,7 +1227,7 @@ const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
 // accepted: false when the card was no longer open (answered, timed out, the turn stopped or another card replaced it).
 // D187/D188: a question card's answer, a storyboard card's edited beats or change note.
 const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, {
-  payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean, source: Schema.optional(Schema.String), answer: Schema.optional(AgentAnswer), beats: Schema.optional(Schema.Array(StoryboardBeat)), note: Schema.optional(Schema.String) }),
+  payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean, source: Schema.optional(Schema.String), answer: Schema.optional(AgentAnswer), beats: Schema.optional(Schema.Array(StoryboardBeat)), note: Schema.optional(Schema.String), always: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ accepted: Schema.Boolean }),
 });
 // D188: the user edits the brief (or the storyboard) by hand; saved to the project and seen by the agent's next message.

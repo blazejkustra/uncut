@@ -46,5 +46,5 @@ test("access: Look only tools read and look; Ask before big changes asks about r
   assert.equal(bigChange("graphic_write", { name: "a.html" }, project), undefined);
   assert.match(accessLine("look"), /^Access: Look only\./);
   assert.match(accessLine("ask"), /^Access: Ask before big changes\./);
-  assert.equal(accessLine("edit"), "Access: Edit freely.");
+  assert.match(accessLine("edit"), /^Access: Edit freely\. Commands and file writes inside the project run without asking; deleting or writing outside the project, sudo, git push and uploads ask the user first\.$/);
 });

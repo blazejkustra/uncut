@@ -432,6 +432,32 @@
       "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], skipped: [{ path, reason }], failed: [{ path, message }]"
     },
     {
+      "name": "media_download",
+      "description": "Download a picture, video or sound from the web (a product's logo, a screenshot, a demo video you found with WebSearch or WebFetch) into the project's media/downloads folder and import it into Media. https addresses on the public internet only; redirects are followed; only image, video and audio files (by their type), at most 300 MB. Pass the file's own address, not the page it's on. Undo turn removes the import (the file stays in media/downloads).",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 2000,
+            "description": "The file's https address."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "A display name for the media (e.g. \"Argent logo\"); the file is named from it too."
+          }
+        }
+      },
+      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], source: { url, bytes, type }"
+    },
+    {
       "name": "generate_media",
       "description": "Make an image, video or sound with a generator (D99) into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo and generate.sound bill the user's own API key; without it the result says which key is needed. Over $1 waits for the user to allow it on a card in the Agent tab.",
       "inputSchema": {

@@ -15,7 +15,7 @@
 // left alone and turns are refused until it can be.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
@@ -42,7 +42,9 @@ import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } fro
 import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { answerOut, beatGrid, gateOf, gateRefusal, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, reviewOf, reviewVerdict, type GridItem } from "./agentPlan.ts";
 import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
-import { accessLine, bigChange, checksOut, doingLabel, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
+import { decide, LOOK_DISALLOWED, mentionedDirs, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
+import { downloadToProject } from "./agentDownload.ts";
+import { accessLine, TOOLS_LINE, bigChange, checksOut, doingLabel, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
 import { ServerConfig } from "../app/config.ts";
 import { Exporter } from "../export/exporter.ts";
@@ -82,6 +84,8 @@ const envMs = (name: string, fallback: number) => {
 const interruptMs = () => envMs("UNCUT_AGENT_INTERRUPT_MS", 3000);
 /** A session with no turn for this long is closed; the next message resumes it (UNCUT_AGENT_IDLE_MS). */
 const idleMs = () => envMs("UNCUT_AGENT_IDLE_MS", 15 * 60_000);
+/** D194: how long the first message waits for claude to answer the initialize request (UNCUT_AGENT_INIT_MS). */
+const initMs = () => envMs("UNCUT_AGENT_INIT_MS", 10_000);
 /** JSON with sorted keys: the same args however claude ordered them. */
 const canonical = (value: unknown): string =>
   Array.isArray(value) ? `[${value.map(canonical).join(",")}]` : value && typeof value === "object" ? `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(",")}}` : JSON.stringify(value ?? null);
@@ -131,6 +135,8 @@ export interface CardAnswer {
   readonly answer?: AgentAnswer | undefined;
   readonly beats?: ReadonlyArray<StoryboardBeat> | undefined;
   readonly note?: string | undefined;
+  // D194: a permission card's "Always for this session".
+  readonly always?: boolean | undefined;
 }
 
 // ---- environment (D41) ----
@@ -157,26 +163,36 @@ const thinkingDisplay = () => {
 };
 
 /**
- * The session's command line (D139, D181): no built-in tools and only Uncut's MCP server, none of
- * the user's own Claude Code settings (--setting-sources "": no hooks, plugins, permissions, MCP
- * servers or rules from ~/.claude; flag and managed settings still apply), Opus/Sonnet/… and effort
- * from the composer (D184).
+ * The session's command line (D139, D181, D194): Claude Code's default built-in tools (web, files,
+ * shell, subagents) plus only Uncut's MCP server, none of the user's own Claude Code settings
+ * (--setting-sources "": no hooks, plugins, permissions, skills, MCP servers or rules from
+ * ~/.claude; flag and managed settings still apply), Opus/Sonnet/… and effort from the composer
+ * (D184). Permissions: the default mode, and every prompt comes to Uncut over stdio as a
+ * can_use_tool control request (the SDK's canUseTool), decided per the turn's access
+ * (agentPermissions.ts). Uncut's own tools are pre-allowed and gated in `allowed`. `addDirs`: folders
+ * the user mentioned in this chat.
  */
-export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined }) {
+export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly look?: boolean | undefined }) {
   const args = [
     "-p",
     "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--verbose",
     "--include-partial-messages",
-    "--tools", "",
+    "--tools", "default",
     "--strict-mcp-config",
     "--mcp-config", o.cfg,
     "--setting-sources", "",
     "--allowedTools", "mcp__uncut",
-    "--permission-mode", "dontAsk",
+    "--permission-mode", "default",
+    "--permission-prompt-tool", "stdio",
+    // Secrets stay out whatever the access, before claude's own read-only auto-allow.
+    "--settings", sessionSettings(),
     "--append-system-prompt", SYSTEM_PROMPT,
   ];
+  // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
+  if (o.look) args.push("--disallowedTools", LOOK_DISALLOWED.join(","));
+  for (const dir of o.addDirs ?? []) args.push("--add-dir", dir);
   if (o.model) args.push("--model", o.model);
   if (o.effort) args.push("--effort", o.effort);
   if (o.thinking) args.push("--thinking-display", o.thinking);
@@ -202,7 +218,7 @@ const modelFor = (asked: string | undefined) => (asked && AGENT_MODELS.some((m) 
 // ---- history ----
 
 type StoredTurn = { -readonly [K in keyof Omit<AgentTurn, "undo">]: Omit<AgentTurn, "undo">[K] } & {
-  items: Array<{ kind: "text" | "step" | "thinking" | "card"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean; error?: string; doing?: string; card?: AgentCard }>;
+  items: Array<{ kind: "text" | "step" | "thinking" | "card"; text: string; tool?: string; status?: "running" | "done" | "error"; live?: boolean; error?: string; doing?: string; card?: AgentCard; result?: string }>;
   edits: Array<AgentEdit>;
 };
 
@@ -233,6 +249,16 @@ interface Loaded {
   readonly bounds: Map<string, { start?: number; end?: number }>;
   // D188: brief.json, storyboard.json and reviews/ as last read or written.
   plan: AgentPlan;
+  // D194: "Always for this session" answers on permission cards (grant keys), until the project closes. Not saved.
+  readonly grants: Set<string>;
+  // D194: folders the user confirmed on a card for this chat (--add-dir), oldest first. Not saved.
+  readonly dirs: Array<string>;
+  // D194: folders pasted in this chat's messages, not confirmed yet (a card offers them). Not saved.
+  readonly mentioned: Array<string>;
+  // D194: this chat used the web (WebSearch / WebFetch, a subagent's too): anything outside the project asks for the rest of the session.
+  webUsed: boolean;
+  // D194: secret-looking strings from tool results in this chat (a web search or address carrying one asks). Not saved.
+  readonly tainted: Set<string>;
 }
 
 /**
@@ -255,6 +281,20 @@ interface ClaudeSession {
   readonly thinking: string | undefined;
   // The --resume it was started with.
   readonly resumed: string | undefined;
+  // D194: the --add-dir folders it was started with (sorted, joined): more folders need another session.
+  readonly dirsKey: string;
+  // D194: can_use_tool requests waiting for an answer (request id → close its card).
+  readonly prompts: Map<string, () => void>;
+  // D194: started for a Look only chat (--disallowedTools): another access needs another session.
+  readonly look: boolean;
+  // D194: the initialize control request (as the SDK sends it) and whether it was answered; the
+  // first message waits for it (at most INIT_MS).
+  readonly initId: string;
+  initialized: boolean;
+  // It never answered initialize: every call that needs an approval is denied (fail closed).
+  initFailed: boolean;
+  initTimer: NodeJS.Timeout | undefined;
+  waiting: (() => void) | undefined;
   child: ChildProcess | undefined;
   // The turn whose message it is working on.
   turn: Running | undefined;
@@ -310,12 +350,28 @@ interface Running {
   looked: { sheet: boolean; phone: boolean };
   // D189: review rounds in this turn.
   reviewRounds: number;
+  // D194: permission cards one at a time (a parallel call's card waits for the one open).
+  permissionQueue: Promise<unknown>;
+  // D194: tool_use id → tool name in this turn (to tell web results from file data).
+  readonly toolNames: Map<string, string>;
+  // D194: media_download's spending in this turn.
+  downloads: { bytes: number; count: number };
 }
+
+/** A tool_result's words: its text, or its text blocks joined (pictures left out). */
+const resultText = (content: unknown): string =>
+  isString(content) ? content : Array.isArray(content) ? (content as Array<Record<string, unknown>>).filter((x) => x?.type === "text" && isString(x.text)).map((x) => x.text as string).join("\n") : "";
+
+/** D194: media_download's limits per turn. */
+const DOWNLOADS_PER_TURN = 20;
+const DOWNLOAD_BYTES_PER_TURN = 1024 * 1024 * 1024;
 
 const historyFile = (dir: string) => join(dir, "agent", "turns.json");
 
 const isString = (v: unknown): v is string => typeof v === "string";
 const STATUSES = new Set(["running", "done", "error", "cancelled"]);
+/** D194: a built-in tool's answer kept on its step, at most this many characters. */
+const RESULT_MAX = 4000;
 
 /** A card item read back (D186–D190): the known fields, normalised. */
 function storedCard(raw: unknown): AgentCard {
@@ -346,7 +402,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
   const items = Array.isArray(t.items)
     ? t.items
         .filter((i): i is StoredTurn["items"][number] => !!i && typeof i === "object" && (i.kind === "text" || i.kind === "step" || i.kind === "thinking" || (i.kind === "card" && !!i.card && typeof i.card === "object")) && isString(i.text))
-        .map(({ live: _live, doing: _doing, error, card, ...i }) => ({ ...i, ...(isString(error) ? { error } : {}), ...(i.kind === "card" ? { card: storedCard(card) } : {}) }))
+        .map(({ live: _live, doing: _doing, error, card, result, ...i }) => ({ ...i, ...(isString(error) ? { error } : {}), ...(isString(result) ? { result: result.slice(0, RESULT_MAX) } : {}), ...(i.kind === "card" ? { card: storedCard(card) } : {}) }))
     : [];
   const edits = Array.isArray(t.edits)
     ? t.edits.filter((e): e is AgentEdit => !!e && typeof e === "object" && typeof e.revision === "number" && isString(e.summary) && Array.isArray(e.lines))
@@ -620,6 +676,8 @@ export const layer = Layer.effect(
     const loadLock = yield* Semaphore.make(1);
     let loaded: Loaded | undefined;
     let running: Running | undefined;
+    // D194: shown in the Agent tab while the last claude didn't answer initialize (approvals fail closed).
+    let initWarning: string | undefined;
     let session: ClaudeSession | undefined;
     // Every claude still running, the live one and any closing (graceful or killed, not yet gone).
     const sessions = new Set<ClaudeSession>();
@@ -644,6 +702,7 @@ export const layer = Layer.effect(
         turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
         ...(owner.ui ? { ui: owner.ui } : {}),
         plan: owner.plan,
+        ...(initWarning ? { warning: initWarning } : {}),
         ...(approval && running && running.owner === owner && running.turn.id === approval.card.turnId ? { approval: approval.card } : {}),
         ...(() => {
           const live = running && running.owner === owner ? [...screenWaits].find(([, w]) => w.turnId === running!.turn.id)?.[0] : undefined;
@@ -757,6 +816,12 @@ export const layer = Layer.effect(
           // The history this opening writes to may not hold what was saved before (an in-memory
           // history from a locked history.db, now a healthy file): save every turn again.
           same.saved.clear();
+          // D194: "Always for this session" ends with the opening.
+          same.grants.clear();
+          same.dirs.length = 0;
+          same.mentioned.length = 0;
+          same.webUsed = false;
+          same.tainted.clear();
           same.plan = yield* Effect.promise(() => readPlan(v.dir));
           loaded = same;
           return same;
@@ -779,6 +844,11 @@ export const layer = Layer.effect(
           saved: new Map(history.turns.map((t) => [t.id, JSON.stringify(t)])),
           bounds: new Map(),
           plan,
+          grants: new Set(),
+          dirs: [],
+          mentioned: [],
+          webUsed: false,
+          tainted: new Set(),
         };
         return loaded;
       }),
@@ -1720,13 +1790,14 @@ export const layer = Layer.effect(
     };
 
     /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard }) =>
+    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => void, edit?: AgentApproval["edit"], more?: { readonly question?: AgentQuestion; readonly storyboard?: Storyboard; readonly permission?: AgentApproval["permission"] }) =>
       Effect.promise(
         () =>
           new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
             // A question or a storyboard may take thinking over (QUESTION_MS); UNCUT_APPROVAL_MS shortens both in tests.
-            const ms = more && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : more ? QUESTION_MS : approvalMs();
-            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}) };
+            const long = !!(more?.question || more?.storyboard);
+            const ms = long && testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? approvalMs() : long ? QUESTION_MS : approvalMs();
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}), ...(edit ? { edit } : {}), ...(more?.question ? { question: more.question } : {}), ...(more?.storyboard ? { storyboard: more.storyboard } : {}), ...(more?.permission ? { permission: more.permission } : {}) };
             let settled = false;
             const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string, extra?: CardAnswer) => {
               if (settled) return;
@@ -1748,6 +1819,112 @@ export const layer = Layer.effect(
             publish();
           }),
       );
+
+    /**
+     * D194: media_download, a picture, video or sound from the web into media/downloads/, then
+     * imported like media_import (an edit of this turn). The fetch is the library's guarded GET.
+     */
+    const mediaDownload = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const url = typeof args.url === "string" ? args.url.trim() : "";
+        if (!url) return textResult("Pass url: the file's https address.", true);
+        const name = typeof args.name === "string" && args.name.trim() ? args.name.trim().slice(0, 80) : undefined;
+        if (r.downloads.count >= DOWNLOADS_PER_TURN) return textResult(`Not downloaded: ${DOWNLOADS_PER_TURN} downloads is the most for one turn.`, true);
+        const left = DOWNLOAD_BYTES_PER_TURN - r.downloads.bytes;
+        if (left <= 0) return textResult("Not downloaded: this turn already downloaded 1 GB.", true);
+        r.downloads.count++;
+        const got = yield* Effect.promise(() => downloadToProject(url, v.dir, name, r.abort.signal, left));
+        if (!("problem" in got)) r.downloads.bytes += got.bytes;
+        if ("problem" in got) return textResult(`Not downloaded: ${got.problem}`, true);
+        const out = yield* mediaImport(r, v, { path: got.path, ...(name ? { name } : {}) });
+        const source = { url: got.url, bytes: got.bytes, type: got.type, file: shownPath(got.path, v.dir) };
+        const first = out.content[0];
+        if (out.isError || first?.type !== "text") return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify({ downloaded: source }) }] };
+        try {
+          return { ...out, content: [{ type: "text" as const, text: JSON.stringify({ ...JSON.parse(first.text), source }, null, 1) }, ...out.content.slice(1)] };
+        } catch {
+          return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify({ source }) }] };
+        }
+      });
+
+    /**
+     * D194: claude asks whether a built-in tool may run (a can_use_tool control request; claude
+     * waits for the control_response). Decided by the turn's access (agentPermissions.ts decide):
+     * allow, deny with why, or a card in the Agent tab (Allow once, Always for this session, Deny),
+     * one card at a time. Always answered, except when claude cancels the request.
+     */
+    const canUseTool = (s: ClaudeSession, msg: Record<string, any>) => {
+      const requestId = String(msg.request_id ?? "");
+      const req = (msg.request ?? {}) as Record<string, any>;
+      const tool = isString(req.tool_name) ? req.tool_name : "";
+      const input = (req.input && typeof req.input === "object" ? req.input : {}) as Record<string, unknown>;
+      const toolUseId = isString(req.tool_use_id) ? req.tool_use_id : undefined;
+      let answered = false;
+      const reply = (response: Record<string, unknown>) => {
+        if (answered) return;
+        answered = true;
+        s.prompts.delete(requestId);
+        if (s.closed || !s.child?.stdin) return;
+        try {
+          s.child.stdin.write(`${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response: { ...response, ...(toolUseId ? { toolUseID: toolUseId } : {}) } } })}\n`);
+        } catch {}
+      };
+      const allow = () => reply({ behavior: "allow", updatedInput: input });
+      const deny = (message: string) => reply({ behavior: "deny", message });
+      const r = s.turn;
+      if (!r || r.turn.status !== "running" || r.cancelled) return deny("Not done: no turn is running in Uncut.");
+      // D194: approvals can't be trusted without the handshake: fail closed.
+      if (s.initFailed) return deny("Not done: Uncut couldn't set up approvals with Claude Code (it didn't answer initialize), so nothing that needs the user's OK runs in this session. Say what you would do.");
+      const project = realPath(r.owner.dir, r.owner.dir);
+      const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted });
+      const first = decide(tool, input, ctx());
+      if (first.kind === "allow") return allow();
+      if (first.kind === "deny") return deny(first.message);
+      // Its card is the one open (cards are shown one at a time).
+      let showing = false;
+      const close = () => {
+        if (showing && approval?.card.permission && approval.card.turnId === r.turn.id) approval.answer("stopped");
+      };
+      // claude gave up on it (an interrupt): no answer, and its card goes.
+      s.prompts.set(requestId, () => {
+        answered = true;
+        s.prompts.delete(requestId);
+        close();
+      });
+      const ask = async () => {
+        if (answered) return;
+        // Another card may be open (a question, a spend): this one waits for it.
+        while (approval && !r.abort.signal.aborted && !answered) await new Promise((done) => setTimeout(done, 150));
+        if (answered) return;
+        if (r.abort.signal.aborted) return deny("Not done: the turn was stopped.");
+        // An "Always" given on the card before may cover it now.
+        const d = decide(tool, input, ctx());
+        if (d.kind === "allow") return allow();
+        if (d.kind === "deny") return deny(d.message);
+        let always = false;
+        showing = true;
+        const answer = await Effect.runPromise(
+          askUser(r, d.title, 0, undefined, (_card, _a, _source, extra) => {
+            always = extra?.always === true && !!d.grant;
+          }, undefined, { permission: { tool, target: d.target, ...(d.why ? { why: d.why } : {}), always: !!d.grant } }),
+        ).finally(() => (showing = false));
+        if (answered) return;
+        if (answer === "allow") {
+          // A confirmed folder becomes a root of this chat (and --add-dir from the next message); other grants are remembered as they are.
+          if (always && d.grant?.startsWith("Root:")) {
+            const dir = d.grant.slice(5);
+            if (!r.owner.dirs.includes(dir) && r.owner.dirs.length < 16) r.owner.dirs.push(dir);
+          } else if (always && d.grant) r.owner.grants.add(d.grant);
+          return allow();
+        }
+        if (answer === "stopped") return deny("Not done: the turn was stopped.");
+        return deny(`Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`);
+      };
+      r.permissionQueue = r.permissionQueue.then(ask, ask).catch((error) => {
+        console.error(`[uncut] permission prompt for ${tool} failed: ${(error as Error).message}`);
+        deny("Not done: Uncut couldn't ask the user.");
+      });
+    };
 
     /**
      * generate_media (D99): a generator's result imported as media, an edit of this turn (Undo
@@ -2154,6 +2331,8 @@ export const layer = Layer.effect(
             return yield* beatGridTool(v, args);
           case "media_import":
             return yield* mediaImport(r, v, args);
+          case "media_download":
+            return yield* mediaDownload(r, v, args);
           case "contact_sheet": {
             const out = yield* contactSheet(v, args);
             // D189: a sheet of the edit counts as the critic's look.
@@ -2393,8 +2572,8 @@ export const layer = Layer.effect(
       persist(r.owner);
     };
 
-    const label = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name));
-    const doing = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, doingLabel(tool, input, plugins.owner(tool)?.name));
+    const label = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, stepLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
+    const doing = (tool: string, input: unknown) => friendlyText(view()?.session.project as Project | undefined, doingLabel(tool, input, plugins.owner(tool)?.name, view()?.dir));
 
     /** Live output (D139): a stream_event of the message claude is writing. */
     const onStream = (r: Running, event: Record<string, any>) => {
@@ -2503,6 +2682,26 @@ export const layer = Layer.effect(
       publishNow();
     };
 
+    /**
+     * D194: a turn's web use and the data it read. A WebSearch or WebFetch call marks the turn (then
+     * anything outside the project asks); secret-looking strings (20+ letters and digits) in other
+     * tools' results are kept, so a WebFetch address carrying one asks.
+     */
+    const watchData = (r: Running, msg: Record<string, any>) => {
+      const content = msg.message?.content;
+      if (!Array.isArray(content)) return;
+      for (const c of content as Array<Record<string, any>>) {
+        if (c?.type === "tool_use" && isString(c.name)) {
+          r.toolNames.set(String(c.id), c.name);
+          if (c.name === "WebSearch" || c.name === "WebFetch") r.owner.webUsed = true;
+        } else if (msg.type === "user" && c?.type === "tool_result") {
+          const name = r.toolNames.get(String(c.tool_use_id)) ?? "";
+          if (name === "WebSearch" || name === "WebFetch" || r.owner.tainted.size > 20_000) continue;
+          for (const m of resultText(c.content).matchAll(/[A-Za-z0-9_+/=-]{20,}/g)) if (/\d/.test(m[0]) && /[A-Za-z]/.test(m[0])) r.owner.tainted.add(m[0]);
+        }
+      }
+    };
+
     /** One stream-json line from a session's claude. */
     const onLine = (s: ClaudeSession, line: string) => {
       let msg: Record<string, any>;
@@ -2525,9 +2724,21 @@ export const layer = Layer.effect(
         }
         return;
       }
+      // D194: claude asks whether a built-in tool may run (--permission-prompt-tool stdio).
+      if (msg.type === "control_request" && msg.request?.subtype === "can_use_tool") return void canUseTool(s, msg);
+      if (msg.type === "control_response" && String(msg.response?.request_id ?? "") === s.initId) {
+        if (msg.response?.subtype !== "success") console.error(`[uncut] claude refused initialize: ${String(msg.response?.error ?? "no reason")}`);
+        return initDone(s, true);
+      }
+      if (msg.type === "control_cancel_request") {
+        s.prompts.get(String(msg.request_id))?.();
+        return;
+      }
       if (msg.type === "control_response" || msg.type === "control_request" || msg.type === "keep_alive") return;
       const r = s.turn;
       if (!r || r.turn.status !== "running") return;
+      // D194: what the turn did with the web and read from files, the subagents' work included.
+      watchData(r, msg);
       // Work from a subagent (none today) isn't the turn's own.
       if (msg.parent_tool_use_id) return;
       if (msg.type === "stream_event" || msg.type === "assistant" || msg.type === "user" || msg.type === "result") delivered(r);
@@ -2542,9 +2753,14 @@ export const layer = Layer.effect(
           if (!item) continue;
           item.status = c.is_error ? "error" : "done";
           delete item.doing;
+          // D194: a built-in tool's answer (a search's results, a page's summary, a command's output) opens from its row.
+          if (!c.is_error && item.tool && !/^[a-z]/.test(item.tool)) {
+            const said = resultText(c.content);
+            if (said.trim()) item.result = said.length > RESULT_MAX ? `${said.slice(0, RESULT_MAX - 3)}...` : said;
+          }
           // D182: a failed call shows why (the tool's answer, or claude's own "No such tool").
           if (c.is_error) {
-            const said = isString(c.content) ? c.content : Array.isArray(c.content) ? (c.content as Array<Record<string, unknown>>).filter((x) => x.type === "text" && isString(x.text)).map((x) => x.text as string).join("\n") : "";
+            const said = resultText(c.content);
             const why = said.replace(/<\/?tool_use_error>/g, "").trim();
             item.error = (why.length > 600 ? `${why.slice(0, 597)}...` : why) || "The tool reported an error.";
           }
@@ -2570,14 +2786,39 @@ export const layer = Layer.effect(
       s.turn = r;
       r.session = s;
       clearTimeout(s.idleTimer);
-      try {
-        // Attached images (D184) go first, as image content blocks, then the text.
-        const images = r.images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mimeType, data: img.data } }));
-        s.child!.stdin!.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [...images, { type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`);
-      } catch (error) {
-        closeSession(s, "kill");
-        finish(r, { status: "error", error: `Couldn't reach Claude Code: ${(error as Error).message}` });
+      const deliver = () => {
+        if (s.closed || r.turn.status !== "running" || s.turn !== r) return;
+        try {
+          // Attached images (D184) go first, as image content blocks, then the text.
+          const images = r.images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mimeType, data: img.data } }));
+          s.child!.stdin!.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [...images, { type: "text", text: r.message }] }, parent_tool_use_id: null })}\n`);
+        } catch (error) {
+          closeSession(s, "kill");
+          finish(r, { status: "error", error: `Couldn't reach Claude Code: ${(error as Error).message}` });
+        }
+      };
+      // D194: the message goes once claude answered initialize (or gave up waiting for it).
+      if (s.initialized) deliver();
+      else s.waiting = deliver;
+    };
+
+    /** D194: claude answered initialize, or didn't in time: the waiting message goes. */
+    const initDone = (s: ClaudeSession, answered: boolean) => {
+      if (s.initialized) return;
+      s.initialized = true;
+      clearTimeout(s.initTimer);
+      if (!answered) {
+        console.error(`[uncut] claude didn't answer initialize in ${initMs() / 1000} s; the message goes, and every call that needs an approval is refused`);
+        s.initFailed = true;
+        initWarning = "Claude Code didn't answer Uncut's setup, so approvals can't be asked: commands, file writes and anything else that needs your OK are refused in this session. Update Claude Code, or start a new message to try again.";
+        publish();
+      } else if (initWarning) {
+        initWarning = undefined;
+        publish();
       }
+      const w = s.waiting;
+      s.waiting = undefined;
+      w?.();
     };
 
     /**
@@ -2585,7 +2826,7 @@ export const layer = Layer.effect(
      * development, the Electron binary in Node mode in the packaged app (bin.ts took
      * ELECTRON_RUN_AS_NODE out of our environment, so it is set again for this one child).
      */
-    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined }): ClaudeSession | string => {
+    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly look?: boolean }): ClaudeSession | string => {
       let dir: string;
       try {
         dir = mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`));
@@ -2597,8 +2838,11 @@ export const layer = Layer.effect(
       const resumed = resume ? owner.sessionId : undefined;
       const mcpEntry = process.env.UNCUT_MCP_ENTRY || besideServer("./mcp.mjs");
       const thinking = thinkingDisplay();
-      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking });
-      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
+      const addDirs = [...owner.dirs].sort();
+      const look = choice.look === true;
+      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, look });
+      const initId = `init-${randomBytes(4).toString("hex")}`;
+      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), look, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
       try {
         writeFileSync(
           cfg,
@@ -2624,6 +2868,14 @@ export const layer = Layer.effect(
       const child = s.child;
       sessions.add(s);
       child.stdin!.on("error", () => {});
+      // D194: as the Agent SDK does before anything else (no hooks, SDK MCP servers or other
+      // options of its own, so the request carries only its subtype); the first message waits for
+      // the answer, at most INIT_MS.
+      try {
+        child.stdin!.write(`${JSON.stringify({ type: "control_request", request_id: initId, request: { subtype: "initialize" } })}\n`);
+      } catch {}
+      s.initTimer = setTimeout(() => initDone(s, false), initMs());
+      s.initTimer.unref?.();
       let buffer = "";
       // Decoded as a stream, so a character split across two chunks ("ó" in "Kraków") stays whole.
       child.stdout!.setEncoding("utf8");
@@ -2644,6 +2896,8 @@ export const layer = Layer.effect(
         settled = true;
         if (buffer.trim()) onLine(s, buffer.trim());
         s.closed = true;
+        clearTimeout(s.initTimer);
+        s.waiting = undefined;
         sessions.delete(s);
         clearTimeout(s.idleTimer);
         clearTimeout(s.killTimer);
@@ -2659,7 +2913,7 @@ export const layer = Layer.effect(
         if (s.thinking && !s.gotInit && /thinking-display/i.test(s.stderr)) {
           thinkingDisplayRefused = true;
           console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
-          const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort });
+          const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, look: s.look });
           if (typeof again === "string") return finish(r, { status: "error", error: again });
           session = again;
           return writeTurn(again, r);
@@ -2668,7 +2922,7 @@ export const layer = Layer.effect(
         if (s.resumed && !s.gotInit && /no conversation found/i.test(s.stderr)) {
           s.owner.sessionId = undefined;
           persist(s.owner);
-          const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort });
+          const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, look: s.look });
           if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });
           session = fresh;
           return writeTurn(fresh, r);
@@ -2720,7 +2974,19 @@ export const layer = Layer.effect(
           .filter((m) => text.includes(`@${m.label}`))
           .slice(0, 50)
           .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
-        const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), note].filter(Boolean);
+        const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), TOOLS_LINE, note].filter(Boolean);
+        // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
+        for (const dir of mentionedDirs(text, v.dir, (p) => {
+          try {
+            const st = statSync(p);
+            return st.isDirectory() ? "dir" : st.isFile() ? "file" : undefined;
+          } catch {
+            return undefined;
+          }
+        })) {
+          if (!owner.dirs.includes(dir) && !owner.mentioned.includes(dir) && owner.mentioned.length < 16) owner.mentioned.push(dir);
+        }
+        const dirsKey = [...owner.dirs].sort().join("\n");
         // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
         const skip = access === "edit" && skipStoryboard;
         const planBlock = yield* Effect.promise(async () => {
@@ -2740,12 +3006,12 @@ export const layer = Layer.effect(
         // and effort (D184: another choice starts another claude that resumes the conversation).
         const model = modelFor(askedModel);
         let s = session;
-        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || !s.child || s.child.exitCode !== null)) {
+        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || s.dirsKey !== dirsKey || s.look !== (access === "look") || !s.child || s.child.exitCode !== null)) {
           closeSession(s, "graceful");
           s = undefined;
         }
         if (!s) {
-          const started = spawnSession(owner, bin, toolsKey, true, { model, effort });
+          const started = spawnSession(owner, bin, toolsKey, true, { model, effort, look: access === "look" });
           if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
           s = session = started;
         }
@@ -2807,6 +3073,9 @@ export const layer = Layer.effect(
           skipStoryboard: skip,
           looked: { sheet: false, phone: false },
           reviewRounds: 0,
+          permissionQueue: Promise.resolve(),
+          toolNames: new Map(),
+          downloads: { bytes: 0, count: 0 },
         };
         running = r;
         persist(owner);

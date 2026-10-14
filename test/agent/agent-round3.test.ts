@@ -92,11 +92,16 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     const argv = run.argv;
     assert.equal(flagValue(argv, "--setting-sources"), "", "no user, project or local settings: no hooks, plugins, rules or MCP servers of the user's");
     assert.ok(argv.includes("--strict-mcp-config"), "only Uncut's MCP server");
-    assert.equal(flagValue(argv, "--tools"), "", "no built-in tools (no Bash, Read, Edit)");
+    // D194: Claude Code's own tools (web, files, shell, subagents), every prompt answered by Uncut over stdio.
+    assert.equal(flagValue(argv, "--tools"), "default", "the built-in tools are on");
+    assert.ok(!argv.some((a, i) => a === "--tools" && argv[i + 1] === ""), "no --tools \"\"");
     assert.equal(flagValue(argv, "--allowedTools"), "mcp__uncut");
+    assert.equal(flagValue(argv, "--permission-mode"), "default");
+    assert.equal(flagValue(argv, "--permission-prompt-tool"), "stdio");
     assert.equal(flagValue(argv, "--thinking-display"), "summarized", "thinking summaries in print mode");
     assert.ok(!argv.includes("--bare"), "no --bare: it would skip the keychain login");
-    assert.ok(!argv.includes("--settings"), "no dead showThinkingSummaries setting");
+    assert.ok(!/showThinkingSummaries/.test(flagValue(argv, "--settings") ?? ""), "no dead showThinkingSummaries setting");
+    assert.ok(JSON.parse(flagValue(argv, "--settings")!).permissions.deny.includes("Read(~/.ssh/**)"), "D194: the secret deny rules");
     assert.ok(!argv.includes("--model") && !argv.includes("--effort"), "no choice made: Claude Code's defaults");
     assert.equal(run.alwaysLoad, true, "the uncut MCP server is alwaysLoad: never deferred behind tool search");
     assert.equal(run.envValues.ENABLE_TOOL_SEARCH, "false");

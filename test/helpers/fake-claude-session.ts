@@ -15,7 +15,16 @@
 //   { missing: name, args } claude's own failure for a tool it doesn't have (bare name): the call
 //     shows, then an is_error tool_result "No such tool available" (the MCP server isn't asked)
 //   { tool, args, slowInput: ms } the call's input streams in pieces, ms apart (input_json_delta)
+//   { builtin: "Bash", args, result?, prompt? } D194: a built-in tool call (WebSearch, WebFetch, Bash,
+//     Write, ...): the tool_use shows, then (unless prompt is false: claude's own auto-allow) a
+//     can_use_tool control_request goes to Uncut (--permission-prompt-tool stdio) and the step waits
+//     for its control_response: allow → a tool_result with `result` (default "ok"), deny → an error
+//     tool_result with Uncut's message. $FAKE_RESULT_LOG gets { builtin, decision }.
 // $FAKE_LINGER: stdin closing doesn't end it.
+// D194: an initialize control_request is answered like the SDK expects ({ commands, models, ... }).
+// $FAKE_REQUIRE_INIT: a message before initialize fails its turn ("initialize first"), as a host
+//   that skipped the SDK handshake. $FAKE_IGNORE_INIT: initialize gets no answer at all.
+//   The prompt log records { initialized } per message.
 // $FAKE_NO_THINKING_DISPLAY: started with --thinking-display, it says commander's unknown-option
 //   error on stderr and exits 1 before init (as a claude that doesn't know the flag).
 // $FAKE_RESUME_GONE=<id>: started with --resume <id>, it says "No conversation found" and exits.
@@ -28,6 +37,7 @@ import { createInterface } from "node:readline";
 
 type Step =
   | { tool: string; args?: unknown; slowInput?: number }
+  | { builtin: string; args?: unknown; result?: string; prompt?: boolean }
   | { missing: string; args?: unknown }
   | { text: string; split?: boolean; slow?: number }
   | { think: string }
@@ -91,6 +101,10 @@ out({
   mcp_servers: [{ name: "uncut", status: listed.result ? "connected" : "failed" }],
 });
 
+// D194: can_use_tool requests sent to Uncut, waiting for its control_response.
+const permissionWaits = new Map<string, (response: Record<string, any>) => void>();
+let permissionId = 0;
+
 /** Raised inside a turn when an interrupt arrives. */
 class Interrupted extends Error {}
 let abort: AbortController | undefined;
@@ -111,6 +125,7 @@ const orStop = <T>(p: Promise<T>) =>
   });
 
 let messages = 0;
+let initialized = false;
 let continued: string | null = resume;
 let msgCount = 0;
 /** One assistant message: streamed first with partial messages, then whole. */
@@ -159,10 +174,15 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
         tools: flag("--tools"),
         allowed: flag("--allowedTools"),
         partial,
+        initialized,
       })}\n`,
     );
   }
   continued = sessionId;
+  if (process.env.FAKE_REQUIRE_INIT && !initialized) {
+    out({ type: "result", subtype: "error_during_execution", is_error: true, result: "initialize first: no initialize control_request before the message", duration_ms: 1, num_turns: 0, session_id: sessionId });
+    return;
+  }
   let rev = 0;
   let steps = 0;
   let exitAfter = false;
@@ -211,6 +231,30 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     if ("fail" in step) {
       out({ type: "result", subtype: "error_during_execution", is_error: true, result: step.fail, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId });
       return;
+    }
+    if ("builtin" in step) {
+      steps++;
+      const useId = `toolu_${process.pid}_${messages}_${steps}`;
+      const id = `msg_${process.pid}_${++msgCount}`;
+      const input = step.args ?? {};
+      if (partial) {
+        out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, parent_tool_use_id: null, session_id: sessionId });
+        out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: useId, name: step.builtin, input: {} } }, parent_tool_use_id: null, session_id: sessionId });
+        out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } }, parent_tool_use_id: null, session_id: sessionId });
+        out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null, session_id: sessionId });
+      }
+      out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "tool_use", id: useId, name: step.builtin, input }] }, parent_tool_use_id: null, session_id: sessionId });
+      let decision: Record<string, any> = { behavior: "allow" };
+      if (step.prompt !== false) {
+        const requestId = `perm-${process.pid}-${++permissionId}`;
+        const answered = new Promise<Record<string, any>>((resolve) => permissionWaits.set(requestId, resolve));
+        out({ type: "control_request", request_id: requestId, request: { subtype: "can_use_tool", tool_name: step.builtin, input, tool_use_id: useId, permission_suggestions: [] } });
+        decision = await orStop(answered);
+      }
+      if (process.env.FAKE_RESULT_LOG) appendFileSync(process.env.FAKE_RESULT_LOG, `${JSON.stringify({ builtin: step.builtin, decision })}\n`);
+      const allowed = decision.behavior === "allow";
+      out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: useId, is_error: !allowed, content: allowed ? (step.result ?? "ok") : String(decision.message ?? "denied") }] }, parent_tool_use_id: null, session_id: sessionId });
+      continue;
     }
     if ("missing" in step) {
       steps++;
@@ -279,10 +323,28 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   } catch {
     return;
   }
+  if (msg.type === "control_response") {
+    const id = String(msg.response?.request_id ?? "");
+    const wait = permissionWaits.get(id);
+    if (wait) {
+      permissionWaits.delete(id);
+      wait(msg.response?.subtype === "success" ? (msg.response.response ?? {}) : { behavior: "deny", message: String(msg.response?.error ?? "error") });
+    }
+    return;
+  }
+  if (msg.type === "control_request" && msg.request?.subtype === "initialize") {
+    if (process.env.FAKE_IGNORE_INIT) return;
+    initialized = true;
+    out({ type: "control_response", response: { subtype: "success", request_id: msg.request_id, response: { commands: [], models: [], account: {}, output_style: "default" } } });
+    return;
+  }
   if (msg.type === "control_request") {
     if (msg.request?.subtype === "interrupt") {
       if (process.env.FAKE_IGNORE_INTERRUPT) return;
       out({ type: "control_response", response: { subtype: "success", request_id: msg.request_id } });
+      // Permission prompts in flight are cancelled, as claude does on an interrupt.
+      for (const id of permissionWaits.keys()) out({ type: "control_cancel_request", request_id: id });
+      permissionWaits.clear();
       abort?.abort();
       return;
     }
