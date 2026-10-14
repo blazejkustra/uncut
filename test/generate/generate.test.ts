@@ -228,7 +228,7 @@ test("the Generate tab's RPCs and the agent's generate_media, with stub APIs and
     assert.deepEqual([bar.width, bar.height], [320, 180]);
     assert.equal(gen[3]!.text, "GPT Image makes pictures, not video (kind image).");
     assert.equal(turn.spend, undefined, "free generators cost nothing");
-    assert.deepEqual(turn.edits.map((e: any) => e.summary), ["Generated wordmark.svg", `Generated ${bar.name}`]);
+    assert.deepEqual(turn.edits.map((e: any) => e.summary), ["Generated wordmark", `Generated ${bar.name}`]);
     assert.deepEqual(turn.items.filter((i: any) => i.kind === "step").map((i: any) => i.text), ["Generated a video with Veo", "Generated a picture from SVG", "Generated a video from SVG", "Generated a video with GPT Image"]);
     // A frame of the animation, drawn at t = 0.5 s: about half the bar is orange.
     const barFile = join(snap.dir, bar.path);

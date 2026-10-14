@@ -64,6 +64,9 @@ export const RPC_METHODS = {
   captureStart: "capture.start",
   captureStop: "capture.stop",
   captureSave: "capture.save",
+  captureBoot: "capture.boot",
+  captureRecord: "capture.record",
+  agentScreenTake: "agent.screenTake",
   generateList: "generate.list",
   generateStart: "generate.start",
   generateJobs: "generate.jobs",
@@ -377,6 +380,8 @@ export const CaptureDevice = Schema.Struct({
   recordable: Schema.Boolean,
   // Why it can't be recorded (yet), in a few words.
   reason: Schema.optional(Schema.String),
+  // D143: off now, but Argent can boot it on the user's click (a shut-down simulator, an AVD).
+  bootable: Schema.optional(Schema.Boolean),
 });
 export type CaptureDevice = typeof CaptureDevice.Type;
 
@@ -390,7 +395,9 @@ export const CaptureState = Schema.Struct({
   install: Schema.String,
   problem: Schema.optional(Schema.String),
   devices: Schema.Array(CaptureDevice),
-  recording: Schema.Array(Schema.Struct({ device: Schema.String, startedAt: Schema.String })),
+  recording: Schema.Array(Schema.Struct({ device: Schema.String, startedAt: Schema.String, flow: Schema.optional(Schema.String) })),
+  // D143: the open project's saved flows (flows/<name>.yaml), by name.
+  flows: Schema.optional(Schema.Array(Schema.String)),
 });
 export type CaptureState = typeof CaptureState.Type;
 
@@ -405,6 +412,21 @@ export type TakeKind = typeof TakeKind.Type;
  */
 export const takeUploadName = (kind: TakeKind, ext: "webm" | "mp4") => `uncut-take-${kind}-${Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("")}.${ext}`;
 export const TAKE_UPLOAD_NAME = /^uncut-take-(voiceover|camera|screen)-[0-9a-f]{12}(?: \d+)?\.(?:webm|mp4)$/;
+
+/** D143: how the Capture tab records a device: what to do first, and Argent's own options. */
+export const CaptureOrientation = Schema.Literals(["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"]);
+export type CaptureOrientation = typeof CaptureOrientation.Type;
+export const CaptureOptions = Schema.Struct({
+  showTouches: Schema.optional(Schema.Boolean),
+  // Cut the parts where the screen doesn't change (Argent's trimStatic).
+  trimStatic: Schema.optional(Schema.Boolean),
+  // Argent stops the take by itself after this long (1 to 600 s).
+  maxSeconds: Schema.optional(Schema.Number),
+  orientation: Schema.optional(CaptureOrientation),
+  // Opened on the device before the take.
+  bundleId: Schema.optional(Schema.String),
+});
+export type CaptureOptions = typeof CaptureOptions.Type;
 
 export class CaptureError extends Schema.TaggedError<CaptureError>()("CaptureError", {
   reason: Schema.Literals(["no-project", "unavailable", "failed"]),
@@ -590,6 +612,10 @@ export const AgentApproval = Schema.Struct({
   estimate: Schema.Number,
   // ISO time it stops waiting.
   until: Schema.String,
+  // D144: a screen recording the agent asks for (screen_record): the card picks the screen or
+  // window (the agent's `source` preselected by name), Record or Don't. The renderer records and
+  // answers with agent.screenTake. Absent: a spend card (D99).
+  screen: Schema.optional(Schema.Struct({ source: Schema.optional(Schema.String), seconds: Schema.Number, withMic: Schema.Boolean })),
 });
 export type AgentApproval = typeof AgentApproval.Type;
 
@@ -601,6 +627,9 @@ export const AgentState = Schema.Struct({
   turns: Schema.Array(AgentTurn),
   ui: Schema.optional(AgentUi),
   approval: Schema.optional(AgentApproval),
+  // D144: the screen_record card id whose take the server waits for; gone (turn stopped, project
+  // closed, timed out) means the renderer cancels that take.
+  screenTake: Schema.optional(Schema.String),
 });
 export type AgentState = typeof AgentState.Type;
 
@@ -941,7 +970,11 @@ const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
 });
 
 // The user's answer to the running turn's approval (D99); an unknown or expired id is ignored.
-const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, { payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean }) });
+// accepted: false when the card was no longer open (answered, timed out, the turn stopped or another card replaced it).
+const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, { payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean, source: Schema.optional(Schema.String) }), success: Schema.Struct({ accepted: Schema.Boolean }) });
+// D144: the renderer's answer to an allowed screen_record: the uploaded take (media/uploads, named
+// like takeUploadName("screen", ...)) with the source's name, or what went wrong.
+const AgentScreenTakeRpc = Rpc.make(RPC_METHODS.agentScreenTake, { payload: Schema.Struct({ id: Schema.String, path: Schema.optional(Schema.String), source: Schema.optional(Schema.String), problem: Schema.optional(Schema.String) }) });
 
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
@@ -1037,12 +1070,27 @@ const PluginsEnableRpc = Rpc.make(RPC_METHODS.pluginsEnable, {
 // Stop imports the take into the open project as one user edit and returns its media id.
 const CaptureDevicesRpc = Rpc.make(RPC_METHODS.captureDevices, { payload: Empty, success: CaptureState, error: CaptureError });
 const CaptureStartRpc = Rpc.make(RPC_METHODS.captureStart, {
-  payload: Schema.Struct({ device: Schema.String, showTouches: Schema.optional(Schema.Boolean) }),
+  payload: Schema.Struct({ device: Schema.String, ...CaptureOptions.fields }),
   success: Schema.Struct({ device: Schema.String, startedAt: Schema.String }),
   error: CaptureError,
 });
 const CaptureStopRpc = Rpc.make(RPC_METHODS.captureStop, {
   payload: Schema.Struct({ device: Schema.String }),
+  success: Schema.Struct({ mediaId: Schema.String, name: Schema.String, seconds: Schema.Number }),
+  error: CaptureError,
+});
+
+// D143: boot a shut-down simulator or an AVD (only on the user's click; never the agent). Returns the
+// id to record (an AVD's emulator gets a serial of its own).
+const CaptureBootRpc = Rpc.make(RPC_METHODS.captureBoot, {
+  payload: Schema.Struct({ device: Schema.String }),
+  success: Schema.Struct({ device: Schema.String, name: Schema.String }),
+  error: CaptureError,
+});
+// D143: a take that replays a saved flow while recording; it ends with the flow and is imported as
+// one user edit, like Stop's.
+const CaptureRecordRpc = Rpc.make(RPC_METHODS.captureRecord, {
+  payload: Schema.Struct({ device: Schema.String, flow: Schema.String, showTouches: Schema.optional(Schema.Boolean), orientation: Schema.optional(CaptureOrientation), bundleId: Schema.optional(Schema.String) }),
   success: Schema.Struct({ mediaId: Schema.String, name: Schema.String, seconds: Schema.Number }),
   error: CaptureError,
 });
@@ -1084,6 +1132,8 @@ export const WsRpcGroup = RpcGroup.make(
   CaptureStartRpc,
   CaptureStopRpc,
   CaptureSaveRpc,
+  CaptureBootRpc,
+  CaptureRecordRpc,
   PluginsListRpc,
   PluginsApproveRpc,
   PluginsRevokeRpc,
@@ -1115,6 +1165,7 @@ export const WsRpcGroup = RpcGroup.make(
   AgentCancelRpc,
   AgentUndoTurnRpc,
   AgentApproveRpc,
+  AgentScreenTakeRpc,
   MediaImportRpc,
   MediaJobsRpc,
   MediaThumbnailsRpc,

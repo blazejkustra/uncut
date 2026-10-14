@@ -9,6 +9,7 @@ import { createContext, Fragment, useContext, useEffect, useRef, useState, type 
 
 import { Composer, withChips } from "./Composer.tsx";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
+import { cancelTake, clock, getRecorder, loadSources, refreshAccess, startTake, stopTake, useRecorder } from "../capture/recorder.ts";
 
 /** The project, for names instead of ids in what the cards show (AG5). */
 const ProjectContext = createContext<Project | undefined>(undefined);
@@ -63,6 +64,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
         ) : (
           turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={agent?.approval?.turnId === t.id ? agent.approval : undefined} />)
         )}
+        <AgentTakeLine />
         {sessionSpend > 0 && (
           <div className="agent-spend small muted" data-testid="agent-session-spend">
             About ${sessionSpend.toFixed(2)} billed to your API keys in this project so far (estimates).
@@ -197,7 +199,7 @@ function TurnCard({ turn: t, busy, online, approval }: { turn: AgentTurn; busy: 
               ))}
             </div>
           )}
-          {approval && <ApprovalCard approval={approval} online={online} />}
+          {approval && (approval.screen ? <ScreenApprovalCard approval={approval} screen={approval.screen} online={online} /> : <ApprovalCard approval={approval} online={online} />)}
           {t.error && (
             <p className="err" data-testid="agent-turn-error">
               {t.error}
@@ -257,6 +259,107 @@ function ApprovalCard({ approval, online }: { approval: AgentApproval; online: b
           Allow
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * D144: the agent asks to record the screen (screen_record). The user picks the screen or window
+ * (the agent's suggestion preselected by name) and presses Record, or Don't; nothing is recorded
+ * otherwise. The take runs in this window's recorder and goes back to the agent's turn.
+ */
+function ScreenApprovalCard({ approval, screen, online }: { approval: AgentApproval; screen: NonNullable<AgentApproval["screen"]>; online: boolean }) {
+  const [sent, setSent] = useState(false);
+  const sources = useRecorder((s) => s.sources);
+  const loading = useRecorder((s) => s.loadingSources);
+  const sourcesError = useRecorder((s) => s.sourcesError);
+  const micAccess = useRecorder((s) => s.access?.microphone);
+  const phase = useRecorder((s) => s.phase);
+  const [picked, setPicked] = useState("");
+  useEffect(() => {
+    void refreshAccess();
+    void loadSources();
+  }, [approval.id]);
+  // The agent's suggestion by name, else the first screen.
+  useEffect(() => {
+    if (picked || !sources?.length) return;
+    const want = screen.source?.toLowerCase();
+    const match = (want && (sources.find((s) => s.name.toLowerCase() === want) ?? sources.find((s) => s.name.toLowerCase().includes(want)))) || sources.find((s) => s.kind === "screen") || sources[0];
+    if (match) setPicked(match.id);
+  }, [sources, screen.source, picked]);
+  const source = sources?.find((s) => s.id === picked);
+  const withMic = screen.withMic && (micAccess === "granted" || micAccess === "unknown");
+  const record = async () => {
+    if (!source) return;
+    setSent(true);
+    // Only a card the server still has open starts a take (not one that timed out, was replaced or whose turn stopped).
+    const accepted = await actions.agentApprove(approval.id, true, source.name);
+    if (!accepted) return;
+    if (getRecorder().phase !== "idle") return void actions.agentScreenTake(approval.id, { problem: "Another recording is running in Uncut." });
+    void startTake({ mode: "screen", source, withMic, seconds: screen.seconds, agent: { id: approval.id } });
+  };
+  const decline = () => {
+    setSent(true);
+    void actions.agentApprove(approval.id, false);
+  };
+  return (
+    <div className="approval" data-testid="agent-approval" data-kind="screen" data-id={approval.id}>
+      <div className="approval-text">{approval.text}?</div>
+      <select className="field input" data-testid="agent-screen-source" value={picked} disabled={sent || loading} onChange={(e) => setPicked(e.target.value)} title="Screen or window">
+        {!sources?.length && <option value="">{loading ? "Looking for screens and windows…" : "No screens or windows"}</option>}
+        {(["screen", "window"] as const).map((kind) => {
+          const group = (sources ?? []).filter((s) => s.kind === kind);
+          return group.length ? (
+            <optgroup key={kind} label={kind === "screen" ? "Screens" : "Windows"}>
+              {group.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </optgroup>
+          ) : null;
+        })}
+      </select>
+      {sourcesError && <div className="inline-error small">{sourcesError}</div>}
+      <div className="approval-sub">{`${screen.seconds} s after a 3-2-1${withMic ? ", with the microphone" : screen.withMic ? ", without the microphone (Uncut isn't allowed to use it)" : ""}. No answer in 2 minutes means no.`}</div>
+      <div className="approval-btns">
+        <button className="btn ghost" data-testid="agent-decline" disabled={!online || sent} onClick={decline}>
+          Don't
+        </button>
+        <button className="btn primary" data-testid="agent-allow" disabled={!online || sent || !source || phase !== "idle"} onClick={() => void record()}>
+          Record
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** D144: the screen recording the user allowed, while it counts down, records and is sent. */
+function AgentTakeLine() {
+  const agentId = useRecorder((s) => s.agentId);
+  const phase = useRecorder((s) => s.phase);
+  const count = useRecorder((s) => s.count);
+  const startedAt = useRecorder((s) => s.startedAt);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [phase]);
+  if (!agentId || phase === "idle") return null;
+  return (
+    <div className="agent-take small" data-testid="agent-screen-take" data-phase={phase}>
+      <span className="capture-timer">{phase === "countdown" ? `Recording in ${count ?? ""}` : phase === "recording" ? `Recording ${clock((now - (startedAt ?? now)) / 1000)}` : "Sending the recording…"}</span>
+      {phase === "recording" && (
+        <button className="link-btn" data-testid="agent-screen-stop" onClick={() => void stopTake()}>
+          Stop now
+        </button>
+      )}
+      {phase !== "saving" && (
+        <button className="link-btn" data-testid="agent-screen-cancel" onClick={() => cancelTake()}>
+          Cancel
+        </button>
+      )}
     </div>
   );
 }

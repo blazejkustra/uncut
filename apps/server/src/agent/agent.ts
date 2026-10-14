@@ -16,7 +16,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
@@ -49,7 +49,8 @@ import { ProjectFormat } from "../project/format.ts";
 import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
 import { Plugins } from "../plugins/plugins.ts";
-import { applyDeclared, appliedNote } from "../capture/capture.ts";
+import { applyDeclared, appliedNote, Capture } from "../capture/capture.ts";
+import { uploadedTake } from "../capture/takes.ts";
 import { CONFIRM_OVER, Generator, needsKeyLine, TURN_CAP } from "../generate/generate.ts";
 
 /** How long an approval card waits for the user (D99). */
@@ -94,7 +95,9 @@ export interface AgentShape {
   readonly send: (input: { prompt: string; frame?: number | undefined; selected?: string | undefined; mentions?: ReadonlyArray<AgentMention> | undefined }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;
   /** The user's answer to the running turn's approval card (D99). */
-  readonly approve: (id: string, allow: boolean) => Effect.Effect<void>;
+  readonly approve: (id: string, allow: boolean, source?: string) => Effect.Effect<{ readonly accepted: boolean }>;
+  /** D144: the renderer's answer to an allowed screen_record (the uploaded take, or what went wrong). */
+  readonly screenTake: (answer: { readonly id: string; readonly path?: string | undefined; readonly source?: string | undefined; readonly problem?: string | undefined }) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
   /** For the bridge: the tool list, or undefined when `token` isn't the live session's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
@@ -479,6 +482,7 @@ export const layer = Layer.effect(
     const plugins = yield* Plugins;
     const generator = yield* Generator;
     const keys = yield* Keys;
+    const capture = yield* Capture;
     const sounds = yield* Library;
     let uiCount = 0;
     const { address } = yield* HttpServer.HttpServer;
@@ -498,7 +502,9 @@ export const layer = Layer.effect(
     const testRun = isTestRun(process.env, config.keysFd);
     const approvalMs = () => (testRun && Number(process.env.UNCUT_APPROVAL_MS) > 0 ? Number(process.env.UNCUT_APPROVAL_MS) : APPROVAL_MS);
     // The running turn's one open approval card (D99) and how to answer it.
-    let approval: { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped") => void } | undefined;
+    let approval: { readonly card: AgentApproval; readonly answer: (a: "allow" | "deny" | "timeout" | "stopped", source?: string) => void } | undefined;
+    // D144: allowed screen_record calls waiting for the renderer's take, by card id.
+    const screenWaits = new Map<string, { readonly turnId: string; readonly done: (answer: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => void }>();
 
     const view = () => Effect.runSync(projects.view);
 
@@ -513,6 +519,10 @@ export const layer = Layer.effect(
         turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
         ...(owner.ui ? { ui: owner.ui } : {}),
         ...(approval && running && running.owner === owner && running.turn.id === approval.card.turnId ? { approval: approval.card } : {}),
+        ...(() => {
+          const live = running && running.owner === owner ? [...screenWaits].find(([, w]) => w.turnId === running!.turn.id)?.[0] : undefined;
+          return live ? { screenTake: live } : {};
+        })(),
       };
     };
     const publish = () => Effect.runSync(SubscriptionRef.set(stateRef, stateNow()));
@@ -1578,19 +1588,21 @@ export const layer = Layer.effect(
     };
 
     /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */
-    const askUser = (r: Running, text: string, estimate: number) =>
+    const askUser = (r: Running, text: string, estimate: number, screen?: AgentApproval["screen"], onAnswer?: (card: AgentApproval, a: "allow" | "deny" | "timeout" | "stopped", source?: string) => void) =>
       Effect.promise(
         () =>
           new Promise<"allow" | "deny" | "timeout" | "stopped">((resolve) => {
             const ms = approvalMs();
-            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString() };
+            const card: AgentApproval = { id: randomUUID(), turnId: r.turn.id, text, estimate, until: new Date(Date.now() + ms).toISOString(), ...(screen ? { screen } : {}) };
             let settled = false;
-            const answer = (a: "allow" | "deny" | "timeout" | "stopped") => {
+            const answer = (a: "allow" | "deny" | "timeout" | "stopped", source?: string) => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
               r.abort.signal.removeEventListener("abort", onStop);
               if (approval?.card.id === card.id) approval = undefined;
+              // Registered before the card goes away, so a take that comes back at once is heard.
+              onAnswer?.(card, a, source);
               publish();
               resolve(a);
             };
@@ -1667,6 +1679,66 @@ export const layer = Layer.effect(
         });
       });
 
+    /**
+     * screen_record (D144): the user is asked on a card (they pick the screen or window, the agent's
+     * suggestion preselected); on Record the renderer records for `seconds` after a 3-2-1, uploads the
+     * take and answers with agent.screenTake; it's imported as an edit of this turn. Never silent.
+     */
+    const screenRecord = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
+      Effect.gen(function* () {
+        const seconds = typeof args.seconds === "number" && Number.isFinite(args.seconds) ? args.seconds : NaN;
+        if (!(seconds > 0 && seconds <= 300)) return textResult("seconds must be more than 0 and at most 300.", true);
+        const source = typeof args.source === "string" && args.source.trim() ? args.source.trim().slice(0, 200) : undefined;
+        const withMic = args.withMic === true;
+        const secs = Math.round(seconds * 10) / 10;
+        let waiting: Promise<{ path?: string | undefined; source?: string | undefined; problem?: string | undefined }> | undefined;
+        const answer = yield* askUser(r, `Record ${source ? `"${source}"` : "your screen"} for ${secs} s${withMic ? " with the microphone" : ""}`, 0, { ...(source ? { source } : {}), seconds: secs, withMic }, (card, a) => {
+          if (a !== "allow") return;
+          waiting = new Promise((resolve) => {
+            const timer = setTimeout(() => done({ problem: "The recording didn't come back in time." }), (secs + 3) * 1000 + 120_000);
+            const onStop = () => done({ problem: "The turn was stopped." });
+            const done = (x: { path?: string | undefined; source?: string | undefined; problem?: string | undefined }) => {
+              clearTimeout(timer);
+              r.abort.signal.removeEventListener("abort", onStop);
+              screenWaits.delete(card.id);
+              // The renderer sees the wait end and cancels a take still running (D144).
+              publish();
+              resolve(x);
+            };
+            r.abort.signal.addEventListener("abort", onStop, { once: true });
+            screenWaits.set(card.id, { turnId: r.turn.id, done });
+          });
+        });
+        if (answer !== "allow" || !waiting)
+          return textResult({ approved: false, message: answer === "deny" ? "The user didn't want the screen recorded. Nothing was recorded." : answer === "timeout" ? "Nobody answered the card in the Agent tab within 2 minutes, so nothing was recorded." : "The turn was stopped, so nothing was recorded.", next: "Don't ask again in this turn unless the user asks." }, true);
+        const take = yield* Effect.promise(() => waiting!);
+        if (take.problem || !take.path) return textResult(`Nothing was recorded: ${take.problem ?? "no file came back"}`, true);
+        const name = take.source?.trim().slice(0, 120) || undefined;
+        const saved = yield* capture.saveForTurn({ path: take.path, kind: "screen", turnId: r.turn.id, dir: v.dir, ...(name ? { name, device: name } : {}) }).pipe(
+          Effect.map((x) => ({ ok: true as const, x })),
+          Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })),
+        );
+        if (!saved.ok) return textResult(`The recording wasn't added: ${saved.message}`, true);
+        const { snapshot } = saved.x;
+        const entry = (snapshot?.project as Project | undefined)?.media.find((m) => m.id === saved.x.mediaId);
+        if (snapshot && entry) {
+          r.turn.edits.push({ revision: snapshot.revision, summary: `Recorded ${saved.x.name}`, lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)] });
+          r.owner.seen.add(snapshot.revision);
+        }
+        persist(r.owner);
+        publish();
+        return textResult({
+          id: saved.x.mediaId,
+          name: saved.x.name,
+          path: saved.x.path,
+          seconds: saved.x.seconds,
+          ...(entry?.probe ? { frames: entry.probe.frames, width: entry.probe.width, height: entry.probe.height } : {}),
+          ...(name ? { source: name } : {}),
+          ...(snapshot ? { revision: snapshot.revision } : {}),
+          note: "The recording is in Media (an edit of this turn: Undo turn removes it). Place it with timeline_edit.",
+        });
+      });
+
     const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
       Effect.gen(function* () {
         const v = view();
@@ -1737,6 +1809,8 @@ export const layer = Layer.effect(
             return yield* graphicWrite(v, args);
           case "generate_media":
             return yield* generateMedia(r, v, args);
+          case "screen_record":
+            return yield* screenRecord(r, v, args);
           case "media_analyze":
             return yield* mediaAnalyze(v, args);
           case "media_rank":
@@ -2268,9 +2342,23 @@ export const layer = Layer.effect(
       cancel: Effect.sync(() => {
         if (running) stop(running);
       }),
-      approve: (id, allow) =>
+      approve: (id, allow, source) =>
         Effect.sync(() => {
-          if (approval?.card.id === id) approval.answer(allow ? "allow" : "deny");
+          if (approval?.card.id !== id) return { accepted: false };
+          approval.answer(allow ? "allow" : "deny", source);
+          return { accepted: true };
+        }),
+      screenTake: ({ id, path, source, problem }) =>
+        Effect.sync(() => {
+          const wait = screenWaits.get(id);
+          if (wait) return wait.done({ ...(path ? { path } : {}), ...(source ? { source } : {}), ...(problem ? { problem: problem.slice(0, 400) } : {}) });
+          // Nobody waits for it any more (the turn stopped, the project changed): the upload goes,
+          // if it's really a take in the open project's media/uploads.
+          const v = view();
+          if (path && v) {
+            const mediaPaths = v.session.project.media.map((m) => m.path);
+            void uploadedTake(path, v.dir, mediaPaths).then((found) => ("file" in found ? rm(found.file, { force: true }) : undefined)).catch(() => {});
+          }
         }),
       undoTurn: (turnId) =>
         Effect.gen(function* () {

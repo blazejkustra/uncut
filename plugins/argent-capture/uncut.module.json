@@ -5,7 +5,7 @@
   "kind": "capture-source",
   "name": "Argent",
   "version": "0.1.0",
-  "description": "Records iOS simulators and Android emulators and devices with Argent, on a timer or while replaying a saved flow, and re-shoots a flow's take when the app changes.",
+  "description": "Records iOS simulators and Android emulators and devices with Argent, on a timer or while replaying a saved flow, and re-shoots a flow's take when the app changes. The Capture tab can boot a simulator or emulator when you ask it to.",
   "author": "Software Mansion",
   "license": "MIT",
   "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
@@ -40,6 +40,8 @@
           "seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 600, "description": "Record for this long instead of replaying a flow." },
           "saveFlow": { "type": "string", "description": "Save the replayed flow in the project's flows/ folder under this name (a flow from elsewhere is always copied there, so the take can be re-shot)." },
           "showTouches": { "type": "boolean", "description": "Draw taps and swipes into the video (default false)." },
+          "orientation": { "enum": ["Portrait", "LandscapeLeft", "LandscapeRight", "PortraitUpsideDown"], "description": "Turn the device to this orientation before recording." },
+          "bundleId": { "type": "string", "description": "Open this app (bundle id or Android package) on the device before recording." },
           "name": { "type": "string", "description": "The take's file and media name." }
         }
       }

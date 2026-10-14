@@ -7,10 +7,10 @@
 // with its turn, or the user's from the Capture tab), { replace: {media, path, source?, overrun?} }
 // is swapped in for an existing media (a re-shoot). Anything else, or a file outside that folder,
 // is refused with a sentence.
-import { realpath } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureState, type TakeKind } from "@uncut/contracts";
+import { ANALYZERS, CaptureError, type Analyzer, type CaptureDevice, type CaptureOptions, type CaptureOrientation, type CaptureState, type ProjectSnapshot, type TakeKind } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -133,12 +133,26 @@ export const appliedNote = (applied: Applied, fps: number) => {
 
 // ---- the Capture tab (D98) ----
 
+export interface FlowTake {
+  readonly device: string;
+  readonly flow: string;
+  readonly showTouches?: boolean | undefined;
+  readonly orientation?: CaptureOrientation | undefined;
+  readonly bundleId?: string | undefined;
+}
+
 export interface CaptureShape {
   readonly state: Effect.Effect<CaptureState, CaptureError>;
-  readonly start: (device: string, showTouches?: boolean) => Effect.Effect<{ device: string; startedAt: string }, CaptureError>;
+  readonly start: (device: string, options?: CaptureOptions) => Effect.Effect<{ device: string; startedAt: string }, CaptureError>;
+  /** D143: boots a shut-down simulator or an AVD (the user's click only); the id to record. */
+  readonly boot: (device: string) => Effect.Effect<{ device: string; name: string }, CaptureError>;
+  /** D143: a take replaying a saved flow, imported as one user edit when the flow ends. */
+  readonly record: (input: FlowTake) => Effect.Effect<{ mediaId: string; name: string; seconds: number }, CaptureError>;
   readonly stop: (device: string) => Effect.Effect<{ mediaId: string; name: string; seconds: number }, CaptureError>;
   /** D114: a take recorded on this Mac (uploaded to media/uploads/) into the project, placed when `placeAt` is given. */
   readonly save: (input: SaveTakeInput) => Effect.Effect<SavedTake, CaptureError>;
+  /** D144: the same for the agent's screen_record: an edit of its turn (Undo turn removes it). */
+  readonly saveForTurn: (input: SaveTakeInput & { readonly turnId: string; readonly dir: string }) => Effect.Effect<SavedTake & { readonly snapshot?: ProjectSnapshot | undefined; readonly path: string }, CaptureError>;
 }
 
 export interface SaveTakeInput {
@@ -176,7 +190,9 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     // Recordings started from the Capture tab: the device, when, and the opening of the project
     // the take goes into (a project closed meanwhile gets nothing; the file stays in its folder).
-    const recording = new Map<string, { startedAt: string; openId: number; dir: string }>();
+    const recording = new Map<string, { startedAt: string; openId: number; dir: string; flow?: string }>();
+    // Boots running now (a second click on the same device waits for nothing: refused).
+    const booting = new Set<string>();
 
     const failed = (message: string) => new CaptureError({ reason: "failed", message });
 
@@ -192,26 +208,42 @@ export const layer = Layer.effect(
         const id = str(x.id);
         if (!id) return [];
         const reason = str(x.reason);
-        return [{ id, platform: str(x.platform) ?? "unknown", name: str(x.name) ?? id, state: str(x.state) ?? "unknown", recordable: x.recordable === true, ...(reason ? { reason } : {}) }];
+        return [{ id, platform: str(x.platform) ?? "unknown", name: str(x.name) ?? id, state: str(x.state) ?? "unknown", recordable: x.recordable === true, ...(reason ? { reason } : {}), ...(x.bootable === true ? { bootable: true } : {}) }];
       });
       const version = str(argent.version);
       const problem = str(argent.problem);
+      const flows = open
+        ? yield* Effect.promise(() =>
+            readdir(join(open.dir, "flows"))
+              .then((names) => names.filter((n) => /\.ya?ml$/i.test(n) && !n.startsWith(".")).map((n) => n.replace(/\.ya?ml$/i, "")).sort())
+              .catch(() => [] as Array<string>),
+          )
+        : [];
       return {
         installed: argent.installed === true,
         ...(version ? { version } : {}),
         install: ARGENT_INSTALL,
         ...(problem ? { problem } : {}),
         devices,
-        recording: [...recording].map(([device, r]) => ({ device, startedAt: r.startedAt })),
+        recording: [...recording].map(([device, r]) => ({ device, startedAt: r.startedAt, ...(r.flow ? { flow: r.flow } : {}) })),
+        flows,
       } satisfies CaptureState;
     });
 
-    const start = (device: string, showTouches?: boolean) =>
+    const optionArgs = (o: CaptureOptions | undefined) => ({
+      ...(o?.showTouches !== undefined ? { showTouches: o.showTouches } : {}),
+      ...(o?.trimStatic !== undefined ? { trimStatic: o.trimStatic } : {}),
+      ...(o?.maxSeconds !== undefined ? { maxSeconds: o.maxSeconds } : {}),
+      ...(o?.orientation ? { orientation: o.orientation } : {}),
+      ...(str(o?.bundleId) ? { bundleId: str(o?.bundleId) } : {}),
+    });
+
+    const start = (device: string, options?: CaptureOptions) =>
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new CaptureError({ reason: "no-project", message: "Open a project first: recordings go into its media folder." });
         if (recording.has(device)) return yield* failed("That device is already being recorded.");
-        const result = yield* plugins.callPlugin(ARGENT_PLUGIN, "argent_capture_start", { device, ...(showTouches !== undefined ? { showTouches } : {}) }, { projectDir: open.dir });
+        const result = yield* plugins.callPlugin(ARGENT_PLUGIN, "argent_capture_start", { device, ...optionArgs(options) }, { projectDir: open.dir });
         if (result.isError) return yield* failed(textOf(result));
         const startedAt = new Date().toISOString();
         recording.set(device, { startedAt, openId: open.openId, dir: open.dir });
@@ -235,13 +267,48 @@ export const layer = Layer.effect(
         return { mediaId: entry.id, name: entry.name, seconds: Number(((entry.probe.frames ?? 0) / fps).toFixed(2)) };
       });
 
+    const boot = (device: string) =>
+      Effect.gen(function* () {
+        if (booting.has(device)) return yield* failed("That device is booting already.");
+        booting.add(device);
+        const open = yield* projects.current;
+        const result = yield* plugins.callPlugin(ARGENT_PLUGIN, "argent_capture_boot", { device }, { projectDir: open?.dir }).pipe(Effect.ensuring(Effect.sync(() => booting.delete(device))));
+        if (result.isError || !result.plugin) return yield* failed(textOf(result) || "Argent couldn't boot it.");
+        const s = (result.structured && typeof result.structured === "object" ? result.structured : {}) as Record<string, unknown>;
+        const id = str(s.device);
+        if (!id) return yield* failed("Argent booted it but didn't say which device to record.");
+        return { device: id, name: str(s.name) ?? id };
+      });
+
+    const record = (input: FlowTake) =>
+      Effect.gen(function* () {
+        const open = yield* projects.current;
+        if (!open) return yield* new CaptureError({ reason: "no-project", message: "Open a project first: recordings go into its media folder." });
+        if (recording.has(input.device)) return yield* failed("That device is already being recorded.");
+        const flow = str(input.flow);
+        if (!flow) return yield* failed("Pick a flow to replay.");
+        recording.set(input.device, { startedAt: new Date().toISOString(), openId: open.openId, dir: open.dir, flow });
+        const result = yield* plugins
+          .callPlugin(ARGENT_PLUGIN, "argent_record", { device: input.device, flow, ...optionArgs(input) }, { projectDir: open.dir })
+          .pipe(Effect.ensuring(Effect.sync(() => recording.delete(input.device))));
+        if (result.isError || !result.plugin) return yield* failed(textOf(result));
+        const applied = yield* applyDeclared({ declared: result.declared, plugin: result.plugin, openId: open.openId, dir: open.dir, media, analysis });
+        if (!applied) return yield* failed("The flow ran, but Argent's plugin didn't hand over a file.");
+        if ("problem" in applied) return yield* failed(applied.problem);
+        if (applied.kind !== "imported") return yield* failed("Unexpected answer from Argent's plugin.");
+        const entry = applied.result.entries[0]!;
+        const fps = (applied.result.snapshot?.project as { canvas?: { fps?: number } } | undefined)?.canvas?.fps ?? 30;
+        return { mediaId: entry.id, name: entry.name, seconds: Number(((entry.probe.frames ?? 0) / fps).toFixed(2)) };
+      });
+
     // One take at a time is converted and imported (a second waits), so two saves never race for a name.
     const saving = yield* Semaphore.make(1);
-    const save = (input: SaveTakeInput) =>
+    const importTake = (input: SaveTakeInput & { readonly turnId?: string; readonly dir?: string }) =>
       saving.withPermits(1)(
         Effect.gen(function* () {
           const open = yield* projects.current;
           if (!open) return yield* new CaptureError({ reason: "no-project", message: "Open a project first: takes go into its media folder." });
+          if (input.dir !== undefined && input.dir !== open.dir) return yield* failed("The project changed while recording, so the take wasn't added.");
           const mediaPaths = ((open.project as { media?: ReadonlyArray<{ path?: unknown }> }).media ?? []).flatMap((m) => (typeof m.path === "string" ? [m.path] : []));
           const found = yield* Effect.promise(() => uploadedTake(input.path, open.dir, mediaPaths));
           if ("problem" in found) return yield* failed(found.problem);
@@ -264,6 +331,7 @@ export const layer = Layer.effect(
               path: converted.file,
               source: { module: TAKE_MODULE[input.kind], ...(device ? { device: device.slice(0, 200) } : {}) },
               ...(placeAt !== undefined ? { place: { frame: placeAt, placement: input.kind === "voiceover" ? ("voiceover" as const) : ("video" as const) } } : {}),
+              ...(input.turnId ? { turnId: input.turnId } : {}),
             })
             .pipe(Effect.mapError((error) => failed(`The take wasn't imported: ${error.message}`)));
           const entry = result.entries[0];
@@ -273,10 +341,14 @@ export const layer = Layer.effect(
             name: entry.name,
             seconds: Number(((entry.probe.frames ?? 0) / fps).toFixed(2)),
             ...(result.placed ? { itemId: result.placed.itemId, trackId: result.placed.trackId } : {}),
-          } satisfies SavedTake;
+            snapshot: result.snapshot,
+            path: entry.path,
+          };
         }),
       );
+    const save = (input: SaveTakeInput) => importTake(input).pipe(Effect.map(({ snapshot: _s, path: _p, ...saved }) => saved satisfies SavedTake));
+    const saveForTurn = (input: SaveTakeInput & { readonly turnId: string; readonly dir: string }) => importTake(input);
 
-    return Capture.of({ state, start, stop, save });
+    return Capture.of({ state, start, stop, save, saveForTurn, boot, record });
   }),
 );
