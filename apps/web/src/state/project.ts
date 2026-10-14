@@ -60,7 +60,8 @@ export function uniqueId(project: ProjectModel, base: string, taken = new Set<st
   for (let n = 1; ; n++) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 
-export type Planned = { readonly ops: ReadonlyArray<unknown>; readonly summary: string; readonly itemId: string; readonly start: number } | { readonly problem: string };
+/** `show`: where the playhead goes after the add (default `start`), e.g. past a text's in-move so it's on screen (F20). */
+export type Planned = { readonly ops: ReadonlyArray<unknown>; readonly summary: string; readonly itemId: string; readonly start: number; readonly show?: number } | { readonly problem: string };
 
 const IMAGE_SECONDS = 5;
 
@@ -275,7 +276,10 @@ export function planAddText(project: ProjectModel, preset: TextPreset, frame: nu
   const transform = at && look ? (look.span ? { y: y! } : { x: Math.round(at.x), y: y! }) : undefined;
   const plan = planInsertText(project, { look: preset.module, text: preset.text, start, duration, idBase: preset.look ? preset.id.split(".").at(-1)! : preset.id, ...(transform ? { transform } : {}) }, preset.look ? { [preset.module]: preset.look } : {});
   if ("problem" in plan) return plan;
-  return { ops: plan.ops, summary: `Add ${preset.label.toLowerCase()}`, itemId: plan.itemId, start };
+  // F20 (D158): the playhead goes where the new text is fully on screen (after its in-move).
+  const added = plan.ops.find((o) => o.op === "insert_item" && o.item.id === plan.itemId) as { item: Item } | undefined;
+  const settle = Math.min(duration - 1, added?.item.animation?.in?.duration ?? 0);
+  return { ops: plan.ops, summary: `Add ${preset.label.toLowerCase()}`, itemId: plan.itemId, start, ...(settle > 0 ? { show: start + settle } : {}) };
 }
 
 /** A background's colours in words: "Background #0B1D3A", "Gradient #0B1D3A → #3B1E54". */

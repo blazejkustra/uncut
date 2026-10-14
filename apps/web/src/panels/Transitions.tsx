@@ -8,8 +8,9 @@ import { Plus, X } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { actions, useApp, type Project } from "../state/store.ts";
-import { setDraggedTransition, TRANSITION_DRAG_TYPE } from "../timeline/dnd.ts";
-import { secondsLabel } from "../timeline/edit.ts";
+import { dropTransition, setDraggedTransition, setTilePointer } from "../timeline/dnd.ts";
+import { usePlayback } from "../preview/playback.ts";
+import { cutFit, findItem, secondsLabel } from "../timeline/edit.ts";
 import { setTransitionSeconds, TRANSITION_LENGTHS, useTransitionSeconds } from "../timeline/transitionLength.ts";
 
 /** The thumbnail's own canvas (px): the shapes are drawn on it, then it's scaled into the tile. */
@@ -131,6 +132,81 @@ export function filterTransitions(query: string, kind: TransitionKind | undefine
   return TRANSITIONS.filter((t) => (!kind || t.kind === kind) && words.every((w) => `${t.name} ${t.description}`.toLowerCase().includes(w)));
 }
 
+// A press that moves this far becomes a drag (a click puts the tile on the selected cut).
+const DRAG_START_PX = 4;
+// The click that ends a drag isn't a click on the tile.
+let dragged = false;
+
+/**
+ * Drag a tile onto a cut with the pointer (F16, D154): past DRAG_START_PX the tile's thumbnail
+ * follows the pointer as a chip, the timeline highlights the cut it would land on with a ghost of
+ * its length, and releasing over the timeline puts it there (one edit); Esc cancels.
+ */
+function startTileDrag(e: React.PointerEvent<HTMLElement>, t: TransitionInfo) {
+  if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+  const tile = e.currentTarget;
+  const x0 = e.clientX;
+  const y0 = e.clientY;
+  let chip: HTMLElement | undefined;
+  const move = (ev: PointerEvent) => {
+    if (!chip && Math.hypot(ev.clientX - x0, ev.clientY - y0) < DRAG_START_PX) return;
+    if (!chip) {
+      chip = document.createElement("div");
+      chip.className = "drag-chip tile-drag";
+      chip.dataset.testid = "transition-drag-chip";
+      const thumb = tile.querySelector<HTMLElement>(".thumb");
+      if (thumb) {
+        const box = document.createElement("div");
+        box.className = "drag-chip-box";
+        const k = Math.min(1, 96 / Math.max(1, thumb.offsetWidth));
+        box.style.width = `${Math.round(thumb.offsetWidth * k)}px`;
+        box.style.height = `${Math.round(thumb.offsetHeight * k)}px`;
+        const copy = thumb.cloneNode(true) as HTMLElement;
+        copy.classList.add("drag-chip-thumb");
+        copy.style.width = `${thumb.offsetWidth}px`;
+        copy.style.height = `${thumb.offsetHeight}px`;
+        copy.style.transform = `scale(${k})`;
+        box.append(copy);
+        chip.append(box);
+      }
+      const name = document.createElement("span");
+      name.textContent = t.name;
+      chip.append(name);
+      document.body.append(chip);
+      document.body.classList.add("tile-dragging");
+      setDraggedTransition(t.id);
+    }
+    chip.style.left = `${ev.clientX + 12}px`;
+    chip.style.top = `${ev.clientY + 12}px`;
+    setTilePointer({ x: ev.clientX, y: ev.clientY });
+  };
+  const end = (drop: PointerEvent | undefined) => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", cancel);
+    window.removeEventListener("keydown", key, true);
+    if (!chip) return;
+    dragged = true;
+    setTimeout(() => (dragged = false), 0);
+    chip.remove();
+    document.body.classList.remove("tile-dragging");
+    if (drop) dropTransition(t.id, drop.clientX, drop.clientY);
+    setTilePointer(undefined);
+    setDraggedTransition(undefined);
+  };
+  const up = (ev: PointerEvent) => end(ev);
+  const cancel = () => end(undefined);
+  const key = (ev: KeyboardEvent) => {
+    if (ev.key !== "Escape" || !chip) return;
+    ev.stopPropagation();
+    cancel();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", cancel);
+  window.addEventListener("keydown", key, true);
+}
+
 export function TransitionsLibrary({ project }: { project: Project }) {
   const { connection } = useApp();
   const online = connection === "connected";
@@ -146,6 +222,12 @@ export function TransitionsLibrary({ project }: { project: Project }) {
   };
   /** The length a tile puts on a cut: the chosen one for all (within its limits), else its own default. */
   const lengthOf = (t: TransitionInfo) => (seconds ? Math.min(t.maxFrames, Math.max(t.minFrames, Math.round(seconds * fps))) : defaultFrames(t, fps));
+  // F9 (D153): with a cut selected, each tile says whether it fits there (and how long it can be).
+  const cut = usePlayback((s) => s.cut);
+  const cutPlaced = findItem(project, cut);
+  const target = cutPlaced && cutPlaced.track.role === "main" && cutPlaced.index > 0 ? cutPlaced.item : undefined;
+  /** The length a tile would get on the selected cut: the chosen one, else the one there now (kept on a change of type), else its default. */
+  const wantedOn = (t: TransitionInfo) => (seconds ? lengthOf(t) : (target?.transitionIn?.duration ?? defaultFrames(t, fps)));
   return (
     <aside className="library" data-testid="transitions-library">
       <div className="lib-head">Transitions</div>
@@ -181,24 +263,22 @@ export function TransitionsLibrary({ project }: { project: Project }) {
           </div>
         )}
         <div className="grid2">
-          {shown.map((t) => (
+          {shown.map((t) => {
+            const fit = target ? cutFit(project, target.id, t.id, wantedOn(t)) : undefined;
+            return (
             <div
               key={t.id}
-              className="tile tr-tile"
+              className={`tile tr-tile ${fit && !fit.fits ? "unfit" : ""}`}
               data-testid="transition-tile"
               data-module={t.id}
+              data-fit={fit ? (!fit.fits ? "no" : fit.clamped ? "clamped" : "yes") : undefined}
               role="button"
               tabIndex={0}
-              aria-disabled={!online}
-              draggable={online}
-              title={`${t.name}: ${t.description}`}
-              onDragStart={(e) => {
-                e.dataTransfer.setData(TRANSITION_DRAG_TYPE, t.id);
-                e.dataTransfer.effectAllowed = "copy";
-                setDraggedTransition(t.id);
-              }}
-              onDragEnd={() => setDraggedTransition(undefined)}
-              onClick={(e) => apply(t, e, false)}
+              aria-disabled={!online || (fit && !fit.fits)}
+              draggable={false}
+              title={fit && !fit.fits ? fit.problem : `${t.name}: ${t.description}`}
+              onPointerDown={(e) => online && startTileDrag(e, t)}
+              onClick={(e) => !dragged && apply(t, e, false)}
               onKeyDown={(e) => {
                 // Keys on the + belong to it (its click), not to the tile as well.
                 if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
@@ -214,10 +294,21 @@ export function TransitionsLibrary({ project }: { project: Project }) {
               </div>
               <div className="tile-name">{t.name}</div>
               <div className="tile-sub" data-testid="transition-default">
-                {secondsLabel(lengthOf(t), fps)}
+                {fit && !fit.fits ? (
+                  <span className="tr-unfit" data-testid="transition-unfit">
+                    {fit.short}
+                  </span>
+                ) : fit?.clamped ? (
+                  <span data-testid="transition-clamped" title={`The clips at this cut leave room for ${secondsLabel(fit.max, fps)}`}>
+                    {secondsLabel(fit.max, fps)} max here
+                  </span>
+                ) : (
+                  secondsLabel(target ? wantedOn(t) : lengthOf(t), fps)
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </aside>

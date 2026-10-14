@@ -8,6 +8,7 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
 import { decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
+import { cameraName } from "@uncut/core/mentions";
 import { planPlaceTake, type TakePlacement } from "@uncut/core/place";
 import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
 import * as Cause from "effect/Cause";
@@ -425,7 +426,8 @@ export const layer = Layer.effect(
               }
               known.add(p.real);
               const { info } = p;
-              const name = options.names?.get(p.path) ?? basename(p.path);
+              // F13 (D150): camera-style file names get a short display name ("DJI 0042").
+              const name = options.names?.get(p.path) ?? cameraName(basename(p.path)) ?? basename(p.path);
               const source = options.sources?.get(p.path);
               entries.push({
                 info,

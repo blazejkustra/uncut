@@ -43,6 +43,8 @@ export interface PlaybackState {
   readonly zoom: number;
   /** Moves and trims snap to the playhead, item edges and 0 (hold ⌘ while dragging to skip). */
   readonly snapping: boolean;
+  /** F11 (D156): overlays follow the footage under them when a main clip's speed or length changes. */
+  readonly linkOverlays: boolean;
   readonly draft: PreviewDraft | undefined;
   /** What the bottom panel shows (D32): the timeline, the transcript or the mixer (D83). */
   readonly bottom: "timeline" | "transcript" | "mixer";
@@ -68,7 +70,15 @@ const savedSnapping = () => {
     return true;
   }
 };
-let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: savedSnapping(), draft: undefined, bottom: "timeline", gainKey: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [] };
+const LINK_KEY = "uncut.linkOverlays";
+const savedLink = () => {
+  try {
+    return globalThis.localStorage?.getItem(LINK_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+let state: PlaybackState = { frame: 0, playing: false, frames: 1, end: 0, fps: 30, selected: undefined, cut: undefined, zoom: 1, snapping: savedSnapping(), linkOverlays: savedLink(), draft: undefined, bottom: "timeline", gainKey: undefined, rate: 1, markIn: undefined, markOut: undefined, also: [] };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<PlaybackState>) => {
   state = { ...state, ...patch };
@@ -215,6 +225,13 @@ export const playback = {
     set({ snapping: !state.snapping });
     try {
       globalThis.localStorage?.setItem(SNAP_KEY, state.snapping ? "on" : "off");
+    } catch {}
+  },
+  /** Overlays follow main-track speed and trim changes, or not (F11, D156); remembered on this Mac. */
+  toggleLinkOverlays: () => {
+    set({ linkOverlays: !state.linkOverlays });
+    try {
+      globalThis.localStorage?.setItem(LINK_KEY, state.linkOverlays ? "on" : "off");
     } catch {}
   },
   setBottom: (bottom: PlaybackState["bottom"]) => (bottom === state.bottom ? undefined : set({ bottom })),

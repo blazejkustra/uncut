@@ -126,22 +126,23 @@ test("transitions: the panel, drag onto a cut, the marker and Inspector, length 
   assert.equal(await page.$$eval("[data-testid=cut-point]", (els) => els.map((e) => Number((e as HTMLElement).dataset.frame)).join()), "60,120,180");
   await page.screenshot({ path: out("transitions-panel-cuts.png") });
 
-  // Drag the crossfade tile over the timeline: every cut fits it (30 frames of handle each side).
-  await page.setDragInterception(true);
+  // Drag the crossfade tile over the timeline with the pointer (F16, D154): every cut fits it (30
+  // frames of handle each side); the one under the pointer is the target, with a ghost of its length.
   const tile = await box("[data-testid=transition-tile][data-module='transition.crossfade']");
   const cut = await box("[data-testid=cut-point][data-frame='60']");
   const target = { x: cut.x + cut.width / 2 + 6, y: cut.y + cut.height / 2 };
-  const data = await page.mouse.drag({ x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 }, target);
-  await page.mouse.dragEnter(target, data);
-  await page.mouse.dragOver(target, data);
+  await page.mouse.move(tile.x + tile.width / 2, tile.y + tile.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tile.x + tile.width / 2 + 20, tile.y + tile.height / 2 + 10, { steps: 3 });
+  await page.waitForSelector("[data-testid=transition-drag-chip]");
+  await page.mouse.move(target.x, target.y, { steps: 8 });
   await page.waitForSelector("[data-testid=cut-point][data-frame='60'].target");
+  await page.waitForSelector("[data-testid=transition-drop-ghost][data-item=blue][data-duration='15']");
   assert.deepEqual(await page.$$eval("[data-testid=cut-point]", (els) => els.map((e) => (e as HTMLElement).dataset.drop)), ["valid", "valid", "valid"]);
   await page.screenshot({ path: out("transitions-dragging.png") });
   const r0 = await revision();
-  await page.mouse.drop(target, data);
-  await page.setDragInterception(false);
-  // puppeteer's intercepted drag leaves its button down.
   await page.mouse.up();
+  await page.waitForFunction(() => !document.querySelector("[data-testid=transition-drag-chip]") && !document.querySelector("[data-testid=transition-drop-ghost]"));
   await waitRevision(r0 + 1);
   assert.deepEqual(transitionOf("blue"), { module: "transition.crossfade", duration: 15 });
   await page.waitForSelector(marker("blue"));

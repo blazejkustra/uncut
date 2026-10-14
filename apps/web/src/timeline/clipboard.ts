@@ -88,12 +88,15 @@ export function planPaste(project: ProjectModel, clips: ReadonlyArray<Clip>, fra
   const tracks: Array<Track> = [...project.tracks];
   const main = project.tracks.find((t) => t.role === "main");
   let mainIndex = main ? main.items.filter((i) => (starts.get(i.id) ?? 0) < at).length : 0;
+  // D157: pasted groups are new groups (the copies don't join the originals').
+  const groups = new Map<string, string>();
   for (const clip of clips) {
     const id = uniqueId(project, clip.item.id.replace(/-\d+$/, "") || "item", taken);
     taken.add(id);
     ids.push(id);
-    const { transitionIn: _t, start: _s, ...rest } = clip.item as Item & { start?: number };
-    const item = { ...rest, id } as Item;
+    const { transitionIn: _t, start: _s, group: oldGroup, ...rest } = clip.item as Item & { start?: number };
+    if (oldGroup && !groups.has(oldGroup)) groups.set(oldGroup, `group-${id}`);
+    const item = { ...rest, id, ...(oldGroup ? { group: groups.get(oldGroup)! } : {}) } as Item;
     if (clip.main && main && !main.locked && fitsTrack(item, main)) {
       ops.push({ op: "insert_item", track: main.id, index: mainIndex++, item });
       continue;

@@ -1,11 +1,11 @@
 // The Inspector's clip box editor (D75): fit, position, size, keys.
 import type { Item } from "@uncut/core/types";
-import { Diamond, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Diamond, RotateCcw, X } from "lucide-react";
 import type { Fit, KeyProp } from "@uncut/core/box";
 import { useRef } from "react";
 
-import { getPlayback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
-import { clipState, keyState, planClipBox, planHold, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "../timeline/clip.ts";
+import { getPlayback, playback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
+import { clipState, EASE_NAMES, keyEase, keyFrames, keyState, nearbyKey, planClipBox, planHold, planKeyEase, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "../timeline/clip.ts";
 import { type ProjectModel } from "../state/project.ts";
 import { showDraft, send, NumberField, Slider, Group } from "./fields.tsx";
 
@@ -119,6 +119,7 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
           </div>
         )}
       </Group>
+      {keyFrames(item).length > 0 && <KeysGroup project={project} item={item} local={local} inside={inside} locked={locked} />}
       <div className="group">
         {media?.kind === "video" && (
           <label className="check-row">
@@ -144,5 +145,42 @@ export function ClipBoxEditor({ project, item, locked }: { project: ProjectModel
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The clip's keys (F5, D148): previous and next key (also [ and ]), and with the playhead on a key
+ * its ease, how it moves on to the next key (the same curve in the preview and the export).
+ */
+function KeysGroup({ project, item, local, inside, locked }: { project: ProjectModel; item: Item; local: number; inside: boolean; locked: boolean }) {
+  const frames = keyFrames(item);
+  const ease = inside ? keyEase(item, local) : undefined;
+  const go = (dir: -1 | 1) => {
+    const to = nearbyKey(project, getPlayback().frame, dir, [item.id]);
+    if (to !== undefined) (playback.pause(), playback.seek(to));
+  };
+  const start = (clipState(project, item.id, getPlayback().frame)?.start ?? 0);
+  const at = start + local;
+  return (
+    <Group label={`Keys (${frames.length})`}>
+      <div className="field-row key-nav" data-testid="insp-keys" data-count={frames.length}>
+        <button className="icon-btn" data-testid="insp-key-prev" title="Previous key ([)" disabled={!frames.some((f) => start + f < at)} onClick={() => go(-1)}>
+          <ChevronLeft />
+        </button>
+        <span className="mono small" data-testid="insp-key-at">{ease ? `Key at ${(local / project.canvas.fps).toFixed(2)} s` : "Between keys"}</span>
+        <button className="icon-btn" data-testid="insp-key-next" title="Next key (])" disabled={!frames.some((f) => start + f > at)} onClick={() => go(1)}>
+          <ChevronRight />
+        </button>
+      </div>
+      {ease && (
+        <div className="seg ease" role="group" aria-label="Ease to the next key" data-testid="insp-key-ease" data-ease={ease}>
+          {EASE_NAMES.map(([e, label]) => (
+            <button key={e} className={ease === e ? "active" : ""} data-testid="insp-ease" data-ease={e} title={`${label} to the next key`} disabled={locked} onClick={() => send((p) => planKeyEase(p, item.id, local, e))}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </Group>
   );
 }

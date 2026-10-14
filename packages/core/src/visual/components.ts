@@ -28,7 +28,7 @@ import compareTableJson from "../../../../spec/modules/builtin/component.compare
 
 import { calloutJson, countdownJson, drawCallout, drawCountdown, drawImageFrame, drawLowerThird, drawProgressBar, drawShape, drawSticker, drawSubscribe, imageFrameJson, lowerThirdJson, progressBarJson, shapeJson, stickerJson, subscribeJson } from "./elements.ts";
 import { baseBox, clipBox, EASES, type ClipBox, type Rect } from "./box.ts";
-import { DEFAULT_THEME, DM_MONO, DM_SANS, esc, markup, num, resolveColor, SOLID, type Motion, type RenderTarget } from "./render.ts";
+import { DEFAULT_THEME, DM_MONO, DM_SANS, esc, markup, num, resolveColor, safeMargin, SOLID, type Motion, type RenderTarget } from "./render.ts";
 import type { Canvas, FieldSet, Item, Media, ModuleManifest, Op, Project, Track } from "../timeline/types.ts";
 
 /** A component's placement block (module.schema.json `component`). */
@@ -507,6 +507,33 @@ export function componentRest(item: Pick<Item, "type" | "component" | "props" | 
   if (!isDrawnComponent(item)) return undefined;
   const { size, transform } = sizedTransform(item, canvas);
   return baseBox({ transform }, canvas, size);
+}
+
+/**
+ * Where a new component goes on this canvas (Fable QA round 2, F7, D152): its natural size, made
+ * smaller when it wouldn't fit inside the safe area (the canvas less `safeMargin` on every side),
+ * placed by its kind: a lower third bottom-left, a subscribe button and a progress bar along the
+ * bottom (the bar as wide as the safe area), a sticker top-right, the rest centred. On a portrait
+ * canvas the bottom ones sit a tenth of the height higher, clear of the apps' own captions and
+ * buttons. Undefined for full-frame components and device frames (their own planner places them).
+ */
+export function defaultComponentBox(id: string, target: Pick<RenderTarget, "canvas" | "theme">): { x: number; y: number; w: number; h: number } | undefined {
+  const c = componentInfo(id);
+  if (!c || c.block.fullFrame || c.block.screens) return undefined;
+  const { width: W, height: H } = target.canvas;
+  const m = safeMargin(target as RenderTarget);
+  const natural = naturalSize({ component: id, props: componentDefaults(id) }, target.canvas);
+  const k = Math.min(1, (W - 2 * m) / natural.width, (H - 2 * m) / natural.height);
+  let w = natural.width * k;
+  const h = natural.height * k;
+  const lift = H > W ? H / 10 : 0;
+  let x = (W - w) / 2;
+  let y = (H - h) / 2;
+  if (id === "component.lower-third") [x, y] = [m, H - m - lift - h];
+  else if (id === "component.subscribe") y = H - m - lift - h;
+  else if (id === "component.progress-bar") [w, x, y] = [W - 2 * m, m, H - m - lift - h];
+  else if (id === "component.sticker") [x, y] = [W - m - w, m];
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
 /** The props a new component gets (its manifest's defaults). */

@@ -210,6 +210,7 @@
         "start": { "$ref": "#/$defs/frame", "description": "Required on free tracks, forbidden on the main track." },
         "duration": { "$ref": "#/$defs/frames" },
         "locked": { "type": "boolean" },
+        "group": { "type": "string", "minLength": 1, "maxLength": 64, "description": "D157: items with the same group move, trim and delete together on the timeline (a kicker and its title); Ungroup removes it." },
         "transform": { "$ref": "#/$defs/transform" },
         "keys": { "type": "array", "items": { "$ref": "#/$defs/keyframe" } },
         "transitionIn": { "$ref": "#/$defs/timedModule", "description": "Main track only: the transition from the previous item into this one." },

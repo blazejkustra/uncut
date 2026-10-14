@@ -18,14 +18,14 @@ import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Mix, PREROLL_S, setCurrentMix } from "../audio/audio.ts";
-import { draftOf, findItem, lockOf } from "../timeline/edit.ts";
+import { draftOf, findItem, lockOf, planLayer } from "../timeline/edit.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, graphicUrl, mediaUrl, textPresets } from "../state/store.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, planAddComponent, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
 import { planAddText } from "../state/project.ts";
 import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
-import { clipState, planClipBox, resizeBox, type Corner } from "../timeline/clip.ts";
+import { clipState, planClipBox, planResetPosition, resizeBox, type Corner } from "../timeline/clip.ts";
 import { Transport } from "./Transport.tsx";
 import { useViewport } from "./viewport.ts";
 import { clipFx, fxOverlayInner, fxPictureSize, fxSkips, hasOverlay, needsPicturePass, visibleRect, type ClipFx } from "@uncut/core/fx";
@@ -841,9 +841,15 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
 
   /** The text item under an event, if it can be moved or edited by hand. */
   const editableText = (target: EventTarget, at?: { clientX: number; clientY: number }) => {
+    const inside = (n: HTMLElement) => {
+      const r = n.getBoundingClientRect();
+      return !!at && at.clientX >= r.left && at.clientX <= r.right && at.clientY >= r.top && at.clientY <= r.bottom;
+    };
     const el =
       (target as HTMLElement).closest<HTMLElement>(".pv-text[data-item]") ??
-      (at ? document.elementsFromPoint(at.clientX, at.clientY).find((n): n is HTMLElement => n instanceof HTMLElement && n.matches(".pv-text[data-item]")) : undefined);
+      (at ? document.elementsFromPoint(at.clientX, at.clientY).find((n): n is HTMLElement => n instanceof HTMLElement && n.matches(".pv-text[data-item]")) : undefined) ??
+      // F20 (D158): a text mid-way through a reveal (clipped) still takes a double click inside its box; the selected one first.
+      (at ? ([...document.querySelectorAll<HTMLElement>(".pv-text.sel-box[data-item]"), ...document.querySelectorAll<HTMLElement>(".pv-text[data-item]")].find(inside) ?? undefined) : undefined);
     const placed = findItem(project, el?.dataset.item);
     // Captions (D82) draw as text: they move like it, but their words are edited in the Inspector.
     if (!el || !placed || (placed.item.type !== "text" && placed.item.type !== "captions") || lockOf(placed)) return undefined;
@@ -1037,8 +1043,24 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
             playback.select(id);
             const frame = Math.floor(getPlayback().frame);
             const off = getState().connection !== "connected";
+            // F15 (D151): also Split at the playhead, Detach audio, the layer order and Reset position.
+            const placed = findItem(project, id)!;
+            const { item, track, start } = placed;
+            const locked = !!(track.locked || item.locked) || off;
+            const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
+            const layered = track.role !== "main" && item.type !== "captions";
+            const forward = layered ? planLayer(project, id, -1) : undefined;
+            const backward = layered ? planLayer(project, id, 1) : undefined;
+            const reset = planResetPosition(project, id);
             openMenu(e.clientX, e.clientY, [
               { id: "add-to-chat", label: "Add to chat", run: () => actions.addItemToChat(id, frame) },
+              "-",
+              { id: "split", label: "Split at playhead", shortcut: "S", disabled: locked || !(frame > start && frame < start + item.duration), run: () => void actions.split() },
+              ...(item.type === "clip" && media?.kind === "video" && media.probe?.hasAudio ? [{ id: "detach-audio", label: item.mute ? "Audio detached" : "Detach audio", disabled: locked || !!item.mute, run: () => void actions.detachAudio(id) }] : []),
+              "-",
+              { id: "bring-forward", label: "Bring forward", disabled: locked || !forward || "problem" in forward, run: () => void actions.layer(id, -1) },
+              { id: "send-backward", label: "Send backward", disabled: locked || !backward || "problem" in backward, run: () => void actions.layer(id, 1) },
+              { id: "reset-position", label: "Reset position", disabled: locked || "problem" in reset, run: () => void actions.resetPosition(id) },
               "-",
               { id: "copy", label: "Copy", shortcut: "⌘C", run: () => void copySelection() },
               { id: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: off, run: () => void duplicate() },
@@ -1073,6 +1095,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
             {dropGhost && <div className="pv-drop-ghost" data-testid="drop-ghost" dangerouslySetInnerHTML={{ __html: dropGhost }} />}
             {editing && <InlineEditor key={editing.id} edit={editing} onDone={finishEdit} />}
             <ClipSelection project={project} />
+            {!editing && <TextSelection layer={textRef} project={project} />}
             </div>
           </div>
         </div>
@@ -1128,6 +1151,44 @@ function ClipSelection({ project }: { project: ProjectModel }) {
       <div className="pv-clip-sel" data-testid="clip-selection" data-item={placed.item.id} style={{ left: x, top: y, width: w, height: h }} />
       {corners.map(([c, cx, cy]) => (
         <div key={c} className="pv-handle" data-testid="clip-handle" data-handle={c} style={{ left: cx, top: cy }} />
+      ))}
+    </>
+  );
+}
+
+/**
+ * The selected text's handles on the canvas (F20, D158): four corner marks around the drawn text
+ * (measured from the text layer, which lays out at canvas size), so a text just added from the Text
+ * tab shows as selected. They don't take presses: the text itself drags, and a double click edits it.
+ */
+function TextSelection({ layer, project }: { layer: React.RefObject<HTMLDivElement | null>; project: ProjectModel }) {
+  const selected = usePlayback((s) => s.selected);
+  const frame = usePlayback((s) => Math.round(s.frame));
+  const draft = usePlayback((s) => s.draft);
+  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | undefined>();
+  useLayoutEffect(() => {
+    let raf = 0;
+    const measure = () => {
+      const el = selected === undefined ? null : layer.current?.querySelector<HTMLElement>(`.pv-text.sel-box[data-item="${CSS.escape(selected)}"]`);
+      const next = el && el.offsetWidth > 0 ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : undefined;
+      setBox((prev) => (prev && next && prev.x === next.x && prev.y === next.y && prev.w === next.w && prev.h === next.h) || (!prev && !next) ? prev : next);
+    };
+    measure();
+    // The text layer is redrawn after this render: measure again once it has been.
+    raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
+  }, [selected, frame, layer, project, draft]);
+  if (!box) return null;
+  const corners = [
+    ["nw", box.x, box.y],
+    ["ne", box.x + box.w, box.y],
+    ["sw", box.x, box.y + box.h],
+    ["se", box.x + box.w, box.y + box.h],
+  ] as const;
+  return (
+    <>
+      {corners.map(([c, cx, cy]) => (
+        <div key={c} className="pv-handle text" data-testid="text-handle" data-item={selected} data-corner={c} style={{ left: cx, top: cy }} />
       ))}
     </>
   );

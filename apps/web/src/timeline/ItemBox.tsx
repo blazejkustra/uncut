@@ -11,6 +11,7 @@ import { dbLabel, envelopeDbAt, hasSound, keyIndexAt, levelY, planAddGainKey, pl
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "../preview/playback.ts";
 import { itemLabel, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, projectOf, thumbUrl } from "../state/store.ts";
+import { keyFrames } from "./clip.ts";
 import { draftOf, findItem, visibleBeats } from "./edit.ts";
 import { ItemWaveform } from "./Waveform.tsx";
 import { RenameField } from "./RenameField.tsx";
@@ -76,6 +77,8 @@ export function ItemBox({
   const fadeOut = sound ? Math.min(px, (item.fadeOut ?? 0) * ppf) : 0;
   // Beats as ticks along the top and bottom edges, unless too close together at this zoom.
   const ticks = sound && beats ? visibleBeats(project, item, beats, ppf) : [];
+  // F5 (D148): the item's box keys as diamonds along its bottom edge; a click goes there.
+  const marks = item.type === "captions" ? [] : keyFrames(item).filter((f) => f >= 0 && f <= duration);
   return (
     <div
       className={`clip ${kind} ${className}`}
@@ -114,6 +117,27 @@ export function ItemBox({
         </svg>
       )}
       {sound && envelope !== "none" && <Envelope project={project} item={item} px={px} ppf={ppf} edit={envelope === "edit"} duck={duck} start={start} />}
+      {marks.length > 0 && (
+        <div className="key-marks" data-testid="key-marks" data-count={marks.length}>
+          {marks.map((f) => (
+            <span
+              key={f}
+              className="key-mark"
+              data-testid="key-mark"
+              data-frame={Math.round(start + f)}
+              title={`Key at ${(f / project.canvas.fps).toFixed(2)} s`}
+              style={{ left: Math.min(px - 4, Math.max(4, f * ppf)) }}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                playback.pause();
+                if (getPlayback().selected !== item.id) playback.select(item.id);
+                playback.seek(Math.round(start + f));
+              }}
+            />
+          ))}
+        </div>
+      )}
       <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
         {renaming ? <RenameField testId="item-rename" value={label} onDone={(name) => (name !== undefined && name !== label && void actions.renameItem(item.id, name), onRenamed?.())} /> : label}
       </span>
