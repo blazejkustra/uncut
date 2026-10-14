@@ -66,7 +66,8 @@ const historyLabels = () => {
   }
 };
 async function tab(which: "timeline" | "transcript") {
-  await page.click(`[data-testid=bottom-${which}]`);
+  // The Transcript is a rail tab next to the timeline (U11).
+  await page.click(which === "timeline" ? "[data-testid=bottom-timeline]" : "[data-testid=rail-transcript]");
   await page.waitForSelector(which === "timeline" ? "[data-testid=timeline]" : "[data-testid=transcript-panel]");
 }
 /** The playhead to `frame` with the keyboard (⇧→ a second, → a frame), from the Timeline tab. */

@@ -6,6 +6,7 @@ import { Environments } from "../onboarding/Environments.tsx";
 import { RemoteBrowser } from "../panels/RemoteBrowser.tsx";
 import { Settings } from "../settings/Settings.tsx";
 import { ShortcutsSheet } from "../settings/Shortcuts.tsx";
+import { LeaveDialog } from "../state/leave.tsx";
 
 export function App() {
   const app = useApp();
@@ -20,6 +21,8 @@ export function App() {
       {/* Phase 9: Environments (over everything, also while the server is away), and the remote file browser. */}
       {app.environmentsOpen && <Environments />}
       {app.remotePicker && <RemoteBrowser key={app.remotePicker.seq} request={app.remotePicker} />}
+      {/* U12: leaving with work in progress asks here, over everything. */}
+      <LeaveDialog />
     </>
   );
 }

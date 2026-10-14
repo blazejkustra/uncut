@@ -240,7 +240,7 @@ async function exitCheck() {
   await page.waitForFunction((d: string) => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title === d, {}, join(root, "projects"));
   await page.click("[data-testid=create]");
   await waitFor("[data-testid=editor]");
-  dir = await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title);
+  dir = await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title);
   writeFileSync(plan(), JSON.stringify([[{ tool: "media_import", args: { path: clip } }, { await: awaitPath() }]]));
   await page.click("[data-testid=tab-agent]");
   await waitFor("[data-testid=agent-panel]");

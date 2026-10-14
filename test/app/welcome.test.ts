@@ -94,6 +94,8 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   await shot(app, "new-project");
   await page.click("[data-testid=create]");
   await waitFor(page, "[data-testid=editor]");
+  // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
+  await page.click("[data-testid=tab-inspector]");
   const dir = join(projects, "First Cut.uncut");
   assert.ok(existsSync(join(dir, "project.json")));
 
@@ -175,6 +177,8 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   await createThroughForm(page, "Tall", "vertical");
   await page.click("[data-testid=create]");
   await waitFor(page, "[data-testid=editor]");
+  // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
+  await page.click("[data-testid=tab-inspector]");
   assert.equal(await text(page, "canvas-info"), "1080×1920, 30 fps");
   assert.ok(Math.abs((await frameRatio(page)) - 9 / 16) < 0.02, `frame ratio ${await frameRatio(page)}`);
   await shot(app, "editor-9x16");

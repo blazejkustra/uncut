@@ -200,7 +200,7 @@ test("Fable QA round 2 (export, settings, shell): codecs, Advanced, the done dia
   assert.deepEqual(await grip("bottom"), { opacity: "1", cursor: "row-resize" });
 
   // ---- F25: no how-to line in the Transcript tab ----
-  await page.click("[data-testid=bottom-transcript]");
+  await page.click("[data-testid=rail-transcript]");
   await waitFor("[data-testid=transcript-panel]");
   const panel = await textOf("[data-testid=transcript-panel]");
   assert.doesNotMatch(panel, /Click a word|⇧-click|drag or|cuts (it|them)|by deleting words/);

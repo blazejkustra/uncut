@@ -182,6 +182,8 @@ async function exitCheck() {
   await page.keyboard.type("Home");
   await page.click("[data-testid=create]");
   await waitFor("[data-testid=editor]");
+  // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
+  await page.click("[data-testid=tab-inspector]");
   await waitFor("[data-testid=show-in-finder]");
   await page.click("[data-testid=close-project]");
   await waitForWelcome(page);
@@ -231,8 +233,10 @@ async function exitCheck() {
   await page.keyboard.type("Remote cut");
   await page.click("[data-testid=create]");
   await waitFor("[data-testid=editor]");
+  // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
+  await page.click("[data-testid=tab-inspector]");
   const dir = join(remoteHome(), "projects", "Remote cut.uncut");
-  assert.equal(await page.$eval("[data-testid=project-dir]", (el) => (el as HTMLElement).title), dir);
+  assert.equal(await page.$eval("[data-testid=project-title]", (el) => (el as HTMLElement).title), dir);
   assert.equal(await page.$("[data-testid=show-in-finder]"), null, "no Finder for the server's folder");
   await waitFor("[data-testid=project-host]");
   await page.click("[data-testid=close-project]");

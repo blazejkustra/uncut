@@ -21,6 +21,10 @@ export const ENVIRONMENT_REMOVE_CHANNEL = "uncut:environment-remove";
 export const ENVIRONMENT_SWITCH_CHANNEL = "uncut:environment-switch";
 export const ENVIRONMENT_STATUS_CHANNEL = "uncut:environment-status";
 export const DOWNLOAD_EXPORT_CHANNEL = "uncut:download-export";
+// U12 (D178): the shell asks before the window closes or the app quits; the renderer answers.
+export const CLOSE_REQUEST_CHANNEL = "uncut:close-request";
+export const CLOSE_ANSWER_CHANNEL = "uncut:close-answer";
+export type CloseAnswer = "close" | "stay" | "asking";
 
 export type FolderPurpose = "parent" | "project" | "plugin";
 
