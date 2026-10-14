@@ -6,7 +6,8 @@ import { RENDER_CSS, SOLID, textHtml } from "@uncut/core/render";
 import { planInsertText } from "@uncut/core/textPlan";
 import type { Item } from "@uncut/core/types";
 import { COMPONENTS, componentDefaults, componentHtml, naturalSize, screenRect, type ComponentInfo } from "@uncut/core/components";
-import { AudioLines, Blocks, ChevronDown, ChevronRight, Eye, EyeOff, Film, Gauge, Image as ImageIcon, Layers, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
+import { AudioLines, Blocks, ChevronDown, ChevronRight, Eye, EyeOff, Film, Gauge, Image as ImageIcon, Layers, LayoutGrid, List, Plus, RefreshCw, Type, Upload, X } from "lucide-react";
+import { mediaUses, usedMediaIds } from "@uncut/core/mediaPlan";
 import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { bridge } from "../state/bridge.ts";
@@ -16,6 +17,7 @@ import { actions, activeAnalyses, activeJobs, getState, isRemote, mediaUrl, text
 import { COMPONENT_DRAG_TYPE, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { setDragChip } from "./dragChip.ts";
 import { hideElement, showElement, useHiddenElements } from "./elementsGrid.ts";
+import { MEDIA_SORTS, setMediaMode, setMediaSort, sortMedia, useMediaView, type MediaSort } from "./mediaView.ts";
 import { MEDIA_DRAG_TYPE } from "../timeline/dnd.ts";
 import { openMenu } from "../timeline/ContextMenu.tsx";
 import { RenameField } from "../timeline/RenameField.tsx";
@@ -24,6 +26,7 @@ import { CaptureLibrary } from "./Capture.tsx";
 import { AudioLibrary, SfxLibrary } from "./Audio.tsx";
 import { TransitionsLibrary } from "./Transitions.tsx";
 import { EffectsLibrary } from "./Effects.tsx";
+import { StickerPicker } from "./Stickers.tsx";
 import { GeneratedSection, generatedMedia, GenerateLibrary } from "./Generate.tsx";
 
 export type LibraryTab = "media" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate";
@@ -229,6 +232,7 @@ function ElementsLibrary({ project }: { project: Project }) {
           {plugins.filter((c) => !hidden.includes(c.id)).map((c) => pluginTile(c, false))}
         </div>
       </div>
+      <StickerPicker />
       {hiddenCount > 0 && (
         <div className="lib-section">
           <button className="lib-label hidden-toggle" data-testid="hidden-elements-toggle" aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
@@ -384,7 +388,21 @@ function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => vo
   const online = connection === "connected";
   // Generated media (D99) are listed under Generated, with their prompts.
   const generated = new Set(generatedMedia(project).map((m) => m.id));
-  const media = project.media.filter((m) => !generated.has(m.id));
+  const view = useMediaView();
+  const media = sortMedia(
+    project.media.filter((m) => !generated.has(m.id)),
+    view.sort,
+  );
+  // F26 (D168): which media the timeline uses; F8 (D167): the selected tile (⌫ removes it) and the confirm.
+  const used = usedMediaIds(project);
+  const [selected, setSelected] = useState<string | undefined>();
+  const [confirm, setConfirm] = useState<{ readonly id: string; readonly name: string; readonly count: number } | undefined>();
+  const remove = (m: MediaItem) => {
+    if (!online) return;
+    const count = mediaUses(project, m.id).length;
+    if (count === 0) void actions.removeMedia(m.id);
+    else setConfirm({ id: m.id, name: m.name, count });
+  };
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
@@ -479,17 +497,75 @@ function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => vo
         </Empty>
       ) : media.length > 0 ? (
         <div className="lib-section">
-          <div className="lib-label">In this project</div>
-          <div className="grid2" data-testid="media-grid">
+          <div className="lib-label media-bar">
+            <span>In this project</span>
+            <span className="media-bar-tools">
+              <select className="media-sort" data-testid="media-sort" value={view.sort} title="Sort by" aria-label="Sort by" onChange={(e) => setMediaSort(e.target.value as MediaSort)}>
+                {MEDIA_SORTS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <button className={`icon-btn${view.mode === "grid" ? " active" : ""}`} data-testid="media-view-grid" aria-pressed={view.mode === "grid"} title="Grid" onClick={() => setMediaMode("grid")}>
+                <LayoutGrid />
+              </button>
+              <button className={`icon-btn${view.mode === "list" ? " active" : ""}`} data-testid="media-view-list" aria-pressed={view.mode === "list"} title="List" onClick={() => setMediaMode("list")}>
+                <List />
+              </button>
+            </span>
+          </div>
+          <div className={view.mode === "list" ? "media-list" : "grid2"} data-testid="media-grid" data-view={view.mode} data-sort={view.sort}>
             {media.map((m) => (
-              <MediaTile key={m.id} item={m} fps={project.canvas.fps} online={online} />
+              <MediaTile key={m.id} item={m} fps={project.canvas.fps} online={online} used={used.has(m.id)} selected={selected === m.id} onSelect={() => setSelected(m.id)} onRemove={() => remove(m)} />
             ))}
           </div>
         </div>
       ) : null}
       <GeneratedSection project={project} {...(onEdit ? { onEdit } : {})} />
       {dragging && <div className="drop-hint">Drop to import</div>}
+      {confirm && (
+        <RemoveMediaConfirm
+          name={confirm.name}
+          count={confirm.count}
+          onCancel={() => setConfirm(undefined)}
+          onRemove={() => {
+            setConfirm(undefined);
+            void actions.removeMedia(confirm.id);
+          }}
+        />
+      )}
     </aside>
+  );
+}
+
+/** F8 (D167): in the app, not a system dialog; Esc or a click outside cancels. Keys stay here (⌫ never reaches the timeline). */
+function RemoveMediaConfirm({ name, count, onCancel, onRemove }: { name: string; count: number; onCancel: () => void; onRemove: () => void }) {
+  return (
+    <div
+      className="modal-layer"
+      data-testid="remove-media-confirm"
+      onPointerDown={(e) => e.target === e.currentTarget && onCancel()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") onCancel();
+      }}
+    >
+      <div className="modal confirm-modal" role="alertdialog" aria-label={`Remove ${name}`}>
+        <div className="confirm-title">Remove {name} from the project?</div>
+        <div className="confirm-text" data-testid="remove-media-count">
+          {count === 1 ? "1 item on the timeline uses it and goes too." : `${count} items on the timeline use it and go too.`}
+        </div>
+        <div className="confirm-actions">
+          <button className="btn" data-testid="remove-media-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn danger" data-testid="remove-media-ok" autoFocus onClick={onRemove}>
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -522,7 +598,7 @@ export function mediaMeta(m: MediaItem) {
 
 /** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67; "Transcribing…", D68), or why it waits. */
 
-function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online: boolean }) {
+function MediaTile({ item, fps, online, used, selected, onSelect, onRemove }: { item: MediaItem; fps: number; online: boolean; used: boolean; selected: boolean; onSelect: () => void; onRemove: () => void }) {
   const app = useApp();
   const { thumbIds } = app;
   // G4: renamed in place (double-click the name, or Rename in its menu).
@@ -545,6 +621,8 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
       { id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) },
       { id: "media-rename", label: "Rename", disabled: !online, run: () => setRenaming(true) },
       ...(local ? [{ id: "media-reveal", label: "Reveal in Finder", run: () => void actions.showInFolder(item.path.startsWith("/") ? item.path : `${getState().snapshot?.dir ?? ""}/${item.path}`) }] : []),
+      "-",
+      { id: "media-remove", label: "Remove from project", shortcut: "⌫", danger: true, disabled: !online, run: onRemove },
     ], "Media");
   };
   // Analysis (D66) runs on demand: the Analyze button, or the agent's media_analyze.
@@ -555,22 +633,66 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
   // An SVG has no poster (ffmpeg can't read it): the tile shows the file itself (D76).
   const src = thumbIds.has(item.id) ? thumbUrl(item.id, item.path) : item.kind === "image" && /\.svg$/i.test(item.path) ? mediaUrl(item.id, item.path) : undefined;
   const seconds = item.probe?.frames ? item.probe.frames / fps : undefined;
+  // F26 (D168): hovering a video's thumbnail scrubs through it (one muted video, only while hovered).
+  const [scrub, setScrub] = useState<number | undefined>(undefined);
+  const scrubRef = useRef<HTMLVideoElement>(null);
+  const canScrub = item.kind === "video" && !!seconds && !renaming;
+  useEffect(() => {
+    const v = scrubRef.current;
+    if (!v || scrub === undefined || !seconds) return;
+    const t = Math.min(seconds - 0.05, Math.max(0, scrub * seconds));
+    if (v.readyState >= 1) v.currentTime = t;
+    else v.onloadedmetadata = () => (v.currentTime = t);
+  }, [scrub, seconds]);
   return (
     <div
-      className={`tile ${flash ? "flash" : ""}`}
+      className={`tile ${flash ? "flash" : ""} ${selected ? "selected" : ""}`}
       data-testid="media-tile"
       data-id={item.id}
+      data-used={used ? "true" : undefined}
+      data-selected={selected ? "true" : undefined}
       title={item.path}
       ref={tileRef}
-      onContextMenu={menu}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        // ⌫ / Delete on the selected tile (not while its name is edited): Remove from project, never the timeline's selection.
+        if (e.target !== e.currentTarget || (e.key !== "Backspace" && e.key !== "Delete")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onRemove();
+      }}
+      onContextMenu={(e) => {
+        onSelect();
+        menu(e);
+      }}
       draggable={online && !renaming}
       onDragStart={(e) => {
         e.dataTransfer.setData(MEDIA_DRAG_TYPE, item.id);
         e.dataTransfer.effectAllowed = "copy";
       }}
     >
-      <div className="thumb">
+      <div
+        className="thumb"
+        onPointerMove={(e) => {
+          if (!canScrub) return;
+          const r = e.currentTarget.getBoundingClientRect();
+          setScrub(Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(1, r.width))));
+        }}
+        onPointerLeave={() => setScrub(undefined)}
+      >
         {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
+        {canScrub && scrub !== undefined && (
+          <>
+            <video ref={scrubRef} className="thumb-scrub" data-testid="thumb-scrub" src={mediaUrl(item.id, item.path)} muted playsInline preload="auto" />
+            <span className="thumb-scrub-bar" style={{ left: `${scrub * 100}%` }} />
+          </>
+        )}
+        {used && (
+          <span className="tile-used" data-testid="media-used" title="On the timeline">
+            Used
+          </span>
+        )}
         {seconds !== undefined && !analysis && (
           <span className="dur" data-testid="duration">
             {timecode(Math.round(seconds * fps), fps).replace(/^00:/, "")}
@@ -614,7 +736,7 @@ function MediaTile({ item, fps, online }: { item: MediaItem; fps: number; online
           </div>
         )}
       </div>
-      <div className="tile-name" data-testid="tile-name" onDoubleClick={() => online && setRenaming(true)}>
+      <div className="tile-name" data-testid="tile-name" title={item.name} onDoubleClick={() => online && setRenaming(true)}>
         {renaming ? <RenameField testId="media-rename" value={item.name} onDone={(name) => (name !== undefined && name.trim() && name !== item.name && void actions.renameMedia(item.id, name), setRenaming(false))} /> : item.name}
       </div>
       <div className="tile-sub" data-testid="tile-meta">

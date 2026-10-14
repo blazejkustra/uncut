@@ -27,6 +27,7 @@ import { layoutOf, uniqueId, planAddAtPlayhead, planAddLibrarySound, planAddMedi
 import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
 import { planAddComponent, planAddGraphic } from "../preview/components.ts";
 import { planRemoveGainKey } from "../audio/sound.ts";
+import { planFitToVideo, planRemoveMedia } from "@uncut/core/mediaPlan";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "server-exited" | "failed";
 
@@ -959,8 +960,8 @@ export const actions = {
   /** A text or background change from the Inspector or the preview (see text.ts). */
   itemEdit,
   /** Elements tab → a component at the playhead, or where it was dropped (see planAddComponent, D76). */
-  addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number } = {}) =>
-    addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, opts.at ? { at: opts.at } : {})),
+  addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number; props?: Record<string, unknown> } = {}) =>
+    addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, { ...(opts.at ? { at: opts.at } : {}), ...(opts.props ? { props: opts.props } : {}) })),
   /** Elements tab → a plugin's component (D103): the server copies it into graphics/, then a graphic item at the playhead. */
   async addPluginComponent(id: string) {
     if (adding || !state.snapshot || !online()) return;
@@ -1052,6 +1053,14 @@ export const actions = {
   renameTrack: (trackId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_track", track: trackId, set: { name: name.trim() } }], summary: `Rename track to ${name.trim()}` })) : Promise.resolve(false)),
   /** G4: a media item's display name (its file stays where it is), shown everywhere it appears. */
   renameMedia: (mediaId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_media", media: mediaId, set: { name: name.trim() } }], summary: `Rename media to ${name.trim()}` })) : Promise.resolve(false)),
+  /** F8 (D167): a media out of the project with every item using it, in one edit (core planRemoveMedia); its file stays on disk. */
+  removeMedia: (mediaId: string) => itemEdit((project) => planRemoveMedia(project, mediaId)),
+  /** F27 (D169): a sound trimmed or looped to the end of the picture, with a fade out (core planFitToVideo). */
+  fitToVideo: (itemId: string) =>
+    itemEdit((project) => {
+      const plan = planFitToVideo(project, itemId);
+      return "ops" in plan && !plan.ops.length ? { problem: "The sound already fits the video." } : plan;
+    }),
   /** Group or ungroup items (F19, D157): see planGrouping. */
   grouping: (ids: ReadonlyArray<string>, group: boolean) => itemEdit((project) => planGrouping(project, ids, group)),
   /** Bring forward / Send backward (F15, D151): one layer up or down (see planLayer). */
@@ -1229,7 +1238,7 @@ export const actions = {
     return typeof picked === "string" ? picked : null;
   },
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
-  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number } }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number }; video?: { codec?: "h264" | "hevc"; bitrateMbps?: number; shortSide?: number; fps?: number } }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     revealWhenDone.add(result.value.jobId);

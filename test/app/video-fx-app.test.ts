@@ -295,6 +295,8 @@ test("D136: every look and effect drawn in the preview matches the export; the E
   };
   await setField("insp-filter-amount", "60");
   assert.deepEqual(effectsOf("c0"), [{ module: "effect.look", params: { look: "warm", intensity: 0.6 } }]);
+  // Adjust starts closed (F17, D160).
+  await page.click("[data-testid=insp-adjust-toggle]");
   await setField("insp-adjust-exposure-value", "0.5");
   await setField("insp-adjust-vibrance-value", "-40");
   assert.deepEqual(effectsOf("c0")![1], { module: "effect.color", params: { exposure: 0.5, vibrance: -0.4 } });

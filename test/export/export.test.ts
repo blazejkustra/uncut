@@ -761,7 +761,7 @@ test("export: the DJI 4K clip exports at 4K and matches the source frame", { ski
   assert.equal(done.phase, "done", done.error);
   const seconds = (Date.now() - t0) / 1000;
   const v = probe(output).streams.find((s) => s.codec_type === "video")!;
-  assert.deepEqual([v.width, v.height, v.codec_name, v.r_frame_rate], [3840, 2160, "hevc", "60/1"]);
+  assert.deepEqual([v.width, v.height, v.codec_name, v.r_frame_rate], [3840, 2160, "h264", "60/1"]);
   const shot = frameOf(output, pick.f, join(root, "demo-export.png"));
   // The source frame on screen at that moment is the last one starting at or before it (D38);
   // its neighbours show how much a frame off would cost.
@@ -778,7 +778,7 @@ test("export: the DJI 4K clip exports at 4K and matches the source frame", { ski
     execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(times[i]! - 0.0005), "-i", FOOTAGE, "-frames:v", "1", "-update", "1", src]);
     scores.push(ssim(shot, src));
   }
-  console.log(`DJI export (${(duration / project.canvas.fps).toFixed(1)} s of 4K, High/HEVC): ${seconds.toFixed(1)} s; frame ${pick.f} (source ${pick.source.toFixed(3)} s) vs the source frames before / on screen / after: SSIM ${scores.map((s) => s.toFixed(4)).join(" / ")}`);
+  console.log(`DJI export (${(duration / project.canvas.fps).toFixed(1)} s of 4K, High/H.264): ${seconds.toFixed(1)} s; frame ${pick.f} (source ${pick.source.toFixed(3)} s) vs the source frames before / on screen / after: SSIM ${scores.map((s) => s.toFixed(4)).join(" / ")}`);
   assert.ok(scores[1]! > 0.95, `SSIM ${scores}`);
   assert.ok(scores[1]! >= Math.max(scores[0]!, scores[2]!), "the frame on screen matches best");
   rmSync(output, { force: true });

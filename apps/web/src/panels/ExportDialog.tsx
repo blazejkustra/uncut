@@ -7,10 +7,10 @@
 import type { ExportJob, ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
-import { outputSize } from "@uncut/core/export";
+import { CODEC_NAMES, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps, type ExportCodec } from "@uncut/core/export";
 import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
-import { Download, FolderOpen, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Download, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { shortPath } from "../state/format.ts";
@@ -62,6 +62,9 @@ const fileName = (name: string) => {
 };
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const dirName = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";
+/** F29 (D173): the folder a file is in, by its name ("Movies"); "/" for the root. */
+export const folderName = (path: string) => baseName(dirName(path)) || "/";
+const fpsText = (fps: number) => `${Number(fps.toFixed(3))} fps`;
 
 const eta = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `About ${Math.max(1, Math.round(s))} s left` : `About ${Math.round(s / 60)} min left`);
 
@@ -70,6 +73,13 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   // On a remote environment the video is made and kept on the server; Download brings it here (D109).
   const remote = environment.kind === "remote";
   const [quality, setQuality] = useState<ExportQuality>("standard");
+  // F4 (D171): the Advanced row (collapsed): codec, bitrate, size, frame rate; undefined = the preset's.
+  const [advanced, setAdvanced] = useState(false);
+  const [codec, setCodec] = useState<ExportCodec>("h264");
+  const [bitrate, setBitrate] = useState<number | undefined>();
+  const [shortSide, setShortSide] = useState<number | undefined>();
+  const [outFps, setOutFps] = useState<number | undefined>();
+  const [copied, setCopied] = useState(false);
   // The default comes from the project's loudness target (D87: master.loudness.targetLufs, −14 when unset).
   const target = projectTargetLufs(project);
   const [loudness, setLoudness] = useState<ExportLoudness>(() => choiceOfTarget(target));
@@ -128,7 +138,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     setBusy(true);
     setError(undefined);
     const subtitles: ExportSubtitles | undefined = cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
-    const refused = await actions.startExport({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}) });
+    const video = { ...(codec !== "h264" ? { codec } : {}), ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}), ...(shortSide !== undefined ? { shortSide } : {}), ...(outFps !== undefined ? { fps: outFps } : {}) };
+    const refused = await actions.startExport({ output, quality, loudness, ...(Object.keys(video).length ? { video } : {}), ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}) });
     setBusy(false);
     if (refused) {
       setError(refused);
@@ -189,8 +200,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               : "The export didn't finish.";
     body = (
       <div data-testid="export-job" data-phase={job.phase} data-progress={job.progress} data-output={job.output}>
-        <p className="wiz-lead">
-          <b className="mono">{baseName(job.output)}</b> in {shortPath(dirName(job.output), appInfo.homeDir)}, {job.width}×{job.height}, {job.seconds.toFixed(1)} s
+        <p className="wiz-lead" data-testid="export-job-where" title={job.output}>
+          <b className="mono">{baseName(job.output)}</b> in{" "}
+          <b data-testid="export-job-folder" title={dirName(job.output)}>
+            {folderName(job.output)}
+          </b>
+          , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s
         </p>
         {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
           <p className="wiz-meta" data-testid="export-job-subtitles">
@@ -235,6 +250,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               <button className="btn ghost" data-testid="export-again" onClick={() => setDismissed(job.id)}>
                 {job.phase === "done" ? "Export again" : "Try again"}
               </button>
+              {job.phase === "done" && (
+                <button className="btn ghost" data-testid="export-copy-path" title={job.output} onClick={() => void Promise.resolve(actions.copy(job.output)).then(() => setCopied(true))}>
+                  {copied ? <Check /> : <Copy />}
+                  {copied ? "Copied" : "Copy path"}
+                </button>
+              )}
               {job.phase === "done" && !remote && (
                 <button className="btn" data-testid="export-reveal" onClick={() => void actions.showInFolder(job.output)}>
                   <FolderOpen />
@@ -265,18 +286,68 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
       >
         <div className="wiz-cards">
           {QUALITIES.map((q) => {
-            const size = outputSize(project.canvas, q.id);
+            const size = outputSize(project.canvas, q.id, shortSide);
+            const mbps = q.id === quality && bitrate !== undefined ? bitrate : presetBitrateMbps(q.id, codec, size, outFps ?? fps);
             return (
-              <button type="button" key={q.id} className={`wiz-card ${q.id === quality ? "active" : ""}`} data-testid={`quality-${q.id}`} data-active={q.id === quality} onClick={() => setQuality(q.id)}>
+              <button type="button" key={q.id} className={`wiz-card ${q.id === quality ? "active" : ""}`} data-testid={`quality-${q.id}`} data-active={q.id === quality} data-codec={codec} onClick={() => setQuality(q.id)}>
                 {q.label}
                 <span>
-                  {size.width}×{size.height}, {project.canvas.fps} fps
+                  {size.width}×{size.height}, {fpsText(outFps ?? fps)}
+                </span>
+                <span data-testid={`quality-codec-${q.id}`}>
+                  {CODEC_NAMES[codec]}, {mbps} Mb/s
                 </span>
                 <span>{q.hint}</span>
               </button>
             );
           })}
         </div>
+        <button type="button" className="export-advanced-toggle" data-testid="export-advanced" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
+          {advanced ? <ChevronDown /> : <ChevronRight />}
+          Advanced
+          {!advanced && (codec !== "h264" || bitrate !== undefined || shortSide !== undefined || outFps !== undefined) && <span className="muted">{[codec !== "h264" ? CODEC_NAMES[codec] : "", bitrate !== undefined ? `${bitrate} Mb/s` : "", shortSide !== undefined ? `${shortSide}p` : "", outFps !== undefined ? fpsText(outFps) : ""].filter(Boolean).join(", ")}</span>}
+        </button>
+        {advanced && (
+          <div className="export-advanced" data-testid="export-advanced-body">
+            <div className="export-adv-row">
+              <span className="muted">Codec</span>
+              <div className="seg" data-testid="export-codec" role="radiogroup" aria-label="Codec">
+                {(["h264", "hevc"] as const).map((c) => (
+                  <button type="button" key={c} role="radio" aria-checked={codec === c} className={codec === c ? "active" : ""} data-testid={`export-codec-${c}`} onClick={() => setCodec(c)}>
+                    {c === "h264" ? "H.264" : "HEVC (smaller, Apple devices)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="export-adv-row">
+              <span className="muted">Size</span>
+              <select data-testid="export-size" value={shortSide ?? ""} onChange={(e) => setShortSide(e.target.value === "" ? undefined : Number(e.target.value))}>
+                <option value="">{(({ width, height }) => `${width}×${height}`)(outputSize(project.canvas, quality))} ({QUALITIES.find((q) => q.id === quality)!.label})</option>
+                {exportShortSides(project.canvas).map((side) => {
+                  const s = outputSize(project.canvas, quality, side);
+                  return (
+                    <option key={side} value={side}>
+                      {s.width}×{s.height}
+                    </option>
+                  );
+                })}
+              </select>
+              <span className="muted">Frame rate</span>
+              <select data-testid="export-fps" value={outFps ?? ""} onChange={(e) => setOutFps(e.target.value === "" ? undefined : Number(e.target.value))}>
+                {exportFrameRates(fps).map((r, i) => (
+                  <option key={r} value={i === 0 ? "" : r}>
+                    {fpsText(r)}
+                    {i === 0 ? " (project)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="export-adv-row">
+              <span className="muted">Bitrate</span>
+              <NumberField label="Mb/s" testId="export-bitrate" value={bitrate} placeholder={`${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}`} step={1} min={0.1} max={500} onCommit={(v) => setBitrate(v)} />
+            </div>
+          </div>
+        )}
         <div className="wiz-list form-fields export-fields">
           <label className="wiz-field">
             <span>File</span>

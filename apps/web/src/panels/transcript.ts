@@ -202,7 +202,7 @@ export interface CaptionsPlan extends Plan {
  * track; remade in place when the media has captions), each planned on the project the one before
  * leaves, as one edit.
  */
-export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, options: { readonly mode: CaptionMode; readonly look: string }): CaptionsPlan | { readonly problem: string } {
+export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<string, MediaTranscript>, options: { readonly mode: CaptionMode; readonly look: string; readonly captionStyle?: string }): CaptionsPlan | { readonly problem: string } {
   let current = project;
   const ops: Array<Plan["ops"][number]> = [];
   const items: Array<string> = [];
@@ -210,7 +210,7 @@ export function planCaptions(project: ProjectModel, transcripts: ReadonlyMap<str
   for (const media of mediaOnMain(project)) {
     const t = transcripts.get(media);
     if (!t || !t.words.length) continue;
-    const plan = planMakeCaptions(current, { media, transcript: { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments }, silences: t.silences, envelope: t.envelope, mode: options.mode, look: options.look });
+    const plan = planMakeCaptions(current, { media, transcript: { words: t.words, language: t.language, seconds: t.seconds, segments: t.segments }, silences: t.silences, envelope: t.envelope, mode: options.mode, look: options.look, ...(options.captionStyle ? { captionStyle: options.captionStyle } : {}) });
     if ("problem" in plan) return plan;
     const next = draftOf(current, plan.ops);
     if ("problem" in next) return next;

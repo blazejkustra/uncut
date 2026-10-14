@@ -657,7 +657,8 @@ export function planSetLook(project: Target, itemId: string, look: string | unde
   const before = at >= 0 ? ((list[at]!.params ?? {}) as Record<string, unknown>) : undefined;
   const intensity = num(opts.intensity ?? (before?.look === look ? before?.intensity : undefined), 0, 1, 1);
   const params: Record<string, unknown> = { look, intensity: Math.round(intensity * 100) / 100, ...(opts.custom ? { custom: opts.custom, label: opts.label ?? look } : {}) };
-  const entry = { module: LOOK, params };
+  // An off filter (bypass, F18) stays off while its intensity changes; a new filter is on.
+  const entry = { module: LOOK, params, ...(at >= 0 && list[at]!.bypass && before?.look === look ? { bypass: true } : {}) };
   if (at >= 0) list[at] = entry;
   else list.unshift(entry);
   const name = info?.name ?? opts.label ?? look;
@@ -676,7 +677,7 @@ export function planAdjust(project: Target, itemId: string, patch: Partial<Recor
   for (const k of ADJUST_KEYS) if (next[k] !== 0) params[k] = Math.round(next[k] * 1000) / 1000;
   // Other params the entry had (an older project's) are kept on a reset only if they're not Adjust's.
   if (Object.keys(params).length) {
-    const entry = { module: ADJUST, params };
+    const entry = { module: ADJUST, params, ...(at >= 0 && list[at]!.bypass ? { bypass: true } : {}) };
     if (at >= 0) list[at] = entry;
     else list.push(entry);
   } else if (at >= 0) list.splice(at, 1);
@@ -700,7 +701,7 @@ export function planEffect(project: Target, itemId: string, module: string, para
   const at = list.findIndex((e) => e.module === module);
   const base = at >= 0 ? effectParams(module, list[at]!.params) : effectParams(module, {});
   const next = effectParams(module, { ...base, ...(params ?? {}) });
-  const entry = { module, ...(info.params.length ? { params: next } : {}) };
+  const entry = { module, ...(info.params.length ? { params: next } : {}), ...(at >= 0 && list[at]!.bypass ? { bypass: true } : {}) };
   if (at >= 0) {
     if (!params) return { problem: `${c.name} already has ${info.name.toLowerCase()}.` };
     list[at] = entry;
@@ -722,6 +723,24 @@ export function planRemoveEffect(project: Target, itemId: string, module: string
   return setEffects(itemId, list, `Remove ${name} from ${c.name}`);
 }
 
+/**
+ * Turn one of a clip's effects (or its filter, or Adjust) off or on (F18): an off entry keeps its
+ * place and settings (`bypass`, as the mixer's audio effects) and isn't drawn by the preview or the
+ * export (clipFx skips it).
+ */
+export function planEffectBypass(project: Target, itemId: string, module: string, on: boolean): Plan {
+  const c = clipOf(project, itemId);
+  if ("problem" in c) return c;
+  const list = [...(c.item.effects ?? [])];
+  const at = list.findIndex((e) => e.module === module);
+  if (at < 0) return { problem: "That clip doesn't have it." };
+  if (!list[at]!.bypass === on) return { problem: on ? "It's already on." : "It's already off." };
+  const { bypass: _, ...rest } = list[at]!;
+  list[at] = on ? rest : { ...rest, bypass: true };
+  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : (effectInfo(module)?.name.toLowerCase() ?? module);
+  return setEffects(itemId, list, `Turn ${name} on ${c.name} ${on ? "on" : "off"}`);
+}
+
 /** A clip's effects in words (History, D136): "filter Warm 80%, exposure +0.3 EV, blur 8 px". */
 export function fxWords(effects: unknown): string {
   const list = Array.isArray(effects) ? (effects as ReadonlyArray<ModuleUse>) : [];
@@ -731,12 +750,12 @@ export function fxWords(effects: unknown): string {
       if (e.module === LOOK) {
         const p = (e.params ?? {}) as Record<string, unknown>;
         const name = typeof p.label === "string" ? p.label : (lookInfo(String(p.look))?.name ?? String(p.look));
-        return `filter ${name} ${pct(num(p.intensity, 0, 1, 1))}`;
+        return `filter ${name} ${pct(num(p.intensity, 0, 1, 1))}${e.bypass ? " (off)" : ""}`;
       }
       if (e.module === ADJUST) {
         const a = adjustOf(e.params);
         const parts = ADJUST_INFO.filter((i) => a[i.key] !== 0).map((i) => `${i.name.toLowerCase()} ${adjustWord(i.key, a[i.key])}`);
-        return parts.length ? parts.join(", ") : "no adjustments";
+        return (parts.length ? parts.join(", ") : "no adjustments") + (e.bypass ? " (off)" : "");
       }
       const info = effectInfo(e.module);
       if (!info) return e.module;

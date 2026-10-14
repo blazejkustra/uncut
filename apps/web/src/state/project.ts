@@ -9,6 +9,7 @@ import { layout } from "@uncut/core/timeline";
 import { mediaIdFor, musicInProject, musicMedia, projectIds, type MusicTrack } from "@uncut/core/music";
 import { libraryMediaOf } from "@uncut/core/library";
 import { planPlaceMedia, takenIds } from "@uncut/core/arrange";
+import { defaultFrames, defaultSeconds } from "../settings/defaults.ts";
 
 import type { Item, Media, Project, Track } from "@uncut/core/types";
 
@@ -63,8 +64,6 @@ export function uniqueId(project: ProjectModel, base: string, taken = new Set<st
 /** `show`: where the playhead goes after the add (default `start`), e.g. past a text's in-move so it's on screen (F20). */
 export type Planned = { readonly ops: ReadonlyArray<unknown>; readonly summary: string; readonly itemId: string; readonly start: number; readonly show?: number } | { readonly problem: string };
 
-const IMAGE_SECONDS = 5;
-
 /**
  * "Add to timeline" for a library tile. Video and images are appended to the end of the magnetic
  * main track (D17: no gaps, nothing shifts); audio goes on the first unlocked audio track (one is
@@ -83,7 +82,7 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0):
   if (main.locked) return { problem: "The main track is locked. Unlock it to add clips." };
   const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
   const itemId = uniqueId(project, "clip");
-  const duration = media.kind === "image" ? IMAGE_SECONDS * fps : frames!;
+  const duration = media.kind === "image" ? defaultFrames("still", fps) : frames!;
   return {
     ops: [{ op: "insert_item", track: main.id, item: { id: itemId, type: "clip", media: media.id, in: 0, duration } }],
     summary: `Add ${media.name} to the timeline`,
@@ -94,7 +93,7 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0):
 
 /**
  * "Add at playhead" for a generated result (D99): a sound goes where "Add to timeline" puts it (the
- * playhead on the first free audio track); a picture (5 s) or a video starts at the playhead on the
+ * playhead on the first free audio track); a picture (the default photo length, F30) or a video starts at the playhead on the
  * nearest video track above the main track that is free for its whole length, else on a new
  * "Generated" track just above the main track. Nothing on the main track moves.
  */
@@ -107,7 +106,7 @@ export function planAddAtPlayhead(project: ProjectModel, mediaId: string, frame:
   if (media.kind === "audio") return planAudio(project, media, frames!, frame);
   const { starts } = layoutOf(project);
   const start = Math.max(0, Math.floor(frame));
-  const duration = media.kind === "image" ? IMAGE_SECONDS * fps : frames!;
+  const duration = media.kind === "image" ? defaultFrames("still", fps) : frames!;
   const mainIndex = project.tracks.findIndex((t) => t.role === "main");
   const above = project.tracks.slice(0, Math.max(0, mainIndex)).reverse();
   const free = (t: Track) => t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= start || start + duration <= (starts.get(i.id) ?? 0));
@@ -141,7 +140,7 @@ function planAudio(project: ProjectModel, media: Media, _length: number, frame: 
 export function planDropMedia(project: ProjectModel, mediaId: string, at: { readonly frame: number; readonly track?: string | undefined }): Planned {
   const media = project.media.find((m) => m.id === mediaId);
   if (!media) return { problem: "That media isn't in the project any more." };
-  const plan = planPlaceMedia(project, [media], at, takenIds(project));
+  const plan = planPlaceMedia(project, [media], { ...at, imageSeconds: defaultSeconds("still") }, takenIds(project));
   if ("problem" in plan) return plan;
   const first = plan.placed[0]!;
   return { ops: plan.ops, summary: `Add ${media.name} to the timeline`, itemId: first.itemId, start: first.start };
@@ -258,17 +257,15 @@ export function planAddLibrarySound(project: ProjectModel, sound: LibrarySound, 
 export { TEXT_PRESETS } from "@uncut/core/looks";
 export type { TextPreset } from "@uncut/core/looks";
 
-const TEXT_SECONDS = 3;
-
 /**
- * A text item in a preset's look at the playhead, 3 s long, on the top-most text track that is
+ * A text item in a preset's look at the playhead, the default text length long (F30, 3 s), on the top-most text track that is
  * free for that whole stretch (core planInsertText; the looks it comes with on the next free
  * ones). If none is, a new text track goes on top (above every other track). One edit either
  * way, so one undo removes it all.
  */
 export function planAddText(project: ProjectModel, preset: TextPreset, frame: number, at?: { readonly x: number; readonly y: number }): Planned {
   const start = Math.max(0, Math.floor(frame));
-  const duration = TEXT_SECONDS * project.canvas.fps;
+  const duration = defaultFrames("text", project.canvas.fps);
   // Dropped on the canvas: its first line centred on the drop point's height; a look that spans
   // the safe area keeps its x and width, others start at the drop point.
   const look = TEXT_STYLES[preset.module] ?? preset.look;

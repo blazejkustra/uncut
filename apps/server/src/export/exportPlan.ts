@@ -74,6 +74,7 @@ import {
   layout,
   MAX_RASTER_STATES,
   outputSize,
+  presetBitrateMbps,
   RENDER_CSS,
   SILENCE_DB,
   SOLID,
@@ -87,6 +88,7 @@ import {
   masterGain,
   panGains,
   trackPan,
+  type ExportCodec,
   type ExportQuality,
   type Item,
   duckCurves,
@@ -1004,19 +1006,34 @@ export interface Caps {
 /** How to hand ffmpeg a filter graph in a file: `-/filter_complex` from 7 on, `-filter_complex_script` before (deprecated since 7). */
 export const graphFileArgs = (caps: Pick<Caps, "major">, file: string) => (caps.major !== undefined && caps.major < 7 ? ["-filter_complex_script", file] : ["-/filter_complex", file]);
 
-/** Encoder arguments for a quality: VideoToolbox when this ffmpeg has it, else libx264. */
-export function videoCodec(quality: Quality, caps: Caps, size: { width: number; height: number }, fps: number): Array<string> {
-  const pixels = size.width * size.height * fps;
-  const rate = (bitsPerPixel: number) => `${Math.max(1, Math.round((pixels * bitsPerPixel) / 1e5) / 10)}M`;
+/** F4 (D171): what the Advanced row changes; absent = the preset's (H.264, its bitrate). */
+export interface VideoChoice {
+  readonly codec?: ExportCodec | undefined;
+  readonly bitrateMbps?: number | undefined;
+}
+
+/** Whether this ffmpeg can make HEVC (VideoToolbox, else libx265). */
+export const canHevc = (caps: Pick<Caps, "encoders">) => caps.encoders.has("hevc_videotoolbox") || caps.encoders.has("libx265");
+
+/**
+ * Encoder arguments for a quality (D55, D171): H.264 for every preset (High at a higher bitrate),
+ * HEVC only when chosen. VideoToolbox when this ffmpeg has it, else libx264 / libx265. `fps` is the
+ * output's rate (the bitrate scales with it).
+ */
+export function videoCodec(quality: Quality, caps: Caps, size: { width: number; height: number }, fps: number, choice: VideoChoice = {}): Array<string> {
+  const codec = choice.codec ?? "h264";
+  const rate = choice.bitrateMbps !== undefined && choice.bitrateMbps > 0 ? `${Math.round(choice.bitrateMbps * 10) / 10}M` : `${presetBitrateMbps(quality, codec, size, fps)}M`;
   // The encoders don't all write the colour tags they're given, so the bitstream filter does.
-  const tags = (codec: "h264" | "hevc") => ["-bsf:v", `${codec}_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0`];
-  if (quality === "high" && caps.encoders.has("hevc_videotoolbox")) return ["-c:v", "hevc_videotoolbox", "-allow_sw", "1", "-profile:v", "main", "-b:v", rate(0.1), "-tag:v", "hvc1", ...tags("hevc")];
-  if (caps.encoders.has("h264_videotoolbox")) {
-    const bpp = quality === "draft" ? 0.06 : quality === "standard" ? 0.1 : 0.16;
-    return ["-c:v", "h264_videotoolbox", "-allow_sw", "1", "-profile:v", "high", "-b:v", rate(bpp), ...(quality === "draft" ? ["-prio_speed", "1"] : []), "-tag:v", "avc1", ...tags("h264")];
+  const tags = (c: ExportCodec) => ["-bsf:v", `${c}_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:video_full_range_flag=0`];
+  if (codec === "hevc") {
+    if (caps.encoders.has("hevc_videotoolbox")) return ["-c:v", "hevc_videotoolbox", "-allow_sw", "1", "-profile:v", "main", "-b:v", rate, "-tag:v", "hvc1", ...tags("hevc")];
+    return ["-c:v", "libx265", "-preset", quality === "draft" ? "veryfast" : "medium", "-b:v", rate, "-tag:v", "hvc1", ...tags("hevc")];
   }
+  if (caps.encoders.has("h264_videotoolbox")) return ["-c:v", "h264_videotoolbox", "-allow_sw", "1", "-profile:v", "high", "-b:v", rate, ...(quality === "draft" ? ["-prio_speed", "1"] : []), "-tag:v", "avc1", ...tags("h264")];
+  const preset = ["-preset", quality === "draft" ? "veryfast" : "medium"];
+  if (choice.bitrateMbps !== undefined && choice.bitrateMbps > 0) return ["-c:v", "libx264", ...preset, "-b:v", rate, "-tag:v", "avc1", ...tags("h264")];
   const crf = quality === "draft" ? "26" : quality === "standard" ? "20" : "17";
-  return ["-c:v", "libx264", "-preset", quality === "draft" ? "veryfast" : "medium", "-crf", crf, "-tag:v", "avc1", ...tags("h264")];
+  return ["-c:v", "libx264", ...preset, "-crf", crf, "-tag:v", "avc1", ...tags("h264")];
 }
 
 const atempo = (speed: number) => {
@@ -1184,6 +1201,8 @@ export interface CommandOptions {
   readonly rasters: ReadonlyMap<VisualLayer, RasterOutput>;
   readonly caps: Caps;
   readonly quality: Quality;
+  /** F4 (D171): the codec and bitrate when not the preset's, and the output frame rate when not the plan's. */
+  readonly video?: (VideoChoice & { readonly fps?: number | undefined }) | undefined;
   /** A second-pass loudnorm filter (the limiter bypassed) — or `loudness`, what follows the mix (D86, D87). */
   readonly loudnorm?: string | undefined;
   readonly loudness?: AudioOptions | undefined;
@@ -1559,7 +1578,9 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     base = `b${k + 1}`;
   });
   // fps on frames already on the 1/fps grid passes them through one to one; it gives the stream its rate.
-  graph.push(`[${base}]format=yuv420p,fps=${fps},trim=end_frame=${plan.frames}[vout]`);
+  // F4 (D171): another output rate resamples the finished picture (the edit is timed in the plan's frames).
+  const outFps = opts.video?.fps !== undefined && opts.video.fps > 0 && Math.abs(opts.video.fps - fps) > 1e-6 ? opts.video.fps : undefined;
+  graph.push(`[${base}]format=yuv420p,fps=${fps},trim=end_frame=${plan.frames}${outFps ? `,fps=${n(outFps)}` : ""}[vout]`);
   const audio = audioGraph(plan, plan.visuals.length + 1, opts.loudness ?? opts.loudnorm);
   inputs.push(...audio.inputs);
   graph.push(...audio.filters);
@@ -1572,7 +1593,7 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     "-map",
     "[aout]",
     ...(opts.subtitles ? ["-map", `${subtitleInput}:s:0`, "-c:s", "mov_text", "-metadata:s:s:0", `language=${opts.subtitles.language}`, "-disposition:s:0", opts.subtitles.show ? "default" : "0"] : []),
-    ...videoCodec(opts.quality, opts.caps, plan, fps),
+    ...videoCodec(opts.quality, opts.caps, plan, outFps ?? fps, opts.video),
     "-pix_fmt",
     "yuv420p",
     "-colorspace",

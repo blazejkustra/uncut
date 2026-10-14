@@ -104,6 +104,7 @@ export const RENDER_CSS = [
   ".pv-text .pv-w{display:inline-block}",
   ".pv-text .pv-line{-webkit-box-decoration-break:clone;box-decoration-break:clone}",
   ".pv-text .accent{color:var(--accent)}",
+  ".pv-text.acc-box .accent{background:var(--accent-bg);border-radius:0.18em;padding:0 0.14em;margin:0 -0.14em;-webkit-box-decoration-break:clone;box-decoration-break:clone}",
   ".pv-text b{font-weight:800}",
   ".pv-text code{font-family:var(--mono);font-size:0.9em}",
   ".pv-solid{position:absolute;inset:0}",
@@ -132,6 +133,14 @@ export interface Motion {
   /** A word-by-word move (D81): each word's progress, 0 (not there yet) → 1 (arrived), and how it arrives. */
   readonly words?: ReadonlyArray<number>;
   readonly wordStyle?: WordStyle;
+  /** A typewriter move (D163): how many characters of the visible text show (the rest are hidden, or left out with a box). */
+  readonly chars?: number;
+  /** A blur move (D163): the blur radius in % of the canvas height (cqh, so the preview and export blur alike). */
+  readonly blur?: number;
+  /** A wiggle loop (D163): a tilt in degrees about the box's centre, added to the item's rotation. */
+  readonly rotate?: number;
+  /** A pop move (D163): opacity drawn in the HTML (not a linear ramp, so it isn't in the item's opacity). */
+  readonly fade?: number;
 }
 
 export const num = (n: number) => String(Math.round(n * 10000) / 10000);
@@ -227,6 +236,39 @@ function wrapWords(html: string, style: (i: number) => string | null, leavesOut 
   return { html: out, count: i + 1 };
 }
 
+/** One visible character of markup HTML: an entity (esc's &amp; and the like) or a code point. */
+const CHAR = /&(?:#\d+|#x[0-9a-f]+|[a-z]+);|[\s\S]/giu;
+
+/** How many characters a text's markup shows (what a typewriter move counts, D163): tags don't count, an entity is one. */
+export const charCount = (text: string) => {
+  let n = 0;
+  for (const [, tag, chunk] of markup(text).matchAll(/(<[^>]+>)|([^<]+)/g)) if (!tag) n += chunk!.match(CHAR)?.length ?? 0;
+  return n;
+};
+
+/**
+ * Markup HTML with only its first `shown` visible characters (D163): the rest of each text run is
+ * wrapped in an invisible span (tags pass through, so the nesting holds and the lines keep their
+ * layout), or left out with `leaveOut` (a box then grows with the characters).
+ */
+export function cutChars(html: string, shown: number, leaveOut = false): string {
+  let left = Math.max(0, Math.floor(shown));
+  let out = "";
+  for (const [, tag, chunk] of html.matchAll(/(<[^>]+>)|([^<]+)/g)) {
+    if (tag) {
+      out += tag;
+      continue;
+    }
+    const chars = chunk!.match(CHAR) ?? [];
+    const keep = chars.slice(0, left).join("");
+    const rest = chars.slice(left).join("");
+    left = Math.max(0, left - chars.length);
+    out += keep;
+    if (rest && !leaveOut) out += `<span style="opacity:0">${rest}</span>`;
+  }
+  return out;
+}
+
 /** How many words a text's markup shows (what a word-by-word move counts, D81). */
 export const wordCount = (text: string) => wrapWords(markup(text), () => "").count;
 
@@ -285,6 +327,8 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
   const s = item.style ?? {};
   const { x, y, w, size } = textPlacement(item, target);
   const decor = textDecor(item, look, size, target);
+  const extra = s as { readonly accent?: unknown; readonly accentBox?: unknown };
+  const accentBox = typeof extra.accentBox === "string" && extra.accentBox ? resolveColor(target, extra.accentBox, DEFAULT_THEME.colors.accent) : undefined;
   const css = [
     `left:${num((x / width) * 100)}%`,
     item.anchor === "bottom" ? `bottom:${num((1 - y / height) * 100)}%` : `top:${num((y / height) * 100)}%`,
@@ -296,10 +340,12 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
     `line-height:${num(s.lineHeight ?? look.lineHeight)}`,
     `color:${resolveColor(target, s.color ?? look.color, DEFAULT_THEME.colors.fg)}`,
     `text-align:${s.align ?? look.align ?? "left"}`,
-    `--accent:${resolveColor(target, "accent", DEFAULT_THEME.colors.accent)}`,
+    // Captions (D166) may colour the speaking word (style.accent: the highlight, the karaoke fill) and box it (style.accentBox).
+    `--accent:${resolveColor(target, typeof extra.accent === "string" ? extra.accent : "accent", DEFAULT_THEME.colors.accent)}`,
     `--mono:${resolveFont(target, "mono").replace(/"/g, "'")}`,
-    `opacity:${num(opacity * textOpacity(item))}`,
+    `opacity:${num(opacity * textOpacity(item) * (motion?.fade ?? 1))}`,
   ];
+  if (accentBox) css.push(`--accent-bg:${accentBox}`);
   if (s.italic) css.push("font-style:italic");
   if (decor.legacyShadow) css.push(`text-shadow:${LEGACY_SHADOW_CSS}`);
   else if (decor.shadow) {
@@ -314,10 +360,11 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
   if (bg && bg.wrap !== "lines") css.push(`background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px`);
   const moved = !!(motion?.dx || motion?.dy);
   const scaled = motion?.scale !== undefined && motion.scale !== 1;
-  const turn = textRotation(item);
+  const turn = textRotation(item) + (motion?.rotate ?? 0);
   const parts = [moved ? `translate(${num(((motion!.dx ?? 0) / width) * 100)}cqw,${num(((motion!.dy ?? 0) / height) * 100)}cqh)` : "", turn ? `rotate(${num(turn)}deg)` : "", scaled ? `scale(${num(motion!.scale!)})` : ""].filter(Boolean);
   if (parts.length) css.push(`transform:${parts.join(" ")}`);
   if (motion?.reveal !== undefined && motion.reveal < 1) css.push(`clip-path:inset(-20% ${num((1 - motion.reveal) * 100)}% -20% -5%)`);
+  if (motion?.blur) css.push(`filter:blur(${num(motion.blur)}cqh)`);
   let body = markup(item.text ?? "");
   if (motion?.words) {
     const words = motion.words;
@@ -326,8 +373,10 @@ export function textHtml(item: Item, target: RenderTarget, { opacity = 1, select
     const hide = !!bg && words.some((w) => w <= 0);
     body = wrapWords(body, (i) => (hide && (words[i] ?? 1) <= 0 ? null : wordCss(words[i] ?? 1, motion.wordStyle)), hide).html;
   }
+  // Typewriter (D163): as with word by word, a box grows with the characters (the rest left out); without one they keep their place.
+  if (motion?.chars !== undefined) body = cutChars(body, motion.chars, !!bg);
   if (bg && bg.wrap === "lines") body = `<span class="pv-line" style="background:${bgFill};padding:${padCss(Math.max(0, bg.padding ?? 0))};border-radius:${num(Math.max(0, bg.radius ?? 0))}px">${body}</span>`;
-  return `<div class="pv-text${selected ? " sel-box" : ""}" data-item="${esc(item.id)}" style="${css.join(";")}">${body}</div>`;
+  return `<div class="pv-text${accentBox ? " acc-box" : ""}${selected ? " sel-box" : ""}" data-item="${esc(item.id)}" style="${css.join(";")}">${body}</div>`;
 }
 
 /** The built-in full-frame background (component.solid): a colour, or a gradient to `to`. */

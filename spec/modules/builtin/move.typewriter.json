@@ -1,0 +1,14 @@
+{
+  "manifest": "uncut.module/0",
+  "id": "move.typewriter",
+  "kind": "move",
+  "name": "Typewriter",
+  "version": "0.1.0",
+  "author": "Uncut",
+  "license": "MIT",
+  "builtin": true,
+  "runtime": {
+    "type": "html"
+  },
+  "description": "Text: the characters appear one at a time over the move's length (in), or are erased from the last one (out)."
+}

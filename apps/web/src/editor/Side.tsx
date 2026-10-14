@@ -17,6 +17,7 @@ import { CaptionsEditor } from "../inspector/captions.tsx";
 import { ClipBoxEditor } from "../inspector/clip.tsx";
 import { EffectsEditor } from "../inspector/effects.tsx";
 import { MultiInspector } from "../inspector/multi.tsx";
+import { Section } from "../inspector/controls.tsx";
 import { fxSkips } from "@uncut/core/fx";
 import { TextEditor } from "../inspector/text.tsx";
 import { TransitionInspector } from "../inspector/transition.tsx";
@@ -134,10 +135,23 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
       {item.type === "captions" && <CaptionsEditor project={project} item={item} locked={locked} />}
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
       {isDrawnComponent(item) && <ComponentEditor project={project} item={item} locked={locked} />}
-      {isBoxed(project, item) && <ClipBoxEditor project={project} item={item} locked={locked} />}
+      {/* F17 (D160): the clip's controls in sections that fold, each one's state remembered on this Mac. */}
+      {isBoxed(project, item) && (
+        <Section title="Transform" testId="insp-sec-transform" remember="transform">
+          <ClipBoxEditor project={project} item={item} locked={locked} />
+        </Section>
+      )}
       {item.type === "clip" && media && media.kind !== "audio" && !fxSkips(media) && <EffectsEditor project={project} item={item} locked={locked} />}
-      {hasSpeed(project, item) && <SpeedEditor project={project} item={item} locked={locked} />}
-      {hasSound(project, item) && <AudioEditor project={project} item={item} locked={locked} />}
+      {hasSpeed(project, item) && (
+        <Section title="Speed" testId="insp-sec-speed" remember="speed">
+          <SpeedEditor project={project} item={item} locked={locked} />
+        </Section>
+      )}
+      {hasSound(project, item) && (
+        <Section title="Audio" testId="insp-sec-audio" remember="audio">
+          <AudioEditor project={project} item={item} locked={locked} />
+        </Section>
+      )}
       {item.mute && (
         <div className="group" data-testid="insp-muted">
           <div className="group-label row">
@@ -148,6 +162,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
           </div>
         </div>
       )}
+      <Section title="Advanced" testId="insp-sec-advanced" remember="advanced">
       <NamesEditor project={project} item={item} locked={locked} />
       <div className="group">
         <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
@@ -162,6 +177,7 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
           </>
         )}
       </div>
+      </Section>
     </div>
   );
 }

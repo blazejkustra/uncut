@@ -86,7 +86,7 @@ export interface PlaceMediaPlan {
 }
 
 /** The length a media file gets on the timeline, in project frames (undefined: unknown, can't be placed). */
-export const placedLength = (media: PlaceMedia, fps: number) => (media.kind === "image" ? IMAGE_SECONDS * fps : media.probe?.frames && media.probe.frames > 0 ? Math.floor(media.probe.frames) : undefined);
+export const placedLength = (media: PlaceMedia, fps: number, imageSeconds = IMAGE_SECONDS) => (media.kind === "image" ? Math.max(1, Math.round(imageSeconds * fps)) : media.probe?.frames && media.probe.frames > 0 ? Math.floor(media.probe.frames) : undefined);
 
 /**
  * The first unlocked, heard audio track (not main) free over [start, start + duration), or undefined
@@ -117,7 +117,7 @@ const nextName = (project: Pick<Project, "tracks">, base: string) => {
  * Nothing that is already there moves (except main's ripple when inserting into it). `taken` holds
  * every id in use and gets the new ones. Media of unknown length are refused.
  */
-export function planPlaceMedia(project: Pick<Project, "tracks" | "canvas">, media: ReadonlyArray<PlaceMedia>, at: { readonly frame: Frame; readonly track?: Id | undefined }, taken: Set<string>): PlaceMediaPlan | { readonly problem: string } {
+export function planPlaceMedia(project: Pick<Project, "tracks" | "canvas">, media: ReadonlyArray<PlaceMedia>, at: { readonly frame: Frame; readonly track?: Id | undefined; /** A photo's length (F30: the app's default; IMAGE_SECONDS when absent). */ readonly imageSeconds?: number | undefined }, taken: Set<string>): PlaceMediaPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   // The project as the ops so far leave it (tracks only, starts resolved for free tracks).
   let tracks: Array<Track> = project.tracks.map((t) => ({ ...t, items: [...t.items] }));
@@ -128,7 +128,7 @@ export function planPlaceMedia(project: Pick<Project, "tracks" | "canvas">, medi
   const target = at.track !== undefined ? tracks.find((t) => t.id === at.track) : undefined;
   if (target?.locked) return { problem: `The ${target.name} track is locked. Unlock it to add to it.` };
   for (const m of media) {
-    const length = placedLength(m, fps);
+    const length = placedLength(m, fps, at.imageSeconds);
     if (!length) return { problem: `${m.name} has no known length, so it can't go on the timeline.` };
     let track = target && itemTypeFor(m, target) ? target : undefined;
     const type = track ? itemTypeFor(m, track)! : m.kind === "audio" ? "audio" : "clip";

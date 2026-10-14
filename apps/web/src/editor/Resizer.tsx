@@ -4,7 +4,7 @@ import { layout, type PanelSize } from "./layout.ts";
 
 /**
  * A drag handle on a panel's edge (G5): the left panel's right edge, the inspector's left edge,
- * the timeline's top edge. Dragging resizes live; the size is saved on release; a double click
+ * the timeline's top edge; a grip line shows under the pointer and while dragging (F31). Dragging resizes live; the size is saved on release; a double click
  * puts the default back.
  */
 export function Resizer({ panel }: { panel: PanelSize }) {
@@ -19,17 +19,28 @@ export function Resizer({ panel }: { panel: PanelSize }) {
     const libLeft = app?.querySelector(".library")?.getBoundingClientRect().left ?? rect.left + 56;
     const sizeAt = (ev: { clientX: number; clientY: number }) => (panel === "lib" ? ev.clientX - libLeft : panel === "side" ? rect.right - ev.clientX : rect.bottom - ev.clientY);
     const move = (ev: PointerEvent) => layout.set(panel, sizeAt(ev), false);
+    let ended = false;
+    // Ends on pointerup / pointercancel, or when the capture is lost some other way (the drag must
+    // never leave the window's resize cursor and grip stuck on).
     const up = (ev: PointerEvent) => {
+      if (ended) return;
+      ended = true;
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
       handle.removeEventListener("pointercancel", up);
+      handle.removeEventListener("lostpointercapture", up);
+      window.removeEventListener("pointerup", up, true);
       document.body.classList.remove("resizing");
+      handle.classList.remove("dragging");
       layout.set(panel, sizeAt(ev), true);
     };
     document.body.classList.add("resizing");
+    handle.classList.add("dragging");
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
     handle.addEventListener("pointercancel", up);
+    handle.addEventListener("lostpointercapture", up);
+    window.addEventListener("pointerup", up, true);
   };
   return <div className={`resizer ${panel === "bottom" ? "h" : "v"} resizer-${panel}`} data-testid={`resize-${panel}`} title="Drag to resize, double-click to reset" onPointerDown={onPointerDown} onDoubleClick={() => layout.reset(panel)} />;
 }

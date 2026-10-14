@@ -7,6 +7,7 @@ import { playback, usePlayback } from "../preview/playback.ts";
 import { type ProjectModel } from "../state/project.ts";
 import { autoMaxChars, CAPTION_MODE_NAMES, CAPTION_MODES, captionCardAt, captionCards, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, type CaptionEdit } from "@uncut/core/captions";
 import { TextStyleTab } from "./text.tsx";
+import { CaptionStyleGallery } from "./captionStyles.tsx";
 import { send, NumberField, Tabs, Group } from "./fields.tsx";
 
 export function CaptionsEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
@@ -23,7 +24,14 @@ export function CaptionsEditor({ project, item, locked }: { project: ProjectMode
           ]}
         />
       </div>
-      {tab === "captions" ? <CaptionsTab project={project} item={item} disabled={locked} /> : <TextStyleTab project={project} item={item} disabled={locked} />}
+      {tab === "captions" ? (
+        <CaptionsTab project={project} item={item} disabled={locked} />
+      ) : (
+        <>
+          <CaptionStyleGallery project={project} item={item} disabled={locked} />
+          <TextStyleTab project={project} item={item} disabled={locked} />
+        </>
+      )}
     </div>
   );
 }

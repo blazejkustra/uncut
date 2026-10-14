@@ -59,7 +59,9 @@ before(async () => {
       return;
     }
     if (mode === "drop" && !m) {
-      res.write(part.subarray(0, 1024 * 1024), () => setTimeout(() => res.socket?.destroy(), 50));
+      // A half-close (FIN after the bytes), not a reset: a reset can drop bytes the client hasn't read
+      // yet, which under a parallel test run made the kept size a matter of timing.
+      res.write(part.subarray(0, 1024 * 1024), () => res.socket?.end());
       return;
     }
     if (mode === "slow") {
