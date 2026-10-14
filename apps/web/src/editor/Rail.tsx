@@ -1,6 +1,6 @@
 // The left rail: the library's tabs. A long press (LONG_PRESS_MS without moving) picks a tab up;
 // dragging it over another moves it there; the order is remembered on this Mac (S2, D117).
-import { AudioWaveform, Blend, CircleDot, Film, Music, Palette, ScrollText, Shapes, Sparkles, Type, type LucideIcon } from "lucide-react";
+import { AudioWaveform, Blend, CircleDot, Film, Music, Palette, ScrollText, Shapes, Sparkles, SwatchBook, Type, type LucideIcon } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -21,6 +21,8 @@ const TABS: ReadonlyArray<{ readonly id: LibraryTab; readonly label: string; rea
   { id: "effects", label: "Effects", title: "Filters and effects", icon: Palette },
   { id: "capture", label: "Capture", title: "Capture", icon: CircleDot },
   { id: "generate", label: "Generate", title: "Generate", icon: Sparkles },
+  // D186: brand kits and skills, and the ones this project uses (a saved order gets it at the end).
+  { id: "brand", label: "Brand", title: "Brand kits and skills", icon: SwatchBook },
 ];
 export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab) => void }) {
   const [order, setOrder] = useState<Array<LibraryTab>>(() => loadRail(TABS.map((t) => t.id)));

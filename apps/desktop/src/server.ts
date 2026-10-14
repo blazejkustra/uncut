@@ -39,6 +39,8 @@ export function startServer(options: {
   musicDir: string;
   // The bundled sound-effects pack (D134).
   sfxDir: string;
+  // The libraries graphics load with uncut:lib/ markers (D193).
+  graphicLibsDir: string;
   // Plugins shipped with the app (D97).
   bundledPluginsDir: string;
   // The plugin SDK plugins on the app's Node import (D102).
@@ -61,6 +63,7 @@ export function startServer(options: {
     UNCUT_MODULES_DIR: options.modulesDir,
     UNCUT_MUSIC_DIR: options.musicDir,
     UNCUT_SFX_DIR: options.sfxDir,
+    UNCUT_GRAPHIC_LIBS_DIR: options.graphicLibsDir,
     UNCUT_BUNDLED_PLUGINS_DIR: options.bundledPluginsDir,
     UNCUT_PLUGIN_SDK_DIR: options.pluginSdkDir,
     UNCUT_DATA_DIR: options.dataDir,

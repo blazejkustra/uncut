@@ -10,5 +10,24 @@
   "runtime": {
     "type": "html"
   },
-  "description": "Text: drops in from above and bounces as it lands, fading in (in); leaves the same way, reversed (out)."
+  "description": "Text: drops in from above and bounces as it lands, fading in (in); leaves the same way, reversed (out).",
+  "params": {
+    "type": "object",
+    "properties": {
+      "ease": {
+        "enum": [
+          "linear",
+          "in",
+          "out",
+          "inOut",
+          "spring",
+          "spring.snap",
+          "spring.settle",
+          "spring.land",
+          "spring.bounce"
+        ],
+        "description": "Optional: reshapes the motion (not the fade): linear, in, out, inOut (cubic) or a spring (spring.snap, spring.settle or spring, spring.land, spring.bounce: fitted to the move's duration, may overshoot) (D192). Without it the move keeps its own curve."
+      }
+    }
+  }
 }

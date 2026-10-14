@@ -115,8 +115,8 @@ export interface Item {
   /** D157: items with the same group move, trim and delete together on the timeline (a kicker and its title). */
   readonly group?: string;
   readonly transform?: Transform;
-  /** Clips: keyframes of x, y, scale and opacity (D75, box.ts). */
-  readonly keys?: ReadonlyArray<{ readonly frame: Frame; readonly ease?: "linear" | "in" | "out" | "inOut"; readonly x?: number; readonly y?: number; readonly scale?: number; readonly opacity?: number; readonly [key: string]: unknown }>;
+  /** Clips: keyframes of x, y, scale and opacity (D75, box.ts); ease may name a spring (D192, spring.ts). */
+  readonly keys?: ReadonlyArray<{ readonly frame: Frame; readonly ease?: "linear" | "in" | "out" | "inOut" | "spring" | "spring.snap" | "spring.settle" | "spring.land" | "spring.bounce"; readonly x?: number; readonly y?: number; readonly scale?: number; readonly opacity?: number; readonly [key: string]: unknown }>;
   readonly transitionIn?: TimedModule;
   readonly animation?: { readonly in?: TimedModule; readonly out?: TimedModule; readonly loop?: TimedModule };
   readonly effects?: ReadonlyArray<ModuleUse>;

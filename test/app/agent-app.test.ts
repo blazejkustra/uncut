@@ -167,7 +167,7 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   assert.match(note, /Told the agent about 2 changes you made by hand.*Added text track "Text 2".*Added text /);
   assert.doesNotMatch(note, /\(text-1\)|lower-third-1/, "ids stay in the prompt, not on screen");
   const prompts = readFileSync(promptLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-  assert.equal(prompts[1].prompt.split("\n\n<editor-context>")[0], "add an end card\nthat thanks people");
+  assert.equal(prompts[1].prompt.split("\n\n<brand>")[0], "add an end card\nthat thanks people");
   assert.match(prompts[1].prompt, /by hand/);
   assert.equal(prompts[1].resume, "fake-session");
   assert.ok(!prompts[0].env.includes("ANTHROPIC_API_KEY"), "D41 in the packaged app too");

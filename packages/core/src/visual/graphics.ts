@@ -12,6 +12,16 @@
 // item (past that it holds frames: every k-th frame is drawn and shown k frames); the file is read
 // when the export starts or the preview loads it (write a new file to change a graphic: graphic_write
 // never overwrites, so earlier revisions keep their look).
+//
+// Bundled libraries (D193): a graphic loads one with a marker, <script src="uncut:lib/three.js">
+// </script> (also confetti.js, globe.js, spring.js, random.js). resolveGraphicLibs replaces each
+// marker with the library's source as an inline script (so the CSP stays as it is and nothing loads
+// from anywhere), right after the graphic file is read (the server's readGraphics, which the preview
+// route, the export and render_frames all go through), so preview == export by construction. Core
+// can't read files: the server passes the sources (assets/graphic-libs, ServerConfig
+// graphicLibsDir). MAX_GRAPHIC_BYTES caps the author's file, not the libraries; with every library
+// in, a document stays under MAX_GRAPHIC_DOC_BYTES (the export loads it as a data: URL, which
+// Chromium caps at 2 MB of URL, base64).
 import type { Canvas, Item } from "../timeline/types.ts";
 
 /** Where graphic files live in a project, and what their names look like (project.schema.json `src`). */
@@ -52,6 +62,60 @@ export const graphicInfo = (item: Pick<Item, "duration" | "props">, canvas: Pick
  * the preview's iframe gets the same call by postMessage ({ uncut: "render", seq, t, info }) and
  * answers { uncut: "rendered", seq }.
  */
+/** The libraries a graphic may load with <script src="uncut:lib/<name>"></script> (D193). */
+export const GRAPHIC_LIBS = ["three.js", "confetti.js", "globe.js", "spring.js", "random.js"] as const;
+export type GraphicLib = (typeof GRAPHIC_LIBS)[number];
+
+/** The most a graphic's whole document may hold, libraries in (bytes): base64 of it must stay under Chromium's 2 MB URL limit. */
+export const MAX_GRAPHIC_DOC_BYTES = 1_400_000;
+
+// A marker: a script element whose only attribute is src="uncut:lib/<name>", empty.
+const LIB_MARKER = /<script\s+src\s*=\s*(["'])uncut:lib\/([^"'<>\s]*)\1\s*>\s*<\/script\s*>/gi;
+
+/** Which libraries a graphic's HTML asks for, known and unknown (each once, in order); for graphic_write's note. */
+export function graphicLibsUsed(html: string): { readonly known: Array<string>; readonly unknown: Array<string> } {
+  const known: Array<string> = [];
+  const unknown: Array<string> = [];
+  for (const m of html.matchAll(LIB_MARKER)) {
+    const name = m[2]!;
+    const list = (GRAPHIC_LIBS as ReadonlyArray<string>).includes(name) ? known : unknown;
+    if (!list.includes(name)) list.push(name);
+  }
+  return { known, unknown };
+}
+
+/**
+ * The graphic's HTML with each library marker replaced by the library's source (`libs`: name →
+ * source) as an inline classic script, once per library (a repeated marker becomes a comment); a
+ * marker for a library that isn't there becomes a comment saying so (the graphic then fails where
+ * it uses it, visibly). Nothing else in the HTML changes.
+ */
+export function resolveGraphicLibs(html: string, libs: Readonly<Record<string, string>>): string {
+  // Each library once: a second marker for it is a comment (so a document never holds two copies,
+  // which could take it past the export's data: URL limit while the preview still loaded it).
+  const seen = new Set<string>();
+  return html.replace(LIB_MARKER, (_marker, _q, name: string) => {
+    const source = (GRAPHIC_LIBS as ReadonlyArray<string>).includes(name) && Object.hasOwn(libs, name) ? libs[name] : undefined;
+    const safe = name.replace(/--/g, "- -");
+    if (source === undefined) return `<!-- uncut:lib/${safe} is not a bundled library (bundled: ${GRAPHIC_LIBS.join(", ")}) -->`;
+    if (seen.has(name)) return `<!-- uncut:lib/${safe} is already loaded above -->`;
+    seen.add(name);
+    // An inline script ends at the first </script: keep any inside the source from closing it.
+    return `<script>/* uncut:lib/${safe} */\n${source.replace(/<\/(script)/gi, "<\\/$1")}\n</script>`;
+  });
+}
+
+/** For the agent's system prompt (D193): the render(t) contract and the bundled libraries. */
+export const GRAPHIC_LIBS_DOC = [
+  "Graphics (graphic_write) draw everything from t alone: render(t, info) is called for each frame in any order, in the preview and again in the export, so no timers, no requestAnimationFrame loops, no Date.now or performance.now, no Math.random (use uncutRandom(seed)), no state carried from one frame to the next; nothing loads from the network.",
+  'Bundled libraries load with a marker in the HTML, inlined by Uncut (the same in the preview and the export): <script src="uncut:lib/three.js"></script>, and likewise uncut:lib/confetti.js, uncut:lib/globe.js, uncut:lib/spring.js, uncut:lib/random.js; any other name is not loaded.',
+  "three.js (0.169, window.THREE): create the renderer once at load, new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true }) with a canvas of info.width by info.height (renderer.setSize(info.width, info.height, false), pixel ratio 1), then inside render(t) set the camera and every object from t and call renderer.render(scene, camera).",
+  "uncutConfetti.draw(ctx, t, { seed, count, at, origin: { x, y } as canvas fractions, angle, spread, velocity, gravity, drag, size, life, colors, shapes }) draws a confetti burst on a 2D context as a pure function of t (clear the canvas first).",
+  "uncutGlobe.draw(ctx, t, { x, y, radius, dots, rotation, speed in degrees per second, tilt, dotSize, ocean, markers: [{ lat, lon, color, size }], colors: { dot, marker, sphere, rim } }) draws a dotted spinning globe; uncutGlobe.project(ctx, t, lat, lon, options) gives { x, y, visible }.",
+  'uncutSpring(t, "spring.land" or { stiffness, damping, mass, velocity }) is the spring Uncut uses for eases (0 at t = 0 seconds, settling at 1; presets spring.snap, spring.settle, spring.land, spring.bounce), with uncutSpring.ease(preset)(p) fitted to p from 0 to 1.',
+  "uncutRandom(seed) returns a seeded generator (rnd() in [0, 1), rnd.range(a, b), rnd.int(a, b), rnd.pick(list), rnd.normal()); uncutRandom.noise(seed, x) is smooth noise.",
+].join(" ");
+
 export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "height">): string {
   const size = `width:${canvas.width}px;height:${canvas.height}px`;
   // The bootstrap goes in <head>, before the author's markup: an unclosed <script>, <!--, <textarea>

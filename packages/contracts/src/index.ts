@@ -75,6 +75,14 @@ export const RPC_METHODS = {
   keysSet: "keys.set",
   keysRemove: "keys.remove",
   filesList: "files.list",
+  agentPlanSave: "agent.planSave",
+  brandGet: "brand.get",
+  brandSaveKit: "brand.saveKit",
+  brandDeleteKit: "brand.deleteKit",
+  brandSaveSkill: "brand.saveSkill",
+  brandDeleteSkill: "brand.deleteSkill",
+  brandSetActive: "brand.setActive",
+  brandAddFile: "brand.addFile",
 } as const;
 
 // ---- server ----
@@ -517,6 +525,176 @@ export class GenerateError extends Schema.TaggedError<GenerateError>()("Generate
   message: Schema.String,
 }) {}
 
+// ---- brand kits, skills and the production plan (U7, U15, U16, U17; D186–D191) ----
+
+/** A colour of a kit with what it's for ("background", "text", "primary", "accent", "muted"...). */
+export const BrandColor = Schema.Struct({ hex: Schema.String, role: Schema.String, name: Schema.optional(Schema.String) });
+export type BrandColor = typeof BrandColor.Type;
+/** A typeface of a kit: its family (as installed on this Mac) and what it's for ("headline", "body", "mono"). */
+export const BrandFont = Schema.Struct({ family: Schema.String, role: Schema.String, weight: Schema.optional(Schema.Number) });
+export type BrandFont = typeof BrandFont.Type;
+/**
+ * A style guide (U17): the grammar of a look, not its content. Usually written by the agent from
+ * a reference video or frame ("Make a style from a reference").
+ */
+export const BrandStyle = Schema.Struct({
+  source: Schema.optional(Schema.String),
+  palette: Schema.Array(Schema.Struct({ hex: Schema.String, role: Schema.optional(Schema.String) })),
+  type: Schema.String,
+  shotLengths: Schema.String,
+  transitions: Schema.String,
+  camera: Schema.String,
+  grain: Schema.String,
+  notes: Schema.optional(Schema.String),
+});
+export type BrandStyle = typeof BrandStyle.Type;
+/** Where a kit or a skill lives: the user's (every project) or this project's (`<project>/brand/`, wins on the same id). */
+export const BrandScope = Schema.Literals(["global", "project"]);
+export type BrandScope = typeof BrandScope.Type;
+/**
+ * A brand kit (U7). Files (logos, example frames) are names inside the kit's folder
+ * (`<dataDir>/brand/kits/<id>/` or `<project>/brand/kits/<id>/`); `files` resolves them.
+ */
+export const BrandKit = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  scope: BrandScope,
+  logos: Schema.Struct({ light: Schema.optional(Schema.String), dark: Schema.optional(Schema.String), mark: Schema.optional(Schema.String) }),
+  colors: Schema.Array(BrandColor),
+  fonts: Schema.Array(BrandFont),
+  tone: Schema.String,
+  taglines: Schema.Array(Schema.String),
+  urls: Schema.Array(Schema.String),
+  dos: Schema.Array(Schema.String),
+  donts: Schema.Array(Schema.String),
+  examples: Schema.Array(Schema.String),
+  style: Schema.optional(BrandStyle),
+  updatedAt: Schema.optional(Schema.String),
+});
+export type BrandKit = typeof BrandKit.Type;
+/** A skill (U7): a reusable style or recipe document ("Launch promo 20 s"), plain text the agent follows. */
+export const BrandSkill = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  scope: BrandScope,
+  description: Schema.String,
+  body: Schema.String,
+  updatedAt: Schema.optional(Schema.String),
+});
+export type BrandSkill = typeof BrandSkill.Type;
+/** What the open project uses (`<project>/brand/active.json`): one kit (or none) and its skills. */
+export const BrandActive = Schema.Struct({ kit: Schema.NullOr(Schema.String), skills: Schema.Array(Schema.String) });
+export type BrandActive = typeof BrandActive.Type;
+/** Every kit and skill the open project can see (project ones win on the same id), and its choice. */
+export const BrandState = Schema.Struct({
+  kits: Schema.Array(BrandKit),
+  skills: Schema.Array(BrandSkill),
+  active: BrandActive,
+  // Absolute paths of each kit's files by kit id then file name, for thumbnails and the agent.
+  files: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)),
+});
+export type BrandState = typeof BrandState.Type;
+
+export class BrandError extends Schema.TaggedError<BrandError>()("BrandError", {
+  reason: Schema.Literals(["no-project", "invalid", "not-found", "failed"]),
+  message: Schema.String,
+}) {}
+
+/**
+ * The production brief (U15, `<project>/brief.json`): co-written with the agent before a new video
+ * is built, editable by the user. Every field is plain text the agent reads each turn.
+ */
+export const Brief = Schema.Struct({
+  film: Schema.String, // the film in one sentence
+  audience: Schema.String,
+  duration: Schema.String, // "20 s"
+  formats: Schema.Array(Schema.String), // "9:16 1080x1920", "16:9"
+  assets: Schema.Array(Schema.String), // the real assets it uses (logo, recordings, screenshots)
+  visual: Schema.String, // visual direction
+  hardLines: Schema.Array(Schema.String), // never invent product UI, metrics or logos...
+  deliverables: Schema.Array(Schema.String),
+  notes: Schema.optional(Schema.String),
+  updatedAt: Schema.optional(Schema.String),
+  by: Schema.optional(Schema.Literals(["agent", "user"])),
+});
+export type Brief = typeof Brief.Type;
+/** One beat of the storyboard / shot list (U9, U15): times in seconds. */
+export const StoryboardBeat = Schema.Struct({
+  start: Schema.Number,
+  end: Schema.Number,
+  title: Schema.String,
+  entry: Schema.String, // what's on screen as it starts
+  exit: Schema.String, // what's on screen as it ends
+  purpose: Schema.String,
+  assets: Schema.Array(Schema.String),
+  sound: Schema.optional(Schema.String), // the beat or hit it lands on
+});
+export type StoryboardBeat = typeof StoryboardBeat.Type;
+/** The storyboard (`<project>/storyboard.json`): proposed by the agent, approved (maybe edited) by the user before the build. */
+export const Storyboard = Schema.Struct({
+  summary: Schema.String,
+  beats: Schema.Array(StoryboardBeat),
+  status: Schema.Literals(["proposed", "approved", "declined"]),
+  // "user": approved on the card; "setting": Edit freely with the gate skipped.
+  approvedBy: Schema.optional(Schema.Literals(["user", "setting"])),
+  note: Schema.optional(Schema.String),
+  updatedAt: Schema.optional(Schema.String),
+});
+export type Storyboard = typeof Storyboard.Type;
+/** The critic's scores (U16), 0–10 each. */
+export const REVIEW_SCORES = ["hook", "readability", "motion", "variety", "sound", "brand"] as const;
+export const ReviewScores = Schema.Struct({ hook: Schema.Number, readability: Schema.Number, motion: Schema.Number, variety: Schema.Number, sound: Schema.Number, brand: Schema.Number });
+export type ReviewScores = typeof ReviewScores.Type;
+/** One review round (`<project>/reviews/review-<n>.json`). */
+export const Review = Schema.Struct({
+  round: Schema.Number,
+  scores: ReviewScores,
+  defects: Schema.Array(Schema.Struct({ at: Schema.Number, what: Schema.String, fix: Schema.optional(Schema.String) })),
+  notes: Schema.optional(Schema.String),
+  // The determinism check (U16): graphics drawn twice at the same frame, by name; those that differed.
+  determinism: Schema.optional(Schema.Struct({ checked: Schema.Array(Schema.String), differed: Schema.Array(Schema.String) })),
+  // Whether this round's looks were taken (a contact sheet and phone-size frames in this turn).
+  looked: Schema.optional(Schema.Struct({ sheet: Schema.Boolean, phone: Schema.Boolean })),
+  passed: Schema.Boolean,
+  revision: Schema.optional(Schema.Number),
+  at: Schema.String,
+  turnId: Schema.optional(Schema.String),
+});
+export type Review = typeof Review.Type;
+/** The open project's plan as the Agent tab shows it. */
+export const AgentPlan = Schema.Struct({
+  brief: Schema.optional(Brief),
+  storyboard: Schema.optional(Storyboard),
+  reviews: Schema.Array(Review),
+});
+export type AgentPlan = typeof AgentPlan.Type;
+
+/** A question the agent asks (ask_user, U8): pick one or several options and/or write an answer. */
+export const AgentQuestion = Schema.Struct({
+  question: Schema.String,
+  options: Schema.Array(Schema.Struct({ label: Schema.String, detail: Schema.optional(Schema.String) })),
+  multi: Schema.Boolean,
+  freeText: Schema.Boolean,
+});
+export type AgentQuestion = typeof AgentQuestion.Type;
+/** The user's answer to a question card. */
+export const AgentAnswer = Schema.Struct({ choices: Schema.Array(Schema.String), text: Schema.optional(Schema.String) });
+export type AgentAnswer = typeof AgentAnswer.Type;
+/** A card in a turn's history (kept with the turn): a question and its answer, the brief, the storyboard, a review. */
+export const AgentCard = Schema.Struct({
+  type: Schema.Literals(["question", "brief", "storyboard", "review", "brand"]),
+  question: Schema.optional(AgentQuestion),
+  answer: Schema.optional(AgentAnswer),
+  // "answered", "skipped" (no answer in time, or stopped), "approved", "declined", "auto" (approved by the setting)
+  outcome: Schema.optional(Schema.String),
+  brief: Schema.optional(Brief),
+  storyboard: Schema.optional(Storyboard),
+  review: Schema.optional(Review),
+  // brand: what was written into which kit ("Style guide written into Argent")
+  text: Schema.optional(Schema.String),
+});
+export type AgentCard = typeof AgentCard.Type;
+
 // ---- agent (D40, D48) ----
 
 // The MCP server the agent CLI runs forwards tool calls to these routes (same port as the
@@ -527,7 +705,7 @@ export const AGENT_TOKEN_HEADER = "x-uncut-agent-token";
 
 /** One thing in a turn, in order: a piece of the agent's reply, its thinking (a summary), or a tool it used. */
 export const AgentItem = Schema.Struct({
-  kind: Schema.Literals(["text", "step", "thinking"]),
+  kind: Schema.Literals(["text", "step", "thinking", "card"]),
   // The reply text, the thinking summary, or the step in words ("Read the timeline", the edit's summary).
   text: Schema.String,
   tool: Schema.optional(Schema.String),
@@ -538,6 +716,8 @@ export const AgentItem = Schema.Struct({
   error: Schema.optional(Schema.String),
   // A step while it runs (D182), in the present tense with its target ("Writing graphic s3-enter.html").
   doing: Schema.optional(Schema.String),
+  // kind "card" (D186–D190): a question with its answer, the brief, the storyboard or a review.
+  card: Schema.optional(AgentCard),
 });
 export type AgentItem = typeof AgentItem.Type;
 
@@ -659,6 +839,10 @@ export const AgentApproval = Schema.Struct({
   screen: Schema.optional(Schema.Struct({ source: Schema.optional(Schema.String), seconds: Schema.Number, withMic: Schema.Boolean })),
   // D184: a big change asked for in "Ask before big changes": what it would do, in words.
   edit: Schema.optional(Schema.Struct({ lines: Schema.Array(Schema.String) })),
+  // D187: a question (ask_user): answered with agent.approve's answer; Skip is allow false.
+  question: Schema.optional(AgentQuestion),
+  // D188: a storyboard to approve before the build: Approve (maybe with edited beats) or Change (a note).
+  storyboard: Schema.optional(Storyboard),
 });
 export type AgentApproval = typeof AgentApproval.Type;
 
@@ -673,6 +857,8 @@ export const AgentState = Schema.Struct({
   // D144: the screen_record card id whose take the server waits for; gone (turn stopped, project
   // closed, timed out) means the renderer cancels that take.
   screenTake: Schema.optional(Schema.String),
+  // D188: the project's brief, storyboard and reviews (U15, U16).
+  plan: Schema.optional(AgentPlan),
 });
 export type AgentState = typeof AgentState.Type;
 
@@ -1012,6 +1198,8 @@ const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     effort: Schema.optional(AgentEffort),
     access: Schema.optional(AgentAccess),
     images: Schema.optional(Schema.Array(AgentImage)),
+    // D188: Settings › App › Agent "Edit freely skips the storyboard approval".
+    skipStoryboard: Schema.optional(Schema.Boolean),
   }),
   success: Schema.Struct({ turnId: Schema.String }),
   error: AgentError,
@@ -1029,7 +1217,23 @@ const AgentUndoTurnRpc = Rpc.make(RPC_METHODS.agentUndoTurn, {
 
 // The user's answer to the running turn's approval (D99); an unknown or expired id is ignored.
 // accepted: false when the card was no longer open (answered, timed out, the turn stopped or another card replaced it).
-const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, { payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean, source: Schema.optional(Schema.String) }), success: Schema.Struct({ accepted: Schema.Boolean }) });
+// D187/D188: a question card's answer, a storyboard card's edited beats or change note.
+const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, {
+  payload: Schema.Struct({ id: Schema.String, allow: Schema.Boolean, source: Schema.optional(Schema.String), answer: Schema.optional(AgentAnswer), beats: Schema.optional(Schema.Array(StoryboardBeat)), note: Schema.optional(Schema.String) }),
+  success: Schema.Struct({ accepted: Schema.Boolean }),
+});
+// D188: the user edits the brief (or the storyboard) by hand; saved to the project and seen by the agent's next message.
+const AgentPlanSaveRpc = Rpc.make(RPC_METHODS.agentPlanSave, { payload: Schema.Struct({ brief: Schema.optional(Brief), storyboard: Schema.optional(Storyboard) }), success: AgentPlan, error: AgentError });
+// D186: brand kits and skills (global and the open project's), and the project's choice.
+const BrandGetRpc = Rpc.make(RPC_METHODS.brandGet, { payload: Empty, success: BrandState, error: BrandError });
+// Saves a kit (new or changed) in its scope; returns the new state.
+const BrandSaveKitRpc = Rpc.make(RPC_METHODS.brandSaveKit, { payload: Schema.Struct({ kit: BrandKit }), success: BrandState, error: BrandError });
+const BrandDeleteKitRpc = Rpc.make(RPC_METHODS.brandDeleteKit, { payload: Schema.Struct({ id: Schema.String, scope: BrandScope }), success: BrandState, error: BrandError });
+const BrandSaveSkillRpc = Rpc.make(RPC_METHODS.brandSaveSkill, { payload: Schema.Struct({ skill: BrandSkill }), success: BrandState, error: BrandError });
+const BrandDeleteSkillRpc = Rpc.make(RPC_METHODS.brandDeleteSkill, { payload: Schema.Struct({ id: Schema.String, scope: BrandScope }), success: BrandState, error: BrandError });
+const BrandSetActiveRpc = Rpc.make(RPC_METHODS.brandSetActive, { payload: BrandActive, success: BrandState, error: BrandError });
+// Copies a file (a logo, an example frame) into a kit's folder; returns the state with the file's name in the kit's files.
+const BrandAddFileRpc = Rpc.make(RPC_METHODS.brandAddFile, { payload: Schema.Struct({ kit: Schema.String, scope: BrandScope, path: Schema.String }), success: Schema.Struct({ name: Schema.String, state: BrandState }), error: BrandError });
 // D144: the renderer's answer to an allowed screen_record: the uploaded take (media/uploads, named
 // like takeUploadName("screen", ...)) with the source's name, or what went wrong.
 const AgentScreenTakeRpc = Rpc.make(RPC_METHODS.agentScreenTake, { payload: Schema.Struct({ id: Schema.String, path: Schema.optional(Schema.String), source: Schema.optional(Schema.String), problem: Schema.optional(Schema.String) }) });
@@ -1224,6 +1428,14 @@ export const WsRpcGroup = RpcGroup.make(
   AgentUndoTurnRpc,
   AgentApproveRpc,
   AgentScreenTakeRpc,
+  AgentPlanSaveRpc,
+  BrandGetRpc,
+  BrandSaveKitRpc,
+  BrandDeleteKitRpc,
+  BrandSaveSkillRpc,
+  BrandDeleteSkillRpc,
+  BrandSetActiveRpc,
+  BrandAddFileRpc,
   MediaImportRpc,
   MediaJobsRpc,
   MediaThumbnailsRpc,
