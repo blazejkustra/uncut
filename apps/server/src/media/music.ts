@@ -5,7 +5,7 @@
 // music.add and the agent's music_add.
 import { randomUUID } from "node:crypto";
 import { copyFile, link, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { extname, join, sep } from "node:path";
 
 import { musicTrack, type MusicTrack } from "@uncut/core/music";
 
@@ -38,26 +38,33 @@ export function copyLibraryTrack(musicDir: string, projectDir: string, id: strin
   const track = musicTrack(id);
   if (!track) return Promise.resolve({ problem: `There's no library track "${id}".` });
   return serialised(projectDir, async () => {
-    const copied = await copyOnce(musicDir, projectDir, track.file);
+    const copied = await copyOnce(join(musicDir, track.file), projectDir, track.file);
     return "problem" in copied ? copied : { track, path: copied.path };
   });
 }
 
 /** A bundled sound effect (D134) copied into the project's media/ the same way; its path relative to the project. */
 export function copyBundledFile(dir: string, projectDir: string, file: string): Promise<{ readonly path: string } | { readonly problem: string }> {
-  return serialised(projectDir, () => copyOnce(dir, projectDir, file));
+  return serialised(projectDir, () => copyOnce(join(dir, file), projectDir, file));
+}
+
+/**
+ * A file of the user's own sound folders (D208) copied into the project's media/ the same way, under
+ * `name` (its extension kept; a numbered name when a different file has it); its path relative to the project.
+ */
+export function copyIntoProject(source: string, projectDir: string, name: string): Promise<{ readonly path: string } | { readonly problem: string }> {
+  return serialised(projectDir, () => copyOnce(source, projectDir, name, false));
 }
 
 /** Runs `run` after any other copy or download into the same project folder (shared with the online library's downloads). */
 export const serialisedFor = serialised;
 
-async function copyOnce(musicDir: string, projectDir: string, file: string): Promise<{ readonly path: string } | { readonly problem: string }> {
+async function copyOnce(source: string, projectDir: string, file: string, bundled = true): Promise<{ readonly path: string } | { readonly problem: string }> {
   const track = { file };
-  const source = join(musicDir, track.file);
   try {
     await stat(source);
   } catch {
-    return { problem: `The library file ${track.file} is missing from this copy of Uncut.` };
+    return { problem: bundled ? `The library file ${track.file} is missing from this copy of Uncut.` : `${source} is missing.` };
   }
   try {
     const folder = join(projectDir, "media");
@@ -65,10 +72,11 @@ async function copyOnce(musicDir: string, projectDir: string, file: string): Pro
     // media/ must be the project's own folder, not a link out of it.
     const real = await realpath(folder);
     if (!real.startsWith(`${await realpath(projectDir)}${sep}`)) return { problem: "The project's media folder points outside the project, so the track wasn't copied." };
-    const stem = track.file.replace(/\.m4a$/, "");
+    const ext = extname(track.file);
+    const stem = ext ? track.file.slice(0, -ext.length) : track.file;
     const exists = (path: string) => stat(path).then(() => true, () => false);
     for (let n = 1; n < 100; n++) {
-      const name = n === 1 ? track.file : `${stem}-${n}.m4a`;
+      const name = n === 1 ? track.file : `${stem}-${n}${ext}`;
       const target = join(real, name);
       if (await exists(target)) {
         if (await same(source, target)) return { path: `media/${name}` };

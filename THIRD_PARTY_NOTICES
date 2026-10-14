@@ -134,7 +134,9 @@ cozy-5.m4a: "Lofi - keepin the pace" by noel.wav
 Sound effects (CC0 1.0, public domain)
 ==============================================================================
 
-Shipped in Resources/sfx. Each sound's licence was checked on its Freesound page.
+Shipped in Resources/sfx (D134, D208): sounds from Freesound (each sound's page links the CC0 1.0
+deed) and from Kenney's packs (kenney.nl; each pack's License.txt says Creative Commons Zero, CC0),
+checked when the pack was made by scripts/make-sfx.ts. Credit isn't required; thanks to every author.
 
 whoosh-deep.m4a: "Deep whoosh" by Kinoton
   https://freesound.org/people/Kinoton/sounds/351256/
@@ -187,6 +189,183 @@ crickets.m4a: "Crickets" by FreethinkerAnon
 glitch.m4a: "Glitch" by JacksonMiller0
   https://freesound.org/people/JacksonMiller0/sounds/237607/
   CC0-1.0, checked 2026-10-14
+click-soft.m4a: "Soft click" by Kenney
+  https://kenney.nl/assets/ui-audio (Audio/click3.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+tap.m4a: "Tap" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/click_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+mouse-click.m4a: "Mouse click" by Kenney
+  https://kenney.nl/assets/ui-audio (Audio/mouseclick1.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+select.m4a: "Select" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/select_003.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+toggle-on.m4a: "Toggle on" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/toggle_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+toggle-off.m4a: "Toggle off" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/toggle_002.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+switch.m4a: "Switch" by Kenney
+  https://kenney.nl/assets/ui-audio (Audio/switch7.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+hover.m4a: "Hover blip" by Kenney
+  https://kenney.nl/assets/ui-audio (Audio/rollover1.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+open.m4a: "Open" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/open_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+camera-shutter.m4a: "Camera shutter" by Kodack
+  https://freesound.org/people/Kodack/sounds/271010/
+  CC0-1.0, checked 2026-10-14
+pop-bright.m4a: "Bright pop" by D.S.G.
+  https://freesound.org/people/D.S.G./sounds/244656/
+  CC0-1.0, checked 2026-10-14
+pop-cork.m4a: "Cork pop" by deraj
+  https://freesound.org/people/deraj/sounds/202230/
+  CC0-1.0, checked 2026-10-14
+drop.m4a: "Drop" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/drop_002.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+pluck.m4a: "Pluck" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/pluck_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+swipe-app.m4a: "App swipe" by LilMati
+  https://freesound.org/people/LilMati/sounds/702773/
+  CC0-1.0, checked 2026-10-14
+swipe-paper.m4a: "Paper swipe" by Frank1100
+  https://freesound.org/people/Frank1100/sounds/147285/
+  CC0-1.0, checked 2026-10-14
+swipe-fast.m4a: "Fast swipe" by ParadoxTheSock
+  https://freesound.org/people/ParadoxTheSock/sounds/412595/
+  CC0-1.0, checked 2026-10-14
+expand.m4a: "Expand" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/maximize_006.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+whoosh-little.m4a: "Little whoosh" by ch_ase
+  https://freesound.org/people/ch_ase/sounds/423798/
+  CC0-1.0, checked 2026-10-14
+whoosh-whip.m4a: "Whip zoom whoosh" by BennettFilmTeacher
+  https://freesound.org/people/BennettFilmTeacher/sounds/486234/
+  CC0-1.0, checked 2026-10-14
+whoosh-mid.m4a: "Mid whoosh" by DJT4NN3R
+  https://freesound.org/people/DJT4NN3R/sounds/449996/
+  CC0-1.0, checked 2026-10-14
+swoosh-quick.m4a: "Quick swoosh" by lesaucisson
+  https://freesound.org/people/lesaucisson/sounds/585257/
+  CC0-1.0, checked 2026-10-14
+swoosh-soft.m4a: "Soft swoosh" by D4XX
+  https://freesound.org/people/D4XX/sounds/607251/
+  CC0-1.0, checked 2026-10-14
+swoosh-tiny.m4a: "Tiny swoosh" by D4XX
+  https://freesound.org/people/D4XX/sounds/658859/
+  CC0-1.0, checked 2026-10-14
+sweep-fade.m4a: "Fading sweep" by Raclure
+  https://freesound.org/people/Raclure/sounds/405553/
+  CC0-1.0, checked 2026-10-14
+riser-short.m4a: "Short riser" by syntheffects
+  https://freesound.org/people/syntheffects/sounds/685256/
+  CC0-1.0, checked 2026-10-14
+riser-hit.m4a: "Riser into hit" by AudioPapkin
+  https://freesound.org/people/AudioPapkin/sounds/511856/
+  CC0-1.0, checked 2026-10-14
+synth-rise.m4a: "Synth rise" by Kenney
+  https://kenney.nl/assets/digital-audio (Audio/phaserUp3.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+impact-cinematic.m4a: "Cinematic impact" by AudioPapkin
+  https://freesound.org/people/AudioPapkin/sounds/757898/
+  CC0-1.0, checked 2026-10-14
+impact-blunt.m4a: "Blunt impact" by AudioPapkin
+  https://freesound.org/people/AudioPapkin/sounds/823236/
+  CC0-1.0, checked 2026-10-14
+thud.m4a: "Thud" by Ambiabstract
+  https://freesound.org/people/Ambiabstract/sounds/584731/
+  CC0-1.0, checked 2026-10-14
+hit-soft.m4a: "Soft hit" by Kenney
+  https://kenney.nl/assets/impact-sounds (Audio/impactSoft_heavy_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+punch.m4a: "Punch" by Kenney
+  https://kenney.nl/assets/impact-sounds (Audio/impactPunch_heavy_000.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+low-boom.m4a: "Low boom" by Kenney
+  https://kenney.nl/assets/sci-fi-sounds (Audio/lowFrequency_explosion_000.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+chime.m4a: "Chime" by Jofae
+  https://freesound.org/people/Jofae/sounds/380482/
+  CC0-1.0, checked 2026-10-14
+phone-notification.m4a: "Phone notification" by qubodup
+  https://freesound.org/people/qubodup/sounds/782969/
+  CC0-1.0, checked 2026-10-14
+computer-chimes.m4a: "Computer chimes" by marlonnnnnn
+  https://freesound.org/people/marlonnnnnn/sounds/351879/
+  CC0-1.0, checked 2026-10-14
+glass-ping.m4a: "Glass ping" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/glass_002.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+bong.m4a: "Bong" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/bong_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+error.m4a: "Error" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/error_004.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+success-glock.m4a: "Glockenspiel success" by FunWithSound
+  https://freesound.org/people/FunWithSound/sounds/456965/
+  CC0-1.0, checked 2026-10-14
+success-power-up.m4a: "Power up" by GabrielAraujo
+  https://freesound.org/people/GabrielAraujo/sounds/242501/
+  CC0-1.0, checked 2026-10-14
+success-chord.m4a: "Success chord" by oysterqueen
+  https://freesound.org/people/oysterqueen/sounds/582988/
+  CC0-1.0, checked 2026-10-14
+confirm.m4a: "Confirm" by Kenney
+  https://kenney.nl/assets/interface-sounds (Audio/confirmation_001.ogg in the pack)
+  CC0-1.0, checked 2026-10-14
+sparkle.m4a: "Sparkle" by Mr._Fritz_
+  https://freesound.org/people/Mr._Fritz_/sounds/545238/
+  CC0-1.0, checked 2026-10-14
+magic-sparkle.m4a: "Magic sparkle" by MLaudio
+  https://freesound.org/people/MLaudio/sounds/511485/
+  CC0-1.0, checked 2026-10-14
+glitch-digital.m4a: "Digital glitch" by LookIMadeAThing
+  https://freesound.org/people/LookIMadeAThing/sounds/341286/
+  CC0-1.0, checked 2026-10-14
+glitch-electric.m4a: "Electric glitch" by Flying_Deer_Fx
+  https://freesound.org/people/Flying_Deer_Fx/sounds/369145/
+  CC0-1.0, checked 2026-10-14
+glitch-noise.m4a: "Glitch noise" by AmicaSys
+  https://freesound.org/people/AmicaSys/sounds/332711/
+  CC0-1.0, checked 2026-10-14
+typing-mechanical.m4a: "Mechanical typing" by BetaFruit
+  https://freesound.org/people/BetaFruit/sounds/690655/
+  CC0-1.0, checked 2026-10-14
+typing-fast.m4a: "Fast typing" by Capt.Jack
+  https://freesound.org/people/Capt.Jack/sounds/813214/
+  CC0-1.0, checked 2026-10-14
+typing-keyboard.m4a: "Keyboard typing" by praxis_bard
+  https://freesound.org/people/praxis_bard/sounds/380066/
+  CC0-1.0, checked 2026-10-14; First 3 s of 3.9 s, faded out over the last 1 s
+frustrated-yell.m4a: "Frustrated yell" by myfreesoundaccount1998
+  https://freesound.org/people/myfreesoundaccount1998/sounds/543252/
+  CC0-1.0, checked 2026-10-14
+oof.m4a: "Oof" by unfa
+  https://freesound.org/people/unfa/sounds/719053/
+  CC0-1.0, checked 2026-10-14
+wow.m4a: "Wow" by ahab2000
+  https://freesound.org/people/ahab2000/sounds/398933/
+  CC0-1.0, checked 2026-10-14
+rimshot.m4a: "Rimshot" by Sajmund
+  https://freesound.org/people/Sajmund/sounds/132418/
+  CC0-1.0, checked 2026-10-14
+drum-roll.m4a: "Drum roll" by owowowwo
+  https://freesound.org/people/owowowwo/sounds/197763/
+  CC0-1.0, checked 2026-10-14
+boing.m4a: "Boing" by magnuswaker
+  https://freesound.org/people/magnuswaker/sounds/540790/
+  CC0-1.0, checked 2026-10-14
+bass-drop.m4a: "Bass drop" by qubodup
+  https://freesound.org/people/qubodup/sounds/212768/
+  CC0-1.0, checked 2026-10-14; First 4 s of 4.8 s, faded out over the last 1 s
 
 ==============================================================================
 Graphic libraries: three.js (MIT)

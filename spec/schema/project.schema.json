@@ -119,7 +119,7 @@
             "kind": { "enum": ["image", "video", "audio"], "description": "Generators: what was asked for." },
             "size": { "type": "string", "description": "Generators: the size asked for (1536x1024, 16:9, canvas)." },
             "seconds": { "type": "number", "description": "Generators: the length asked for, in seconds." },
-            "libraryId": { "type": "string", "description": "D134, sound library (module library.openverse, library.freesound or library.bundled): the sound's id there (openverse:<id>, freesound:<id>, sfx:<id>)." },
+            "libraryId": { "type": "string", "description": "D134, sound library (module library.openverse, library.freesound, library.bundled, or library.folder for a file of the user's own sound folders, D208, with origin and folder): the sound's id there (openverse:<id>, freesound:<id>, sfx:<id>, folder:<id>)." },
             "title": { "type": "string", "description": "Sound library: the sound's title." },
             "creator": { "type": "string", "description": "Sound library: who made it." },
             "creatorUrl": { "type": "string" },

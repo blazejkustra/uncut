@@ -135,9 +135,10 @@ test("library_search and library_add: online hits and bundled sounds into media/
   assert.equal(found.source, "openverse");
   assert.deepEqual(
     found.hits.map((h: any) => [h.id, h.license, h.frames]),
+    // Ranked (D208): both match "boom"; the CC0 one first.
     [
-      [`openverse:${BOOM}`, "CC BY 4.0", 45],
       ["openverse:c0000000-0000-0000-0000-000000000002", "CC0", 45],
+      [`openverse:${BOOM}`, "CC BY 4.0", 45],
     ],
   );
   const searched = new URL(requests.find((r) => r.startsWith("/v1/audio/"))!, "http://x");

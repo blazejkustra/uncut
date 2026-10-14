@@ -96,9 +96,11 @@ export const openverseDetailUrl = (id: string) => `${openverseBase()}/v1/audio/$
 const FREESOUND_FIELDS = "id,name,username,license,duration,previews,tags,url,type";
 const FREESOUND_LENGTH = { short: "duration:[0 TO 30]", medium: "duration:[30 TO 120]", long: "duration:[120 TO *]" } as const;
 
-/** The search URL (the key goes in the Authorization header, never the URL). */
-export function freesoundUrl(q: LibraryQuery): string {
+/** The search URL (the key goes in the Authorization header, never the URL), best match first. */
+export function freesoundUrl(q: LibraryQuery, tag?: string): string {
   const filters = [q.license === "cc0" ? 'license:"Creative Commons 0"' : '(license:"Creative Commons 0" OR license:"Attribution")'];
+  // D208: a meme name's Freesound tag narrows the search to sounds tagged so.
+  if (tag && /^[a-z0-9-]{1,40}$/.test(tag)) filters.push(`tag:${tag}`);
   if (q.length) filters.push(FREESOUND_LENGTH[q.length]);
   if (q.kind === "music" && q.songs) filters.push("tag:music");
   const params = new URLSearchParams({ query: q.query.trim(), filter: filters.join(" "), fields: FREESOUND_FIELDS, page_size: String(PAGE_SIZE), page: String(Math.max(1, Math.floor(q.page ?? 1))) });

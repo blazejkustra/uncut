@@ -14,12 +14,13 @@ import { planAddLibrarySound } from "../../apps/web/src/state/project.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 
-test("the bundled sound-effects pack: every sound a CC0 file from a Freesound page, in a known category", () => {
+test("the bundled sound-effects pack: every sound a CC0 file from a Freesound page or a Kenney pack, in a known category", () => {
   assert.ok(SFX_SOUNDS.length >= 12, String(SFX_SOUNDS.length));
   const categories = new Set(SFX_CATEGORIES.map((c) => c.id));
   for (const s of SFX_SOUNDS) {
     assert.equal(s.license, "CC0-1.0", s.id);
-    assert.match(s.source, /^https:\/\/freesound\.org\/people\/[^/]+\/sounds\/\d+\/$/, s.id);
+    if (s.provider === "kenney") assert.match(s.source, /^https:\/\/kenney\.nl\/assets\/[a-z-]+$/, s.id);
+    else assert.match(s.source, /^https:\/\/freesound\.org\/people\/[^/]+\/sounds\/\d+\/$/, s.id);
     assert.ok(categories.has(s.category), `${s.id}: ${s.category}`);
     const path = resolve("assets/sfx", s.file);
     assert.ok(existsSync(path), s.file);
@@ -33,6 +34,7 @@ test("the bundled sound-effects pack: every sound a CC0 file from a Freesound pa
   // Quick searches that return results on Openverse ("vine boom" and "meme" return none or junk).
   for (const q of [...SFX_CATEGORIES, ...MEME_SOUNDS, ...MUSIC_GENRES]) assert.doesNotMatch(q.query, /vine|meme/, q.id);
   assert.equal(MEME_SOUNDS.find((m) => m.id === "boom")!.query, "bass boom");
+  assert.equal(MEME_SOUNDS.find((m) => m.id === "fahh")!.query, "frustrated yell", "Fahh: a free sound-alike search (D208)");
 });
 
 test("hit ids round-trip and junk is refused; lengths and limits in words", () => {
