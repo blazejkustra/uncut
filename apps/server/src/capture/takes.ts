@@ -15,8 +15,14 @@ import { runProbe } from "../media/probe.ts";
 import { safeUploadName } from "../app/remote.ts";
 
 /** The media source module a take is stored with. */
-export const TAKE_MODULE: Record<TakeKind, string> = { voiceover: "capture.microphone", camera: "capture.camera", screen: "capture.screen" };
-const DEFAULT_NAME: Record<TakeKind, string> = { voiceover: "Voiceover", camera: "Camera", screen: "Screen" };
+export const TAKE_MODULE: Record<TakeKind, string> = { voiceover: "capture.microphone", camera: "capture.camera", screen: "capture.screen", system: "capture.system" };
+const DEFAULT_NAME: Record<TakeKind, string> = { voiceover: "Voiceover", camera: "Camera", screen: "Screen", system: "Mac sound" };
+/** D211: a multi-source take's files in its own folder (media/captures/<take>/). */
+export const MULTI_FILE: Record<TakeKind, string> = { screen: "screen.mp4", camera: "camera.mp4", voiceover: "mic.m4a", system: "system.m4a" };
+/** D211: the display name of a multi-source take's part ("Take 20261015-101500 camera"). */
+export const MULTI_PART_NAME: Record<TakeKind, string> = { screen: "screen", camera: "camera", voiceover: "microphone", system: "Mac sound" };
+/** Whether a take of this kind is sound only (an .m4a). */
+export const audioOnly = (kind: TakeKind) => kind === "voiceover" || kind === "system";
 
 const inside = (dir: string, file: string) => {
   const rel = relative(dir, file);
@@ -30,12 +36,12 @@ export const stamp = (d = new Date()) => `${d.getFullYear()}${pad(d.getMonth() +
 /** "Voiceover 20261013-101500.m4a": the given name (made safe) or the kind's, the time, the extension. */
 export function takeFileName(kind: TakeKind, name: string | undefined, at = new Date()) {
   const stem = name?.trim() ? safeUploadName(name.trim()).slice(0, 80).trim() : DEFAULT_NAME[kind];
-  return `${stem} ${stamp(at)}.${kind === "voiceover" ? "m4a" : "mp4"}`;
+  return `${stem} ${stamp(at)}.${audioOnly(kind) ? "m4a" : "mp4"}`;
 }
 
 /** ffmpeg's arguments for a take (`-n`: never over an existing file). */
 export function ffmpegArgs(kind: TakeKind, input: string, output: string, fps: number, encoder: "libx264" | "h264_videotoolbox" = "libx264"): Array<string> {
-  if (kind === "voiceover") return ["-v", "error", "-nostdin", "-n", "-i", input, "-vn", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", output];
+  if (audioOnly(kind)) return ["-v", "error", "-nostdin", "-n", "-i", input, "-vn", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", output];
   const video = encoder === "libx264" ? ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"] : ["-c:v", "h264_videotoolbox", "-b:v", "12M"];
   return ["-v", "error", "-nostdin", "-n", "-i", input, ...video, "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-r", String(fps), "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart", output];
 }
@@ -79,14 +85,17 @@ export async function convertTake(input: {
   readonly kind: TakeKind;
   readonly name?: string | undefined;
   readonly fps: number;
+  /** D211: a folder inside media/captures/ (a multi-source take's) and the file's own name in it. */
+  readonly subfolder?: string | undefined;
+  readonly fileName?: string | undefined;
 }): Promise<{ readonly file: string } | { readonly problem: string }> {
   const { ffmpeg, env, projectDir, upload, kind, name, fps } = input;
   const project = await realpath(projectDir);
-  const folder = join(projectDir, "media", "captures");
+  const folder = join(projectDir, "media", "captures", ...(input.subfolder ? [safeUploadName(input.subfolder)] : []));
   await mkdir(folder, { recursive: true });
   const real = await realpath(folder);
   if (!inside(project, real)) return { problem: "The project's media/captures folder points outside the project, so the take wasn't saved." };
-  const file = takeFileName(kind, name);
+  const file = input.fileName ?? takeFileName(kind, name);
   const ext = file.slice(file.lastIndexOf("."));
   const stem = file.slice(0, -ext.length);
   let target = "";
@@ -104,7 +113,7 @@ export async function convertTake(input: {
     await rm(target, { force: true });
     return false;
   };
-  const ok = (await attempt("libx264")) || (kind !== "voiceover" && (await attempt("h264_videotoolbox")));
+  const ok = (await attempt("libx264")) || (!audioOnly(kind) && (await attempt("h264_videotoolbox")));
   if (!ok) return { problem: `ffmpeg couldn't convert the take; the recording is still in media/uploads/${basename(upload)}.` };
   await rm(upload, { force: true });
   return { file: target };

@@ -38,6 +38,26 @@ export function testMedia(env: NodeJS.ProcessEnv): { readonly access: Readonly<R
   return { access: { microphone: pick("microphone"), camera: pick("camera"), screen: pick("screen") } };
 }
 
+/**
+ * D210: whether this Mac can record its own sound (getDisplayMedia's loopback audio, which Chromium
+ * takes from ScreenCaptureKit on macOS 13 and Core Audio taps on 14.2 and later). Tests answer from
+ * UNCUT_TEST_SYSTEM_AUDIO ("unsupported" plays an older Mac), only together with test media.
+ */
+export function systemAudioSupport(platform: string, version: string, env: NodeJS.ProcessEnv = {}): { readonly supported: boolean; readonly macos: string; readonly standin?: boolean } {
+  // Tests record a stand-in sound drawn in the page (never the real loopback).
+  if (testMedia(env)) return env.UNCUT_TEST_SYSTEM_AUDIO === "unsupported" ? { supported: false, macos: "12.7", standin: true } : { supported: true, macos: "15.0", standin: true };
+  if (platform !== "darwin") return { supported: false, macos: "" };
+  const major = Number(version.split(".")[0]);
+  return { supported: Number.isFinite(major) && major >= MIN_SYSTEM_AUDIO_MACOS, macos: version };
+}
+/** The first macOS that records its own sound for an app (ScreenCaptureKit's audio). */
+export const MIN_SYSTEM_AUDIO_MACOS = 13;
+/**
+ * D210: Chromium's switch for macOS system audio in a screen share (Core Audio taps, macOS 14.2+);
+ * an older macOS 13 or 14 uses ScreenCaptureKit's audio without it.
+ */
+export const SYSTEM_AUDIO_FEATURES = "MacCatapLoopbackAudioForScreenShare";
+
 /** Chromium switches for test media: fake devices, and no permission prompt of Chromium's own. */
 export const TEST_MEDIA_SWITCHES: ReadonlyArray<string> = ["use-fake-device-for-media-stream", "use-fake-ui-for-media-stream"];
 

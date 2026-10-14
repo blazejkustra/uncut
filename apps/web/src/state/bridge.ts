@@ -76,8 +76,10 @@ export interface UncutBridge {
   readonly askMediaAccess: (kind: MediaAccessKind) => Promise<MediaAccess>;
   readonly openPrivacySettings: (kind: MediaAccessKind) => Promise<void>;
   readonly captureSources: () => Promise<ReadonlyArray<CaptureSource>>;
-  /** The source the next getDisplayMedia records. */
-  readonly chooseDisplaySource: (id: string) => Promise<void>;
+  /** The source the next getDisplayMedia records ("screen:any" for any screen), with this Mac's sound (D210). */
+  readonly chooseDisplaySource: (id: string, options?: { readonly systemAudio?: boolean }) => Promise<void>;
+  /** D210: whether this Mac can record its own sound (macOS 13 or later). */
+  readonly systemAudio?: () => Promise<{ readonly supported: boolean; readonly macos: string; readonly standin?: boolean }>;
   /**
    * U12 (D178): the shell holds a window close or a quit (`kind`) until answerClose says "close"
    * (nothing pending, or the user chose to go), "stay" (Cancel) or "asking" (the dialog is up:
