@@ -30,6 +30,17 @@ const seen: Array<{ url: string; range?: string; ifRange?: string }> = [];
 let mode: "normal" | "slow" | "drop" | "hold" | "badrange" = "normal";
 /** The file's ETag: a resume with another one in If-Range gets the whole file again. */
 let etag = '"v1"';
+/**
+ * "drop" closes the connection only once the client says it has the first MiB (its onProgress):
+ * an end that arrives while bytes still wait in the client's stream discards them (the stream
+ * errors), so closing on the server's own timing made the kept size depend on load.
+ */
+let dropGate: { promise: Promise<void>; release: () => void } | undefined;
+const gate = () => {
+  let release = () => {};
+  const promise = new Promise<void>((r) => (release = r));
+  return { promise, release };
+};
 
 before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-models-")));
@@ -61,7 +72,9 @@ before(async () => {
     if (mode === "drop" && !m) {
       // A half-close (FIN after the bytes), not a reset: a reset can drop bytes the client hasn't read
       // yet, which under a parallel test run made the kept size a matter of timing.
-      res.write(part.subarray(0, 1024 * 1024), () => res.socket?.end());
+      const held = dropGate;
+      res.write(part.subarray(0, 1024 * 1024));
+      void (held?.promise ?? Promise.resolve()).then(() => res.socket?.end());
       return;
     }
     if (mode === "slow") {
@@ -147,8 +160,10 @@ test("cancel mid-download: rejects with Cancelled, and leaves no partial file", 
 
 test("a dropped connection keeps the .part; the next try resumes it with a Range request and checks the whole file", async () => {
   mode = "drop";
+  dropGate = gate();
   const { dest, part } = fresh("resume");
-  await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: SHA, signal: new AbortController().signal }), /resumes where it stopped/);
+  await assert.rejects(downloadFile({ url: `${base}/files/x.bin`, dest, bytes: BODY.length, sha256: SHA, signal: new AbortController().signal, onProgress: (received) => received >= 1024 * 1024 && dropGate?.release() }), /resumes where it stopped/);
+  dropGate = undefined;
   assert.ok(!existsSync(dest));
   const kept = statSync(part).size;
   assert.ok(kept >= 1024 * 1024 && kept < BODY.length, `kept ${kept} bytes`);

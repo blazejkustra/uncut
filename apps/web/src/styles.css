@@ -529,7 +529,56 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .insp-chat svg.lucide { width: 12px; height: 12px; }
 .composer textarea::placeholder { color: var(--dim); }
 .composer-foot { display: flex; align-items: center; gap: 8px; padding: 0 6px 6px 10px; }
-.composer-who { flex: 1; font-size: 11px; color: var(--dim); }
+.composer-spacer { flex: 1 1 0; min-width: 0; }
+/* D184: one row (📎 @ | provider | model | effort | access … send). The labels give way as the
+   Agent panel narrows (container query): access first, then effort, then the model's name; the
+   icons stay and every button keeps its tooltip. */
+.composer { container-type: inline-size; }
+.composer-foot { gap: 2px; padding-left: 4px; flex-wrap: nowrap; min-width: 0; }
+.composer-foot > .icon-btn, .composer-foot > .send { flex: none; }
+.composer-choices { display: flex; align-items: center; gap: 1px; flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; }
+.composer-choices .choice { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px; border-radius: var(--radius-sm); font-size: 11.5px; color: var(--muted); white-space: nowrap; flex: none; }
+.composer-choices .choice svg.lucide { width: 12px; height: 12px; flex: none; }
+.composer-choices .choice:hover, .composer-choices .choice.open { background: var(--raised); color: var(--fg); }
+.composer-choices .choice.model { flex: 0 1 auto; min-width: 0; }
+.composer-choices .choice.model .choice-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.composer-choices .choice svg.choice-icon { display: none; }
+.composer-choices .choice svg.choice-caret { width: 11px; height: 11px; }
+@container (max-width: 340px) { .composer-choices .choice[data-testid=agent-access] .choice-label { display: none; } }
+@container (max-width: 300px) { .composer-choices .choice[data-testid=agent-effort] .choice-label { display: none; } }
+@container (max-width: 250px) {
+  .composer-choices .choice.model .choice-label, .composer-choices .choice.model svg.choice-caret { display: none; }
+  .composer-choices .choice.model svg.choice-icon { display: block; }
+}
+.choice-menu { position: absolute; left: 6px; right: 6px; bottom: calc(100% + 6px); z-index: 30; background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 4px; display: flex; flex-direction: column; gap: 1px; box-shadow: 0 10px 30px rgb(0 0 0 / 50%); max-height: 320px; overflow-y: auto; }
+.choice-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; font-size: 12px; text-align: left; color: var(--fg); min-width: 0; cursor: default; }
+.choice-option .grow { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.choice-option svg.lucide { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.choice-option:hover:not(:disabled), .choice-option.active { background: var(--select-soft); }
+.choice-option:disabled { opacity: 0.5; }
+.choice-detail { font-size: 11px; color: var(--dim); }
+.choice-star { width: 20px; height: 20px; }
+.choice-star.on svg.lucide { color: var(--warn); fill: currentColor; }
+.choice-search { display: flex; align-items: center; gap: 6px; padding: 4px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 3px; }
+.choice-search svg.lucide { width: 13px; height: 13px; color: var(--dim); }
+.choice-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font: 12px var(--font); }
+.choice-empty { padding: 6px 8px; font-size: 12px; color: var(--dim); }
+.composer.dropping { border-color: var(--select); box-shadow: 0 0 0 2px var(--select-soft); }
+.composer-images { display: flex; gap: 6px; padding: 8px 10px 0; flex-wrap: wrap; }
+.composer-image { position: relative; width: 52px; height: 52px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-strong); background: var(--raised); }
+.composer-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.composer-image .icon-btn { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: rgb(0 0 0 / 65%); color: #fff; }
+.composer-image .icon-btn svg.lucide { width: 10px; height: 10px; }
+.composer-attach-error { margin: 6px 10px 0; color: var(--error); }
+.msg-images { align-self: flex-end; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 88%; }
+.msg-images img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); display: block; }
+.step-error { margin: 2px 0 2px 19px; padding: 4px 8px; border-left: 2px solid var(--error); font-size: 11.5px; line-height: 1.45; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.step.failed { cursor: pointer; }
+.step.failed:hover span { color: var(--fg); }
+.approval-lines { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+/* U6 (D185): what the agent just added or changed glows for a moment on the timeline. */
+.clip.agent-flash { animation: agent-flash 1.8s ease-out; }
+@keyframes agent-flash { 0%, 30% { box-shadow: 0 0 0 2px var(--select), 0 0 14px 2px var(--select); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .send { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--fg); color: #000; }
 .send svg.lucide { width: 15px; height: 15px; }
 .send:disabled { background: var(--raised); color: var(--dim); opacity: 1; }

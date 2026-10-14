@@ -2,6 +2,7 @@
 // gets over MCP, how each call reads in a turn card, the project summary project_read returns,
 // and the system prompt. Pure functions; the agent service runs them.
 import {
+  describeOp,
   mixNote,
   applyEdit,
   captionCardList,
@@ -213,6 +214,102 @@ export function stepLabel(tool: string, input: unknown, plugin?: string): string
     default:
       return plugin ? `Used ${tool} from ${plugin}` : `Used ${tool}`;
   }
+}
+
+// Past tense (a step's text) to present (the now line, D182): the first word(s) of a step label.
+const PRESENT: ReadonlyArray<[string, string]> = [
+  ["Asked to ", "Asking to "],
+  ["Looked at ", "Looking at "],
+  ["Looked over ", "Looking over "],
+  ["Looked for ", "Looking for "],
+  ["Looked through ", "Looking through "],
+  ["Found ", "Finding "],
+  ["Read ", "Reading "],
+  ["Imported ", "Importing "],
+  ["Analysed ", "Analysing "],
+  ["Transcribed ", "Transcribing "],
+  ["Measured ", "Measuring "],
+  ["Scored ", "Scoring "],
+  ["Ranked ", "Ranking "],
+  ["Planned ", "Planning "],
+  ["Cut ", "Cutting "],
+  ["Made ", "Making "],
+  ["Saved ", "Saving "],
+  ["Generated ", "Generating "],
+  ["Checked ", "Checking "],
+  ["Searched ", "Searching "],
+  ["Added ", "Adding "],
+  ["Moved ", "Moving "],
+  ["Selected ", "Selecting "],
+  ["Opened ", "Opening "],
+  ["Pointed ", "Pointing "],
+  ["Used ", "Using "],
+];
+
+/**
+ * What a running step is doing, for the now line (D182): present tense with its target ("Writing
+ * graphic s3-enter.html", "Editing the timeline: Scene 2"). `input` may be the fields read so far
+ * from a call still streaming in (partialFields).
+ */
+export function doingLabel(tool: string, input: unknown, plugin?: string): string {
+  const args = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  if (tool === "timeline_edit") return typeof args.summary === "string" && args.summary.trim() ? `Editing the timeline: ${args.summary.trim()}` : "Editing the timeline";
+  if (tool === "graphic_write") return typeof args.name === "string" && args.name.trim() ? `Writing graphic ${args.name.trim()}` : "Writing a graphic";
+  const past = stepLabel(tool, input, plugin);
+  const hit = PRESENT.find(([from]) => past.startsWith(from));
+  return hit ? `${hit[1]}${past.slice(hit[0].length)}` : past;
+}
+
+/**
+ * The plain string fields of a tool call's JSON input that has only partly arrived (D182): name,
+ * summary, path, media and the like, each once its closing quote is in. Enough for the now line.
+ */
+export function partialFields(json: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /"(name|summary|path|media|source|kind|generator|query|mode|id|folder|panel)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
+  for (let m = re.exec(json); m; m = re.exec(json)) {
+    if (out[m[1]!] !== undefined) continue;
+    try {
+      out[m[1]!] = JSON.parse(`"${m[2]}"`) as string;
+    } catch {}
+  }
+  return out;
+}
+
+/** D184: the tools a "Look only" chat may use: they read, look and point, and change nothing. */
+export const LOOK_TOOLS = ["project_read", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "project_check", "music_list", "library_search", "contact_sheet", "ui_show"] as const;
+
+/** D184: more ops than this in one timeline_edit is a big change in "Ask before big changes". */
+export const BIG_EDIT_OPS = 12;
+
+/**
+ * D184: whether a call is a big change that "Ask before big changes" puts on a card first: a
+ * timeline_edit that removes items, tracks or media, changes the project's settings or has more
+ * than BIG_EDIT_OPS ops; a transcript_edit that cuts (not a dry run). The card's words, or undefined.
+ */
+export function bigChange(tool: string, input: Record<string, unknown>, project: Project): { text: string; lines: Array<string> } | undefined {
+  if (tool === "transcript_edit" && input.dryRun !== true) return { text: stepLabel(tool, input).replace(/^Cut /, "Cut "), lines: [] };
+  if (tool !== "timeline_edit" || !Array.isArray(input.ops)) return undefined;
+  const ops = input.ops as ReadonlyArray<{ op?: unknown }>;
+  const removes = ops.some((o) => typeof o?.op === "string" && (o.op.startsWith("delete_") || o.op === "update_project"));
+  if (!removes && ops.length <= BIG_EDIT_OPS) return undefined;
+  const lines = ops.slice(0, 8).map((op) => {
+    try {
+      return describeOp(op as Op, project);
+    } catch {
+      return String(op?.op ?? "edit");
+    }
+  });
+  if (ops.length > 8) lines.push(`and ${ops.length - 8} more`);
+  const summary = typeof input.summary === "string" && input.summary.trim() ? input.summary.trim() : "an edit";
+  return { text: `Apply "${summary.slice(0, 120)}" (${ops.length === 1 ? "1 change" : `${ops.length} changes`})`, lines };
+}
+
+/** D184: the access line of the message's <editor-context>. */
+export function accessLine(access: "look" | "ask" | "edit"): string {
+  if (access === "look") return "Access: Look only. You may read, look and point (ui_show), but don't change the project or write files; say what you would do.";
+  if (access === "ask") return `Access: Ask before big changes. Removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; if they say no, don't retry it in this turn.`;
+  return "Access: Edit freely.";
 }
 
 /** D105: project_read's line about subtitles (cues from captions and Subtitles tracks), or undefined. */
@@ -631,7 +728,9 @@ const UNDRAWN_DOCS = Object.keys(UNDRAWN_COMPONENTS).join(", ");
 
 export const SYSTEM_PROMPT = `You are the editing agent inside Uncut, a desktop video editor. The user sees the timeline and a live preview next to this chat; every edit you make appears there immediately and is saved.
 - Positions and lengths are integer frames at the project's canvas fps (project_read gives canvas and fps). Main-track items have no start: they play back to back. "in" is where an item starts inside its media, in project frames.
+- Your tools come from Uncut's MCP server and their full names are mcp__uncut__<name>: this prompt says project_read for mcp__uncut__project_read, graphic_write for mcp__uncut__graphic_write, and so on. Call them by the full name; they're all available directly (no tool search).
 - Always project_read before editing and pass its revision as baseRevision. Group related ops into one timeline_edit with a short summary; the user reads it in the turn card.
+- Build a video scene by scene so the user sees it grow: one timeline_edit per scene (its summary names the scene, e.g. "Scene 2: the problem"), then ui_show with frame at that scene's start (and the scene's main item selected) before the next scene. Write a scene's graphic right before that scene's edit, not every graphic up front.
 - If an edit is refused, read the error and fix the ops. A conflict means the user changed the same thing (or used undo) after you read: read again and build on their change, never revert it.
 - Locked tracks and items ("locked": true) are off limits: edits to them are refused. Leave them alone, or ask the user to unlock them in the timeline. Hidden tracks ("hidden": true) don't show in the preview.
 - If the message lists edits the user made by hand, they are intentional: keep them and build on them.
