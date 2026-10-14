@@ -7,6 +7,7 @@ import { planInsertText } from "@uncut/core/textPlan";
 import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
 import { musicInProject, musicMedia, projectIds, type MusicTrack } from "@uncut/core/music";
+import { planPlaceMedia, takenIds } from "@uncut/core/arrange";
 
 import type { Item, Media, Project, Track } from "@uncut/core/types";
 
@@ -123,26 +124,25 @@ export function planAddAtPlayhead(project: ProjectModel, mediaId: string, frame:
 }
 
 /**
- * An audio item for `media` (D50 revised): on the first unlocked audio track (made if there is
- * none) at the playhead when that track is free there for the whole sound, else after its last item.
+ * An audio item for `media` (D124): at the playhead on the first unlocked audio track that is free
+ * there for the whole sound, else on a new "Audio N" track, so music, effects and voice overlap.
  */
-function planAudio(project: ProjectModel, media: Media, length: number, frame: number): Planned {
-  const { starts } = layoutOf(project);
-  const ops: Array<unknown> = [];
-  let track = project.tracks.find((t) => t.kind === "audio" && t.role !== "main" && !t.locked);
-  const taken = new Set<string>();
-  if (!track) {
-    const id = uniqueId(project, "audio", taken);
-    taken.add(id);
-    ops.push({ op: "add_track", track: { id, kind: "audio", name: "Audio" } });
-    track = { id, kind: "audio", name: "Audio", items: [] };
-  }
-  const at = Math.max(0, Math.floor(frame));
-  const free = track.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= at || at + length <= (starts.get(i.id) ?? 0));
-  const start = free ? at : Math.max(0, ...track.items.map((i) => (starts.get(i.id) ?? 0) + i.duration));
-  const itemId = uniqueId(project, "audio", taken);
-  ops.push({ op: "insert_item", track: track.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration: length, start } });
-  return { ops, summary: `Add ${media.name} to the timeline`, itemId, start };
+function planAudio(project: ProjectModel, media: Media, _length: number, frame: number): Planned {
+  return planDropMedia(project, media.id, { frame });
+}
+
+/**
+ * Media dropped on the timeline (D122): at the drop frame on the lane it's over when that lane takes
+ * it (main: the slot nearest the drop; a free track: the nearest free spot; a video file on an audio
+ * lane: its sound), else where core planPlaceMedia puts it. One edit.
+ */
+export function planDropMedia(project: ProjectModel, mediaId: string, at: { readonly frame: number; readonly track?: string | undefined }): Planned {
+  const media = project.media.find((m) => m.id === mediaId);
+  if (!media) return { problem: "That media isn't in the project any more." };
+  const plan = planPlaceMedia(project, [media], at, takenIds(project));
+  if ("problem" in plan) return plan;
+  const first = plan.placed[0]!;
+  return { ops: plan.ops, summary: `Add ${media.name} to the timeline`, itemId: first.itemId, start: first.start };
 }
 
 /** Music shorter than this before the video ends isn't worth adding (D91). */

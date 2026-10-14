@@ -1,6 +1,8 @@
 // One item on a timeline lane (its box, name, length, trim and fade handles) and the volume line
 // of items with sound (D83). Split out of Timeline.tsx.
+import { VolumeX } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
+import { speedLabel } from "@uncut/core/arrange";
 import { type CaptionCard } from "@uncut/core/captions";
 import { duckDbAt, duckKeysIn, type DuckKey } from "@uncut/core/ducking";
 import { SOLID, solidBackground } from "@uncut/core/render";
@@ -11,6 +13,7 @@ import { itemLabel, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, projectOf, thumbUrl } from "../state/store.ts";
 import { draftOf, findItem, visibleBeats } from "./edit.ts";
 import { ItemWaveform } from "./Waveform.tsx";
+import { RenameField } from "./RenameField.tsx";
 
 // A press has to move this far before it becomes a drag (a click only selects).
 export const DRAG_PX = 3;
@@ -32,6 +35,10 @@ export function ItemBox({
   cards,
   envelope = "none",
   duck,
+  renaming = false,
+  onRenamed,
+  onContextMenu,
+  onDoubleClick,
 }: {
   project: ProjectModel;
   item: Item;
@@ -53,6 +60,11 @@ export function ItemBox({
   envelope?: "none" | "show" | "edit";
   /** Its track's duck curve (D85, project frames): drawn as a second, dashed line under the volume line. */
   duck?: ReadonlyArray<DuckKey> | undefined;
+  /** T7: its name is being edited in place. */
+  renaming?: boolean;
+  onRenamed?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onDoubleClick?: () => void;
 }) {
   const media = item.media ? project.media.find((m) => m.id === item.media) : undefined;
   const poster = item.type === "clip" && media && thumbIds.has(media.id) ? thumbUrl(media.id, media.path) : undefined;
@@ -70,8 +82,12 @@ export function ItemBox({
       data-type={item.type}
       {...data}
       title={label}
+      data-muted={item.mute ? "true" : undefined}
+      data-speed={item.speed !== undefined && item.speed !== 1 ? item.speed : undefined}
       style={{ left: start * ppf, width: px }}
       onPointerDown={onPointerDown}
+      onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
     >
       {poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />}
       {cards && (
@@ -99,8 +115,14 @@ export function ItemBox({
       )}
       {sound && envelope !== "none" && <Envelope project={project} item={item} px={px} ppf={ppf} edit={envelope === "edit"} duck={duck} start={start} />}
       <span className="nm" style={labelInset ? { paddingLeft: Math.min(labelInset, Math.max(0, px - 30)) } : undefined}>
-        {label}
+        {renaming ? <RenameField testId="item-rename" value={label} onDone={(name) => (name !== undefined && name !== label && void actions.renameItem(item.id, name), onRenamed?.())} /> : label}
       </span>
+      {(item.mute || (item.speed !== undefined && item.speed !== 1)) && px > 44 && (
+        <span className="clip-badge" data-testid="clip-badge">
+          {item.speed !== undefined && item.speed !== 1 && speedLabel(item.speed)}
+          {item.mute && <VolumeX />}
+        </span>
+      )}
       <span className="meta">{(duration / project.canvas.fps).toFixed(1)}s</span>
       {edges && (
         <>

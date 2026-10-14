@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 
 import { dbLabel, planTrackGain } from "../audio/sound.ts";
-import { NumberField, Slider } from "../panels/ItemEditors.tsx";
+import { NumberField, Slider } from "../inspector/fields.tsx";
 import { getPlayback, playback, type PreviewDraft } from "../preview/playback.ts";
 import type { ProjectModel, Track } from "../state/project.ts";
 import { actions, getState, projectOf } from "../state/store.ts";

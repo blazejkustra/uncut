@@ -9,6 +9,7 @@ import { basename, extname, isAbsolute, join, relative, resolve } from "node:pat
 import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
 import { decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
 import { planPlaceTake, type TakePlacement } from "@uncut/core/place";
+import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -29,7 +30,8 @@ import { withoutApiKey } from "../app/shellEnv.ts";
 
 export interface MediaLibraryShape {
   /** Queue an import into the open project; returns the job id at once. */
-  readonly startImport: (paths: ReadonlyArray<string>) => Effect.Effect<{ jobId: string }, ProjectError>;
+  /** `drop` (T9, D128): also put the files on the timeline at that frame / track, in the same edit (core planPlaceMedia). */
+  readonly startImport: (paths: ReadonlyArray<string>, drop?: MediaDrop) => Effect.Effect<{ jobId: string }, ProjectError>;
   readonly jobs: Stream.Stream<ReadonlyArray<ImportJob>>;
   /** Media ids of the open project whose current poster exists. */
   readonly thumbnails: Effect.Effect<ReadonlyArray<string>>;
@@ -52,6 +54,12 @@ export interface MediaLibraryShape {
    * the media's file and trims or holds clips past the new end (core planReshoot); a new poster.
    */
   readonly replaceMedia: (input: ReplaceMediaInput) => Effect.Effect<ReplacedMedia, ProjectError>;
+}
+
+/** Files dropped on the timeline (T9, D128): where they go. */
+export interface MediaDrop {
+  readonly frame: number;
+  readonly track?: string | undefined;
 }
 
 export interface CaptureImportInput {
@@ -320,6 +328,8 @@ export const layer = Layer.effect(
       readonly added?: Deferred.Deferred<AgentImport, string> | undefined;
       /** D114: the (single) imported file also goes on the timeline, in the same edit. */
       readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
+      /** T9 (D128): the imported files also go on the timeline (one after another), in the same edit. */
+      readonly drop?: MediaDrop | undefined;
     }
 
     const runJob = (jobId: string, openId: number, dir: string, paths: ReadonlyArray<string>, options: JobOptions = {}) =>
@@ -391,12 +401,25 @@ export const layer = Layer.effect(
           Effect.gen(function* () {
             const project = raw as ProjectShape;
             const known = new Set<string>();
-            for (const m of project.media) known.add(yield* Effect.promise(() => realOr(isAbsolute(m.path) ? m.path : resolve(projectDir, m.path))));
+            // The media already there, by real path: a file dropped on the timeline again is placed, not imported twice.
+            const existing = new Map<string, (typeof project.media)[number]>();
+            for (const m of project.media) {
+              const real = yield* Effect.promise(() => realOr(isAbsolute(m.path) ? m.path : resolve(projectDir, m.path)));
+              known.add(real);
+              existing.set(real, m);
+            }
             const taken = allIds(project);
             const fps = project.canvas.fps;
             entries = [];
+            // T9 (D128): what a drop places, in the order dropped (new entries and media already in the project).
+            const toPlace: Array<PlaceMedia> = [];
             for (const p of probed) {
               if (known.has(p.real)) {
+                const there = existing.get(p.real);
+                if (options.drop && there) {
+                  toPlace.push(there as unknown as PlaceMedia);
+                  continue;
+                }
                 skipped.push({ path: p.path, reason: "Already in the project.", at: p.at });
                 continue;
               }
@@ -415,6 +438,7 @@ export const layer = Layer.effect(
                   probe: probeOf(info, fps),
                 },
               });
+              toPlace.push(entries.at(-1)!.entry);
             }
             // Subtitles files (D105): each a new Subtitles track (core planImportSubtitles), planned on the
             // project as it will be (the tracks planned before it count), in the same edit as the media.
@@ -433,7 +457,7 @@ export const layer = Layer.effect(
               view = { ...view, tracks: [{ ...added.track, items: [] }, ...view.tracks] };
             }
             const count = entries.length + subtitles.length;
-            if (count === 0) return undefined;
+            if (count === 0 && !toPlace.length) return undefined;
             // D114: a take recorded on this Mac goes on the timeline in the same edit.
             const placeOps: Array<unknown> = [];
             placed = undefined;
@@ -443,9 +467,21 @@ export const layer = Layer.effect(
               placeOps.push(...plan.ops);
               placed = { itemId: plan.itemId, trackId: plan.trackId, start: plan.start };
             }
+            // T9 (D128): files dropped on the timeline land where they were dropped, in this edit.
+            let dropped = false;
+            const placeable = toPlace.filter((m) => m.kind === "image" || m.probe?.frames);
+            if (options.drop && placeable.length) {
+              const plan = planPlaceMedia(raw as Project, placeable, options.drop, taken);
+              if (!("problem" in plan)) {
+                placeOps.push(...plan.ops);
+                dropped = true;
+                const first = plan.placed[0];
+                if (first) placed = first;
+              }
+            }
             return {
               ops: [...entries.map(({ entry }) => ({ op: "add_media", media: entry })), ...subtitleOps, ...placeOps],
-              summary: placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
+              summary: dropped ? (placeable.length > 1 ? `Add ${placeable.length} files to the timeline` : `Add ${placeable[0]!.name} to the timeline`) : placed ? `Record ${entries[0]!.entry.name}` : count > 1 ? `Import ${count} files` : entries.length === 1 ? `Import ${entries[0]!.entry.name}` : `Import subtitles ${basename(subtitles[0]!.path)}`,
             };
           }),
           options.agent,
@@ -496,14 +532,14 @@ export const layer = Layer.effect(
         return id;
       });
 
-    const startImport = (paths: ReadonlyArray<string>) =>
+    const startImport = (paths: ReadonlyArray<string>, drop?: MediaDrop) =>
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
         // Files uploaded from another Mac (D108) live in the project's media/uploads/: stored
         // relative to it, so the project folder carries them wherever it goes.
         const uploads = join(open.dir, "media", "uploads") + "/";
-        return { jobId: yield* queueJob(open, paths, paths.every((p) => p.startsWith(uploads)) ? { relativePaths: true } : {}) };
+        return { jobId: yield* queueJob(open, paths, { ...(paths.every((p) => p.startsWith(uploads)) ? { relativePaths: true } : {}), ...(drop ? { drop } : {}) }) };
       });
 
     const importForAgent = ({ openId, dir, turnId, paths, names }: AgentImportInput) =>

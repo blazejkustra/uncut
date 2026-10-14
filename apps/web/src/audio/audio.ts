@@ -718,9 +718,9 @@ export class Mix {
   /** Keep an element this mix owns in step with the clock (the Compositor does this for video). */
   private drive(el: HTMLMediaElement, item: Item, source: number, playing: boolean) {
     const rate = item.speed ?? 1;
-    if (el.playbackRate !== rate) {
+    if (el.playbackRate !== rate || el.preservesPitch !== (item.keepPitch !== false)) {
       el.playbackRate = rate;
-      el.preservesPitch = true;
+      el.preservesPitch = item.keepPitch !== false;
     }
     el.loop = item.loop === true;
     const target = source + 0.0001;

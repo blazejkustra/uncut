@@ -192,11 +192,12 @@ const isMusicTrack = (ctx: CheckContext, track: Track) =>
     MUSIC_NAME.test(track.name) ||
     track.items.some((i) => {
       const m = mediaOf(ctx, i);
-      return !!m && (MUSIC_NAME.test(m.name) || !!libraryTrackOf(m));
+      // The file's name, not the display name (G4: renaming a media item doesn't change what it is).
+      return !!m && (MUSIC_NAME.test(m.path.replace(/\\/g, "/").split("/").pop() ?? "") || !!libraryTrackOf(m));
     }));
 /** soundMedia (audio.ts) through the context's media map. */
 function soundOf(ctx: CheckContext, item: Item) {
-  if (item.type !== "clip" && item.type !== "audio") return undefined;
+  if ((item.type !== "clip" && item.type !== "audio") || item.mute) return undefined;
   const m = mediaOf(ctx, item);
   return m && m.kind !== "image" && (m.kind === "audio" || m.probe?.hasAudio) ? m : undefined;
 }

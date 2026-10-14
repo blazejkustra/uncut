@@ -17,7 +17,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount; applied on export only), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number).",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount; applied on export only), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number).",
       "inputSchema": {
         "type": "object",
         "required": ["baseRevision", "ops", "summary"],
@@ -314,6 +314,30 @@
         "transform": { "type": "object", "additionalProperties": false, "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number", "exclusiveMinimum": 0 } }, "description": "The text box's top-left and width in canvas px, over the look's." },
         "animation": { "description": "In/out moves instead of the look's (frames), or null for none.", "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "properties": { "in": { "type": "object" }, "out": { "type": "object" } } }] },
         "alone": { "type": "boolean", "description": "Leave out the looks it comes with." }
+      }
+    },
+    "detachAudio": {
+      "type": "object",
+      "required": ["op", "item"],
+      "additionalProperties": false,
+      "description": "Detach audio (D123): the clip's sound becomes an audio item (same media, in point, speed and start; the clip's volume, fades and volume keys move to it) on the first audio track free for that stretch (or a new one, or `track`), and the clip gets mute: true. Captions and transcript cuts keep following the clip on main.",
+      "properties": {
+        "op": { "const": "detach_audio" },
+        "item": { "type": "string", "description": "The clip's id." },
+        "id": { "type": "string", "description": "The new audio item's id (default audio-N)." },
+        "track": { "type": "string", "description": "An audio track that is free there (default: picked or made)." }
+      }
+    },
+    "setSpeed": {
+      "type": "object",
+      "required": ["op", "item", "speed"],
+      "additionalProperties": false,
+      "description": "Change the speed of a clip or an audio item (D125): 0.1 to 10 (2 = twice as fast). It keeps playing the same stretch of its media, so its duration becomes duration x old speed / new speed (main clips after it ripple; on a free track the next item must leave room). keepPitch false lets the pitch follow the speed (like tape); true keeps it (the default).",
+      "properties": {
+        "op": { "const": "set_speed" },
+        "item": { "type": "string" },
+        "speed": { "type": "number", "minimum": 0.1, "maximum": 10 },
+        "keepPitch": { "type": "boolean" }
       }
     },
     "editCaptions": {

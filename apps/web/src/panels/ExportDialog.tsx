@@ -16,6 +16,12 @@ import { useEffect, useMemo, useState } from "react";
 import { shortPath } from "../state/format.ts";
 import { CheckRow } from "../onboarding/Onboarding.tsx";
 import { actions, useApp, type Project } from "../state/store.ts";
+import { frameTimecode } from "../state/format.ts";
+import { layoutOf } from "../state/project.ts";
+import { usePlayback } from "../preview/playback.ts";
+import { findItem } from "../timeline/edit.ts";
+import { NumberField } from "../inspector/fields.tsx";
+import { effectiveRange, type RangeKind } from "./exportRange.ts";
 
 const QUALITIES: ReadonlyArray<{ readonly id: ExportQuality; readonly label: string; readonly hint: string }> = [
   { id: "draft", label: "Draft", hint: "Fast, for a quick look" },
@@ -38,6 +44,13 @@ function loudnessCards(target: number): ReadonlyArray<LoudnessCard> {
     { id: "off", label: "As mixed", sub: "No change", hint: "Keeps your levels exactly as they sound in the editor." },
   ];
 }
+
+const RANGE_KINDS: ReadonlyArray<readonly [RangeKind, string]> = [
+  ["all", "Whole timeline"],
+  ["marks", "In to Out"],
+  ["selection", "Selected clips"],
+  ["custom", "Custom"],
+];
 
 const ACTIVE = new Set(["queued", "preparing", "rendering"]);
 export const exportRunning = (job: ExportJob | undefined) => job !== undefined && ACTIVE.has(job.phase);
@@ -93,12 +106,29 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
+  // G7 (D127): the part to export.
+  const fps = project.canvas.fps;
+  const end = layoutOf(project).end;
+  const markIn = usePlayback((x) => x.markIn);
+  const markOut = usePlayback((x) => x.markOut);
+  const selectedId = usePlayback((x) => x.selected);
+  const also = usePlayback((x) => x.also);
+  const marks = markIn !== undefined || markOut !== undefined ? { from: markIn ?? 0, to: markOut ?? end } : undefined;
+  const picked = (selectedId === undefined ? [] : [selectedId, ...also]).map((id) => findItem(project, id)).filter((p) => p !== undefined && p.item.type !== "captions");
+  const selection = picked.length ? { from: Math.min(...picked.map((p) => p!.start)), to: Math.max(...picked.map((p) => p!.start + p!.item.duration)) } : undefined;
+  const [rangeKind, setRangeKind] = useState<RangeKind>("all");
+  const [custom, setCustom] = useState<{ from: number; to: number }>(() => marks ?? { from: 0, to: end });
+  // Marks or a selection that went away (an undo, the agent) fall back to the whole timeline, visibly.
+  const effective = effectiveRange(rangeKind, { marks, selection, custom });
+  const range = effective.range;
+  const rangeOk = !range || range.to > range.from;
+
   const output = `${folder.replace(/\/$/, "")}/${fileName(name)}`;
   const start = async (overwrite = false) => {
     setBusy(true);
     setError(undefined);
     const subtitles: ExportSubtitles | undefined = cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
-    const refused = await actions.startExport({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}) });
+    const refused = await actions.startExport({ output, quality, loudness, ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}) });
     setBusy(false);
     if (refused) {
       setError(refused);
@@ -262,6 +292,33 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             </button>
           </div>
         </div>
+        <div className="group-label export-label">Range</div>
+        <div className="seg export-range" data-testid="export-range" role="radiogroup" aria-label="Range">
+          {RANGE_KINDS.map(([id, label]) => (
+            <button
+              type="button"
+              key={id}
+              role="radio"
+              aria-checked={effective.kind === id}
+              className={effective.kind === id ? "active" : ""}
+              data-testid={`export-range-${id}`}
+              disabled={(id === "marks" && !marks) || (id === "selection" && !selection)}
+              onClick={() => (setRangeKind(id), id === "custom" && setCustom(range ?? custom))}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {rangeKind === "custom" && (
+          <div className="field-row export-custom">
+            <NumberField label="From s" testId="export-range-from" value={Number((custom.from / fps).toFixed(2))} step={0.1} min={0} onCommit={(v) => setCustom({ ...custom, from: Math.max(0, Math.round((v ?? 0) * fps)) })} />
+            <NumberField label="To s" testId="export-range-to" value={Number((custom.to / fps).toFixed(2))} step={0.1} min={0} onCommit={(v) => setCustom({ ...custom, to: Math.min(end, Math.round((v ?? 0) * fps)) })} />
+          </div>
+        )}
+        <p className="wiz-meta" data-testid="export-range-text" data-from={range?.from ?? 0} data-to={range?.to ?? end}>
+          {effective.fellBack && <span data-testid="export-range-fallback">{effective.fellBack === "marks" ? "The In and Out marks are gone: whole timeline. " : "Nothing is selected now: whole timeline. "}</span>}
+          {rangeOk ? `${frameTimecode(range?.from ?? 0, fps)} to ${frameTimecode(range?.to ?? end, fps)}, ${(((range?.to ?? end) - (range?.from ?? 0)) / fps).toFixed(1)} s` : "The end has to come after the start."}
+        </p>
         <div className="group-label export-label">Loudness</div>
         <div className="wiz-cards">
           {LOUDNESS.map((l) => (
@@ -357,7 +414,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
               Subtitles only
             </button>
           )}
-          <button type="submit" className="btn primary" data-testid="export-start" disabled={busy || !name.trim()}>
+          <button type="submit" className="btn primary" data-testid="export-start" disabled={busy || !name.trim() || !rangeOk}>
             Export
           </button>
         </div>

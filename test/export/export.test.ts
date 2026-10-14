@@ -547,6 +547,31 @@ test("export: the fixture renders at the canvas size and fps with sound at core'
   assert.deepEqual(children(), []);
 });
 
+test("export (G7, D127): a part of the timeline exports exactly that part, picture and sound", { skip: skipServer, timeout: 120000 }, async () => {
+  const project = exportProject(join(root, "media"));
+  const output = join(root, "out", "Part.mp4");
+  // Frames [30, 120): the export's frame 30 is the edit's frame 60 (A 15 frames in).
+  const { jobId } = await client.ok("export.start", { output, quality: "standard", loudness: "off", range: { from: 30, to: 120 } });
+  const done = await finished(jobId);
+  assert.equal(done.phase, "done", done.error);
+  assert.deepEqual(done.range, { from: 30, to: 120 });
+  assert.equal(done.seconds, 3);
+  const p = probe(output);
+  const v = p.streams.find((s) => s.codec_type === "video")!;
+  assert.equal(Number(v.nb_frames), 90);
+  assert.ok(Math.abs(Number(p.format.duration) - 3) < 0.05, `duration ${p.format.duration}`);
+  const src = join(root, "a-15.png");
+  const shot = ssim(frameOf(output, 30, join(root, "part-30.png")), src);
+  assert.ok(shot > 0.97, `part frame 30 vs source frame 15: SSIM ${shot}`);
+  for (const t of [0.2, 1.2, 2.2]) {
+    const got = rms(output, t);
+    const want = expectedRms(project, t + 1);
+    assert.ok(Math.abs(got - want) <= 0.03 * want + 0.003, `rms at ${t}s of the part: ${got} vs ${want} (edit ${t + 1}s)`);
+  }
+  const empty = await client.fail("export.start", { output: join(root, "out", "None.mp4"), quality: "draft", loudness: "off", range: { from: 9000, to: 9100 } });
+  assert.match(empty.message, /empty/);
+});
+
 /** The colour of a video's frame n at x (a fraction of the width), mid-height, averaged over 8×8 pixels. */
 const pixelOf = (file: string, n: number, x: number, width = 640, height = 360): Rgb => {
   const cx = Math.max(0, Math.min(width - 8, Math.round(x * width) - 4));

@@ -12,11 +12,12 @@ import { bridge, type AppInfo, type EnvironmentInfo, type EnvironmentTest, type 
 import { connect, isTransportError, type CallError, type Connection, type Result } from "./connection.ts";
 import type { Canvas } from "./format.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
-import { draftOf, findItem, nearestCut, planDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
+import { draftOf, findItem, nearestCut, planDelete, planRippleDelete, planSetTransition, planSplit, planTrackFlag, type Plan, type TrackFlag } from "../timeline/edit.ts";
+import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 import { musicInProject, musicTrack } from "@uncut/core/music";
 import { type Check, type CheckRule } from "@uncut/core/checks";
 import { pluginCheckRules, pluginRuleEntries, type PluginLook, type PluginRule } from "@uncut/core/contributions";
-import { layoutOf, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
+import { layoutOf, uniqueId, planAddAtPlayhead, planAddMedia, planAddMusic, planAddText, planDropMedia, TEXT_PRESETS, type Planned, type ProjectModel, type TextPreset } from "./project.ts";
 import { planAddBackground, type BackgroundProps } from "../preview/text.ts";
 import { planAddComponent, planAddGraphic } from "../preview/components.ts";
 import { planRemoveGainKey } from "../audio/sound.ts";
@@ -105,6 +106,8 @@ export interface AppStateShape {
   readonly agentError?: string;
   // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
   readonly panelRequest?: { readonly panel: AgentUiPanel; readonly seq: number };
+  /** "Show in Media" (T7): the tile to scroll to and flash. */
+  readonly mediaFocus?: { readonly id: string; readonly seq: number };
   // The export dialog (D34) and the server's export jobs; the one this window started last.
   readonly exportOpen: boolean;
   readonly exportJobs: ReadonlyArray<ExportJob>;
@@ -751,7 +754,7 @@ export const actions = {
    * Local files into a remote project (D108): each goes up into media/uploads/, then they're
    * imported from there as one job, as a drop on Local imports in place.
    */
-  async uploadAndImport(files: ReadonlyArray<File>) {
+  async uploadAndImport(files: ReadonlyArray<File>, drop?: { frame: number; track?: string | undefined }) {
     if (!files.length || !state.snapshot || !online() || state.uploading) return;
     if (!activeJobs(state).length) set({ importReport: undefined });
     const dir = state.snapshot.dir;
@@ -767,7 +770,8 @@ export const actions = {
     set({ uploading: undefined });
     // The project changed meanwhile: the files are in the old one's media/uploads/, not imported here.
     if (paths.length && state.snapshot?.dir === dir) {
-      const result = await call((c) => c["media.import"]({ paths }));
+      const where = drop ? { drop: { frame: Math.max(0, Math.round(drop.frame)), ...(drop.track ? { track: drop.track } : {}) } } : {};
+      const result = await call((c) => c["media.import"]({ paths, ...where }));
       if (!result.ok) failed.push(...paths.map((path) => ({ path, message: plainError(result.error) })));
     }
     if (failed.length) set({ importReport: { failed: [...(state.importReport?.failed ?? []), ...failed], skipped: state.importReport?.skipped ?? [] } });
@@ -925,6 +929,71 @@ export const actions = {
   setTransition: (itemId: string, next: { module: string; duration?: number } | null, origin?: { baseRevision?: number; dir?: string }) =>
     state.snapshot ? timelineEdit(planSetTransition(projectOf(state.snapshot), itemId, next), origin) : Promise.resolve(false),
   toggleTrack: (trackId: string, flag: TrackFlag) => (state.snapshot ? timelineEdit(planTrackFlag(projectOf(state.snapshot), trackId, flag)) : undefined),
+  /** Media dropped on a lane (T1, D122): at the drop frame on that lane when it takes it (see planDropMedia). */
+  dropMedia: (mediaId: string, at: { frame: number; track?: string | undefined }) => addPlanned((project) => planDropMedia(project, mediaId, at)),
+  /** Detach audio (T3, D123): the clip's sound to its own audio item, the clip muted; the new item is selected. */
+  async detachAudio(itemId: string) {
+    if (!state.snapshot) return;
+    const project = projectOf(state.snapshot);
+    const plan = planDetachAudio(project, itemId, takenIds(project));
+    if (await timelineEdit(plan)) playback.select("itemId" in plan ? plan.itemId : undefined);
+  },
+  /** Speed (G9, D125): presets and custom, keep pitch or not; the item's length follows. */
+  setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => planSetSpeed(project, itemId, speed, keepPitch)),
+  /** Rename a timeline item (T7): its own name, shown on the timeline and in the Inspector; "" goes back to the media's. */
+  renameItem: (itemId: string, name: string) => itemEdit(() => ({ ops: [{ op: "update_item", item: itemId, set: { name: name.trim() ? name.trim() : null } }], summary: name.trim() ? `Rename ${itemId} to ${name.trim()}` : `Reset the name of ${itemId}` })),
+  renameTrack: (trackId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_track", track: trackId, set: { name: name.trim() } }], summary: `Rename track to ${name.trim()}` })) : Promise.resolve(false)),
+  /** G4: a media item's display name (its file stays where it is), shown everywhere it appears. */
+  renameMedia: (mediaId: string, name: string) => (name.trim() ? itemEdit(() => ({ ops: [{ op: "update_media", media: mediaId, set: { name: name.trim() } }], summary: `Rename media to ${name.trim()}` })) : Promise.resolve(false)),
+  /** Ripple delete (T7): delete and close the gaps on their tracks. */
+  async rippleDelete(ids: ReadonlyArray<string>) {
+    if (!state.snapshot) return;
+    if (await timelineEdit(planRippleDelete(projectOf(state.snapshot), ids))) playback.select(undefined);
+  },
+  /** Mute or lock one item (T7): mute silences a clip or audio item (D123), lock keeps hands and the agent off it. */
+  toggleItem: (itemId: string, flag: "mute" | "locked") =>
+    itemEdit((project) => {
+      const item = findItem(project, itemId)?.item;
+      if (!item) return { problem: "That item isn't in the project any more." };
+      const on = !item[flag];
+      return { ops: [{ op: "update_item", item: itemId, set: { [flag]: on ? true : null } }], summary: `${flag === "mute" ? (on ? "Mute" : "Unmute") : on ? "Lock" : "Unlock"} ${item.name ?? itemId}` };
+    }),
+  /** Replace media (T7): the clip plays another media file of the project from its start, as long as it was (or as the file is). */
+  replaceMedia: (itemId: string, mediaId: string) =>
+    itemEdit((project) => {
+      const placed = findItem(project, itemId);
+      const media = project.media.find((m) => m.id === mediaId);
+      if (!placed || !media) return { problem: "That media isn't in the project any more." };
+      const frames = media.kind === "image" ? undefined : media.probe?.frames;
+      const duration = frames && !placed.item.loop ? Math.max(1, Math.min(placed.item.duration, Math.floor(frames / (placed.item.speed ?? 1)))) : placed.item.duration;
+      return { ops: [{ op: "update_item", item: itemId, set: { media: mediaId, in: media.kind === "image" ? null : 0, duration, ...(media.kind === "image" ? { speed: null } : {}) } }], summary: `Replace the media of ${itemId} with ${media.name}` };
+    }),
+  /** Add an empty track (T7): video and text tracks go on top (or just above `near`), audio at the bottom (or just below `near`). */
+  addTrack: (kind: "video" | "text" | "audio", near?: string) =>
+    itemEdit((project) => {
+      const base = kind === "audio" ? "Audio" : kind === "text" ? "Text" : "Video";
+      const used = new Set(project.tracks.map((t) => t.name));
+      let name = base;
+      for (let n = 2; used.has(name); n++) name = `${base} ${n}`;
+      const at = near !== undefined ? project.tracks.findIndex((t) => t.id === near) : -1;
+      const nearTrack = at >= 0 ? project.tracks[at] : undefined;
+      const sameSide = nearTrack && (nearTrack.kind === "audio") === (kind === "audio");
+      const index = sameSide ? (kind === "audio" ? at + 1 : at) : kind === "audio" ? project.tracks.length : 0;
+      const id = uniqueId(project, `${kind}-track`);
+      return { ops: [{ op: "add_track", track: { id, kind, name }, index }], summary: `Add ${name} track` };
+    }),
+  /** Delete a track and what's on it (T7), as one edit. */
+  deleteTrack: (trackId: string) =>
+    itemEdit((project) => {
+      const track = project.tracks.find((t) => t.id === trackId);
+      if (!track) return { problem: "That track isn't in the project any more." };
+      if (track.role === "main") return { problem: "The main track can't be deleted." };
+      return { ops: [{ op: "delete_track", track: trackId }], summary: `Delete track ${track.name}` };
+    }),
+  /** Show in Media (T7): the Media tab with the tile scrolled into view and flashed. */
+  showInMedia(mediaId: string) {
+    set({ panelRequest: { panel: "media" as AgentUiPanel, seq: ++panelSeq }, mediaFocus: { id: mediaId, seq: ++panelSeq } });
+  },
   rename: (name: string) =>
     change((c) => c["project.edit"]({ ops: [{ op: "update_project", set: { name } }], summary: "Rename project" }), { inline: true }),
 
@@ -953,13 +1022,15 @@ export const actions = {
    * Import files (from a drop) or, with no paths, ask with the native dialog. The server runs
    * it as a job (queued behind any running one); progress and results arrive on media.jobs.
    */
-  async importMedia(paths?: ReadonlyArray<string>) {
+  async importMedia(paths?: ReadonlyArray<string>, drop?: { frame: number; track?: string | undefined }) {
     const picked = paths ?? (isRemote() ? await pickRemote("media") : await bridge.chooseMedia());
     const chosen = Array.isArray(picked) ? picked : [];
     const absolute = chosen.filter((p) => typeof p === "string" && p.startsWith("/"));
     if (absolute.length === 0) return;
     if (!activeJobs(state).length) set({ importReport: undefined });
-    const result = await call((c) => c["media.import"]({ paths: absolute }));
+    // T9 (D128): dropped on the timeline, the import puts them there in the same edit.
+    const where = drop ? { drop: { frame: Math.max(0, Math.round(drop.frame)), ...(drop.track ? { track: drop.track } : {}) } } : {};
+    const result = await call((c) => c["media.import"]({ paths: absolute, ...where }));
     if (!result.ok) set({ importReport: { failed: absolute.map((path) => ({ path, message: plainError(result.error) })), skipped: [] } });
   },
   dismissImportReport: () => set({ importReport: undefined }),
@@ -1006,7 +1077,7 @@ export const actions = {
     return typeof picked === "string" ? picked : null;
   },
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
-  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number } }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     revealWhenDone.add(result.value.jobId);

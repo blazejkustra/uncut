@@ -208,6 +208,8 @@ export const playback = {
   zoomIn: () => set({ zoom: clamp(state.zoom * 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomOut: () => set({ zoom: clamp(state.zoom / 1.5, ZOOM_MIN, ZOOM_MAX) }),
   zoomFit: () => set({ zoom: 1 }),
+  /** T2: the timeline zoom as a value (⌘/pinch wheel), clamped. */
+  setZoom: (zoom: number) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX) }),
   /** Snapping on or off; remembered on this Mac (Settings › App shows the same switch, G8). */
   toggleSnapping: () => {
     set({ snapping: !state.snapping });

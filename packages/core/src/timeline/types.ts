@@ -117,8 +117,13 @@ export interface Item {
   // clip, component, audio
   readonly media?: Id;
   readonly in?: Frame;
-  // clip
+  // clip, audio: playback rate (D125); keepPitch false lets the pitch follow it.
   readonly speed?: number;
+  readonly keepPitch?: boolean;
+  /** Clip, audio (D123): makes no sound. Detach audio sets it on the clip whose sound went to an audio item. */
+  readonly mute?: boolean;
+  /** Audio (D123): the clip this sound was detached from; while set it follows that clip (arrange.ts withLinkedAudio). */
+  readonly linkedTo?: Id;
   // clip, audio
   readonly gainDb?: number;
   // component
@@ -159,6 +164,8 @@ export interface Mixer {
   readonly gainDb?: number;
   readonly pan?: number;
   readonly mute?: boolean;
+  /** Audio (D123): the clip this sound was detached from; while set it follows that clip (arrange.ts withLinkedAudio). */
+  readonly linkedTo?: Id;
   readonly solo?: boolean;
   readonly effects?: ReadonlyArray<ModuleUse>;
 }

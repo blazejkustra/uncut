@@ -1016,3 +1016,31 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px 
 .stage.fullscreen { position: fixed; inset: 0; z-index: 45; background: #000; }
 .stage.fullscreen .stage-canvas { background: #000; }
 .stage-canvas > .frame { flex: none; }
+/* The timeline's right-click menu (T7): native-feeling, blurred, compact. */
+.ctx-menu { position: fixed; z-index: 80; min-width: 220px; padding: 5px; border-radius: 9px; background: rgb(30 30 30 / 92%); backdrop-filter: blur(18px) saturate(1.4); border: 1px solid rgb(255 255 255 / 10%); box-shadow: 0 12px 32px rgb(0 0 0 / 55%), 0 0 0 0.5px rgb(0 0 0 / 60%); font-size: 12.5px; outline: none; user-select: none; }
+.ctx-item { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 4px; border-radius: 5px; color: var(--fg); cursor: default; white-space: nowrap; }
+.ctx-item.active { background: var(--select); color: #fff; }
+.ctx-item.disabled { color: var(--dim); }
+.ctx-item.danger:not(.disabled):not(.active) { color: #ff8a8a; }
+.ctx-check { width: 14px; display: inline-flex; justify-content: center; }
+.ctx-check svg.lucide { width: 12px; height: 12px; }
+.ctx-label { flex: 1; }
+.ctx-key { color: var(--muted); font-size: 11.5px; padding-left: 18px; letter-spacing: 0.02em; }
+.ctx-item.active .ctx-key { color: rgb(255 255 255 / 80%); }
+.ctx-more { width: 12px; height: 12px; margin-left: 8px; color: var(--muted); }
+.ctx-sep { height: 1px; margin: 4px 8px; background: rgb(255 255 255 / 9%); }
+/* Marquee selection (T8). */
+.marquee { position: absolute; z-index: 7; border: 1px solid var(--select); background: rgb(109 140 255 / 12%); pointer-events: none; border-radius: 2px; }
+/* A new track appears where a drag goes past the top or bottom lane (T1). */
+.tl-newtrack { position: absolute; left: 0; right: 0; height: 3px; background: var(--select); box-shadow: 0 0 8px var(--select); z-index: 6; pointer-events: none; }
+.tl-lane.drop-target { background: var(--select-soft); }
+.snap-line { box-shadow: 0 0 6px rgb(251 191 36 / 60%); }
+/* A clip whose sound went to its own audio item (T3) or was muted. */
+.clip .clip-badge { position: absolute; right: 4px; top: 3px; z-index: 2; display: inline-flex; gap: 3px; align-items: center; padding: 0 4px; height: 14px; border-radius: 3px; background: rgb(0 0 0 / 55%); font: 9.5px var(--mono); color: rgb(255 255 255 / 85%); }
+.clip .clip-badge svg.lucide { width: 10px; height: 10px; }
+.clip .nm .renaming { width: 100%; height: 16px; font-size: 11px; padding: 0 3px; background: var(--bg); color: var(--fg); border: 1px solid var(--select); border-radius: 3px; }
+.tl-head .name .renaming { flex: 1; min-width: 0; height: 20px; font-size: 12px; padding: 0 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--select); border-radius: 4px; }
+.speed-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.speed-row .small-btn.active { background: var(--select); color: #fff; border-color: transparent; }
+.tile.flash { outline: 2px solid var(--select); outline-offset: 2px; transition: outline-color 0.3s; }
+.tile-name .renaming { width: 100%; height: 18px; font-size: 11.5px; padding: 0 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--select); border-radius: 4px; }

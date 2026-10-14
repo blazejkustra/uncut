@@ -10,12 +10,18 @@ import { hasSound } from "../audio/sound.ts";
 import { AgentPanel } from "../panels/Agent.tsx";
 import { ComponentEditor } from "../panels/ComponentEditor.tsx";
 import { HistoryPanel } from "../panels/History.tsx";
-import { AudioEditor, BackgroundEditor, CaptionsEditor, ClipBoxEditor, TextEditor, TransitionInspector } from "../panels/ItemEditors.tsx";
+import { AudioEditor } from "../inspector/audio.tsx";
+import { hasSpeed, NamesEditor, SpeedEditor } from "../inspector/speed.tsx";
+import { BackgroundEditor } from "../inspector/background.tsx";
+import { CaptionsEditor } from "../inspector/captions.tsx";
+import { ClipBoxEditor } from "../inspector/clip.tsx";
+import { TextEditor } from "../inspector/text.tsx";
+import { TransitionInspector } from "../inspector/transition.tsx";
 import { playback, usePlayback } from "../preview/playback.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { frameTimecode } from "../state/format.ts";
 import { itemLabel } from "../state/project.ts";
-import { useApp, type Project } from "../state/store.ts";
+import { actions, useApp, type Project } from "../state/store.ts";
 import { isBoxed } from "../timeline/clip.ts";
 import { findItem } from "../timeline/edit.ts";
 
@@ -113,7 +119,19 @@ function ItemInspector({ project, placed }: { project: Project; placed: NonNulla
       {item.type === "component" && item.component === SOLID && <BackgroundEditor project={project} item={item} locked={locked} />}
       {isDrawnComponent(item) && <ComponentEditor project={project} item={item} locked={locked} />}
       {isBoxed(project, item) && <ClipBoxEditor project={project} item={item} locked={locked} />}
+      {hasSpeed(project, item) && <SpeedEditor project={project} item={item} locked={locked} />}
       {hasSound(project, item) && <AudioEditor project={project} item={item} locked={locked} />}
+      {item.mute && (
+        <div className="group" data-testid="insp-muted">
+          <div className="group-label row">
+            Sound off
+            <button className="small-btn" data-testid="insp-unmute" disabled={locked} onClick={() => void actions.toggleItem(item.id, "mute")}>
+              Unmute
+            </button>
+          </div>
+        </div>
+      )}
+      <NamesEditor project={project} item={item} locked={locked} />
       <div className="group">
         <Row k="Type" id="insp-type" v={TYPE_NAMES[item.type] ?? item.type} />
         <Row k="Track" id="insp-track" v={track.name} />

@@ -1042,7 +1042,8 @@ export function audioGraph(plan: ExportPlan, first: number, options?: string | A
             ]
           : [`atrim=duration=${n(seconds * layer.speed)}`]),
         "asetpts=PTS-STARTPTS",
-        ...atempo(layer.speed),
+        // keepPitch false (D125): resampled like tape (the pitch follows the speed), else atempo keeps it.
+        ...(layer.item.keepPitch === false && Math.abs(layer.speed - 1) > 1e-9 ? [`asetrate=${n(48000 * layer.speed)}`, "aresample=48000"] : atempo(layer.speed)),
         volume,
         `adelay=delays=${delay}S:all=1`,
       ].join(",") + `[a${k}]`,
