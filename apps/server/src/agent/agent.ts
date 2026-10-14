@@ -311,6 +311,20 @@ interface ClaudeSession {
   gens: number;
 }
 
+/** D203: an edit of the turn, tied to the step (the running Uncut tool call) that made it, so the thread shows it there. */
+function pushEdit(r: Running, edit: AgentEdit) {
+  const items = r.turn.items;
+  let at: number | undefined;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (it.kind === "step" && it.status === "running" && /^[a-z]/.test(it.tool ?? "")) {
+      at = i;
+      break;
+    }
+  }
+  r.turn.edits.push(at === undefined ? edit : { ...edit, at });
+}
+
 interface Running {
   readonly turn: StoredTurn;
   readonly owner: Loaded;
@@ -970,7 +984,7 @@ export const layer = Layer.effect(
                   ...subs.map((s) => `Imported ${s.cues} subtitle cue${s.cues === 1 ? "" : "s"} from ${basename(s.path)} as track ${s.track}`),
                 ];
                 const count = entries.length + subs.length;
-                r.turn.edits.push({ revision: snapshot.revision, summary: count === 1 ? (entries.length ? `Imported ${entries[0]!.name}` : `Imported subtitles ${basename(subs[0]!.path)}`) : `Imported ${count} files`, lines });
+                pushEdit(r, { revision: snapshot.revision, summary: count === 1 ? (entries.length ? `Imported ${entries[0]!.name}` : `Imported subtitles ${basename(subs[0]!.path)}`) : `Imported ${count} files`, lines, ...(entries.length ? { media: entries.map((e) => e.id) } : {}) });
                 persist(r.owner);
                 publish();
                 // The agent may edit from the revision it gets back: user edits made since its last
@@ -1400,7 +1414,7 @@ export const layer = Layer.effect(
         }
         const { snapshot } = outcome2;
         const lines = plan.cuts.map((c) => `${c.text ? `Cut "${c.text.length > 50 ? `${c.text.slice(0, 49)}…` : c.text}"` : `Removed ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}`}${c.text && c.pauses ? ` and ${c.pauses === 1 ? "a pause" : `${c.pauses} pauses`}` : ""} (${(c.frames / fps).toFixed(1)} s${c.text && c.pauses ? " in all" : ""}) from ${c.clips.join(", ")}`);
-        r.turn.edits.push({ revision: snapshot.revision, summary: plan.summary, lines });
+        pushEdit(r, { revision: snapshot.revision, summary: plan.summary, lines });
         persist(r.owner);
         publish();
         // As media_import: the new revision is read; user edits since the agent's read come back with it.
@@ -1523,7 +1537,7 @@ export const layer = Layer.effect(
         const item = saved.tracks.flatMap((t) => t.items).find((i) => i.id === plan.itemId)!;
         const cards = captionCardList(saved, item);
         const mode = item.mode ?? "line";
-        r.turn.edits.push({ revision: snapshot.revision, summary: plan.summary, lines: [`${plan.remade ? "Remade" : "Made"} ${mode === "word" ? "word-by-word " : mode === "single" ? "one-word " : ""}captions of ${m.name} (${cards.length} card${cards.length === 1 ? "" : "s"}, ${plan.words} words) as ${plan.itemId}${plan.fixesDropped ? `; ${plan.fixesDropped} fix${plan.fixesDropped === 1 ? "" : "es"} dropped (the transcript changed)` : ""}`] });
+        pushEdit(r, { revision: snapshot.revision, summary: plan.summary, lines: [`${plan.remade ? "Remade" : "Made"} ${mode === "word" ? "word-by-word " : mode === "single" ? "one-word " : ""}captions of ${m.name} (${cards.length} card${cards.length === 1 ? "" : "s"}, ${plan.words} words) as ${plan.itemId}${plan.fixesDropped ? `; ${plan.fixesDropped} fix${plan.fixesDropped === 1 ? "" : "es"} dropped (the transcript changed)` : ""}`] });
         persist(r.owner);
         publish();
         r.owner.seen.add(snapshot.revision);
@@ -1680,7 +1694,7 @@ export const layer = Layer.effect(
         );
         if (!outcome.ok) return textResult({ refused: outcome.error.message, details: outcome.error.details }, true);
         const { snapshot } = outcome;
-        r.turn.edits.push({ revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media }, snapshot.project as Project)] });
+        pushEdit(r, { revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media }, snapshot.project as Project)], media: [media.id] });
         persist(r.owner);
         publish();
         r.owner.seen.add(snapshot.revision);
@@ -1760,7 +1774,7 @@ export const layer = Layer.effect(
         );
         if (!outcome.ok) return textResult({ refused: outcome.error.message, details: outcome.error.details }, true);
         const { snapshot } = outcome;
-        r.turn.edits.push({ revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media } as Op, snapshot.project as Project)] });
+        pushEdit(r, { revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media } as Op, snapshot.project as Project)], media: [media.id] });
         persist(r.owner);
         publish();
         r.owner.seen.add(snapshot.revision);
@@ -1992,7 +2006,7 @@ export const layer = Layer.effect(
         if (estimate > 0 || cost > 0) r.turn.spend = Number(Math.max(0, (r.turn.spend ?? 0) - estimate + cost).toFixed(3)) || undefined;
         const snapshot = result.snapshot;
         if (snapshot) {
-          r.turn.edits.push({ revision: snapshot.revision, summary: `Generated ${entry.name}`, lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)] });
+          pushEdit(r, { revision: snapshot.revision, summary: `Generated ${entry.name}`, lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)], media: [entry.id] });
           r.owner.seen.add(snapshot.revision);
         }
         persist(r.owner);
@@ -2050,7 +2064,7 @@ export const layer = Layer.effect(
         const { snapshot } = saved.x;
         const entry = (snapshot?.project as Project | undefined)?.media.find((m) => m.id === saved.x.mediaId);
         if (snapshot && entry) {
-          r.turn.edits.push({ revision: snapshot.revision, summary: `Recorded ${saved.x.name}`, lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)] });
+          pushEdit(r, { revision: snapshot.revision, summary: `Recorded ${saved.x.name}`, lines: [describeOp({ op: "add_media", media: entry } as Op, snapshot.project as Project)], media: [entry.id] });
           r.owner.seen.add(snapshot.revision);
         }
         persist(r.owner);
@@ -2663,7 +2677,7 @@ export const layer = Layer.effect(
                 return String((op as { op?: unknown }).op ?? "edit");
               }
             });
-            r.turn.edits.push({ revision: snapshot.revision, summary: line, lines });
+            pushEdit(r, { revision: snapshot.revision, summary: line, lines });
             persist(r.owner);
             // agentSeen doesn't move: user edits made since the agent's last read (they didn't
             // touch what this edit touched, or it would have been refused) are still news. They
@@ -2703,7 +2717,7 @@ export const layer = Layer.effect(
                   ? applied.result.entries.map((entry) => describeOp({ op: "add_media", media: entry } as Op, project))
                   : [...(applied.result.ops as ReadonlyArray<Op>).map((op) => describeOp(op, project)), ...applied.result.warnings];
               const summary = applied.kind === "imported" ? `Recorded ${applied.result.entries[0]?.name ?? "a take"}` : `Re-shot ${applied.result.entry.name}`;
-              r.turn.edits.push({ revision: snapshot.revision, summary, lines });
+              pushEdit(r, { revision: snapshot.revision, summary, lines });
               persist(r.owner);
               publish();
               r.owner.seen.add(snapshot.revision);
@@ -2775,7 +2789,11 @@ export const layer = Layer.effect(
       // A streamed block that never got any words (whitespace, an empty thinking) isn't shown.
       for (let i = r.turn.items.length - 1; i >= 0; i--) {
         const item = r.turn.items[i]!;
-        if (item.kind !== "step" && !item.text.trim()) r.turn.items.splice(i, 1);
+        if (item.kind !== "step" && !item.text.trim()) {
+          r.turn.items.splice(i, 1);
+          // D203: the edits' steps move up with it.
+          r.turn.edits.forEach((e, k) => e.at !== undefined && e.at > i && (r.turn.edits[k] = { ...e, at: e.at - 1 }));
+        }
         else if (item.kind !== "step") item.text = item.text.trim();
       }
       const now = view();

@@ -45,6 +45,8 @@ export interface UncutBridge {
   readonly showInFolder: (path: string) => Promise<void>;
   readonly setAppState: (state: AppState) => void;
   readonly copyText: (text: string) => Promise<void>;
+  // D201: the files and folders on the clipboard (copied in Finder) as absolute paths; [] when none.
+  readonly clipboardPaths?: () => Promise<Array<string>>;
   // Native multi-select for media; [] when cancelled.
   readonly chooseMedia: () => Promise<Array<string>>;
   // The native save panel for an export, starting at `defaultPath`; null when cancelled.
@@ -101,6 +103,7 @@ export const bridge: UncutBridge = window.uncut ?? {
   showInFolder: () => Promise.resolve(),
   setAppState: () => {},
   copyText: (text) => navigator.clipboard.writeText(text),
+  clipboardPaths: () => Promise.resolve([]),
   chooseMedia: () => Promise.resolve([]),
   chooseSavePath: () => Promise.resolve(null),
   pathForFile: () => "",
