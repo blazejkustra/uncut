@@ -1,4 +1,4 @@
-import { resolveStarts } from "../../timeline/rules.ts";
+import { gapOf, resolveStarts } from "../../timeline/rules.ts";
 import type { Project, Item, Track } from "../../timeline/types.ts";
 import { type CutWord, floorF, ceilF } from "./cutSpans.ts";
 
@@ -181,6 +181,7 @@ export function editWords(project: Pick<Project, "tracks" | "canvas">, transcrip
   let t = 0;
   let starts: Map<string, number> | undefined;
   for (const item of main.items) {
+    t += gapOf(item);
     if (item.type === "clip") {
       // A sound part with another transcribed file (a take's microphone) speaks for the clip.
       const part = soundParts(project, item).find((p) => p.media !== undefined && p.media !== item.media && transcripts.has(p.media));

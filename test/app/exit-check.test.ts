@@ -301,12 +301,15 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
       await page.keyboard.press("s");
       rev = await ui.savedAfter(r);
     };
+    // D224: a plain delete leaves a gap on main; ripple delete (⇧⌫) closes up, as this cut wants.
     const del = async () => {
       const r = await ui.revision();
+      await page.keyboard.down("Shift");
       await page.keyboard.press("Backspace");
+      await page.keyboard.up("Shift");
       rev = await ui.savedAfter(r);
     };
-    // 0:00–0:20 goes: split at 0:20, select the part before, delete. The rest closes up.
+    // 0:00–0:20 goes: split at 0:20, select the part before, ripple delete. The rest closes up.
     await ui.goTo(20 * FPS);
     await split();
     let ids = await ui.mainIds();

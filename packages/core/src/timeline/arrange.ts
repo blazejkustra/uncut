@@ -3,7 +3,8 @@
 // menu), the server (a Finder drop imports and places in one edit) and the agent's convenience ops.
 // Browser-safe.
 //
-// D122, what "main" means: the main track is the magnetic spine (back to back, ripple, transitions).
+// D122, what "main" means: the main track is the spine (in order, ripple, transitions); D224: its
+// items may have gaps before them (a delete leaves one, a drag makes one; ripple delete closes up).
 // Every other video track is an overlay with free starts, drawn over the tracks below it (track
 // order is the stacking order); clips there never ripple and carry no transitions. D215: Main takes
 // any picture (text too), a take goes on it with its parts linked (planPutOnMain), and transcripts
@@ -13,4 +14,5 @@ export type { PlaceMedia, PlacedItem, PlaceMediaPlan } from "./arrange/place.ts"
 export { planDetachAudio, SPEED_PRESETS, SPEED_RANGE, speedLabel, planSetSpeed, withLinkedAudio } from "./arrange/retime.ts";
 export type { DetachAudioPlan } from "./arrange/retime.ts";
 export { planPutOnMain } from "./arrange/putOnMain.ts";
+export { gapOpsFor, keepMainTimes, mainStartsById, rippleMainGaps } from "./arrange/gaps.ts";
 export type { PutOnMainPlan } from "./arrange/putOnMain.ts";

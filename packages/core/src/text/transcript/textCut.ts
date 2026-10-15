@@ -1,6 +1,6 @@
 import { applyEdit, createSession, EditError } from "../../timeline/apply-ops.ts";
-import { withLinkedAudio } from "../../timeline/arrange.ts";
-import { resolveStarts, projectDuration, timelineProblems } from "../../timeline/rules.ts";
+import { rippleMainGaps, withLinkedAudio } from "../../timeline/arrange.ts";
+import { mainEnd, resolveStarts, projectDuration, timelineProblems } from "../../timeline/rules.ts";
 import type { Op, Project, Item, Track } from "../../timeline/types.ts";
 import { type CutWord, ceilF, plural, floorF, spansFor, localRange, freeId, keptPieces, runsOf, quote, wordsText, wordIds, fitPiece } from "./cutSpans.ts";
 import { type SpeechSegment, type SpeechEnvelope, speechEdges } from "./speech.ts";
@@ -78,8 +78,8 @@ export interface TextCutPlan {
  * Cut words (ranges of word indices), pauses (at least `min` seconds) and/or hesitation fillers of
  * a media file out of the edit: from every main-track clip that uses the media (or whose sound part
  * does, D215: a take's microphone linked to its picture; or only `request.clips`, or a range's own
- * `clip`), respecting each clip's in-point, length and speed. The main track is magnetic, so the
- * clips after a cut close up; items on other tracks don't move (as deleting on main, D52). With
+ * `clip`), respecting each clip's in-point, length and speed. A cut ripples the main track, so the
+ * clips after it close up (D224: gaps before them stay); items on other tracks don't move. With
  * `request.items` (D215) those items are cut instead, wherever they are: one linked to a clip cuts
  * that clip; one on a free track is cut in place and its later pieces close up by what was cut, as
  * do the same stretches of its group's other parts (a take's camera and screen); nothing else on
@@ -130,7 +130,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const only = request.clips ? new Set(request.clips) : undefined;
   const starts = resolveStarts(project);
   const before = projectDuration(project);
-  const mainBefore = main.items.reduce((s, i) => s + i.duration, 0);
+  const mainBefore = mainEnd(project);
   const where = new Map(project.tracks.flatMap((t) => t.items.map((i, index) => [i.id, { item: i, track: t, index }] as const)));
   // The items whose words are measured (`src`: they play the media) and the item each cut goes into
   // (`target`: the same, or the clip a linked sound follows / a main clip's sound part speaks for).
@@ -310,9 +310,14 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       }
     }
   }
+  // D224: a cut closes up (ripple), but the empty space before a main clip it removes whole
+  // stays, before the next clip that stays (which then follows a gap: its transition goes).
+  const goneMain = new Set(ops.flatMap((o) => (o.op === "delete_item" && main.items.some((i) => i.id === o.item) ? [o.item] : [])));
+  const gapOps = rippleMainGaps(main, goneMain);
+  for (const o of gapOps) if (o.op === "update_item" && main.items.find((i) => i.id === o.item)?.transitionIn) drops.add(o.item);
   // A transition goes before the ops that cut its clip (it may be deleted).
   ops.unshift(...[...drops].map((id): Op => ({ op: "set_transition", item: id, transition: null })));
-  ops.push(...moves);
+  ops.push(...gapOps, ...moves);
 
   // Asked-for words that weren't cut, and why: not played by any clip (already cut), too tight
   // between the words around them, or too short at a clip's speed.
@@ -353,8 +358,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `That cut doesn't work: ${first?.message ?? (error as Error).message}.` };
   }
-  const draftMain = draft.tracks.find((t) => t.role === "main")!;
-  const mainCut = mainBefore - draftMain.items.reduce((s, i) => s + i.duration, 0);
+  const mainCut = mainBefore - mainEnd(draft);
   const framesRemoved = mainCut > 0 ? mainCut : union.reduce((sum, [a, b]) => sum + b - a, 0);
   const after = projectDuration(draft);
   // Free-track items after the first cut don't move with the main track: worth a look.

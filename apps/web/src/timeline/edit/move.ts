@@ -1,5 +1,5 @@
 // Move planners (edit.ts): one item, onto a new track, a group, and the layer order (F15).
-import { mainSlot, nearestFreeSpot, planPutOnMain } from "@uncut/core/arrange";
+import { gapOpsFor, mainSlot, mainStartsById, nearestFreeSpot, planPutOnMain } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type ProjectModel, uniqueId, type Item, type Track } from "../../state/project.ts";
 import { type Plan, findItem, lockOf, fitsTrack, lockedProblem, dropTransitions, TRACK_KINDS, type Placed } from "./base.ts";
@@ -17,8 +17,10 @@ export interface MovePlan extends Plan {
 /**
  * Move an item to `desiredStart` on track `trackId` (its own track, or a compatible one).
  * Free tracks: the start snaps (either edge), then moves to the nearest free spot if something
- * is in the way. Main: the item is reordered to the slot its middle is over; main items have no
- * start. No ops when it would land where it is.
+ * is in the way. Main (D224): the start snaps too, the item goes into the slot its middle is
+ * over and lands at that frame (or right after the clip before it), with gaps around it; the
+ * others stay put unless it lands on them (they're pushed later). No ops when it would land where
+ * it is.
  */
 export function planMove(project: ProjectModel, itemId: string, trackId: string, desiredStart: number, snap?: Snap): MovePlan | { readonly problem: string } {
   const placed = findItem(project, itemId);
@@ -32,15 +34,40 @@ export function planMove(project: ProjectModel, itemId: string, trackId: string,
   const { item, track } = placed;
   const onTrack = target.id === track.id ? {} : { track: target.id };
   if (target.role === "main") {
-    // Slots among the other main items, back to back; the index is after the item is taken out
-    // (move_item removes it first).
-    const rest = target.items.filter((i) => i.id !== item.id);
-    const index = mainSlot(rest, desiredStart + item.duration / 2);
-    if (target.id === track.id && index === placed.index) return { ops: [], summary: "", track: target.id, index };
+    // D224: main clips go where they're dropped (snapped like any item) and leave their space;
+    // the others stay where they are, unless the clip lands on one: then it and the ones after it
+    // that it reaches are pushed later. The order is the slot its middle is over among the others
+    // (the index is after the item is taken out: move_item removes it first).
+    let start = Math.max(0, Math.round(desiredStart));
+    const snapped = nearestSnap([start, start + item.duration], snap);
+    if (snapped) start = Math.max(0, start + snapped.shift);
+    const before = mainStartsById(target);
+    const restItems = target.items.filter((i) => i.id !== item.id);
+    // The others where they are now (with the clip taken out: their frames, not their gaps).
+    let end = 0;
+    const rest = restItems.map((i) => {
+      const s = before.get(i.id)!;
+      const placedRest = { ...i, gap: s - end };
+      end = s + i.duration;
+      return placedRest;
+    });
+    const index = mainSlot(rest, start + item.duration / 2);
+    const order = [...restItems.slice(0, index), item, ...restItems.slice(index)];
+    const gaps = gapOpsFor(order, (i) => (i.id === item.id ? start : before.get(i.id)!), new Set([item.id]));
+    // Not before the clip it follows: then it butts up to it.
+    const landed = gaps.starts.get(item.id)!;
+    const snapAt = snapped && landed === start ? snapped.at : undefined;
+    const at = { track: target.id, index, start: landed, ...(snapAt !== undefined ? { snapAt } : {}) };
+    if (target.id === track.id && index === placed.index && landed === placed.start) return { ops: [], summary: "", ...at };
     // The cuts the clip leaves and joins change, so the transitions at them go (D52): its own,
-    // the one into the clip after it, and the one into the clip it lands before.
-    const cut = [item, track.role === "main" ? track.items[placed.index + 1] : undefined, rest[index]];
-    return { ops: [...dropTransitions(cut), { op: "move_item", item: item.id, ...onTrack, index }], summary: `Move ${item.id}`, track: target.id, index };
+    // the one into the clip after it, and the one into the clip it lands before; and any clip that
+    // now follows a gap (the rules refuse a transition across one).
+    const following = new Set(gaps.ops.flatMap((o) => (o.op === "update_item" && (o.set as { gap?: unknown }).gap !== null ? [o.item] : [])));
+    const cut = [item, track.role === "main" ? track.items[placed.index + 1] : undefined, restItems[index], ...restItems.filter((i) => following.has(i.id))];
+    // Same track, same order: only the gaps change (no move_item, so the clip keeps its links).
+    const moveOp: Array<Op> = target.id === track.id && index === placed.index ? [] : [{ op: "move_item", item: item.id, ...onTrack, index }];
+    const cleared = moveOp.length ? gaps.ops : gapOpsFor(order, (i) => (i.id === item.id ? landed : before.get(i.id)!)).ops;
+    return { ops: [...dropTransitions(cut), ...moveOp, ...cleared], summary: `Move ${item.id}`, ...at };
   }
   let start = Math.max(0, Math.round(desiredStart));
   const snapped = nearestSnap([start, start + item.duration], snap);

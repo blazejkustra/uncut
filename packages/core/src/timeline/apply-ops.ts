@@ -147,6 +147,8 @@ function applyOp(project: Draft, op: Op) {
       if (hasSourceTime(project, item)) second.in = (item.in ?? 0) + Math.round(op.at * (item.speed ?? 1));
       if (item.start !== undefined) second.start = item.start + op.at;
       delete second.transitionIn;
+      // D224: the second half follows the first; the gap stays before the first.
+      delete second.gap;
       item.duration = op.at;
       // The first half keeps how the item comes in, the second how it goes out; keys go to the
       // half they fall in (a key on the cut goes to both, so each half keeps its value there).
@@ -187,6 +189,8 @@ function applyOp(project: Draft, op: Op) {
       const target = op.track ? findTrack(project, op.track) : track;
       guard(target);
       track.items.splice(index, 1);
+      // D224: a moved item leaves its gap behind (a planner sets one after the move when it wants it).
+      delete item.gap;
       if (target.role === "main") {
         delete item.start;
         target.items.splice(op.index ?? target.items.length, 0, item);

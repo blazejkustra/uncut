@@ -1,6 +1,7 @@
 // Media-level edits (F8, F27; D167, D169): taking a media out of the project with everything on the
 // timeline that uses it, and fitting a sound (music) to the video's length. Pure planners: the UI
 // and the agent send their ops as one edit (one revision, one ⌘Z).
+import { gapOf } from "./rules.ts";
 import type { Id, Item, Op, Project, Track } from "./types.ts";
 
 type Plan = { readonly ops: ReadonlyArray<Op>; readonly summary: string };
@@ -78,6 +79,7 @@ export function videoEnd(project: Pick<Project, "tracks">): number {
     if (track.kind === "audio") continue;
     let t = 0;
     for (const item of track.items) {
+      if (track.role === "main") t += gapOf(item);
       const start = track.role === "main" ? t : (item.start ?? 0);
       if (track.role === "main") t += item.duration;
       if (item.type !== "captions") end = Math.max(end, start + item.duration);

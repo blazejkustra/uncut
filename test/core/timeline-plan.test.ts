@@ -3,7 +3,7 @@
 // split picks the selected item or the main clip under the playhead; locked tracks refuse.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, createSession, validateProject, loadModules, type Project } from "../../packages/core/src/index.ts";
+import { applyEdit, createSession, validateProject, loadModules, resolveStarts, type Project } from "../../packages/core/src/index.ts";
 import { draftOf, nearestFreeSpot, planDelete, planMove, planSplit, planTrackFlag, planTrim, snapTargets, trimSnapTargets } from "../../apps/web/src/timeline/edit.ts";
 
 const modules = await loadModules("spec/modules/builtin");
@@ -70,14 +70,28 @@ test("moves on a free track land on the nearest free spot; snapping sticks eithe
   assert.deepEqual(ok(planMove(project, "title", "text", 0.4)).ops, []);
 });
 
-test("main-track moves reorder by the slot under the item's middle (index after removal)", () => {
-  // a (0–90) dragged right so its middle passes b's and c's middles: last.
-  let plan = ok(planMove(project, "a", "main", 120));
-  assert.deepEqual(plan.ops, [{ op: "move_item", item: "a", index: 2 }]);
-  assert.deepEqual(apply(project, plan).tracks[2]!.items.map((i) => i.id), ["b", "c", "a"]);
+test("main-track moves (D224): the slot under the item's middle (index after removal), landing at the drop frame; the others stay", () => {
+  // a (0–90) dragged to 200: past b (90–150) and c (150–180), which stay; gaps before b and a.
+  let plan = ok(planMove(project, "a", "main", 200));
+  assert.deepEqual(plan.ops, [{ op: "move_item", item: "a", index: 2 }, { op: "update_item", item: "b", set: { gap: 90 } }, { op: "update_item", item: "a", set: { gap: 20 } }]);
+  assert.equal(plan.start, 200);
+  let p = apply(project, plan);
+  assert.deepEqual(p.tracks[2]!.items.map((i) => i.id), ["b", "c", "a"]);
+  assert.deepEqual(["b", "c", "a"].map((id) => resolveStarts(p).get(id)), [90, 150, 200]);
+  // c dragged to 0: first; it lands on a, which is pushed later, and a on b.
   plan = ok(planMove(project, "c", "main", 0));
-  assert.deepEqual(apply(project, plan).tracks[2]!.items.map((i) => i.id), ["c", "a", "b"]);
-  assert.deepEqual(ok(planMove(project, "b", "main", 50)).ops, [], "still in its own slot");
+  p = apply(project, plan);
+  assert.deepEqual(p.tracks[2]!.items.map((i) => i.id), ["c", "a", "b"]);
+  assert.deepEqual(["c", "a", "b"].map((id) => resolveStarts(p).get(id)), [0, 30, 120]);
+  assert.deepEqual(ok(planMove(project, "b", "main", 50)).ops, [], "still in its own slot, and it can't go before a's end");
+  // Same slot, later: only its gap changes (no move_item); c, landed on, is pushed.
+  plan = ok(planMove(project, "b", "main", 100));
+  assert.deepEqual(plan.ops, [{ op: "update_item", item: "b", set: { gap: 10 } }]);
+  p = apply(project, plan);
+  assert.deepEqual(["a", "b", "c"].map((id) => resolveStarts(p).get(id)), [0, 100, 160]);
+  // And back: the gap goes (null), c stays at 160.
+  plan = ok(planMove(p, "b", "main", 90));
+  assert.deepEqual(plan.ops, [{ op: "update_item", item: "b", set: { gap: null } }, { op: "update_item", item: "c", set: { gap: 10 } }]);
 });
 
 test("trims clamp to one frame, the media and the neighbours; main ripples, free tracks move the start", () => {
@@ -114,7 +128,8 @@ test("split: the selected item under the playhead, else the main clip there; del
   assert.deepEqual(plan.ops, [{ op: "split_item", item: "title", at: 30, newId: "title-1" }]);
   assert.ok("problem" in planSplit(project, "title", 90), "selected but not under the playhead");
   assert.ok("problem" in planSplit(project, undefined, 90), "on a cut, nothing to split");
-  assert.deepEqual(ok(planDelete(project, "a")).ops, [{ op: "delete_item", item: "a" }]);
+  // D224: a delete on main leaves its space (b keeps its frame 90).
+  assert.deepEqual(ok(planDelete(project, "a")).ops, [{ op: "delete_item", item: "a" }, { op: "update_item", item: "b", set: { gap: 90 } }]);
   const locked = apply(project, planTrackFlag(project, "text", "locked"));
   assert.equal(locked.tracks[0]!.locked, true);
   for (const plan of [planMove(locked, "title", "text", 70), planTrim(locked, "title", "end", 5), planSplit(locked, "title", 10), planDelete(locked, "title")]) {

@@ -1,7 +1,7 @@
 import { TEXT_STYLES } from "../looks.ts";
 import { lookItem } from "../textPlan.ts";
 import { type CutTranscript, type SpeechEnvelope, soundParts, fillersOf, speechWords } from "../transcript.ts";
-import { projectDuration } from "../../timeline/rules.ts";
+import { mainEnd, projectDuration } from "../../timeline/rules.ts";
 import type { Op, Project, FieldSet, Item } from "../../timeline/types.ts";
 import { type CaptionMode, type CaptionLines, CAPTION_DEFAULTS, CAPTION_MODES, type CaptionWord, captionMode, CAPTION_MODE_NAMES } from "./settings.ts";
 import { checkCaptionLines, captionCards } from "./cards.ts";
@@ -35,7 +35,7 @@ function freeId(project: Pick<Project, "media" | "tracks">, base: string, taken:
 }
 
 /** The main track's length in frames (what new captions cover). */
-const mainLength = (project: Pick<Project, "tracks">) => (project.tracks.find((t) => t.role === "main")?.items ?? []).reduce((n, i) => n + i.duration, 0);
+const mainLength = (project: Pick<Project, "tracks">) => mainEnd(project);
 
 /**
  * Captions for a media from its transcript: a new captions item covering the main track on a new
