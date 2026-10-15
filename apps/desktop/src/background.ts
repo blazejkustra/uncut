@@ -13,6 +13,25 @@ export const isTestBackground = (env: NodeJS.ProcessEnv) => Boolean(env.UNCUT_CD
  */
 export const BACKGROUND_SWITCHES: ReadonlyArray<string> = ["disable-renderer-backgrounding", "disable-background-timer-throttling", "disable-backgrounding-occluded-windows"];
 
+// ---- the display a test window draws for (D216) ----
+
+/**
+ * Chromium switches for every packaged-app test run (test/helpers/app.ts passes them on the command
+ * line, next to UNCUT_CDP): the renderer draws as on a 2x sRGB screen whichever display the window
+ * lands on (the built-in Display P3 one, an external monitor with its own profile or scale), so
+ * screenshots compared with the export don't depend on what's plugged in. The colour profile must be
+ * real argv: on macOS Chromium reads the display's profile before main.ts runs, so
+ * app.commandLine.appendSwitch reached the child processes but not the browser's display list
+ * (measured: the page still reported Display P3). The scale goes the same way for simplicity
+ * (render.ts's appendSwitch of it does work). A release user's app gets neither.
+ */
+export const TEST_DISPLAY_ARGS: ReadonlyArray<string> = ["--force-device-scale-factor=2", "--force-color-profile=srgb"];
+
+/** Where a test window goes (D216): centred in the primary display's work area, never on whichever display has the focus. */
+export function centredIn(area: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, size: { readonly width: number; readonly height: number }) {
+  return { x: Math.round(area.x + Math.max(0, area.width - size.width) / 2), y: Math.round(area.y + Math.max(0, area.height - size.height) / 2) };
+}
+
 // ---- recording on this Mac in tests (D114) ----
 
 export type MediaAccessKind = "microphone" | "camera" | "screen";

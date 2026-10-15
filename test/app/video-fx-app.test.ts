@@ -144,8 +144,12 @@ async function screenshotSpace(): Promise<"srgb" | "p3"> {
   const path = out("effects-red-probe.png");
   await (await page.$("#red-probe"))!.screenshot({ path });
   await page.evaluate(() => document.getElementById("red-probe")!.remove());
-  const [r, g] = [...execFileSync("ffmpeg", ["-v", "error", "-i", path, "-vf", "crop=8:8:16:16,scale=1:1,format=rgb24", "-f", "rawvideo", "-"])];
-  return r! > 245 && g! < 10 ? "srgb" : "p3";
+  const [r, g, b] = [...execFileSync("ffmpeg", ["-v", "error", "-i", path, "-vf", "crop=8:8:16:16,scale=1:1,format=rgb24", "-f", "rawvideo", "-"])];
+  // D216: tests pin the renderer to sRGB, so pure red is (255, 0, 0); Display P3 would be (234, 51, 35).
+  // Anything else is a display profile toSrgb can't undo: fail rather than mis-convert.
+  if (r! > 250 && g! < 5 && b! < 5) return "srgb";
+  if (Math.abs(r! - 234) <= 3 && Math.abs(g! - 51) <= 3 && Math.abs(b! - 35) <= 3) return "p3";
+  throw new Error(`screenshots are in neither sRGB nor Display P3: pure red came back as ${r},${g},${b}`);
 }
 function toSrgb(png: string) {
   const outPath = png.replace(/\.png$/, "-srgb.png");
