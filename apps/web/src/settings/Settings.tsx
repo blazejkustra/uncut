@@ -141,7 +141,7 @@ function AgentSettings() {
       <div className="group-label">Agent</div>
       <label className="check-row">
         <input type="checkbox" data-testid="settings-skip-storyboard" checked={skip} onChange={(e) => setSkipStoryboard(e.target.checked)} />
-        Edit freely skips the storyboard approval
+        Auto skips the storyboard approval
       </label>
     </div>
   );

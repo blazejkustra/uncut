@@ -168,7 +168,7 @@ test("on the server: brief_write turns on the suggested skills, the next message
     const ask = async (prompt: string, steps: Array<unknown>) => {
       turns.push(steps);
       writeFileSync(plan, JSON.stringify(turns));
-      const { turnId } = await client.ok("agent.send", { prompt, access: "edit", skipStoryboard: true });
+      const { turnId } = await client.ok("agent.send", { prompt, access: "auto", skipStoryboard: true });
       await agent.until(() => turn(turnId) && turn(turnId).status !== "running", 120000);
       return turn(turnId);
     };

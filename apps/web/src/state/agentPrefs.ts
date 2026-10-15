@@ -12,7 +12,8 @@ export interface AgentPrefs {
   readonly access: AgentAccess;
 }
 
-export const DEFAULT_AGENT_PREFS: AgentPrefs = { access: "edit" };
+// D214: Auto (Claude Code's own auto mode) for every project never set.
+export const DEFAULT_AGENT_PREFS: AgentPrefs = { access: "auto" };
 const PREFS_KEY = "uncut.agent.prefs";
 const FAVOURITES_KEY = "uncut.agent.favourites";
 const EVENT = "uncut:agent-prefs";
@@ -30,7 +31,8 @@ const clean = (raw: unknown): AgentPrefs => {
   return {
     ...(typeof p.model === "string" && AGENT_MODELS.some((m) => m.id === p.model) ? { model: p.model } : {}),
     ...(typeof p.effort === "string" && (AGENT_EFFORTS as ReadonlyArray<string>).includes(p.effort) ? { effort: p.effort as AgentEffort } : {}),
-    access: typeof p.access === "string" && (AGENT_ACCESS as ReadonlyArray<string>).includes(p.access) ? (p.access as AgentAccess) : "edit",
+    // D214: "edit" (Edit freely, before Auto) and anything unknown become Auto.
+    access: typeof p.access === "string" && (AGENT_ACCESS as ReadonlyArray<string>).includes(p.access) ? (p.access as AgentAccess) : "auto",
   };
 };
 
@@ -77,7 +79,7 @@ export function useAgentPrefs(dir: string): { prefs: AgentPrefs; favourites: Rea
   return { prefs: agentPrefs(dir), favourites: favouriteModels() };
 }
 
-// D188: Settings › App › Agent "Edit freely skips the storyboard approval", remembered on this Mac.
+// D188: Settings › App › Agent "Auto skips the storyboard approval", remembered on this Mac.
 const SKIP_STORYBOARD_KEY = "uncut.agent.skipStoryboard";
 export function skipStoryboardSetting(): boolean {
   try {
