@@ -19,7 +19,8 @@ await build({
   external: ["bufferutil", "utf-8-validate"],
   // Bundled CommonJS deps (ws, undici) call require() for node builtins.
   banner: { js: 'import { createRequire as __uncutCreateRequire } from "node:module"; const require = __uncutCreateRequire(import.meta.url);' },
-  define: { __UNCUT_SERVER_VERSION__: JSON.stringify(version) },
+  // Telemetry's app token (issue #13, D223): the CI secret, empty in dev builds (telemetry then stays inert).
+  define: { __UNCUT_SERVER_VERSION__: JSON.stringify(version), __UNCUT_TELEMETRY_TOKEN__: JSON.stringify(process.env.UNCUT_TELEMETRY_TOKEN ?? "") },
   logLevel: "warning",
 });
 

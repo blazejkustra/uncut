@@ -1,6 +1,7 @@
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import { FilesListRpc, GenerateListRpc, GenerateStartRpc, GenerateJobsRpc, GenerateCancelRpc, KeysListRpc, KeysSetRpc, KeysRemoveRpc, CaptureDevicesRpc, CaptureStartRpc, CaptureStopRpc, CaptureSaveRpc, CaptureSaveMultiRpc, CaptureBootRpc, CaptureRecordRpc, PluginsListRpc, PluginsApproveRpc, PluginsRevokeRpc, PluginsInstallRpc, PluginsUninstallRpc, PluginsContributionsRpc, PluginsCheckRpc, PluginsAddComponentRpc, PluginsCatalogRpc, PluginsEnableRpc, PluginsDisableRpc, HistorySubscribeRpc, HistoryPreviewRpc, HistoryJumpRpc, TranscriptionStateRpc, TranscriptionDownloadRpc, TranscriptionCancelDownloadRpc, TranscriptionSelectModelRpc, AnalysisStartRpc, AnalysisJobsRpc, AnalysisCancelRpc, AnalysisCachedRpc, ExportStartRpc, ExportJobsRpc, ExportCancelRpc, ExportSubtitlesRpc, AgentScreenTakeRpc } from "./jobs.ts";
 import { AgentSubscribeRpc, AgentSendRpc, AgentCancelRpc, AgentUndoTurnRpc, AgentApproveRpc, AgentRestoreCleanupRpc, MediaRecentRpc, MediaRecentImportRpc, AgentPlanSaveRpc, BrandGetRpc, BrandSaveKitRpc, BrandDeleteKitRpc, BrandSaveSkillRpc, BrandDeleteSkillRpc, BrandSetActiveRpc, BrandAddFileRpc, BrandImportRpc, MediaImportRpc, MediaJobsRpc, MediaThumbnailsRpc, MediaProxiesRpc, MusicAddRpc, LibrarySearchRpc, LibraryAddRpc, LibraryStateRpc, LibraryFoldersRpc, LibraryFolderAddRpc, LibraryFolderRemoveRpc, SetupCheckRpc, SetupStateRpc, SetupCompleteRpc, ServerHelloRpc, ProjectCreateRpc, ProjectOpenRpc, ProjectGetRpc, ProjectReloadRpc, ProjectCloseRpc, ProjectSubscribeRpc, ProjectEditRpc, ProjectUndoRpc, ProjectRedoRpc, RecentsListRpc } from "./rpcs.ts";
+import { TelemetryStateRpc, TelemetrySetRpc, TelemetryCrashRpc } from "./telemetry.ts";
 
 export const WsRpcGroup = RpcGroup.make(
   FilesListRpc,
@@ -87,6 +88,9 @@ export const WsRpcGroup = RpcGroup.make(
   ProjectUndoRpc,
   ProjectRedoRpc,
   RecentsListRpc,
+  TelemetryStateRpc,
+  TelemetrySetRpc,
+  TelemetryCrashRpc,
 );
 
 // What the desktop shell hands the renderer (via the preload bridge).

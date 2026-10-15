@@ -89,6 +89,9 @@ export const RPC_METHODS = {
   brandSetActive: "brand.setActive",
   brandAddFile: "brand.addFile",
   brandImport: "brand.import",
+  telemetryState: "telemetry.state",
+  telemetrySet: "telemetry.set",
+  telemetryCrash: "telemetry.crash",
 } as const;
 
 // ---- server ----

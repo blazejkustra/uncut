@@ -11,6 +11,8 @@ import { dataDirOf, readConfig, readLaunchOptions, type LaunchOptions } from "./
 import { loadOrCreateToken } from "./pairing.ts";
 import { makeServerLayer, openSockets } from "./server.ts";
 import { fallbackPathDirs, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
+import { initTelemetry, shutdownTelemetry, trackCrash } from "../telemetry/telemetry.ts";
+import { crashOf, spoolCrash } from "../telemetry/spool.ts";
 
 let launch: LaunchOptions;
 try {
@@ -77,8 +79,16 @@ if (!isLoopbackHost(host) && (!token || token.length < 24)) {
 }
 const config = readConfig(process.env, token, { apiKeyInEnv, shellReady }, launch.keysFd, headless ? { host, tokenFile } : undefined);
 
+// Telemetry (D223): inert without the build's token; never delays startup.
+initTelemetry({ dataDir: config.dataDir, version: config.version, headless });
+
 // Last line of defence: log instead of dying on a stray rejection.
-process.on("unhandledRejection", (reason) => console.error("[uncut] unhandled rejection:", reason));
+process.on("unhandledRejection", (reason) => {
+  console.error("[uncut] unhandled rejection:", reason);
+  trackCrash("server", reason, false);
+});
+// An uncaught exception ends the process: its crash event is spooled (synchronously) for the next start.
+process.on("uncaughtExceptionMonitor", (error) => spoolCrash(config.dataDir, crashOf("server", error, true)));
 
 const fiber = Effect.runFork(Layer.launch(makeServerLayer(config)));
 let stopping = false;
@@ -97,9 +107,11 @@ const stop = () => {
 fiber.addObserver((exit) => {
   if (Exit.isFailure(exit) && !stopping) {
     console.error(Cause.pretty(exit.cause));
+    spoolCrash(config.dataDir, crashOf("server", Cause.squash(exit.cause), true));
     process.exit(1);
   }
-  process.exit(0);
+  // The queued telemetry goes first, within the 1 s that stop() allows.
+  void shutdownTelemetry().finally(() => process.exit(0));
 });
 
 process.once("SIGTERM", stop);

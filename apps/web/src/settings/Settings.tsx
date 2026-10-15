@@ -16,6 +16,7 @@ import { setProxiesOn, useProxiesOn } from "./proxies.ts";
 import { setScrubCacheOn, useScrubCacheOn } from "./scrub.ts";
 import { setGpuCompositorOn, useGpuCompositorOn } from "./gpu.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
+import { UsageDataSettings } from "./telemetry.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
   { id: "project", label: "Project", icon: Clapperboard },
@@ -130,6 +131,7 @@ function AppSettings() {
         </div>
       </div>
       <AgentSettings />
+      <UsageDataSettings />
       <div className="group">
         <div className="group-label">Agents, capture and plugins</div>
         <div className="settings-buttons">
