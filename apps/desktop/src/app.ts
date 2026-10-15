@@ -1,63 +1,24 @@
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, screen, safeStorage, shell, systemPreferences, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
+import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 
-import {
-  APP_INFO_CHANNEL,
-  APP_STATE_CHANNEL,
-  ASK_MEDIA_ACCESS_CHANNEL,
-  CAPTURE_SOURCES_CHANNEL,
-  CHOOSE_DISPLAY_SOURCE_CHANNEL,
-  SYSTEM_AUDIO_CHANNEL,
-  CHOOSE_FOLDER_CHANNEL,
-  CHOOSE_MEDIA_CHANNEL,
-  CHOOSE_SAVE_PATH_CHANNEL,
-  CLOSE_ANSWER_CHANNEL,
-  CLOSE_REQUEST_CHANNEL,
-  COPY_TEXT_CHANNEL,
-  CLIPBOARD_PATHS_CHANNEL,
-  DOWNLOAD_EXPORT_CHANNEL,
-  ENVIRONMENT_ADD_CHANNEL,
-  ENVIRONMENT_REMOVE_CHANNEL,
-  ENVIRONMENT_RENAME_CHANNEL,
-  ENVIRONMENT_STATUS_CHANNEL,
-  ENVIRONMENT_SWITCH_CHANNEL,
-  ENVIRONMENT_TEST_CHANNEL,
-  ENVIRONMENTS_CHANNEL,
-  MEDIA_ACCESS_CHANNEL,
-  MENU_COMMAND_CHANNEL,
-  OPEN_PRIVACY_SETTINGS_CHANNEL,
-  SERVER_CONNECTION_CHANNEL,
-  SERVER_EXIT_CHANNEL,
-  SHOW_IN_FOLDER_CHANNEL,
-  SILENT_AUDIO_CHANNEL,
-  type AppInfo,
-  type AppState,
-  type CaptureSource,
-  type CloseAnswer,
-  type EnvironmentTest,
-  type FolderPurpose,
-  type MediaAccess,
-  type MediaAccessKind,
-  type MenuCommand,
-  WINDOW_MODE_CHANNEL,
-  MINI_RECORDER_ACTION_CHANNEL,
-  MINI_RECORDER_CHANNEL,
-  MINI_RECORDER_STATE_CHANNEL,
-  type MiniRecorderAction,
-  type MiniRecorderState,
-} from "./ipc.ts";
+import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_SOURCES_CHANNEL, CHOOSE_DISPLAY_SOURCE_CHANNEL, SYSTEM_AUDIO_CHANNEL, CHOOSE_FOLDER_CHANNEL, CHOOSE_MEDIA_CHANNEL, CHOOSE_SAVE_PATH_CHANNEL, CLOSE_ANSWER_CHANNEL, CLOSE_REQUEST_CHANNEL, COPY_TEXT_CHANNEL, CLIPBOARD_PATHS_CHANNEL, DOWNLOAD_EXPORT_CHANNEL, ENVIRONMENT_ADD_CHANNEL, ENVIRONMENT_REMOVE_CHANNEL, ENVIRONMENT_RENAME_CHANNEL, ENVIRONMENT_STATUS_CHANNEL, ENVIRONMENT_SWITCH_CHANNEL, ENVIRONMENT_TEST_CHANNEL, ENVIRONMENTS_CHANNEL, MEDIA_ACCESS_CHANNEL, MENU_COMMAND_CHANNEL, OPEN_PRIVACY_SETTINGS_CHANNEL, SERVER_CONNECTION_CHANNEL, SERVER_EXIT_CHANNEL, SHOW_IN_FOLDER_CHANNEL, SILENT_AUDIO_CHANNEL, type AppInfo, type AppState, type CloseAnswer, type EnvironmentTest, type FolderPurpose, type MenuCommand, WINDOW_MODE_CHANNEL, MINI_RECORDER_ACTION_CHANNEL, MINI_RECORDER_CHANNEL, type MiniRecorderAction, type MiniRecorderState } from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
-import { BACKGROUND_SWITCHES, centredIn, isTestBackground, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
+import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { allowPermission } from "./permissions.ts";
-import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
-import { pingServer, startRelay, type Relay } from "./relay.ts";
-import { startServer, type ServerProcess } from "./server.ts";
+import { makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
+import { pingServer } from "./relay.ts";
+import { startServer } from "./server.ts";
+import { testBackground, mediaTest, devServerUrl, appUrl, testDialogs } from "./app/testMode.ts";
+import { win, environments, server, setWin, setEnvironments, setServer } from "./app/state.ts";
+import { downloads, activeConnection, closeRelay, relay, downloadExport } from "./app/remote.ts";
+import { showMini, mini } from "./app/miniRecorder.ts";
+import { crypt } from "./app/crypt.ts";
+import { resources } from "./app/resources.ts";
+import { appInfo, chooseFolder, chooseMedia, chooseSavePath } from "./app/dialogs.ts";
+import { mediaAccess, isMediaKind, askMediaAccess, captureSources } from "./app/mediaAccess.ts";
 
 // Lets tests drive the window with puppeteer (same switch as the phase 2 spike).
 if (process.env.UNCUT_CDP) app.commandLine.appendSwitch("remote-debugging-port", process.env.UNCUT_CDP);
@@ -74,34 +35,12 @@ if (process.env.UNCUT_DATA_DIR) {
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 }
-
-// Tests can't click native dialogs: with UNCUT_TEST_DIALOG (a JSON array of paths, used in
-// order; an exhausted queue means "cancelled") the dialogs answer from it instead. Only
-// together with UNCUT_CDP, so a stray variable can't change a release user's app. In the
-// same mode "Show in Finder" and Copy are logged instead of touching Finder or the clipboard.
-// Entries are a path (folder dialogs) or an array of paths (the multi-select media dialog).
-const testDialogs: Array<string | Array<string>> | undefined =
-  process.env.UNCUT_CDP && process.env.UNCUT_TEST_DIALOG ? (JSON.parse(process.env.UNCUT_TEST_DIALOG) as Array<string | Array<string>>) : undefined;
-
-// Generator keys in tests (D101): with UNCUT_TEST_KEYS=standin, and only together with UNCUT_CDP,
-// keys are wrapped by a reversible stand-in instead of safeStorage, so a packaged-app test that saves
-// a key never creates or prompts for a Keychain item. A release user's app always uses safeStorage.
-const testKeys = Boolean(process.env.UNCUT_CDP) && process.env.UNCUT_TEST_KEYS === "standin";
-
-// Tests run in the background (UNCUT_TEST_BACKGROUND=1, only with UNCUT_CDP): no dock icon, and
-// the window is shown inactive and fully transparent, so test runs never steal focus or cover what
-// the user is doing. CDP screenshots read the page, not the screen, so they are unaffected.
-const testBackground = isTestBackground(process.env);
 if (testBackground) {
   app.dock?.hide();
   // An accessory app (no dock icon, no menu bar) is never made the active app by showing a window.
   app.setActivationPolicy?.("accessory");
   for (const name of BACKGROUND_SWITCHES) app.commandLine.appendSwitch(name);
 }
-
-// Recording on this Mac in tests (D114): fake devices, permission states from the test, a stand-in
-// screen source. Never macOS's prompts, never the real camera, microphone or screen.
-const mediaTest = testMedia(process.env);
 if (mediaTest) for (const name of TEST_MEDIA_SWITCHES) app.commandLine.appendSwitch(name);
 // D210: this Mac's sound in a screen take (getDisplayMedia's loopback audio; Core Audio taps on 14.2+).
 else if (process.platform === "darwin") app.commandLine.appendSwitch("enable-features", SYSTEM_AUDIO_FEATURES);
@@ -109,39 +48,6 @@ else if (process.platform === "darwin") app.commandLine.appendSwitch("enable-fea
 // Tests of the no-WebGPU path (D213), only with UNCUT_CDP: no GPU at all, as on a Mac without a
 // usable one (the server's rasteriser gets the same through UNCUT_TEST_NO_GPU).
 if (process.env.UNCUT_CDP && process.env.UNCUT_TEST_NO_GPU === "1") app.commandLine.appendSwitch("disable-gpu");
-
-// __dirname is apps/desktop/dist in dev and app.asar/dist when packaged.
-const repoRoot = path.resolve(__dirname, "../../..");
-const resources = app.isPackaged
-  ? {
-      serverEntry: path.join(process.resourcesPath, "server", "server.mjs"),
-      mediaBin: path.join(process.resourcesPath, "bin", "uncut-media"),
-      modulesDir: path.join(process.resourcesPath, "modules", "builtin"),
-      musicDir: path.join(process.resourcesPath, "music"),
-      sfxDir: path.join(process.resourcesPath, "sfx"),
-      graphicLibsDir: path.join(process.resourcesPath, "graphic-libs"),
-      fontsDir: path.join(process.resourcesPath, "fonts"),
-      // Plugins shipped with the app (D97).
-      bundledPluginsDir: path.join(process.resourcesPath, "plugins"),
-      pluginSdkDir: path.join(process.resourcesPath, "plugin-sdk"),
-      renderEntry: undefined,
-    }
-  : {
-      serverEntry: path.join(repoRoot, "apps/server/dist/server.mjs"),
-      mediaBin: path.join(repoRoot, "native/media/target/release/uncut-media"),
-      modulesDir: path.join(repoRoot, "spec/modules/builtin"),
-      musicDir: path.join(repoRoot, "assets/music"),
-      sfxDir: path.join(repoRoot, "assets/sfx"),
-      graphicLibsDir: path.join(repoRoot, "assets/graphic-libs"),
-      fontsDir: path.join(repoRoot, "assets/fonts"),
-      bundledPluginsDir: path.join(repoRoot, "plugins"),
-      pluginSdkDir: path.join(repoRoot, "packages/plugin-sdk/src"),
-      // Under `pnpm dev` the binary is a bare Electron: it needs this bundle to be the rasteriser.
-      renderEntry: path.join(__dirname, "main.cjs"),
-    };
-
-const devServerUrl = process.env.VITE_DEV_SERVER_URL;
-const appUrl = devServerUrl ? new URL(devServerUrl) : pathToFileURL(path.join(__dirname, "renderer", "index.html"));
 
 // Our own page, ignoring query and hash (the dev server reloads itself in place).
 const isAppUrl = (raw: string) => {
@@ -156,9 +62,6 @@ const isAppUrl = (raw: string) => {
 const openIfWeb = (raw: string) => {
   if (/^https?:\/\//i.test(raw)) void shell.openExternal(raw);
 };
-
-let server: ServerProcess | undefined;
-let win: BrowserWindow | undefined;
 
 // ---- leaving with work in progress (U12, D178) ----
 // The window's close (its button, ⌘W with no project, and every quit: ⌘Q, the menu, the Dock) is
@@ -207,227 +110,7 @@ function installSignals() {
   if (process.env.UNCUT_CDP) process.on("SIGUSR2", () => win?.close());
 }
 
-const home = homedir();
-const appInfo: AppInfo = {
-  homeDir: home,
-  defaultParentDir: existsSync(path.join(home, "Movies")) ? path.join(home, "Movies") : home,
-};
-
 const sendMenuCommand = (command: MenuCommand) => win?.webContents.send(MENU_COMMAND_CHANNEL, command);
-
-const MEDIA_EXTENSIONS = ["mp4", "mov", "m4v", "m4a", "mp3", "wav", "aac", "aif", "aiff", "flac", "png", "jpg", "jpeg", "heic", "gif", "webp", "srt", "vtt"];
-
-/** Native multi-select for footage, music and images; [] when cancelled. */
-async function chooseMedia(): Promise<Array<string>> {
-  if (testDialogs) {
-    const next = testDialogs.shift();
-    return Array.isArray(next) ? next : typeof next === "string" ? [next] : [];
-  }
-  if (!win) return [];
-  const result = await dialog.showOpenDialog(win, {
-    title: "Import media",
-    buttonLabel: "Import",
-    defaultPath: appInfo.defaultParentDir,
-    properties: ["openFile", "multiSelections"],
-    filters: [
-      { name: "Video, audio, images and subtitles", extensions: MEDIA_EXTENSIONS },
-      { name: "All files", extensions: ["*"] },
-    ],
-  });
-  return result.canceled ? [] : result.filePaths;
-}
-
-/** Where to save an export (or, D109, a remote export's download): the native save panel (it asks before replacing a file); null when cancelled. */
-async function chooseSavePath(defaultPath: string, title = "Export video"): Promise<string | null> {
-  if (testDialogs) {
-    const next = testDialogs.shift();
-    return typeof next === "string" ? next : null;
-  }
-  if (!win) return null;
-  const result = await dialog.showSaveDialog(win, {
-    title,
-    buttonLabel: "Choose",
-    defaultPath: typeof defaultPath === "string" && path.isAbsolute(defaultPath) ? defaultPath : path.join(appInfo.defaultParentDir, "Untitled.mp4"),
-    filters: [{ name: "MP4 video", extensions: ["mp4"] }],
-    properties: ["createDirectory", "showOverwriteConfirmation"],
-  });
-  return result.canceled || !result.filePath ? null : result.filePath;
-}
-
-async function chooseFolder(purpose: FolderPurpose): Promise<string | null> {
-  if (testDialogs) {
-    const next = testDialogs.shift();
-    return typeof next === "string" ? next : null;
-  }
-  if (!win) return null;
-  if (purpose === "brand") {
-    const picked = await dialog.showOpenDialog(win, {
-      title: "Import into the kit",
-      buttonLabel: "Import",
-      message: "Choose a logo, a font file or a folder with them.",
-      defaultPath: app.getPath("home"),
-      properties: ["openFile", "openDirectory"],
-    });
-    return picked.canceled ? null : (picked.filePaths[0] ?? null);
-  }
-  if (purpose === "sounds") {
-    const picked = await dialog.showOpenDialog(win, {
-      title: "Add a sound folder",
-      buttonLabel: "Add",
-      message: "Its sound files appear in the Folders view. Nothing is copied until you add a sound to a project.",
-      defaultPath: app.getPath("home"),
-      properties: ["openDirectory"],
-    });
-    return picked.canceled ? null : (picked.filePaths[0] ?? null);
-  }
-  const result = await dialog.showOpenDialog(win, {
-    title: purpose === "parent" ? "Choose where to save the project" : purpose === "plugin" ? "Add a plugin" : "Open a project",
-    buttonLabel: purpose === "parent" ? "Choose" : purpose === "plugin" ? "Add" : "Open",
-    message:
-      purpose === "parent"
-        ? "The project folder (Name.uncut) is created inside this folder."
-        : purpose === "plugin"
-          ? "Choose a plugin folder (it has an uncut.module.json). Uncut copies it; you allow it next."
-          : "Choose a .uncut project folder.",
-    defaultPath: appInfo.defaultParentDir,
-    properties: purpose === "parent" ? ["openDirectory", "createDirectory"] : ["openDirectory"],
-  });
-  return result.canceled ? null : (result.filePaths[0] ?? null);
-}
-
-// ---- environments (Phase 9, D106) ----
-
-// Generator keys and remote tokens are both wrapped by safeStorage (D99), or by the test stand-in.
-const crypt: Crypt = testKeys
-  ? {
-      encrypt: (text) => `test-standin:${Buffer.from(text, "utf8").toString("base64")}`,
-      decrypt: (data) => {
-        if (!data.startsWith("test-standin:")) throw new Error("not a test key");
-        return Buffer.from(data.slice("test-standin:".length), "base64").toString("utf8");
-      },
-    }
-  : {
-      encrypt: (text) => {
-        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
-        return safeStorage.encryptString(text).toString("base64");
-      },
-      decrypt: (data) => {
-        if (!safeStorage.isEncryptionAvailable()) throw new Error("This Mac's Keychain isn't available to Uncut.");
-        return safeStorage.decryptString(Buffer.from(data, "base64"));
-      },
-    };
-
-let environments: EnvironmentStore | undefined;
-// The relay to the active remote, if the active environment is one.
-let relay: { readonly id: string; readonly relay: Relay } | undefined;
-const devOrigins = devServerUrl ? [new URL(devServerUrl).origin] : [];
-
-async function closeRelay() {
-  const open = relay;
-  relay = undefined;
-  await open?.relay.close().catch(() => {});
-}
-
-/** The active environment's connection: the local server's, or the relay to the remote one. */
-async function activeConnection() {
-  if (!environments || !server) throw new Error("the app is quitting");
-  const env = environments.active();
-  if (env.kind === "local") {
-    await closeRelay();
-    return { ...(await server.connection), environment: { id: LOCAL_ID, name: env.name, kind: "local" as const } };
-  }
-  if (relay?.id !== env.id) {
-    await closeRelay();
-    let secret: { url: string; token: string } | undefined;
-    try {
-      secret = environments.secret(env.id);
-    } catch (error) {
-      throw new Error(`Can't read the token for ${env.name}: ${(error as Error).message}`);
-    }
-    if (!secret) throw new Error(`${env.name} isn't in the environments list any more`);
-    relay = { id: env.id, relay: await startRelay({ target: secret.url, token: secret.token, allowedOrigins: devOrigins }) };
-  }
-  return { url: relay.relay.wsUrl, token: relay.relay.token, environment: { id: env.id, name: env.name, kind: "remote" as const, ...(env.url ? { url: env.url } : {}) } };
-}
-
-// Downloads this window asked for (D109), by URL: where each goes and who's waiting.
-const downloads = new Map<string, { readonly path: string; readonly done: (result: { path: string } | { error: string }) => void }>();
-
-/** A remote export's video, streamed through the relay to a path the user picks here; null when cancelled. */
-async function downloadExport(jobId: string, name: string): Promise<{ path: string } | { error: string } | null> {
-  if (typeof jobId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(jobId)) throw new Error("not an export id");
-  const open = relay;
-  if (!open || !win) return { error: "Downloads are for exports on a remote environment." };
-  const base = typeof name === "string" && name ? path.basename(name) : "Export.mp4";
-  const target = await chooseSavePath(path.join(appInfo.defaultParentDir, base), "Download export");
-  if (!target) return null;
-  const url = `${open.relay.httpBase}/api/export/${encodeURIComponent(jobId)}?token=${encodeURIComponent(open.relay.token)}`;
-  return new Promise((done) => {
-    downloads.set(url, { path: target, done });
-    win!.webContents.downloadURL(url);
-  });
-}
-
-// ---- the floating mini recorder (D209) ----
-
-// While the screen is recorded: a small window over every app with the timer, Pause, Stop and
-// Cancel. Left out of screen captures (content protection), so it isn't in the take. In a
-// background test run it's created like the main window (invisible, untouchable) and logged.
-let mini: BrowserWindow | undefined;
-let miniState: MiniRecorderState | null = null;
-const MINI_SIZE = { width: 320, height: 64 };
-
-function showMini(state: MiniRecorderState | null) {
-  miniState = state;
-  if (!state) {
-    if (mini) {
-      if (testBackground) console.log("[test] mini recorder closed");
-      mini.destroy();
-      mini = undefined;
-    }
-    return;
-  }
-  if (mini) return mini.webContents.send(MINI_RECORDER_STATE_CHANNEL, state);
-  const area = screen.getPrimaryDisplay().workArea;
-  mini = new BrowserWindow({
-    ...MINI_SIZE,
-    x: Math.round(area.x + area.width / 2 - MINI_SIZE.width / 2),
-    y: area.y + 12,
-    frame: false,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    hasShadow: true,
-    transparent: true,
-    alwaysOnTop: true,
-    show: false,
-    title: "Uncut recording",
-    webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, backgroundThrottling: false },
-  });
-  const w = mini;
-  w.setAlwaysOnTop(true, "floating");
-  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  w.setContentProtection(true);
-  w.webContents.on("will-navigate", (event) => event.preventDefault());
-  w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  w.webContents.once("did-finish-load", () => {
-    if (mini === w && miniState) w.webContents.send(MINI_RECORDER_STATE_CHANNEL, miniState);
-  });
-  w.once("ready-to-show", () => {
-    if (!testBackground) return w.showInactive();
-    w.setOpacity(0);
-    w.setIgnoreMouseEvents(true);
-    w.showInactive();
-  });
-  w.on("closed", () => {
-    if (mini === w) mini = undefined;
-  });
-  if (testBackground) console.log(`[test] mini recorder opened: ${state.name}`);
-  if (devServerUrl) void w.loadURL(`${devServerUrl}?mini`);
-  else void w.loadFile(path.join(__dirname, "renderer", "index.html"), { search: "mini" });
-}
 
 // ---- the window's two sizes (D209) ----
 
@@ -486,7 +169,7 @@ function createWindow() {
   windowMode = "welcome";
   const remembered = windowSizes.welcome;
   const start = { ...remembered, ...testWindowAt(remembered) };
-  win = new BrowserWindow({
+  setWin(new BrowserWindow({
     width: start.width,
     height: start.height,
     useContentSize: true,
@@ -505,7 +188,8 @@ function createWindow() {
       // A background test window is inactive and transparent: keep its timers and frames running.
       backgroundThrottling: !testBackground,
     },
-  });
+  }));
+  if (!win) return;
   const contents = win.webContents;
   // The window only ever shows the app. Web links open in the default browser.
   contents.on("will-navigate", (event, url) => {
@@ -574,7 +258,7 @@ function createWindow() {
   contents.on("render-process-gone", () => closeWait && goClose());
   win.on("unresponsive", () => closeWait && goClose());
   win.on("closed", () => {
-    win = undefined;
+    setWin(undefined);
     showMini(null);
   });
   if (devServerUrl) void win.loadURL(devServerUrl);
@@ -595,66 +279,6 @@ const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent 
 let pendingDisplaySource: { readonly id: string; readonly systemAudio: boolean } | undefined;
 /** D210: any screen (a take of this Mac's sound alone: the picture isn't kept). */
 const ANY_SCREEN = "screen:any";
-const MEDIA_KINDS: ReadonlyArray<MediaAccessKind> = ["microphone", "camera", "screen"];
-const isMediaKind = (x: unknown): x is MediaAccessKind => MEDIA_KINDS.includes(x as MediaAccessKind);
-
-/** macOS's answer for each (tests: the test's states, macOS never asked). */
-function mediaAccess(): Record<MediaAccessKind, MediaAccess> {
-  if (mediaTest) return { ...mediaTest.access };
-  const read = (kind: MediaAccessKind) => {
-    try {
-      return systemPreferences.getMediaAccessStatus(kind) as MediaAccess;
-    } catch {
-      return "unknown" as const;
-    }
-  };
-  return { microphone: read("microphone"), camera: read("camera"), screen: read("screen") };
-}
-
-/** Asks macOS for the microphone or camera (its prompt shows only while it's "not-determined"); the state after. */
-async function askMediaAccess(kind: MediaAccessKind): Promise<MediaAccess> {
-  if (mediaTest) return mediaTest.access[kind];
-  if (kind === "screen") return mediaAccess().screen;
-  if (systemPreferences.getMediaAccessStatus(kind) === "not-determined") await systemPreferences.askForMediaAccess(kind).catch(() => false);
-  return mediaAccess()[kind];
-}
-
-/** Tests' stand-in screen picture: a 160×100 dark frame with a green block (BGRA). */
-function standinThumbnail(): string {
-  const width = 160;
-  const height = 100;
-  const px = Buffer.alloc(width * height * 4);
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const block = x > 30 && x < 70 && y > 35 && y < 75;
-      px[i] = block ? 0x80 : 0x20;
-      px[i + 1] = block ? 0xde : 0x18;
-      px[i + 2] = block ? 0x4a : 0x10;
-      px[i + 3] = 0xff;
-    }
-  return nativeImage.createFromBitmap(px, { width, height }).toDataURL();
-}
-
-/** Screens and windows to record, with small pictures; never Uncut's own window. Tests: stand-ins. */
-async function captureSources(): Promise<Array<CaptureSource>> {
-  if (mediaTest) {
-    // D209: the stand-in screen has a picture drawn here (a data: URL like desktopCapturer's), the
-    // stand-in window none, so both the picture and the placeholder are on screen in tests.
-    return [
-      { id: "standin:screen:1", name: "Test screen", kind: "screen", thumbnail: standinThumbnail() },
-      { id: "standin:window:1", name: "Test window", kind: "window", thumbnail: "" },
-    ];
-  }
-  const own = win?.getMediaSourceId();
-  // thumbnailSize: without one the pictures are 150×150; the app icon is the fallback for a window
-  // whose picture is empty (macOS gives none for a minimised one, or before Screen Recording is on).
-  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 480, height: 300 }, fetchWindowIcons: true });
-  const url = (image: Electron.NativeImage | null | undefined) => (image && !image.isEmpty() ? image.toDataURL() : "");
-  return sources
-    .filter((s) => s.id !== own)
-    .map((s) => ({ id: s.id, name: s.name, kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const), thumbnail: url(s.thumbnail), ...(url(s.appIcon) ? { icon: url(s.appIcon) } : {}) }));
-}
 
 app.on("second-instance", () => {
   if (!win) return;
@@ -666,8 +290,8 @@ app.on("second-instance", () => {
 
 app.whenReady().then(() => {
   installSignals();
-  environments = makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt);
-  server = startServer({
+  setEnvironments(makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt));
+  setServer(startServer({
     ...resources,
     // Tests point this at a temp dir so they never touch the real recents.
     dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
@@ -678,7 +302,7 @@ app.whenReady().then(() => {
     // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
     // ciphertext reaches the server's keys.json.
     keys: crypt,
-  });
+  }));
   const handle = <A extends Array<unknown>, R>(channel: string, fn: (...args: A) => R) =>
     ipcMain.handle(channel, (event, ...args) => {
       if (!fromAppWindow(event)) throw new Error("not allowed");
@@ -821,6 +445,6 @@ app.on("will-quit", (event) => {
   // Re-quit on a later tick: Electron ignores app.quit() while will-quit is still dispatching.
   event.preventDefault();
   const stopping = server;
-  server = undefined;
+  setServer(undefined);
   void stopping.stop().finally(() => setImmediate(() => app.quit()));
 });

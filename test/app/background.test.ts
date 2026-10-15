@@ -3,11 +3,13 @@
 // helper that sets it, and that every show/focus call in the desktop shell is guarded by it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { BACKGROUND_SWITCHES, centredIn, isTestBackground, TEST_DISPLAY_ARGS } from "../../apps/desktop/src/background.ts";
 
 const source = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+/** The desktop shell: app.ts and the modules split out of it (apps/desktop/src/app/, #54). */
+const desktopApp = () => ["../../apps/desktop/src/app.ts", ...readdirSync(new URL("../../apps/desktop/src/app/", import.meta.url)).filter((f) => f.endsWith(".ts")).map((f) => `../../apps/desktop/src/app/${f}`)].map(source).join("\n");
 
 test("background mode needs UNCUT_TEST_BACKGROUND=1 together with UNCUT_CDP", () => {
   assert.equal(isTestBackground({ UNCUT_CDP: "9222", UNCUT_TEST_BACKGROUND: "1" }), true);
@@ -24,7 +26,7 @@ test("D216: tests draw as on a 2x sRGB screen on the primary display; a release 
   assert.deepEqual([...TEST_DISPLAY_ARGS], ["--force-device-scale-factor=2", "--force-color-profile=srgb"]);
   // Real argv from the helper (appendSwitch is too late for the browser's display on macOS), never from the app itself.
   assert.match(source("../helpers/app.ts"), /spawn\(command, \[\.\.\.TEST_DISPLAY_ARGS, \.\.\.args\]/);
-  assert.doesNotMatch(source("../../apps/desktop/src/app.ts"), /appendSwitch\("force-(color-profile|device-scale-factor)/);
+  assert.doesNotMatch(desktopApp(), /appendSwitch\("force-(color-profile|device-scale-factor)/);
   assert.deepEqual(centredIn({ x: 0, y: 33, width: 1512, height: 949 }, { width: 760, height: 720 }), { x: 376, y: 148 });
   assert.deepEqual(centredIn({ x: -211, y: -1050, width: 1920, height: 1050 }, { width: 2000, height: 1200 }), { x: -211, y: -1050 }, "bigger than the area: its corner");
   assert.match(source("../../apps/desktop/src/app.ts"), /process\.env\.UNCUT_CDP \? centredIn\(screen\.getPrimaryDisplay\(\)\.workArea/);
@@ -38,7 +40,7 @@ test("the test helper launches apps in the background unless UNCUT_TEST_VISIBLE=
 });
 
 test("the desktop shell never shows, focuses or activates in background mode", () => {
-  const app = source("../../apps/desktop/src/app.ts");
+  const app = desktopApp();
   assert.doesNotMatch(app, /app\.focus\(/, "never app.focus()");
   assert.match(app, /if \(testBackground\) \{\s*app\.dock\?\.hide\(\);\s*\/\/[^\n]*\n\s*app\.setActivationPolicy\?\.\("accessory"\);/);
   assert.match(app, /backgroundThrottling: !testBackground/);
