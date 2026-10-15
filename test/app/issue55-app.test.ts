@@ -143,7 +143,7 @@ function report(label: string, r: Awaited<ReturnType<typeof stopGlitchProbe>>, l
     return rates.length ? `${Math.min(...rates).toFixed(1)}–${(rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(1)} fps (min–mean of ${rates.length})` : "-";
   };
   console.log(
-    `# issue55 ${label}: ${r.samples.length} samples; flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, order ${c.order}, contexts lost ${r.contextLost}, frames > ${LONG_MS} ms ${c.longFrames} (worst ${c.worstFrameMs.toFixed(0)} ms; > 25 ms ${gaps.filter((g) => g > 25).length}, > 50 ms ${gaps.filter((g) => g > 50).length}); seeks while playing ${r.playSeeks}; videos presented: 1280×720 ${rate((id) => !small.has(id))}, 640×360 ${rate((id) => small.has(id))}; stats ${JSON.stringify(r.stats)}`,
+    `# issue55 ${label}: ${r.samples.length} samples; flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, order ${c.order}, contexts lost ${r.contextLost}, frames > ${LONG_MS} ms ${c.longFrames} (worst ${c.worstFrameMs.toFixed(0)} ms; > 25 ms ${gaps.filter((g) => g > 25).length}, > 50 ms ${gaps.filter((g) => g > 50).length}); seeking events while playing ${r.playSeeks} (incl. each video's seek as playback starts; drift seeks are stats.playSeeks); videos presented: 1280×720 ${rate((id) => !small.has(id))}, 640×360 ${rate((id) => small.has(id))}; stats ${JSON.stringify(r.stats)}`,
   );
   if (c.details.length) console.log(`# issue55 ${label} details: ${c.details.slice(0, 60).join("; ")}`);
   return { ...c, contextLost: r.contextLost };

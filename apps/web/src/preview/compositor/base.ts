@@ -47,6 +47,8 @@ export abstract class CompositorBase {
   // Issue #55: clips past FX_CONTEXTS: one renderer for all of them, a 2D canvas each.
   protected readonly fxCopies = new Map<string, FxCopy>();
   protected fxShared: FxRenderer | undefined;
+  // Issue #55: clips about to start whose effects programs have been compiled ahead.
+  protected readonly fxWarmed = new Set<string>();
   protected fxBroken = false;
   // Shader effects (D213): a WebGPU canvas per clip that has one, and the "not drawn here" badges.
   protected readonly shaderCanvas = new Map<string, ShaderCanvas>();
@@ -254,6 +256,35 @@ export abstract class CompositorBase {
     const r = new FxRenderer();
     r.canvas.addEventListener("webglcontextlost", () => previewStats.fxLost++);
     return r;
+  }
+
+  /**
+   * Issue #55: a clip with picture effects about to start (warmed up 2 s ahead): a renderer for it
+   * made now, its programs compiled (a WebGL compile blocks the frame; 20 clips starting at once at
+   * a cut took several), pooled for the clip to take; past FX_CONTEXTS the shared one compiles them.
+   */
+  protected warmFx(item: Item) {
+    if (this.fxBroken || this.fxWarmed.has(item.id)) return;
+    const media = this.project?.media.find((m) => m.id === item.media);
+    const fx = fxSkips(media) ? undefined : this.effectsOf(item);
+    if (!fx || !needsPicturePass(fx)) return;
+    this.fxWarmed.add(item.id);
+    try {
+      for (const r of this.fxPool) r.warm(fx);
+      if (this.fxCanvas.size + this.fxPool.length < FX_CONTEXTS) {
+        const r = this.newFxRenderer();
+        r.warm(fx);
+        this.fxPool.push(r);
+      } else {
+        if (!this.fxShared) {
+          this.fxShared = this.newFxRenderer();
+          this.fxShared.onRestored = () => this.render();
+        }
+        this.fxShared.warm(fx);
+      }
+    } catch {
+      this.fxBroken = true;
+    }
   }
 
   /**
