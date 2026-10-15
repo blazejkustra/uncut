@@ -101,6 +101,14 @@ export async function duplicate() {
   if (await actions.timelineEdit(plan)) playback.selectMany("ids" in plan ? plan.ids : []);
 }
 
+// Issue #49: the Agent tab's conversation is text to read and copy; a selection in it beats the
+// timeline's ⌘C / ⌘X (which would otherwise preventDefault and keep the menu's Copy from running).
+const inAgentThread = (node: Node | null) => (node instanceof Element ? node : (node?.parentElement ?? null))?.closest("[data-testid=agent-thread]") != null;
+export function agentTextSelected(): boolean {
+  const sel = document.getSelection();
+  return !!sel && !sel.isCollapsed && sel.toString().trim() !== "" && inAgentThread(sel.anchorNode);
+}
+
 const SHIFT_KEYS = new Set(["ArrowLeft", "ArrowRight", "?", "+", "Backspace", "Delete"]);
 
 export function useEditorKeys(fps: number) {
@@ -128,6 +136,14 @@ export function useEditorKeys(fps: number) {
         else if (key === "b") (done(), e.repeat || void actions.split());
         // With words selected and in the mixer ⌘A, ⌘C, ⌘X and ⌘V keep their usual meaning.
         else if (bottom !== "timeline" || words) return;
+        // Issue #49: text selected in the Agent tab (a reply, a step's output) copies as text, even
+        // with clips selected; ⌘A there selects the conversation, not the timeline.
+        else if ((key === "c" || key === "x") && agentTextSelected()) return;
+        else if (key === "a" && inAgentThread(document.getSelection()?.anchorNode ?? null)) {
+          done();
+          const thread = document.querySelector("[data-testid=agent-thread]");
+          if (thread) document.getSelection()?.selectAllChildren(thread);
+        }
         else if (key === "a") {
           done();
           const snapshot = s().snapshot;

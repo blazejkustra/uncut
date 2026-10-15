@@ -3,6 +3,7 @@ import { LoaderCircle, X, PencilLine, ChevronDown, ChevronRight, Images, Music, 
 import { useState, useContext, useEffect } from "react";
 import { useApp, thumbUrl, mediaUrl } from "../../state/store.ts";
 import { useFriendly, ProjectContext } from "./context.ts";
+import { CopyButton, selecting } from "./copy.tsx";
 
 type Group =
   | { kind: "steps"; at: number; items: Array<AgentItem> }
@@ -38,7 +39,7 @@ export function EditRow({ step, edits }: { step: AgentItem; edits: ReadonlyArray
   const lines = edits.flatMap((e) => e.lines);
   return (
     <div className={`edit-row ${open ? "open" : ""}`} data-testid="agent-edit-row">
-      <div className="step edit-step" data-testid="agent-step" data-status={step.status} data-tool={step.tool} aria-expanded={open} title={open ? "Hide the changes" : "Show the changes"} onClick={() => setOpen(!open)}>
+      <div className="step edit-step" data-testid="agent-step" data-status={step.status} data-tool={step.tool} aria-expanded={open} title={open ? "Hide the changes" : "Show the changes"} onClick={() => selecting() || setOpen(!open)}>
         {step.status === "running" ? <LoaderCircle className="spin" /> : step.status === "error" ? <X className="bad" /> : <PencilLine />}
         <span className="grow">{friendly(step.status === "running" ? (step.doing ?? step.text) : step.text)}</span>
         {lines.length > 0 && (open ? <ChevronDown className="step-chev" /> : <ChevronRight className="step-chev" />)}
@@ -128,7 +129,8 @@ function Step({ step: s }: { step: AgentItem }) {
   const [shown, setShown] = useState(false);
   const failed = s.status === "error" && !!s.error;
   const result = !failed && s.status !== "running" && !!s.result;
-  const toggle = failed ? () => setWhy(!why) : result ? () => setShown(!shown) : undefined;
+  // #49: a click that ends a drag-select of the row's text doesn't fold it.
+  const toggle = failed ? () => selecting() || setWhy(!why) : result ? () => selecting() || setShown(!shown) : undefined;
   return (
     <>
       <div
@@ -150,9 +152,12 @@ function Step({ step: s }: { step: AgentItem }) {
         </div>
       )}
       {result && shown && (
-        <pre className="step-result" data-testid="agent-step-result">
-          {s.result}
-        </pre>
+        <div className="step-result-wrap">
+          <pre className="step-result" data-testid="agent-step-result">
+            {s.result}
+          </pre>
+          <CopyButton text={s.result ?? ""} what="output" />
+        </div>
       )}
     </>
   );
