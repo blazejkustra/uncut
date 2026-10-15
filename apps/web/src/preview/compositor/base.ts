@@ -569,12 +569,12 @@ export abstract class CompositorBase {
   }
 
   /**
-   * D222: whether macOS shows this <video> with its mid-tones lifted (tone.ts): from the file's colour
-   * description once the scrub cache has read it, else Chromium's own guess from the size.
+   * D222: whether macOS shows this <video> with its mid-tones lifted (tone.ts): by its height, and
+   * its transfer when the scrub cache has read it (HDR and the like are left alone).
    */
   protected liftsVideo(el: HTMLVideoElement): boolean {
     const src = el.dataset.src ? this.scrub.peek(el.dataset.src) : undefined;
-    return src?.state === "ready" ? src.lift : liftsTone(undefined, el.videoHeight);
+    return liftsTone(src?.index?.colour, el.videoHeight);
   }
 
   /**

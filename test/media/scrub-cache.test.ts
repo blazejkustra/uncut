@@ -76,7 +76,7 @@ test("D221: an original and its proxy are the same media item (switching drops t
   assert.equal(a, b);
 });
 
-test("D221: footage decodes in the colour space the <video> shows it in, and BT.709 is the one macOS lifts", () => {
+test("D221: footage decodes in the colour space the <video> shows it in, and which pictures macOS lifts (D222: 360 lines and up)", () => {
   // Says nothing: BT.601 below 720 lines, BT.709 from there (Chromium's guess, measured).
   assert.deepEqual(decoderColour({}, 180), { matrix: "smpte170m", primaries: "smpte170m", transfer: "smpte170m", fullRange: false });
   assert.deepEqual(decoderColour({}, 720), { matrix: "bt709", primaries: "bt709", transfer: "bt709", fullRange: false });
@@ -86,9 +86,13 @@ test("D221: footage decodes in the colour space the <video> shows it in, and BT.
   // A code WebCodecs has no name for, or a stream that didn't parse: WebCodecs' own reading.
   assert.equal(decoderColour({ matrix: 4 }, 1080), undefined);
   assert.equal(decoderColour(undefined, 1080), undefined);
+  // D222, measured: by the height (360 lines and up), whatever the tags say.
   assert.equal(liftsTone({}, 1080), true);
-  assert.equal(liftsTone({}, 360), false);
-  assert.equal(liftsTone({ transfer: 1 }, 360), true);
-  assert.equal(liftsTone({ transfer: 13 }, 1080), false, "sRGB");
-  assert.equal(liftsTone({ transfer: 6 }, 1080), false, "BT.601");
+  assert.equal(liftsTone({}, 360), true);
+  assert.equal(liftsTone({}, 352), false);
+  assert.equal(liftsTone({ transfer: 1 }, 180), false, "tagged BT.709 below 360 lines");
+  assert.equal(liftsTone({ transfer: 6 }, 720), true, "tagged BT.601 HD");
+  assert.equal(liftsTone(undefined, 0), false, "size not known yet");
+  assert.equal(liftsTone({ transfer: 13 }, 1080), false, "sRGB: not measured, left alone");
+  assert.equal(liftsTone({ transfer: 16 }, 1080), false, "PQ: not measured, left alone");
 });
