@@ -61,12 +61,14 @@ export interface PluginApproval {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
   readonly capabilities: ReadonlyArray<string>;
+  // D248: a hash of the skills it had (infos skillsHash): other skills need allowing again.
+  readonly skills?: string;
   readonly approvedAt: string;
 }
 
 const isApproval = (x: unknown): x is PluginApproval => {
   const a = x as PluginApproval | null;
-  return !!a && typeof a === "object" && typeof a.dir === "string" && typeof a.version === "string" && typeof a.command === "string" && Array.isArray(a.args) && a.args.every((x) => typeof x === "string") && Array.isArray(a.capabilities) && a.capabilities.every((c) => typeof c === "string") && typeof a.approvedAt === "string";
+  return !!a && typeof a === "object" && typeof a.dir === "string" && typeof a.version === "string" && typeof a.command === "string" && Array.isArray(a.args) && a.args.every((x) => typeof x === "string") && Array.isArray(a.capabilities) && a.capabilities.every((c) => typeof c === "string") && (a.skills === undefined || typeof a.skills === "string") && typeof a.approvedAt === "string";
 };
 
 const approvalsOf = (settings: Record<string, unknown>): Record<string, PluginApproval> => {

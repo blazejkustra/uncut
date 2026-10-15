@@ -30,14 +30,14 @@ import { type PluginResult, errorResult, pluginContext } from "./runtime/result.
 import { type CallExtra, PluginHost } from "./runtime/host.ts";
 import { type FoundPlugin, type Discovery, messageOf } from "./discovery/manifest.ts";
 import { discoverPlugins } from "./discovery/discover.ts";
-import { isApproved, pluginInfos, contributesOf, contributesFor } from "./discovery/infos.ts";
+import { isApproved, pluginInfos, contributesOf, contributesFor, skillsHash } from "./discovery/infos.ts";
 export { MANIFEST_FILE, DEFAULT_TIMEOUT_S, checkManifest } from "./discovery/manifest.ts";
 export type { PluginSource, ProcessSpec, FoundPlugin, BrokenPlugin, Discovery } from "./discovery/manifest.ts";
 export { MAX_LINE, PluginTimeout, PluginCancelled, DEFAULT_SDK_DIR, PluginProcess } from "./runtime/process.ts";
 export { MAX_IMAGE_BYTES, toMcpResult, CAPTURE_DIR, FLOWS_DIR, pluginContext } from "./runtime/result.ts";
 export type { PluginResult, PluginContext } from "./runtime/result.ts";
 export { discoverPlugins } from "./discovery/discover.ts";
-export { pluginAsks, isApproved, shaderForAgent, pluginInfos } from "./discovery/infos.ts";
+export { pluginAsks, isApproved, shaderForAgent, pluginInfos, skillsHash } from "./discovery/infos.ts";
 export { PluginHost } from "./runtime/host.ts";
 export type { CallExtra } from "./runtime/host.ts";
 
@@ -48,7 +48,7 @@ export interface PluginsShape {
   readonly refresh: Effect.Effect<void>;
   /** Every plugin found, with its status (after a fresh scan). */
   readonly list: Effect.Effect<ReadonlyArray<PluginInfo>>;
-  readonly approve: (input: { readonly id: string; readonly dir: string; readonly capabilities: ReadonlyArray<string> }) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
+  readonly approve: (input: { readonly id: string; readonly dir: string; readonly capabilities: ReadonlyArray<string>; readonly skills?: string | undefined }) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   readonly revoke: (id: string) => Effect.Effect<ReadonlyArray<PluginInfo>, PluginError>;
   /** Installs a plugin from a folder or git URL into <dataDir>/plugins/<id> (D102); it needs allowing afterwards. */
   readonly install: (input: { readonly source: string; readonly ref?: string | undefined; readonly replaceBundled?: boolean | undefined; readonly catalog?: boolean }) => Effect.Effect<{ readonly id: string; readonly note?: string; readonly plugins: ReadonlyArray<PluginInfo> }, PluginError>;
@@ -124,7 +124,9 @@ export const layer = Layer.effect(
     // D232: the allowed plugins' skills, kept with each scan and approval change.
     let skills: ReadonlyArray<PluginSkill> = [];
     const keepSkills = Effect.map(settings.pluginApprovals, (approvals) => {
-      skills = mergeSkills(discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id)).map((p) => p.contributions));
+      // D248: the plugins that ship with Uncut first, so their skill names are theirs whatever the order of the folders.
+      const allowed = discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id));
+      skills = mergeSkills([...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => p.contributions));
     });
 
     const refresh = scanLock.withPermits(1)(
@@ -184,22 +186,23 @@ export const layer = Layer.effect(
     const refusal = (plugin: FoundPlugin, approval: PluginApproval | undefined) =>
       isApproved(plugin, approval)
         ? undefined
-        : `${plugin.name} (${plugin.id}) isn't allowed to run yet.${approval ? " It changed since the user allowed it (another folder or command, or it asks for more), so it needs allowing again." : ""} The user has to allow it first: Uncut > Settings…, the Capture step, Plugins, Allow. Ask them to, and say it runs as a program on their Mac with their rights. Don't retry until they have.`;
+        : `${plugin.name} (${plugin.id}) isn't allowed to run yet.${approval ? " It changed since the user allowed it (another folder or command, other skills, or it asks for more), so it needs allowing again." : ""} The user has to allow it first: Uncut > Settings…, the Capture step, Plugins, Allow. Ask them to, and say it runs as a program on their Mac with their rights. Don't retry until they have.`;
 
     const self: PluginsShape = Plugins.of({
       host,
       refresh,
       list,
-      approve: ({ id, dir, capabilities }) =>
+      approve: ({ id, dir, capabilities, skills }) =>
         Effect.gen(function* () {
           const plugin = yield* find(id);
-          // Only what the user was shown: the same folder, and nothing asked for beyond it.
-          if (plugin.dir !== dir || plugin.capabilities.some((c) => !capabilities.includes(c))) {
-            return yield* new PluginError({ reason: "changed", message: `${plugin.name} changed since it was shown (another folder, or it asks for more). Look at it again before allowing it.` });
+          // Only what the user was shown: the same folder, nothing asked for beyond it, and (D248) the same skills.
+          const hash = skillsHash(plugin.contributions);
+          if (plugin.dir !== dir || plugin.capabilities.some((c) => !capabilities.includes(c)) || (hash !== undefined && skills !== hash)) {
+            return yield* new PluginError({ reason: "changed", message: `${plugin.name} changed since it was shown (another folder, other skills, or it asks for more). Look at it again before allowing it.` });
           }
           if (plugin.source !== "bundled") {
             yield* settings
-              .setPluginApproval(id, { dir: plugin.dir, version: plugin.version, command: plugin.spec.command, args: [...plugin.spec.args], capabilities: [...plugin.capabilities], approvedAt: new Date().toISOString() })
+              .setPluginApproval(id, { dir: plugin.dir, version: plugin.version, command: plugin.spec.command, args: [...plugin.spec.args], capabilities: [...plugin.capabilities], ...(hash ? { skills: hash } : {}), approvedAt: new Date().toISOString() })
               .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `Couldn't save that ${plugin.name} is allowed: ${error.message}` })));
           }
           yield* keepSkills;

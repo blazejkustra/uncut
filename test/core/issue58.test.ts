@@ -119,3 +119,25 @@ test("core shiftMainItems: reorders with the fewest moves and returns where each
     { op: "update_item", item: "b", set: { gap: 30 } },
   ]);
 });
+
+// D248 (review Low of #58): the free items of a group land among the others where they'll be once
+// the main clips have moved, linked sounds included.
+test("a free item may land where a following linked sound was; it can't land where one is going (no silent unlink)", () => {
+  // b (60–90) and its mic move left by 30; x lands on the mic's old frames, which are free by then.
+  const sound = (id: string, start: number, duration: number, extra: Partial<Item> = {}): Item => ({ id, type: "audio", media: "m", in: 100, start, duration, ...extra });
+  const p = projectWith([clip("a", 30), clip("b", 30, { gap: 30 })], [sound("mic", 60, 30, { linkedTo: "b" }), sound("x", 90, 10)]);
+  const plan = ok(planGroupMove(p, ["b", "x"], -30, 0, lanes));
+  const q = run(p, plan.ops);
+  assert.deepEqual(at(q), { a: 0, b: 30, mic: 30, x: 60 });
+  assert.equal(item(q, "mic").linkedTo, "b");
+
+  // a moves right, lands on c, which is pushed later; c's mic follows it to 90–120. x (50–60)
+  // would land on 90–100, right where that mic is going: refused, rather than the mic unlinked.
+  const r = projectWith([clip("a", 30), clip("b", 30), clip("c", 30)], [sound("x", 50, 10), sound("mc", 60, 30, { linkedTo: "c" })]);
+  assert.match((planGroupMove(r, ["a", "x"], 40, 0, lanes) as { problem: string }).problem, /Voice track is in the way/);
+  // Somewhere free: fine, and the mic still follows its clip, still linked.
+  const free = projectWith([clip("a", 30), clip("b", 30), clip("c", 30)], [sound("x", 0, 10), sound("mc", 60, 30, { linkedTo: "c" })]);
+  const s = run(free, ok(planGroupMove(free, ["a", "x"], 40, 0, lanes)).ops);
+  assert.deepEqual([item(s, "mc").linkedTo, item(s, "mc").start], ["c", 90]);
+  assert.equal(item(s, "x").start, 40);
+});

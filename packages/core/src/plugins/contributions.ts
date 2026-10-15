@@ -72,6 +72,8 @@ export interface PluginSkill extends FromPlugin {
   readonly title: string;
   readonly description: string;
   readonly instructions: string;
+  /** D248: from a plugin that ships with Uncut (set by discovery from the plugin's source). */
+  readonly bundled?: true;
 }
 
 export interface Contributions {
@@ -132,7 +134,7 @@ type RawContributes = {
  */
 export function readContributions(
   manifest: ModuleManifest,
-  options: { readonly reserved: ReadonlySet<string>; readonly moves: ReadonlySet<string>; readonly taken?: Set<string> },
+  options: { readonly reserved: ReadonlySet<string>; readonly moves: ReadonlySet<string>; readonly taken?: Set<string>; readonly reservedSkills?: ReadonlySet<string> },
 ): { readonly contributions: Contributions; readonly warnings: ReadonlyArray<string> } {
   const raw = (manifest.contributes ?? {}) as RawContributes;
   const from: FromPlugin = { plugin: manifest.id, pluginName: manifest.name };
@@ -212,6 +214,11 @@ export function readContributions(
   for (const entry of raw.skills ?? []) {
     if (skills.some((x) => x.name === entry.name)) {
       warnings.push(`Its skill ${entry.name} is left out: it has another skill with that name.`);
+      continue;
+    }
+    // D248: Uncut's own skill names (the bundled uncut.skills) can't be taken by another plugin.
+    if (options.reservedSkills?.has(entry.name)) {
+      warnings.push(`Its skill ${entry.name} is left out: Uncut has a skill with that name.`);
       continue;
     }
     skills.push({ name: entry.name, title: entry.title?.trim() || entry.name, description: entry.description, instructions: entry.instructions, ...from });

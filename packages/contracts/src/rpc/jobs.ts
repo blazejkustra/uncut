@@ -78,7 +78,8 @@ export const TranscriptionSelectModelRpc = Rpc.make(RPC_METHODS.transcriptionSel
 // The plugins found (scans the folders again), and the user allowing one / taking that back (D97).
 export const PluginsListRpc = Rpc.make(RPC_METHODS.pluginsList, { payload: Empty, success: Schema.Array(PluginInfo) });
 // The approval names what the user saw (folder and capabilities): a plugin that changed since is refused.
-export const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, { payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String) }), success: Schema.Array(PluginInfo), error: PluginError });
+// D248: and the skills it showed (PluginInfo.skillsHash): a plugin whose skills changed since is refused too.
+export const PluginsApproveRpc = Rpc.make(RPC_METHODS.pluginsApprove, { payload: Schema.Struct({ id: Schema.String, dir: Schema.String, capabilities: Schema.Array(Schema.String), skills: Schema.optional(Schema.String) }), success: Schema.Array(PluginInfo), error: PluginError });
 export const PluginsRevokeRpc = Rpc.make(RPC_METHODS.pluginsRevoke, { payload: Schema.Struct({ id: Schema.String }), success: Schema.Array(PluginInfo), error: PluginError });
 // Installs a plugin from a folder or a git URL (D102) into <dataDir>/plugins/<id>; it still needs allowing.
 export const PluginsInstallRpc = Rpc.make(RPC_METHODS.pluginsInstall, {

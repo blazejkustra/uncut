@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PluginInfo } from "@uncut/contracts";
 import type { Contributions, PluginShader } from "@uncut/core";
 import type { PluginApproval, PluginInstall } from "../../app/settings.ts";
@@ -18,12 +19,30 @@ const CAPABILITY_WORDS: Record<string, string> = {
   "api-key": "use an API key",
 };
 
+/**
+ * D248: what a plugin's skills are, as one string (name, title, description, instructions of each):
+ * an approval is for these skills, so a plugin whose skills change needs allowing again. Undefined
+ * when it has none.
+ */
+export const skillsHash = (c: Pick<Contributions, "skills"> | undefined): string | undefined =>
+  c?.skills?.length ? createHash("sha256").update(JSON.stringify(c.skills.map((x) => [x.name, x.title, x.description, x.instructions]))).digest("hex").slice(0, 32) : undefined;
+
+/** D248: what skills mean, for the approval (the agent follows them, with the access the user gives it). */
+const SKILLS_ASK = "Its skills are instructions the agent follows when they fit, without asking you first. With the access you give the agent, a skill can lead it to run commands and change your files. Allow it only if you trust where it came from.";
+
 /** What allowing a plugin means, in plain sentences (shown before the user allows it). */
-export function pluginAsks(plugin: Pick<FoundPlugin, "capabilities" | "source"> & { readonly runs?: boolean }): Array<string> {
+export function pluginAsks(plugin: Pick<FoundPlugin, "capabilities" | "source"> & { readonly runs?: boolean; readonly contributions?: Pick<Contributions, "skills"> & Partial<Contributions> }): Array<string> {
+  const skills = plugin.contributions?.skills?.length ?? 0;
   if (plugin.runs === false) {
     // A data plugin (D103): looks and checks are numbers and rules Uncut reads; components are
     // templates drawn in the graphics sandbox. Still the user's call, as it changes what they see.
-    return ["It doesn't run a program: it only adds text looks, components, checks and skills (instructions the agent reads), and its components are drawn in a sandbox with no network. Allow it if you want them in Uncut."];
+    // D248: skills aren't harmless data: the agent follows them, so they lead.
+    if (skills) {
+      const c = plugin.contributions!;
+      const other = (c.looks?.length ?? 0) + (c.components?.length ?? 0) + (c.rules?.length ?? 0) + (c.filters?.length ?? 0) + (c.shaders?.length ?? 0);
+      return [`It doesn't run a program itself, but it adds ${skills === 1 ? "a skill" : `${skills} skills`}. ${SKILLS_ASK}`, ...(other ? ["Its text looks, components and checks are data Uncut reads, and its components are drawn in a sandbox with no network."] : [])];
+    }
+    return ["It doesn't run a program: it only adds text looks, components and checks, and its components are drawn in a sandbox with no network. Allow it if you want them in Uncut."];
   }
   const asks = [
     plugin.source === "bundled"
@@ -32,22 +51,28 @@ export function pluginAsks(plugin: Pick<FoundPlugin, "capabilities" | "source"> 
   ];
   const words = plugin.capabilities.map((c) => CAPABILITY_WORDS[c] ?? c);
   if (words.length) asks.push(`It says it will ${words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0]}.`);
+  if (skills && plugin.source !== "bundled") asks.push(SKILLS_ASK.replace(/ Allow it only if you trust where it came from\.$/, ""));
   return asks;
 }
 
-/** Shipped with the app, or allowed by the user for this folder and at least these capabilities. */
-export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabilities" | "spec">, approval: PluginApproval | undefined) =>
+/** Shipped with the app, or allowed by the user for this folder, at least these capabilities and (D248) these skills. */
+export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabilities" | "spec"> & { readonly contributions?: Pick<Contributions, "skills"> }, approval: PluginApproval | undefined) =>
   plugin.source === "bundled" ||
   (!!approval &&
     approval.dir === plugin.dir &&
     approval.command === plugin.spec.command &&
     JSON.stringify(approval.args) === JSON.stringify(plugin.spec.args) &&
-    plugin.capabilities.every((c) => approval.capabilities.includes(c)));
+    plugin.capabilities.every((c) => approval.capabilities.includes(c)) &&
+    // A plugin with skills: the ones allowed (an approval from before D248 has none, so it asks again).
+    (skillsHash(plugin.contributions) === undefined || approval.skills === skillsHash(plugin.contributions)));
+
+/** D248: a skill as Settings and the approval list it: its title and the /name the user types. */
+const skillLabel = (x: { readonly name: string; readonly title: string }) => (x.title && x.title !== x.name ? `${x.title} (/${x.name})` : `/${x.name}`);
 
 /** A plugin's contributions in words for Settings (names), or undefined when it has none. */
 export const contributesOf = (c: Contributions) =>
   c.looks.length || c.components.length || c.rules.length || c.filters.length || c.shaders?.length || c.skills?.length
-    ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}), ...(c.shaders?.length ? { shaders: c.shaders.map((x) => x.name) } : {}), ...(c.skills?.length ? { skills: c.skills.map((x) => x.title) } : {}) }
+    ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}), ...(c.shaders?.length ? { shaders: c.shaders.map((x) => x.name) } : {}), ...(c.skills?.length ? { skills: c.skills.map(skillLabel) } : {}) }
     : undefined;
 
 /** A plugin's contributions for the agent's modules_list (ids, names and what each is). */
@@ -93,6 +118,7 @@ export function pluginInfos(
       tools: p.tools.map((t) => t.name),
       warnings: [...p.warnings],
       ...(contributesOf(p.contributions) ? { contributes: contributesOf(p.contributions)! } : {}),
+      ...(skillsHash(p.contributions) ? { skillsHash: skillsHash(p.contributions)! } : {}),
       ...originOf(p.id, p.dir),
       ...(removable.has(p.dir) ? { removable: true } : {}),
     })),

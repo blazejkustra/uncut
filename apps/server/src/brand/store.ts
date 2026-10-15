@@ -16,7 +16,7 @@ import { basename, extname, join } from "node:path";
 import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, IntendedFinding, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
 
 import type { PluginSkill } from "@uncut/core";
-import { isVideoType, SKILLS_PLUGIN_ID, skillIdsOf } from "@uncut/core/skills";
+import { isVideoType, skillIdsOf } from "@uncut/core/skills";
 
 import { writeAtomic } from "../project/atomicWrite.ts";
 
@@ -140,7 +140,8 @@ export interface BrandDirs {
 }
 
 /** D232: a plugin's skill as the brand state lists it: its name is its id (what /name calls), its title its name. */
-export const skillOfPlugin = (x: PluginSkill): BrandSkill => ({ id: x.name, name: x.title, scope: "global", description: x.description, body: x.instructions, plugin: x.plugin, pluginName: x.pluginName, ...(x.plugin === SKILLS_PLUGIN_ID ? { builtin: true } : {}) });
+// D248: builtin (labelled as Uncut's own) only for a plugin that ships with Uncut, never from the id alone.
+export const skillOfPlugin = (x: PluginSkill): BrandSkill => ({ id: x.name, name: x.title, scope: "global", description: x.description, body: x.instructions, plugin: x.plugin, pluginName: x.pluginName, ...(x.bundled ? { builtin: true } : {}) });
 
 const readJson = async (file: string): Promise<unknown> => {
   try {
@@ -215,7 +216,8 @@ export async function migrateProjectKits(dirs: BrandDirs): Promise<Array<string>
   const local = await list(join(projectBrandDir(dirs.projectDir), "kits"));
   if (!local.length) return [];
   const marker = join(projectBrandDir(dirs.projectDir), "migrated.json");
-  const done = new Set(strs(((await readJson(marker)) as { kits?: unknown } | undefined)?.kits, 200, 64));
+  const marked = ((await readJson(marker)) ?? {}) as Record<string, unknown>;
+  const done = new Set(strs(marked.kits, 200, 64));
   const before = done.size;
   const copied: Array<string> = [];
   for (const id of local) {
@@ -238,15 +240,102 @@ export async function migrateProjectKits(dirs: BrandDirs): Promise<Array<string>
   }
   if (done.size !== before) {
     try {
-      await writeAtomic(marker, `${JSON.stringify({ kits: [...done].sort() }, null, 2)}\n`);
+      // D248: the file also lists the skill renames done (migrateShadowedSkills): kept.
+      await writeAtomic(marker, `${JSON.stringify({ ...marked, kits: [...done].sort() }, null, 2)}\n`);
     } catch {}
   }
   return copied;
 }
 
+/** The renames migrateShadowedSkills made in the user's library (old id → new id), for the projects opened later. */
+const renamedFile = (dataDir: string) => join(globalBrandDir(dataDir), "renamed-skills.json");
+const renamesIn = (raw: unknown): Record<string, string> =>
+  Object.fromEntries(Object.entries(raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}).filter((e): e is [string, string] => BRAND_ID.test(e[0]) && typeof e[1] === "string" && BRAND_ID.test(e[1])));
+
+/** Renames one skill file to a free id (its json's id too); the new id, or undefined when it couldn't. */
+async function renameSkillFile(base: string, id: string, taken: Set<string>): Promise<string | undefined> {
+  const stem = id.replace(/-\d+$/, "").slice(0, 60) || "skill";
+  let next = `${stem}-2`;
+  for (let n = 3; taken.has(next); n++) next = `${stem}-${n}`;
+  const from = join(base, "skills", `${id}.json`);
+  const raw = await readJson(from);
+  if (!raw || typeof raw !== "object") return undefined;
+  try {
+    await writeAtomic(join(base, "skills", `${next}.json`), `${JSON.stringify({ ...(raw as Record<string, unknown>), id: next }, null, 2)}\n`);
+    await rm(from, { force: true });
+  } catch (error) {
+    console.error(`[uncut] couldn't rename the skill ${id}: ${(error as Error).message}`);
+    return undefined;
+  }
+  taken.add(next);
+  return next;
+}
+
+/**
+ * D248 (review M3 of #60): before D232 Uncut's own skills were builtin-<name>, so the user could
+ * have a skill of their own called explainer, talking-head or sound-design, now a plugin's names.
+ * Such a file is renamed once to a free id (explainer-2), so it shows and stays editable, and the
+ * project's active.json and brief.json, where a plain "explainer" meant the user's (Uncut's was
+ * builtin-explainer), are rewritten to it. The library's renames are kept in
+ * brand/renamed-skills.json and applied to each project once (brand/migrated.json "skills").
+ */
+export async function migrateShadowedSkills(dirs: BrandDirs): Promise<void> {
+  const names = new Set((dirs.skills ?? []).map((x) => x.name));
+  const globalBase = globalBrandDir(dirs.dataDir);
+  const projectBase = dirs.projectDir ? projectBrandDir(dirs.projectDir) : undefined;
+  const ids = async (base: string | undefined) => (base ? (await list(join(base, "skills"))).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => BRAND_ID.test(id)) : []);
+  const globalIds = await ids(globalBase);
+  const projectIds = await ids(projectBase);
+  const taken = new Set([...names, ...globalIds, ...projectIds]);
+  const library = renamesIn(await readJson(renamedFile(dirs.dataDir)));
+  let libraryChanged = false;
+  for (const id of globalIds) {
+    if (!names.has(id) || id.startsWith("builtin-")) continue;
+    const next = await renameSkillFile(globalBase, id, taken);
+    if (next) {
+      library[id] = next;
+      libraryChanged = true;
+    }
+  }
+  if (libraryChanged) {
+    try {
+      await writeAtomic(renamedFile(dirs.dataDir), `${JSON.stringify(library, null, 2)}\n`);
+    } catch {}
+  }
+  if (!projectBase || !dirs.projectDir) return;
+  // This project's own skills win over the library's on the same id (readBrand), so theirs first.
+  const local: Record<string, string> = {};
+  for (const id of projectIds) {
+    if (!names.has(id) || id.startsWith("builtin-")) continue;
+    const next = await renameSkillFile(projectBase, id, taken);
+    if (next) local[id] = next;
+  }
+  const marker = join(projectBase, "migrated.json");
+  const mark = ((await readJson(marker)) ?? {}) as Record<string, unknown>;
+  const done = new Set(strs(mark.skills, 200, 64));
+  const renames: Record<string, string> = {};
+  for (const [from, to] of Object.entries({ ...library, ...local })) if (!done.has(from) || local[from]) renames[from] = to;
+  if (!Object.keys(renames).length) return;
+  const rewrite = (list: unknown) => (Array.isArray(list) ? list.map((x) => (typeof x === "string" && Object.hasOwn(renames, x) ? renames[x] : x)) : list);
+  const activeFile = join(projectBase, "active.json");
+  const active = await readJson(activeFile);
+  if (active && typeof active === "object" && Array.isArray((active as { skills?: unknown }).skills)) {
+    await writeAtomic(activeFile, `${JSON.stringify({ ...(active as object), skills: rewrite((active as { skills: unknown }).skills) }, null, 2)}\n`).catch(() => {});
+  }
+  const brief = await readJson(briefFile(dirs.projectDir));
+  if (brief && typeof brief === "object" && Array.isArray((brief as { skills?: unknown }).skills)) {
+    await writeAtomic(briefFile(dirs.projectDir), `${JSON.stringify({ ...(brief as object), skills: rewrite((brief as { skills: unknown }).skills) }, null, 2)}\n`).catch(() => {});
+  }
+  try {
+    await mkdir(projectBase, { recursive: true });
+    await writeAtomic(marker, `${JSON.stringify({ ...mark, skills: [...new Set([...done, ...Object.keys(renames)])].sort() }, null, 2)}\n`);
+  } catch {}
+}
+
 /** Every kit and skill the project sees (its own win on the same id), its choice, and the kits' files. */
 export async function readBrand(dirs: BrandDirs): Promise<BrandState> {
   await migrateProjectKits(dirs).catch(() => []);
+  await migrateShadowedSkills(dirs).catch((error) => console.error(`[uncut] couldn't move skills that share a plugin's name: ${(error as Error).message}`));
   const kits = new Map<string, { kit: BrandKit; files: Record<string, string> }>();
   for (const k of await kitsIn(globalBrandDir(dirs.dataDir), "global")) kits.set(k.kit.id, k);
   if (dirs.projectDir) for (const k of await kitsIn(projectBrandDir(dirs.projectDir), "project")) kits.set(k.kit.id, k);
@@ -295,7 +384,12 @@ export async function deleteKit(dirs: BrandDirs, id: string, scope: BrandScope):
 export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<BrandSkill> {
   if (skill.scope === "project" && !dirs.projectDir) throw new Error("Open a project to keep a skill in it.");
   // D207, D232: a plugin's skills are read-only; a duplicate gets an id of its own.
-  const id = BRAND_ID.test(skill.id) ? skill.id : slug(skill.name);
+  let id = BRAND_ID.test(skill.id) ? skill.id : slug(skill.name);
+  // D248: a new skill named like a plugin's (Explainer) gets a free id of its own (explainer-2).
+  if (!BRAND_ID.test(skill.id) && dirs.skills?.some((x) => x.name === id)) {
+    const stem = id;
+    for (let n = 2; dirs.skills.some((x) => x.name === id) || (await stat(join(scopeDir(skill.scope, dirs), "skills", `${id}.json`)).then(() => true, () => false)); n++) id = `${stem}-${n}`;
+  }
   if (skill.builtin || skill.plugin || id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id)) throw new Error("A plugin's skills can't be changed: duplicate it and edit the copy.");
   const { builtin: _b, plugin: _p, pluginName: _n, ...own } = skill;
   const norm = normSkill({ ...own, updatedAt: new Date().toISOString() }, skill.scope, id);
