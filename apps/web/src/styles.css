@@ -660,6 +660,14 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .tl-lane.locked { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 3%) 6px 12px); }
 .tl-lane.locked .clip { cursor: not-allowed; }
 .snap-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn); z-index: 9; pointer-events: none; }
+/* Timeline tools (issue #57, D230): Select, Blade, Hand; each with its own pointer on the lanes (the ruler keeps scrubbing). */
+.tool-picker { display: flex; align-items: center; gap: 2px; }
+.tl-lanes.tool-blade .tl-lane, .tl-lanes.tool-blade .tl-lane * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 1v22' stroke='%23000' stroke-width='3'/%3E%3Cpath d='M12 1v22' stroke='%23fff' stroke-width='1.2'/%3E%3Cpath d='M12 3l5 3v6l-5 2z' fill='%23fff' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair !important; }
+.tl-lanes.tool-blade .tl-lane.locked .clip, .tl-lanes.tool-blade .tl-lane.locked .clip * { cursor: not-allowed !important; }
+.tl-lanes.tool-hand .tl-lane, .tl-lanes.tool-hand .tl-lane * { cursor: grab !important; }
+.tl-lanes.tool-hand.panning, .tl-lanes.tool-hand.panning * { cursor: grabbing !important; }
+.blade-line { position: absolute; width: 1px; margin-left: -0.5px; background: #ff5c5c; box-shadow: 0 0 4px rgb(255 92 92 / 70%); z-index: 9; pointer-events: none; }
+.blade-line.refused { background: var(--dim); box-shadow: none; }
 .drag-tip { position: absolute; top: 4px; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: var(--raised); border: 1px solid var(--border-strong); font: 10px var(--mono); color: var(--fg); white-space: nowrap; z-index: 10; pointer-events: none; }
 .kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
 .kv-row:last-child { border-bottom: 0; }
