@@ -38,6 +38,16 @@ export function calledSkills(text: string, names: ReadonlyArray<string>): Array<
  */
 export const skillCallsAsWords = (text: string, called: ReadonlyArray<string>) => (called.length ? text.replace(SKILL_CALL, (m, name: string) => (called.includes(name) ? `(skill ${name})` : m)) : text);
 
+/**
+ * D232, D236 (#60 review M2): the user's text as claude gets it. Called skills become words; any
+ * other leading /word (/init, /clear, /compact, a typo, a skill no longer installed) is never read
+ * as one of Claude Code's own slash commands: the message is prefixed so it doesn't start with /.
+ */
+export function userMessageText(text: string, called: ReadonlyArray<string>): string {
+  const out = skillCallsAsWords(text, called);
+  return /^[\s\u200b-\u200d\u2060\ufeff]*\//.test(out) ? `The user wrote: ${out.trimStart()}` : out;
+}
+
 const line = (label: string, value: string | ReadonlyArray<string> | undefined) => {
   const v = Array.isArray(value) ? value.filter(Boolean).join("; ") : typeof value === "string" ? value.trim() : "";
   return v ? `${label}: ${v}` : "";
@@ -81,14 +91,24 @@ export const styleLine = (s: BrandStyle) =>
     .join(";");
 
 export interface BuildGate {
-  /** A brief exists and its storyboard isn't approved: timeline_edit waits. */
+  /** timeline_edit waits: the storyboard isn't approved and this turn is planning the video (D237). */
   readonly closed: boolean;
+  /** A brief exists and its storyboard isn't approved (whether or not this turn is held by it). */
+  readonly waiting: boolean;
   /** "Auto" with Settings' skip: storyboard_propose approves itself. */
   readonly skip: boolean;
 }
 
-/** Whether the build waits for an approved storyboard (D188): only once a brief exists. */
-export const gateOf = (plan: AgentPlan, skip: boolean): BuildGate => ({ closed: !!plan.brief && plan.storyboard?.status !== "approved" && !skip, skip });
+/**
+ * Whether the build waits for an approved storyboard (D188, D237). It waits only once a brief exists,
+ * the storyboard isn't approved, and `planning`: this turn wrote the brief or proposed a storyboard,
+ * so it is building the planned video. A later turn's edits (a small change while the storyboard is
+ * pending or sent back) aren't held.
+ */
+export const gateOf = (plan: AgentPlan, skip: boolean, planning = false): BuildGate => {
+  const waiting = !!plan.brief && plan.storyboard?.status !== "approved" && !skip;
+  return { closed: waiting && planning, waiting, skip };
+};
 
 /** timeline_edit's refusal while the gate is closed, or undefined. */
 export function gateRefusal(plan: AgentPlan, gate: BuildGate): string | undefined {
@@ -127,6 +147,7 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
     p.push(`Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`);
   }
   if (gate.closed) p.push(sb ? "The build waits for the storyboard's approval." : "The build waits for a storyboard (storyboard_propose).");
+  else if (gate.waiting) p.push(`${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead; building the planned video waits for an approved storyboard (storyboard_propose).`);
   const last = plan.reviews.at(-1);
   if (last) {
     // D195: the critic's findings by id, so the next round's fix claims can name them.
