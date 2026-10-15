@@ -139,7 +139,7 @@ test("refusals carry a fix: overlap (start and free track), duplicate id, handle
   assert.ok(hf.every((p) => p.code !== "transition-handles" || /It lacks 10 frames before "b"'s in-point and 10 after "a"'s out-point\. Pass allowTrim: true/.test(p.fix!)), JSON.stringify(hf));
 
   const kind = refusalFixes(base, [], [{ code: "item-track-kind", path: "/tracks/audio/items/title-1", message: "" }]);
-  assert.equal(kind[0]!.fix, "A text item goes on a text track: text.");
+  assert.equal(kind[0]!.fix, "A text item goes on the main track or a text track: text, main.", "D215: Main takes text");
   const missing = refusalFixes(base, [], [{ code: "missing-start", path: "/tracks/text/items/title-2", message: "" }]);
   assert.match(missing[0]!.fix!, /Give it a start frame; 260 is free after the last item on "text"/);
   const media = refusalFixes(base, [], [{ code: "unknown-media", path: "/tracks/main/items/a", message: "" }]);

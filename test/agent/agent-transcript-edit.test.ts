@@ -193,7 +193,7 @@ test("transcript_edit's tool schema and labels", { skip }, async () => {
   const { mcpTools, stepLabel, TOOL_NAMES } = await import("../../apps/server/src/agent/agentTools.ts");
   assert.ok(TOOL_NAMES.includes("transcript_edit"));
   const tool = mcpTools().find((t) => t.name === "transcript_edit")!;
-  assert.deepEqual(Object.keys((tool.inputSchema as any).properties), ["media", "remove", "pauses", "fillers", "dryRun"]);
+  assert.deepEqual(Object.keys((tool.inputSchema as any).properties), ["media", "item", "remove", "pauses", "fillers", "dryRun"]);
   assert.equal(stepLabel("transcript_edit", { fillers: true, pauses: {} }), "Cut pauses and fillers");
   assert.equal(stepLabel("transcript_edit", { remove: [{}, {}], media: "m-a", dryRun: true }), "Planned cutting 2 word ranges from m-a");
 });

@@ -63,8 +63,10 @@ test("moves on a free track land on the nearest free spot; snapping sticks eithe
   plan = ok(planMove(project, "title", "text-2", 88, { targets: [150], threshold: 4 }));
   assert.deepEqual(plan.ops, [{ op: "move_item", item: "title", track: "text-2", start: 90 }]);
   assert.equal(plan.snapAt, 150);
-  // Text can't go on main, and nothing moves to where it already is.
-  assert.ok("problem" in planMove(project, "title", "main", 10));
+  // D215: text goes on main (a title card in the spine), and nothing moves to where it already is.
+  const onMain = ok(planMove(project, "title", "main", 10));
+  assert.equal(onMain.track, "main");
+  assert.equal(item(apply(project, onMain), "title").start, undefined);
   assert.deepEqual(ok(planMove(project, "title", "text", 0.4)).ops, []);
 });
 

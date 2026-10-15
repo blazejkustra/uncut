@@ -95,7 +95,7 @@ test("Make captions: a captions item on its own track over the main track, valid
   assert.deepEqual(item.transform, { x: 72, y: 864, w: 1776 }, "lower safe area, spanning the safe width");
   // Refusals.
   assert.match((planMakeCaptions(p, { media: "m-b", transcript: T }) as { problem: string }).problem, /no sound/);
-  assert.match((planMakeCaptions(projectWith([clip("b", 0, 90, { media: "m-b" })]), { media: "m-talk", transcript: T }) as { problem: string }).problem, /isn't on the main track/);
+  assert.match((planMakeCaptions(projectWith([clip("b", 0, 90, { media: "m-b" })]), { media: "m-talk", transcript: T }) as { problem: string }).problem, /isn't on the timeline/);
   assert.match((planMakeCaptions(p, { media: "m-talk", transcript: T, look: "text.nope" }) as { problem: string }).problem, /no text look/);
 });
 

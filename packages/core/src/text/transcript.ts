@@ -3,9 +3,10 @@
 // and planTextCut, which turns "remove these words / pauses / fillers" into one timeline edit. The
 // transcript is in seconds of the media file; the timeline in project frames (D38).
 import { applyEdit, createSession, EditError } from "../timeline/apply-ops.ts";
+import { withLinkedAudio } from "../timeline/arrange.ts";
 import { keyDbAt } from "../audio/audio.ts";
 import { projectDuration, resolveStarts, timelineProblems } from "../timeline/rules.ts";
-import type { Item, Op, Project, TimedModule } from "../timeline/types.ts";
+import type { Item, Op, Project, TimedModule, Track } from "../timeline/types.ts";
 
 /** A gap between words at least this long (seconds) is a pause. */
 export const PAUSE_MIN_S = 0.3;
@@ -479,6 +480,13 @@ export interface TextCutRequest {
   readonly envelope?: SpeechEnvelope | undefined;
   /** Only these main-track clips (the panel cuts where the words were selected); default: every main clip using the media. */
   readonly clips?: ReadonlyArray<string>;
+  /**
+   * D215: cut these items instead of the main track's clips (any track: a Voiceover recording, a
+   * take's microphone; transcriptScope gives them). A range's `clip` names one of them. An item
+   * linked to a clip cuts that clip (it follows); an item on a free track is cut in place and its
+   * later pieces close up, its group's other parts get the same cuts; nothing else on its track moves.
+   */
+  readonly items?: ReadonlyArray<string>;
 }
 
 /** One stretch of the media that was cut, wherever it is on the main track. */
@@ -677,12 +685,31 @@ function fitPiece(item: Item): Op | undefined {
   return Object.keys(set).length ? { op: "update_item", item: item.id, set } : undefined;
 }
 
+/** Where each kept part of an item cut at `ranges` (local, sorted, merged) ends up: its id and local start (planTextCut's split order). */
+function keptPieces(item: Item, ranges: ReadonlyArray<[number, number]>, newIds: ReadonlyArray<string>): Array<{ id: string; from: number; to: number }> {
+  const out: Array<{ id: string; from: number; to: number }> = [];
+  let at = 0;
+  let id = item.id;
+  let k = 0;
+  for (const [a, b] of ranges) {
+    if (a > at) out.push({ id, from: at, to: a });
+    if (a > 0 && b < item.duration) id = newIds[k++]!;
+    at = b;
+  }
+  if (at < item.duration) out.push({ id, from: at, to: item.duration });
+  return out;
+}
+
 /**
  * Cut words (ranges of word indices), pauses (at least `min` seconds) and/or hesitation fillers of
- * a media file out of the edit: from every main-track clip that uses the media (or only
- * `request.clips`, or a range's own `clip`), respecting each clip's in-point, length and speed. The
- * main track is magnetic, so the clips after a cut close up; items on other tracks don't move (as
- * deleting on main, D52). Each clip's stretches are merged and snapped to frames (words cover their
+ * a media file out of the edit: from every main-track clip that uses the media (or whose sound part
+ * does, D215: a take's microphone linked to its picture; or only `request.clips`, or a range's own
+ * `clip`), respecting each clip's in-point, length and speed. The main track is magnetic, so the
+ * clips after a cut close up; items on other tracks don't move (as deleting on main, D52). With
+ * `request.items` (D215) those items are cut instead, wherever they are: one linked to a clip cuts
+ * that clip; one on a free track is cut in place and its later pieces close up by what was cut, as
+ * do the same stretches of its group's other parts (a take's camera and screen); nothing else on
+ * its track moves. Each clip's stretches are merged and snapped to frames (words cover their
  * frames, pauses go inward, tailFrames stay after and handleFrames before every word that's kept), a cut
  * never leaves an empty clip, and transitions at the cuts that change are removed (D52). All of it
  * is one edit. Words that aren't in the edit any more (already cut) change nothing and come back
@@ -694,7 +721,8 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   if (!request.remove?.length && !request.pauses && !request.fillers) return { problem: "Say what to remove: word ranges, pauses or fillers." };
   const main = project.tracks.find((t) => t.role === "main");
   if (!main) return { problem: "This project has no main track." };
-  if (main.locked) return { problem: "The main track is locked. Unlock it to cut by text." };
+  const itemMode = request.items !== undefined;
+  if (!itemMode && main.locked) return { problem: "The main track is locked. Unlock it to cut by text." };
   const fps = project.canvas.fps;
   // Where the words are heard (whisper's words widened to its segments' edges and the silences, D74):
   // every rule below (kept, handles, pauses) works on these.
@@ -729,10 +757,38 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const starts = resolveStarts(project);
   const before = projectDuration(project);
   const mainBefore = main.items.reduce((s, i) => s + i.duration, 0);
-  const clips = main.items.filter((i) => i.type === "clip" && i.media === mediaId && (!only || only.has(i.id) || perClipWords.has(i.id)));
-  const lockedClips = clips.filter((i) => i.locked);
-  if (lockedClips.length) notes.push(`${lockedClips.map((i) => i.id).join(", ")} ${lockedClips.length === 1 ? "is" : "are"} locked, so nothing was cut from ${lockedClips.length === 1 ? "it" : "them"}.`);
-  const cuttable = clips.filter((i) => !i.locked);
+  const where = new Map(project.tracks.flatMap((t) => t.items.map((i, index) => [i.id, { item: i, track: t, index }] as const)));
+  // The items whose words are measured (`src`: they play the media) and the item each cut goes into
+  // (`target`: the same, or the clip a linked sound follows / a main clip's sound part speaks for).
+  // `owner` is the id the panel's words name (a range's `clip`).
+  type Source = { readonly src: Item; readonly target: Item; readonly track: Track; readonly owner: string };
+  const sources: Array<Source> = [];
+  if (!itemMode) {
+    for (const c of main.items) {
+      if (c.type !== "clip" || (only && !only.has(c.id) && !perClipWords.has(c.id))) continue;
+      if (c.media === mediaId) sources.push({ src: c, target: c, track: main, owner: c.id });
+      else {
+        const part = soundParts(project, c).find((p) => p.media === mediaId);
+        if (part && (starts.get(part.id) ?? 0) === (starts.get(c.id) ?? 0)) sources.push({ src: part, target: c, track: main, owner: c.id });
+      }
+    }
+  } else {
+    for (const id of new Set(request.items)) {
+      const at = where.get(id);
+      if (!at || (at.item.type !== "clip" && at.item.type !== "audio") || at.item.media !== mediaId) continue;
+      // A linked item cuts its clip (it follows): they share their frames (start, length, speed).
+      const link = at.item.linkedTo ? where.get(at.item.linkedTo) : undefined;
+      const linked = link && link.item.type === "clip" && (starts.get(link.item.id) ?? 0) === (starts.get(at.item.id) ?? 0) && link.item.duration === at.item.duration && (link.item.speed ?? 1) === (at.item.speed ?? 1);
+      const target = linked ? link : at;
+      // One source per target (a muted clip and its detached sound in the same scope).
+      if (sources.some((s) => s.target.id === target.item.id)) continue;
+      sources.push({ src: at.item, target: target.item, track: target.track, owner: at.item.id });
+    }
+  }
+  const lockedOf = (s: Source) => s.target.locked || s.track.locked;
+  const lockedClips = sources.filter(lockedOf);
+  if (lockedClips.length) notes.push(`${lockedClips.map((s) => s.target.id).join(", ")} ${lockedClips.length === 1 ? "is" : "are"} locked, so nothing was cut from ${lockedClips.length === 1 ? "it" : "them"}.`);
+  const cuttable = sources.filter((s) => !lockedOf(s));
   /** Whether a clip plays any frame word i covers. */
   const touches = (item: Item, i: number) => {
     const inF = item.in ?? 0;
@@ -751,8 +807,8 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
   const tight = new Set<number>();
   const cutWords = new Set<number>();
   const slowWords = new Set<number>();
-  for (const item of cuttable) {
-    const removed = new Set([...everywhere, ...(perClipWords.get(item.id) ?? [])]);
+  for (const { src: item, target, owner } of cuttable) {
+    const removed = new Set([...everywhere, ...(perClipWords.get(owner) ?? [])]);
     if (!removed.size && !pauses.length) continue;
     const kept = (i: number) => !removed.has(i) && plays(item, i);
     const ranges: Array<[number, number]> = [];
@@ -775,7 +831,7 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       entry.to = Math.max(entry.to, mTo);
       for (const i of sp.words) entry.words.add(i);
       entry.frames += b - a;
-      entry.clips.push(item.id);
+      entry.clips.push(target.id);
     }
     // Touching local ranges (rounding at a speed) are one cut.
     const merged: Array<[number, number]> = [];
@@ -784,14 +840,52 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
       else merged.push([r[0], r[1]]);
     }
-    if (merged.length) perClip.set(item.id, merged);
+    if (merged.length) perClip.set(target.id, merged);
+  }
+
+  // The timeline stretches cut, merged: free pieces after one close up by its length (D215).
+  const removedSpans: Array<[number, number]> = [];
+  for (const { target } of cuttable) for (const [a, b] of perClip.get(target.id) ?? []) removedSpans.push([(starts.get(target.id) ?? 0) + a, (starts.get(target.id) ?? 0) + b]);
+  removedSpans.sort((x, y) => x[0] - y[0]);
+  const union: Array<[number, number]> = [];
+  for (const r of removedSpans) {
+    const last = union.at(-1);
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else union.push([r[0], r[1]]);
+  }
+  const removedBefore = (t: number) => union.reduce((sum, [a, b]) => sum + (b <= t ? b - a : 0), 0);
+  // A target's group's other parts (a take's camera, screen, other sound) get the same timeline cuts.
+  const cutIds = new Set(cuttable.filter((s) => perClip.has(s.target.id)).map((s) => s.target.id));
+  const followers: Array<{ item: Item; track: Track }> = [];
+  for (const id of cutIds) {
+    const g = where.get(id)!.item.group;
+    if (!g) continue;
+    for (const track of project.tracks) {
+      if (track.role === "main") continue;
+      for (const item of track.items) {
+        if (item.group !== g || cutIds.has(item.id) || followers.some((f) => f.item.id === item.id) || (item.linkedTo && cutIds.has(item.linkedTo))) continue;
+        if ((item.type !== "clip" && item.type !== "audio") || item.locked || track.locked) continue;
+        const s0 = starts.get(item.id) ?? 0;
+        const local: Array<[number, number]> = [];
+        for (const [a, b] of union) {
+          const from = Math.max(a, s0) - s0;
+          const to = Math.min(b, s0 + item.duration) - s0;
+          if (to > from) local.push([from, to]);
+        }
+        if (!local.length) continue;
+        perClip.set(item.id, local);
+        followers.push({ item, track });
+      }
+    }
   }
 
   const ops: Array<Op> = [];
   const drops = new Set<string>();
   const taken = new Set<string>();
   const pieces: Array<string> = [];
-  for (const item of cuttable) {
+  const moves: Array<Op> = [];
+  const targets = [...cuttable.map((s) => ({ item: s.target, track: s.track })), ...followers];
+  for (const { item, track } of targets) {
     const ranges = perClip.get(item.id);
     if (!ranges) continue;
     // What's kept of the clip, for the transitions at its ends.
@@ -802,16 +896,19 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       at = b;
     }
     if (at < item.duration) keptParts.push([at, item.duration]);
-    const index = main.items.indexOf(item);
-    const next = main.items[index + 1];
-    const first = keptParts[0];
-    const last = keptParts.at(-1);
-    if (item.transitionIn && !(first && first[0] === 0 && first[1] - first[0] >= 2 * item.transitionIn.duration)) drops.add(item.id);
-    if (next?.transitionIn && !(last && last[1] === item.duration && last[1] - last[0] >= 2 * next.transitionIn.duration)) drops.add(next.id);
+    if (track.role === "main") {
+      const index = main.items.indexOf(item);
+      const next = main.items[index + 1];
+      const first = keptParts[0];
+      const last = keptParts.at(-1);
+      if (item.transitionIn && !(first && first[0] === 0 && first[1] - first[0] >= 2 * item.transitionIn.duration)) drops.add(item.id);
+      if (next?.transitionIn && !(last && last[1] === item.duration && last[1] - last[0] >= 2 * next.transitionIn.duration)) drops.add(next.id);
+    }
     // Right to left, so the left part keeps its id and its local frames. A new id only for a real
     // split (a cut inside the clip), handed out left to right (clip-2 before clip-3 on the timeline).
     const base = item.id.replace(/-\d+$/, "") || "clip";
     const newIds = ranges.filter(([a, b]) => a > 0 && b < item.duration).map(() => freeId(project, base, taken));
+    const idsInOrder = [...newIds];
     let end = item.duration;
     const clipOps: Array<Op> = [];
     for (const [a, b] of [...ranges].reverse()) {
@@ -829,15 +926,26 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     }
     ops.push(...clipOps);
     if (keptParts.length) pieces.push(item.id);
+    // Off main (D215): each kept piece moves left by what was cut before it.
+    if (track.role !== "main") {
+      const s0 = starts.get(item.id) ?? 0;
+      for (const piece of keptPieces(item, ranges, idsInOrder)) {
+        const at0 = s0 + piece.from;
+        const to = at0 - removedBefore(at0);
+        if (to !== at0) moves.push({ op: "move_item", item: piece.id, start: Math.max(0, to) });
+      }
+    }
   }
   // A transition goes before the ops that cut its clip (it may be deleted).
   ops.unshift(...[...drops].map((id): Op => ({ op: "set_transition", item: id, transition: null })));
+  ops.push(...moves);
 
   // Asked-for words that weren't cut, and why: not played by any clip (already cut), too tight
   // between the words around them, or too short at a clip's speed.
   const asked = new Map<number, Array<Item>>();
-  for (const i of everywhere) asked.set(i, cuttable);
-  for (const [clip, ids] of perClipWords) for (const i of ids) asked.set(i, [...(asked.get(i) ?? []), ...cuttable.filter((c) => c.id === clip)]);
+  const srcs = cuttable.map((s) => s.src);
+  for (const i of everywhere) asked.set(i, srcs);
+  for (const [clip, ids] of perClipWords) for (const i of ids) asked.set(i, [...(asked.get(i) ?? []), ...cuttable.filter((c) => c.owner === clip).map((c) => c.src)]);
   for (const run of runsOf([...asked.keys()].filter((i) => !cutWords.has(i)))) {
     const where = `${quote(wordsText(words, run))} (${wordIds(run)})`;
     if (!run.some((i) => asked.get(i)!.some((c) => plays(c, i)))) notes.push(`${where} isn't in the edit${lockedClips.length ? " (or only in a locked clip)" : " any more (already cut)"}, so nothing changed there.`);
@@ -848,12 +956,17 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
     if (!pauses.length || !cuttable.length) notes.push("There are no pauses that long in the edit.");
     else notes.push(`The ${plural(pauses.length, "pause")} of that length ${pauses.length === 1 ? "isn't" : "aren't"} in the edit, or leave nothing to cut after keeping ${tailFrames(fps)} frames after the words and ${handleFrames(fps)} before them.`);
   }
-  if (!clips.length) notes.push(`No clip on the main track uses ${media.name}${only ? " (among the clips asked for)" : ""}.`);
-  const elsewhere = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => i.media === mediaId).map((i) => i.id));
-  if (elsewhere.length && perClip.size) notes.push(`${elsewhere.join(", ")} on other tracks also ${elsewhere.length === 1 ? "uses" : "use"} ${media.name} and weren't cut: only the main track is cut by text.`);
+  if (!sources.length) notes.push(itemMode ? `None of those items plays ${media.name}.` : `No clip on the main track uses ${media.name}${only ? " (among the clips asked for)" : ""}.`);
+  if (!itemMode) {
+    const followed = new Set(sources.map((s) => s.src.id));
+    const elsewhere = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => i.media === mediaId && !followed.has(i.id) && !(i.linkedTo && cutIds.has(i.linkedTo))).map((i) => i.id));
+    if (elsewhere.length && perClip.size) notes.push(`${elsewhere.join(", ")} on other tracks also ${elsewhere.length === 1 ? "uses" : "use"} ${media.name} and weren't cut: cut ${elsewhere.length === 1 ? "it" : "them"} by item.`);
+  }
 
   let draft: Project;
   try {
+    // Linked items follow their clips in the draft as the server applies them (D123), so a plan
+    // chained on this one sees them where they'll be; the ops sent stay the plain ones.
     draft = applyEdit(createSession(project), { actor: "user", ops }).project;
     // Shorter pieces: fades, animations and keys that no longer fit are shortened in the same edit.
     for (const id of pieces) {
@@ -861,22 +974,24 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
       const fix = piece && fitPiece(piece);
       if (fix) ops.push(fix);
     }
-    draft = applyEdit(createSession(project), { actor: "user", ops }, timelineProblems).project;
+    draft = applyEdit(createSession(project), { actor: "user", ops: withLinkedAudio(project, ops) }, timelineProblems).project;
   } catch (error) {
     const first = error instanceof EditError ? (error.details[0] as { message?: string } | undefined) : undefined;
     return { problem: `That cut doesn't work: ${first?.message ?? (error as Error).message}.` };
   }
   const draftMain = draft.tracks.find((t) => t.role === "main")!;
-  const framesRemoved = mainBefore - draftMain.items.reduce((s, i) => s + i.duration, 0);
+  const mainCut = mainBefore - draftMain.items.reduce((s, i) => s + i.duration, 0);
+  const framesRemoved = mainCut > 0 ? mainCut : union.reduce((sum, [a, b]) => sum + b - a, 0);
   const after = projectDuration(draft);
   // Free-track items after the first cut don't move with the main track: worth a look.
-  if (framesRemoved > 0) {
+  if (mainCut > 0) {
     let firstCut = Infinity;
-    for (const item of cuttable) {
-      const r = perClip.get(item.id);
-      if (r) firstCut = Math.min(firstCut, (starts.get(item.id) ?? 0) + r[0]![0]);
+    for (const { target } of cuttable) {
+      const r = perClip.get(target.id);
+      if (r && where.get(target.id)?.track.role === "main") firstCut = Math.min(firstCut, (starts.get(target.id) ?? 0) + r[0]![0]);
     }
-    const shifted = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => (i.start ?? 0) + i.duration > firstCut));
+    const moved = new Set([...followers.map((f) => f.item.id), ...cutIds]);
+    const shifted = project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => !moved.has(i.id) && !(i.linkedTo && moved.has(i.linkedTo)) && (i.start ?? 0) + i.duration > firstCut));
     if (shifted.length) notes.push(`Items on other tracks (${shifted.slice(0, 4).map((i) => i.id).join(", ")}${shifted.length > 4 ? ", …" : ""}) didn't move with the main track; check they still line up.`);
   }
 
@@ -907,25 +1022,120 @@ export function planTextCut(project: Project, mediaId: string, transcript: CutTr
 
 /** The words under the main track in edit order, as the Transcript panel lists them (what you'd hear). */
 export interface EditWord {
-  /** The main-track clip it's heard in, and the word's index in its media's transcript. */
+  /**
+   * The item it's heard in (main mode: the main-track clip; with a scope, the scoped item), and the
+   * word's index in its media's transcript.
+   */
   readonly clip: string;
   readonly media: string;
   readonly index: number;
   /** Timeline frames it's heard over: [start, end). */
   readonly start: number;
   readonly end: number;
+  /** D215: the linked or grouped sound it's heard in when that isn't `clip` itself (a take's microphone under its picture on Main). */
+  readonly via?: string;
+}
+
+const SOUND_PART = /voice|mic/i;
+
+/**
+ * D215: the sound parts of an item, best first: the items linked to it (D123 linkedTo: a detached
+ * sound, a take's microphone under its picture on Main), then its group's (a take still on overlay
+ * tracks), clips and sounds only, never `item` itself. A take's microphone (a Voiceover track, a
+ * "mic" media) comes before this Mac's sound and the other picture.
+ */
+export function soundParts(project: Pick<Project, "tracks">, item: Pick<Item, "id" | "group">): Array<Item> {
+  const { byLink, byGroup } = partsIndex(project.tracks);
+  const linked: Array<{ item: Item; rank: number }> = [];
+  const add = (list: ReadonlyArray<{ item: Item; named: boolean }> | undefined, tie: number) => {
+    for (const { item: i, named } of list ?? []) if (i.id !== item.id && !linked.some((x) => x.item.id === i.id)) linked.push({ item: i, rank: tie + (named ? 0 : i.type === "audio" ? 1 : 2) });
+  };
+  add(byLink.get(item.id), 0);
+  if (item.group) add(byGroup.get(item.group), 4);
+  return linked.sort((a, b) => a.rank - b.rank).map((x) => x.item);
+}
+
+/** Off-main clips and sounds by what they're linked to and by group (one pass per tracks array). */
+const partsIndexes = new WeakMap<ReadonlyArray<Track>, { byLink: Map<string, Array<{ item: Item; named: boolean }>>; byGroup: Map<string, Array<{ item: Item; named: boolean }>> }>();
+function partsIndex(tracks: ReadonlyArray<Track>) {
+  let index = partsIndexes.get(tracks);
+  if (index) return index;
+  index = { byLink: new Map(), byGroup: new Map() };
+  for (const track of tracks) {
+    if (track.role === "main") continue;
+    for (const i of track.items) {
+      if (i.type !== "audio" && i.type !== "clip") continue;
+      const entry = { item: i, named: SOUND_PART.test(track.name) || SOUND_PART.test(i.name ?? "") };
+      if (i.linkedTo) (index.byLink.get(i.linkedTo) ?? index.byLink.set(i.linkedTo, []).get(i.linkedTo)!).push(entry);
+      if (i.group) (index.byGroup.get(i.group) ?? index.byGroup.set(i.group, []).get(i.group)!).push(entry);
+    }
+  }
+  partsIndexes.set(tracks, index);
+  return index;
+}
+
+/**
+ * D215: the item whose sound is `item`'s speech: a sound part with a different file (a take's
+ * microphone: soundParts) when one has sound, else the item itself when its file has sound (a muted
+ * clip's detached sound plays the same file, so it's the same words), else undefined.
+ */
+export function speechItem(project: Pick<Project, "tracks" | "media">, item: Item): Item | undefined {
+  const audible = (i: Item) => {
+    const m = i.media ? project.media.find((x) => x.id === i.media) : undefined;
+    return !!m && m.kind !== "image" && (m.kind === "audio" || m.probe?.hasAudio === true);
+  };
+  const part = soundParts(project, item).find((p) => p.media !== item.media && audible(p));
+  if (part) return part;
+  if ((item.type === "clip" || item.type === "audio") && audible(item)) return item;
+  return soundParts(project, item).find(audible);
+}
+
+/** D215: what the Transcript tab and transcript_edit work on for an item off the main track. */
+export interface TranscriptScope {
+  /** The media whose transcript it is (a take's microphone for its camera). */
+  readonly media: string;
+  /** The items that play it there, in timeline order (cut by text together). */
+  readonly items: ReadonlyArray<string>;
+  /** The item that plays it (the scope's first). */
+  readonly anchor: string;
+}
+
+/**
+ * D215: the transcript scope of an item: undefined when it's heard through the main track (on
+ * Main, or linked to a main clip), else the media its speech is (speechItem) and every item playing
+ * that media on the same track or in the same group (the pieces a cut left, a take's microphone).
+ */
+export function transcriptScope(project: Pick<Project, "tracks" | "media">, itemId: string): TranscriptScope | undefined {
+  const at = project.tracks.flatMap((t) => t.items.map((i) => ({ item: i, track: t }))).find((x) => x.item.id === itemId);
+  if (!at || at.track.role === "main") return undefined;
+  const mainIds = new Set(project.tracks.filter((t) => t.role === "main").flatMap((t) => t.items.map((i) => i.id)));
+  if (at.item.linkedTo && mainIds.has(at.item.linkedTo)) return undefined;
+  const sound = speechItem(project, at.item);
+  if (!sound?.media) return undefined;
+  if (sound.linkedTo && mainIds.has(sound.linkedTo)) return undefined;
+  const track = project.tracks.find((t) => t.items.some((i) => i.id === sound.id))!;
+  const starts = resolveStarts(project);
+  const plays = (i: Item) => (i.type === "clip" || i.type === "audio") && i.media === sound.media;
+  const own = new Set(track.items.filter(plays).map((i) => i.id));
+  const groups = new Set(project.tracks.flatMap((t) => t.items.filter((i) => own.has(i.id) && i.group).map((i) => i.group!)));
+  const items = project.tracks.flatMap((t) => (t.role === "main" ? [] : t.items.filter((i) => plays(i) && (own.has(i.id) || (i.group !== undefined && groups.has(i.group))))));
+  items.sort((a, b) => (starts.get(a.id) ?? 0) - (starts.get(b.id) ?? 0));
+  return { media: sound.media, items: items.map((i) => i.id), anchor: sound.id };
 }
 
 /**
  * Every word heard on the main track, clip by clip in edit order: a word belongs to a clip when its
  * middle is inside the stretch of the media the clip plays; its timeline frames are where its
- * covering frames land (clipped to the clip). `transcripts` maps media ids to their words.
+ * covering frames land (clipped to the clip). `transcripts` maps media ids to their words. A main
+ * clip whose sound part has another transcribed file (D215: a take's microphone linked to its
+ * camera) is heard through that part (`via`). With `scope` (D215), the items named there instead,
+ * on any track, each at its own start, in timeline order (a word two of them play at once is listed
+ * once).
  */
-export function editWords(project: Pick<Project, "tracks" | "canvas">, transcripts: ReadonlyMap<string, ReadonlyArray<CutWord>>): Array<EditWord> {
+export function editWords(project: Pick<Project, "tracks" | "canvas">, transcripts: ReadonlyMap<string, ReadonlyArray<CutWord>>, scope?: ReadonlySet<string>): Array<EditWord> {
   const fps = project.canvas.fps;
   const main = project.tracks.find((t) => t.role === "main");
   const out: Array<EditWord> = [];
-  if (!main) return out;
   // Each word list's middles, and whether they only go up (whisper's do): then each clip finds its
   // first word by binary search and stops at the first one past its stretch, so a long edit of many
   // clips over an hour of words costs O(clips · log words + words heard), not O(clips · words).
@@ -941,42 +1151,63 @@ export function editWords(project: Pick<Project, "tracks" | "canvas">, transcrip
     }
     return m;
   };
+  /** The words `src` plays, placed from timeline frame `t` (clipped to it), listed under `clip`. */
+  const walk = (src: Item, t: number, clip: string) => {
+    const words = src.media ? transcripts.get(src.media) : undefined;
+    if (!words) return;
+    const inF = src.in ?? 0;
+    const speed = src.speed ?? 1;
+    const lo = inF / fps;
+    const hi = (inF + src.duration * speed) / fps;
+    const { mid, sorted } = midsOf(words);
+    let first = 0;
+    if (sorted) {
+      let a = 0;
+      let b = mid.length;
+      while (a < b) {
+        const m = (a + b) >> 1;
+        if (mid[m]! < lo) a = m + 1;
+        else b = m;
+      }
+      first = a;
+    }
+    for (let index = first; index < words.length; index++) {
+      const w = words[index]!;
+      const c = mid[index]!;
+      if (c >= hi) {
+        if (sorted) break;
+        continue;
+      }
+      if (c < lo) continue;
+      const start = Math.max(0, Math.floor((floorF(w.start * fps) - inF) / speed));
+      const end = Math.min(src.duration, Math.max(start + 1, Math.ceil((ceilF(w.end * fps) - inF) / speed)));
+      out.push({ clip, media: src.media!, index, start: t + start, end: t + end, ...(src.id !== clip ? { via: src.id } : {}) });
+    }
+  };
+  if (scope) {
+    const starts = resolveStarts(project);
+    const items = project.tracks.flatMap((t) => t.items.filter((i) => scope.has(i.id) && (i.type === "clip" || i.type === "audio")));
+    items.sort((a, b) => (starts.get(a.id) ?? 0) - (starts.get(b.id) ?? 0));
+    for (const item of items) walk(item, starts.get(item.id) ?? 0, item.id);
+    out.sort((a, b) => a.start - b.start || a.end - b.end);
+    // A word two items play at the same moment (a muted clip and its detached sound) is heard once.
+    const kept: Array<EditWord> = [];
+    for (const w of out) if (!kept.some((k) => k.media === w.media && k.index === w.index && k.start < w.end && w.start < k.end)) kept.push(w);
+    return kept;
+  }
+  if (!main) return out;
   let t = 0;
+  let starts: Map<string, number> | undefined;
   for (const item of main.items) {
-    const words = item.type === "clip" && item.media ? transcripts.get(item.media) : undefined;
-    if (words) {
-      const inF = item.in ?? 0;
-      const speed = item.speed ?? 1;
-      const lo = inF / fps;
-      const hi = (inF + item.duration * speed) / fps;
-      const { mid, sorted } = midsOf(words);
-      let first = 0;
-      if (sorted) {
-        let a = 0;
-        let b = mid.length;
-        while (a < b) {
-          const m = (a + b) >> 1;
-          if (mid[m]! < lo) a = m + 1;
-          else b = m;
-        }
-        first = a;
-      }
-      for (let index = first; index < words.length; index++) {
-        const w = words[index]!;
-        const c = mid[index]!;
-        if (c >= hi) {
-          if (sorted) break;
-          continue;
-        }
-        if (c < lo) continue;
-        const start = Math.max(0, Math.floor((floorF(w.start * fps) - inF) / speed));
-        const end = Math.min(item.duration, Math.max(start + 1, Math.ceil((ceilF(w.end * fps) - inF) / speed)));
-        out.push({ clip: item.id, media: item.media!, index, start: t + start, end: t + end });
-      }
+    if (item.type === "clip") {
+      // A sound part with another transcribed file (a take's microphone) speaks for the clip.
+      const part = soundParts(project, item).find((p) => p.media !== undefined && p.media !== item.media && transcripts.has(p.media));
+      if (part) {
+        starts ??= resolveStarts(project);
+        walk(part, starts.get(part.id) ?? t, item.id);
+      } else if (item.media) walk(item, t, item.id);
     }
     t += item.duration;
   }
   return out;
 }
-
-

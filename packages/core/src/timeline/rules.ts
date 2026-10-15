@@ -14,6 +14,17 @@ const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>>
   audio: ["audio"],
 };
 
+/**
+ * D215: the main track (the spine) takes any picture: clips (video, stills, recordings), elements,
+ * graphics and text. A text card there is a title clip: back to back, ripple, transitions (it holds
+ * its first and last look through a transition's overlap and needs no footage). Captions and sound
+ * stay off it.
+ */
+export const MAIN_ITEM_TYPES: ReadonlySet<ItemType> = new Set<ItemType>(["clip", "component", "graphic", "text"]);
+
+/** Whether an item of this type may go on this track (the rule item-track-kind checks). */
+export const fitsTrackKind = (type: ItemType, track: Pick<Track, "kind" | "role">) => (track.role === "main" ? MAIN_ITEM_TYPES.has(type) : !!ITEM_TRACK_KINDS[type]?.includes(track.kind));
+
 const err = (code: string, path: string, message: string): Problem => ({ code, path, message });
 
 /** Start frame of every item: main-track items play back to back, free items carry `start`. */
@@ -52,7 +63,7 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
     const main = track.role === "main";
     track.items.forEach((item, index) => {
       const ipath = `${tpath}/items/${item.id}`;
-      if (!ITEM_TRACK_KINDS[item.type]?.includes(track.kind)) errors.push(err("item-track-kind", ipath, `a ${item.type} item can't go on a ${track.kind} track`));
+      if (!fitsTrackKind(item.type, track)) errors.push(err("item-track-kind", ipath, main ? `a ${item.type} item can't go on the main track` : `a ${item.type} item can't go on a ${track.kind} track`));
       if (main && item.start !== undefined) errors.push(err("main-item-start", ipath, "main-track items play back to back and must not have a start"));
       if (!main && item.start === undefined) errors.push(err("missing-start", ipath, "items on free tracks need a start frame"));
 
