@@ -51,7 +51,7 @@ import {
   type MiniRecorderState,
 } from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
-import { BACKGROUND_SWITCHES, isTestBackground, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
+import { BACKGROUND_SWITCHES, centredIn, isTestBackground, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
@@ -465,16 +465,26 @@ function setWindowMode(mode: WindowMode): { width: number; height: number } {
   win.setMinimumSize(0, 0);
   win.setContentSize(want.width, want.height);
   win.setMinimumSize(minWidth, minHeight);
-  if (want.x !== undefined && want.y !== undefined) win.setPosition(want.x, want.y);
+  const testAt = testWindowAt({ width: win.getSize()[0]!, height: win.getSize()[1]! });
+  if (testAt) win.setPosition(testAt.x, testAt.y);
+  else if (want.x !== undefined && want.y !== undefined) win.setPosition(want.x, want.y);
   else win.center();
   const [width, height] = win.getContentSize();
   return { width: width!, height: height! };
 }
 
+/**
+ * D216: in tests (UNCUT_CDP) the window always opens centred on the primary display, not on
+ * whichever display macOS picks (the one with the focus); undefined for a release user's app
+ * (remembered or macOS's choice). The helper also pins the scale and colour profile (TEST_DISPLAY_ARGS).
+ */
+const testWindowAt = (size: { width: number; height: number }) => (process.env.UNCUT_CDP ? centredIn(screen.getPrimaryDisplay().workArea, size) : undefined);
+
 function createWindow() {
   windowSizes = readWindowSizes(windowDir());
   windowMode = "welcome";
-  const start = windowSizes.welcome;
+  const remembered = windowSizes.welcome;
+  const start = { ...remembered, ...testWindowAt(remembered) };
   win = new BrowserWindow({
     width: start.width,
     height: start.height,

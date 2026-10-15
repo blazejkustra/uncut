@@ -4,6 +4,7 @@ import { createServer, type AddressInfo } from "node:net";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import { TEST_DISPLAY_ARGS } from "../../apps/desktop/src/background.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -321,7 +322,9 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
   delete env.VITE_DEV_SERVER_URL;
   installInterruptHandlers();
   const startedAt = Date.now();
-  const proc = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  // D216: draw as on a 2x sRGB screen whatever displays are attached (Chromium switches, which on
+  // macOS only take as real argv), so preview screenshots compare with the export the same way everywhere.
+  const proc = spawn(command, [...TEST_DISPLAY_ARGS, ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
   launched.add(proc);
   proc.once("exit", () => launched.delete(proc));
   let ended: { code: number | null; signal: NodeJS.Signals | null; at: number } | undefined;

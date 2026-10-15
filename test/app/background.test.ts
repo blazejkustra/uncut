@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { BACKGROUND_SWITCHES, isTestBackground } from "../../apps/desktop/src/background.ts";
+import { BACKGROUND_SWITCHES, centredIn, isTestBackground, TEST_DISPLAY_ARGS } from "../../apps/desktop/src/background.ts";
 
 const source = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -18,6 +18,16 @@ test("background mode needs UNCUT_TEST_BACKGROUND=1 together with UNCUT_CDP", ()
   assert.deepEqual([...BACKGROUND_SWITCHES], ["disable-renderer-backgrounding", "disable-background-timer-throttling", "disable-backgrounding-occluded-windows"]);
   // The module stays loadable without Electron (this test imports it on plain Node).
   assert.doesNotMatch(source("../../apps/desktop/src/background.ts"), /from "electron"/);
+});
+
+test("D216: tests draw as on a 2x sRGB screen on the primary display; a release user's app follows its display", () => {
+  assert.deepEqual([...TEST_DISPLAY_ARGS], ["--force-device-scale-factor=2", "--force-color-profile=srgb"]);
+  // Real argv from the helper (appendSwitch is too late for the browser's display on macOS), never from the app itself.
+  assert.match(source("../helpers/app.ts"), /spawn\(command, \[\.\.\.TEST_DISPLAY_ARGS, \.\.\.args\]/);
+  assert.doesNotMatch(source("../../apps/desktop/src/app.ts"), /appendSwitch\("force-(color-profile|device-scale-factor)/);
+  assert.deepEqual(centredIn({ x: 0, y: 33, width: 1512, height: 949 }, { width: 760, height: 720 }), { x: 376, y: 148 });
+  assert.deepEqual(centredIn({ x: -211, y: -1050, width: 1920, height: 1050 }, { width: 2000, height: 1200 }), { x: -211, y: -1050 }, "bigger than the area: its corner");
+  assert.match(source("../../apps/desktop/src/app.ts"), /process\.env\.UNCUT_CDP \? centredIn\(screen\.getPrimaryDisplay\(\)\.workArea/);
 });
 
 test("the test helper launches apps in the background unless UNCUT_TEST_VISIBLE=1, and emulates focus", () => {
