@@ -197,6 +197,33 @@ export function planFrameAlign(project: ProjectModel, itemId: string, edge: Fram
   return planTransform(project, itemId, patch, `Align text to the ${words[edge]}`);
 }
 
+/**
+ * Issue #72 (D242): a text resized by a corner handle on the canvas. The text model has no box
+ * height and no scale: the drag's factor `k` goes to the font size (style.size, whole px, ≥ 1),
+ * and a box width (transform.w, or a look's width, written as a move does) scales with it, so the
+ * lines break as before. `drawn` is the box as drawn when the drag began (canvas px, measured); the
+ * corner opposite the dragged one stays where it is. One update_item: one edit, one undo.
+ */
+export function planTextScale(project: ProjectModel, itemId: string, k: number, corner: "nw" | "ne" | "sw" | "se", drawn: { readonly x: number; readonly y: number; readonly w: number; readonly h: number }): Plan | Problem {
+  const item = itemOf(project, itemId);
+  if (!item) return { problem: "That item isn't in the project any more." };
+  const box = textBox(item, project);
+  const exact = item.style?.size ?? textPlacement(item, project).size;
+  const size = Math.max(1, Math.round(exact * (Number.isFinite(k) && k > 0 ? k : 1)));
+  // The factor the whole size really gives, so the box and its anchor move with the text.
+  const f = size / exact;
+  const left = corner === "nw" || corner === "sw";
+  const top = corner === "nw" || corner === "ne";
+  // The drawn box may start off the item's x / y (a look drawn elsewhere): keep that offset, scaled.
+  const x = left ? drawn.x + drawn.w - drawn.w * f + (box.x - drawn.x) * f : drawn.x + (box.x - drawn.x) * f;
+  const y = top ? drawn.y + drawn.h - drawn.h * f + (box.y - drawn.y) * f : drawn.y + (box.y - drawn.y) * f;
+  const transform: Record<string, unknown> = { ...(item.transform ?? {}), x: Math.round(x), y: Math.round(y) };
+  if (box.w !== undefined) transform.w = Math.max(1, Math.round(box.w * f));
+  const style = { ...(item.style ?? {}), size };
+  if (size === item.style?.size && JSON.stringify(transform) === JSON.stringify(item.transform ?? {})) return { ops: [], summary: "Resize text" };
+  return planUpdate(project, itemId, { style, transform: transform as Transform }, "Resize text");
+}
+
 /** Text case (D129): none, capitals (uppercase), lower case or title case. */
 export type TextCase = "none" | "upper" | "lower" | "title";
 export const caseOf = (item: Item): TextCase => {
