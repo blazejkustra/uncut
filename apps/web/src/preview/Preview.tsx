@@ -20,7 +20,7 @@ import { useScrubCacheOn } from "../settings/scrub.ts";
 import { useGpuCompositorOn } from "../settings/gpu.ts";
 import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
-import { planText, planTransform, snapBox, textBox, type Guide } from "./text.ts";
+import { planText, planTextScale, planTransform, snapBox, textBox, type Guide } from "./text.ts";
 import { clipState, planClipBox, planResetPosition, resizeBox, type Corner } from "../timeline/clip.ts";
 import { Transport } from "./Transport.tsx";
 import { useViewport } from "./viewport.ts";
@@ -38,6 +38,8 @@ interface CanvasDrag {
   readonly id: string;
   /** A text move (D53), a clip move or a clip's corner (D75). */
   readonly kind: "text" | "clip" | Corner;
+  /** Issue #72 (D242): a text's corner (kind "text"): the drag resizes it, from its drawn box (x, y, w, h). */
+  readonly textCorner?: Corner;
   readonly pointer: number;
   readonly px: number;
   readonly py: number;
@@ -52,7 +54,7 @@ interface CanvasDrag {
   readonly frame: number;
   readonly revision: number;
   moved: boolean;
-  to?: { x: number; y: number; w?: number; h?: number };
+  to?: { x: number; y: number; w?: number; h?: number; k?: number };
   draft?: PreviewDraft;
 }
 
@@ -172,6 +174,16 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
       drag.current = { ...start, id: clip.item.id, kind: corner ?? "clip", x: clip.box.x, y: clip.box.y, w: clip.box.w, h: clip.box.h };
       return;
     }
+    // Issue #72 (D242): the selected text's corner resizes it.
+    const textCorner = target.closest<HTMLElement>("[data-text-handle]")?.dataset.textHandle as Corner | undefined;
+    if (textCorner) {
+      const placed = findItem(project, before);
+      const el = before === undefined ? null : textRef.current?.querySelector<HTMLElement>(`.pv-text[data-item="${CSS.escape(before)}"]`);
+      if (!placed || placed.item.type !== "text" || lockOf(placed) || !el || el.offsetWidth <= 0) return;
+      e.stopPropagation();
+      drag.current = { ...start, id: placed.item.id, kind: "text", textCorner, x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+      return;
+    }
     const hit = editableText(e.target);
     if (!hit) return;
     const box = textBox(hit.item, project);
@@ -191,7 +203,7 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
 
   /** The edit a drag makes, planned on `p`. */
   const dragPlan = (p: ProjectModel, d: CanvasDrag, to: NonNullable<CanvasDrag["to"]>) =>
-    d.kind === "text" ? planTransform(p, d.id, { x: to.x, y: to.y }) : d.kind === "clip" ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame) : planClipBox(p, d.id, to, d.frame);
+    d.textCorner ? planTextScale(p, d.id, to.k ?? 1, d.textCorner, { x: d.x, y: d.y, w: d.w, h: d.h }) : d.kind === "text" ? planTransform(p, d.id, { x: to.x, y: to.y }) : d.kind === "clip" ? planClipBox(p, d.id, { x: to.x, y: to.y }, d.frame) : planClipBox(p, d.id, to, d.frame);
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -212,7 +224,11 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     }
     d.moved = true;
     let shown: ReadonlyArray<Guide> = [];
-    if (d.kind === "text" || d.kind === "clip") {
+    if (d.textCorner) {
+      // Issue #72 (D242): the box keeps its shape (a text has no height of its own); its width's factor is the font size's.
+      const r = resizeBox({ x: d.x, y: d.y, w: d.w, h: d.h }, d.textCorner, dx * scale, dy * scale, false);
+      d.to = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), k: r.w / d.w };
+    } else if (d.kind === "text" || d.kind === "clip") {
       let x = Math.round(d.x + dx * scale);
       let y = Math.round(d.y + dy * scale);
       if (!e.metaKey && getPlayback().snapping) {
