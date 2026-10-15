@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 const WEB = "apps/web/src";
 const SERVER = "apps/server/src";
-const SERVER_UI = ["app/setup.ts", "plugins/plugins.ts", "analysis/whisper.ts", "analysis/whisperModels.ts", "analysis/transcription.ts", "media/media.ts", "export/exporter.ts", "analysis/analysis.ts", "agent/agent.ts"];
+const SERVER_UI = ["app/setup.ts", "plugins/plugins.ts", "analysis/whisper.ts", "analysis/whisperModels.ts", "analysis/transcription.ts", "media/media.ts", "export/exporter.ts", "export/exporter/duckEnvelopes.ts", "export/exporter/ffmpeg.ts", "export/exporter/files.ts", "export/exporter/frames.ts", "export/exporter/graphics.ts", "export/exporter/rasterise.ts", "export/exporter/runJob.ts", "export/exporter/sheets.ts", "export/exporter/subtitles.ts", "analysis/analysis.ts", "agent/agent.ts"];
 
 /** The source with comments blanked (line and block), strings and code kept. */
 export function withoutComments(source: string): string {
