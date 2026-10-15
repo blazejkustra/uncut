@@ -97,7 +97,8 @@ export function planPaste(project: ProjectModel, clips: ReadonlyArray<Clip>, fra
     const id = uniqueId(project, clip.item.id.replace(/-\d+$/, "") || "item", taken);
     taken.add(id);
     ids.push(id);
-    const { transitionIn: _t, start: _s, group: oldGroup, ...rest } = clip.item as Item & { start?: number };
+    // D224: nor the gap before a main clip (it lands right after the clip before it).
+    const { transitionIn: _t, start: _s, gap: _g, group: oldGroup, ...rest } = clip.item as Item & { start?: number };
     if (oldGroup && !groups.has(oldGroup)) groups.set(oldGroup, `group-${id}`);
     const item = { ...rest, id, ...(oldGroup ? { group: groups.get(oldGroup)! } : {}) } as Item;
     if (clip.main && main && !main.locked && fitsTrack(item, main)) {

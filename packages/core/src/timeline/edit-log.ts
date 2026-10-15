@@ -116,6 +116,8 @@ const STYLE_WORDS: Readonly<Record<string, (v: unknown) => string>> = {
 function describeUpdate(id: Id, set: { readonly [key: string]: unknown }, project: Project, it: (id: Id) => string, fps: number): string {
   const keys = Object.keys(set);
   if (keys.length === 1 && keys[0] === "text" && typeof set.text === "string") return `Changed the text of ${id} to ${quote(set.text)}`;
+  // D224: the empty space before a main item.
+  if (keys.length === 1 && keys[0] === "gap") return typeof set.gap === "number" && set.gap > 0 ? `Left a ${secs(set.gap, fps)} gap before ${it(id)} on the main track` : `Closed the gap before ${it(id)} on the main track`;
   const sound = describeSound(id, set, it, fps);
   if (sound) return sound;
   const captions = describeCaptions(id, set, project, it, fps);
