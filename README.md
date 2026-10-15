@@ -2,7 +2,7 @@
 
 An AI-first video editor for macOS: Claude Code edits with you, on a real timeline, on your own subscription.
 
-![The agent's brief and approved storyboard next to the timeline it built](docs/hero.png)
+![Uncut editing a launch film: imported clips, a title over footage in the preview, the timeline with transitions, text, a graphic and music, and the agent's brief, approved storyboard and passed review](docs/hero.png)
 
 ## What it does
 
