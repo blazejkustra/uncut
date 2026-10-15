@@ -8,208 +8,27 @@
 // revision, and ⌘Z stops there (History can still go back past it, as a new revision).
 import { isAbsolute, join } from "node:path";
 
-import { EditRefused, ProjectError, type HistoryState, type Problem, type ProjectSnapshot } from "@uncut/contracts";
-import { applyEdit, describeOp, EditConflict, EditError, TurnDependency, undoTurn, type Canvas as CoreCanvas, type Op, type Project, type Session } from "@uncut/core";
-import { withLinkedAudio } from "@uncut/core/arrange";
-import * as Context from "effect/Context";
+import { type HistoryState, type ProjectSnapshot } from "@uncut/contracts";
+import { EditError, TurnDependency, undoTurn, type Project, type Session } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import type { PlatformError } from "effect/PlatformError";
 import * as Semaphore from "effect/Semaphore";
-import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { writeFileAtomic } from "./atomicWrite.ts";
 import { ServerConfig } from "../app/config.ts";
 import { ProjectFormat } from "./format.ts";
-import { HistoryDb, MAX_ROWS, type NewRow, type Row } from "./history.ts";
+import { HistoryDb, type NewRow, type Row } from "./history.ts";
 import { sameJson } from "./jsonPatch.ts";
 import { Recents } from "./recents.ts";
-
-interface OpenProject {
-  readonly dir: string;
-  // Which opening of the project this is: a close and reopen (or another project) is a new one.
-  readonly openId: number;
-  // The revision the project was opened at (revisions are the project's own, kept in history.db).
-  readonly openRevision: number;
-  session: Session;
-  // The revisions ⌘Z and ⇧⌘Z go back to (one per undo step: a turn's edits are one, D7).
-  past: Array<number>;
-  future: Array<number>;
-  readonly history: HistoryDb;
-  // project.json exactly as we last read or wrote it, to notice hand edits before saving.
-  diskText: string;
-  // The project the session's log starts from (the history's boundary): undoing a turn replays from it.
-  initial: Project;
-  // Changes that aren't log entries (undo, redo, reload, undoing a turn), for the agent's note and
-  // its conflict check: an agent edit based on a revision before one of these is refused.
-  unlogged: Array<UnloggedChange>;
-  // The agent turn whose first edit put the pre-turn project on the undo stack (D7: a turn is
-  // one undo step). Cleared by anything else that touches the stack.
-  pushedForTurn: string | undefined;
-}
-
-export interface UnloggedChange {
-  readonly revision: number;
-  readonly what: string;
-}
-
-/** The open project as the agent service needs it: the session with its log. Read-only. */
-export interface ProjectView {
-  readonly dir: string;
-  readonly openId: number;
-  // Log entries up to this revision are from earlier openings (the agent's carried note covers them).
-  readonly openRevision: number;
-  readonly session: Session;
-  readonly initial: Project;
-  readonly unlogged: ReadonlyArray<UnloggedChange>;
-}
-
-export interface AgentEditInput {
-  readonly turnId: string;
-  readonly ops: ReadonlyArray<unknown>;
-  readonly baseRevision: number;
-  readonly summary: string;
-  /** D206: check the edit exactly as it would be made (schema, rules, D6) and return the result without saving it. */
-  readonly dryRun?: boolean;
-}
-
-export interface Canvas {
-  readonly width: number;
-  readonly height: number;
-  readonly fps: CoreCanvas["fps"];
-  readonly background?: string | undefined;
-}
-
-/** D209: a project made with "Match first clip" takes its first video's size and frame rate; this marker in .cache says so until then. */
-export const MATCH_FIRST_CLIP = "match-first-clip";
-
-export interface ProjectsShape {
-  readonly create: (input: { parentDir: string; name: string; canvas?: Canvas | undefined; matchFirstClip?: boolean | undefined }) => Effect.Effect<ProjectSnapshot, ProjectError>;
-  readonly open: (dir: string) => Effect.Effect<ProjectSnapshot, ProjectError>;
-  readonly get: Effect.Effect<ProjectSnapshot, ProjectError>;
-  readonly reload: Effect.Effect<ProjectSnapshot, ProjectError>;
-  readonly close: Effect.Effect<void>;
-  /** The open project's folder, without waiting for the lock (for read-only uses like thumbnails). */
-  readonly currentDir: Effect.Effect<string | undefined>;
-  /** The open project right now (no lock): its folder, opening and content. */
-  readonly current: Effect.Effect<{ readonly dir: string; readonly openId: number; readonly project: unknown } | undefined>;
-  /**
-   * An edit planned against the project as it is under the lock, refused unless the same
-   * opening of the project is still open. `plan` returns the ops (or nothing to do). With
-   * `agent`, the edit is the agent's (actor "agent", tagged with its turn), so Undo turn takes
-   * it back and the manual-edit note doesn't list it (an agent media_import, D65).
-   */
-  readonly editIn: <E>(
-    openId: number,
-    plan: (project: unknown, dir: string) => Effect.Effect<{ ops: ReadonlyArray<unknown>; summary: string } | undefined, E>,
-    agent?: { readonly turnId: string },
-  ) => Effect.Effect<ProjectSnapshot | undefined, ProjectError | EditRefused | E>;
-  /** The current snapshot (null: nothing open), then every change. */
-  readonly changes: Stream.Stream<ProjectSnapshot | null>;
-  readonly edit: (input: {
-    ops: ReadonlyArray<unknown>;
-    baseRevision?: number | undefined;
-    summary?: string | undefined;
-  }) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
-  readonly undo: Effect.Effect<ProjectSnapshot, ProjectError>;
-  readonly redo: Effect.Effect<ProjectSnapshot, ProjectError>;
-  /** The open project with its edit log (no lock), for the agent service. */
-  readonly view: Effect.Effect<ProjectView | undefined>;
-  /**
-   * An agent edit (actor "agent", tagged with its turn) to the same opening of the project: the
-   * same validation and saving as a user edit, plus D6's refusal when the user changed what it
-   * touches (or used undo/redo/reload) after `baseRevision`. Not reachable over the RPC.
-   */
-  readonly agentEdit: (openId: number, input: AgentEditInput) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
-  /** Revert one turn's edits as one undoable step, keeping later edits (D7). */
-  readonly undoTurn: (openId: number, turnId: string, label: string) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
-  /** The open project's history for the History tab (null: nothing open), then every change. */
-  readonly historyChanges: Stream.Stream<HistoryState | null>;
-  /** The project as it was at a revision, for the History tab's preview. Changes nothing. */
-  readonly historyPreview: (revision: number) => Effect.Effect<{ revision: number; project: unknown }, ProjectError>;
-  /** Go back (or forward) to a revision's state as a new, undoable revision (D71). */
-  readonly historyJump: (revision: number) => Effect.Effect<ProjectSnapshot, ProjectError | EditRefused>;
-}
-
-/** How many revisions history.subscribe sends (newest first; undo/redo steps aren't listed). */
-export const HISTORY_LISTED = 200;
-
-/** A change made outside Uncut in a few lines: items and media added, removed or changed. */
-export function externalLines(before: Project, after: Project): Array<string> {
-  const items = (p: Project) => new Map(p.tracks.flatMap((t) => t.items.map((i) => [i.id, i] as const)));
-  const a = items(before);
-  const b = items(after);
-  const list = (ids: Array<string>) => `${ids.slice(0, 5).join(", ")}${ids.length > 5 ? ` and ${ids.length - 5} more` : ""}`;
-  const added = [...b.keys()].filter((id) => !a.has(id));
-  const removed = [...a.keys()].filter((id) => !b.has(id));
-  const changed = [...b.keys()].filter((id) => a.has(id) && !sameJson(a.get(id), b.get(id)));
-  const mediaAdded = after.media.filter((m) => !before.media.some((x) => x.id === m.id)).map((m) => m.id);
-  const mediaRemoved = before.media.filter((m) => !after.media.some((x) => x.id === m.id)).map((m) => m.id);
-  const lines = [
-    added.length ? `Added ${list(added)}` : "",
-    removed.length ? `Removed ${list(removed)}` : "",
-    changed.length ? `Changed ${list(changed)}` : "",
-    mediaAdded.length ? `Added media ${list(mediaAdded)}` : "",
-    mediaRemoved.length ? `Removed media ${list(mediaRemoved)}` : "",
-    before.name !== after.name ? `Renamed the project to "${after.name}"` : "",
-  ].filter(Boolean);
-  return lines.length ? lines : ["Changed the project's settings or track order"];
-}
-
-const EXTERNAL_LABEL = "Changed outside Uncut";
-const EXTERNAL_STOP = "Undo stops at the change made to project.json outside Uncut, so it isn't lost by accident. To go back further, pick an earlier version in History.";
-const COMPACTED_STOP = `Older steps aren't kept: History keeps the last ${MAX_ROWS} changes.`;
-
-export class Projects extends Context.Service<Projects, ProjectsShape>()("uncut/Projects") {}
-
-export const DEFAULT_CANVAS: Canvas = { width: 1920, height: 1080, fps: 30 };
-
-/** A valid project with nothing in it: a text track on top, the main video track, an audio track. */
-export const emptyProject = (name: string, canvas: Canvas = DEFAULT_CANVAS): Project => ({
-  format: "uncut/0",
-  name,
-  canvas: { width: canvas.width, height: canvas.height, fps: canvas.fps, ...(canvas.background ? { background: canvas.background } : {}) },
-  // D80: made after text looks landed, so the older looks' soft shadow isn't a default here.
-  textLooks: 1,
-  media: [],
-  tracks: [
-    { id: "text", kind: "text", name: "Text", items: [] },
-    { id: "main", kind: "video", role: "main", name: "Main", items: [] },
-    { id: "audio", kind: "audio", name: "Audio", items: [] },
-  ],
-});
-
-const projectError = (reason: ProjectError["reason"], message: string, dir?: string, details: ReadonlyArray<Problem> = []) =>
-  new ProjectError({ reason, message, dir, details: [...details] });
-
-const ioError = (dir: string) => (error: { readonly message: string }) => projectError("io", error.message, dir);
-
-// Folder names only: no separators or control characters, no hidden folders, nothing a
-// filesystem would mangle (leading/trailing spaces, trailing dots).
-const validName = (name: string) =>
-  name.length > 0 &&
-  name.length <= 100 &&
-  name.trim() === name &&
-  name.length <= MAX_NAME_LENGTH &&
-  !name.startsWith(".") &&
-  !name.endsWith(".") &&
-  !/[\u0000-\u001f\u007f/\\:]/.test(name);
-
-export const MAX_NAME_LENGTH = 100;
-
-const refused = (message: string, details: ReadonlyArray<Problem> = []) => new EditRefused({ message, details: [...details] });
-
-const toProblems = (error: EditError): Array<Problem> =>
-  error instanceof EditConflict
-    ? (error.details as Array<string>).map((id) => ({ code: "conflict", path: id, message: `"${id}" was changed by a newer edit` }))
-    : (error.details as Array<Problem | string>).map((d) => (typeof d === "string" ? { code: "edit", path: "/", message: d } : d));
-
-const serialize = (project: unknown) => `${JSON.stringify(project, null, 2)}\n`;
-
-/** The .gitignore a new project gets: the cache and the per-Mac undo history (D71) stay local. */
-export const GITIGNORE = ".cache/\nhistory.db\nhistory.db-wal\nhistory.db-shm\n";
+import { Projects, type OpenProject, type UnloggedChange, emptyProject, MATCH_FIRST_CLIP } from "./projects/service.ts";
+import { makeEditUnlocked } from "./projects/edit.ts";
+import { EXTERNAL_STOP, COMPACTED_STOP, HISTORY_LISTED, projectError, serialize, ioError, externalLines, EXTERNAL_LABEL, refused, validName, GITIGNORE } from "./projects/helpers.ts";
+export { MATCH_FIRST_CLIP, Projects, DEFAULT_CANVAS, emptyProject } from "./projects/service.ts";
+export type { UnloggedChange, ProjectView, AgentEditInput, Canvas, ProjectsShape } from "./projects/service.ts";
+export { HISTORY_LISTED, externalLines, MAX_NAME_LENGTH, GITIGNORE } from "./projects/helpers.ts";
 
 export const layer = Layer.effect(
   Projects,
@@ -454,86 +273,7 @@ export const layer = Layer.effect(
         }),
       );
 
-    const editUnlocked = (
-      p: OpenProject,
-      { ops, baseRevision, summary }: { ops: ReadonlyArray<unknown>; baseRevision?: number | undefined; summary?: string | undefined },
-      agent?: { readonly turnId: string; readonly dryRun?: boolean | undefined },
-    ) =>
-      Effect.gen(function* () {
-        const opProblems = format.validateOps(ops);
-        if (opProblems.length) return yield* refused("The edit is malformed", opProblems);
-        if (baseRevision !== undefined && baseRevision > p.session.revision) {
-          return yield* refused(`baseRevision ${baseRevision} is newer than the project (revision ${p.session.revision})`, [
-            { code: "base-revision", path: "/baseRevision", message: "a revision from the future" },
-          ]);
-        }
-        // D6: undo, redo and reload aren't log entries, so the engine can't tell what they
-        // touched. Any agent edit planned before one of them is refused: read again first.
-        const unseen = agent && baseRevision !== undefined ? p.unlogged.filter((u) => u.revision > baseRevision) : [];
-        if (unseen.length) {
-          const what = unseen.map((u) => u.what).join("; ");
-          return yield* refused(`The project changed after revision ${baseRevision} (${what}). Read it again before editing.`, [
-            { code: "conflict", path: "/", message: what },
-          ]);
-        }
-        const applied = yield* Effect.try({
-          // validateOps above checked every op against the edit-ops schema.
-          try: () =>
-            applyEdit(
-              p.session,
-              // D123: detached sounds still linked to their clip follow what the edit does to it.
-              { actor: agent ? "agent" : "user", ops: withLinkedAudio(p.session.project as Project, ops as ReadonlyArray<Op>), baseRevision, summary, ...(agent ? { turnId: agent.turnId } : {}) },
-              format.validate,
-            ),
-          catch: (error) =>
-            error instanceof EditError
-              ? refused(error.message, toProblems(error))
-              : // Well-formed ops can still trip the engine (e.g. a field it doesn't expect).
-                refused("The edit is malformed", [{ code: "malformed-op", path: "/", message: String((error as Error)?.message ?? error) }]),
-        });
-        // Validate exactly what will be written and read back, so nothing that wouldn't
-        // reopen can be saved.
-        const written = JSON.parse(serialize(applied.project)) as Session["project"];
-        // Names double as folder and window names: keep them non-blank and short.
-        if (typeof written.name === "string" && written.name.trim() === "") {
-          return yield* refused("A project needs a name.", [{ code: "name", path: "/name", message: "A project needs a name." }]);
-        }
-        if (typeof written.name === "string" && written.name.length > MAX_NAME_LENGTH) {
-          const message = `A project name can be at most ${MAX_NAME_LENGTH} characters.`;
-          return yield* refused(message, [{ code: "name", path: "/name", message }]);
-        }
-        const problems = format.validate(written);
-        if (problems.length) return yield* refused("The edit would make the project invalid", problems);
-        // D206: a dry run stops here, with everything checked and nothing saved (the revision stays).
-        if (agent?.dryRun) return { dir: p.dir, project: written, revision: p.session.revision, canUndo: p.past.length > 0, canRedo: p.future.length > 0 } satisfies ProjectSnapshot;
-        const entry = applied.log.at(-1)!;
-        const typed = ops as ReadonlyArray<Op>;
-        const lines = typed.map((op) => describeOp(op, written, summary));
-        const author = agent ? "agent" : typed.every((op) => op.op === "add_media") ? "import" : "user";
-        return yield* commit(
-          p,
-          { ...applied, project: written },
-          (previous) => {
-            // D7: a turn's later edits join its first one on the undo stack, so ⌘Z after a turn
-            // takes the whole turn back, as "Undo turn" does.
-            if (!agent || p.pushedForTurn !== agent.turnId) p.past.push(previous.revision);
-            p.pushedForTurn = agent?.turnId;
-            p.future = [];
-          },
-          {
-            kind: "edit",
-            author,
-            revision: applied.revision,
-            at: entry.at,
-            label: summary?.trim() || lines[0] || "Edit",
-            lines,
-            summary,
-            ops: typed,
-            turnId: agent?.turnId,
-            project: written,
-          },
-        );
-      });
+    const editUnlocked = makeEditUnlocked({ format, commit });
 
     const openingIs = (openId: number) =>
       Effect.suspend(() =>
