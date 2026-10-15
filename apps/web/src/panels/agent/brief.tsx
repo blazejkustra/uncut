@@ -1,36 +1,23 @@
 import type { Brief, AgentPlan } from "@uncut/contracts";
 import { soundProfileText } from "@uncut/core/checks";
 import { isVideoType, VIDEO_TYPE_NAMES, soundProfileFor, VIDEO_TYPES } from "@uncut/core/skills";
-import { X, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useApp, actions } from "../../state/store.ts";
 
-/** D217 (issue #45): the project's skills on the latest Brief card: on ones with a one-click remove, suggested ones to add. */
-function BriefSkills({ brief, online }: { brief: Brief; online: boolean }) {
+/**
+ * D232 (issue #60): nobody picks skills. The latest Brief card lists the skills the project uses
+ * (read by the agent or called with /name) and the ones the brief suggests, as plain names.
+ */
+function BriefSkills({ brief }: { brief: Brief }) {
   const brand = useApp().brand;
   if (!brand) return null;
-  const on = brand.active.skills;
-  const suggested = (brief.skills ?? []).filter((id) => !on.includes(id) && brand.skills.some((x) => x.id === id));
+  const used = brand.active.skills;
+  const suggested = (brief.skills ?? []).filter((id) => !used.includes(id) && brand.skills.some((x) => x.id === id));
   const name = (id: string) => brand.skills.find((x) => x.id === id)?.name ?? id;
-  const set = (skills: ReadonlyArray<string>) => void actions.brandSetActive({ kit: brand.active.kit, skills: [...skills] });
   return (
     <div className="brief-row" data-testid="brief-skills">
       <span className="brief-key">Skills</span>
-      <span className="brief-chips">
-        {on.map((id) => (
-          <button key={id} className="chip-btn active" data-testid={`brief-skill-on-${id}`} disabled={!online} title={`Turn ${name(id)} off for this project`} onClick={() => set(on.filter((x) => x !== id))}>
-            {name(id)}
-            <X />
-          </button>
-        ))}
-        {suggested.map((id) => (
-          <button key={id} className="chip-btn" data-testid={`brief-skill-add-${id}`} disabled={!online} title={`Turn ${name(id)} on for this project`} onClick={() => set([...on, id])}>
-            <Plus />
-            {name(id)}
-          </button>
-        ))}
-        {!on.length && !suggested.length && <span className="muted">None</span>}
-      </span>
+      <span>{[...used, ...suggested].map(name).join(", ") || "None"}</span>
     </div>
   );
 }
@@ -72,7 +59,7 @@ export function BriefBody({ brief, live }: { brief: Brief; live?: CardLive | und
           <span>{sound.charAt(0).toUpperCase() + sound.slice(1)}</span>
         </div>
       )}
-      {live && <BriefSkills brief={brief} online={live.online} />}
+      {live && <BriefSkills brief={brief} />}
     </div>
   );
 }

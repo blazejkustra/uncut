@@ -17,6 +17,12 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
   const [step, setStep] = useState(0);
   // Settings › Keys (the Generate tab's link): the Agents step, scrolled to the keys.
   useEffect(() => {
+    if (setupFocus === "plugins") {
+      // D232: the Skills tab's "Get more skills": the plugins, on the Capture step.
+      setStep(1);
+      requestAnimationFrame(() => document.querySelector("[data-testid=plugins]")?.scrollIntoView({ block: "start" }));
+      return;
+    }
     if (setupFocus !== "keys") return;
     setStep(0);
     requestAnimationFrame(() => document.querySelector("[data-testid=keys]")?.scrollIntoView({ block: "center" }));

@@ -1,9 +1,8 @@
 // Issues #30 and #31 (D207) on the packaged app, run invisibly and muted, with the stand-in claude
 // and its scripted critic:
-// - the first brief suggests Uncut's built-in skills (D217: it turns none on); the user adds them
-//   with the Brief card's chips; the Brand tab lists them in a read-only "Built-in" group and ticks
-//   them under This project;
-// - a built-in skill opens read-only; Duplicate makes an editable copy that lands under Yours;
+// - the first brief suggests Uncut's own skills and the agent reads them with skill_read (D232:
+//   nobody picks); the Skills tab lists them under Uncut skills, the plugin that ships them;
+// - one opens read-only; Duplicate makes an editable copy that lands under Yours;
 // - a click spam (8 UI clicks in 8 s) fails the critic's round on a "Sound" blocker from Uncut's
 //   sound check, even with the critic's 9s.
 // Screenshots: test-output/issue30-*.png.
@@ -40,7 +39,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("issues #30/#31: built-in skills suggested by the brief and added on its card, read-only with Duplicate; a click spam fails a promo's critic on sound", { skip, timeout: 300000 }, async () => {
+test("issues #30/#31 (D232): Uncut's skills suggested by the brief and read by the agent, listed in the Skills tab read-only with Duplicate; a click spam fails a promo's critic on sound", { skip, timeout: 300000 }, async () => {
   const turns: Array<unknown> = [];
   const nextTurn = (steps: Array<unknown>) => (turns.push(steps), writeFileSync(join(root, "plan.json"), JSON.stringify(turns)));
   const app = await launchApp({
@@ -68,45 +67,34 @@ test("issues #30/#31: built-in skills suggested by the brief and added on its ca
     await page.click("[data-testid=create]");
     await waitFor("[data-testid=agent-input]");
 
-    // ---- Turn 1: the brief suggests skills (none on); a bundled click comes in ----
+    // ---- Turn 1: the brief suggests skills; the agent reads them (D232); a bundled click comes in ----
     const brief = { film: "A 10 s launch teaser for Argent Cloud", audience: "React Native devs", duration: "10 s", formats: ["4:5"], assets: ["the logo"], visual: "Dark, amber", hardLines: ["Never invent UI"], deliverables: ["4:5 mp4"] };
-    nextTurn([{ tool: "brief_write", args: brief }, { tool: "library_add", args: { id: "sfx:ui-click" } }, { text: "Brief saved; pick the skills on its card." }]);
+    nextTurn([{ tool: "brief_write", args: brief }, ...["launch-promo", "motion-craft", "sound-design"].map((name) => ({ tool: "skill_read", args: { name } })), { tool: "library_add", args: { id: "sfx:ui-click" } }, { text: "Brief saved; I read the skills that fit." }]);
     await send("make a 10 s launch teaser for Argent Cloud");
     await lastDone();
     const results = readFileSync(join(root, "results.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     const media = JSON.parse(results.find((r) => r.tool === "library_add").result.content[0].text).media as string;
-    // The Brief card's suggested chips turn them on (D217).
-    await page.click("[data-testid=agent-card][data-type=brief] .card-head");
-    for (const id of ["builtin-launch-promo", "builtin-motion-craft", "builtin-sound-design"]) {
-      // Centred: the thread's "latest" jump button can sit over a chip near the bottom.
-      await page.$eval(`[data-testid=brief-skill-add-${id}]`, (el) => el.scrollIntoView({ block: "center" }));
-      await page.click(`[data-testid=brief-skill-add-${id}]`);
-      await waitFor(`[data-testid=brief-skill-on-${id}]`);
-    }
+    assert.equal(results.filter((r) => r.tool === "skill_read" && !r.result.isError).length, 3);
 
-    // ---- The Brand tab: the built-ins, ticked for this project ----
-    await page.click("[data-testid=rail-brand]");
-    await waitFor("[data-testid=brand-skills-builtin]");
-    for (const id of ["builtin-launch-promo", "builtin-motion-craft", "builtin-sound-design"]) {
-      await page.waitForFunction((x) => document.querySelector<HTMLInputElement>(`[data-testid=brand-skill-check-${x}]`)?.checked === true, { timeout: 10000 }, id);
-    }
-    assert.equal(await page.$eval("[data-testid=brand-skill-check-builtin-explainer]", (el) => (el as HTMLInputElement).checked), false);
-    assert.equal((await page.$$("[data-testid^=brand-skill-builtin-]")).length, 9);
-    await page.$eval("[data-testid=brand-skills-builtin]", (el) => el.scrollIntoView({ block: "start" }));
-    await page.screenshot({ path: out("brand-builtins") });
+    // ---- The Skills tab: Uncut's own, from its plugin ----
+    await page.click("[data-testid=rail-skills]");
+    await waitFor("[data-testid=skills-group]");
+    assert.match(await page.$eval("[data-testid=skills-group]", (el) => (el as HTMLElement).innerText), /^Uncut skills/i);
+    assert.equal((await page.$$("[data-testid=skills-group] [data-testid^=skill-]")).length, 10);
+    await page.screenshot({ path: out("skills") });
 
-    // A built-in opens read-only; Duplicate makes the user's copy.
-    await page.click("[data-testid=brand-skill-builtin-sound-design]");
-    await waitFor("[data-testid=brand-builtin-skill]");
-    assert.match(await page.$eval("[data-testid=brand-builtin-body]", (el) => (el as HTMLElement).innerText), /Review checklist\n- Every sound effect lands on something that changes on screen/);
-    assert.equal(await page.$("[data-testid=brand-save]"), null, "no Save on a built-in");
-    assert.equal(await page.$("[data-testid=brand-delete]"), null, "no Delete on a built-in");
+    // One opens read-only; Duplicate makes the user's copy.
+    await page.click("[data-testid=skill-sound-design]");
+    await waitFor("[data-testid=skill-view]");
+    assert.match(await page.$eval("[data-testid=skill-view-body]", (el) => (el as HTMLElement).innerText), /Review checklist\n- Every sound effect lands on something that changes on screen/);
+    assert.equal(await page.$("[data-testid=brand-save]"), null, "no Save on a plugin's skill");
+    assert.equal(await page.$("[data-testid=brand-delete]"), null, "no Delete on a plugin's skill");
     await page.screenshot({ path: out("builtin-skill") });
     await page.click("[data-testid=brand-duplicate]");
     await waitFor("[data-testid=brand-skill-editor]");
     assert.equal(await page.$eval("[data-testid=brand-skill-name]", (el) => (el as HTMLInputElement).value), "Sound design copy");
     await page.click("[data-testid=brand-save]");
-    await waitFor("[data-testid=brand-skill-sound-design-copy]");
+    await waitFor("[data-testid=skill-sound-design-copy]");
     assert.ok(existsSync(join(root, "data", "brand", "skills", "sound-design-copy.json")));
     await page.screenshot({ path: out("duplicate") });
 

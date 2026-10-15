@@ -23,7 +23,7 @@ export function pluginAsks(plugin: Pick<FoundPlugin, "capabilities" | "source"> 
   if (plugin.runs === false) {
     // A data plugin (D103): looks and checks are numbers and rules Uncut reads; components are
     // templates drawn in the graphics sandbox. Still the user's call, as it changes what they see.
-    return ["It doesn't run a program: it only adds text looks, components and checks, and its components are drawn in a sandbox with no network. Allow it if you want them in Uncut."];
+    return ["It doesn't run a program: it only adds text looks, components, checks and skills (instructions the agent reads), and its components are drawn in a sandbox with no network. Allow it if you want them in Uncut."];
   }
   const asks = [
     plugin.source === "bundled"
@@ -46,8 +46,8 @@ export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabil
 
 /** A plugin's contributions in words for Settings (names), or undefined when it has none. */
 export const contributesOf = (c: Contributions) =>
-  c.looks.length || c.components.length || c.rules.length || c.filters.length || c.shaders?.length
-    ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}), ...(c.shaders?.length ? { shaders: c.shaders.map((x) => x.name) } : {}) }
+  c.looks.length || c.components.length || c.rules.length || c.filters.length || c.shaders?.length || c.skills?.length
+    ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}), ...(c.shaders?.length ? { shaders: c.shaders.map((x) => x.name) } : {}), ...(c.skills?.length ? { skills: c.skills.map((x) => x.title) } : {}) }
     : undefined;
 
 /** A plugin's contributions for the agent's modules_list (ids, names and what each is). */
@@ -57,6 +57,7 @@ export const contributesFor = (c: Contributions) => ({
   checks: c.rules.map((r) => ({ id: r.id, title: r.title, description: r.description, severity: r.severity })),
   ...(c.filters.length ? { filters: c.filters.map((f) => ({ id: f.id, name: f.name, description: f.description, note: `effect.look with look "${f.id}" and its definition as custom (the clip carries it)`, custom: f.look })) } : {}),
   ...(c.shaders?.length ? { shaders: c.shaders.map((x) => shaderForAgent(x)) } : {}),
+  ...(c.skills?.length ? { skills: c.skills.map((x) => ({ name: x.name, description: x.description, note: `skill_read {"name": "${x.name}"} gives its instructions` })) } : {}),
 });
 
 /** A shader effect (D213) as the agent sees it: its params, and how to apply it (Uncut fills in the rest). */

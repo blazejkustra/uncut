@@ -10,16 +10,19 @@ import { EffectsLibrary } from "./Effects.tsx";
 import { GenerateLibrary } from "./Generate.tsx";
 import { TranscriptPanel } from "./Transcript.tsx";
 import { BrandLibrary } from "./Brand.tsx";
+import { SkillsLibrary } from "./Skills.tsx";
 import { TextLibrary } from "./library/TextLibrary.tsx";
 import { ElementsLibrary } from "./library/ElementsLibrary.tsx";
 import { MediaLibrary } from "./library/MediaLibrary.tsx";
 export { mediaMeta, Empty } from "./library/MediaTile.tsx";
 
-export type LibraryTab = "media" | "transcript" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate" | "brand";
+export type LibraryTab = "media" | "transcript" | "text" | "elements" | "audio" | "sfx" | "transitions" | "effects" | "capture" | "generate" | "brand" | "skills";
 
 export function Library({ project, dir, tab, onTab }: { project: Project; dir: string; tab: LibraryTab; onTab?: (tab: LibraryTab) => void }) {
   return tab === "brand" ? (
     <BrandLibrary />
+  ) : tab === "skills" ? (
+    <SkillsLibrary />
   ) : tab === "transcript" ? (
     <TranscriptPanel project={project} dir={dir} />
   ) : tab === "text" ? (

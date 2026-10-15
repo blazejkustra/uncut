@@ -3,7 +3,7 @@ import { type Project, describeOp, type Op } from "@uncut/core";
 import { stepLabel } from "./labels.ts";
 
 /** D184: the tools a "Look only" chat may use: they read, look and point, and change nothing. */
-export const LOOK_TOOLS = ["project_read", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "project_check", "music_list", "library_search", "media_search", "contact_sheet", "ui_show", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "reference_frames", "beat_grid"] as const;
+export const LOOK_TOOLS = ["project_read", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "project_check", "music_list", "library_search", "media_search", "contact_sheet", "ui_show", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "reference_frames", "beat_grid", "skill_read"] as const;
 
 /** D184: more ops than this in one timeline_edit is a big change in "Ask first". */
 export const BIG_EDIT_OPS = 12;

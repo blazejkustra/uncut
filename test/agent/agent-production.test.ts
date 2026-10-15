@@ -417,21 +417,22 @@ test("U7/U17: kits and skills reach every message; brand_read and its files; bra
     assert.equal(added.name, "argent-logo.png");
     assert.ok(existsSync(join(s.data, "brand", "kits", "argent", "argent-logo.png")), "kept in the user's data folder");
     await s.client.ok("brand.saveKit", { kit: { ...kit, logos: { light: added.name } } });
-    await s.client.ok("brand.saveSkill", { skill: { id: "launch-promo", name: "Launch promo 20 s", scope: "project", description: "Hook, demo, end card", body: "- Hook in 2 s\n- End card with the URL" } });
-    const state = await s.client.ok("brand.setActive", { kit: "argent", skills: ["launch-promo"] });
+    await s.client.ok("brand.saveSkill", { skill: { id: "promo-20s", name: "Launch promo 20 s", scope: "project", description: "Hook, demo, end card", body: "- Hook in 2 s\n- End card with the URL" } });
+    const state = await s.client.ok("brand.setActive", { kit: "argent", skills: ["promo-20s"] });
     assert.equal(state.active.kit, "argent");
-    assert.ok(existsSync(join(s.dir, "brand", "skills", "launch-promo.json")) && existsSync(join(s.dir, "brand", "active.json")));
+    assert.ok(existsSync(join(s.dir, "brand", "skills", "promo-20s.json")) && existsSync(join(s.dir, "brand", "active.json")));
     // The message has the kit and the skill; brand_read gives them, and the logo as an image.
     const t = await s.ask("make the promo", [{ tool: "brand_read" }, { tool: "brand_read", args: { file: "argent-logo.png" } }, { text: "ok" }]);
     assert.equal(t.status, "done", t.error);
     const prompt = s.prompts().at(-1)!.prompt;
     assert.match(prompt, /<brand>\nKit "Argent" \(argent, the user's\)\nColours: #0b1d3a background; #f5a623 accent; #ffffff text\nFonts: Inter for headline 700\nLogo on light backgrounds: argent-logo\.png \(/);
-    assert.match(prompt, /Skill "Launch promo 20 s" \(Hook, demo, end card\):\n- Hook in 2 s/);
+    // D232: the skills the project uses by name (skill_read gives their instructions).
+    assert.match(prompt, /Skills this project uses: Launch promo 20 s \(promo-20s\)\./);
     const [read, file] = s.results();
     const kitOut = jsonOf(read!.result);
     assert.equal(kitOut.logos.light.name, "argent-logo.png");
     assert.ok(kitOut.logos.light.path.endsWith("argent-logo.png"));
-    assert.equal(kitOut.skills[0].name, "Launch promo 20 s");
+    assert.deepEqual([kitOut.skills[0].name, kitOut.skills[0].title], ["promo-20s", "Launch promo 20 s"]);
     assert.equal(file!.result.content[1]!.type, "image");
     // The brand colours check: a red title is off-brand, the fix moves it to the kit's nearest.
     const c = await s.ask("check", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Title", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }, { tool: "project_check" }]);

@@ -926,7 +926,7 @@
     },
     {
       "name": "brief_write",
-      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes. It records the video's type (the critic's rubric and the sound limits follow it) and suggests skills; it never turns a skill on by itself: ask the user which to use (ask_user), then pass use, or they pick on the Brief card.",
+      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes. It records the video's type (the critic's rubric and the sound limits follow it) and suggests the skills that fit: read them with skill_read.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1007,16 +1007,7 @@
               "type": "string",
               "maxLength": 64
             },
-            "description": "Skills (ids from <brand>) to suggest for this video, shown on the Brief card for the user to pick. Leave it out and Uncut suggests a set from the type and the brief. Suggesting turns nothing on."
-          },
-          "use": {
-            "type": "array",
-            "maxItems": 8,
-            "items": {
-              "type": "string",
-              "maxLength": 64
-            },
-            "description": "Skill ids to turn on: only ones the user picked on an ask_user card in this turn (its options named by the skills' names); any other is refused."
+            "description": "Skills (names from the system prompt's Skills list) that fit this video. Leave it out and Uncut suggests a set from the type and the brief. Read the ones that fit with skill_read."
           }
         }
       },
@@ -1150,6 +1141,18 @@
         }
       },
       "returns": "the critic's round: scores with evidence, blockers and defects with ids, each claimed fix verified or not, the determinism check and what to do next"
+    },
+    {
+      "name": "skill_read",
+      "description": "Read an installed skill's instructions (D232): a recipe from a plugin (Uncut's own: launch promo, product demo, motion craft, sound design, brand application, make a brand kit and more). The system prompt's Skills list has every skill by name and when it fits; read one before you start a task it fits, then follow every rule in it. The project then uses it: the critic checks its review checklist.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "maxLength": 64, "description": "The skill's name, as in the Skills list (launch-promo, sound-design, …)." }
+        }
+      }
     },
     {
       "name": "brand_read",

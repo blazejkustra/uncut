@@ -18,7 +18,7 @@ import type { McpResult } from "../agent.ts";
 import type { LibraryCtx } from "./library.ts";
 
 export const makeRunTool = (ctx: LibraryCtx) => {
-  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, musicAdd, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser } = ctx;
+  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, musicAdd, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser } = ctx;
 
   const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
     Effect.gen(function* () {
@@ -90,6 +90,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* reviewSubmit(r, v, args);
         case "brand_read":
           return yield* brandRead(v, args);
+        case "skill_read":
+          return yield* skillRead(v, args);
         case "brand_write":
           return yield* brandWrite(r, v, args);
         case "reference_frames":

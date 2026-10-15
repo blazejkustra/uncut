@@ -10,8 +10,33 @@ import type { BeatsResult } from "../analysis/beats.ts";
 /** How long a question or storyboard card waits for the user (they may be thinking it over). */
 export const QUESTION_MS = 15 * 60_000;
 export { REVIEW_PASS, REVIEW_ROUNDS } from "./agentCritic.ts";
-/** Skills' bodies in a message, at most this many characters together (D207: room for a film skill, Motion craft, Sound design and Brand application). */
-export const SKILLS_CHARS = 14000;
+/** A skill's instructions in a message (a /name the user called), at most this many characters (D232). */
+export const SKILL_CHARS = 20000;
+
+/**
+ * D232 (issue #60): the <skill> blocks of a message for the skills the user called with /name: the
+ * whole instructions of each (the user asked for it, so it comes with the message, not a skill_read).
+ */
+export function skillBlocks(skills: ReadonlyArray<Pick<BrandSkill, "id" | "name" | "body">>): string {
+  return skills.map((s) => `<skill name="${s.id}" title="${s.name.replace(/"/g, "'")}">\nThe user called the skill ${s.id} (/${s.id}) for this message: follow its instructions.\n${s.body.slice(0, SKILL_CHARS)}\n</skill>`).join("\n\n");
+}
+
+/** A /name in a message: after a space, a ( or the start, not part of a path (/tmp/x) or a file name. */
+const SKILL_CALL = /(?<![^\s(])\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![\w/.-]*[\w/])/g;
+
+/** D232: the /names in a message that are installed skills, in order, without repeats (a path never is one). */
+export function calledSkills(text: string, names: ReadonlyArray<string>): Array<string> {
+  const known = new Set(names);
+  const out: Array<string> = [];
+  for (const m of text.matchAll(SKILL_CALL)) if (known.has(m[1]!) && !out.includes(m[1]!)) out.push(m[1]!);
+  return out;
+}
+
+/**
+ * D232: the message as claude gets it: each called /name as words ("(skill launch-promo)"), so a
+ * message that starts with one is never read as one of Claude Code's own slash commands.
+ */
+export const skillCallsAsWords = (text: string, called: ReadonlyArray<string>) => (called.length ? text.replace(SKILL_CALL, (m, name: string) => (called.includes(name) ? `(skill ${name})` : m)) : text);
 
 const line = (label: string, value: string | ReadonlyArray<string> | undefined) => {
   const v = Array.isArray(value) ? value.filter(Boolean).join("; ") : typeof value === "string" ? value.trim() : "";
@@ -78,22 +103,14 @@ export function gateRefusal(plan: AgentPlan, gate: BuildGate): string | undefine
  * The <brand> and <plan> blocks of a message: the project's kit and skills (or that there is none
  * and the user's kits by name), the brief, the storyboard and the last review.
  */
-export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly<Record<string, string>>; skills: ReadonlyArray<BrandSkill>; others: ReadonlyArray<{ id: string; name: string }>; available?: ReadonlyArray<Pick<BrandSkill, "id" | "name" | "description">> }, plan: AgentPlan, gate: BuildGate): string {
+export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly<Record<string, string>>; skills: ReadonlyArray<Pick<BrandSkill, "id" | "name">>; others: ReadonlyArray<{ id: string; name: string }> }, plan: AgentPlan, gate: BuildGate): string {
   const parts: Array<string> = [];
   const b: Array<string> = [];
   if (brand.kit) b.push(...kitLines(brand.kit, brand.files));
   else b.push(`No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}.` : " The user has no kits yet."}`);
-  let budget = SKILLS_CHARS;
-  for (const s of brand.skills) {
-    const body = s.body.length > budget ? `${s.body.slice(0, Math.max(0, budget))}…` : s.body;
-    budget -= body.length;
-    b.push(`Skill "${s.name}"${s.description ? ` (${s.description})` : ""}:\n${body}`);
-  }
-  // D207: no skill on yet: what there is, so brief_write's skills can pick (Uncut suggests a set otherwise).
-  if (!brand.skills.length && brand.available?.length) {
-    const own = brand.available.filter((s) => !s.id.startsWith("builtin-"));
-    b.push(`No skills are on for this project. Uncut's: ${brand.available.filter((s) => s.id.startsWith("builtin-")).map((s) => s.id).join(", ")}${own.length ? `; the user's: ${own.map((s) => `${s.id} (${s.name})`).join(", ")}` : ""}. brief_write suggests the ones that fit; only those the user picks are turned on.`);
-  }
+  // D232: the skills this project uses (read with skill_read or called with /name) by name; the system
+  // prompt lists every installed skill, and skill_read gives one's instructions (progressive disclosure).
+  if (brand.skills.length) b.push(`Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow every rule in them (skill_read gives one's instructions again); the critic checks their review checklists.`);
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
   const p: Array<string> = [];
   if (plan.brief) {

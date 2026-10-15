@@ -8,8 +8,8 @@ import type { Project } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
-import { gateOf, planContext } from "../agentPlan.ts";
-import { readBrand, readPlan } from "../../brand/store.ts";
+import { calledSkills, gateOf, planContext, skillBlocks, skillCallsAsWords } from "../agentPlan.ts";
+import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, TOOLS_LINE, playheadLine } from "../agentTools.ts";
 import { turnLimits } from "../agentLimits.ts";
@@ -23,7 +23,8 @@ export const makeSend = (ctx: SpawnCtx) => {
   const { plugins, ensureLoaded, st, config, view, closeSession, spawnSession, persist, publishNow, writeTurn } = ctx;
 
   /** The plugins' tool names now (D97): a session started with other ones is started again. */
-  const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => extra.map((t) => t.name).sort().join(",")));
+  // D232: and the installed skills' names (the system prompt lists them), so installing one starts a new session.
+  const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => `${extra.map((t) => t.name).sort().join(",")}|skills:${plugins.skillsNow().map((x) => x.name).sort().join(",")}`));
 
   const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "auto", images = [], skipStoryboard = false }) =>
     Effect.gen(function* () {
@@ -97,18 +98,30 @@ export const makeSend = (ctx: SpawnCtx) => {
       const dirsKey = [...owner.dirs].sort().join("\n");
       // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
       const skip = access === "auto" && skipStoryboard;
-      const planBlock = yield* Effect.promise(async () => {
+      // D232 (issue #60): a /name in the message calls that skill: its instructions come with the
+      // message and the project uses it from now on (the critic follows it).
+      const { planBlock, skillsBlock, called } = yield* Effect.promise(async () => {
         try {
           owner.plan = await readPlan(v.dir);
-          const all = await readBrand({ dataDir: config.dataDir, projectDir: v.dir });
+          const dirs = { dataDir: config.dataDir, projectDir: v.dir, skills: plugins.skillsNow() };
+          let all = await readBrand(dirs);
+          const called = calledSkills(text, all.skills.map((x) => x.id));
+          if (called.length) {
+            await useSkills(v.dir, called);
+            all = await readBrand(dirs);
+          }
           const kit = all.kits.find((k) => k.id === all.active.kit);
-          return planContext({ kit, files: kit ? (all.files[kit.id] ?? {}) : {}, skills: all.skills.filter((x) => all.active.skills.includes(x.id)), others: all.kits.map((k) => ({ id: k.id, name: k.name })), available: all.skills }, owner.plan, gateOf(owner.plan, skip));
+          return {
+            planBlock: planContext({ kit, files: kit ? (all.files[kit.id] ?? {}) : {}, skills: all.skills.filter((x) => all.active.skills.includes(x.id)), others: all.kits.map((k) => ({ id: k.id, name: k.name })) }, owner.plan, gateOf(owner.plan, skip)),
+            skillsBlock: skillBlocks(called.flatMap((id) => all.skills.filter((x) => x.id === id))),
+            called,
+          };
         } catch (error) {
           console.error(`[uncut] couldn't read the brand kit or plan of ${v.dir}: ${(error as Error).message}`);
-          return "";
+          return { planBlock: "", skillsBlock: "", called: [] as Array<string> };
         }
       });
-      const message = [text, contextBlock(project, pointed), foldersBlock, planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
+      let message = [skillCallsAsWords(text, called), skillsBlock, contextBlock(project, pointed), foldersBlock, planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
 
       // The session to use: the live one when it's still this opening's with the same tools, model
       // and effort (D184: another choice starts another claude that resumes the conversation).
@@ -142,6 +155,8 @@ export const makeSend = (ctx: SpawnCtx) => {
             console.error(`[uncut] couldn't keep the attached images in ${folder}: ${(error as Error).message}`);
           }
         });
+        // D232: their paths too, so a skill can bring a dropped logo into a kit (brand_write logos) or the project.
+        if (imageNames.length) message += `\n\n<attachments>\nThe attached images are also saved as files (brand_write logos and media_import take these paths):\n${imageNames.map((n, i) => `${decoded[i]?.name.slice(0, 80) ?? n}: ${join(folder, n)}`).join("\n")}\n</attachments>`;
       }
       const turn: StoredTurn = {
         id: turnId,

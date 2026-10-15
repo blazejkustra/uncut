@@ -62,15 +62,28 @@ export interface PluginFilter extends FromPlugin {
 /** A shader effect for the Effects tab (D213, `contributes.shaders`): the TypeGPU function's WGSL and its typed params. */
 export type PluginShader = ShaderDef & FromPlugin & { readonly description: string };
 
+/**
+ * A skill (D232, issue #60, `contributes.skills`): a SKILL.md-shaped recipe the agent loads when it
+ * fits (its name and description are in the system prompt; skill_read gives the instructions) or
+ * the user calls with /name in the composer. Names are global: the first plugin with one has it.
+ */
+export interface PluginSkill extends FromPlugin {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly instructions: string;
+}
+
 export interface Contributions {
   readonly looks: ReadonlyArray<PluginLook>;
   readonly components: ReadonlyArray<PluginComponent>;
   readonly rules: ReadonlyArray<PluginRule>;
   readonly filters: ReadonlyArray<PluginFilter>;
   readonly shaders?: ReadonlyArray<PluginShader>;
+  readonly skills?: ReadonlyArray<PluginSkill>;
 }
 
-export const NO_CONTRIBUTIONS: Contributions = { looks: [], components: [], rules: [], filters: [], shaders: [] };
+export const NO_CONTRIBUTIONS: Contributions = { looks: [], components: [], rules: [], filters: [], shaders: [], skills: [] };
 
 /** Every id a built-in look, component or check rule has (contributions can't take one). */
 export const BUILTIN_CONTRIBUTION_IDS: ReadonlySet<string> = new Set([...Object.keys(TEXT_STYLES), ...COMPONENTS.map((c) => c.id), ...CHECK_IDS]);
@@ -106,6 +119,7 @@ type RawContributes = {
   readonly rules?: ReadonlyArray<{ id: string; title: string; description?: string; severity?: CheckSeverity; hint?: string; rule: RuleSpec }>;
   readonly filters?: ReadonlyArray<{ id: string; name: string; description?: string; look: LookDef }>;
   readonly shaders?: ReadonlyArray<{ id: string; name: string; description?: string; source: string; export: string; params: ReadonlyArray<ShaderParam>; wgsl: string }>;
+  readonly skills?: ReadonlyArray<{ name: string; title?: string; description: string; instructions: string }>;
 };
 
 /**
@@ -192,7 +206,17 @@ export function readContributions(
     if (!accept(entry.id, "shader effect")) continue;
     shaders.push({ id: entry.id, name: entry.name, description: entry.description ?? "", params: entry.params, wgsl: entry.wgsl, ...from });
   }
-  return { contributions: { looks, components, rules, filters, shaders }, warnings };
+  // D232: skills aren't namespaced by the plugin's id (the user types /name), so only a name twice in
+  // this plugin is left out here; across plugins the first one with a name has it (mergeContributions).
+  const skills: Array<PluginSkill> = [];
+  for (const entry of raw.skills ?? []) {
+    if (skills.some((x) => x.name === entry.name)) {
+      warnings.push(`Its skill ${entry.name} is left out: it has another skill with that name.`);
+      continue;
+    }
+    skills.push({ name: entry.name, title: entry.title?.trim() || entry.name, description: entry.description, instructions: entry.instructions, ...from });
+  }
+  return { contributions: { looks, components, rules, filters, shaders, skills }, warnings };
 }
 
 /**
@@ -200,10 +224,16 @@ export function readContributions(
  * already has is dropped (ids are owned per plugin id, so this only happens to the same plugin id).
  * The server merges only allowed plugins, so a plugin nobody allowed can't take an id.
  */
+/** D232: every plugin's skills, the first plugin with a name having it. */
+export function mergeSkills(list: ReadonlyArray<Pick<Contributions, "skills">>): Array<PluginSkill> {
+  const names = new Set<string>();
+  return list.flatMap((c) => c.skills ?? []).filter((x) => !names.has(x.name) && (names.add(x.name), true));
+}
+
 export function mergeContributions(list: ReadonlyArray<Contributions>): Contributions {
   const seen = new Set<string>();
   const fresh = <T extends { readonly id: string }>(x: T) => !seen.has(x.id) && (seen.add(x.id), true);
-  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh), filters: list.flatMap((c) => c.filters ?? []).filter(fresh), shaders: list.flatMap((c) => c.shaders ?? []).filter(fresh) };
+  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh), filters: list.flatMap((c) => c.filters ?? []).filter(fresh), shaders: list.flatMap((c) => c.shaders ?? []).filter(fresh), skills: mergeSkills(list) };
 }
 
 // ---- rules ----

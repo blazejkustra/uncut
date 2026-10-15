@@ -1,8 +1,7 @@
 // Issues #42, #44 and #45 (D217) on the packaged app, run invisibly and muted, with the stand-in
 // claude and its scripted critic:
-// - #45: a tutorial's brief suggests skills and turns none on; the Brief card shows the type, the
-//   sound profile and the suggestions as chips: one click adds a skill, one click on its × takes
-//   it off again;
+// - #45: a tutorial's brief suggests skills; the Brief card shows the type, the sound profile and
+//   the suggestions (D232: as plain names, nobody picks skills);
 // - #42: the tutorial's review has no hook score (greyed N/A) and passes without one;
 // - #44: the brief changed to a meme: 16 loud clicks in 8 s are a finding from Uncut's sound check,
 //   not a blocker; the user marks it Intended on the review card and the next round leaves it out.
@@ -49,7 +48,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("issues #42/#44/#45: the brief suggests skills (chips add and remove), a tutorial passes without a hook, a meme's loud clicks are a finding marked Intended", { skip, timeout: 360000 }, async () => {
+test("issues #42/#44/#45: the brief suggests skills (D232: named, not picked), a tutorial passes without a hook, a meme's loud clicks are a finding marked Intended", { skip, timeout: 360000 }, async () => {
   const turns: Array<unknown> = [];
   const nextTurn = (steps: Array<unknown>) => (turns.push(steps), writeFileSync(join(root, "plan.json"), JSON.stringify(turns)));
   const app = await launchApp({
@@ -69,7 +68,6 @@ test("issues #42/#44/#45: the brief suggests skills (chips add and remove), a tu
   };
   const turnsDone = (n: number) => page.waitForFunction((k) => { const t = [...document.querySelectorAll("[data-testid=agent-turn]")]; return t.length >= k && t.at(-1)?.getAttribute("data-status") === "done"; }, { timeout: 90000 }, n);
   // The thread's "latest" jump button can sit over a chip near the bottom: centre it first.
-  const clickChip = async (sel: string) => (await page.$eval(sel, (el) => el.scrollIntoView({ block: "center" })), await page.click(sel));
   const results = () => readFileSync(join(root, "results.jsonl"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
   const reviews = () => page.$$("[data-testid=agent-card][data-type=review]");
   try {
@@ -83,29 +81,23 @@ test("issues #42/#44/#45: the brief suggests skills (chips add and remove), a tu
 
     // ---- #45: a tutorial's brief suggests skills and turns none on ----
     const brief = { film: "Set up Argent in five minutes", type: "tutorial", audience: "React Native devs", duration: "40 s", formats: ["16:9"], assets: ["screen recording of the setup"], visual: "Calm, clear", hardLines: ["Never invent UI"], deliverables: ["16:9 mp4"] };
-    nextTurn([{ tool: "brief_write", args: brief }, { text: "Brief saved. Pick the skills you want on its card." }]);
+    nextTurn([{ tool: "brief_write", args: brief }, { text: "Brief saved." }]);
     await send("make a short tutorial on setting up Argent");
     await turnsDone(1);
     const wrote = JSON.parse(results().find((r) => r.tool === "brief_write").result.content[0].text);
-    assert.deepEqual(wrote.skills, [], "nothing turned on");
+    assert.deepEqual(wrote.skills, [], "nothing used yet");
     const card = "[data-testid=agent-card][data-type=brief]";
     await page.click(`${card} .card-head`);
     await waitFor("[data-testid=brief-skills]");
     const rows = await page.$eval(`${card} [data-testid=agent-brief-rows]`, (el) => (el as HTMLElement).innerText);
     assert.match(rows, /Type\s+Tutorial/);
     assert.match(rows, /Sound\s+Standard: at most 4 effects in any 10 s, 6 dB under the music; too many or too loud is a finding/);
-    assert.equal(await page.$("[data-testid^=brief-skill-on-]"), null, "no skill on");
-    await waitFor("[data-testid=brief-skill-add-builtin-product-demo]");
-    assert.equal(await page.$("[data-testid=brief-skill-add-builtin-motion-craft]"), null, "Motion craft isn't forced on a tutorial");
-    assert.equal(await page.$("[data-testid=brief-skill-add-builtin-sound-design]"), null, "nor Sound design");
+    // D232: the suggested skills as plain names, nothing to pick.
+    assert.match(rows, /Skills\s+Product demo/);
+    assert.ok(!/Motion craft|Sound design/.test(rows), "Motion craft and Sound design aren't suggested for a tutorial");
+    assert.equal(await page.$("[data-testid=brief-skills] button"), null, "no chips to pick");
     await page.$eval(card, (el) => el.scrollIntoView({ block: "start" }));
     await page.screenshot({ path: out("brief-suggested") });
-    // One click adds it, one click on its × takes it off.
-    await clickChip("[data-testid=brief-skill-add-builtin-product-demo]");
-    await waitFor("[data-testid=brief-skill-on-builtin-product-demo]");
-    await page.screenshot({ path: out("brief-skill-on") });
-    await clickChip("[data-testid=brief-skill-on-builtin-product-demo]");
-    await waitFor("[data-testid=brief-skill-add-builtin-product-demo]");
 
     // ---- #42: the tutorial's review: no hook score, passes ----
     nextTurn([
