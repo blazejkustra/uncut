@@ -407,6 +407,9 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .clip.video { background: #1d1d1d; }
 .clip.video .nm, .clip.video .meta { text-shadow: 0 1px 3px #000; }
 .clip .strip { position: absolute; inset: 0; background-repeat: repeat-x; background-size: auto 100%; opacity: 0.85; }
+/* Issue #53: a video clip's filmstrip, one cell per tile at the lane's height (only the cells in view). */
+.clip .filmstrip { overflow: hidden; pointer-events: none; }
+.clip .film-cell { position: absolute; top: 0; bottom: 0; background-repeat: no-repeat; }
 .clip.text { background: #3b2f5c; border-color: #5a4a8a; }
 .clip.audio { background: #17352a; border-color: #24503a; }
 .clip.component { background: #1d3049; border-color: #2c4a70; }
