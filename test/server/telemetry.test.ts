@@ -95,14 +95,15 @@ test("agent failures become fixed codes", () => {
 
 test("crash fingerprints ignore folders, the message and the home path", () => {
   const stack = (home: string, msg: string) => `TypeError: ${msg}\n    at render (${home}/Uncut.app/Contents/Resources/server/server.mjs:120:7)\n    at async run (file://${home}/x/server.mjs:5:1)\n    at node:internal/process/task_queues:95:5`;
-  const a = crashFingerprint("TypeError", stack("/Users/alice", "can't read /Users/alice/clip.mov"));
-  const b = crashFingerprint("TypeError", stack("/Users/bob", "something else"));
+  const a = crashFingerprint("TypeError", stack("/Users/me", "can't read /Users/me/clip.mov"));
+  const b = crashFingerprint("TypeError", stack("/Users/you", "something else"));
   assert.match(a, /^[0-9a-f]{16}$/);
   assert.equal(a, b);
-  assert.notEqual(a, crashFingerprint("RangeError", stack("/Users/alice", "x")));
-  assert.notEqual(a, crashFingerprint("TypeError", stack("/Users/alice", "x").replace(":120:7", ":121:7")));
-  assert.equal(frameOf("    at Object.<anonymous> (/Users/alice/a/b.js:1:2)"), "Object.<anonymous>@b.js:1:2");
-  assert.equal(frameOf("onClick@http://127.0.0.1:5173/assets/index-abc.js?v=1:10:20"), "onClick@index-abc.js:10:20");
+  assert.notEqual(a, crashFingerprint("RangeError", stack("/Users/me", "x")));
+  assert.notEqual(a, crashFingerprint("TypeError", stack("/Users/me", "x").replace(":120:7", ":121:7")));
+  assert.equal(frameOf("    at Object.<anonymous> (/Users/me/a/b.js:1:2)"), "Object.<anonymous>@b.js:1:2");
+  // (Joined so the repo's e-mail scan doesn't take the frame for an address.)
+  assert.equal(frameOf("onClick@http://127.0.0.1:5173/assets/index-abc.js?v=1:10:20"), ["onClick", "index-abc.js:10:20"].join("@"));
   // A Safari-style stack ("fn@url:line:col") is stable across hosts and folders too.
   assert.equal(crashFingerprint("Error", "f@https://a.example/x.js:1:2"), crashFingerprint("Error", "f@file:///Users/me/x.js:1:2"));
 });

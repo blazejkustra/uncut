@@ -315,7 +315,7 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
   // screen, permission states from UNCUT_TEST_MEDIA_ACCESS: a test never opens a real device.
   // No preview proxies (D212) unless a test asks (UNCUT_PROXIES: "on"): no extra ffmpeg runs, original pixels.
   // No telemetry (D223) unless a test asks: a build made with the CI token must not report test runs.
-  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...background, UNCUT_PROXIES: "off", UNCUT_TEST_MEDIA: "fake", UNCUT_TELEMETRY: "off", ...extra, UNCUT_CDP: String(port) };
+  const env: NodeJS.ProcessEnv = { ...(cleanEnv ? {} : process.env), ...background, UNCUT_TELEMETRY: "off", UNCUT_PROXIES: "off", UNCUT_TEST_MEDIA: "fake", ...extra, UNCUT_CDP: String(port) };
   if (extra.UNCUT_DATA_DIR && !firstLaunch && !existsSync(join(extra.UNCUT_DATA_DIR, "settings.json"))) {
     mkdirSync(extra.UNCUT_DATA_DIR, { recursive: true });
     writeFileSync(join(extra.UNCUT_DATA_DIR, "settings.json"), JSON.stringify({ onboarded: true }));
