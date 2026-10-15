@@ -1,4 +1,4 @@
-import { TOKEN_QUERY_PARAM, BRAND_FILE_PATH, AGENT_IMAGE_PATH, THUMB_PATH, RECENT_THUMB_PATH, MEDIA_FILE_PATH, PROXY_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, WAVEFORM_PATH, GRAPHIC_PATH } from "@uncut/contracts";
+import { TOKEN_QUERY_PARAM, BRAND_FILE_PATH, AGENT_IMAGE_PATH, THUMB_PATH, RECENT_THUMB_PATH, MEDIA_FILE_PATH, PROXY_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, WAVEFORM_PATH, FILMSTRIP_PATH, GRAPHIC_PATH } from "@uncut/contracts";
 import { serverConnection } from "./server.ts";
 import type { AppStateShape } from "./types.ts";
 import { state } from "./core.ts";
@@ -47,6 +47,8 @@ export const folderSoundUrl = (id: string) => serverUrl(LIBRARY_FOLDER_PATH, id)
 export const libraryPreviewUrl = (source: string, id: string) => serverUrl(LIBRARY_PREVIEW_PATH, `${source}/${id}`);
 /** The peaks of a media item's sound, made and cached by the server (D54). */
 export const waveformUrl = (id: string, path?: string) => serverUrl(WAVEFORM_PATH, id, path);
+/** Issue #53: a video's filmstrip sprite for the timeline, made and cached by the server. */
+export const filmstripUrl = (id: string, path?: string) => serverUrl(FILMSTRIP_PATH, id, path);
 /** A graphic item's document (D78), by its src ("graphics/x.html"), for the preview's sandboxed iframe. */
 // Its URL carries the graphic-only secret from server.hello, never the server token: the graphic's
 // script can read its own URL. No secret yet (hello not answered): no URL.

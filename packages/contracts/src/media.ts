@@ -53,6 +53,27 @@ export type ProxyState = typeof ProxyState.Type;
 // { version, rate, seconds, peaks } where peaks is base64 of one byte per 1/rate s (the loudest
 // sample in it, 0–255 for 0–full scale). Made once per file and cached in the project's .cache/.
 export const WAVEFORM_PATH = "/media/waveform";
+// GET /media/filmstrip/<media id>?token=…: a video's filmstrip for the timeline (issue #53), one
+// JPEG sprite of frames taken every `interval` s from 0, FILMSTRIP_TILE_H px high, laid out
+// `cols` to a row; the layout is in the x-uncut-filmstrip-layout header (FilmstripLayout as JSON).
+// Made once per file (from its proxy when there is one) and cached in the project's .cache/.
+export const FILMSTRIP_PATH = "/media/filmstrip";
+/** The height of a filmstrip tile (px): twice a timeline lane's picture, for Retina. */
+export const FILMSTRIP_TILE_H = 64;
+/** Where the tiles of a filmstrip sprite are: tile n (time n × interval) is at column n % cols, row ⌊n / cols⌋. */
+export interface FilmstripLayout {
+  readonly version: 1;
+  /** Seconds between tiles. */
+  readonly interval: number;
+  /** Tiles that hold a frame (the rest of the last row is padding). */
+  readonly count: number;
+  readonly cols: number;
+  readonly rows: number;
+  readonly tileWidth: number;
+  readonly tileHeight: number;
+  /** The media's length (s) the strip was made for. */
+  readonly seconds: number;
+}
 // GET /media/graphic/<file name>?token=…: a graphic item's document (D78) for the preview's
 // sandboxed iframe: the open project's graphics/<file name>, only if one of its graphic items uses
 // it, wrapped by core graphicDocument and served with its strict CSP (inline script, no network).
