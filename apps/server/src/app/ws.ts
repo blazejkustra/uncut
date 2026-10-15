@@ -165,6 +165,9 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
         looks: c.looks,
         components: c.components.map(({ id, name, description, plugin, pluginName, params, defaults }) => ({ id, name, description, plugin, pluginName, params, defaults })),
         rules: c.rules,
+        // D136 colour looks and D213 shader effects (their WGSL and typed params: data the renderer draws).
+        filters: c.filters.map(({ id, name, description, plugin, pluginName, look }) => ({ id, name, description, plugin, pluginName, look })),
+        shaders: (c.shaders ?? []).map(({ id, name, description, plugin, pluginName, params, wgsl }) => ({ id, name, description, plugin, pluginName, params, wgsl })),
       })),
     [RPC_METHODS.pluginsCheck]: () =>
       Effect.gen(function* () {

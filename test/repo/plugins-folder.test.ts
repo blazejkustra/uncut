@@ -113,3 +113,56 @@ test("pnpm plugin:new makes a plugin that passes plugin:check and answers its to
   }
   assert.ok(!existsSync(join(REPO, "plugins/catalog/acme-promo")), "nothing written into the repo");
 });
+
+// D213: shader effect plugins. Their .ts sources are TypeGPU, resolved by plugin:check in a
+// locked-down Node run; the manifest's wgsl must be what they resolve to.
+test("D213: the shader plugins and the shader template pass, their WGSL is what their TypeGPU resolves to", async () => {
+  const { checkPluginShaders } = await import("../../scripts/plugin-shaders.ts");
+  const { SHADER_TEMPLATE_DIR, SHADER_TEMPLATE_ID } = await import("../../scripts/plugin-gate.ts");
+  assert.ok(catalog.some((d) => d.endsWith("typegpu-effects")));
+  assert.ok(!catalog.some((d) => d.endsWith("_shader-template")), "the shader template isn't a catalog plugin");
+  for (const dir of [...bundled, ...catalog]) assert.deepEqual(checkPluginShaders(dir), [], dir);
+  assert.deepEqual(checkPluginShaders(SHADER_TEMPLATE_DIR), []);
+  assert.deepEqual(checkPluginFolder(SHADER_TEMPLATE_DIR, await gateContext(), { template: true, templateId: SHADER_TEMPLATE_ID }), []);
+});
+
+test("D213: the gate and plugin:check catch a shader plugin's mistakes; --write fixes a stale wgsl; plugin:new --shader passes", async () => {
+  const { checkPluginShaders } = await import("../../scripts/plugin-shaders.ts");
+  const { pluginNew } = await import("../../scripts/plugin-new.ts");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-gate-shaders-")));
+  try {
+    const made = pluginNew(["acme.glow", "--shader", "--plugins", join(root, "plugins")]);
+    assert.equal(made.shader, true);
+    const dir = made.dir;
+    assert.deepEqual(checkPluginShaders(dir), []);
+    assert.deepEqual(checkPluginFolder(dir, await gateContext()), []);
+    const manifest = JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8"));
+    assert.equal(manifest.contributes.shaders[0].id, "acme.glow.duotone");
+    assert.match(readFileSync(join(dir, "effect.ts"), "utf8"), /^\/\/ Acme glow \(acme\.glow\), started from Uncut's shader effect template\./);
+    // The source changed but the manifest didn't: reported, then fixed by --write.
+    const source = join(dir, "effect.ts");
+    writeFileSync(source, readFileSync(source, "utf8").replace("0.04 * p.shimmer", "0.08 * p.shimmer"));
+    assert.match(checkPluginShaders(dir).join("\n"), /acme\.glow\.duotone's wgsl isn't what effect\.ts \(duotone\) resolves to: run pnpm plugin:check --write/);
+    assert.deepEqual(checkPluginShaders(dir, { write: true }), []);
+    assert.match(JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8")).contributes.shaders[0].wgsl, /0\.08 \* p\.shimmer/);
+    assert.deepEqual(checkPluginShaders(dir), []);
+    // A loop, a struct that doesn't match the params, a missing export, an import of anything else,
+    // a file that tries to read outside, and an extra .ts in a data plugin.
+    writeFileSync(source, readFileSync(source, "utf8").replace("let c = frame(uv).rgb;", "loop { break; } let c = frame(uv).rgb;"));
+    assert.match(checkPluginShaders(dir).join("\n"), /\(effect\.ts, duotone\): Shaders can't use loop/);
+    const m2 = JSON.parse(readFileSync(join(dir, "uncut.module.json"), "utf8"));
+    m2.contributes.shaders[0].params = m2.contributes.shaders[0].params.slice(1);
+    m2.contributes.shaders.push({ ...m2.contributes.shaders[0], id: "acme.glow.ghost", export: "ghost" });
+    writeFileSync(join(dir, "uncut.module.json"), JSON.stringify(m2));
+    const said = checkPluginShaders(dir).join("\n");
+    assert.match(said, /params struct must be d\.struct\(\{ dark: d\.vec3f, light: d\.vec3f, shimmer: d\.f32 \}\)/);
+    assert.match(said, /acme\.glow\.ghost \(effect\.ts, ghost\): it doesn't export ghost/);
+    writeFileSync(source, `import { readFileSync } from "node:fs";\nexport const x = readFileSync("/etc/hosts", "utf8");\n${readFileSync(source, "utf8")}`);
+    assert.match(checkPluginFolder(dir, await gateContext()).join("\n"), /effect\.ts imports node:fs: a shader effect's source imports only typegpu/);
+    assert.match(checkPluginShaders(dir).join("\n"), /importing it failed: .*(only typegpu|not node:fs)/);
+    writeFileSync(join(dir, "extra.ts"), "export const y = 1;\n");
+    assert.match(checkPluginFolder(dir, await gateContext()).join("\n"), /a data plugin is its uncut\.module\.json alone, no code \(and the \.ts sources of its shader effects\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

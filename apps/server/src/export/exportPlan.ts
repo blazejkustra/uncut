@@ -112,6 +112,9 @@ import {
   type Project,
   type Track,
   clipFx,
+  clipShader,
+  fxSkips,
+  type ShaderUse,
   colourLut,
   fitRect,
   fxBox,
@@ -190,6 +193,11 @@ export interface LayerFx {
   readonly k: number;
   /** The colour table (core colourLut), when the colour changes. */
   readonly lut?: ColourLut;
+  /**
+   * A shader effect (D213), drawn first, on the picture at w×h: the exporter draws its frames with
+   * the rasteriser's WebGPU (shadeLayers) and the layer's picture comes from them (CommandOptions.shaded).
+   */
+  readonly shader?: ShaderUse;
 }
 
 /** A clip's box for each frame from f0 (absent: the plain full frame, drawn as before D75). */
@@ -857,14 +865,16 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         });
         // Picture effects (D136) run before the box, so a clip with them always has one.
         const effects = clipFx(item);
-        const picture = needsPicturePass(effects) || effects?.blur !== undefined;
+        // A shader effect (D213) is a picture pass too (SVG stills take none, D138).
+        const shader = fxSkips(media) ? undefined : clipShader(item);
+        const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;
         const plainAt = boxes.map((b) => !picture && isPlainBox(b, project.canvas));
         const rest = baseBox(item, project.canvas, media.probe);
         const placements = boxes.map((b) => placementOf(b, kx, ky, rest));
         const geometry = plainAt.every(Boolean) ? {} : { geometry: { frames: placements } };
         const alpha = boxes.some((b) => b.opacity !== 1) ? { alpha: boxes.map((b) => b.opacity) } : {};
         let layerFx: { fx?: LayerFx } = {};
-        if (picture && effects) {
+        if (picture && (effects || shader)) {
           // The size the effects work at, as the preview's (core fxPictureSize): the picture's fit before
           // any zoom (a scale, keys, a pulse or a transition zoom scale it after); its placement's size
           // when it's never zoomed (the same within a pixel, so the box's own scale passes it through).
@@ -872,7 +882,7 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
           const fit = fitRect(rest, boxes[0]!.fit, media.probe);
           const w = fixed ? placements[0]!.cw : Math.max(1, Math.round(fit.w * kx));
           const h = fixed ? placements[0]!.ch : Math.max(1, Math.round(fit.h * ky));
-          layerFx = { fx: { fx: effects, start, w, h, k: ky, ...(effects.colour ? { lut: colourLut(effects.colour) } : {}) } };
+          layerFx = { fx: { fx: effects ?? {}, start, w, h, k: ky, ...(effects?.colour ? { lut: colourLut(effects.colour) } : {}), ...(shader ? { shader } : {}) } };
         }
         const layer: VisualLayer =
           media.kind === "image"
@@ -1234,6 +1244,8 @@ export interface CommandOptions {
   readonly output: string;
   /** The colour tables (D136) by key (core colourLut): .cube files the exporter wrote. */
   readonly luts?: ReadonlyMap<string, string> | undefined;
+  /** Shaded layers' pictures (D213): the file of the frames the rasteriser drew, by layer. */
+  readonly shaded?: ReadonlyMap<VisualLayer, string> | undefined;
   /** A soft subtitle track (D105): an .srt file muxed as mov_text with an ISO 639-2 language tag. */
   readonly subtitles?: { readonly file: string; readonly language: string; /** Shown by default (when the captions aren't burned in). */ readonly show?: boolean | undefined } | undefined;
 }
@@ -1415,6 +1427,59 @@ function placeAt(layer: VisualLayer, frames: ReadonlyArray<Placement>, fps: numb
 }
 
 /** The ffmpeg graph and arguments for the whole export (the graph goes in a file: -/filter_complex). */
+/**
+ * A video layer's picture as the export decodes it (D38, D94, D75 review): its input arguments and
+ * the filters from `[index:v:0]` to its frames on the layer's 1/fps grid (frames from f0). Shared
+ * with the shader pass (D213), which decodes the same frames for the rasteriser.
+ */
+export function videoSource(layer: Extract<VisualLayer, { kind: "video" }>, index: number, opts: Pick<CommandOptions, "caps" | "untagged">, W: number, H: number, fps: number): { readonly inputs: Array<string>; readonly picked: Array<string> } {
+  const frames = layer.f1 - layer.f0;
+  const geo = layer.geometry?.frames;
+  // Seek a second early and let fps pick, for each frame, the last source frame that starts at
+  // or before its source time (round=up), like the preview's <video> (D38).
+  // A held clip (D94) seeks up to 2 s early, so a probe that overstates the stream still leaves frames to clone.
+  const pre = layer.cycle ? 0 : Math.min(layer.last !== undefined ? 2 : 1, layer.source);
+  const length = layer.cycle ? layer.cycle.length / fps + 1 : pre + (frames / fps) * layer.speed + 1;
+  const inputs = [...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...(layer.cycle ? [] : ["-ss", n(layer.source - pre)]), "-t", n(length), "-i", layer.file];
+  const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
+  // A held clip (D94) shows its media's last frame for the rest of its length: the decoded frames
+  // are padded with clones of the last one (before fps picks, so even a slice that starts at or
+  // past the stream's end has a frame to show).
+  const hold = layer.last !== undefined && !layer.cycle ? [`tpad=stop_mode=clone:stop_duration=${n(pre + (frames / fps) * layer.speed + 1)}`] : [];
+  let picked = [decoded, ...hold, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${frames}`];
+  if (layer.cycle) {
+    // The media's frames once, made only as large as they're drawn, then repeated from `offset`.
+    const { length: L, offset } = layer.cycle;
+    const shrink = geo
+      ? `scale=w=${Math.max(...geo.map((p) => p.cw))}:h=${Math.max(...geo.map((p) => p.ch))}`
+      : `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
+    picked = [decoded, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${L}`, `${shrink}:out_color_matrix=bt709:out_range=tv`, `loop=loop=-1:size=${L}:start=0`, `trim=start_frame=${offset}:end_frame=${offset + frames}`, `settb=1/${fps}`, "setpts=N"];
+  }
+  return { inputs, picked };
+}
+
+/**
+ * The ffmpeg arguments that decode a shaded layer's picture (D213) as the export would show it,
+ * made at the effects' size (fxGraph's first step, in 8-bit RGBA), raw to stdout: one
+ * w × h × 4 byte frame for each of the layer's frames.
+ */
+export function shaderSourceArgs(layer: VisualLayer, opts: Pick<CommandOptions, "caps" | "untagged">, W: number, H: number, fps: number): Array<string> {
+  if ((layer.kind !== "video" && layer.kind !== "image") || !layer.fx) throw new Error(`${layer.item.id} has no picture to shade`);
+  const frames = layer.f1 - layer.f0;
+  const size = `scale=w=${layer.fx.w}:h=${layer.fx.h}:out_range=pc,format=rgba`;
+  let inputs: Array<string>;
+  let chain: Array<string>;
+  if (layer.kind === "video") {
+    const source = videoSource(layer, 0, opts, W, H, fps);
+    inputs = source.inputs;
+    chain = [...source.picked, size];
+  } else {
+    inputs = ["-f", "image2", "-pattern_type", "none", "-i", layer.file];
+    chain = [`[0:v:0]${size}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`, "setpts=N"];
+  }
+  return ["-hide_banner", "-nostdin", "-v", "error", ...inputs, "-filter_complex", `${chain.join(",")}[out]`, "-map", "[out]", "-frames:v", String(frames), "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"];
+}
+
 export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs: Array<string>; graph: string; outputArgs: Array<string> } {
   const { width: W, height: H, fps } = plan;
   const inputs: Array<string> = ["-i", opts.background];
@@ -1431,27 +1496,18 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
     const opacity = alphaFilters(layer, k, fps);
     const geo = layer.geometry?.frames;
     let chain: Array<string>;
-    if (layer.kind === "video") {
-      // Seek a second early and let fps pick, for each frame, the last source frame that starts at
-      // or before its source time (round=up), like the preview's <video> (D38).
-      // A held clip (D94) seeks up to 2 s early, so a probe that overstates the stream still leaves frames to clone.
-      const pre = layer.cycle ? 0 : Math.min(layer.last !== undefined ? 2 : 1, layer.source);
-      const length = layer.cycle ? layer.cycle.length / fps + 1 : pre + (frames / fps) * layer.speed + 1;
-      inputs.push(...(opts.caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...(layer.cycle ? [] : ["-ss", n(layer.source - pre)]), "-t", n(length), "-i", layer.file);
-      const decoded = `[${index}:v:0]${untaggedFilter(opts.untagged?.get(layer.file))}setpts=(PTS-${n(pre + 0.0001)}/TB)/${n(layer.speed)}`;
-      // A held clip (D94) shows its media's last frame for the rest of its length: the decoded frames
-      // are padded with clones of the last one (before fps picks, so even a slice that starts at or
-      // past the stream's end has a frame to show).
-      const hold = layer.last !== undefined && !layer.cycle ? [`tpad=stop_mode=clone:stop_duration=${n(pre + (frames / fps) * layer.speed + 1)}`] : [];
-      let picked = [decoded, ...hold, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${frames}`];
-      if (layer.cycle) {
-        // The media's frames once, made only as large as they're drawn, then repeated from `offset`.
-        const { length: L, offset } = layer.cycle;
-        const shrink = geo
-          ? `scale=w=${Math.max(...geo.map((p) => p.cw))}:h=${Math.max(...geo.map((p) => p.ch))}`
-          : `scale=w=${W}:h=${H}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
-        picked = [decoded, `fps=${fps}:start_time=0:round=up`, `trim=end_frame=${L}`, `${shrink}:out_color_matrix=bt709:out_range=tv`, `loop=loop=-1:size=${L}:start=0`, `trim=start_frame=${offset}:end_frame=${offset + frames}`, `settb=1/${fps}`, "setpts=N"];
-      }
+    if ((layer.kind === "video" || layer.kind === "image") && layer.fx?.shader) {
+      const shaded = opts.shaded?.get(layer);
+      // A shader effect (D213): the picture is the frames the rasteriser's WebGPU drew (shadeLayers,
+      // at the effects' size), then the other picture effects and the box as for any clip.
+      if (!shaded || !geo) throw new Error(`no shader frames for ${layer.item.id}`);
+      inputs.push("-i", shaded);
+      graph.push(`[${index}:v:0]trim=end_frame=${frames},settb=1/${fps},setpts=N[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));
+      chain = [`[q${k}]setpts=PTS-STARTPTS+${layer.f0}`, ...fades, ...opacity];
+    } else if (layer.kind === "video") {
+      const source = videoSource(layer, index, opts, W, H, fps);
+      inputs.push(...source.inputs);
+      const picked = source.picked;
       if (geo && layer.fx) {
         // Picture effects (D136) on the picture, then its box.
         graph.push(`${picked.join(",")}[e${k}]`, ...fxGraph(layer.fx, `e${k}`, `p${k}`, fps, layer.f0, opts.luts), ...boxGraph(geo, `p${k}`, `q${k}`, fps));

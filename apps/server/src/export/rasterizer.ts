@@ -26,7 +26,7 @@ export function rasterizerCommand(
   // A headless Linux server (D106): Chromium keeps captured frames in /dev/shm, which Docker caps at
   // 64 MB, and a 1080p export's captures then fail ("UnknownVizError", the GPU process gone). The
   // switch puts them in the temp folder instead.
-  const render = (runtime.platform ?? process.platform) === "linux" ? ["--uncut-render", "--disable-dev-shm-usage"] : ["--uncut-render"];
+  const render = [...((runtime.platform ?? process.platform) === "linux" ? ["--uncut-render", "--disable-dev-shm-usage"] : ["--uncut-render"]), ...(env.UNCUT_TEST_NO_GPU === "1" ? ["--uncut-no-gpu"] : [])];
   if (env.UNCUT_RENDER_BIN) return { bin: env.UNCUT_RENDER_BIN, args: [...(env.UNCUT_RENDER_ENTRY ? [env.UNCUT_RENDER_ENTRY] : []), ...render] };
   const entry = env.UNCUT_RENDER_ENTRY || besideServer("../../desktop/dist/main.cjs");
   if (!existsSync(entry)) return { problem: `Can't draw text for the export: ${entry} isn't built (pnpm build).` };
@@ -45,7 +45,11 @@ export function rasterizerCommand(
 /** Draw `html` (with `css`) on a transparent width×height page, or a frame of a graphic's document (D78: render(t, info) called), and save it to `out`. */
 export type RasterJob =
   | { readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string }
-  | { readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string };
+  | { readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string }
+  /** A shader effect's frame (D213): `input` a width×height RGBA file, `out` .rgba or .png; "no-webgpu: <why>" without WebGPU. */
+  | { readonly kind: "shader"; readonly width: number; readonly height: number; readonly code: string; readonly frame: ReadonlyArray<number>; readonly params?: ReadonlyArray<number>; readonly input: string; readonly out: string; readonly name?: string }
+  /** Whether WebGPU works there: fails with "no-webgpu: <why>" when it doesn't. */
+  | { readonly kind: "shader-probe" };
 
 export interface Rasterizer {
   /** Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). */

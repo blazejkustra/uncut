@@ -34,6 +34,8 @@ import { Transport } from "./Transport.tsx";
 import { useViewport } from "./viewport.ts";
 import { clipFx, fxOverlayInner, fxPictureSize, fxSkips, hasOverlay, needsPicturePass, visibleRect, type ClipFx } from "@uncut/core/fx";
 import { FxRenderer } from "./fx.ts";
+import { clipShader, shaderTime, type ShaderUse } from "@uncut/core/shaders";
+import { ShaderCanvas, shaderProblem, whenRunner } from "./shader.ts";
 import { EFFECT_DRAG_TYPE, setDraggedEffect } from "../timeline/dnd.ts";
 import { openMenu } from "../timeline/ContextMenu.tsx";
 import { copySelection, deleteSelection, duplicate } from "../editor/keys.ts";
@@ -187,6 +189,11 @@ class Compositor {
   private readonly fxOverlay = new Map<string, { el: HTMLDivElement; html: string }>();
   private readonly fxPool: Array<FxRenderer> = [];
   private fxBroken = false;
+  // Shader effects (D213): a WebGPU canvas per clip that has one, and the "not drawn here" badges.
+  private readonly shaderCanvas = new Map<string, ShaderCanvas>();
+  private readonly shaderOf = new Map<string, { key: string; use: ShaderUse | undefined }>();
+  private readonly shaderBadge = new Map<string, HTMLDivElement>();
+  private readonly offRunner: () => void;
   private graphicSeq = 0;
   private textKey = "";
   // The text being edited in place: hidden while the editor sits over it.
@@ -207,12 +214,16 @@ class Compositor {
     this.mediaLayer = mediaLayer;
     this.textLayer = textLayer;
     this.unsubscribe = playback.subscribe(() => this.render());
+    // Shader effects (D213) draw once the WebGPU runner is known (or the badge says why not).
+    this.offRunner = whenRunner(() => this.render());
     playback.setFollower((f) => this.follow(f));
     setCurrentMix(this.mix);
   }
 
   destroy() {
     this.unsubscribe();
+    this.offRunner();
+    for (const id of [...this.shaderCanvas.keys()]) this.dropShader(id);
     playback.setFollower(undefined);
     for (const id of [...this.els.keys()]) this.drop(id);
     for (const r of this.fxPool.splice(0)) r.dispose();
@@ -265,6 +276,7 @@ class Compositor {
 
   /** A clip's effects canvas and overlay off the canvas (its picture element shown again). */
   private dropFx(id: string) {
+    this.dropShader(id);
     if (this.fxCanvas.has(id)) {
       this.releaseFx(id);
       const el = this.els.get(id);
@@ -272,6 +284,73 @@ class Compositor {
     }
     this.fxOverlay.get(id)?.el.remove();
     this.fxOverlay.delete(id);
+  }
+
+  /** Whether a clip's picture is drawn by a canvas of ours (effects D136, a shader D213): a new frame needs a render. */
+  private drawsPicture(id: string) {
+    return this.fxCanvas.has(id) || this.shaderCanvas.has(id);
+  }
+
+  /** A clip's shader canvas and badge off the canvas. */
+  private dropShader(id: string) {
+    this.shaderCanvas.get(id)?.dispose();
+    this.shaderCanvas.delete(id);
+    this.shaderBadge.get(id)?.remove();
+    this.shaderBadge.delete(id);
+  }
+
+  /** A clip's shader effect (D213), remade only when its effects change. */
+  private shaderUseOf(item: Item): ShaderUse | undefined {
+    const key = item.effects?.length ? JSON.stringify(item.effects) : "";
+    const known = this.shaderOf.get(item.id);
+    if (known && known.key === key) return known.use;
+    const use = key ? clipShader(item) : undefined;
+    this.shaderOf.set(item.id, { key, use });
+    return use;
+  }
+
+  /**
+   * A clip's shader effect (D213): drawn into its WebGPU canvas at the effects' size, which then is
+   * the picture (shown, or the source of the other picture effects). Without WebGPU: a badge on the
+   * clip saying it isn't drawn here and that the export will refuse.
+   */
+  private drawShader(item: Item, el: MediaEl, wrap: HTMLDivElement, use: ShaderUse | undefined, size: { w: number; h: number }, t: number): HTMLCanvasElement | undefined {
+    if (!use) {
+      if (this.shaderCanvas.has(item.id) || this.shaderBadge.has(item.id)) this.dropShader(item.id);
+      return undefined;
+    }
+    const problem = shaderProblem();
+    let badge = this.shaderBadge.get(item.id);
+    if (problem) {
+      this.shaderCanvas.get(item.id)?.dispose();
+      this.shaderCanvas.delete(item.id);
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "pv-shader-badge";
+        badge.dataset.shaderBadge = item.id;
+        this.shaderBadge.set(item.id, badge);
+      }
+      // Sized in canvas px, so it reads the same at any preview size.
+      badge.style.fontSize = `${Math.max(12, Math.round((this.project?.canvas.height ?? 1080) / 36))}px`;
+      badge.textContent = `${use.def.name} isn't drawn here: ${problem.replace(/\.$/, "")}. The export needs WebGPU too.`;
+      if (badge.parentElement !== wrap) wrap.append(badge);
+      return undefined;
+    }
+    if (badge) {
+      badge.remove();
+      this.shaderBadge.delete(item.id);
+    }
+    let s = this.shaderCanvas.get(item.id);
+    if (!s) {
+      s = new ShaderCanvas();
+      s.canvas.className = "pv-fx-canvas";
+      s.canvas.dataset.shader = item.id;
+      this.shaderCanvas.set(item.id, s);
+      el.after(s.canvas);
+    }
+    const ready = el instanceof HTMLVideoElement ? el.readyState >= 2 : el.complete && el.naturalWidth > 0;
+    const ok = ready && s.render(el, use, size.w, size.h, t, () => this.render());
+    return ok || s.drawn ? s.canvas : undefined;
   }
 
   /** A clip's effects canvas off the canvas, its renderer kept for the next clip (a few: a context and shaders each). */
@@ -305,6 +384,22 @@ class Compositor {
     const fx = fxSkips(media) ? undefined : this.effectsOf(item);
     const picture = !this.fxBroken && needsPicturePass(fx);
     let shown: HTMLElement = el;
+    // A shader effect (D213) runs first, on the picture; its canvas is then the picture.
+    const use = fxSkips(media) ? undefined : this.shaderUseOf(item);
+    const shaded = this.drawShader(item, el, wrap, use, fxPictureSize(box, media?.probe), shaderTime(frame, start, fps));
+    const shaderCanvas = this.shaderCanvas.get(item.id)?.canvas;
+    if (shaderCanvas) {
+      setStyle(shaderCanvas, "left", el.style.left);
+      setStyle(shaderCanvas, "top", el.style.top);
+      setStyle(shaderCanvas, "width", el.style.width);
+      setStyle(shaderCanvas, "height", el.style.height);
+      shaderCanvas.style.opacity = el.style.opacity;
+      shaderCanvas.style.visibility = shaded && !picture ? "" : "hidden";
+    }
+    if (shaded) {
+      el.style.visibility = "hidden";
+      shown = shaded;
+    }
     if (picture && fx) {
       let r = this.fxCanvas.get(item.id);
       if (!r) {
@@ -329,15 +424,16 @@ class Compositor {
       c.style.opacity = el.style.opacity;
       const size = fxPictureSize(box, media?.probe);
       const ready = el instanceof HTMLVideoElement ? el.readyState >= 2 : el.complete && el.naturalWidth > 0;
-      const ok = ready && r.render(el, fx, size.w, size.h, (Math.floor(frame) - start) / fps, 1, this.fxOf.get(item.id)?.key);
+      const ok = ready && r.render(shaded ?? el, fx, size.w, size.h, (Math.floor(frame) - start) / fps, 1, shaded ? undefined : this.fxOf.get(item.id)?.key);
       // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
       const drawn = ok || (r.drawn && !r.lost);
-      el.style.visibility = drawn ? "hidden" : "";
+      el.style.visibility = drawn || shaded ? "hidden" : "";
       c.style.visibility = drawn ? "" : "hidden";
+      if (shaded) shaded.style.visibility = drawn ? "hidden" : "";
       if (drawn) shown = c;
     } else if (this.fxCanvas.has(item.id)) {
       this.releaseFx(item.id);
-      el.style.visibility = "";
+      el.style.visibility = shaded ? "hidden" : "";
     }
     // Blur (an effect) on what's shown, as the export blurs the picture before its box.
     const blur = fx?.blur ? `blur(${px(fx.blur)})` : "";
@@ -386,7 +482,7 @@ class Compositor {
       el.alt = "";
       // CORS mode (as the <video>), so a look's WebGL pass may read it (D136).
       el.crossOrigin = "anonymous";
-      el.addEventListener("load", () => this.fxCanvas.has(item.id) && this.render());
+      el.addEventListener("load", () => this.drawsPicture(item.id) && this.render());
     } else {
       const video = document.createElement("video");
       // Muted until the mix routes its sound (a clip with sound); CORS mode so Web Audio may hear it.
@@ -401,10 +497,10 @@ class Compositor {
           wanted.set(video, want);
           video.currentTime = want;
         } else wanted.delete(video);
-        // A paused clip with effects (D136) draws the frame the seek landed on.
-        if (this.fxCanvas.has(item.id)) this.render();
+        // A paused clip with effects (D136) or a shader (D213) draws the frame the seek landed on.
+        if (this.drawsPicture(item.id)) this.render();
       });
-      video.addEventListener("loadeddata", () => this.fxCanvas.has(item.id) && this.render());
+      video.addEventListener("loadeddata", () => this.drawsPicture(item.id) && this.render());
       el = video;
     }
     el.dataset.item = item.id;

@@ -105,6 +105,10 @@ if (mediaTest) for (const name of TEST_MEDIA_SWITCHES) app.commandLine.appendSwi
 // D210: this Mac's sound in a screen take (getDisplayMedia's loopback audio; Core Audio taps on 14.2+).
 else if (process.platform === "darwin") app.commandLine.appendSwitch("enable-features", SYSTEM_AUDIO_FEATURES);
 
+// Tests of the no-WebGPU path (D213), only with UNCUT_CDP: no GPU at all, as on a Mac without a
+// usable one (the server's rasteriser gets the same through UNCUT_TEST_NO_GPU).
+if (process.env.UNCUT_CDP && process.env.UNCUT_TEST_NO_GPU === "1") app.commandLine.appendSwitch("disable-gpu");
+
 // __dirname is apps/desktop/dist in dev and app.asar/dist when packaged.
 const repoRoot = path.resolve(__dirname, "../../..");
 const resources = app.isPackaged

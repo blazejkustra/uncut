@@ -464,7 +464,7 @@ function BrowsePlugins({ offline, onClose }: { offline: boolean; onClose: () => 
   }, [plugins]);
   const q = query.trim().toLowerCase();
   const all = pluginCatalog?.plugins ?? [];
-  const shown = all.filter((e) => !q || [e.id, e.name, e.description, e.kind, ...(e.contributes ? [...e.contributes.looks, ...e.contributes.components, ...e.contributes.rules] : [])].some((v) => v.toLowerCase().includes(q)));
+  const shown = all.filter((e) => !q || [e.id, e.name, e.description, e.kind, ...(e.contributes ? [...e.contributes.looks, ...e.contributes.components, ...e.contributes.rules, ...(e.contributes.shaders ?? [])] : [])].some((v) => v.toLowerCase().includes(q)));
   const busy = offline || !!pluginInstalling;
   return (
     <div className="wiz-check plugin-browse" data-testid="plugin-browse-panel">
@@ -588,7 +588,7 @@ function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void
 
 /** What a plugin adds (D103), in words: "Text looks: Soft card. Components: Corner sticker. Checks: …". */
 const addsLine = (c: NonNullable<PluginInfo["contributes"]>) =>
-  [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : ""].filter(Boolean).join(". ");
+  [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : "", c.filters?.length ? `Filters: ${c.filters.join(", ")}` : "", c.shaders?.length ? `Shader effects: ${c.shaders.join(", ")}` : ""].filter(Boolean).join(". ");
 
 /** Where a plugin came from, in words (the approval dialog and the row's tooltip). */
 const originLines = (p: PluginInfo): Array<[string, string]> => {

@@ -21,6 +21,19 @@ await build({
   logLevel: "warning",
 });
 
+// The shader effects' WebGPU runner (D213) for the rasteriser's shader window: the preview's own
+// code (apps/web/src/preview/shaderRunner.ts), bundled on its own as window.UncutShader.
+await build({
+  entryPoints: [dir("../web/src/preview/shaderRunner.ts")],
+  outfile: dir("dist/shader-runner.js"),
+  bundle: true,
+  platform: "browser",
+  format: "iife",
+  globalName: "UncutShader",
+  target: "chrome140",
+  logLevel: "warning",
+});
+
 const renderer = dir("../web/dist");
 if (existsSync(renderer)) await cp(renderer, dir("dist/renderer"), { recursive: true });
 else console.warn("apps/web/dist not built yet; only the dev server URL will work");
