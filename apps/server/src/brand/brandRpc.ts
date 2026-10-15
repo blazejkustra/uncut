@@ -1,6 +1,7 @@
 // The brand RPCs (D186): thin wrappers over store.ts with the user's data folder and the open
 // project's folder (project kits and skills, and the project's choice, need an open project).
 import { BrandError, type BrandActive, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import type { PluginSkill } from "@uncut/core";
 import * as Effect from "effect/Effect";
 
 import { expandHome } from "../paths.ts";
@@ -10,8 +11,9 @@ import { addKitFile, deleteKit, deleteSkill, readBrand, saveKit, saveSkill, writ
 
 const failed = (error: unknown) => new BrandError({ reason: "failed", message: error instanceof Error ? error.message : String(error) });
 
-export function brandRpc(dataDir: string, view: Effect.Effect<ProjectView | undefined>) {
-  const dirs = Effect.map(view, (v): BrandDirs => ({ dataDir, projectDir: v?.dir }));
+export function brandRpc(dataDir: string, view: Effect.Effect<ProjectView | undefined>, skills: () => ReadonlyArray<PluginSkill> = () => []) {
+  // D232: the allowed plugins' skills come along (the Skills tab lists them).
+  const dirs = Effect.map(view, (v): BrandDirs => ({ dataDir, projectDir: v?.dir, skills: skills() }));
   const run = <A>(f: (d: BrandDirs) => Promise<A>) => Effect.flatMap(dirs, (d) => Effect.tryPromise({ try: () => f(d), catch: failed }));
   const state = (d: BrandDirs) => readBrand(d);
   return {

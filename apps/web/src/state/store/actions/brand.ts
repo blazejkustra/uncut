@@ -5,6 +5,8 @@ import { set, state, isRemote } from "../core.ts";
 import { pickRemote } from "./remote.ts";
 import { call, plainError } from "../server.ts";
 import { brandResult } from "../sync.ts";
+import { nextPanelSeq } from "../agentUi.ts";
+import { actions } from "../actions.ts";
 
 export const brandActions = {
   // ---- brand kits and skills (D186) ----
@@ -57,4 +59,19 @@ export const brandActions = {
     return picked === null ? [] : typeof picked === "string" ? [picked] : picked;
   },
   dismissBrandError: () => set({ brandError: undefined }),
+  /**
+   * D232 (issue #60): calls a skill in the composer: /name at the start of the draft (once), the
+   * Agent tab open and the caret at the end, like Add to chat (D141). Nothing is sent.
+   */
+  composeSkill(name: string) {
+    const draft = state.agentDraft;
+    const call = `/${name}`;
+    const has = new RegExp(`(^|\\s)${call.replace(/[-/]/g, "\\$&")}(\\s|$)`).test(draft);
+    set({ agentDraft: has ? draft : `${call} ${draft.trimStart()}`, agentFocus: state.agentFocus + 1, panelRequest: { panel: "agent", seq: nextPanelSeq() } });
+  },
+  /** D232: where skills come from: Settings, the plugins (Uncut's setup, its Capture step). */
+  openPlugins() {
+    actions.openSetup();
+    set({ setupFocus: "plugins" });
+  },
 };

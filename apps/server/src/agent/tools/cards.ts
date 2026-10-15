@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
 import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "../agentCritic.ts";
-import { activeBrand, readBrand, readPlan, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats } from "../../brand/store.ts";
+import { activeBrand, readBrand, readPlan, writeBrief, writeReview, writeStoryboard, normBrief, normBeats } from "../../brand/store.ts";
 import { guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
 import { FONT_ERRORS } from "../agentTools.ts";
 import { readGraphics } from "../../export/exporter.ts";
@@ -31,7 +31,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
     persist(r.owner);
     publish();
   };
-  const brandDirs = (v: ProjectView) => ({ dataDir: config.dataDir, projectDir: v.dir });
+  // D232: the allowed plugins' skills come along (Uncut's own are the bundled uncut.skills).
+  const brandDirs = (v: ProjectView) => ({ dataDir: config.dataDir, projectDir: v.dir, skills: ctx.plugins.skillsNow() });
   const refreshPlan = (r: Running, v: ProjectView) => Effect.promise(async () => (r.owner.plan = await readPlan(v.dir)));
 
   /** ask_user (D187): a question card; waits for the answer (QUESTION_MS). */
@@ -66,25 +67,14 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       yield* refreshPlan(r, v);
       addCard(r, { type: "brief", brief: saved.b }, brief.film);
       const sb = r.owner.plan.storyboard;
-      // D217 (issue #45): skills are suggested, never turned on silently. The project's choice stays
-      // when it has one (the user's ticks or chips, or an earlier pick); use turns on only skills the
-      // user picked on an ask_user card in this turn; the rest is a suggestion for the Brief card.
+      // D232 (issue #60): nobody picks skills. The brief suggests the ones that fit; the agent reads
+      // them with skill_read (which marks them used, so the critic follows them).
       const skills = yield* Effect.promise(async () => {
         try {
           const all = await readBrand(brandDirs(v));
-          const name = (id: string) => all.skills.find((x) => x.id === id)?.name ?? id;
-          const suggested = (saved.b.skills ?? []).filter((id) => all.skills.some((x) => x.id === id));
-          const on = all.skills.filter((x) => all.active.skills.includes(x.id));
-          const use = Array.isArray(args.use) ? args.use.filter((x): x is string => typeof x === "string") : [];
-          const picked = new Set(r.picked.map((x) => x.trim().toLowerCase()));
-          const chosen = use.filter((id) => all.skills.some((x) => x.id === id) && (picked.has(id.toLowerCase()) || picked.has(name(id).toLowerCase())));
-          const refused = use.filter((id) => !chosen.includes(id));
-          if (chosen.length) {
-            const ids = [...new Set([...all.active.skills, ...chosen])];
-            await writeActive(v.dir, { kit: all.active.kit, skills: ids });
-            return { on: ids.flatMap((id) => all.skills.filter((x) => x.id === id)), added: chosen, suggested, refused, name };
-          }
-          return { on, added: [] as Array<string>, suggested, refused, name };
+          const suggested = (saved.b.skills ?? []).flatMap((id) => all.skills.filter((x) => x.id === id));
+          const used = all.skills.filter((x) => all.active.skills.includes(x.id));
+          return { suggested, used };
         } catch (error) {
           console.error(`[uncut] couldn't read the skills of ${v.dir}: ${(error as Error).message}`);
           return undefined;
@@ -94,12 +84,9 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const skillsOut = skills
         ? {
             type: saved.b.type ?? "none (judged as a short product video)",
-            suggestedSkills: skills.suggested.filter((id) => !skills.on.some((x) => x.id === id)).map((id) => ({ id, name: skills.name(id) })),
-            skills: skills.on.map((x) => ({ id: x.id, name: x.name, ...(skills.added.includes(x.id) ? { body: x.body } : {}) })),
-            skillsNote: skills.on.length
-              ? `${skills.added.length ? `Turned on what the user picked: ${skills.added.map(skills.name).join(", ")}.` : "These skills are on for this project (the user changes them on the Brief card or in the Brand tab)."} Follow every rule in them; the critic checks their review checklists.`
-              : "No skills are on. Ask the user which of the suggested ones to use (ask_user, multi, an option per skill by its name), then brief_write again with use: the ids they picked; or they pick on the Brief card. Never turn on a skill they didn't pick.",
-            ...(skills.refused.length ? { refused: `Not turned on (the user didn't pick them on an ask_user card in this turn): ${skills.refused.join(", ")}.` } : {}),
+            suggestedSkills: skills.suggested.filter((x) => !skills.used.some((u) => u.id === x.id)).map((x) => ({ id: x.id, name: x.name })),
+            skills: skills.used.map((x) => ({ id: x.id, name: x.name })),
+            skillsNote: `${skills.suggested.some((x) => !skills.used.some((u) => u.id === x.id)) ? "Read each suggested skill that fits with skill_read before you build (no need to ask the user; leave out one the brief says it doesn't want, like motion graphics or sound design). " : ""}Follow every rule of the skills this project uses; the critic checks their review checklists.`,
             rubric: Object.fromEntries(Object.entries(rubric.levels).map(([k, l]) => [k, l === "na" ? "not scored" : l])),
             sound: soundProfileText(rubric.sound),
           }

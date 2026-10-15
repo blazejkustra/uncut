@@ -102,13 +102,22 @@ export function guessVideoType(b: RubricBrief): VideoType | undefined {
   return TYPE_WORDS.find(([, re]) => re.test(text))?.[0];
 }
 
+/**
+ * D232: a skill's id as it is now. Before D232 Uncut's own skills were "builtin-<name>" (in a
+ * project's brand/active.json and brief.json); they're now the bundled plugin's skills by name.
+ */
+export const skillIdOf = (id: string) => (id.startsWith("builtin-") ? id.slice("builtin-".length) : id);
+/** Skill ids as they are now, without repeats, in order. */
+export const skillIdsOf = (ids: ReadonlyArray<string>) => [...new Set(ids.map(skillIdOf))];
+
 /** The sound profile for a brief and the project's skills: its words first, then the Sound design skill, then the type. */
 export function soundProfileFor(brief: RubricBrief | undefined, skills: ReadonlyArray<string> = []): SoundProfile {
+  skills = skillIdsOf(skills);
   const w = words(brief);
   if (/\bno (music|sound|audio)\b|\bsilent\b|\bmuted\b/i.test(w)) return "off";
   if (/\bsubtle sound|quiet sound|minimal sound|few sound effects|sound,? subtle/i.test(w)) return "strict";
   if (/\b(dense|loud|lots of|heavy) (sound|sfx|effects)|meme sounds|sound ?effects? everywhere/i.test(w)) return "loose";
-  if (skills.includes("builtin-sound-design")) return "strict";
+  if (skills.includes("sound-design")) return "strict";
   return isVideoType(brief?.type) ? SOUND_BY_TYPE[brief.type] : "strict";
 }
 
@@ -131,7 +140,7 @@ export interface Rubric {
  * before.
  */
 export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skills?: ReadonlyArray<string>; readonly hasKit?: boolean } = {}): Rubric {
-  const skills = o.skills ?? [];
+  const skills = skillIdsOf(o.skills ?? []);
   const sound = soundProfileFor(brief, skills);
   const type = isVideoType(brief?.type) ? brief.type : undefined;
   if (!type) {
@@ -140,10 +149,10 @@ export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skill
   }
   const row = TABLE[type];
   const levels = Object.fromEntries(RUBRIC_CATEGORIES.map((k, i) => [k, row[i]!])) as Record<RubricCategory, RubricLevel>;
-  if (skills.includes("builtin-launch-promo")) levels.hook = R;
-  if (skills.includes("builtin-motion-craft")) levels.motion = R;
-  if (skills.includes("builtin-sound-design")) levels.sound = R;
-  if (skills.includes("builtin-brand-application")) levels.brand = R;
+  if (skills.includes("launch-promo")) levels.hook = R;
+  if (skills.includes("motion-craft")) levels.motion = R;
+  if (skills.includes("sound-design")) levels.sound = R;
+  if (skills.includes("brand-application")) levels.brand = R;
   const w = words(brief);
   if (/\bno hook\b|hook (isn't|is not) needed|without a hook/i.test(w)) levels.hook = N;
   if (/\bno brand(ing)?\b|\bunbranded\b|without (a |the )?brand/i.test(w) || !o.hasKit) levels.brand = N;

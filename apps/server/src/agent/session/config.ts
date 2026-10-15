@@ -1,6 +1,7 @@
 import { AGENT_IMAGE_TYPES, AGENT_MODELS } from "@uncut/contracts";
 import { type Access, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
-import { SYSTEM_PROMPT } from "../agentTools.ts";
+import { SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
+import type { PluginSkill } from "@uncut/core";
 import { which } from "../../app/setup.ts";
 import { claudeEnv } from "../../app/shellEnv.ts";
 
@@ -45,7 +46,7 @@ export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = { "
  * `allowed`. `addDirs`: folders the user mentioned in this chat. `projects`: the project folder (as
  * opened and its real path) for Auto's deny rules. `dataDir`: Uncut's data folder (D219's deny rules).
  */
-export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined }) {
+export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined }) {
   const access = o.access ?? "auto";
   const args = [
     "-p",
@@ -63,7 +64,8 @@ export function sessionArgs(o: { readonly cfg: string; readonly model?: string |
     // Secrets stay out whatever the access, before claude's own read-only auto-allow and its classifier.
     // D219: Uncut's data folder (and other apps' data) too.
     "--settings", sessionSettings({ access, projects: o.projects, dataDir: o.dataDir }),
-    "--append-system-prompt", SYSTEM_PROMPT,
+    // D232 (issue #60): every installed skill by name and description; skill_read loads one.
+    "--append-system-prompt", `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
   ];
   // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
   if (access === "look") args.push("--disallowedTools", LOOK_DISALLOWED.join(","));

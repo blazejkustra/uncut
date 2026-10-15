@@ -75,7 +75,7 @@ export interface AppStateShape {
   /** The library sound being added (D134), for its row's spinner. */
   readonly libraryAdding?: string | undefined;
   /** Settings opened at a section (the Generate tab's "Settings › Keys" link). */
-  readonly setupFocus?: "keys";
+  readonly setupFocus?: "keys" | "plugins";
   // Import jobs on the server (running and recent); the library shows the open project's.
   readonly jobs: ReadonlyArray<ImportJob>;
   readonly importReport?: { readonly failed: MediaImportResult["failed"]; readonly skipped: MediaImportResult["skipped"] };

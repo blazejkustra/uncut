@@ -2,12 +2,14 @@
 // is a new line; @ opens a picker of media, items, tracks and markers that inserts an @label chip
 // (Add to chat, D141, inserts the same), and a typed time (@0:12, @12s) offers that moment (D183);
 // ↑ in an empty box brings back earlier prompts; while a turn runs the button is Stop and Enter
-// queues the message for when it ends. Images come in by paste, drop or the paperclip. The bottom
+// queues the message for when it ends. D232 (issue #60): / offers the installed skills (a picked
+// one goes in as /name; the server sends its instructions with the message). Images come in by
+// paste, drop or the paperclip. The bottom
 // row picks the provider, model, effort and access, remembered per project (agentPrefs.ts). The
 // text, chips and images live in the store.
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, type AgentImage, type AgentMention, type AgentTurn } from "@uncut/contracts";
 import { mentionCandidates, momentLabel, parseMoment } from "@uncut/core/mentions";
-import { ArrowLeftRight, ArrowUp, AtSign, Clock3, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Square, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, AtSign, BookOpen, Clock3, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Square, X } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { usePlayback } from "../preview/playback.ts";
@@ -17,6 +19,7 @@ import { bridge } from "../state/bridge.ts";
 import { isAttachable, quotePaths, sortPasted } from "./pasted.ts";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ComposerChoices } from "./composer/Choices.tsx";
+import "./skills/skills.css";
 export { ACCESS_INFO, ProviderMark } from "./composer/Choices.tsx";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -64,7 +67,7 @@ async function readImage(file: File): Promise<AgentImage | string> {
 }
 
 export function Composer({ project, online, blocked, turns, running, provider }: { project: Project; online: boolean; blocked: boolean; turns: ReadonlyArray<AgentTurn>; running: string | null; provider: string }) {
-  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot } = useApp();
+  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot, brand } = useApp();
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [dropping, setDropping] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -142,7 +145,17 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     return [...moment, ...candidates.filter((c) => c.label.toLowerCase().includes(q)).slice(0, 8 - moment.length)];
   }, [candidates, query?.[1], fps]);
   const pickerOpen = !!query && dismissed !== at && matches.length > 0 && !blocked;
-  useEffect(() => setPick(0), [query?.[1]]);
+  // D232: /name calls a skill; the picker lists the installed ones (a path closes it).
+  const slash = !query ? /(?:^|\s)\/([a-z0-9-]{0,40})$/.exec(before) : null;
+  const slashAt = slash ? caret - slash[1]!.length - 1 : -1;
+  const skillMatches = useMemo(() => {
+    if (!slash) return [];
+    const q = slash[1]!;
+    const all = brand?.skills ?? [];
+    return [...all.filter((x) => x.id.startsWith(q)), ...all.filter((x) => !x.id.startsWith(q) && (x.id.includes(q) || x.name.toLowerCase().includes(q)))].slice(0, 12);
+  }, [brand?.skills, slash?.[1]]);
+  const skillOpen = !!slash && dismissed !== slashAt && skillMatches.length > 0 && !blocked;
+  useEffect(() => setPick(0), [query?.[1], slash?.[1]]);
 
   const setDraft = (text: string, next?: ReadonlyArray<AgentMention>) => {
     if (text !== draft) setDismissed(undefined);
@@ -154,6 +167,12 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     const mention: AgentMention = { kind: c.kind, id: c.id, label: c.label, ...(c.frame !== undefined ? { frame: c.frame } : {}) };
     caretTo.current = at + insert.length;
     setDraft(text, [...mentions.filter((m) => !(m.kind === c.kind && m.id === c.id && m.label === c.label)), mention]);
+  };
+
+  const chooseSkill = (x: (typeof skillMatches)[number]) => {
+    const insert = `/${x.id} `;
+    caretTo.current = slashAt + insert.length;
+    setDraft(draft.slice(0, slashAt) + insert + draft.slice(caret));
   };
 
   const send = async () => {
@@ -257,6 +276,30 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           })}
         </div>
       )}
+      {skillOpen && (
+        <div className="mention-picker" role="listbox" data-testid="skill-picker">
+          {skillMatches.map((x, i) => (
+            <button
+              key={x.id}
+              role="option"
+              aria-selected={i === pick}
+              className={`mention-option ${i === pick ? "active" : ""}`}
+              data-testid="skill-option"
+              data-skill={x.id}
+              title={x.description}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                chooseSkill(x);
+              }}
+              onMouseEnter={() => setPick(i)}
+            >
+              <BookOpen />
+              <span className="ellipsis grow">{x.name}</span>
+              <span className="skill-call">/{x.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {images.length > 0 && (
         <div className="composer-images" data-testid="agent-attachments">
           {images.map((img, i) => (
@@ -287,7 +330,7 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           value={draft}
           spellCheck={false}
           disabled={!online || blocked}
-          placeholder={blocked ? "Set up Claude Code to use the agent" : running ? "Write the next message; it's sent when this turn ends" : "Ask for an edit; @ to point at media or a clip"}
+          placeholder={blocked ? "Set up Claude Code to use the agent" : running ? "Write the next message; it's sent when this turn ends" : "Ask for an edit; @ to point at media or a clip, / for a skill"}
           onChange={(e) => {
             history.current.at = -1;
             setCaret(e.target.selectionStart);
@@ -305,6 +348,23 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             const el = e.currentTarget;
+            if (skillOpen) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                setPick((p) => (p + (e.key === "ArrowDown" ? 1 : skillMatches.length - 1)) % skillMatches.length);
+                return;
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                chooseSkill(skillMatches[Math.min(pick, skillMatches.length - 1)]!);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setDismissed(slashAt);
+                return;
+              }
+            }
             if (pickerOpen) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();

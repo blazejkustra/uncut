@@ -4,7 +4,8 @@
 //   <dataDir>/brand/skills/<id>.json                      the user's skills
 //   <project>/brand/kits/<id>/kit.json (+ its files)     this project's kits (win on the same id)
 //   <project>/brand/skills/<id>.json                      this project's skills
-//   <project>/brand/active.json                           { kit, skills } the project uses
+//   <project>/brand/active.json                           { kit, skills } the project uses (D232: skills it has used)
+//   plugins' skills (D232, issue #60)                      read-only, passed in by the caller (BrandDirs.skills)
 //   <project>/brief.json, storyboard.json, reviews/review-<n>.json   the plan
 //
 // Plain async functions over the file system, lenient on read (a field of the wrong type is
@@ -14,7 +15,8 @@ import { basename, extname, join } from "node:path";
 
 import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, IntendedFinding, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
 
-import { BUILTIN_SKILLS, isBuiltinId, isVideoType } from "@uncut/core/skills";
+import type { PluginSkill } from "@uncut/core";
+import { isVideoType, SKILLS_PLUGIN_ID, skillIdsOf } from "@uncut/core/skills";
 
 import { writeAtomic } from "../project/atomicWrite.ts";
 
@@ -133,7 +135,12 @@ export interface BrandDirs {
   readonly dataDir: string;
   /** The open project's folder; undefined: none open (only the user's kits and skills). */
   readonly projectDir?: string | undefined;
+  /** D232: the allowed plugins' skills (Plugins.skillsNow); none when left out. */
+  readonly skills?: ReadonlyArray<PluginSkill> | undefined;
 }
+
+/** D232: a plugin's skill as the brand state lists it: its name is its id (what /name calls), its title its name. */
+export const skillOfPlugin = (x: PluginSkill): BrandSkill => ({ id: x.name, name: x.title, scope: "global", description: x.description, body: x.instructions, plugin: x.plugin, pluginName: x.pluginName, ...(x.plugin === SKILLS_PLUGIN_ID ? { builtin: true } : {}) });
 
 const readJson = async (file: string): Promise<unknown> => {
   try {
@@ -177,7 +184,16 @@ async function skillsIn(base: string, scope: BrandScope) {
 export async function readActive(projectDir: string): Promise<BrandActive> {
   const raw = (await readJson(join(projectBrandDir(projectDir), "active.json"))) as Record<string, unknown> | undefined;
   const kit = raw && typeof raw.kit === "string" && BRAND_ID.test(raw.kit) ? raw.kit : null;
-  return { kit, skills: strs(raw?.skills, 20, 64).filter((s) => BRAND_ID.test(s)) };
+  // D232: Uncut's own skills were builtin-<name> before; they're <name> now.
+  return { kit, skills: skillIdsOf(strs(raw?.skills, 20, 64).filter((s) => BRAND_ID.test(s))) };
+}
+
+/** D232: marks skills as used by the project (a /name in a message, or skill_read), so the critic follows them. */
+export async function useSkills(projectDir: string, ids: ReadonlyArray<string>): Promise<void> {
+  if (!ids.length) return;
+  const active = await readActive(projectDir);
+  const next = [...new Set([...active.skills, ...ids])];
+  if (next.length !== active.skills.length) await writeActive(projectDir, { kit: active.kit, skills: next });
 }
 
 export async function writeActive(projectDir: string, active: BrandActive): Promise<void> {
@@ -234,10 +250,12 @@ export async function readBrand(dirs: BrandDirs): Promise<BrandState> {
   const kits = new Map<string, { kit: BrandKit; files: Record<string, string> }>();
   for (const k of await kitsIn(globalBrandDir(dirs.dataDir), "global")) kits.set(k.kit.id, k);
   if (dirs.projectDir) for (const k of await kitsIn(projectBrandDir(dirs.projectDir), "project")) kits.set(k.kit.id, k);
-  // D207: Uncut's built-in skills first (read-only; the user's own never use a builtin- id).
-  const skills = new Map<string, BrandSkill>(BUILTIN_SKILLS.map((s) => [s.id, { ...s, scope: "global" as const, builtin: true }]));
-  for (const s of await skillsIn(globalBrandDir(dirs.dataDir), "global")) if (!isBuiltinId(s.id)) skills.set(s.id, s);
-  if (dirs.projectDir) for (const s of await skillsIn(projectBrandDir(dirs.projectDir), "project")) if (!isBuiltinId(s.id)) skills.set(s.id, s);
+  // D232: the plugins' skills first (read-only; Uncut's own come from the bundled uncut.skills), then
+  // the user's own (D186), which never shadow a plugin's: a file with that id is left out.
+  const skills = new Map<string, BrandSkill>((dirs.skills ?? []).map((x) => [x.name, skillOfPlugin(x)]));
+  const fromPlugin = new Set(skills.keys());
+  for (const s of await skillsIn(globalBrandDir(dirs.dataDir), "global")) if (!fromPlugin.has(s.id) && !s.id.startsWith("builtin-")) skills.set(s.id, s);
+  if (dirs.projectDir) for (const s of await skillsIn(projectBrandDir(dirs.projectDir), "project")) if (!fromPlugin.has(s.id) && !s.id.startsWith("builtin-")) skills.set(s.id, s);
   const active = dirs.projectDir ? await readActive(dirs.projectDir) : { kit: null, skills: [] };
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
   return {
@@ -276,10 +294,11 @@ export async function deleteKit(dirs: BrandDirs, id: string, scope: BrandScope):
 
 export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<BrandSkill> {
   if (skill.scope === "project" && !dirs.projectDir) throw new Error("Open a project to keep a skill in it.");
-  // D207: built-in skills are read-only; a duplicate gets an id of its own.
+  // D207, D232: a plugin's skills are read-only; a duplicate gets an id of its own.
   const id = BRAND_ID.test(skill.id) ? skill.id : slug(skill.name);
-  if (skill.builtin || isBuiltinId(id)) throw new Error("Uncut's built-in skills can't be changed: duplicate it and edit the copy.");
-  const norm = normSkill({ ...skill, updatedAt: new Date().toISOString() }, skill.scope, id);
+  if (skill.builtin || skill.plugin || id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id)) throw new Error("A plugin's skills can't be changed: duplicate it and edit the copy.");
+  const { builtin: _b, plugin: _p, pluginName: _n, ...own } = skill;
+  const norm = normSkill({ ...own, updatedAt: new Date().toISOString() }, skill.scope, id);
   if (!norm) throw new Error("That skill isn't valid.");
   const dir = join(scopeDir(skill.scope, dirs), "skills");
   await mkdir(dir, { recursive: true });
@@ -290,7 +309,7 @@ export async function saveSkill(dirs: BrandDirs, skill: BrandSkill): Promise<Bra
 
 export async function deleteSkill(dirs: BrandDirs, id: string, scope: BrandScope): Promise<void> {
   if (!BRAND_ID.test(id)) throw new Error("No such skill.");
-  if (isBuiltinId(id)) throw new Error("Uncut's built-in skills can't be deleted; untick it under This project to stop using it.");
+  if (id.startsWith("builtin-") || dirs.skills?.some((x) => x.name === id)) throw new Error("A plugin's skills can't be deleted here; remove the plugin in Settings, Plugins.");
   if (scope === "project" && !dirs.projectDir) throw new Error("Open a project first.");
   await rm(join(scopeDir(scope, dirs), "skills", `${id}.json`), { force: true });
 }
@@ -324,7 +343,8 @@ export function normBrief(raw: unknown): Brief | undefined {
   const by = b.by === "agent" || b.by === "user" ? b.by : undefined;
   // D217: the video type (core VIDEO_TYPES) and the suggested skills.
   const type = isVideoType(b.type) ? b.type : undefined;
-  const skills = strs(b.skills, 12, 80);
+  // D232: builtin-<name> ids from before are <name> now.
+  const skills = skillIdsOf(strs(b.skills, 12, 80));
   return {
     film: str(b.film, 600),
     audience: str(b.audience, 600),

@@ -26,7 +26,7 @@ export const PluginInfo = Schema.Struct({
   // In Uncut's own plugins folder, so Remove can delete it.
   removable: Schema.optional(Schema.Boolean),
   // What it adds as data (D103), by name: text looks, components, checks.
-  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)) })),
+  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
 });
 export type PluginInfo = typeof PluginInfo.Type;
 
@@ -60,7 +60,7 @@ export const CatalogEntry = Schema.Struct({
   tools: Schema.Array(Schema.String),
   // Whether it runs a program (a "process" plugin) or only adds data.
   runs: Schema.Boolean,
-  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)) })),
+  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
   // Enabled: a copy is in Uncut's plugins folder (it may still need allowing).
   enabled: Schema.Boolean,
 });

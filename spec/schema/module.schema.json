@@ -82,6 +82,22 @@
       "additionalProperties": false,
       "description": "What a plugin adds to Uncut as data (D103), shown once the user allows the plugin. Every id is the plugin's id, a dot and a name (taste.extra.neon); an id a built-in has is refused.",
       "properties": {
+        "skills": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "Skills (D232, issue #60), in the shape of a SKILL.md: name (lowercase words joined by -, what the user types after / in the composer), a description the agent reads in its system prompt to know when the skill fits, and the instructions it loads with skill_read (or that come with a message that names /name). Names are shared by every plugin: the first plugin with a name has it.",
+          "items": {
+            "type": "object",
+            "required": ["name", "description", "instructions"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+              "title": { "type": "string", "minLength": 1, "maxLength": 80, "description": "What the Skills tab shows (default: the name)." },
+              "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "instructions": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          }
+        },
         "looks": {
           "type": "array",
           "maxItems": 50,
