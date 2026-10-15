@@ -4,13 +4,13 @@
 // Without ffmpeg there's nothing to export with, so the dialog shows how to install it instead.
 // Subtitles (D105), when the project has captions or a Subtitles track: burn them in (default, as
 // before), a .srt / .vtt next to the video, a soft subtitle track, or just the file.
-import type { ExportJob, ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
+import type { ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
 import { CODEC_NAMES, defaultEncoder, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps, type ExportCodec, type ExportEncoder } from "@uncut/core/export";
-import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
+import { choiceOfTarget, masterLimiter, projectTargetLufs } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
-import { Check, ChevronDown, ChevronRight, Copy, Download, FolderOpen, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { shortPath } from "../state/format.ts";
@@ -22,53 +22,9 @@ import { usePlayback } from "../preview/playback.ts";
 import { findItem } from "../timeline/edit.ts";
 import { NumberField } from "../inspector/fields.tsx";
 import { effectiveRange, type RangeKind } from "./exportRange.ts";
-
-const ENCODER_NAMES: Readonly<Record<ExportEncoder, string>> = { hardware: "hardware", software: "software" };
-
-const QUALITIES: ReadonlyArray<{ readonly id: ExportQuality; readonly label: string; readonly hint: string }> = [
-  { id: "draft", label: "Draft", hint: "Fast, for a quick look" },
-  { id: "standard", label: "Standard", hint: "For sharing anywhere" },
-  { id: "high", label: "High", hint: "Full size, the best copy" },
-];
-
-type LoudnessCard = { readonly id: ExportLoudness; readonly label: string; readonly sub: string; readonly hint: string };
-const lufsText = (lufs: number) => `${lufs < 0 ? "−" : ""}${Math.abs(lufs)} LUFS`;
-/** The loudness cards (D87): the presets, the project's own target when it isn't one, and As mixed. */
-function loudnessCards(target: number): ReadonlyArray<LoudnessCard> {
-  const hints: Readonly<Record<string, string>> = {
-    normal: "Evens out the volume so it plays as loud as other videos on YouTube, Instagram and TikTok.",
-    quiet: "A little quieter, as podcasts and Apple Music expect.",
-    broadcast: "The TV level (EBU R128): quieter, with more room for peaks.",
-  };
-  return [
-    ...LOUDNESS_PRESETS.map((p) => ({ id: p.id, label: p.name, sub: lufsText(p.lufs), hint: hints[p.id]! })),
-    ...(choiceOfTarget(target) === "target" ? [{ id: "target" as const, label: "Project", sub: lufsText(target), hint: `The project's own loudness target (${targetWords(target)}), set in the Mixer.` }] : []),
-    { id: "off", label: "As mixed", sub: "No change", hint: "Keeps your levels exactly as they sound in the editor." },
-  ];
-}
-
-const RANGE_KINDS: ReadonlyArray<readonly [RangeKind, string]> = [
-  ["all", "Whole timeline"],
-  ["marks", "In to Out"],
-  ["selection", "Selected clips"],
-  ["custom", "Custom"],
-];
-
-const ACTIVE = new Set(["queued", "preparing", "rendering"]);
-export const exportRunning = (job: ExportJob | undefined) => job !== undefined && ACTIVE.has(job.phase);
-
-/** A file name the Finder accepts, ending in .mp4. */
-const fileName = (name: string) => {
-  const clean = name.replace(/[/:]/g, "-").trim() || "Untitled";
-  return /\.mp4$/i.test(clean) ? clean : `${clean}.mp4`;
-};
-const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-const dirName = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";
-/** F29 (D173): the folder a file is in, by its name ("Movies"); "/" for the root. */
-export const folderName = (path: string) => baseName(dirName(path)) || "/";
-const fpsText = (fps: number) => `${Number(fps.toFixed(3))} fps`;
-
-const eta = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `About ${Math.max(1, Math.round(s))} s left` : `About ${Math.round(s / 60)} min left`);
+import { loudnessCards, fileName, baseName, dirName, folderName, fpsText, eta, ACTIVE, QUALITIES, ENCODER_NAMES, RANGE_KINDS } from "./exportDialog/format.ts";
+import { DownloadButton } from "./exportDialog/DownloadButton.tsx";
+export { exportRunning, folderName } from "./exportDialog/format.ts";
 
 export function ExportDialog({ project, dir }: { project: Project; dir: string }) {
   const { appInfo, exportJobs, exportJobId, exportFolder, setupChecks, setupChecking, environment, downloads } = useApp();
@@ -522,35 +478,5 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         </div>
       </div>
     </div>
-  );
-}
-
-/** D109: a remote export's Download, then where it went (with Finder, since that's on this Mac). */
-function DownloadButton({ job, state }: { job: ExportJob; state: { readonly state: "running" } | { readonly path: string } | { readonly error: string } | undefined }) {
-  if (state && "path" in state) {
-    return (
-      <>
-        <span className="muted small ellipsis" data-testid="export-downloaded" title={state.path}>
-          Downloaded to {baseName(state.path)}
-        </span>
-        <button className="btn" data-testid="export-reveal-download" onClick={() => void actions.revealLocal(state.path)}>
-          <FolderOpen />
-          Show in Finder
-        </button>
-      </>
-    );
-  }
-  return (
-    <>
-      {state && "error" in state && (
-        <span className="inline-error small" data-testid="export-download-error">
-          {state.error}
-        </span>
-      )}
-      <button className="btn" data-testid="export-download" disabled={state !== undefined && "state" in state} onClick={() => void actions.downloadExport(job)}>
-        <Download />
-        {state && "state" in state ? "Downloading…" : "Download…"}
-      </button>
-    </>
   );
 }
