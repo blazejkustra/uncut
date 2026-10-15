@@ -56,6 +56,10 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
     { id: "delete", label: many ? `Delete ${ids.length} items` : "Delete", shortcut: "⌫", danger: true, disabled: off || locked, run: () => void deleteSelection() },
     { id: "ripple-delete", label: "Ripple delete", shortcut: "⇧⌫", danger: true, disabled: off || locked, run: () => void actions.rippleDelete(ids) },
     "-",
+    // D215: a picture off Main goes on it (a take from any of its parts: its picture, sounds linked under it).
+    ...(track.role !== "main" && item.type !== "captions" && !item.linkedTo && (item.type !== "audio" || !!item.group)
+      ? [{ id: "put-on-main", label: "Put on Main", disabled: off || locked || (item.type === "audio" && !takeHasPicture(project, item)), run: () => void actions.putOnMain(item.id) }]
+      : []),
     ...(item.type === "clip" && media?.kind === "video" && media.probe?.hasAudio
       ? [{ id: "detach-audio", label: item.mute ? "Audio detached" : "Detach audio", disabled: off || many || locked || !sound, run: () => void actions.detachAudio(item.id) }]
       : []),
@@ -102,6 +106,9 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
         : []),
   ];
 }
+
+/** A sound's group has a picture to put on Main (D215). */
+const takeHasPicture = (project: ProjectModel, item: { readonly group?: string | undefined; readonly id: string }) => !!item.group && project.tracks.some((t) => t.role !== "main" && t.items.some((i) => i.group === item.group && i.id !== item.id && i.type === "clip"));
 
 const KIND_NAMES = { video: "video", text: "text", audio: "audio" } as const;
 

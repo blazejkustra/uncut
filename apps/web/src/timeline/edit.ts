@@ -4,9 +4,9 @@
 // every action is validated by the server, undoes in one step and reaches the agent's note (D6).
 import { applyEdit, createSession, EditError } from "@uncut/core/apply-ops";
 import { soundMedia } from "@uncut/core/audio";
-import { timelineProblems } from "@uncut/core/rules";
+import { fitsTrackKind, timelineProblems } from "@uncut/core/rules";
 import { cutsOf, defaultFrames, handleAfter, handleBefore, overlaps, transitionInfo, transitionLimits, transitionName, type Cut } from "@uncut/core/transitions";
-import { busySpans, mainSlot, nearestFreeSpot, withLinkedAudio } from "@uncut/core/arrange";
+import { busySpans, mainSlot, nearestFreeSpot, planPutOnMain, withLinkedAudio } from "@uncut/core/arrange";
 import type { Op, TimedModule } from "@uncut/core/types";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
@@ -32,9 +32,11 @@ export function findItem(project: ProjectModel, id: string | undefined): Placed 
   return undefined;
 }
 
-// Which track kinds take which item types (the validator's rule, spec/schema).
+// The kind of track each item type lives on off the main track (a new track for it gets this kind).
 const TRACK_KINDS: Readonly<Record<Item["type"], Track["kind"]>> = { clip: "video", component: "video", graphic: "video", text: "text", captions: "text", audio: "audio" };
-export const fitsTrack = (item: Item, track: Track) => TRACK_KINDS[item.type] === track.kind;
+export const homeKind = (item: Pick<Item, "type">): Track["kind"] => TRACK_KINDS[item.type];
+/** Whether an item may go on a track (the validator's rule, core rules.ts): D215, the main track takes any picture, text too. */
+export const fitsTrack = (item: Item, track: Track) => fitsTrackKind(item.type, track);
 
 const lockedProblem = (track: Track) => `The ${track.name} track is locked. Unlock it to edit it.`;
 
@@ -369,6 +371,17 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
   shift = Math.max(shift, -minStart);
   const snapped = nearestSnap(placed.flatMap((p) => [p.start + shift, p.start + p.item.duration + shift]), snap);
   if (snapped) shift = Math.max(-minStart, shift + snapped.shift);
+  // D215: a group dragged onto the main track goes on it (a take: its picture on Main, its sounds
+  // linked under it) at the cut nearest where it's dropped, instead of being refused.
+  const ontoMain = laneOffset ? placed.find((p) => {
+    const from = lanes.indexOf(p.track.id);
+    return from !== -1 && project.tracks.find((t) => t.id === lanes[from + laneOffset])?.role === "main";
+  }) : undefined;
+  if (ontoMain) {
+    const put = planPutOnMain(project, ontoMain.item.id, { frame: ontoMain.start + shift });
+    if ("problem" in put) return put;
+    return { ops: put.ops, summary: put.summary, delta: shift };
+  }
   const group = new Set(placed.map((p) => p.item.id));
   const ops: Array<Op> = [];
   const landing = new Map<string, Array<{ start: number; end: number }>>();

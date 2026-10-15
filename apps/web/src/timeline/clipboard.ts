@@ -4,7 +4,7 @@
 import type { Op } from "@uncut/core/types";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
-import { findItem, fitsTrack, lockOf, type Plan } from "./edit.ts";
+import { findItem, fitsTrack, homeKind, lockOf, type Plan } from "./edit.ts";
 
 /** Every frame where something starts or ends (0 included), sorted: where ↑/↓ jump. */
 export function editPoints(project: ProjectModel): Array<number> {
@@ -62,7 +62,7 @@ export function copyItems(project: ProjectModel, ids: ReadonlyArray<string>): Ar
   const first = Math.min(...placed.map((p) => p!.start));
   return placed
     .sort((a, b) => a!.start - b!.start)
-    .map((p) => ({ item: structuredClone(p!.item) as Item, track: p!.track.id, kind: p!.track.kind, main: p!.track.role === "main", offset: p!.start - first }));
+    .map((p) => ({ item: structuredClone(p!.item) as Item, track: p!.track.id, kind: p!.track.role === "main" ? homeKind(p!.item) : p!.track.kind, main: p!.track.role === "main", offset: p!.start - first }));
 }
 
 const NEW_TRACK_NAMES: Readonly<Record<Track["kind"], string>> = { video: "Video", text: "Text", audio: "Audio" };

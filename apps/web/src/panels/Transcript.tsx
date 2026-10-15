@@ -1,5 +1,6 @@
 // The Transcript panel (D32, D69; a left rail tab since U11, D177): what's said on the main track, clip by clip in edit order (what
-// you'd hear), as selectable words. The word under the playhead is highlighted while it plays;
+// you'd hear), or (D215) on an item off it (a source picker lists them, a take read from its
+// microphone; selecting one on the timeline reads it), as selectable words. The word under the playhead is highlighted while it plays;
 // clicking a word goes there (and selects it); dragging or ⇧-clicking selects more, and ⌫/Delete
 // cuts the selection through core planTextCut as one undoable edit. "Remove pauses" (threshold)
 // and "Remove fillers" (hesitations only; "maybe" ones are only marked) do the same for the whole
@@ -17,13 +18,17 @@ import type { Plan } from "../timeline/edit.ts";
 import { frameTimecode, timecode } from "../state/format.ts";
 import { analysisText } from "../state/analysisText.ts";
 import { getPlayback, playback, usePlayback } from "../preview/playback.ts";
-import type { ProjectModel } from "../state/project.ts";
+import { layoutOf, type ProjectModel } from "../state/project.ts";
 import { actions, activeAnalyses, getState, projectOf, useApp } from "../state/store.ts";
 import { defaultCaptionStyle } from "../inspector/captionStyle.ts";
 import {
   doneTranscripts,
   getTranscripts,
+  mainSpeechMedia,
   mediaOnMain,
+  scopeKey,
+  scopeOf,
+  sourceChoices,
   planCaptions,
   planCutWords,
   planRemoveFillers,
@@ -171,17 +176,18 @@ export const cutSelectedWords = () => oneCut(cutSelected);
 async function cutSelected() {
   if (!getState().snapshot) return false;
   const before = getTranscripts();
-  const keys = selectedWords(wordsOfEdit(projectOf(getState().snapshot!), doneTranscripts(before.entries)), before.anchor, before.focus);
+  const keys = selectedWords(wordsOfEdit(projectOf(getState().snapshot!), doneTranscripts(before.entries), scopeOf(projectOf(getState().snapshot!), before.source)), before.anchor, before.focus);
   if (!keys.length) return false;
   await withLoudness([...new Set(keys.map((w) => w.media))]);
   const snapshot = getState().snapshot;
   if (!snapshot) return false;
   const project = projectOf(snapshot);
-  const { entries, anchor, focus } = getTranscripts();
+  const { entries, anchor, focus, source } = getTranscripts();
   const transcripts = doneTranscripts(entries);
-  const selected = selectedWords(wordsOfEdit(project, transcripts), anchor, focus);
+  const scope = scopeOf(project, source);
+  const selected = selectedWords(wordsOfEdit(project, transcripts, scope), anchor, focus);
   if (!selected.length) return false;
-  return sendCut(planCutWords(project, transcripts, selected));
+  return sendCut(planCutWords(project, transcripts, selected, scope));
 }
 
 /** The last mode and look picked for "Make captions" (kept for the session). */
@@ -197,10 +203,10 @@ async function makeAll(mode: CaptionMode, look: string) {
   captionChoice = { mode, look };
   const first = getState().snapshot;
   if (!first) return false;
-  await withLoudness(mediaOnMain(projectOf(first)));
+  await withLoudness(readMedia(projectOf(first)));
   const snapshot = getState().snapshot;
   if (!snapshot) return false;
-  const plan = planCaptions(projectOf(snapshot), doneTranscripts(getTranscripts().entries), { mode, look, captionStyle: defaultCaptionStyle() });
+  const plan = planCaptions(projectOf(snapshot), doneTranscripts(getTranscripts().entries), { mode, look, captionStyle: defaultCaptionStyle() }, scopeOf(projectOf(snapshot), getTranscripts().source));
   const applied = await actions.timelineEdit(plan);
   if (applied && !("problem" in plan)) playback.select(plan.items[0]);
   return applied;
@@ -211,12 +217,19 @@ export const removeAll = (kind: "pauses" | "fillers") => oneCut(() => removeEver
 async function removeEvery(kind: "pauses" | "fillers") {
   const first = getState().snapshot;
   if (!first) return false;
-  await withLoudness(mediaOnMain(projectOf(first)));
+  await withLoudness(readMedia(projectOf(first)));
   const snapshot = getState().snapshot;
   if (!snapshot) return false;
   const project = projectOf(snapshot);
   const transcripts = doneTranscripts(getTranscripts().entries);
-  return sendCut(kind === "pauses" ? planRemovePauses(project, transcripts, pauseMin) : planRemoveFillers(project, transcripts));
+  const scope = scopeOf(project, getTranscripts().source);
+  return sendCut(kind === "pauses" ? planRemovePauses(project, transcripts, pauseMin, scope) : planRemoveFillers(project, transcripts, scope));
+}
+
+/** The media the tab reads now (D215: its source's, else the main track's). */
+function readMedia(project: ProjectModel): Array<string> {
+  const scope = scopeOf(project, getTranscripts().source);
+  return scope ? [scope.media] : mediaOnMain(project);
 }
 
 async function load(dir: string, mediaId: string) {
@@ -244,12 +257,14 @@ async function load(dir: string, mediaId: string) {
   transcriptStore.setEntry(dir, mediaId, entry);
 }
 
-/** Loads the transcripts of the media on the main track, and again when a transcript job for one finishes. */
+/** Loads the transcripts of the media the tab reads (the main track's, or its source's), and again when a transcript job for one finishes. */
 function useTranscriptLoading(project: ProjectModel, dir: string) {
   const { analysisJobs, connection } = useApp();
   const entries = useTranscripts((s) => s.entries);
+  const source = useTranscripts((s) => s.source);
   const online = connection === "connected";
-  const media = mediaOnMain(project);
+  const scope = scopeOf(project, source);
+  const media = scope ? [scope.media] : mediaOnMain(project);
   const seenJobs = useRef(new Set<string>());
   // Failed reads are tried again once each time the tab opens (and with Retry).
   const retried = useRef(new Set<string>());
@@ -298,7 +313,20 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
     if (timelineSelected !== undefined) transcriptStore.clear();
   }, [timelineSelected]);
   const transcripts = useMemo(() => doneTranscripts(entries), [entries]);
-  const words = useMemo(() => wordsOfEdit(project, transcripts), [project, transcripts]);
+  // D215: the main track, or an item off it (the picker, or the item selected on the timeline).
+  const source = useTranscripts((s) => s.source);
+  const scope = useMemo(() => scopeOf(project, source), [project, source]);
+  const choices = useMemo(() => sourceChoices(project), [project]);
+  useEffect(() => {
+    if (timelineSelected === undefined) return;
+    const item = project.tracks.flatMap((t) => t.items).find((i) => i.id === timelineSelected);
+    if (!item || item.type === "text" || item.type === "captions") return;
+    const own = scopeOf(project, item.id);
+    const onMain = project.tracks.some((t) => t.role === "main" && t.items.some((i) => i.id === item.id || i.id === item.linkedTo));
+    if (own) transcriptStore.setSource(item.id);
+    else if (onMain) transcriptStore.setSource(undefined);
+  }, [timelineSelected]);
+  const words = useMemo(() => wordsOfEdit(project, transcripts, scope), [project, transcripts, scope]);
   const selected = selectedWords(words, anchor, focus);
   const byClip = useMemo(() => {
     const out = new Map<string, Array<EditWord>>();
@@ -321,10 +349,10 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
     return [lo, hi] as const;
   };
   const [threshold, setThreshold] = useThreshold();
-  const pausePlan = useMemo(() => planRemovePauses(project, transcripts, threshold), [project, transcripts, threshold]);
-  const fillerPlan = useMemo(() => planRemoveFillers(project, transcripts), [project, transcripts]);
+  const pausePlan = useMemo(() => planRemovePauses(project, transcripts, threshold, scope), [project, transcripts, threshold, scope]);
+  const fillerPlan = useMemo(() => planRemoveFillers(project, transcripts, scope), [project, transcripts, scope]);
   const fps = project.canvas.fps;
-  const media = mediaOnMain(project);
+  const media = scope ? [scope.media] : mediaOnMain(project);
   const whisperReady = setupChecks?.find((c) => c.id === "whisper")?.status === "ready";
   const model = transcription?.models.find((m) => m.id === transcription.selected);
 
@@ -349,17 +377,25 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
   }, []);
 
   const main = project.tracks.find((t) => t.role === "main");
-  let t = 0;
   const shownUntranscribed = new Set<string>();
-  const blocks = (main?.items ?? []).map((item) => {
-    const start = t;
-    t += item.duration;
-    const m = item.type === "clip" && item.media ? project.media.find((x) => x.id === item.media) : undefined;
+  // The blocks: each main clip in edit order, or (D215) each item of the source in timeline order.
+  const { starts } = layoutOf(project);
+  const rows = scope
+    ? scope.items.flatMap((id) => {
+        const at = project.tracks.flatMap((tr) => tr.items.map((i) => ({ i, tr }))).find((x) => x.i.id === id);
+        return at ? [{ item: at.i, start: starts.get(id) ?? 0, mediaId: scope.media as string | undefined, where: at.tr.name as string | undefined }] : [];
+      })
+    : (main?.items ?? []).map((item) => ({ item, start: starts.get(item.id) ?? 0, mediaId: item.type === "clip" && item.media ? mainSpeechMedia(project, item) : undefined, where: undefined as string | undefined }));
+  const blocks = rows.map(({ item, start, mediaId, where }) => {
+    const m = mediaId ? project.media.find((x) => x.id === mediaId) : undefined;
     if (!m || !media.includes(m.id)) return null;
     const entry = entries.get(m.id);
     const head = (
       <div className="tx-head">
-        <span className="ellipsis">{item.name ?? m.name}</span>
+        <span className="ellipsis">
+          {item.name ?? m.name}
+          {where ? <span className="muted">, {where}</span> : null}
+        </span>
         <span className="mono">{timecode(start, fps)}</span>
       </div>
     );
@@ -402,11 +438,29 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
   const fillerCount = "problem" in fillerPlan ? 0 : fillerPlan.fillers;
   const secs = (p: typeof pausePlan) => ("problem" in p ? "" : `${(p.framesRemoved / fps).toFixed(1)} s`);
   const anyDone = transcripts.size > 0;
-  const locked = main?.locked === true;
+  const locked = !scope && main?.locked === true;
   const busy = useCutBusy();
   return (
     <aside className="library tx-panel" data-testid="transcript-panel">
       <div className="lib-head">Transcript</div>
+      {(choices.length > 0 || scope) && (
+        <div className="tx-source">
+          <select
+            className="tx-select"
+            data-testid="tx-source"
+            title="What to read"
+            value={scope ? (choices.find((c) => scopeKey(c.scope) === scopeKey(scope))?.id ?? "main") : "main"}
+            onChange={(e) => transcriptStore.setSource(e.target.value === "main" ? undefined : e.target.value)}
+          >
+            <option value="main">Main track</option>
+            {choices.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="tx-toolbar">
         <span className="muted small tx-status" data-testid="tx-status">
           {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected` : ""}
@@ -444,7 +498,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
         >
           Remove pauses{pauseCount ? <span className="tx-count">{pauseCount}</span> : null}
         </button>
-        <CaptionsButton project={project} disabled={!online || busy || !anyDone} />
+        <CaptionsButton project={project} media={media} disabled={!online || busy || !anyDone} />
       </div>
       <div
         className="tx-body"
@@ -467,7 +521,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               <Captions />
             </div>
             <div className="empty-title">Nothing to read yet</div>
-            <div className="empty-sub">No speech on the main track.</div>
+            <div className="empty-sub">{scope ? "No speech here." : "No speech on the main track."}</div>
           </div>
         ) : (
           <div className="tx-doc">{blocks}</div>
@@ -479,11 +533,10 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
 }
 
 /** "Make captions" with its choices: how they show and the look (a small popover under the button). */
-function CaptionsButton({ project, disabled }: { project: ProjectModel; disabled: boolean }) {
+function CaptionsButton({ project, media, disabled }: { project: ProjectModel; media: ReadonlyArray<string>; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<CaptionMode>(captionChoice.mode);
   const [look, setLook] = useState(captionChoice.look);
-  const media = mediaOnMain(project);
   const existing = project.tracks.some((t) => t.items.some((i) => i.type === "captions" && media.includes(i.source ?? "")));
   useEffect(() => {
     if (!open) return;

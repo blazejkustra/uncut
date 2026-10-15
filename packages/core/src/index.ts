@@ -1,7 +1,7 @@
 // @uncut/core: the reference format code shared by the server, the renderer and the tests.
 export type * from "./timeline/types.ts";
 export { loadModules, lookProblems, validateModule, validateOps, validateProject } from "./timeline/validate.ts";
-export { resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
+export { fitsTrackKind, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
 export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, manualEditsNote } from "./timeline/edit-log.ts";
 export { animationAt, moveEase, moveFades, wordProgress, zoomScale, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline/timeline.ts";
@@ -36,8 +36,8 @@ export type { InsertTextPlan, InsertTextRequest } from "./text/textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./visual/render.ts";
 export { CODEC_NAMES, defaultEncoder, exportFrameRates, exportShortSides, HARDWARE_H264_QUALITY, outputSize, presetBitrateMbps, SOFTWARE_H264_CRF, type ExportEncoder } from "./export.ts";
 export type { ExportCodec, ExportQuality } from "./export.ts";
-export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOPE_RATE, FILLERS, fillersOf, handleFrames, HEAD_S, PAUSE_MIN_S, pausesOf, planTextCut, speechEdges, speechThreshold, speechWords, TAIL_S, tailFrames } from "./text/transcript.ts";
-export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./text/transcript.ts";
+export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOPE_RATE, FILLERS, fillersOf, handleFrames, HEAD_S, PAUSE_MIN_S, pausesOf, planTextCut, soundParts, speechEdges, speechItem, speechThreshold, speechWords, TAIL_S, tailFrames, transcriptScope } from "./text/transcript.ts";
+export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest, TranscriptScope } from "./text/transcript.ts";
 export { activeWord, autoMaxChars, captionBox, captionSegments, checkCaptionLines, CAPTION_LINE_BOUNDS, CAPTION_MIN_S, CAPTION_BRIDGE_S, CAPTION_DEFAULTS, CAPTION_HOLD_S, CAPTION_MODE_NAMES, CAPTION_MODES, captionAt, captionCardAt, captionCardList, captionCards, captionExtent, captionMode, captionSettings, captionsCoverMain, captionWordText, planCaptionEdit, planMakeCaptions } from "./text/captions.ts";
 export type { CaptionCard, CaptionEdit, CaptionLines, CaptionMode, CaptionWord, MakeCaptionsPlan, MakeCaptionsRequest } from "./text/captions.ts";
 export { decodeSubtitleBytes, flattenCues, isPlainCue, isSubtitleTrack, MAX_SUBTITLE_CUES, parseSubtitles, planImportSubtitles, SUBTITLE_FORMATS, SUBTITLE_LANGUAGES, subtitleCues, subtitleFormatOf, subtitleLanguageTag, subtitleTime, writeSrt, writeSubtitles, writeVtt } from "./text/subtitles.ts";

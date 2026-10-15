@@ -81,8 +81,9 @@ export function planPlaceTake(project: Pick<Project, "tracks">, input: { readonl
 // last recorder started; all are as long as the shortest. The screen goes on the nearest free video
 // track above Main (else a new "Screen" track just above Main), the camera on a free video track
 // above the screen's (else a new "Camera" track just above it) with the layout's box, the
-// microphone on a Voiceover track, this Mac's sound on a "Mac sound" track. Main is never used:
-// main items can't be grouped.
+// microphone on a Voiceover track, this Mac's sound on a "Mac sound" track. Main isn't used here
+// (a take lands over the edit); "Put on Main" (D215, arrange.ts planPutOnMain) moves its picture
+// there afterwards with its parts linked under it.
 
 export type MultiKind = "screen" | "camera" | "voiceover" | "system";
 export type MultiLayoutName = "tl" | "tr" | "bl" | "br" | "side";
