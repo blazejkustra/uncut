@@ -260,21 +260,30 @@ test("issues 40 and 41: a take's mic as a transcript source, Put on Main, transc
   await page.waitForFunction((id, text) => document.querySelector(`.pv-text[data-item="${id}"]`)?.textContent === text, {}, caps.id, cards[1]![1]);
   await page.screenshot({ path: out("issue40-captions.png") });
 
-  // #41: the title dragged onto the Main lane goes in the spine (at the end), no refusal.
+  // #41: the title dragged onto the Main lane goes in the spine (at the end), no refusal. D224: it
+  // lands where it's dropped, so it's dropped at the end of Main (⌘: no snapping) to meet cam-2.
   const r3 = await revision();
   const t = await box(itemSel("title"));
   const lane = await box("[data-testid=lane][data-track=main]");
+  const ppf = await page.$eval("[data-testid=timeline]", (el) => Number((el as HTMLElement).dataset.ppf));
+  const mainEnd = mainOf().reduce((n, i) => n + (i.gap ?? 0) + i.duration, 0);
+  const titleStart = itemsOf(onDisk()).get("title")!.start!;
+  // A few frames early: it can't start before cam-2 ends, so it butts up to it.
+  const dx = (mainEnd - titleStart - 3) * ppf;
+  await page.keyboard.down("Meta");
   await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2);
   await page.mouse.down();
-  await page.mouse.move(t.x + t.width / 2 + 20, t.y + t.height / 2 + 20, { steps: 4 });
-  await page.mouse.move(t.x + t.width / 2 + 40, lane.y + lane.height / 2, { steps: 10 });
+  await page.mouse.move(t.x + t.width / 2 + dx / 3, t.y + t.height / 2 + 20, { steps: 4 });
+  await page.mouse.move(t.x + t.width / 2 + dx, lane.y + lane.height / 2, { steps: 10 });
   await sleep(150);
   assert.equal(await page.$("[data-testid=drag-tip][data-refused=true]"), null, "no refusal while over Main");
   await page.mouse.up();
+  await page.keyboard.up("Meta");
   await waitRevision(r3 + 1);
   const main = mainOf();
   assert.deepEqual(main.map((i) => i.id), ["intro", "cam-1", "cam-2", "title"]);
   assert.equal(main.at(-1)!.start, undefined);
+  assert.equal(main.at(-1)!.gap, undefined, "it meets cam-2: a cut, no gap");
   await page.waitForSelector(`[data-testid=lane][data-track=main] ${itemSel("title")}`);
   await page.screenshot({ path: out("issue41-text-on-main.png") });
 
