@@ -12,6 +12,8 @@ import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
 import { Cancelled, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
 import { rasterise } from "./rasterise.ts";
+import { track } from "../../telemetry/telemetry.ts";
+import type { EXPORT_FAIL_CODES } from "../../telemetry/events.ts";
 
 export interface RunJobCtx {
   readonly patch: (id: string, change: Partial<ExportJob>) => void;
@@ -28,8 +30,12 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     let temp: string | undefined;
     let rasterizer: Rasterizer | undefined;
     let end: Partial<ExportJob> = { phase: "failed" };
+    // Telemetry (D223): where a failed export stopped, as a fixed code (never its message).
+    let stage: (typeof EXPORT_FAIL_CODES)[number] = "no-ffmpeg";
+    let usedEncoder: "hardware" | "software" | undefined;
     try {
       const bin = await ffmpegBin();
+      stage = "measure";
       if (!bin) throw new Error("ffmpeg isn't installed. Install it (brew install ffmpeg), then export again.");
       // Ducking (D85) / noise removal (D88) media whose loudness isn't cached: measured here, in
       // the job (export.start answers at once; the analysis queue waits for exports), then planned again.
@@ -42,8 +48,10 @@ export const makeRunJob = (ctx: RunJobCtx) => {
           patch(job.id, plan.warnings.length ? { warnings: plan.warnings } : { warnings: [] });
         }
       }
+      stage = "missing-media";
       const missing = await missingMedia(plan);
       if (missing) throw new Error(missing);
+      stage = "rasterise";
       const caps = await capsOf(bin);
       temp = await makeTemp();
       if (signal.aborted) throw new Cancelled();
@@ -56,10 +64,12 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css);
       // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
       const untagged = await untaggedFiles(bin, plan, signal);
+      stage = "shader";
       const shaded = await shadeLayers(rasterizer, bin, plan, { caps, untagged }, temp, signal);
       signal.removeEventListener("abort", onAbort);
       await rasterizer.close();
       rasterizer = undefined;
+      stage = "loudness";
 
       // Loudness (D87): one gain to the target before the master limiter (D86), checked through it
       // when it will work; with the limiter bypassed, two-pass loudnorm (exportPlan planLoudness).
@@ -74,6 +84,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
               return r.stderr;
             });
 
+      stage = "encode";
       const partial = join(temp, "export.mp4");
       // Subtitles (D105): the cues of the project as it was when the export started, in the edit's time.
       const cues = job.subtitleTrack || job.subtitlesFile ? subtitleCues(project) : [];
@@ -111,18 +122,21 @@ export const makeRunJob = (ctx: RunJobCtx) => {
         );
       };
       const hardware = usesHardware(job.quality, caps, video);
-      patch(job.id, { encoder: hardware ? "hardware" : "software" });
+      usedEncoder = hardware ? "hardware" : "software";
+      patch(job.id, { encoder: usedEncoder });
       let r = await encode(video);
       // D212: VideoToolbox can be listed and still refuse (no constant-quality mode on an Intel Mac,
       // no free hardware session): the same export again with the software encoder.
       if (r.code !== 0 && !signal.aborted && hardware && hardwareEncoderFailed(r.stderr)) {
         patch(job.id, { encoder: "software", warnings: [...(plan.warnings ?? []), "The hardware encoder failed on this Mac, so the software one made the video."] });
+        usedEncoder = "software";
         r = await encode({ ...video, encoder: "software" });
       }
       if (r.code !== 0) throw new Error(`ffmpeg couldn't make the video: ${ffmpegError(r.stderr)}`);
       if (signal.aborted) throw new Cancelled();
       const silent = silentFailure(r.stderr);
       if (silent) throw new Error(`ffmpeg couldn't draw part of the video: ${silent}`);
+      stage = "move";
       if (!job.output) throw new Error("no output");
       // The destination may have appeared while rendering; replace it only if allowed.
       if (!overwrite && (await exists(job.output))) throw new Error(`${basename(job.output)} appeared in that folder while exporting; the export wasn't moved there.`);
@@ -152,6 +166,22 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       await rasterizer?.close().catch(() => {});
       if (temp) await rm(temp, { recursive: true, force: true }).catch(() => {});
     }
+    const durationMs = Date.now() - started;
+    if (end.phase === "done") {
+      track("export:complete", {
+        duration_ms: durationMs,
+        output_ms: Math.round((plan.frames / plan.fps) * 1000),
+        quality: job.quality,
+        codec: job.codec ?? "h264",
+        encoder: usedEncoder,
+        width: job.width,
+        height: job.height,
+        fps: job.fps,
+        range: job.range !== undefined,
+        subtitles: Boolean(job.subtitlesFile || job.subtitleTrack),
+      });
+    } else if (end.phase === "cancelled") track("export:cancel", { duration_ms: durationMs });
+    else track("export:fail", { code: stage, duration_ms: durationMs });
     patch(job.id, { ...end, finishedAt: new Date().toISOString(), elapsedSeconds: Math.round((Date.now() - started) / 100) / 10 });
   };
   return runJob;

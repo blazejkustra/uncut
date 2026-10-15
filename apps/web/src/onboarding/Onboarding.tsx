@@ -5,6 +5,7 @@ import { actions, useApp } from "../state/store.ts";
 import { EnvironmentChip } from "./Environments.tsx";
 import { CheckRow, PendingRow, KeyRows, SpeechModelRow } from "./rows.tsx";
 import { PluginRows } from "./plugins.tsx";
+import { USAGE_DATA_NOTE } from "../settings/telemetry.tsx";
 export { CheckRow, SpeechModelRow, KeyRows } from "./rows.tsx";
 export { PluginRows } from "./plugins.tsx";
 
@@ -132,7 +133,8 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
           </div>
         </div>
         <div className="wiz-foot">
-          <p />
+          {/* D223: the first-run mention of telemetry. */}
+          <p data-testid="wizard-telemetry-note">{USAGE_DATA_NOTE} Turn it off in Settings › App.</p>
           <div className="wiz-btns">
             <button className="btn primary" data-testid="wizard-new-project" onClick={() => void actions.finishSetup("new-project")}>
               New project

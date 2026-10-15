@@ -6,6 +6,8 @@ import type { Running, ClaudeSession, StoredTurn } from "./types.ts";
 import { isString, resultText } from "../turns/history.ts";
 import { STREAM_PUBLISH_MS, idleMs, canonical } from "./config.ts";
 import type { RunCtx } from "../tools/run.ts";
+import { track } from "../../telemetry/telemetry.ts";
+import { agentFailCode } from "../../telemetry/events.ts";
 
 export const makeStream = (ctx: RunCtx) => {
   const { publish, closeSession, view, st, persist, trackPending, plugins } = ctx;
@@ -64,6 +66,10 @@ export const makeStream = (ctx: RunCtx) => {
     if (st.running === r) st.running = undefined;
     persist(r.owner);
     publishNow();
+    // Telemetry (D223): the turn's outcome and size; a failure as a fixed code, never its words.
+    const outcome = patch.status === "done" || patch.status === "cancelled" ? patch.status : "error";
+    track("agent:turn", { outcome, duration_ms: Date.now() - Date.parse(r.turn.startedAt), edits: r.turn.edits.length, steps: r.turn.items.filter((i) => i.kind === "step").length });
+    if (outcome === "error") track("agent:fail", { code: agentFailCode(r.turn.error) });
   };
 
   /** The turn's note reached claude (it answered this message): the next turn needn't repeat it. */
