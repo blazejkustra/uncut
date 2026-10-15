@@ -164,7 +164,7 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .empty-sub { color: var(--muted); font-size: 12px; line-height: 1.5; max-width: 220px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .tooltip-wrap { display: inline-flex; }
 
-.stage { grid-area: stage; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.stage { grid-area: stage; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; container: stage / size; }
 .stage-canvas { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 18px; background: #080808; }
 /* The preview: a size container so text sized in cqh scales with it (as in export, D39). */
 .frame { position: relative; overflow: hidden; container-type: size; isolation: isolate; background: #000; outline: 1px solid var(--border); }
@@ -175,6 +175,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .pv-layer { position: absolute; inset: 0; }
 /* A clip's box (D75): the wrapper clips and rounds the picture; core places both per frame (full frame by default). */
 .pv-box { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; }
+/* Issue #61 (D233): no native image drag on the canvas: a press on a picture moves the layer. */
+.frame img { -webkit-user-drag: none; user-select: none; }
 .pv-box > video, .pv-box > img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; max-width: none; }
 .pv-box > canvas.pv-fx-canvas, .pv-box > canvas.pv-scrub { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .pv-box > .pv-fx-overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -199,10 +201,19 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .pv-guide.y { left: 0; right: 0; height: calc(1px / var(--pv-scale)); transform: translateY(-50%); }
 .pv-guide.margin { background: rgb(255 79 163 / 55%); }
 .pv-inline { position: absolute; pointer-events: auto; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden; field-sizing: content; min-width: 1ch; white-space: pre-wrap; background: rgb(0 0 0 / 30%); outline: calc(1px / var(--pv-scale)) solid var(--select); outline-offset: calc(4px / var(--pv-scale)); caret-color: var(--select); }
-.transport { height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid var(--border); overflow: hidden; }
+/* Issue #62 (D233): the transport is always 40px tall (the picture above gives way) and never
+   clips: as the preview narrows, the less important controls are hidden, never cut off. */
+.transport { height: 40px; min-height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid var(--border); overflow: hidden; }
+.transport > *, .transport-mid > * { flex: none; }
 .timecode { font: 12px var(--mono); white-space: nowrap; }
-.transport [data-testid="canvas-info"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.transport-mid { flex: 1; display: flex; justify-content: center; gap: 4px; }
+.transport > [data-testid="canvas-info"] { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.transport > .transport-mid { flex: 1 0 auto; display: flex; justify-content: center; gap: 4px; }
+@container stage (max-width: 560px) { .transport > [data-testid="canvas-info"] { display: none; } }
+@container stage (max-width: 540px) { .transport .tc-end, .transport .tp-jump { display: none; } }
+@container stage (max-width: 400px) { .transport .zoom-select, .transport .tp-step { display: none; } }
+@container stage (max-width: 260px) { .transport { gap: 6px; padding: 0 8px; } .transport .tp-hand { display: none; } }
+@container stage (max-width: 190px) { .transport .timecode { display: none; } }
+@container stage (max-height: 260px) { .stage-canvas { padding: 6px; } }
 .icon-btn.play { color: var(--fg); }
 
 .side { grid-area: side; border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }

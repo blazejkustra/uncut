@@ -453,6 +453,8 @@ export abstract class CompositorBase {
     if (kind === "image") {
       el = document.createElement("img");
       el.alt = "";
+      // Issue #61 (D233): not the browser's image drag (a ghost copy): a press drags the layer.
+      el.draggable = false;
       // CORS mode (as the <video>), so a look's WebGL pass may read it (D136).
       el.crossOrigin = "anonymous";
       el.addEventListener("load", () => this.drawsPicture(item.id) && this.render());
