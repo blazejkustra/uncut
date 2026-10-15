@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, type SoundFolderInfo, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, type SoundFolderInfo, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, PROXY_PATH, type ProxyState, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName, type MultiLayout } from "@uncut/contracts";
@@ -144,6 +144,8 @@ export interface AppStateShape {
   readonly exportFolder?: string;
   // Analysis jobs on the server (D66); the Library shows the open project's running ones per tile.
   readonly analysisJobs: ReadonlyArray<AnalysisJob>;
+  /** D212: the open project's preview proxies (media that needs none has no entry). */
+  readonly proxies: ReadonlyArray<ProxyState>;
   // Why the last Analyze click was refused, shown in the Library.
   readonly analysisError?: string;
   // The speech models for transcripts and their downloads (D68), for the Setup row.
@@ -218,6 +220,7 @@ let state: AppStateShape = {
   exportOpen: false,
   exportJobs: [],
   analysisJobs: [],
+  proxies: [],
   generateJobs: [],
   environment: { id: "local", name: "This Mac", kind: "local" },
   environmentsOpen: false,
@@ -381,6 +384,13 @@ export const thumbUrl = (id: string, path?: string) => serverUrl(THUMB_PATH, id,
 export const recentThumbUrl = (id: string) => serverUrl(RECENT_THUMB_PATH, id);
 /** The original file of a media item, streamed by the server with byte ranges (never file://). */
 export const mediaUrl = (id: string, path?: string) => serverUrl(MEDIA_FILE_PATH, id, path);
+/** D212: a media item's preview proxy (tagged with the key of the file it was made from). */
+export const proxyUrl = (id: string, key: string) => {
+  const url = serverUrl(PROXY_PATH, id);
+  return url ? `${url}&v=${encodeURIComponent(key)}` : undefined;
+};
+/** D212: a media item's proxy state in the open project. */
+export const proxyOf = (s: AppStateShape, mediaId: string) => s.proxies.find((p) => p.mediaId === mediaId);
 /** A track of the bundled music library (D91), for the Audio tab's preview. */
 export const musicUrl = (file: string) => serverUrl(MUSIC_FILE_PATH, file);
 /** A sound of the bundled sound-effects pack (D134), for the Sound effects tab's preview. */
@@ -409,6 +419,7 @@ let unsubscribeAgent: (() => void) | undefined;
 let unsubscribeHistory: (() => void) | undefined;
 let unsubscribeExports: (() => void) | undefined;
 let unsubscribeAnalysis: (() => void) | undefined;
+let unsubscribeProxies: (() => void) | undefined;
 let unsubscribeTranscription: (() => void) | undefined;
 let unsubscribeGenerate: (() => void) | undefined;
 // Finished jobs whose result has been shown (or that finished before this window saw them).
@@ -589,6 +600,8 @@ export async function start() {
       unsubscribeExports = conn.subscribe((c) => c["export.jobs"]({}), onExportJobs);
       unsubscribeAnalysis?.();
       unsubscribeAnalysis = conn.subscribe((c) => c["analysis.jobs"]({}), onAnalysisJobs);
+      unsubscribeProxies?.();
+      unsubscribeProxies = conn.subscribe((c) => c["media.proxies"]({}), (proxies) => set({ proxies }));
       unsubscribeTranscription?.();
       unsubscribeTranscription = conn.subscribe((c) => c["transcription.state"]({}), (transcription) => set({ transcription }));
       unsubscribeGenerate?.();
@@ -1508,7 +1521,7 @@ export const actions = {
     return typeof picked === "string" ? picked : null;
   },
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
-  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number }; video?: { codec?: "h264" | "hevc"; bitrateMbps?: number; shortSide?: number; fps?: number } }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number }; video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number } }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     revealWhenDone.add(result.value.jobId);

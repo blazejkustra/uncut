@@ -6,7 +6,7 @@ import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH } from "@uncut/contracts";
+import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, PROXY_PATH, SFX_FILE_PATH } from "@uncut/contracts";
 import { MUSIC_TRACKS } from "@uncut/core/music";
 import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
@@ -17,6 +17,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { ServerConfig } from "../app/config.ts";
 import { readBrand } from "../brand/store.ts";
 import { Projects } from "../project/projects.ts";
+import { Proxies } from "./proxies.ts";
 import { Library, MAX_PREVIEW_BYTES } from "../library/library.ts";
 import { presentedToken, tokensMatch } from "../app/auth.ts";
 
@@ -147,6 +148,7 @@ export const layer = Layer.unwrap(
     const config = yield* ServerConfig;
     const projects = yield* Projects;
     const sounds = yield* Library;
+    const proxies = yield* Proxies;
     const authorised = (request: HttpServerRequest.HttpServerRequest) => {
       const url = HttpServerRequest.toURL(request);
       return Option.isSome(url) && tokensMatch(presentedToken(request.headers, url.value), config.token) ? url.value : undefined;
@@ -168,6 +170,21 @@ export const layer = Layer.unwrap(
           const entry = media.find((m) => m.id === id);
           if (!entry || typeof entry.path !== "string") return notFound();
           return yield* serveFile(request, isAbsolute(entry.path) ? entry.path : resolve(open.dir, entry.path));
+        }),
+      ),
+      // D212: the preview proxy of a media item of the open project, only once it is made from the file as it is.
+      HttpRouter.add(
+        "GET",
+        `${PROXY_PATH}/*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = authorised(request);
+          if (!url) return unauthorized();
+          const id = decode(url.pathname.slice(PROXY_PATH.length + 1));
+          if (!id || !MEDIA_ID.test(id)) return notFound();
+          const path = yield* proxies.proxyFor(id);
+          if (!path) return notFound();
+          return yield* serveFile(request, path);
         }),
       ),
       // D184: an image attached to an agent message, from the open project's .cache/agent-images/.

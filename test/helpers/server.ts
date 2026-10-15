@@ -43,7 +43,7 @@ export interface Ready {
 export async function startServer({ entry = BUNDLE, env = {}, args = [], bootstrap, command, captureStderr = false }: StartOptions = {}) {
   const proc = spawn(command ?? process.execPath, command ? args : [entry, ...args], {
     // UNCUT_SHELL_ENV=off: keep the PATH the test gives (the login-shell probe has its own tests).
-    env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", UNCUT_MEDIA_BIN: MEDIA, UNCUT_MODULES_DIR: MODULES, UNCUT_SHELL_ENV: "off", ...env },
+    env: { ...process.env, UNCUT_TOKEN: "", UNCUT_PORT: "", UNCUT_MEDIA_BIN: MEDIA, UNCUT_MODULES_DIR: MODULES, UNCUT_SHELL_ENV: "off", UNCUT_PROXIES: "off", ...env },
     // fd 4: the keys pipe the desktop gives the server (--keys-fd 4, D99); unused unless asked for.
     stdio: ["pipe", "pipe", captureStderr ? "pipe" : "inherit", "pipe", "pipe"],
   });

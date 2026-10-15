@@ -44,6 +44,8 @@ import {
   RASTER_CSS,
   sourceFramePick,
   graphFileArgs,
+  hardwareEncoderFailed,
+  usesHardware,
   MEDIA_TOKEN,
   mediaToken,
   silentFailure,
@@ -636,28 +638,40 @@ export const layer = Layer.effect(
           await writeFile(subtitles.file, writeSubtitles(flattenCues(cues), plan.fps, "srt"));
         }
         const luts = await writeLuts(plan, temp);
-        const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, video: { codec: job.codec, bitrateMbps: job.bitrateMbps, fps: job.fps }, loudnorm, loudness, output: partial, subtitles, luts });
-        const graphFile = join(temp, "graph.txt");
-        await writeFile(graphFile, cmd.graph);
+        const video = { codec: job.codec, encoder: job.encoder, bitrateMbps: job.bitrateMbps, fps: job.fps };
         const total = plan.frames / plan.fps;
-        const renderStart = Date.now();
-        patch(job.id, { phase: "rendering", progress: 0 });
-        let lastPatch = 0;
-        const r = await run(
-          bin,
-          ["-hide_banner", "-nostdin", "-y", "-nostats", "-progress", "pipe:1", "-stats_period", "0.25", ...cmd.inputs, ...graphFileArgs(caps, graphFile), ...cmd.outputArgs],
-          signal,
-          (line) => {
-            const m = /^out_time_us=(\d+)/.exec(line);
-            if (!m) return;
-            const progress = Math.min(0.999, Number(m[1]) / 1e6 / total);
-            const now = Date.now();
-            if (now - lastPatch < 200) return;
-            lastPatch = now;
-            const elapsed = (now - renderStart) / 1000;
-            patch(job.id, { progress, ...(progress > 0.02 ? { etaSeconds: Math.round((elapsed * (1 - progress)) / progress) } : {}) });
-          },
-        );
+        const graphFile = join(temp, "graph.txt");
+        const encode = async (choice: typeof video) => {
+          const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, video: choice, loudnorm, loudness, output: partial, subtitles, luts });
+          await writeFile(graphFile, cmd.graph);
+          const renderStart = Date.now();
+          patch(job.id, { phase: "rendering", progress: 0 });
+          let lastPatch = 0;
+          return run(
+            bin,
+            ["-hide_banner", "-nostdin", "-y", "-nostats", "-progress", "pipe:1", "-stats_period", "0.25", ...cmd.inputs, ...graphFileArgs(caps, graphFile), ...cmd.outputArgs],
+            signal,
+            (line) => {
+              const m = /^out_time_us=(\d+)/.exec(line);
+              if (!m) return;
+              const progress = Math.min(0.999, Number(m[1]) / 1e6 / total);
+              const now = Date.now();
+              if (now - lastPatch < 200) return;
+              lastPatch = now;
+              const elapsed = (now - renderStart) / 1000;
+              patch(job.id, { progress, ...(progress > 0.02 ? { etaSeconds: Math.round((elapsed * (1 - progress)) / progress) } : {}) });
+            },
+          );
+        };
+        const hardware = usesHardware(job.quality, caps, video);
+        patch(job.id, { encoder: hardware ? "hardware" : "software" });
+        let r = await encode(video);
+        // D212: VideoToolbox can be listed and still refuse (no constant-quality mode on an Intel Mac,
+        // no free hardware session): the same export again with the software encoder.
+        if (r.code !== 0 && !signal.aborted && hardware && hardwareEncoderFailed(r.stderr)) {
+          patch(job.id, { encoder: "software", warnings: [...(plan.warnings ?? []), "The hardware encoder failed on this Mac, so the software one made the video."] });
+          r = await encode({ ...video, encoder: "software" });
+        }
         if (r.code !== 0) throw new Error(`ffmpeg couldn't make the video: ${ffmpegError(r.stderr)}`);
         if (signal.aborted) throw new Cancelled();
         const silent = silentFailure(r.stderr);
@@ -758,6 +772,7 @@ export const layer = Layer.effect(
           output,
           quality: input.quality,
           codec,
+          ...(video.encoder !== undefined ? { encoder: video.encoder } : {}),
           ...(video.bitrateMbps !== undefined ? { bitrateMbps: video.bitrateMbps } : {}),
           loudness: input.loudness,
           ...(targetLufs !== undefined ? { targetLufs } : {}),

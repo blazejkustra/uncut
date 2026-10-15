@@ -100,7 +100,8 @@ test("Fable QA round 2 (export, settings, shell): codecs, Advanced, the done dia
   // ---- F4: the cards say their codec; High is H.264 ----
   await page.click("[data-testid=export-button]");
   await waitFor("[data-testid=export-form]");
-  for (const q of ["draft", "standard", "high"]) assert.match(await textOf(`[data-testid=quality-codec-${q}]`), /^H\.264, [\d.]+ Mb\/s$/, q);
+  // D212: Draft and Standard on the hardware encoder, High on the software one.
+  for (const [q, enc] of [["draft", "hardware"], ["standard", "hardware"], ["high", "software"]]) assert.equal(await textOf(`[data-testid=quality-codec-${q}]`), `H.264, ${enc}`, q);
   assert.equal(await page.$("[data-testid=export-advanced-body]"), null, "Advanced starts collapsed");
   await page.click("[data-testid=quality-high]");
   await page.click("[data-testid=export-change]");
@@ -132,6 +133,10 @@ test("Fable QA round 2 (export, settings, shell): codecs, Advanced, the done dia
   await page.keyboard.type("Advanced");
   await page.click("[data-testid=export-advanced]");
   await waitFor("[data-testid=export-advanced-body]");
+  // D212: the encoder row shows the preset's (High: software); Hardware moves High to VideoToolbox.
+  assert.equal(await page.$eval("[data-testid=export-encoder-software]", (el) => el.getAttribute("aria-checked")), "true");
+  await page.click("[data-testid=export-encoder-hardware]");
+  assert.equal(await textOf("[data-testid=quality-codec-high]"), "H.264, hardware");
   await page.click("[data-testid=export-codec-hevc]");
   assert.match(await textOf("[data-testid=quality-codec-high]"), /^HEVC, /);
   await page.select("[data-testid=export-size]", "720");

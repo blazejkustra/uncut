@@ -17,9 +17,27 @@ export function outputSize(canvas: { readonly width: number; readonly height: nu
   return { width: even(canvas.width * scale), height: even(canvas.height * scale) };
 }
 
+/**
+ * D212: which H.264/HEVC encoder makes the file. Hardware = VideoToolbox, software = libx264 /
+ * libx265. Draft and Standard default to hardware (faster at the same quality); High to software
+ * (VideoToolbox needs about twice the bytes for libx264's quality at 4K).
+ */
+export type ExportEncoder = "hardware" | "software";
+
+/** The encoder a preset uses unless Advanced picks one (D212). */
+export const defaultEncoder = (quality: ExportQuality): ExportEncoder => (quality === "high" ? "software" : "hardware");
+
+/**
+ * D212: H.264 with VideoToolbox is constant quality (`-q:v`), set so its VMAF is at least libx264's
+ * (crf 26 / 20 / 17) minus one on 4K drone footage and on a screen recording.
+ */
+export const HARDWARE_H264_QUALITY: Readonly<Record<ExportQuality, number>> = { draft: 55, standard: 72, high: 74 };
+/** libx264's constant rate factor per preset (D171). */
+export const SOFTWARE_H264_CRF: Readonly<Record<ExportQuality, number>> = { draft: 26, standard: 20, high: 17 };
+
 export const CODEC_NAMES: Readonly<Record<ExportCodec, string>> = { h264: "H.264", hevc: "HEVC" };
 
-/** Bits per pixel per frame of each preset (VideoToolbox's target bitrate); HEVC needs about 60 % of H.264's. */
+/** Bits per pixel per frame of each preset: HEVC's target bitrate (H.264 is constant quality, D212, unless a bitrate is set). */
 const BPP: Readonly<Record<ExportCodec, Readonly<Record<ExportQuality, number>>>> = {
   h264: { draft: 0.06, standard: 0.1, high: 0.16 },
   hevc: { draft: 0.04, standard: 0.06, high: 0.1 },

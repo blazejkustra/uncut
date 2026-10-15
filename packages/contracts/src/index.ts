@@ -22,6 +22,7 @@ export const RPC_METHODS = {
   mediaImport: "media.import",
   mediaThumbnails: "media.thumbnails",
   mediaJobs: "media.jobs",
+  mediaProxies: "media.proxies",
   musicAdd: "music.add",
   librarySearch: "library.search",
   libraryAdd: "library.add",
@@ -269,6 +270,24 @@ export type MediaRecentEntry = typeof MediaRecentEntry.Type;
 // GET /media/file/<media id>?token=…: the original file of a media item of the open project, with
 // HTTP Range support (the preview's <video> seeks with it). Footage is streamed, never copied.
 export const MEDIA_FILE_PATH = "/media/file";
+// D212: GET /media/proxy/<media id>?token=…: the preview proxy of a media item of the open project
+// (<project>/.cache/proxies/), with Range support like MEDIA_FILE_PATH; 404 until it is made.
+export const PROXY_PATH = "/media/proxy";
+
+/**
+ * D212: a media item's preview proxy: queued (waiting for an export when `waiting`), running with
+ * progress 0–1, done (served at PROXY_PATH; `key` tags the file it was made from) or failed.
+ * Media that needs none has no state.
+ */
+export const ProxyState = Schema.Struct({
+  mediaId: Schema.String,
+  phase: Schema.Literals(["queued", "running", "done", "failed"]),
+  key: Schema.optional(Schema.String),
+  progress: Schema.optional(Schema.Number),
+  waiting: Schema.optional(Schema.Literals(["export"])),
+  error: Schema.optional(Schema.String),
+});
+export type ProxyState = typeof ProxyState.Type;
 // GET /media/waveform/<media id>?token=…: the sound's peaks for the timeline, as JSON
 // { version, rate, seconds, peaks } where peaks is base64 of one byte per 1/rate s (the loudest
 // sample in it, 0–255 for 0–full scale). Made once per file and cached in the project's .cache/.
@@ -988,7 +1007,10 @@ export type ExportRange = typeof ExportRange.Type;
 export const ExportCodec = Schema.Literals(["h264", "hevc"]);
 export type ExportCodec = typeof ExportCodec.Type;
 /** F4 (D171): the dialog's Advanced row: codec, bitrate (Mb/s), size by the shorter side (never upscaled), frame rate. Absent = the preset's. */
-export const ExportVideo = Schema.Struct({ codec: Schema.optional(ExportCodec), bitrateMbps: Schema.optional(Schema.Number), shortSide: Schema.optional(Schema.Number), fps: Schema.optional(Schema.Number) });
+/** D212: VideoToolbox (hardware) or libx264 / libx265 (software); absent = the preset's (High software, else hardware). */
+export const ExportEncoder = Schema.Literals(["hardware", "software"]);
+export type ExportEncoder = typeof ExportEncoder.Type;
+export const ExportVideo = Schema.Struct({ codec: Schema.optional(ExportCodec), encoder: Schema.optional(ExportEncoder), bitrateMbps: Schema.optional(Schema.Number), shortSide: Schema.optional(Schema.Number), fps: Schema.optional(Schema.Number) });
 export type ExportVideo = typeof ExportVideo.Type;
 
 export const ExportJob = Schema.Struct({
@@ -999,6 +1021,8 @@ export const ExportJob = Schema.Struct({
   quality: ExportQuality,
   /** F4 (D171): the codec it was encoded with (absent on jobs from before: H.264 then, HEVC for High). */
   codec: Schema.optional(ExportCodec),
+  /** D212: the encoder that made the file (software when the hardware one failed and it fell back). */
+  encoder: Schema.optional(ExportEncoder),
   /** F4 (D171): a bitrate chosen in Advanced (Mb/s); absent = the preset's. */
   bitrateMbps: Schema.optional(Schema.Number),
   loudness: ExportLoudness,
@@ -1306,6 +1330,9 @@ const LibraryFolderRemoveRpc = Rpc.make(RPC_METHODS.libraryFolderRemove, {
 const MediaJobsRpc = Rpc.make(RPC_METHODS.mediaJobs, { payload: Empty, success: Schema.Array(ImportJob), stream: true });
 
 // Which media ids have a poster at THUMB_PATH (the rest show an icon).
+// D212: the open project's preview proxies, now and on every change.
+const MediaProxiesRpc = Rpc.make(RPC_METHODS.mediaProxies, { payload: Empty, success: Schema.Array(ProxyState), stream: true });
+
 const MediaThumbnailsRpc = Rpc.make(RPC_METHODS.mediaThumbnails, { payload: Empty, success: Schema.Array(Schema.String) });
 
 const SetupCheckRpc = Rpc.make(RPC_METHODS.setupCheck, { payload: Empty, success: Schema.Array(SetupCheck) });
@@ -1617,6 +1644,7 @@ export const WsRpcGroup = RpcGroup.make(
   MediaImportRpc,
   MediaJobsRpc,
   MediaThumbnailsRpc,
+  MediaProxiesRpc,
   MusicAddRpc,
   LibrarySearchRpc,
   LibraryAddRpc,
