@@ -15,7 +15,7 @@ const root = mkdtempSync(join(tmpdir(), "uncut-brand-"));
 after(() => rmSync(root, { recursive: true, force: true }));
 let n = 0;
 /** A fresh data folder and project folder. */
-const dirs = (): Required<BrandDirs> => {
+const dirs = (): Required<Omit<BrandDirs, "skills">> => {
   const base = join(root, `case-${++n}`);
   mkdirSync(join(base, "data"), { recursive: true });
   mkdirSync(join(base, "project"), { recursive: true });

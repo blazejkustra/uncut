@@ -41,19 +41,22 @@ export function SkillEditor({ brand, view, hasProject, online, onDraft, onClose 
         <ScopeChoice value={d.scope} hasProject={hasProject} testId="brand-skill-scope" onChange={(scope) => set({ scope })} />
         <span className="lib-label">Description</span>
         <input className="field input" data-testid="brand-skill-description" maxLength={300} value={d.description} onChange={(e) => set({ description: e.target.value })} />
-        <span className="lib-label">Recipe</span>
+        <span className="lib-label">Instructions</span>
         <textarea className="gen-prompt brand-text brand-mono" data-testid="brand-skill-body" spellCheck={false} value={d.body} onChange={(e) => set({ body: e.target.value })} />
       </div>
     </EditorFrame>
   );
 }
 
-/** D207: a built-in skill, read-only: its recipe and a Duplicate that opens an editable copy. */
-export function BuiltinSkillView({ skill, online, onDuplicate, onClose }: { skill: BrandSkill | undefined; online: boolean; onDuplicate: (s: BrandSkill) => void; onClose: () => void }) {
+/**
+ * D207, D232: a plugin's skill (Uncut's own come from the bundled uncut.skills), read-only: its
+ * instructions, Use in chat (/name in the composer) and a Duplicate that opens an editable copy.
+ */
+export function SkillView({ skill, online, hasProject, onUse, onDuplicate, onClose }: { skill: BrandSkill | undefined; online: boolean; hasProject: boolean; onUse: (s: BrandSkill) => void; onDuplicate: (s: BrandSkill) => void; onClose: () => void }) {
   return (
     <div
       className="brand-editor"
-      data-testid="brand-builtin-skill"
+      data-testid="skill-view"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
@@ -65,24 +68,29 @@ export function BuiltinSkillView({ skill, online, onDuplicate, onClose }: { skil
           <ChevronLeft />
         </button>
         <span className="ellipsis">{skill?.name ?? "Skill"}</span>
-        <span className="brand-tag">Built-in</span>
+        <span className="brand-tag">/{skill?.id ?? ""}</span>
       </div>
       <div className="brand-body">
         <div className="lib-section">
           {skill?.description && <div className="brand-desc">{skill.description}</div>}
-          <div className="muted small">Uncut's own recipe, read-only. Tick it under This project to use it; duplicate it to change it.</div>
-          <pre className="brand-skill-read selectable" data-testid="brand-builtin-body">
+          <div className="muted small">
+            {skill?.pluginName ? `From the plugin ${skill.pluginName}, read-only.` : "Read-only."} The agent reads it when it fits; Use in chat calls it with /{skill?.id ?? ""}. Duplicate it to change it.
+          </div>
+          <pre className="brand-skill-read selectable" data-testid="skill-view-body">
             {skill?.body ?? ""}
           </pre>
         </div>
       </div>
       <div className="brand-foot">
+        <button className="btn ghost" data-testid="brand-duplicate" disabled={!online || !skill} onClick={() => skill && onDuplicate(skill)}>
+          Duplicate
+        </button>
         <span className="brand-foot-gap" />
         <button className="btn ghost" data-testid="brand-cancel" onClick={onClose}>
           Close
         </button>
-        <button className="btn primary" data-testid="brand-duplicate" disabled={!online || !skill} onClick={() => skill && onDuplicate(skill)}>
-          Duplicate
+        <button className="btn primary" data-testid="skill-use" disabled={!skill || !hasProject} title={hasProject ? undefined : "Open a project to use the agent"} onClick={() => skill && onUse(skill)}>
+          Use in chat
         </button>
       </div>
     </div>

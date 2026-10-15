@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { PluginError, type CatalogEntry, type PluginInfo } from "@uncut/contracts";
 import { parseFindings, CHECK_TIMEOUT_MS } from "./contributions.ts";
 import type { Check } from "@uncut/core";
-import { mergeContributions, NO_CONTRIBUTIONS, type Contributions } from "@uncut/core";
+import { mergeContributions, mergeSkills, NO_CONTRIBUTIONS, type Contributions, type PluginSkill } from "@uncut/core";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -72,6 +72,11 @@ export interface PluginsShape {
   readonly modules: (kind?: string) => Effect.Effect<ReadonlyArray<Record<string, unknown>>>;
   /** The allowed plugins' looks, components and check rules (D103), from the last scan; an unallowed plugin's never show. */
   readonly contributions: Effect.Effect<Contributions>;
+  /**
+   * D232 (issue #60): the allowed plugins' skills (the first plugin with a name has it), as of the
+   * last scan or approval change; synchronous so the brand store's callers can pass them along.
+   */
+  readonly skillsNow: () => ReadonlyArray<PluginSkill>;
   /** Uncut's catalog (D103): the plugins in config.pluginCatalogDir, each with whether it's enabled (copied in). */
   readonly catalog: Effect.Effect<{ readonly plugins: ReadonlyArray<CatalogEntry>; readonly problems: ReadonlyArray<string> }>;
   /** Enables a catalog plugin: a folder install of its catalog folder (D102), recorded as "catalog"; it still needs allowing. */
@@ -116,6 +121,11 @@ export const layer = Layer.effect(
     // One install or removal at a time (they rename folders in <dataDir>/plugins).
     const installLock = yield* Semaphore.make(1);
     const reported = new Set<string>();
+    // D232: the allowed plugins' skills, kept with each scan and approval change.
+    let skills: ReadonlyArray<PluginSkill> = [];
+    const keepSkills = Effect.map(settings.pluginApprovals, (approvals) => {
+      skills = mergeSkills(discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id)).map((p) => p.contributions));
+    });
 
     const refresh = scanLock.withPermits(1)(
       Effect.gen(function* () {
@@ -124,6 +134,7 @@ export const layer = Layer.effect(
         // Plugins that went away, changed how they start or lost their approval stop now.
         const keep = new Map(discovery.plugins.filter((p) => p.runs && isApproved(p, approvals[p.id])).map((p) => [p.id, p.spec]));
         yield* Effect.promise(() => host.retain(keep));
+        yield* keepSkills;
         // stderr: stdout carries the ready line. Each problem once, not on every scan.
         for (const b of discovery.broken) {
           const line = `[uncut] plugin skipped (${b.dir}): ${b.problem}`;
@@ -191,6 +202,7 @@ export const layer = Layer.effect(
               .setPluginApproval(id, { dir: plugin.dir, version: plugin.version, command: plugin.spec.command, args: [...plugin.spec.args], capabilities: [...plugin.capabilities], approvedAt: new Date().toISOString() })
               .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `Couldn't save that ${plugin.name} is allowed: ${error.message}` })));
           }
+          yield* keepSkills;
           return yield* infos;
         }),
       revoke: (id) =>
@@ -201,6 +213,7 @@ export const layer = Layer.effect(
             .setPluginApproval(id, undefined)
             .pipe(Effect.mapError((error) => new PluginError({ reason: "io", message: `Couldn't save that ${plugin.name} is no longer allowed: ${error.message}` })));
           yield* Effect.promise(() => host.stop(id));
+          yield* keepSkills;
           return yield* infos;
         }),
       install: (input) =>
@@ -332,6 +345,7 @@ export const layer = Layer.effect(
         const allowed = discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id));
         return allowed.length ? mergeContributions(allowed.map((p) => p.contributions)) : NO_CONTRIBUTIONS;
       }),
+      skillsNow: () => skills,
       processChecks: (project, projectDir) =>
         Effect.gen(function* () {
           const approvals = yield* settings.pluginApprovals;

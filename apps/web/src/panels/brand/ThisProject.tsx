@@ -36,25 +36,6 @@ export function ThisProject({ brand, hasProject, online }: { brand: BrandState; 
           </optgroup>
         )}
       </select>
-      {brand.skills.length > 0 && (
-        <div className="brand-checks">
-          {[...brand.skills.filter((s) => !s.builtin), ...brand.skills.filter((s) => s.builtin)].map((s) => {
-            const on = brand.active.skills.includes(s.id);
-            return (
-              <label key={s.id} className="check-row">
-                <input
-                  type="checkbox"
-                  data-testid={`brand-skill-check-${s.id}`}
-                  disabled={disabled}
-                  checked={on}
-                  onChange={() => void actions.brandSetActive({ kit: brand.active.kit, skills: on ? brand.active.skills.filter((x) => x !== s.id) : [...brand.active.skills, s.id] })}
-                />
-                <span className="ellipsis">{s.name}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

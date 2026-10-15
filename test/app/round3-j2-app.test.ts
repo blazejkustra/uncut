@@ -1,7 +1,7 @@
 // Round 3 J2 (planning/FEEDBACK.md U7–U9, U15–U17, U19; D186–D191) on the packaged app, run
 // invisibly and muted, with the stand-in claude:
-// - U7: the Brand tab: a new kit (name, colours), a skill from a template, the project's kit and
-//   skill; the next message carries them.
+// - U7: the Brand tab: a new kit (name, colours) and the project's kit; D232: the Skills tab's copy
+//   of Launch promo, called with /launch-promo-copy; the next message carries them.
 // - U8: the agent's question card: pick an option, write a line, Send; the turn keeps the answer.
 // - U15/U9: the brief card; the storyboard card: Edit a beat's title, Approve with edits; the build
 //   goes through; the Plan chip (D197) shows the storyboard approved and opens the brief card.
@@ -111,25 +111,25 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     await page.waitForFunction(() => !document.querySelector("[data-testid=brand-kit-editor]"), { timeout: 10000 }).catch(() => {});
     if (await page.$("[data-testid=brand-back]")) await page.click("[data-testid=brand-back]");
     await waitFor("[data-testid=brand-kit-argent]");
-    await page.click("[data-testid=brand-skill-new]");
-    await page.click("[data-testid=brand-skill-new-launch-promo]");
+    await page.select("[data-testid=brand-kit-select]", "argent");
+    await page.screenshot({ path: out("brand-panel") });
+    // D232: the user's copy of Uncut's Launch promo, made in the Skills tab (Duplicate).
+    await page.click("[data-testid=rail-skills]");
+    await waitFor("[data-testid=skill-launch-promo]");
+    await page.click("[data-testid=skill-launch-promo]");
+    await waitFor("[data-testid=brand-duplicate]");
+    await page.click("[data-testid=brand-duplicate]");
     await waitFor("[data-testid=brand-skill-editor]");
     await page.click("[data-testid=brand-save]");
-    await page.waitForFunction(() => !document.querySelector("[data-testid=brand-skill-editor]"), { timeout: 10000 }).catch(() => {});
-    if (await page.$("[data-testid=brand-back]")) await page.click("[data-testid=brand-back]");
-    await page.select("[data-testid=brand-kit-select]", "argent");
-    // D207: the user's copy of the built-in Launch promo (built-ins are listed after the user's own).
-    const skillBox = await page.waitForSelector("[data-testid=brand-skill-check-launch-promo-copy]");
-    await skillBox!.click();
-    await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=brand-skill-check-launch-promo-copy]")!.checked);
-    await page.screenshot({ path: out("brand-panel") });
+    await waitFor("[data-testid=skill-launch-promo-copy]");
+    await page.click("[data-testid=rail-brand]");
     const kitFile = JSON.parse(readFileSync(join(root, "data", "brand", "kits", "argent", "kit.json"), "utf8"));
     assert.deepEqual(kitFile.colors.map((c: { hex: string }) => c.hex), ["#0b1d3a", "#f5a623", "#ffffff"]);
 
     // ---- U8: the question card ----
     await waitFor("[data-testid=agent-input]");
     nextTurn([{ tool: "brand_read" }, { tool: "ask_user", args: { question: "Which format is it for?", options: [{ label: "9:16", detail: "Phone feeds, Reels, Shorts" }, { label: "16:9", detail: "YouTube, the site" }, { label: "4:5", detail: "X and LinkedIn" }] } }, { text: "Got it, 9:16 first." }]);
-    await send("make a 10 s launch promo for Argent Cloud");
+    await send("/launch-promo-copy make a 10 s launch promo for Argent Cloud");
     await waitFor("[data-testid=agent-question]");
     assert.equal(await text(page, "[data-testid=agent-question] .approval-text"), "Which format is it for?");
     const options = await page.$$("[data-testid=agent-question-option]");
@@ -142,7 +142,9 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     assert.equal(await text(page, "[data-testid=agent-card][data-type=question] [data-testid=agent-card-answer]"), "9:16, and a 16:9 cut later");
     const first = runs().at(-1);
     assert.match(first.prompt, /<brand>\nKit "Argent" \(argent, the user's\)\nColours: #0b1d3a background; #f5a623 accent; #ffffff text/);
-    assert.match(first.prompt, /Skill "Launch promo copy"/);
+    assert.match(first.prompt, /^\(skill launch-promo-copy\) make a 10 s launch promo/);
+    assert.match(first.prompt, /<skill name="launch-promo-copy" title="Launch promo copy">/);
+    assert.match(first.prompt, /Skills this project uses: Launch promo copy \(launch-promo-copy\)/);
 
     // ---- U15/U9: brief, then the storyboard card: edit a beat, approve with edits; the build goes through ----
     const brief = { film: "Argent Cloud runs your app's QA on real devices in the cloud", audience: "React Native developers", duration: "10 s", formats: ["9:16 1080x1920", "16:9 later"], assets: ["Argent logo (kit)", "dashboard recording"], visual: "Dark navy, amber accent, product first, springy UI motion", hardLines: ["Never invent product UI, metrics or logos", "Only the real dashboard recording"], deliverables: ["promo-9x16.mp4"] };

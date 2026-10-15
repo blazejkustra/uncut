@@ -93,7 +93,7 @@ export async function discoverPlugins(
       // Ids are checked per plugin here; across plugins only allowed ones claim ids (mergeContributions).
       const read = readContributions(manifest, { reserved: reserved.moduleIds, moves });
       warnings.push(...read.warnings);
-      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length + (read.contributions.shaders?.length ?? 0) > 0;
+      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length + (read.contributions.shaders?.length ?? 0) + (read.contributions.skills?.length ?? 0) > 0;
       // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent; a
       // plugin that contributes looks, components or checks (D103) is used without tools.
       if (!declared.length && manifest.kind !== "analyzer" && !contributes) warnings.push("It has no agent tools, so the agent can't use it.");

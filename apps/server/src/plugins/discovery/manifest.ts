@@ -77,9 +77,9 @@ export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { 
   const runtime = manifest.runtime as { type: string; command?: string };
   if (runtime.type === "data") {
     // A data plugin (D103): nothing runs, so it has no tools and needs something to contribute.
-    const c = (manifest.contributes ?? {}) as { looks?: Array<unknown>; components?: Array<unknown>; rules?: Array<unknown>; filters?: Array<unknown>; shaders?: Array<unknown> };
+    const c = (manifest.contributes ?? {}) as { looks?: Array<unknown>; components?: Array<unknown>; rules?: Array<unknown>; filters?: Array<unknown>; shaders?: Array<unknown>; skills?: Array<unknown> };
     if ((manifest.agentTools as Array<unknown> | undefined)?.length) return fail(`It's a "data" plugin with agent tools; tools need a "process" plugin that runs a program.`);
-    if (!c.looks?.length && !c.components?.length && !c.rules?.length && !c.filters?.length && !c.shaders?.length) return fail(`It's a "data" plugin that contributes nothing (no looks, components, rules, filters or shader effects).`);
+    if (!c.looks?.length && !c.components?.length && !c.rules?.length && !c.filters?.length && !c.shaders?.length && !c.skills?.length) return fail(`It's a "data" plugin that contributes nothing (no looks, components, rules, filters, shader effects or skills).`);
   } else {
     if (runtime.type !== "process") return fail(`It's a "${runtime.type}" module; only "process" and "data" plugins load from a plugin folder.`);
     if (!runtime.command) return fail(`Its runtime has no command, so Uncut can't start it.`);

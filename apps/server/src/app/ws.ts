@@ -60,7 +60,7 @@ interface Services {
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
 const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies }: Services) => {
-  const brand = brandRpc(config.dataDir, projects.view);
+  const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({

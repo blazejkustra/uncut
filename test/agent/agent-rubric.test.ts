@@ -4,9 +4,8 @@
 // a meme's dense, loud effects are findings from the check, not blockers; a promo stays strict; a
 // finding marked Intended is left out; style blockers (off-brand colour, "other") become findings
 // unless the video asks for them; suggestSkills adds Motion craft and Sound design only where they fit.
-// On the bundled server with fake-claude: brief_write records the type and suggests skills without
-// turning any on, use is refused unless the user picked it on an ask_user card and turns on what they
-// picked; a tutorial review passes without a hook; a meme's click storm is a finding; the user marks
+// On the bundled server with fake-claude: brief_write records the type and suggests skills (D232:
+// to read with skill_read, nobody picks); skill_read marks one used; a tutorial review passes without a hook; a meme's click storm is a finding; the user marks
 // it Intended and the next round leaves it out (and tells the critic).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -229,29 +228,23 @@ test("on the server: the brief suggests and turns nothing on, use only after the
     const tb = { film: "Set up Argent in five minutes", type: "tutorial", audience: "RN devs", duration: "40 s", formats: ["16:9"], assets: ["screen recording"], visual: "Calm, clear", hardLines: ["Never invent UI"], deliverables: ["16:9 mp4"] };
     const t1 = await start("make a tutorial", [
       { tool: "brief_write", args: tb },
-      { tool: "brief_write", args: { ...tb, use: [BUILTIN_IDS.sound] } },
-      { tool: "ask_user", args: { question: "Which skills should this video use?", options: [{ label: "Product demo" }, { label: "Motion craft" }], multi: true } },
-      { tool: "brief_write", args: { ...tb, use: [BUILTIN_IDS.demo, BUILTIN_IDS.sound] } },
+      { tool: "skill_read", args: { name: BUILTIN_IDS.demo } },
+      { tool: "brief_write", args: tb },
     ]);
-    await agent.until((v) => v?.approval?.turnId === t1, 20000);
-    const q = agent.values.at(-1).approval;
-    assert.equal(q.question.question, "Which skills should this video use?");
-    await client.ok("agent.approve", { id: q.id, allow: true, answer: { choices: ["Product demo"] } });
     assert.equal((await done(t1)).status, "done");
-    const [w1, w2, , w3] = fresh();
+    const [w1, read, w2] = fresh();
     const first = jsonOf(w1!.result);
     assert.equal(first.type, "tutorial");
-    assert.deepEqual(first.skills, [], "nothing turned on");
+    assert.deepEqual(first.skills, [], "nothing used yet");
     assert.deepEqual(first.suggestedSkills.map((x: { id: string }) => x.id), [BUILTIN_IDS.demo]);
-    assert.match(first.skillsNote, /No skills are on\. Ask the user which of the suggested ones to use/);
+    assert.match(first.skillsNote, /Read each suggested skill that fits with skill_read/);
     assert.equal(first.rubric.hook, "not scored");
     assert.match(first.sound, /^standard: at most 4 effects/);
     assert.equal(JSON.parse(readFileSync(join(tut.dir, "brief.json"), "utf8")).type, "tutorial");
-    assert.match(jsonOf(w2!.result).refused, /builtin-sound-design/, "not picked by the user");
-    const third = jsonOf(w3!.result);
-    assert.deepEqual(third.skills.map((x: { id: string }) => x.id), [BUILTIN_IDS.demo]);
-    assert.match(third.skillsNote, /Turned on what the user picked: Product demo/);
-    assert.match(third.refused, /builtin-sound-design/);
+    assert.equal(jsonOf(read!.result).name, BUILTIN_IDS.demo);
+    const second = jsonOf(w2!.result);
+    assert.deepEqual(second.skills.map((x: { id: string }) => x.id), [BUILTIN_IDS.demo], "read: used");
+    assert.deepEqual(second.suggestedSkills, []);
     assert.deepEqual(JSON.parse(readFileSync(join(tut.dir, "brand", "active.json"), "utf8")).skills, [BUILTIN_IDS.demo]);
     // Its review: no hook score, passes.
     const t2 = await done(await start("build and review", [

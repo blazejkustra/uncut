@@ -44,7 +44,7 @@ after(() => {
 });
 
 let n = 0;
-const dirs = (): Required<BrandDirs> => {
+const dirs = (): Required<Omit<BrandDirs, "skills">> => {
   const base = join(root, `case-${++n}`);
   mkdirSync(join(base, "data"), { recursive: true });
   mkdirSync(join(base, "project"), { recursive: true });

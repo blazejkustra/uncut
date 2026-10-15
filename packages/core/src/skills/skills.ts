@@ -1,53 +1,29 @@
-// Uncut's built-in skills (D207, issue #30): production recipes the agent follows when a project
-// turns them on (the Brand tab's "This project", or brief_write's suggestion from the brief). Each
-// body is plain text in the same shape: what it's for, structure, rules, do and don't, a short
-// example and a "Review checklist" whose lines the critic checks on the frames (skillChecklist,
-// which reads a user's own skills the same way). Read-only in the Brand tab; a duplicate is the
-// user's to edit. Bodies stay short (about 2,000 characters each): every agent message carries
-// the chosen ones. Sources and licences: planning/DECISIONS.md D207 (adapted, nothing copied).
+// Uncut's own skills (D207, issue #30; D232, issue #60): production recipes. Since D232 they ship as
+// a bundled first-party plugin (plugins/uncut-skills, `contributes.skills`) like any plugin's
+// skills; this module keeps what Uncut reasons about by name: their ids (suggestSkills, the
+// critic's rubric), the "Review checklist" reader (skillChecklist; the critic checks each line on
+// the frames) and the suggestions from a brief. Sources and licences: planning/DECISIONS.md D207.
 //
-// Browser-safe and pure: the server (store, prompt, critic) and the Brand tab read it.
-import { BUILTIN_BODIES } from "./bodies.ts";
+// Browser-safe and pure: the server (store, prompt, critic) and the web read it.
 import { isVideoType, type VideoType } from "./rubric.ts";
 
-export interface BuiltinSkill {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string;
-  readonly body: string;
-}
-
-/** Built-in ids start with this, so a user's skill never shadows one by accident. */
-export const BUILTIN_PREFIX = "builtin-";
-
+/** Uncut's own skills by their names (D232: what the user types after /; were builtin-<name> before). */
 export const BUILTIN_IDS = {
-  launch: "builtin-launch-promo",
-  demo: "builtin-product-demo",
-  talking: "builtin-talking-head",
-  social: "builtin-social-cutdown",
-  explainer: "builtin-explainer",
-  titles: "builtin-title-sequence",
-  motion: "builtin-motion-craft",
-  sound: "builtin-sound-design",
-  brand: "builtin-brand-application",
+  launch: "launch-promo",
+  demo: "product-demo",
+  talking: "talking-head",
+  social: "social-cutdown",
+  explainer: "explainer",
+  titles: "title-sequence",
+  motion: "motion-craft",
+  sound: "sound-design",
+  brand: "brand-application",
+  /** D232: the skill "Make from reference" in the Brand tab calls. */
+  brandKit: "make-brand-kit",
 } as const;
 
-const META: ReadonlyArray<Omit<BuiltinSkill, "body"> & { readonly key: keyof typeof BUILTIN_BODIES }> = [
-  { key: "launch", id: BUILTIN_IDS.launch, name: "Launch promo", description: "A 15 to 30 s launch film: hook, problem, reveal, proof, call to action." },
-  { key: "demo", id: BUILTIN_IDS.demo, name: "Product demo", description: "A demo built on real UI recordings: tight crops, cursor and state changes that read." },
-  { key: "talking", id: BUILTIN_IDS.talking, name: "Talking-head short", description: "A 9:16 short cut from a talking head, with burned-in captions and real b-roll." },
-  { key: "social", id: BUILTIN_IDS.social, name: "Social cut-down", description: "One edit delivered as 9:16, 4:5, 1:1 and 16:9 cuts, each safe for its platform." },
-  { key: "explainer", id: BUILTIN_IDS.explainer, name: "Explainer", description: "How it works in 30 to 90 s: one idea per beat, diagrams built step by step." },
-  { key: "titles", id: BUILTIN_IDS.titles, name: "Title sequence and kinetic type", description: "Type as the picture: a hierarchy, holds you can read, motion that follows the words." },
-  { key: "motion", id: BUILTIN_IDS.motion, name: "Motion craft", description: "Springs per object class, holds, readability, and the clichés to avoid." },
-  { key: "sound", id: BUILTIN_IDS.sound, name: "Sound design", description: "Few, quiet, synced sound effects; music matched to the pace; ducking under voice." },
-  { key: "brand", id: BUILTIN_IDS.brand, name: "Brand application", description: "The kit applied with restraint: colours by role, fonts, logo files, tone." },
-];
-
-export const BUILTIN_SKILLS: ReadonlyArray<BuiltinSkill> = META.map(({ key, ...m }) => ({ ...m, body: BUILTIN_BODIES[key] }));
-
-export const builtinSkill = (id: string) => BUILTIN_SKILLS.find((s) => s.id === id);
-export const isBuiltinId = (id: string) => id.startsWith(BUILTIN_PREFIX);
+/** The bundled plugin that ships Uncut's own skills (D232). */
+export const SKILLS_PLUGIN_ID = "uncut.skills";
 
 /** A checklist's heading: "Review checklist", "Checklist", "Check before handing it over". */
 const CHECK_HEAD = /^\s*(review checklist|checklist|check before handing it over|before handing it over)\b/i;
@@ -159,5 +135,5 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   return out;
 }
 
-export { findingKind, guessVideoType, intendedOf, isIntended, isVideoType, OPTIONAL_BAR, REQUIRED_BAR, reviewRubric, RUBRIC_CATEGORIES, rubricBar, scoredCategories, soundProfileFor, VIDEO_TYPE_NAMES, VIDEO_TYPES, DEFECT_KINDS } from "./rubric.ts";
+export { findingKind, guessVideoType, skillIdOf, skillIdsOf, intendedOf, isIntended, isVideoType, OPTIONAL_BAR, REQUIRED_BAR, reviewRubric, RUBRIC_CATEGORIES, rubricBar, scoredCategories, soundProfileFor, VIDEO_TYPE_NAMES, VIDEO_TYPES, DEFECT_KINDS } from "./rubric.ts";
 export type { FindingRef, IntendedRef, Rubric, RubricBrief, RubricCategory, RubricLevel, VideoType } from "./rubric.ts";

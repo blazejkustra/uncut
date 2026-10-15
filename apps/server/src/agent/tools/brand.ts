@@ -1,4 +1,4 @@
-// The agent's brand and look tools: brand_read, brand_write, reference_frames, beat_grid, shaders.
+// The agent's brand and look tools: brand_read, brand_write, skill_read, reference_frames, beat_grid, shaders.
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { BrandKit } from "@uncut/contracts";
@@ -8,7 +8,8 @@ import { targetOf } from "../../analysis/analysis.ts";
 import type { BeatsResult } from "../../analysis/beats.ts";
 import { shortName, CELL_WIDTH, clock, MAX_CELLS, sheetLayout } from "../agentFootage.ts";
 import { beatGrid, kitChanges, kitLines, mergeKit, type GridItem } from "../agentPlan.ts";
-import { readBrand, saveKit, slug, writeActive } from "../../brand/store.ts";
+import { readBrand, saveKit, slug, useSkills, writeActive } from "../../brand/store.ts";
+import { skillIdOf } from "@uncut/core/skills";
 import { fontFileFamilies, projectFonts } from "../../export/fonts.ts";
 import { fillLogos, importIntoKit, type LogoSlot } from "../../brand/importer.ts";
 import { logoPictures } from "../../brand/logoImages.ts";
@@ -21,6 +22,27 @@ import type { CardsCtx } from "./cards.ts";
 
 export const makeBrandTools = (ctx: CardsCtx) => {
   const { brandDirs, textResult, config, askUser, addCard, mediaCore, exporter, requestAndWait, pendingOut, cancelledNote, plugins } = ctx;
+
+  /**
+   * skill_read (D232, issue #60): an installed skill's instructions (a plugin's, or the user's own);
+   * the project uses it from then on, so the critic checks its review checklist.
+   */
+  const skillRead = (v: ProjectView, args: Record<string, unknown>) =>
+    Effect.gen(function* () {
+      const asked = typeof args.name === "string" ? args.name.trim().replace(/^\//, "") : "";
+      const all = yield* Effect.promise(() => readBrand(brandDirs(v)));
+      const skill = all.skills.find((x) => x.id === skillIdOf(asked)) ?? all.skills.find((x) => x.name.toLowerCase() === asked.toLowerCase());
+      if (!skill) return textResult(`There's no skill "${asked.slice(0, 64)}". The installed ones: ${all.skills.map((x) => x.id).join(", ") || "none"}.`, true);
+      yield* Effect.promise(() => useSkills(v.dir, [skill.id]).catch((error) => console.error(`[uncut] couldn't note the skill ${skill.id} in ${v.dir}: ${(error as Error).message}`)));
+      return textResult({
+        name: skill.id,
+        title: skill.name,
+        description: skill.description,
+        from: skill.pluginName ? `the plugin ${skill.pluginName}` : "the user's own skills",
+        instructions: skill.body,
+        next: "Follow every rule in it for this task; the critic checks its review checklist.",
+      });
+    });
 
   /** brand_read (D186, D198): the kit and skills with its logos as pictures, or one of the kit's files. */
   const brandRead = (v: ProjectView, args: Record<string, unknown>) =>
@@ -68,7 +90,8 @@ export const makeBrandTools = (ctx: CardsCtx) => {
         fonts: kit.fonts.map((f) => ({ ...f, ...(f.file ? { path: files[f.file] ?? null } : {}), available: fonts ? fonts.available(f.family) : null })),
         logos: Object.fromEntries(Object.entries(kit.logos).map(([k, name]) => [k, { name, path: files[name!] ?? null, inGraphics: `uncut:brand/logo-${k}` }])),
         files,
-        skills: all.skills.filter((s) => all.active.skills.includes(s.id)).map((s) => ({ name: s.name, description: s.description, body: s.body })),
+        // D232: the skills the project uses, by name (skill_read gives their instructions).
+        skills: all.skills.filter((s) => all.active.skills.includes(s.id)).map((s) => ({ name: s.id, title: s.name, description: s.description })),
         ...(fonts?.kitMissing.length ? { fontsMissing: `${fonts.kitMissing.map((f) => `"${f}"`).join(", ")} ${fonts.kitMissing.length === 1 ? "has" : "have"} no font file in the kit and ${fonts.kitMissing.length === 1 ? "isn't" : "aren't"} installed: add the file (brand_write fonts with file) or it falls back to another font.` } : {}),
         ...(!slots.length ? { logosMissing: "The kit has no logo files: find them (the brand's site, the folders the user named) and add them with brand_write logos; never draw or retype a logo." } : {}),
         next: "Use these by default: media_import a logo's path to place it (or uncut:brand/logo-… in a graphic), the colours by role in backgrounds, text and graphics (and the project's theme), the fonts in text style.font and graphics CSS, the tone in every line of copy.",
@@ -247,7 +270,7 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       return defs as ReadonlyMap<string, ShaderDef>;
     });
 
-  return { shaderDefsOf, brandRead, brandWrite, referenceFrames, beatGridTool };
+  return { shaderDefsOf, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool };
 };
 
 export type BrandCtx = CardsCtx & ReturnType<typeof makeBrandTools>;

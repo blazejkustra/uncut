@@ -195,7 +195,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
     try {
       projects = [owner.dir, realpathSync.native(owner.dir)];
     } catch {}
-    const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects, dataDir: config.dataDir });
+    // D232: every installed skill's name and description go in the system prompt (send's toolsKey has their names).
+    const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
     const initId = `init-${randomBytes(4).toString("hex")}`;
     const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
     try {

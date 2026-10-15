@@ -59,11 +59,18 @@ export const BrandSkill = Schema.Struct({
   description: Schema.String,
   body: Schema.String,
   updatedAt: Schema.optional(Schema.String),
-  // D207: one of Uncut's built-in skills (read-only; scope "global", id "builtin-…").
+  // D207: one of Uncut's own skills (D232: the bundled plugin uncut.skills; read-only).
   builtin: Schema.optional(Schema.Boolean),
+  // D232 (issue #60): the plugin that ships it (read-only; id is the name the user types after /).
+  plugin: Schema.optional(Schema.String),
+  pluginName: Schema.optional(Schema.String),
 });
 export type BrandSkill = typeof BrandSkill.Type;
-/** What the open project uses (`<project>/brand/active.json`): one kit (or none) and its skills. */
+/**
+ * What the open project uses (`<project>/brand/active.json`): one kit (or none) and its skills. D232:
+ * nobody picks skills any more; `skills` are the ones this project has used (a /name in a message or
+ * the agent's skill_read), which the critic's rubric and checklists follow.
+ */
 export const BrandActive = Schema.Struct({ kit: Schema.NullOr(Schema.String), skills: Schema.Array(Schema.String) });
 export type BrandActive = typeof BrandActive.Type;
 /** Every kit and skill the open project can see (project ones win on the same id), and its choice. */

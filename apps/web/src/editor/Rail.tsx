@@ -2,7 +2,7 @@
 // a line shows where it lands; a click still switches. Right-click: Move up, Move down, Hide, and
 // Reset order (which also shows the hidden ones). Hidden tabs are in the More menu at the end. The
 // order and the hidden ones are remembered on this Mac (S2, D117).
-import { AudioWaveform, Blend, CircleDot, Ellipsis, Film, Music, Palette, ScrollText, Shapes, Sparkles, SwatchBook, Type, type LucideIcon } from "lucide-react";
+import { AudioWaveform, Blend, BookOpen, CircleDot, Ellipsis, Film, Music, Palette, ScrollText, Shapes, Sparkles, SwatchBook, Type, type LucideIcon } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -26,7 +26,9 @@ const TABS: ReadonlyArray<{ readonly id: LibraryTab; readonly label: string; rea
   { id: "capture", label: "Capture", title: "Capture", icon: CircleDot },
   { id: "generate", label: "Generate", title: "Generate", icon: Sparkles },
   // D186: brand kits and skills, and the ones this project uses (a saved order gets it at the end).
-  { id: "brand", label: "Brand", title: "Brand kits and skills", icon: SwatchBook },
+  { id: "brand", label: "Brand", title: "Brand kits", icon: SwatchBook },
+  // D232 (issue #60): skills from plugins, used with / in the chat or by the agent when they fit.
+  { id: "skills", label: "Skills", title: "Skills", icon: BookOpen },
 ];
 const IDS = TABS.map((t) => t.id);
 const info = (id: LibraryTab) => TABS.find((t) => t.id === id)!;
