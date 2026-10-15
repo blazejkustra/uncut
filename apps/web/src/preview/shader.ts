@@ -51,13 +51,13 @@ export class ShaderCanvas {
    * when it can't be yet (no runner, still compiling, the source not ready): the caller shows the
    * plain picture; `onReady` is called when a compile finishes.
    */
-  render(source: HTMLVideoElement | HTMLImageElement, use: ShaderUse, w: number, h: number, t: number, onReady: () => void): boolean {
+  render(source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement, use: ShaderUse, w: number, h: number, t: number, onReady: () => void): boolean {
     // Where it got to (data-state on the canvas: starting, no-picture, compiling, error, drawn).
     const state = (s: string) => (this.canvas.dataset.state = s);
     const runner = previewRunner();
     if (!runner || "problem" in runner || runner.lost) return state("starting"), (this.drawn = false);
-    const sw = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
-    const sh = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+    const sw = source instanceof HTMLVideoElement ? source.videoWidth : source instanceof HTMLImageElement ? source.naturalWidth : source.width;
+    const sh = source instanceof HTMLVideoElement ? source.videoHeight : source instanceof HTMLImageElement ? source.naturalHeight : source.height;
     if (!sw || !sh) return state("no-picture"), (this.drawn = false);
     const code = shaderModuleCode(use.def);
     const pipeline = runner.pipelineNow(code, this.format);
@@ -72,7 +72,8 @@ export class ShaderCanvas {
       state("error");
       return (this.drawn = false);
     }
-    const frame = source instanceof HTMLVideoElement ? `v${source.currentTime}` : `i${source.currentSrc}`;
+    // D221: a scrub canvas names the frame it holds.
+    const frame = source instanceof HTMLVideoElement ? `v${source.currentTime}` : source instanceof HTMLImageElement ? `i${source.currentSrc}` : `c${source.dataset.scrub}|${source.dataset.sample}`;
     const sig = `${code}|${JSON.stringify(use.values)}|${frame}|${w}x${h}|${t}`;
     if (sig === this.last && this.drawn) return true;
     if (this.canvas.width !== w) this.canvas.width = w;

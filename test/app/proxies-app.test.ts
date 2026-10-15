@@ -130,6 +130,8 @@ async function setProxies(on: boolean) {
   await waitFor("[data-testid=settings-proxies]");
   const checked = await page.$eval("[data-testid=settings-proxies]", (el) => (el as HTMLInputElement).checked);
   if (checked !== on) await page.click("[data-testid=settings-proxies]");
+  // This measures <video> seeks (D212's baseline); the scrub frame cache (D221) is measured in scrub-cache-app.
+  if (await page.$eval("[data-testid=settings-scrub-cache]", (el) => (el as HTMLInputElement).checked)) await page.click("[data-testid=settings-scrub-cache]");
   await page.waitForFunction((want) => (localStorage.getItem("uncut.preview.proxies") !== "off") === want, {}, on);
   if (on) await page.screenshot({ path: out("settings") });
   await page.click("[data-testid=settings-close]");

@@ -199,10 +199,16 @@ export class FxRenderer {
   onRestored: (() => void) | undefined;
   // What the last draw was made of: the same again is skipped.
   private last = "";
+  private buf: WebGLBuffer | null = null;
+  /** D221: where the last pass draws: the canvas (null), or a framebuffer of the GPU compositor's (rows bottom-up, as on a canvas). */
+  private output: WebGLFramebuffer | null = null;
+  /** D221: drawing in the GPU compositor's context (into its framebuffers), not a canvas of its own. */
+  private readonly shared: boolean;
 
-  constructor(canvas = document.createElement("canvas")) {
+  constructor(canvas = document.createElement("canvas"), shared?: WebGL2RenderingContext) {
     this.canvas = canvas;
-    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true, premultipliedAlpha: true, antialias: false, alpha: true });
+    this.shared = !!shared;
+    const gl = shared ?? canvas.getContext("webgl2", { preserveDrawingBuffer: true, premultipliedAlpha: true, antialias: false, alpha: true });
     if (!gl) throw new Error("WebGL2 isn't available");
     this.gl = gl;
     this.float = !!gl.getExtension("EXT_color_buffer_float");
@@ -228,6 +234,7 @@ export class FxRenderer {
     this.lutKey = "";
     this.last = "";
     const buf = gl.createBuffer();
+    this.buf = buf;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     this.src = this.texture2d(gl.LINEAR);
@@ -244,7 +251,8 @@ export class FxRenderer {
   }
 
   dispose() {
-    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    // A shared context is the compositor's to lose.
+    if (!this.shared) this.gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
   private texture2d(filter: number) {
@@ -331,8 +339,10 @@ export class FxRenderer {
 
   private draw(target: Target | undefined, w: number, h: number) {
     const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : this.output);
     gl.viewport(0, 0, w, h);
+    // Its own triangle (another user of a shared context may have bound another buffer).
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -347,8 +357,9 @@ export class FxRenderer {
   *Draws `source` (a <video> or <img>) with `fx` into the canvas at w × h (whole px). `k` is px
   *per canvas px (1 in the preview; less in a thumbnail), `t` the moment (s) from the clip's start.
    */
-  render(source: TexImageSource, fx: ClipFx, w: number, h: number, t: number, k = 1, key?: string): boolean {
+  render(source: TexImageSource, fx: ClipFx, w: number, h: number, t: number, k = 1, key?: string, output: WebGLFramebuffer | null = null): boolean {
     const gl = this.gl;
+    this.output = output;
     if (this.lost || gl.isContextLost()) {
       this.drawn = false;
       return false;
@@ -358,8 +369,8 @@ export class FxRenderer {
     const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${k}|${fx.shake ? t : ""}` : "";
     if (sig && sig === this.last && this.drawn) return true;
     this.last = "";
-    if (this.canvas.width !== w) this.canvas.width = w;
-    if (this.canvas.height !== h) this.canvas.height = h;
+    if (!this.shared && this.canvas.width !== w) this.canvas.width = w;
+    if (!this.shared && this.canvas.height !== h) this.canvas.height = h;
     this.bind(0, this.src);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);

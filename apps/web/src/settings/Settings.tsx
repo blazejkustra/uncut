@@ -13,6 +13,8 @@ import { ProjectSettings } from "./ProjectSettings.tsx";
 import { ShortcutList } from "./Shortcuts.tsx";
 import { DefaultLengths } from "./DefaultLengths.tsx";
 import { setProxiesOn, useProxiesOn } from "./proxies.ts";
+import { setScrubCacheOn, useScrubCacheOn } from "./scrub.ts";
+import { setGpuCompositorOn, useGpuCompositorOn } from "./gpu.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
@@ -71,6 +73,8 @@ export function Settings() {
 function AppSettings() {
   const snapping = usePlayback((s) => s.snapping);
   const proxies = useProxiesOn();
+  const scrubCache = useScrubCacheOn();
+  const gpu = useGpuCompositorOn();
   return (
     <div data-testid="app-settings">
       <div className="group">
@@ -86,6 +90,14 @@ function AppSettings() {
         <label className="check-row">
           <input type="checkbox" data-testid="settings-proxies" checked={proxies} onChange={(e) => setProxiesOn(e.target.checked)} />
           Use proxies for preview
+        </label>
+        <label className="check-row">
+          <input type="checkbox" data-testid="settings-scrub-cache" checked={scrubCache} onChange={(e) => setScrubCacheOn(e.target.checked)} />
+          Decode frames ahead for scrubbing
+        </label>
+        <label className="check-row">
+          <input type="checkbox" data-testid="settings-gpu-compositor" checked={gpu} onChange={(e) => setGpuCompositorOn(e.target.checked)} />
+          Draw videos and images on the GPU (experimental)
         </label>
       </div>
       <div className="group">

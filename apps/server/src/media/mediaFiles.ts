@@ -23,7 +23,7 @@ import { presentedToken, tokensMatch } from "../app/auth.ts";
 
 // The lookup is an exact match against the project's media ids; this only rejects junk early.
 const MEDIA_ID = /^[a-z0-9][a-z0-9-]*$/;
-const CORS = { "access-control-allow-origin": "*", "access-control-expose-headers": "Content-Range, Accept-Ranges, Content-Length" };
+const CORS = { "access-control-allow-origin": "*", "access-control-expose-headers": "Content-Range, Accept-Ranges, Content-Length, Last-Modified" };
 const notFound = () => HttpServerResponse.text("Not found", { status: 404, headers: CORS });
 
 const TYPES: Record<string, string> = {
@@ -96,13 +96,13 @@ export const serveFile = (request: HttpServerRequest.HttpServerRequest, path: st
       Effect.gen(function* () {
         // Opened before any header goes out, so an unreadable file is a clean 403/404, not a
         // connection reset halfway through a response.
-        const opened = yield* Effect.promise(async (): Promise<{ file: FileHandle; size: number } | "forbidden" | undefined> => {
+        const opened = yield* Effect.promise(async (): Promise<{ file: FileHandle; size: number; modified: Date } | "forbidden" | undefined> => {
           let file: FileHandle | undefined;
           try {
             file = await openFile(path, "r");
             const s = await file.stat();
             if (!s.isFile()) throw new Error("not a regular file");
-            return { file, size: s.size };
+            return { file, size: s.size, modified: s.mtime };
           } catch (error) {
             await file?.close().catch(() => {});
             return (error as NodeJS.ErrnoException).code === "EACCES" || (error as NodeJS.ErrnoException).code === "EPERM" ? "forbidden" : undefined;
@@ -110,14 +110,15 @@ export const serveFile = (request: HttpServerRequest.HttpServerRequest, path: st
         });
         if (opened === "forbidden") return HttpServerResponse.text("Forbidden", { status: 403, headers: CORS });
         if (!opened) return notFound();
-        const { file, size } = opened;
+        const { file, size, modified } = opened;
 
         // CORS (D54): the preview routes the sound through Web Audio, which needs the file fetched
         // in CORS mode (crossOrigin="anonymous") from the file:// renderer, an opaque origin. The
         // token in the URL protects the route, so any origin may read it.
         // An SVG opened as a document (not as the preview's <img>) runs nothing and loads nothing.
         const sandbox = extname(path).toLowerCase() === ".svg" ? { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox" } : {};
-        const headers = { "accept-ranges": "bytes", "cache-control": "no-store", ...CORS, ...sandbox };
+        // Last-Modified: the scrub cache (D221) tells a file changed in place from the one it indexed.
+        const headers = { "accept-ranges": "bytes", "cache-control": "no-store", "last-modified": modified.toUTCString(), ...CORS, ...sandbox };
         const range = parseRange(request.headers["range"], size);
         if (range === "unsatisfiable") {
           yield* Effect.promise(() => file.close().catch(() => {}));
