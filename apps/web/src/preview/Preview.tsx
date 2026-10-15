@@ -370,6 +370,9 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
           onPointerUp={(e) => endDrag(e, true)}
           onPointerCancel={(e) => endDrag(e, false)}
           onDoubleClick={onDoubleClick}
+          // Issue #61 (D233): nothing on the canvas starts a native drag (an <img>'s ghost copy
+          // would cancel the pointer drag that moves the layer); the in-place editor's text may.
+          onDragStart={(e) => !(e.target as HTMLElement).closest?.(".pv-inline") && e.preventDefault()}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
