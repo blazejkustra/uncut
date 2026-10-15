@@ -11,7 +11,6 @@
 import type { ClipBox } from "@uncut/core/box";
 import type { ClipFx } from "@uncut/core/fx";
 import { FxRenderer } from "./fx.ts";
-import { VIDEO_TONE_GLSL } from "./tone.ts";
 
 const VERTEX = `#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -43,9 +42,6 @@ uniform float uWipe;
 uniform vec3 uIris;
 uniform float uPx;
 uniform bool uFlipY;
-uniform bool uVideoCurve;
-// What macOS shows a <video> as (tone.ts), for layers that are a plain <video>.
-${VIDEO_TONE_GLSL}
 void main() {
   vec2 h = uBox.zw*0.5;
   float r = min(uRadius, min(h.x, h.y));
@@ -61,7 +57,6 @@ void main() {
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) discard;
     if (uFlipY) uv.y = 1.0 - uv.y;
     c = texture(uTex, uv);
-    if (uVideoCurve) c.rgb = videoTone(clamp(c.rgb, 0.0, 1.0));
   }
   outColor = c*(uOpacity*cover);
 }`;
@@ -74,8 +69,6 @@ export interface GpuPicture {
   readonly source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
   readonly box: ClipBox;
   readonly opacity: number;
-  /** A video (or its scrub canvas) macOS shows with its mid-tones lifted (tone.ts). */
-  readonly lift?: boolean;
   /** The share of the canvas width a wipe shows (undefined: no wipe). */
   readonly wipe?: number | undefined;
   /** An iris's circle in canvas px. */
@@ -186,7 +179,7 @@ export class GpuCompositor {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`compositor: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
     this.u = {};
-    for (const name of ["uRect", "uCanvas", "uTex", "uSolid", "uColour", "uBox", "uRadius", "uImg", "uOpacity", "uWipe", "uIris", "uPx", "uFlipY", "uVideoCurve"]) this.u[name] = gl.getUniformLocation(program, name);
+    for (const name of ["uRect", "uCanvas", "uTex", "uSolid", "uColour", "uBox", "uRadius", "uImg", "uOpacity", "uWipe", "uIris", "uPx", "uFlipY"]) this.u[name] = gl.getUniformLocation(program, name);
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
     this.quad = gl.createBuffer()!;
@@ -344,8 +337,6 @@ export class GpuCompositor {
     gl.uniform4f(this.u.uImg!, img.x, img.y, img.w, img.h);
     gl.uniform1f(this.u.uOpacity!, p.opacity);
     gl.uniform1i(this.u.uFlipY!, flip ? 1 : 0);
-    // A plain <video> or its scrub canvas (D221) as macOS shows the <video>; effects output as the DOM path's effects canvases.
-    gl.uniform1i(this.u.uVideoCurve!, !p.fx && p.lift ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return true;
   }
@@ -359,7 +350,6 @@ export class GpuCompositor {
     gl.uniform4f(this.u.uColour!, ...s.colour);
     gl.uniform1f(this.u.uOpacity!, s.opacity);
     gl.uniform1i(this.u.uFlipY!, 0);
-    gl.uniform1i(this.u.uVideoCurve!, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 

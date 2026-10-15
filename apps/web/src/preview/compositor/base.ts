@@ -5,8 +5,8 @@ import { Mix, setCurrentMix } from "../../audio/audio.ts";
 import { playback, getPlayback } from "../playback.ts";
 import { type ProjectModel, type Item } from "../../state/project.ts";
 import { scrubCacheOn } from "../../settings/scrub.ts";
-import { ScrubCache } from "../scrub.ts";
-import { VIDEO_TONE_FILTER, ensureToneFilter } from "../tone.ts";
+import { ScrubCache, liftsTone } from "../scrub.ts";
+import { VIDEO_UNTONE_FILTER, ensureUntoneFilter } from "../tone.ts";
 import { GpuCompositor, plainColour } from "../gpu.ts";
 import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverlay, fxOverlayInner, visibleRect } from "@uncut/core/fx";
 import { FxRenderer } from "../fx.ts";
@@ -297,8 +297,11 @@ export abstract class CompositorBase {
     }
     // Blur (an effect) on what's shown, as the export blurs the picture before its box.
     const blur = fx?.blur ? `blur(${px(fx.blur)})` : "";
-    // A scrub canvas shown as such keeps its tone filter (D221) before the blur.
-    const filter = shown === el && el instanceof HTMLCanvasElement && el.dataset.tone ? `url(#${VIDEO_TONE_FILTER})${blur ? ` ${blur}` : ""}` : blur;
+    // D222: a <video> macOS lifts is shown through the inverse table first, so it shows its values
+    // as the export, its effects canvas and its scrub canvas do.
+    const untone = shown === el && el instanceof HTMLVideoElement && this.liftsVideo(el);
+    if (untone) ensureUntoneFilter();
+    const filter = untone ? `url(#${VIDEO_UNTONE_FILTER})${blur ? ` ${blur}` : ""}` : blur;
     if (shown.style.filter !== filter) shown.style.filter = filter;
     if (shown !== el && el.style.filter) el.style.filter = "";
     // Vignette, grain and bars: core's HTML over the picture's visible part, with the clip's opacity.
@@ -364,6 +367,8 @@ export abstract class CompositorBase {
         if (this.drawsPicture(item.id) || this.scrubViews.get(item.id)?.shown) this.render();
       });
       video.addEventListener("loadeddata", () => this.drawsPicture(item.id) && this.render());
+      // D222: its size is known now (whether macOS lifts it, until the scrub cache reads its colours).
+      video.addEventListener("loadedmetadata", () => this.render());
       el = video;
     }
     el.dataset.item = item.id;
@@ -415,18 +420,10 @@ export abstract class CompositorBase {
       const canvas = document.createElement("canvas");
       canvas.className = "pv-scrub";
       canvas.dataset.scrub = id;
-      ensureToneFilter();
       canvas.style.visibility = "hidden";
       el.after(canvas);
       view = { canvas, ctx: canvas.getContext("2d")!, key: "", shown: false, lastT: t, movedAt: 0 };
       this.scrubViews.set(id, view);
-    }
-    // Shown as the <video> is (its picture drawn into a canvas is shown as sRGB): BT.709 footage lifted (tone.ts).
-    const tone = src.lift ? `url(#${VIDEO_TONE_FILTER})` : "";
-    if (view.canvas.dataset.tone !== (src.lift ? "1" : "")) {
-      if (src.lift) view.canvas.dataset.tone = "1";
-      else delete view.canvas.dataset.tone;
-      view.canvas.style.filter = tone;
     }
     const now = performance.now();
     // Stepping or dragging leads the window that way; a jump (a click far off) keeps it around the frame.
@@ -463,6 +460,15 @@ export abstract class CompositorBase {
       this.settleTimer = window.setTimeout(() => this.render(), SCRUB_SETTLE_MS + 10);
     }
     return { pic: show ? view.canvas : el, seek };
+  }
+
+  /**
+   * D222: whether macOS shows this <video> with its mid-tones lifted (tone.ts): from the file's colour
+   * description once the scrub cache has read it, else Chromium's own guess from the size.
+   */
+  protected liftsVideo(el: HTMLVideoElement): boolean {
+    const src = el.dataset.src ? this.scrub.peek(el.dataset.src) : undefined;
+    return src?.state === "ready" ? src.lift : liftsTone(undefined, el.videoHeight);
   }
 
   /**
