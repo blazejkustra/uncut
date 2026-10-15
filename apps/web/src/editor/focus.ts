@@ -41,6 +41,7 @@ export function installFocusRules(): () => void {
   const onPointerDown = (e: PointerEvent) => {
     const id = ++pressId;
     byPointer = true;
+    tabbing = false;
     const field = fieldOf(e.target);
     if (field) return void (chosen = field);
     before = chosen;

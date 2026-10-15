@@ -144,6 +144,7 @@ test("issue #48: Space plays after clicking fields and controls; no field change
   // A slider: the click sets it, Space leaves it be.
   const slider = await rect("[data-testid=insp-opacity]");
   await page.mouse.click(slider.left + slider.width * 0.75, slider.top + slider.height / 2);
+  await page.waitForFunction(() => (document.querySelector("[data-testid=insp-opacity]") as HTMLInputElement).value !== "100", { timeout: 5000 });
   await sleep(400);
   const sliderValue = await value("[data-testid=insp-opacity]");
   await spacePlays("opacity slider");
