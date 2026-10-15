@@ -21,6 +21,8 @@ import { hideElement, showElement, useHiddenElements } from "./elementsGrid.ts";
 import { MEDIA_SORTS, setMediaMode, setMediaSort, sortMedia, useMediaView, type MediaSort } from "./mediaView.ts";
 import { MEDIA_DRAG_TYPE } from "../timeline/dnd.ts";
 import { openMenu } from "../timeline/ContextMenu.tsx";
+import { canGoBehind } from "../preview/text.ts";
+import { getPlayback } from "../preview/playback.ts";
 import { RenameField } from "../timeline/RenameField.tsx";
 import { analysisText } from "../state/analysisText.ts";
 import { CaptureLibrary } from "./Capture.tsx";
@@ -217,7 +219,13 @@ function ElementsLibrary({ project }: { project: Project }) {
           onClick={(e) => {
             e.stopPropagation();
             e.currentTarget.blur();
-            void actions.addBackground(BACKGROUND_PROPS);
+            // D220: with a picture or text selected, behind it or over the whole edit.
+            if (!canGoBehind(project, getPlayback().selected)) return void actions.addBackground(BACKGROUND_PROPS);
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu(r.left, r.bottom + 4, [
+              { id: "background-behind", label: "Behind this", run: () => void actions.addBackground(BACKGROUND_PROPS, true) },
+              { id: "background-whole", label: "Whole edit", run: () => void actions.addBackground(BACKGROUND_PROPS) },
+            ], "Add a background");
           }}
         >
           <Plus />

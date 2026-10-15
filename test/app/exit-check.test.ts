@@ -411,6 +411,9 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
     await page.click("[data-testid=rail-elements]");
     await page.hover("[data-testid=background-tile]");
     await page.click("[data-testid=background-add]");
+    // With a text selected + asks (D220): behind it, a card on main as before.
+    await ui.waitFor("[data-testid=menu-background-behind]");
+    await page.click("[data-testid=menu-background-behind]");
     rev = await ui.savedAfter(rev);
     // One Background element (D131): made a gradient in its Inspector.
     await ui.waitFor("[data-testid=background-editor]");
