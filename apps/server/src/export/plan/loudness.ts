@@ -108,3 +108,24 @@ export async function planLoudness(plan: ExportPlan, target: number, measure: (p
   }
   return { loudness: { gainDb } };
 }
+
+/**
+ * The gain (dB) the export's loudness step would give the mix for `target` (D246: the preview plays
+ * at the target with it): planLoudness's gain with the limiter on; with it bypassed, target − I of
+ * the first pass (loudnorm's linear gain; where loudnorm would turn dynamic to hold its true peak
+ * the preview is louder than the export: a known limit). Also the mix's own integrated loudness.
+ */
+export async function loudnessGain(plan: ExportPlan, target: number, measure: (pass: ReturnType<typeof loudnessCommand>, name: string) => Promise<string>): Promise<{ readonly gainDb?: number; readonly lufs?: number }> {
+  let first: string | undefined;
+  const once = async (pass: ReturnType<typeof loudnessCommand>, name: string) => {
+    const stderr = await measure(pass, name);
+    first ??= stderr;
+    return stderr;
+  };
+  const result = await planLoudness(plan, target, once);
+  const mix = first !== undefined ? parseEbur128(first) : undefined;
+  const lufs = mix ? { lufs: mix.lufs } : {};
+  if (result.loudness) return { gainDb: result.loudness.gainDb, ...lufs };
+  if (result.loudnorm && mix) return { gainDb: Math.round(Math.min(MAX_LOUDNESS_GAIN_DB, Math.max(-MAX_LOUDNESS_GAIN_DB, target - mix.lufs)) * 100) / 100, ...lufs };
+  return lufs;
+}

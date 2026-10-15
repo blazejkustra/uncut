@@ -1,4 +1,4 @@
-import { type Media, type SpeechEnvelope, type Project, layout, type Item, MAX_RASTER_STATES, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, noiseFloorDb, trackStages, DENOISE_FLOOR_DB, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
+import { type Media, type SpeechEnvelope, type Project, layout, type Item, MAX_RASTER_STATES, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, trackStages, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
 import { type ExportPlan, mediaToken, type VisualLayer, type LayerFx, type Ramp, type AudioLayer, type GainModel } from "./types.ts";
 import { capStates, opacityRamps, splitAt, placementOf, svgClipHtml, splitLoop } from "./layers.ts";
 import { mergeableCues, captionLayers, subtitleLayers } from "./captions.ts";
@@ -227,12 +227,8 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
     const curve = ducks.get(track.id);
     const duckWarning = duckNote(project, track, curve);
     if (duckWarning && track.items.some((i) => soundMedia(project, i))) warnings.push(duckWarning.replace("waits for", "isn't applied: it needs"));
-    // Noise removal (D88) starts from the track's measured noise floor: the quietest of its media's.
-    const floors = track.items.flatMap((i) => {
-      const env = i.media && soundMedia(project, i) ? envelopes?.get(i.media) : undefined;
-      return env ? [noiseFloorDb(env)] : [];
-    });
-    const stages = trackStages(track).map((st) => (st.kind === "denoise" ? { ...st, floorDb: floors.length ? Math.min(...floors) : DENOISE_FLOOR_DB } : st));
+    // Noise removal (D88) starts from the track's measured noise floor, as the preview's does (D246).
+    const stages = trackStages(track, project, envelopes ?? new Map());
     if (stages.length && track.items.some((i) => soundMedia(project, i))) buses.push({ track: track.id, stages, pan: panGains(trackPan(track)) });
     track.items.forEach((item, index) => {
       const media = soundMedia(project, item);

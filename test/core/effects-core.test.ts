@@ -28,6 +28,7 @@ import {
   projectTargetLufs,
   targetOfChoice,
   trackStages,
+  trackNoiseFloorDb,
   validateModule,
   validateProject,
   VOICE_PRESET,
@@ -113,7 +114,7 @@ test("manifests: the six audio processors validate, their params check projects 
   }
 });
 
-test("stages: EQ bands (a 0 dB band is none), the voice chain = the voice preset at 0.5, bypass = nothing, noise removal export-only", () => {
+test("stages: EQ bands (a 0 dB band is none), the voice chain = the voice preset at 0.5, bypass = nothing, noise removal with its track's floor", () => {
   assert.deepEqual(effectStages({ module: "audio.eq" }), []);
   assert.deepEqual(effectStages({ module: "audio.eq", params: { lowCutHz: 80, midGainDb: 3 } }), [
     { kind: "biquad", type: "highpass", freq: 80, q: BUTTERWORTH_Q, gainDb: 0 },
@@ -126,7 +127,12 @@ test("stages: EQ bands (a 0 dB band is none), the voice chain = the voice preset
   assert.deepEqual(effectStages({ module: "audio.limiter" }), [], "a limiter on a track does nothing (the master's)");
   const t: Track = { id: "t", kind: "audio", name: "T", mixer: { effects: [{ module: "audio.denoise" }, { module: "audio.compressor" }] }, items: [] };
   assert.deepEqual(trackStages(t).map((s) => s.kind), ["denoise", "compressor"]);
-  assert.deepEqual(trackStages(t, { preview: true }).map((s) => s.kind), ["compressor"]);
+  // With envelopes (the preview and the export alike, D246): the track's measured floor, the quietest of its media's.
+  const tm: Track = { ...t, items: [{ id: "a", type: "audio", media: "m1", in: 0, start: 0, duration: 30 }, { id: "b", type: "audio", media: "m2", in: 0, start: 30, duration: 30 }] };
+  const media = [{ id: "m1", kind: "audio", name: "1", path: "/1" }, { id: "m2", kind: "audio", name: "2", path: "/2" }] as unknown as Project["media"];
+  assert.equal(trackNoiseFloorDb({ media }, tm, new Map()), -40);
+  assert.equal(trackNoiseFloorDb({ media }, tm, new Map([["m1", envelope([[0, 5]])]])), -64);
+  assert.deepEqual(trackStages(tm, { media }, new Map([["m1", envelope([[0, 5]])], ["m2", null]]))[0], { kind: "denoise", amount: 0.5, floorDb: -64 });
   // The noise floor from an envelope: its quiet windows (+6 dB for the 16 kHz decode).
   near(noiseFloorDb(envelope([[0, 5]])), -64, 1e-9, "floor");
 });

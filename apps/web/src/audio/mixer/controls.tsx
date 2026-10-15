@@ -206,10 +206,10 @@ export function drawReduction(el: HTMLElement, gr: number): boolean {
 }
 
 /** A small popover over the panel, opened from an anchor (fixed, so the panel's scroll doesn't clip it). Escape or a click outside closes it. */
-export function Popover({ anchor, onClose, children, testId }: { anchor: HTMLElement; onClose: () => void; children: React.ReactNode; testId: string }) {
+export function Popover({ anchor, onClose, children, testId, wide = false }: { anchor: HTMLElement; onClose: () => void; children: React.ReactNode; testId: string; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const r = anchor.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - 268, r.left));
+  const left = Math.max(8, Math.min(window.innerWidth - (wide ? 318 : 268), r.left));
   useEffect(() => {
     const down = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node) && !anchor.contains(e.target as Node)) onClose();
@@ -227,7 +227,7 @@ export function Popover({ anchor, onClose, children, testId }: { anchor: HTMLEle
     };
   }, [anchor, onClose]);
   return (
-    <div className="fx-popover" data-testid={testId} ref={ref} style={{ left, bottom: Math.max(8, window.innerHeight - r.top + 6) }} onPointerDown={(e) => e.stopPropagation()}>
+    <div className={`fx-popover ${wide ? "wide" : ""}`} data-testid={testId} ref={ref} style={{ left, bottom: Math.max(8, window.innerHeight - r.top + 6) }} onPointerDown={(e) => e.stopPropagation()}>
       {children}
     </div>
   );
