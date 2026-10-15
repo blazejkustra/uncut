@@ -177,6 +177,16 @@ void main() {
   outColor = vec4(c*px.a, px.a);
 }`;
 
+/**
+ * Issue #55: frames each <video> has presented (counted by the preview's requestVideoFrameCallback),
+ * so a playing clip's effects are drawn once per new frame, not on every animation frame.
+ */
+export const presentedFrames = new WeakMap<HTMLVideoElement, number>();
+
+/** What a source shows now: a <video>'s presented frame (or its time), an <img>'s file; undefined for a canvas. */
+export const frameKeyOf = (source: TexImageSource): string | undefined =>
+  source instanceof HTMLVideoElement ? (presentedFrames.get(source) ? `p${presentedFrames.get(source)}` : `v${source.currentTime}`) : source instanceof HTMLImageElement ? `i${source.currentSrc}` : undefined;
+
 type Program = { readonly program: WebGLProgram; readonly uniforms: Map<string, WebGLUniformLocation | null> };
 type Target = { readonly tex: WebGLTexture; readonly fbo: WebGLFramebuffer; w: number; h: number };
 
@@ -260,7 +270,11 @@ export class FxRenderer {
     }
   }
 
+  /** Disposed on purpose (its context lost by us, not taken away). */
+  disposed = false;
+
   dispose() {
+    this.disposed = true;
     // A shared context is the compositor's to lose.
     if (!this.shared) this.gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
@@ -375,7 +389,7 @@ export class FxRenderer {
       return false;
     }
     // The same frame with the same effects at the same size (a paused clip re-rendered): nothing to do.
-    const frame = source instanceof HTMLVideoElement ? `v${source.currentTime}` : source instanceof HTMLImageElement ? `i${source.currentSrc}` : undefined;
+    const frame = frameKeyOf(source);
     const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${k}|${fx.shake ? t : ""}` : "";
     if (sig && sig === this.last && this.drawn) return true;
     this.last = "";
