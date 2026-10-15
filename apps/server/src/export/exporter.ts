@@ -66,6 +66,7 @@ import { rasterizerCommand, startRasterizer, type Rasterizer } from "./rasterize
 import { which } from "../app/setup.ts";
 import { overwritesImported } from "./subtitleSources.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
+import { localInputs } from "../media/localInputs.ts";
 
 export interface ExportInput {
   readonly output: string;
@@ -332,7 +333,7 @@ interface RunResult {
 function run(bin: string, args: ReadonlyArray<string>, signal: AbortSignal | undefined, onLine?: (line: string) => void): Promise<RunResult> {
   return new Promise((resolvePromise, reject) => {
     if (signal?.aborted) return reject(new Cancelled());
-    const child = spawn(bin, [...args], { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(bin, localInputs(bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     let partial = "";

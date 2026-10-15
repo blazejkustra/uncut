@@ -4,6 +4,7 @@
 // up as a result value. Node's child_process is used directly because the Effect spawner
 // waits for EOF and has no output cap; both matter here.
 import { spawn } from "node:child_process";
+import { localInputs } from "./localInputs.ts";
 
 export type ProbeResult =
   | { readonly kind: "done"; readonly code: number; readonly stdout: string }
@@ -61,7 +62,7 @@ export function runProbe(command: string, args: ReadonlyArray<string>, options: 
     };
 
     try {
-      child = spawn(command, [...args], { env, stdio: ["ignore", "pipe", "ignore"], detached: true });
+      child = spawn(command, localInputs(command, args), { env, stdio: ["ignore", "pipe", "ignore"], detached: true });
     } catch (error) {
       return resolve({ kind: "failed", message: startError(error as NodeJS.ErrnoException) });
     }

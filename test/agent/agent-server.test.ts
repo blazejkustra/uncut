@@ -65,8 +65,8 @@ before(async () => {
       UNCUT_CLAUDE: FAKE,
       FAKE_PLAN: plan(),
       FAKE_PROMPT_LOG: log(),
-      // D41: none of these may reach claude. (This test usually runs under Claude Code, which
-      // sets CLAUDECODE and CLAUDE_CODE_* already; set them anyway.)
+      // D41: none of these may reach claude but CLAUDE_CODE_OAUTH_TOKEN (D219). (This test usually
+      // runs under Claude Code, which sets CLAUDECODE and CLAUDE_CODE_* already; set them anyway.)
       ANTHROPIC_API_KEY: "sk-ant-test-not-a-key",
       ANTHROPIC_AUTH_TOKEN: "test-token",
       CLAUDECODE: "1",
@@ -130,8 +130,9 @@ test("an empty project: a turn adds a title through MCP, live and saved, and the
 test("D41: claude runs without API keys or a parent Claude Code session's variables", { skip }, () => {
   const env = sent()[0]!.env;
   for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"]) assert.ok(!env.includes(name), `${name} reached claude`);
-  // Only Uncut's own switches (D181), never one from outside (CLAUDE_CODE_ENTRYPOINT, CLAUDE_CODE_OAUTH_TOKEN).
-  assert.deepEqual(env.filter((k) => k.startsWith("CLAUDE_CODE_")).sort(), ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS"], "CLAUDE_CODE_* from outside reached claude");
+  // Only Uncut's own switches (D181), never one from outside (CLAUDE_CODE_ENTRYPOINT), but the
+  // user's setup-token login, CLAUDE_CODE_OAUTH_TOKEN (D219: their subscription, as t3code passes it).
+  assert.deepEqual(env.filter((k) => k.startsWith("CLAUDE_CODE_")).sort(), ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_OAUTH_TOKEN"], "CLAUDE_CODE_* from outside reached claude");
   assert.ok(env.includes("HOME") && env.includes("FAKE_PLAN"), "the rest of the environment is passed on");
   assert.ok(!env.includes("UNCUT_TOKEN") && !env.includes("ELECTRON_RUN_AS_NODE"));
 });

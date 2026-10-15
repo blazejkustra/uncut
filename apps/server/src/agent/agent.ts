@@ -185,9 +185,9 @@ const thinkingDisplay = () => {
  * prompt comes to Uncut over stdio as a can_use_tool control request (the SDK's canUseTool), decided
  * per the turn's access (agentPermissions.ts). Uncut's own tools are pre-allowed and gated in
  * `allowed`. `addDirs`: folders the user mentioned in this chat. `projects`: the project folder (as
- * opened and its real path) for Auto's deny rules.
+ * opened and its real path) for Auto's deny rules. `dataDir`: Uncut's data folder (D219's deny rules).
  */
-export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined }) {
+export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined }) {
   const access = o.access ?? "auto";
   const args = [
     "-p",
@@ -203,7 +203,8 @@ export function sessionArgs(o: { readonly cfg: string; readonly model?: string |
     "--permission-mode", permissionMode(access),
     "--permission-prompt-tool", "stdio",
     // Secrets stay out whatever the access, before claude's own read-only auto-allow and its classifier.
-    "--settings", sessionSettings({ access, projects: o.projects }),
+    // D219: Uncut's data folder (and other apps' data) too.
+    "--settings", sessionSettings({ access, projects: o.projects, dataDir: o.dataDir }),
     "--append-system-prompt", SYSTEM_PROMPT,
   ];
   // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
@@ -3499,7 +3500,7 @@ export const layer = Layer.effect(
       try {
         projects = [owner.dir, realpathSync.native(owner.dir)];
       } catch {}
-      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects });
+      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects, dataDir: config.dataDir });
       const initId = `init-${randomBytes(4).toString("hex")}`;
       const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
       try {

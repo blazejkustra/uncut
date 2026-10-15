@@ -19,6 +19,7 @@ import { claudeEnv } from "../app/shellEnv.ts";
 import { which } from "../app/setup.ts";
 import { rasterizerCommand, startRasterizer } from "../export/rasterizer.ts";
 import { svgSize } from "../export/svg.ts";
+import { localInputs } from "../media/localInputs.ts";
 
 export const SVG_GENERATOR = "generate.svg";
 export const SVG_SIZES = ["canvas", "1920x1080", "1080x1920", "1080x1350", "1024x1024"];
@@ -82,7 +83,7 @@ export function markupDocument(markup: string, size: { width: number; height: nu
 
 const run = (bin: string, args: ReadonlyArray<string>, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(bin, localInputs(bin, args), { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
     const onAbort = () => child.kill("SIGKILL");

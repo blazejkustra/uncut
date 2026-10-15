@@ -48,7 +48,8 @@ export const versionToken = (output: string): string | undefined => /\d+(?:\.\d+
 const run = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) =>
   runProbe(command, args, { timeoutMs, env: withoutApiKey(process.env) });
 // D218: Claude Code's probes get exactly the environment the agent's claude gets (claudeEnv: no
-// API keys, no CLAUDE_CODE_* such as CLAUDE_CODE_OAUTH_TOKEN), so the sign-in row is the agent's.
+// API keys, no CLAUDE_CODE_* but the setup-token login CLAUDE_CODE_OAUTH_TOKEN, D219), so the
+// sign-in row is the agent's.
 const runClaude = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) => runProbe(command, args, { timeoutMs, env: claudeEnv(process.env) });
 
 /** Why a found tool couldn't answer, in words. */
@@ -83,8 +84,10 @@ const claudeSignIn = (status: { authMethod?: unknown; apiProvider?: unknown; sub
     }
     case "api_key":
       return { status: "warning" as const, detail: `Signed in with an API key. ${billed}`, fix };
+    // D219: CLAUDE_CODE_OAUTH_TOKEN is the long-lived token `claude setup-token` makes from the user's
+    // Claude subscription: the same subscription, not an API account.
     case "oauth_token":
-      return { status: "warning" as const, detail: `Signed in with a token (CLAUDE_CODE_OAUTH_TOKEN), not your Claude login. ${billed}`, fix };
+      return { status: "ready" as const, detail: "Signed in with your Claude subscription (a long-lived token from claude setup-token)" };
     case "third_party": {
       const provider = typeof status.apiProvider === "string" && status.apiProvider ? status.apiProvider : "a cloud provider";
       return { status: "warning" as const, detail: `Using ${provider} (Bedrock, Vertex or similar). Agent usage is billed by that provider, not your Claude subscription.`, fix };

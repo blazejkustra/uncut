@@ -26,6 +26,7 @@ import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
 import { presentedToken, tokensMatch } from "../app/auth.ts";
+import { localInputs } from "./localInputs.ts";
 
 /** Peaks per second. */
 export const RATE = 100;
@@ -104,7 +105,7 @@ const PARTIAL_MIN_S = 1;
 function decodePeaks(ffmpeg: string, path: string): Promise<Decoded> {
   return new Promise((resolvePeaks) => {
     const meter = new PeakMeter();
-    const child = spawn(ffmpeg, ["-v", "error", "-nostdin", ...pcmArgs(path, SAMPLE_RATE)], {
+    const child = spawn(ffmpeg, localInputs(ffmpeg, ["-v", "error", "-nostdin", ...pcmArgs(path, SAMPLE_RATE)]), {
       env: withoutApiKey(process.env),
       stdio: ["ignore", "pipe", "pipe"],
     });
