@@ -1,0 +1,160 @@
+import deviceFrameJson from "../../../../../spec/modules/builtin/component.device-frame.json" with { type: "json" };
+import endCardJson from "../../../../../spec/modules/builtin/component.end-card.json" with { type: "json" };
+import codeBlockJson from "../../../../../spec/modules/builtin/component.code-block.json" with { type: "json" };
+import chartJson from "../../../../../spec/modules/builtin/component.chart.json" with { type: "json" };
+import terminalJson from "../../../../../spec/modules/builtin/component.terminal.json" with { type: "json" };
+import agentLogJson from "../../../../../spec/modules/builtin/component.agent-log.json" with { type: "json" };
+import compareTableJson from "../../../../../spec/modules/builtin/component.compare-table.json" with { type: "json" };
+import { shapeJson, drawShape, lowerThirdJson, drawLowerThird, calloutJson, drawCallout, progressBarJson, drawProgressBar, countdownJson, drawCountdown, subscribeJson, drawSubscribe, stickerJson, drawSticker, imageFrameJson, drawImageFrame } from "../elements.ts";
+import { type ClipBox, clipBox, type Rect, baseBox } from "../box.ts";
+import { SOLID, type RenderTarget, safeMargin, type Motion, num, esc } from "../render.ts";
+import type { Item, Canvas } from "../../timeline/types.ts";
+import { type ComponentInfo, manifestOf, px } from "./shared.ts";
+import { drawEndCard, drawCodeBlock, drawTerminal, drawChart, drawAgentLog, drawCompareTable } from "./draw.ts";
+import { drawDeviceFrame, deviceSpec, deviceOf } from "./device.ts";
+
+// ---- the registry ----
+
+const info = (json: unknown, render: ComponentInfo["render"]): ComponentInfo => {
+  const manifest = manifestOf(json);
+  return { id: manifest.id, name: manifest.name, description: manifest.description, manifest, block: manifest.component, params: manifest.params, render };
+};
+
+/** The components the preview and export draw, in the Elements panel's order. */
+export const COMPONENTS: ReadonlyArray<ComponentInfo> = [
+  // The general elements (D130) first, then the ones made for product videos.
+  info(shapeJson, drawShape),
+  info(lowerThirdJson, drawLowerThird),
+  info(calloutJson, drawCallout),
+  info(progressBarJson, drawProgressBar),
+  info(countdownJson, drawCountdown),
+  info(subscribeJson, drawSubscribe),
+  info(stickerJson, drawSticker),
+  info(imageFrameJson, drawImageFrame),
+  info(endCardJson, drawEndCard),
+  info(deviceFrameJson, drawDeviceFrame),
+  info(codeBlockJson, drawCodeBlock),
+  info(terminalJson, drawTerminal),
+  info(chartJson, drawChart),
+  info(agentLogJson, drawAgentLog),
+  info(compareTableJson, drawCompareTable),
+];
+const BY_ID = new Map(COMPONENTS.map((c) => [c.id, c]));
+export const componentInfo = (id: unknown) => (typeof id === "string" ? BY_ID.get(id) : undefined);
+
+/** Every component module the preview and export draw: the registry and the background (render.ts solidHtml). */
+export const DRAWN_COMPONENTS: ReadonlyArray<string> = [SOLID, ...COMPONENTS.map((c) => c.id)];
+
+/**
+ * Built-in component manifests that are valid in project.json but not drawn yet (as transition.cut
+ * isn't): saved, shown to the agent with showsInPreview false, not offered in the panel.
+ */
+export const UNDRAWN_COMPONENTS: Readonly<Record<string, string>> = {
+  "component.follow-card": "not drawn yet",
+  "component.steps": "not drawn yet",
+  "component.zoom-pan": "not drawn: zoom and pan a clip with its scale and x / y keys instead (D75)",
+};
+
+/** A drawn component item (not the background, which render.ts draws full-frame). */
+export const isDrawnComponent = (item: Pick<Item, "type" | "component">) => item.type === "component" && !!componentInfo(item.component);
+
+/** Canvas pixels per manifest pixel: manifests are sized for a canvas whose shorter side is 1080. */
+export const componentScale = (canvas: Pick<Canvas, "width" | "height">) => Math.min(canvas.width, canvas.height) / 1080;
+
+/** The box a component gets with no w and h: the device's frame size, else the manifest's size (scaled), or the canvas. */
+export function naturalSize(item: Pick<Item, "component" | "props">, canvas: Pick<Canvas, "width" | "height">): { width: number; height: number } {
+  const c = componentInfo(item.component);
+  if (!c) return { width: canvas.width, height: canvas.height };
+  if (c.block.fullFrame) return { width: canvas.width, height: canvas.height };
+  const k = componentScale(canvas);
+  const size = c.block.screens ? deviceSpec(deviceOf(item.props ?? {})).size : c.block.size;
+  return { width: size.width * k, height: size.height * k };
+}
+
+/** A component's transform with its default size filled in (no w and h = its natural size). */
+const sizedTransform = (item: Pick<Item, "component" | "props" | "transform">, canvas: Pick<Canvas, "width" | "height">) => {
+  const size = naturalSize(item, canvas);
+  const t = item.transform ?? {};
+  const sized = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n > 0;
+  return { size, transform: sized(t.w) || sized(t.h) ? t : { ...t, w: size.width, h: size.height } };
+};
+
+/** A component's box at `local` frames (D75's box: transform, keys, opacity), or undefined if it isn't one drawn here. */
+export function componentBox(item: Pick<Item, "type" | "component" | "props" | "transform" | "keys">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps?: number }, local: number): ClipBox | undefined {
+  if (!isDrawnComponent(item)) return undefined;
+  const { size, transform } = sizedTransform(item, canvas);
+  return clipBox({ transform, keys: item.keys }, canvas, size, local);
+}
+
+/** A component's box without keys (where its transform puts it), or undefined if it isn't one drawn here. */
+export function componentRest(item: Pick<Item, "type" | "component" | "props" | "transform">, canvas: Pick<Canvas, "width" | "height">): Rect | undefined {
+  if (!isDrawnComponent(item)) return undefined;
+  const { size, transform } = sizedTransform(item, canvas);
+  return baseBox({ transform }, canvas, size);
+}
+
+/**
+ * Where a new component goes on this canvas (Fable QA round 2, F7, D152): its natural size, made
+ * smaller when it wouldn't fit inside the safe area (the canvas less `safeMargin` on every side),
+ * placed by its kind: a lower third bottom-left, a subscribe button and a progress bar along the
+ * bottom (the bar as wide as the safe area), a sticker top-right, the rest centred. On a portrait
+ * canvas the bottom ones sit a tenth of the height higher, clear of the apps' own captions and
+ * buttons. Undefined for full-frame components and device frames (their own planner places them).
+ */
+export function defaultComponentBox(id: string, target: Pick<RenderTarget, "canvas" | "theme">): { x: number; y: number; w: number; h: number } | undefined {
+  const c = componentInfo(id);
+  if (!c || c.block.fullFrame || c.block.screens) return undefined;
+  const { width: W, height: H } = target.canvas;
+  const m = safeMargin(target as RenderTarget);
+  const natural = naturalSize({ component: id, props: componentDefaults(id) }, target.canvas);
+  const k = Math.min(1, (W - 2 * m) / natural.width, (H - 2 * m) / natural.height);
+  let w = natural.width * k;
+  const h = natural.height * k;
+  const lift = H > W ? H / 10 : 0;
+  let x = (W - w) / 2;
+  let y = (H - h) / 2;
+  if (id === "component.lower-third") [x, y] = [m, H - m - lift - h];
+  else if (id === "component.subscribe") y = H - m - lift - h;
+  else if (id === "component.progress-bar") [w, x, y] = [W - 2 * m, m, H - m - lift - h];
+  else if (id === "component.sticker") [x, y] = [W - m - w, m];
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+/** The props a new component gets (its manifest's defaults). */
+export const componentDefaults = (id: string) => structuredClone((componentInfo(id)?.block.defaults ?? {}) as Record<string, unknown>);
+
+/**
+ * A component item as HTML at `local` frames from its start: a wrapper at its box (canvas px) with
+ * the opacity given (the caller's: the preview passes everything visualsAt folds in, the export the
+ * box's own, its ramps being ffmpeg fades), the in/out animation's motion like text's, and the body.
+ * Deterministic: the same item, target and frame give the same string, so the export draws one PNG
+ * per distinct look.
+ */
+export function componentHtml(item: Item, target: RenderTarget, local: number, opts: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {}): string {
+  const parts = componentParts(item, target, local, opts);
+  return parts ? wrapComponent(parts.wrapper, parts.body) : "";
+}
+
+/**
+ * componentHtml in two parts (D76 review): the wrapper (the box's position, size, opacity, scale,
+ * the move's offset and reveal) and the body (what the component looks like inside its box). The
+ * export caps how many distinct bodies it draws (an animation), never the wrapper's motion, so a
+ * keyed box moves on every frame however long it is. `box` is the box to draw it in when a
+ * transition moves it (D79: visualsAt's), else its own at `local`.
+ */
+export function componentParts(item: Item, target: RenderTarget, local: number, { opacity = 1, motion, fps = 30, box: moved }: { opacity?: number; motion?: Motion; fps?: number; box?: ClipBox } = {}): { wrapper: string; body: string } | undefined {
+  const c = componentInfo(item.component);
+  const box = moved && isDrawnComponent(item) ? moved : componentBox(item, target.canvas, local);
+  if (!c || !box) return undefined;
+  const body = c.render({ item, props: item.props ?? {}, w: box.w, h: box.h, local, fps, target });
+  const css = [`left:${px(box.x)}`, `top:${px(box.y)}`, `width:${px(box.w)}`, `height:${px(box.h)}`, `opacity:${num(opacity)}`];
+  const moves: Array<string> = [];
+  if (motion?.dx || motion?.dy) moves.push(`translate(${px(motion.dx ?? 0)},${px(motion.dy ?? 0)})`);
+  if (box.scale !== 1) moves.push(`scale(${num(box.scale)})`);
+  if (moves.length) css.push(`transform:${moves.join(" ")}`);
+  if (motion?.reveal !== undefined && motion.reveal < 1) css.push(`clip-path:inset(-20% ${num((1 - motion.reveal) * 100)}% -20% -5%)`);
+  return { wrapper: `<div class="pv-comp" data-item="${esc(item.id)}" data-component="${esc(c.id)}" style="${css.join(";")}">`, body };
+}
+
+/** A component's wrapper (componentParts) around a body. */
+export const wrapComponent = (wrapper: string, body: string) => `${wrapper}${body}</div>`;
