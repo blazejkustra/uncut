@@ -70,6 +70,17 @@ export function sliceProject(project: Project, range: FrameRange): Project | { r
   const session = applyEdit(createSession(unlocked as Project), { actor: "user", ops });
   const draft = structuredClone(session.project) as Mutable<Project>;
   const byId = new Map(shifts.map((x) => [x.id, x.start]));
+  // D224: main items keep their frames in the part (a deleted item before one took its gap with it).
+  for (const track of draft.tracks) {
+    if (track.role !== "main") continue;
+    let end = 0;
+    for (const item of track.items) {
+      const start = Math.max(end, (starts.get(item.id) ?? 0) - from);
+      if (start > end) item.gap = start - end;
+      else delete item.gap;
+      end = start + item.duration;
+    }
+  }
   for (const track of draft.tracks) {
     for (const item of track.items) {
       if (byId.has(item.id)) item.start = byId.get(item.id)!;

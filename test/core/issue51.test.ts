@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import { applyEdit, audibleAt, createSession, cutsOf, editWords, layout, loadModules, mainEnd, planTextCut, resolveStarts, timelineProblems, transitionLimits, undoTurn, validateProject, visualsAt, type CutTranscript, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
 import { mainSlot, planPlaceMedia } from "../../packages/core/src/timeline/arrange.ts";
 import { draftOf, planDelete, planMove, planRippleDelete } from "../../apps/web/src/timeline/edit.ts";
-import { planDeleteMany } from "../../apps/web/src/timeline/clipboard.ts";
+import { copyItems, planDeleteMany, planPaste } from "../../apps/web/src/timeline/clipboard.ts";
+import { sliceProject } from "../../packages/core/src/timeline/slice.ts";
+import { describeOp } from "../../packages/core/src/timeline/edit-log.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const clip = (id: string, duration: number, extra: Partial<Item> = {}): Item => ({ id, type: "clip", media: "m", in: 0, duration, ...extra });
@@ -179,4 +181,21 @@ test("undo: a delete that leaves a gap undoes as one step (turn replay restores 
   s = undoTurn(p, s, "t1", timelineProblems);
   assert.deepEqual(startsOf(s.project), [["a", 0], ["b", 30], ["c", 60]]);
   assert.equal(s.project.tracks[1]!.items[2]!.gap, undefined);
+});
+
+test("copy and paste (⌘C/⌘V, ⌘D) don't carry a main clip's gap; a part of the timeline (range export) keeps its main frames", () => {
+  const p = projectWith([clip("a", 30), clip("b", 30, { gap: 90 }), clip("c", 30, { gap: 20 })]);
+  const pasted = ok(planPaste(p, copyItems(p, ["b"]), 200));
+  const after = run(p, pasted.ops);
+  const copy = after.tracks[1]!.items.find((i) => i.id === pasted.ids[0])!;
+  assert.equal(copy.gap, undefined);
+  // A part from 60 (inside the first gap) to 200: b at 60 (120 − 60), c at 110 (170 − 60).
+  const part = sliceProject(p, { from: 60, to: 200 });
+  assert.ok(!("problem" in part), "problem" in part ? part.problem : "");
+  assert.deepEqual(startsOf(part as Project), [["b", 60], ["c", 110]]);
+  // From inside b (at 130): b trimmed starts the part, c keeps its distance.
+  assert.deepEqual(startsOf(sliceProject(p, { from: 130, to: 200 }) as Project), [["b", 0], ["c", 40]]);
+  // The agent's note reads the gap in words.
+  assert.equal(describeOp({ op: "update_item", item: "b", set: { gap: 90 } }, p), "Left a 3.0s gap before Talk.mp4 (b) on the main track");
+  assert.equal(describeOp({ op: "update_item", item: "b", set: { gap: null } }, p), "Closed the gap before Talk.mp4 (b) on the main track");
 });
