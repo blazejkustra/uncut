@@ -12,6 +12,7 @@ import { componentBox } from "../visual/components.ts";
 import { BLUR_MOVE, BOUNCE_MOVE, LOOP_DEFAULTS, POP_MOVE, PULSE_MOVE, SCALE_MOVE, TYPEWRITER, WIGGLE_MOVE, WORD_BY_WORD, ZOOM_DEFAULTS, ZOOM_MOVE, type WordStyle } from "../text/looks.ts";
 import { charCount, SOLID, wordCount, type Motion } from "../visual/render.ts";
 import { dipColor, incomingFx, outgoingFx, overlaps, WIPE, type MaskShape, type TransitionFx } from "../visual/transitions.ts";
+import { gapOf } from "./rules.ts";
 import type { Canvas, Item, Media, Project, Track } from "./types.ts";
 
 export interface Visual {
@@ -158,6 +159,8 @@ export function layout(project: Pick<Project, "tracks">): { starts: Map<string, 
   for (const track of project.tracks) {
     let t = 0;
     for (const item of track.items) {
+      // D224: a main item starts after its gap.
+      if (track.role === "main") t += gapOf(item);
       const start = track.role === "main" ? t : item.start!;
       if (track.role === "main") t += item.duration;
       starts.set(item.id, start);

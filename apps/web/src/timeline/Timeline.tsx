@@ -5,7 +5,7 @@
 // Editing (chunk 3, D52; feedback round 1, D122–D128): click selects, ⇧-click selects a range,
 // ⌘-click adds or removes one; dragging on empty timeline draws a marquee that selects what it
 // touches (a click there moves the playhead). Dragging an item moves it (free tracks: in time and
-// to another compatible track, landing on the nearest free spot; main: reorders; past the top or
+// to another compatible track, landing on the nearest free spot; main: lands at the drop frame, in order, D224; past the top or
 // bottom lane: onto a new track); dragging one of several selected items moves them all, keeping
 // their offsets. Edges trim. Moves and trims snap to the playhead, item edges, markers, 0 and
 // cached beats (D70), with a snap line (⌘ held: no snapping). The drag is previewed locally from

@@ -60,7 +60,8 @@ export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot;
   // A selected cut (D73): only while the clip after it is still on the main track, after another clip.
   const cutId = usePlayback((s) => s.cut);
   const cut = findItem(project, cutId);
-  const cutPlaced = cut && cut.track.role === "main" && cut.index > 0 ? cut : undefined;
+  // D224: not when a gap is before it (the clips don't meet).
+  const cutPlaced = cut && cut.track.role === "main" && cut.index > 0 && !((cut.item.gap ?? 0) > 0) ? cut : undefined;
   // A cut that no longer exists (its clip deleted, moved off main or first now) isn't selected any
   // more; one whose transition was undone stays selected as a hard cut.
   useEffect(() => {

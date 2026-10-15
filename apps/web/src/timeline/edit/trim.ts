@@ -1,6 +1,6 @@
 // Trim, split and delete planners (edit.ts), ripple delete and group trims.
 import { overlaps } from "@uncut/core/transitions";
-import { busySpans } from "@uncut/core/arrange";
+import { busySpans, keepMainTimes, rippleMainGaps } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type Track, type ProjectModel, uniqueId } from "../../state/project.ts";
 import { type Plan, findItem, type Placed, lockOf, dropTransitions, draftOf, withGroups } from "./base.ts";
@@ -10,8 +10,9 @@ import { type Snap, nearestSnap } from "./snap.ts";
 const others = (track: Track, exclude: string) => busySpans(track, exclude);
 
 /**
- * Ripple delete (T7): delete the items and close the gaps they leave. On main that's what a delete
- * does anyway; on a free track the later items on the same track move left by the deleted length
+ * Ripple delete (T7): delete the items and close the gaps they leave. On main the clips after them
+ * move left by their length (D224: a gap that was before a deleted clip stays, before the next
+ * clip); on a free track the later items on the same track move left by the deleted length
  * (as long as nothing else was in the gap, which never happens: items there can't overlap).
  */
 export function planRippleDelete(project: ProjectModel, ids: ReadonlyArray<string>): Plan | { readonly problem: string } {
@@ -26,6 +27,8 @@ export function planRippleDelete(project: ProjectModel, ids: ReadonlyArray<strin
   const nextOnMain = placed.filter((p) => p.track.role === "main").map((p) => p.track.items[p.index + 1]).filter((i) => i && !gone.has(i.id));
   ops.push(...dropTransitions(nextOnMain));
   for (const p of placed) ops.push({ op: "delete_item", item: p.item.id });
+  const main = project.tracks.find((t) => t.role === "main");
+  if (main) ops.push(...rippleMainGaps(main, gone));
   // Free tracks: each later item moves left by the deleted length before it.
   for (const track of project.tracks) {
     if (track.role === "main") continue;
@@ -151,15 +154,17 @@ export function planSplit(project: ProjectModel, selected: string | undefined, f
   return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newId };
 }
 
-/** Delete an item; on main the clips after it close the gap (the track is magnetic). */
+/** Delete an item; it leaves its space, on main too (D224: the clips after it stay; ripple delete closes up). */
 export function planDelete(project: ProjectModel, selected: string | undefined): Plan | { readonly problem: string } {
   const placed = findItem(project, selected);
   if (!placed) return { problem: "Select an item to delete it." };
   const locked = lockOf(placed);
   if (locked) return { problem: locked };
-  // On main the clip after it now follows another clip, so its transition goes too.
-  const next = placed.track.role === "main" ? placed.track.items[placed.index + 1] : undefined;
-  return { ops: [...dropTransitions([next]), { op: "delete_item", item: placed.item.id }], summary: `Delete ${placed.item.id}` };
+  const main = placed.track.role === "main";
+  // On main the clip after it now follows a gap, so its transition goes.
+  const next = main ? placed.track.items[placed.index + 1] : undefined;
+  const gaps = main ? keepMainTimes(placed.track, new Set([placed.item.id])) : [];
+  return { ops: [...dropTransitions([next]), { op: "delete_item", item: placed.item.id }, ...gaps], summary: `Delete ${placed.item.id}` };
 }
 
 /**

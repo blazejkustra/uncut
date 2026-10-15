@@ -1,5 +1,5 @@
 import { applyEdit, createSession, EditError } from "../apply-ops.ts";
-import { timelineProblems } from "../rules.ts";
+import { gapOf, mainStarts, timelineProblems } from "../rules.ts";
 import type { Project, Track, Item, Media, Id, Frame, Op } from "../types.ts";
 
 /** A still image placed on the timeline lasts this long. */
@@ -43,10 +43,11 @@ export function nearestFreeSpot(track: Track, exclude: string | undefined, start
 }
 
 /** The main-track slot (index) a clip whose middle is at `middle` lands in (D52's reorder rule), among `items`. */
-export function mainSlot(items: ReadonlyArray<Pick<Item, "duration">>, middle: number): number {
+export function mainSlot(items: ReadonlyArray<Pick<Item, "duration" | "gap">>, middle: number): number {
   let t = 0;
   let index = 0;
   for (const other of items) {
+    t += gapOf(other);
     if (t + other.duration / 2 < middle) index++;
     t += other.duration;
   }
@@ -147,7 +148,8 @@ export function planPlaceMedia(project: Pick<Project, "tracks" | "canvas">, medi
       // The cut nearest the drop: after every clip whose middle is at or before it.
       if (mainIndex === undefined) mainIndex = mainSlot(track.items, cursor + 0.5);
       const index = mainIndex++;
-      start = track.items.slice(0, index).reduce((n, i) => n + i.duration, 0);
+      // Right after the item before it (D224: its gap included).
+      start = index > 0 ? mainStarts(track)[index - 1]! + track.items[index - 1]!.duration : 0;
       // The clip it lands before now follows a new clip: the transition into it goes.
       const before = track.items[index];
       if (before?.transitionIn) ops.push({ op: "set_transition", item: before.id, transition: null });

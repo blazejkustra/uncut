@@ -1,4 +1,4 @@
-import { MAIN_ITEM_TYPES } from "../rules.ts";
+import { MAIN_ITEM_TYPES, mainStarts } from "../rules.ts";
 import { layout } from "../timeline.ts";
 import type { Project, Item, Op, Id, Track } from "../types.ts";
 import { locate, lockProblem } from "./retime.ts";
@@ -51,7 +51,7 @@ export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame
   const start = starts.get(picture.id) ?? 0;
   const desired = at.frame !== undefined && Number.isFinite(at.frame) ? Math.max(0, at.frame) : start;
   const index = mainSlot(main.items, desired + picture.duration / 2);
-  const newStart = main.items.slice(0, index).reduce((n, i) => n + i.duration, 0);
+  const newStart = index > 0 ? mainStarts(main)[index - 1]! + main.items[index - 1]!.duration : 0;
   const ops: Array<Op> = [];
   const before = main.items[index];
   if (before?.transitionIn) ops.push({ op: "set_transition", item: before.id, transition: null });

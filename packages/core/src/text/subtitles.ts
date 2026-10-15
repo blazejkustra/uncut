@@ -9,6 +9,7 @@ import { TEXT_STYLES } from "./looks.ts";
 import { lookItem } from "./textPlan.ts";
 import { captionBox, captionCards, CAPTION_DEFAULTS } from "./captions.ts";
 import { layout } from "../timeline/timeline.ts";
+import { mainEnd } from "../timeline/rules.ts";
 import type { Item, Op, Project, Track } from "../timeline/types.ts";
 
 export type SubtitleFormat = "srt" | "vtt";
@@ -284,8 +285,7 @@ const markupSafe = (text: string) => text.replace(/`/g, "'").replace(/\*\*+/g, "
  */
 export function planImportSubtitles(project: Pick<Project, "canvas" | "theme" | "tracks" | "media">, cues: ReadonlyArray<ParsedCue>, name: string, taken: Set<string> = new Set()): ImportSubtitlesPlan {
   const fps = project.canvas.fps;
-  const main = project.tracks.find((t) => t.role === "main");
-  const mainLength = (main?.items ?? []).reduce((n, i) => n + i.duration, 0);
+  const mainLength = mainEnd(project);
   const limit = mainLength > 0 ? mainLength : Infinity;
   let clipped = 0;
   let joined = 0;

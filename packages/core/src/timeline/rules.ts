@@ -16,7 +16,7 @@ const ITEM_TRACK_KINDS: Readonly<Record<ItemType, ReadonlyArray<Track["kind"]>>>
 
 /**
  * D215: the main track (the spine) takes any picture: clips (video, stills, recordings), elements,
- * graphics and text. A text card there is a title clip: back to back, ripple, transitions (it holds
+ * graphics and text. A text card there is a title clip: in order, ripple, transitions (it holds
  * its first and last look through a transition's overlap and needs no footage). Captions and sound
  * stay off it.
  */
@@ -27,13 +27,41 @@ export const fitsTrackKind = (type: ItemType, track: Pick<Track, "kind" | "role"
 
 const err = (code: string, path: string, message: string): Problem => ({ code, path, message });
 
-/** Start frame of every item: main-track items play back to back, free items carry `start`. */
+/**
+ * D224: where a main-track item starts, from the one before it: its `gap` (empty frames, absent = 0)
+ * after the previous item's end (frame 0 for the first). Every place that walks the main track adds
+ * the gap this way.
+ */
+export const gapOf = (item: Pick<Item, "gap">): number => (typeof item.gap === "number" && item.gap > 0 ? item.gap : 0);
+
+/** Start frame of each main-track item, in order (gaps included). */
+export function mainStarts(track: Pick<Track, "items">): Array<number> {
+  const out: Array<number> = [];
+  let t = 0;
+  for (const item of track.items) {
+    t += gapOf(item);
+    out.push(t);
+    t += item.duration;
+  }
+  return out;
+}
+
+/** Where the main track ends (its last item's end, gaps included); 0 without a main track or items. */
+export function mainEnd(project: Pick<Project, "tracks">): number {
+  const main = project.tracks.find((t) => t.role === "main");
+  if (!main?.items.length) return 0;
+  const last = main.items.at(-1)!;
+  return mainStarts(main).at(-1)! + last.duration;
+}
+
+/** Start frame of every item: main-track items play in order (D224: after their `gap`), free items carry `start`. */
 export function resolveStarts(project: Pick<Project, "tracks">): Map<string, number> {
   const starts = new Map<string, number>();
   for (const track of project.tracks) {
     let t = 0;
     for (const item of track.items) {
       if (track.role === "main") {
+        t += gapOf(item);
         starts.set(item.id, t);
         t += item.duration;
       } else {
@@ -64,7 +92,8 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
     track.items.forEach((item, index) => {
       const ipath = `${tpath}/items/${item.id}`;
       if (!fitsTrackKind(item.type, track)) errors.push(err("item-track-kind", ipath, main ? `a ${item.type} item can't go on the main track` : `a ${item.type} item can't go on a ${track.kind} track`));
-      if (main && item.start !== undefined) errors.push(err("main-item-start", ipath, "main-track items play back to back and must not have a start"));
+      if (main && item.start !== undefined) errors.push(err("main-item-start", ipath, "main-track items are placed by their order and gap, and must not have a start"));
+      if (!main && item.gap !== undefined) errors.push(err("gap-track", ipath, "only main-track items have a gap (free items carry a start)"));
       if (!main && item.start === undefined) errors.push(err("missing-start", ipath, "items on free tracks need a start frame"));
 
       // Media references and ranges.
@@ -99,6 +128,7 @@ export function timelineProblems(project: Pick<Project, "tracks" | "media">): Ar
         const tr = item.transitionIn;
         if (!main) errors.push(err("transition-track", ipath, "transitions only go between items on the main track"));
         else if (index === 0) errors.push(err("transition-first", ipath, "the first main-track item has nothing to transition from"));
+        else if (gapOf(item) > 0) errors.push(err("transition-gap", ipath, "a transition can't cross a gap: the item must follow the one before it"));
         else {
           const prev = track.items[index - 1]!;
           if (tr.duration > Math.min(prev.duration, item.duration) / 2) {

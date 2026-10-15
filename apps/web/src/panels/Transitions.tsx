@@ -225,7 +225,7 @@ export function TransitionsLibrary({ project }: { project: Project }) {
   // F9 (D153): with a cut selected, each tile says whether it fits there (and how long it can be).
   const cut = usePlayback((s) => s.cut);
   const cutPlaced = findItem(project, cut);
-  const target = cutPlaced && cutPlaced.track.role === "main" && cutPlaced.index > 0 ? cutPlaced.item : undefined;
+  const target = cutPlaced && cutPlaced.track.role === "main" && cutPlaced.index > 0 && !((cutPlaced.item.gap ?? 0) > 0) ? cutPlaced.item : undefined;
   /** The length a tile would get on the selected cut: the chosen one, else the one there now (kept on a change of type), else its default. */
   const wantedOn = (t: TransitionInfo) => (seconds ? lengthOf(t) : (target?.transitionIn?.duration ?? defaultFrames(t, fps)));
   return (

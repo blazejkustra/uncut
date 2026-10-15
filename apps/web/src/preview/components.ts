@@ -2,6 +2,7 @@
 // it's dropped on the canvas or the timeline), the generic params Inspector and the device frame's
 // footage. Like every other editor (D52, D53), each gesture is one project.edit: validated, one
 // ⌘Z, labelled in History and listed in the agent's next note.
+import { mainEnd as mainEndOf } from "@uncut/core/rules";
 import { STICKER_ART } from "@uncut/core/stickers";
 import { alignScreen, componentDefaults, componentInfo, defaultComponentBox, componentRest, deviceSpec, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenTransform, type Device } from "@uncut/core/components";
 import type { FieldSet, Item, Op } from "@uncut/core/types";
@@ -71,7 +72,7 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
   const name = typeof props?.art === "string" ? STICKER_ART[props.art]?.name : undefined;
   const item: Item = { id: itemId, type: "component", component: c.id, duration, props: { ...componentDefaults(c.id), ...(props ?? {}) }, ...(name ? { name } : {}), ...(transform ? { transform } : {}) };
   const summary = props?.emoji ? `Add sticker ${String(props.emoji)}` : name ? `Add sticker ${name.toLowerCase()}` : `Add ${c.name.toLowerCase()}`;
-  const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
+  const mainEnd = mainEndOf(project);
   if (c.block.fullFrame && start === mainEnd && !main.locked) return { ops: [{ op: "insert_item", track: main.id, item }], summary, itemId, start };
   const ops: Array<Op> = [];
   const free = (t: Track) => t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));

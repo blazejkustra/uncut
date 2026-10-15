@@ -1,6 +1,7 @@
 // The project as the renderer reads it, the timeline maths it borrows from @uncut/core (D39: the
 // preview, export and agent share one implementation), and the edit ops the editor sends for
 // "add to timeline". The ops go through project.edit, so the server validates them and they undo.
+import { mainEnd as mainEndOf } from "@uncut/core/rules";
 import { SOLID } from "@uncut/core/render";
 import { TEXT_STYLES, type TextPreset } from "@uncut/core/looks";
 import { planInsertText } from "@uncut/core/textPlan";
@@ -80,7 +81,7 @@ export function planAddMedia(project: ProjectModel, mediaId: string, frame = 0):
   const main = project.tracks.find((t) => t.role === "main");
   if (!main) return { problem: "This project has no main track." };
   if (main.locked) return { problem: "The main track is locked. Unlock it to add clips." };
-  const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
+  const mainEnd = mainEndOf(project);
   const itemId = uniqueId(project, "clip");
   const duration = media.kind === "image" ? defaultFrames("still", fps) : frames!;
   return {
