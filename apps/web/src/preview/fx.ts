@@ -241,6 +241,16 @@ export class FxRenderer {
     this.lutTex = gl.createTexture()!;
   }
 
+  /** Issue #55: compiles the programs `fx` draws with now (a clip about to start), not in the frame it starts in. */
+  warm(fx: ClipFx) {
+    if (this.lost || this.gl.isContextLost()) return;
+    if (fx.pixelate) this.program("pixelate", PIXELATE);
+    this.program("colour", COLOUR);
+    if (fx.rgbSplit || fx.sharpen) this.program("spatial", SPATIAL);
+    if (fx.glow) this.program("glow", GLOW);
+    this.program("final", FINAL);
+  }
+
   /** Whether WebGL2 can be had here (the panel and preview fall back to the plain picture without it). */
   static available(): boolean {
     try {
