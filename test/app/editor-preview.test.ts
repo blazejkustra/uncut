@@ -257,6 +257,8 @@ function rgbCenter(png: string) {
   return [...execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", "crop=iw/4:ih/4,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
 }
 async function settle(page: Page) {
+  // D221: 4K footage under a scrub canvas seeks its <video> once the playhead rests; the canvas goes once it has.
+  await page.waitForFunction(() => ![...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].some((c) => c.style.visibility !== "hidden"), { timeout: 10000 });
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => !v.seeking && v.readyState >= 2), { timeout: 10000 });
   await sleep(150);
 }

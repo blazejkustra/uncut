@@ -24,6 +24,11 @@ import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playbac
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
 import { actions, getState, graphicUrl, mediaUrl, proxyOf, proxyUrl, subscribeApp, textPresets, useApp } from "../state/store.ts";
 import { proxiesOn, useProxiesOn } from "../settings/proxies.ts";
+import { scrubCacheOn, useScrubCacheOn } from "../settings/scrub.ts";
+import { ScrubCache } from "./scrub.ts";
+import { ensureToneFilter, VIDEO_TONE_FILTER } from "./tone.ts";
+import { gpuCompositorOn, useGpuCompositorOn } from "../settings/gpu.ts";
+import { GpuCompositor, plainColour, type GpuPicture } from "./gpu.ts";
 import { changeLabel } from "../state/agentFollow.ts";
 import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, planAddComponent, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
@@ -42,6 +47,23 @@ import { copySelection, deleteSelection, duplicate } from "../editor/keys.ts";
 
 /** Renderers kept for reuse when clips with effects leave the canvas (D136). */
 const FX_POOL = 4;
+/** D221: how long the playhead rests before a <video> under a scrub canvas is seeked to it. */
+const SCRUB_SETTLE_MS = 200;
+
+/** D221: how long the last renders took (ms), for the compositor's measurements in tests. */
+const renderTimes: Array<number> = [];
+(globalThis as { __uncutPreview?: unknown }).__uncutPreview = { renderMs: () => renderTimes.splice(0) };
+
+/** D221: a clip's scrub canvas (its cached frame over the hidden <video>). */
+interface ScrubView {
+  readonly canvas: HTMLCanvasElement;
+  readonly ctx: CanvasRenderingContext2D;
+  /** The source and sample drawn ("" for none yet). */
+  key: string;
+  shown: boolean;
+  lastT: number;
+  movedAt: number;
+}
 
 /** Fits a w×h box inside its container, like object-fit: contain. */
 function useFit(width: number, height: number) {
@@ -66,6 +88,10 @@ function useFit(width: number, height: number) {
 }
 
 type MediaEl = HTMLVideoElement | HTMLImageElement;
+/** What a clip's picture is drawn from: its media element, or (D221) its scrub canvas. */
+type PictureEl = MediaEl | HTMLCanvasElement;
+/** Whether a picture has something to read. */
+const pictureReady = (el: PictureEl) => (el instanceof HTMLVideoElement ? el.readyState >= 2 : el instanceof HTMLImageElement ? el.complete && el.naturalWidth > 0 : el.width > 0);
 // Where a video was last asked to be; while a seek runs only the newest target is kept.
 /**
  * D212: what a clip's element plays: the media item's proxy when the server has made one and
@@ -207,6 +233,17 @@ class Compositor {
   private readonly dir: string;
   // The playback mix (D54): clips' sound comes from the <video> elements made here.
   private readonly mix = new Mix();
+  // D221: exact frames for scrubbing, decoded ahead; a canvas per clip that shows one.
+  private readonly scrub = new ScrubCache(() => this.render());
+  private readonly scrubViews = new Map<string, ScrubView>();
+  private settleTimer = 0;
+  // The clips whose scrub canvas this render placed (any other one is hidden).
+  private readonly scrubbed = new Set<string>();
+  // D221: the GPU compositor (behind its setting), made on first use; broken when WebGL2 isn't there.
+  private gpu: GpuCompositor | undefined;
+  private gpuBroken = false;
+  // The layers the GPU compositor drew last (a new frame of theirs needs a render, as for effects).
+  private onGpu = new Set<string>();
 
   constructor(dir: string, frameEl: HTMLDivElement, mediaLayer: HTMLDivElement, textLayer: HTMLDivElement) {
     this.dir = dir;
@@ -232,6 +269,10 @@ class Compositor {
     this.clearOverlays();
     this.mix.destroy();
     setCurrentMix(undefined);
+    clearTimeout(this.settleTimer);
+    this.scrub.destroy();
+    this.gpu?.dispose();
+    this.gpu = undefined;
   }
 
   /** Components and graphics off the canvas. */
@@ -268,6 +309,8 @@ class Compositor {
       el.load();
     }
     el.remove();
+    this.scrubViews.get(id)?.canvas.remove();
+    this.scrubViews.delete(id);
     this.boxes.get(id)?.remove();
     this.boxes.delete(id);
     this.els.delete(id);
@@ -286,9 +329,9 @@ class Compositor {
     this.fxOverlay.delete(id);
   }
 
-  /** Whether a clip's picture is drawn by a canvas of ours (effects D136, a shader D213): a new frame needs a render. */
+  /** Whether a clip's picture is drawn by a canvas of ours (effects D136, a shader D213, the GPU compositor D221): a new frame needs a render. */
   private drawsPicture(id: string) {
-    return this.fxCanvas.has(id) || this.shaderCanvas.has(id);
+    return this.fxCanvas.has(id) || this.shaderCanvas.has(id) || this.onGpu.has(id);
   }
 
   /** A clip's shader canvas and badge off the canvas. */
@@ -314,7 +357,7 @@ class Compositor {
    * the picture (shown, or the source of the other picture effects). Without WebGPU: a badge on the
    * clip saying it isn't drawn here and that the export will refuse.
    */
-  private drawShader(item: Item, el: MediaEl, wrap: HTMLDivElement, use: ShaderUse | undefined, size: { w: number; h: number }, t: number): HTMLCanvasElement | undefined {
+  private drawShader(item: Item, el: PictureEl, wrap: HTMLDivElement, use: ShaderUse | undefined, size: { w: number; h: number }, t: number): HTMLCanvasElement | undefined {
     if (!use) {
       if (this.shaderCanvas.has(item.id) || this.shaderBadge.has(item.id)) this.dropShader(item.id);
       return undefined;
@@ -348,8 +391,7 @@ class Compositor {
       this.shaderCanvas.set(item.id, s);
       el.after(s.canvas);
     }
-    const ready = el instanceof HTMLVideoElement ? el.readyState >= 2 : el.complete && el.naturalWidth > 0;
-    const ok = ready && s.render(el, use, size.w, size.h, t, () => this.render());
+    const ok = pictureReady(el) && s.render(el, use, size.w, size.h, t, () => this.render());
     return ok || s.drawn ? s.canvas : undefined;
   }
 
@@ -378,7 +420,7 @@ class Compositor {
    * Draws a clip's looks and effects (D136): picture effects through its WebGL canvas (laid over the
    * picture element, which is hidden but keeps playing), blur as CSS on what's shown, overlays on top.
    */
-  private drawFx(item: Item, el: MediaEl, wrap: HTMLDivElement, box: ClipBox, opacity: number, frame: number, fps: number, start: number): void {
+  private drawFx(item: Item, el: PictureEl, wrap: HTMLDivElement, box: ClipBox, opacity: number, frame: number, fps: number, start: number): void {
     const media = this.project?.media.find((m) => m.id === item.media);
     // SVG stills don't take looks or effects (D138; the planners refuse them too).
     const fx = fxSkips(media) ? undefined : this.effectsOf(item);
@@ -423,8 +465,7 @@ class Compositor {
       setStyle(c, "height", el.style.height);
       c.style.opacity = el.style.opacity;
       const size = fxPictureSize(box, media?.probe);
-      const ready = el instanceof HTMLVideoElement ? el.readyState >= 2 : el.complete && el.naturalWidth > 0;
-      const ok = ready && r.render(shaded ?? el, fx, size.w, size.h, (Math.floor(frame) - start) / fps, 1, shaded ? undefined : this.fxOf.get(item.id)?.key);
+      const ok = pictureReady(el) && r.render(shaded ?? el, fx, size.w, size.h, (Math.floor(frame) - start) / fps, 1, shaded ? undefined : this.fxOf.get(item.id)?.key);
       // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
       const drawn = ok || (r.drawn && !r.lost);
       el.style.visibility = drawn || shaded ? "hidden" : "";
@@ -437,7 +478,9 @@ class Compositor {
     }
     // Blur (an effect) on what's shown, as the export blurs the picture before its box.
     const blur = fx?.blur ? `blur(${px(fx.blur)})` : "";
-    if (shown.style.filter !== blur) shown.style.filter = blur;
+    // A scrub canvas shown as such keeps its tone filter (D221) before the blur.
+    const filter = shown === el && el instanceof HTMLCanvasElement && el.dataset.tone ? `url(#${VIDEO_TONE_FILTER})${blur ? ` ${blur}` : ""}` : blur;
+    if (shown.style.filter !== filter) shown.style.filter = filter;
     if (shown !== el && el.style.filter) el.style.filter = "";
     // Vignette, grain and bars: core's HTML over the picture's visible part, with the clip's opacity.
     const html = fx && hasOverlay(fx) ? fxOverlayInner(fx, visibleRect(box), Math.floor(frame) - start) : "";
@@ -497,8 +540,9 @@ class Compositor {
           wanted.set(video, want);
           video.currentTime = want;
         } else wanted.delete(video);
-        // A paused clip with effects (D136) or a shader (D213) draws the frame the seek landed on.
-        if (this.drawsPicture(item.id)) this.render();
+        // A paused clip with effects (D136) or a shader (D213) draws the frame the seek landed on;
+        // under a scrub canvas waiting for its frame (D221), the <video> may have it first.
+        if (this.drawsPicture(item.id) || this.scrubViews.get(item.id)?.shown) this.render();
       });
       video.addEventListener("loadeddata", () => this.drawsPicture(item.id) && this.render());
       el = video;
@@ -529,7 +573,106 @@ class Compositor {
     return el;
   }
 
+  /**
+   * D221: a video clip's picture while paused or shuttling: its exact cached frame drawn into a canvas
+   * over the hidden <video>, or the <video> itself (cache off, a file the cache can't read, no frame
+   * yet, or the playhead at rest with the <video> caught up). On a miss the last drawn frame stays up while the next decodes, as a seeking <video> keeps
+   * its last frame; at 1× the canvas stays until the <video> has caught up, then the <video> shows.
+   * `seek`: whether the <video> may be seeked now. Light footage (≤ 1080p: proxies, HD) seeks as
+   * before (on a miss whichever has the frame first shows it); heavier footage under a scrub canvas
+   * waits until the playhead rests, as two 4K decoders slow each other down (measured).
+   */
+  private scrubPicture(id: string, el: HTMLVideoElement, t: number, playing: boolean, shuttle: number): { pic: PictureEl; seek: boolean } {
+    let view = this.scrubViews.get(id);
+    const src = scrubCacheOn() && el.dataset.src && !el.error ? this.scrub.source(el.dataset.src) : undefined;
+    if (!src || src.state !== "ready") {
+      if (view?.shown) {
+        view.shown = false;
+        view.canvas.style.visibility = "hidden";
+      }
+      return { pic: el, seek: true };
+    }
+    if (!view) {
+      const canvas = document.createElement("canvas");
+      canvas.className = "pv-scrub";
+      canvas.dataset.scrub = id;
+      ensureToneFilter();
+      canvas.style.visibility = "hidden";
+      el.after(canvas);
+      view = { canvas, ctx: canvas.getContext("2d")!, key: "", shown: false, lastT: t, movedAt: 0 };
+      this.scrubViews.set(id, view);
+    }
+    // Shown as the <video> is (its picture drawn into a canvas is shown as sRGB): BT.709 footage lifted (tone.ts).
+    const tone = src.lift ? `url(#${VIDEO_TONE_FILTER})` : "";
+    if (view.canvas.dataset.tone !== (src.lift ? "1" : "")) {
+      if (src.lift) view.canvas.dataset.tone = "1";
+      else delete view.canvas.dataset.tone;
+      view.canvas.style.filter = tone;
+    }
+    const now = performance.now();
+    // Stepping or dragging leads the window that way; a jump (a click far off) keeps it around the frame.
+    const step = Math.abs(t - view.lastT) <= 0.25;
+    const dir: -1 | 0 | 1 = shuttle ? (shuttle > 0 ? 1 : -1) : !step ? 0 : t > view.lastT + 1e-6 ? 1 : t < view.lastT - 1e-6 ? -1 : 0;
+    if (t !== view.lastT) {
+      view.lastT = t;
+      view.movedAt = now;
+    }
+    const resting = now - view.movedAt >= SCRUB_SETTLE_MS;
+    if (!playing) src.want(t, dir);
+    const hit = src.frame(t);
+    const key = hit ? `${src.id}|${hit.sample}` : "";
+    // The canvas only covers the time the <video> takes to get to the frame: once it's there, it shows
+    // again (as before D221). On a miss the last frame drawn stays up until the playhead rests.
+    const videoThere = !el.seeking && el.readyState >= 2 && Math.abs(el.currentTime - reachable(el, t)) < 0.002;
+    let show = playing ? view.shown && (el.seeking || el.readyState < 2) : hit ? !(videoThere && !this.scrub.keep) : view.shown && !resting && !videoThere;
+    if (show && hit && view.key !== key) {
+      const c = view.canvas;
+      if (c.width !== hit.bitmap.width) c.width = hit.bitmap.width;
+      if (c.height !== hit.bitmap.height) c.height = hit.bitmap.height;
+      view.ctx.drawImage(hit.bitmap, 0, 0);
+      view.key = key;
+      c.dataset.time = String(hit.pts);
+      c.dataset.sample = String(hit.sample);
+    }
+    if (!view.key) show = false;
+    view.shown = show;
+    view.canvas.style.visibility = show ? "" : "hidden";
+    this.scrubbed.add(id);
+    const seek = src.light || !show || playing || resting;
+    if (show && !resting) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = window.setTimeout(() => this.render(), SCRUB_SETTLE_MS + 10);
+    }
+    return { pic: show ? view.canvas : el, seek };
+  }
+
+  /**
+   * D221: whether the GPU compositor can draw a layer as the DOM path does: a video or image clip
+   * (box, fit, radius, opacity, a wipe or an iris; picture effects without blur or overlays; no shader,
+   * no reveal shape, no blur dissolve) or a plain-colour background with no transition styling.
+   */
+  private gpuCan(v: Visual, project: ProjectModel): boolean {
+    const item = v.item;
+    if (v.mask || v.blur) return false;
+    if (item.type === "component" && item.component === SOLID) return v.wipe === undefined && v.iris === undefined && !v.shift && !v.shiftY && v.zoom === undefined && !!plainColour(solidBackground(item, project));
+    if (item.type !== "clip" || !v.box) return false;
+    const media = project.media.find((m) => m.id === item.media);
+    if (!media || media.kind === "audio" || fxSkips(media)) return false;
+    const el = this.els.get(item.id);
+    if (el instanceof HTMLVideoElement && el.error) return false;
+    if (this.boxes.get(item.id)?.querySelector("[data-missing]")) return false;
+    if (this.shaderUseOf(item)) return false;
+    const fx = this.effectsOf(item);
+    return !fx || (!fx.blur && !hasOverlay(fx));
+  }
+
   render() {
+    const t0 = performance.now();
+    this.draw();
+    if (renderTimes.push(performance.now() - t0) > 2000) renderTimes.splice(0, 1000);
+  }
+
+  private draw() {
     const project = this.shown();
     if (!project) return;
     if (getState().snapshot?.dir !== this.dir) {
@@ -584,6 +727,34 @@ class Compositor {
         (v.item.type === "text" && typeof v.item.text === "string"),
     );
     const z = new Map(drawn.map((v, i) => [v.item.id, i + 1]));
+    // D221: the bottom run of layers the GPU compositor draws (behind its setting); the rest stays DOM.
+    const gpuOn = gpuCompositorOn() && !this.gpuBroken;
+    // A context the browser took back (too many WebGL contexts on the page) is made again.
+    if (gpuOn && this.gpu?.lost) {
+      this.gpu.dispose();
+      this.gpu = undefined;
+    }
+    // The DOM path's spare effects renderers hold a WebGL context each: let them go while the GPU draws.
+    if (gpuOn) for (const r of this.fxPool.splice(0)) r.dispose();
+    if (gpuOn && !this.gpu) {
+      try {
+        this.gpu = new GpuCompositor();
+        this.gpu.onRestored = () => this.render();
+        this.gpu.canvas.style.zIndex = "0";
+        this.mediaLayer.prepend(this.gpu.canvas);
+      } catch {
+        this.gpuBroken = true;
+      }
+    }
+    const onGpu = new Set<string>();
+    this.onGpu = onGpu;
+    if (gpuOn && this.gpu && !this.gpu.lost) {
+      for (const v of drawn) {
+        if (!this.gpuCan(v, project)) break;
+        onGpu.add(v.item.id);
+      }
+    }
+    const gpuPictures = new Map<string, GpuPicture>();
     const layered = drawn.filter((v) => v.item.type !== "text");
     const solids = layered.filter((v) => v.item.type === "component" && v.item.component === SOLID);
     for (const [id, el] of [...this.solids]) {
@@ -610,6 +781,8 @@ class Compositor {
       el.style.opacity = String(v.opacity);
       el.style.zIndex = String(z.get(v.item.id));
       transitionCanvas(el, v, project.canvas);
+      if (onGpu.has(v.item.id)) el.dataset.gpu = "";
+      else delete el.dataset.gpu;
     }
 
     // Components (D76): core's HTML at this frame, remade only when it changes (a terminal typing,
@@ -750,23 +923,53 @@ class Compositor {
       }
     }
 
+    if (!scrubCacheOn() && this.scrub.lru.size) this.scrub.clear();
+    this.scrubbed.clear();
     clips.forEach((c) => {
       const media = mediaKind(c.item)!;
       const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video");
       if (!el) return;
       const wrap = this.boxes.get(c.item.id)!;
       wrap.classList.toggle("sel-clip", c.item.id === selected);
+      // D221: paused or shuttling, a video's picture may be its cached frame (a canvas over it).
+      const scrubbed = el instanceof HTMLVideoElement ? this.scrubPicture(c.item.id, el, c.source + 0.0001, playing, running && rate !== 1 ? rate : 0) : { pic: el, seek: true };
+      const pic = scrubbed.pic;
       // The opacity stays on the media element (the wrapper only places, clips and rounds it).
       el.style.opacity = String(c.opacity);
       wrap.style.zIndex = String(z.get(c.item.id));
       if (c.box) placeBox(wrap, el, c.box, project.canvas, c.wipe, c.iris, c.mask, c.blur);
-      if (c.box) this.drawFx(c.item, el, wrap, c.box, c.opacity, frame, fps, starts.get(c.item.id)!);
+      if (pic !== el) {
+        for (const k of ["left", "top", "width", "height", "objectFit"] as const) setStyle(pic, k, el.style[k]);
+        pic.style.opacity = el.style.opacity;
+        el.style.visibility = "hidden";
+      } else if (el instanceof HTMLVideoElement && !wrap.querySelector("[data-missing]")) el.style.visibility = "";
+      if (onGpu.has(c.item.id) && c.box) {
+        // D221: drawn by the GPU compositor (its effects too); the DOM elements stay, transparent.
+        wrap.dataset.gpu = "";
+        this.dropFx(c.item.id);
+        const fx = this.effectsOf(c.item);
+        gpuPictures.set(c.item.id, {
+          id: c.item.id,
+          source: pic,
+          // As macOS shows the <video> (tone.ts): known from the file once the scrub cache read it, else Chromium's guess from the size.
+          lift: el instanceof HTMLVideoElement && (this.scrub.peek(el.dataset.src ?? "")?.state === "ready" ? this.scrub.peek(el.dataset.src ?? "")!.lift : el.videoHeight >= 720),
+          box: c.box,
+          opacity: c.opacity,
+          wipe: c.wipe,
+          iris: c.iris !== undefined ? { x: project.canvas.width / 2, y: project.canvas.height / 2, r: irisRadius(c.iris, project.canvas) } : undefined,
+          fx: fx && needsPicturePass(fx) && !this.fxBroken ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps } : undefined,
+        });
+      } else {
+        delete wrap.dataset.gpu;
+        if (c.box) this.drawFx(c.item, pic, wrap, c.box, c.opacity, frame, fps, starts.get(c.item.id)!);
+      }
       if (!(el instanceof HTMLVideoElement)) return;
       // A looped clip's media starts over by itself; drive() reseeks only if it drifts (D75).
       el.loop = c.item.loop === true;
       if (media.probe?.hasAudio) this.mix.attach(c.item.id, el);
       // A held clip (D94) past its media's end sits paused on the last frame.
-      drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
+      if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
+      else if (!el.paused) el.pause();
     });
     if (ahead && !clips.some((c) => c.item.id === ahead.id)) {
       const el = this.elementFor(ahead, "video");
@@ -829,6 +1032,27 @@ class Compositor {
         el.style.clipPath = el.dataset.clip;
         delete el.dataset.clip;
       }
+    }
+    this.scrub.sweep();
+    if (this.gpu && !this.gpu.lost) {
+      if (onGpu.size) {
+        const scale = (this.frameEl.clientWidth / project.canvas.width) * (window.devicePixelRatio || 1);
+        this.gpu.begin(project.canvas.width, project.canvas.height, scale);
+        for (const v of drawn) {
+          if (!onGpu.has(v.item.id)) break;
+          const p = gpuPictures.get(v.item.id);
+          if (p) this.gpu.drawPicture(p);
+          else if (v.item.type === "component") this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
+        }
+        this.gpu.end();
+      } else this.gpu.clear();
+      this.frameEl.dataset.gpuLayers = String(onGpu.size);
+    }
+    // A clip that isn't drawn this time (warming up as the next clip, fading out of the mix): no canvas over it.
+    for (const [id, view] of this.scrubViews) {
+      if (this.scrubbed.has(id) || !view.shown) continue;
+      view.shown = false;
+      view.canvas.style.visibility = "hidden";
     }
     // Sound after picture: the mix uses the <video> elements made above.
     this.mix.render(project, frame, playing);
@@ -945,7 +1169,10 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
   // D212: a proxy that's ready (or the setting turned) swaps the clip's element for the other file.
   const proxies = useSyncExternalStore(subscribeApp, () => getState().proxies);
   const useProxies = useProxiesOn();
-  useEffect(() => compositor.current?.render(), [proxies, useProxies]);
+  // D221: the scrub cache or the GPU compositor turned on or off draws again.
+  const scrubCache = useScrubCacheOn();
+  const gpu = useGpuCompositorOn();
+  useEffect(() => compositor.current?.render(), [proxies, useProxies, scrubCache, gpu]);
   useEffect(() => compositor.current?.setEditing(editing?.id), [editing?.id]);
   // Canvas pixels per screen pixel, and its inverse: how the canvas-size layer is scaled.
   const scale = width / Math.max(1, size.w);
