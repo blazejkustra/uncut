@@ -2,14 +2,15 @@
 // you'd hear), or (D215) on an item off it (a source picker lists them, a take read from its
 // microphone; selecting one on the timeline reads it), as selectable words. The word under the playhead is highlighted while it plays;
 // clicking a word goes there (and selects it); dragging or ⇧-clicking selects more, and ⌫/Delete
-// cuts the selection through core planTextCut as one undoable edit. "Remove pauses" (threshold)
-// and "Remove fillers" (hesitations only; "maybe" ones are only marked) do the same for the whole
-// edit, with the count they'd cut on the button. "Make captions" (D82) makes captions from the
-// transcripts that follow the cuts (mode and look picked in a small popover). Media without a transcript can be transcribed
+// cuts the selection through core planTextCut as one undoable edit (a bar shows the selection, with
+// Cut and clear). The tools (#59, D231) are rows in one card: Fillers (hesitations only; "maybe" ones
+// are only marked) and "Pauses over [x s]" do the same for the whole edit, each row saying what it
+// would cut; Captions (D82) makes captions from the transcripts that follow the cuts (mode and look
+// picked in the shared, window-clamped Popover). Media without a transcript can be transcribed
 // here (the Library's analysis job, with its progress); a missing whisper.cpp or speech model
 // points to Setup.
 import { fillersOf, pausesOf, type EditWord, type Filler, type Pause } from "@uncut/core/transcript";
-import { Captions, Scissors } from "lucide-react";
+import { Captions, Scissors, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef } from "react";
 
 import { frameTimecode, timecode } from "../state/format.ts";
@@ -222,10 +223,11 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
 
   const pauseCount = "problem" in pausePlan ? 0 : pausePlan.pauses;
   const fillerCount = "problem" in fillerPlan ? 0 : fillerPlan.fillers;
-  const secs = (p: typeof pausePlan) => ("problem" in p ? "" : `${(p.framesRemoved / fps).toFixed(1)} s`);
+  const secs = (p: typeof pausePlan) => ("problem" in p ? "" : `${(p.framesRemoved / fps).toFixed(1)}\u00a0s`);
   const anyDone = transcripts.size > 0;
   const locked = !scope && main?.locked === true;
   const busy = useCutBusy();
+  const status = locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected` : "";
   return (
     <aside className="library tx-panel" data-testid="transcript-panel">
       <div className="lib-head">Transcript</div>
@@ -247,44 +249,69 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
           </select>
         </div>
       )}
-      <div className="tx-toolbar">
-        <span className="muted small tx-status" data-testid="tx-status">
-          {locked ? "The main track is locked: unlock it to cut by text." : busy ? "Measuring the sound before cutting…" : selected.length ? `${selected.length} word${selected.length === 1 ? "" : "s"} selected` : ""}
+      {media.length > 0 && (
+        <div className="tx-tools" data-testid="tx-tools">
+          <div className="tx-tool">
+            <div className="tx-tool-text">
+              <div className="tx-tool-title">Fillers</div>
+              <div className="tx-tool-meta">{!anyDone ? "um, uh, yyy" : fillerCount ? `${fillerCount} found, ${secs(fillerPlan)}` : "None in the edit"}</div>
+            </div>
+            <button
+              className="btn"
+              data-testid="remove-fillers"
+              data-count={fillerCount}
+              aria-label="Remove fillers"
+              disabled={!online || busy || !fillerCount}
+              title={locked ? "The main track is locked" : fillerCount ? `Cut ${fillerCount} hesitation${fillerCount === 1 ? "" : "s"} (um, uh, yyy), ${secs(fillerPlan)}. Words marked "maybe" stay.` : "No hesitations (um, uh, yyy) in the edit"}
+              onClick={() => void removeAll("fillers")}
+            >
+              Remove
+            </button>
+          </div>
+          <div className="tx-tool">
+            <div className="tx-tool-text">
+              <label className="tx-tool-title tx-pause-label">
+                Pauses over
+                <select className="tx-select tx-threshold" data-testid="pause-threshold" value={threshold} aria-label="Shortest pause to remove" onChange={(e) => setThreshold(Number(e.target.value))}>
+                  {PAUSE_STEPS.map((s) => (
+                    <option key={s} value={s}>
+                      {s} s
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="tx-tool-meta">{!anyDone ? "Gaps between words" : pauseCount ? `${pauseCount} found, ${secs(pausePlan)}` : "None in the edit"}</div>
+            </div>
+            <button
+              className="btn"
+              data-testid="remove-pauses"
+              data-count={pauseCount}
+              aria-label="Remove pauses"
+              disabled={!online || busy || !pauseCount}
+              title={locked ? "The main track is locked" : pauseCount ? `Cut ${pauseCount} pause${pauseCount === 1 ? "" : "s"} of at least ${threshold} s (${secs(pausePlan)}), keeping a little quiet next to the words` : `No pauses of ${threshold} s or more in the edit`}
+              onClick={() => void removeAll("pauses")}
+            >
+              Remove
+            </button>
+          </div>
+          <CaptionsButton project={project} media={media} disabled={!online || busy || !anyDone} transcribed={anyDone} />
+        </div>
+      )}
+      <div className={`tx-selbar ${status ? "on" : ""} ${selected.length && !locked && !busy ? "sel" : ""}`}>
+        <span className="tx-status" data-testid="tx-status">
+          {status}
         </span>
         {selected.length > 0 && (
-          <button className="btn ghost" data-testid="tx-cut" disabled={!online || busy} title="Cut the selected words (⌫)" onClick={() => void cutSelectedWords()}>
-            <Scissors />
-            Cut
-          </button>
+          <>
+            <button className="btn ghost" data-testid="tx-cut" disabled={!online || busy} title="Cut the selected words (⌫)" onClick={() => void cutSelectedWords()}>
+              <Scissors />
+              Cut
+            </button>
+            <button className="icon-btn" data-testid="tx-clear" title="Clear the selection (Esc)" aria-label="Clear the selection" onClick={() => transcriptStore.clear()}>
+              <X />
+            </button>
+          </>
         )}
-        <button
-          className="btn"
-          data-testid="remove-fillers"
-          data-count={fillerCount}
-          disabled={!online || busy || !fillerCount}
-          title={locked ? "The main track is locked" : fillerCount ? `Cut ${fillerCount} hesitation${fillerCount === 1 ? "" : "s"} (um, uh, yyy), ${secs(fillerPlan)}. Words marked "maybe" stay.` : "No hesitations (um, uh, yyy) in the edit"}
-          onClick={() => void removeAll("fillers")}
-        >
-          Remove fillers{fillerCount ? <span className="tx-count">{fillerCount}</span> : null}
-        </button>
-        <select className="tx-select" data-testid="pause-threshold" value={threshold} title="Pauses at least this long" onChange={(e) => setThreshold(Number(e.target.value))}>
-          {PAUSE_STEPS.map((s) => (
-            <option key={s} value={s}>
-              ≥ {s} s
-            </option>
-          ))}
-        </select>
-        <button
-          className="btn"
-          data-testid="remove-pauses"
-          data-count={pauseCount}
-          disabled={!online || busy || !pauseCount}
-          title={locked ? "The main track is locked" : pauseCount ? `Cut ${pauseCount} pause${pauseCount === 1 ? "" : "s"} of at least ${threshold} s (${secs(pausePlan)}), keeping a little quiet next to the words` : `No pauses of ${threshold} s or more in the edit`}
-          onClick={() => void removeAll("pauses")}
-        >
-          Remove pauses{pauseCount ? <span className="tx-count">{pauseCount}</span> : null}
-        </button>
-        <CaptionsButton project={project} media={media} disabled={!online || busy || !anyDone} />
       </div>
       <div
         className="tx-body"
@@ -307,7 +334,7 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               <Captions />
             </div>
             <div className="empty-title">Nothing to read yet</div>
-            <div className="empty-sub">{scope ? "No speech here." : "No speech on the main track."}</div>
+            <div className="empty-sub">{scope ? "No speech here." : "Put a clip with speech on the main track: its words show here, and cutting a word cuts the video."}</div>
           </div>
         ) : (
           <div className="tx-doc">{blocks}</div>
