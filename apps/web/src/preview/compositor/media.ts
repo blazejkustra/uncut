@@ -6,12 +6,21 @@ import { proxiesOn } from "../../settings/proxies.ts";
 
 /** Renderers kept for reuse when clips with effects leave the canvas (D136). */
 export const FX_POOL = 4;
+/**
+ * Issue #55: the most WebGL contexts the preview's effects canvases hold (in use and pooled).
+ * Chromium keeps 16 per page and takes the oldest away past that (its layer flipped to the plain
+ * picture, and a restore took another one's); clips past this share one context, copied into a 2D
+ * canvas each. 10 + that shared one + the Effects panel's + the GPU compositor's stays under 16.
+ */
+export const FX_CONTEXTS = 10;
 /** D221: how long the playhead rests before a <video> under a scrub canvas is seeked to it. */
 export const SCRUB_SETTLE_MS = 200;
 
 /** D221: how long the last renders took (ms), for the compositor's measurements in tests. */
 export const renderTimes: Array<number> = [];
-(globalThis as { __uncutPreview?: unknown }).__uncutPreview = { renderMs: () => renderTimes.splice(0) };
+/** Issue #55: counters the preview tests read (compositors made, effects contexts lost, seeks while playing). */
+export const previewStats = { compositors: 0, fxLost: 0, playSeeks: 0 };
+(globalThis as { __uncutPreview?: unknown }).__uncutPreview = { renderMs: () => renderTimes.splice(0), stats: () => ({ ...previewStats }) };
 
 /** D221: a clip's scrub canvas (its cached frame over the hidden <video>). */
 export interface ScrubView {
@@ -57,6 +66,14 @@ export function seek(el: HTMLVideoElement, t: number) {
 }
 
 /**
+ * Issue #55: a playing <video>'s drift seeks. A seek while playing lands where the clock was when it
+ * started, so it is aimed ahead by how long the last one took (`lead`, source s at 1×), and the next
+ * one waits a second (`at`): with many decoders busy a seek can take longer than the drift allowed,
+ * and chasing each landing with another seek kept a layer frozen on its last frame.
+ */
+export const playSeek = new WeakMap<HTMLVideoElement, { at: number; lead: number; from?: number }>();
+
+/**
  * Keep a <video> at `source` seconds: playing at the clip's speed (pitch kept), seeked only when
  * it drifts; paused, seeked to the frame.
  */
@@ -70,7 +87,16 @@ export function drive(el: HTMLVideoElement, source: number, playing: boolean, sp
     if (el.paused) {
       seek(el, target);
       el.play().catch(() => {});
-    } else if (Math.abs(el.currentTime - target) > 0.12 * Math.max(1, speed)) seek(el, target);
+    } else if (!el.seeking && Math.abs(el.currentTime - target) > 0.12 * Math.max(1, speed)) {
+      const now = performance.now();
+      const last = playSeek.get(el);
+      // Not a jump (the playhead moved while playing): that seeks at once.
+      if (last && now - last.at < 1000 && Math.abs(el.currentTime - target) < 1) return;
+      const lead = last?.lead ?? 0;
+      playSeek.set(el, { at: now, lead, from: now });
+      previewStats.playSeeks++;
+      seek(el, target + lead * speed);
+    }
   } else {
     if (!el.paused) el.pause();
     seek(el, target);

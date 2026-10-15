@@ -16,6 +16,9 @@ import { setStyle, px, transitionCanvas, setBlur, placeBox, drive, seek, irisCli
 
 import { CompositorBase } from "./base.ts";
 
+/** Issue #55: the most upcoming clips warmed up at once (a <video> and a decoder each). */
+const WARM_AHEAD = 16;
+
 /**
  * Draws the project into the preview frame, imperatively: it runs on every playhead change
  * (60 times a second while playing) without going through React.
@@ -40,15 +43,24 @@ export class Compositor extends CompositorBase {
     const visible = visualsAt(project, starts, frame);
     const mediaKind = (item: Item) => project.media.find((m) => m.id === item.media);
     const clips = visible.filter((v) => v.item.type === "clip" && mediaKind(v.item) && mediaKind(v.item)!.kind !== "audio");
-    // Warm up the next main clip two seconds ahead so the cut doesn't wait for a decoder.
-    const main = project.tracks.find((t) => t.role === "main");
+    // Warm up the next clip two seconds ahead so the cut doesn't wait for a decoder: on the main
+    // track, and (issue #55) on every other video track too, else an overlay's next clip started
+    // from a cold <video> and its box showed nothing (what's under it) until the decoder had a frame.
     // How early a main clip starts: half an overlapping transition into it (a dip doesn't overlap).
-    const preroll = (it: Item) => (it.transitionIn && overlaps(it.transitionIn.module) ? it.transitionIn.duration / 2 : 0);
-    const ahead = main?.items.find((it) => {
-      const start = starts.get(it.id)! - preroll(it);
-      return start > frame && start - frame < 2 * fps && mediaKind(it)?.kind === "video";
-    });
-    const keep = new Set([...clips.map((c) => c.item.id), ...(ahead ? [ahead.id] : [])]);
+    const main = project.tracks.find((t) => t.role === "main");
+    const preroll = (it: Item) => (main?.items.includes(it) && it.transitionIn && overlaps(it.transitionIn.module) ? it.transitionIn.duration / 2 : 0);
+    const aheads: Array<Item> = [];
+    for (const track of project.tracks) {
+      if (track.kind !== "video" || track.hidden) continue;
+      const next = track.items.find((it) => {
+        const start = starts.get(it.id)! - preroll(it);
+        return start > frame && start - frame < 2 * fps && mediaKind(it)?.kind === "video";
+      });
+      if (next) aheads.push(next);
+    }
+    // The nearest first, at most WARM_AHEAD of them (each is a decoder).
+    aheads.sort((a, b) => starts.get(a.id)! - starts.get(b.id)!).splice(WARM_AHEAD);
+    const keep = new Set([...clips.map((c) => c.item.id), ...aheads.map((a) => a.id)]);
     for (const [id, el] of [...this.els]) {
       if (keep.has(id)) continue;
       // No longer shown (it ended, its track was hidden): the mix may hold the <video> a moment,
@@ -318,7 +330,8 @@ export class Compositor extends CompositorBase {
       if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
       else if (!el.paused) el.pause();
     });
-    if (ahead && !clips.some((c) => c.item.id === ahead.id)) {
+    for (const ahead of aheads) {
+      if (clips.some((c) => c.item.id === ahead.id)) continue;
       const el = this.elementFor(ahead, "video");
       if (el instanceof HTMLVideoElement) {
         const wrap = this.boxes.get(ahead.id)!;
@@ -338,17 +351,12 @@ export class Compositor extends CompositorBase {
       }
     }
 
-    // Text: rebuilt only when what it shows changes, not on every frame.
-    const html = visible
+    // Text: each one rebuilt only when what it shows changes, not on every frame. Issue #55: per
+    // text, so one fading or typing text no longer rebuilds (and lays out) all the others with it.
+    const shownTexts = visible
       .filter((v) => v.item.type === "text" && typeof v.item.text === "string")
-      .map(({ item, opacity, motion }) => textHtml(item, project, { opacity, motion, selected: item.id === selected }))
-      .join("");
-    const key = `${this.editing ?? ""}|${html}`;
-    if (key !== this.textKey) {
-      this.textKey = key;
-      this.textLayer.innerHTML = html;
-      if (this.editing) this.textLayer.querySelector<HTMLElement>(`[data-item="${CSS.escape(this.editing)}"]`)?.style.setProperty("visibility", "hidden");
-    }
+      .map(({ item, opacity, motion }) => ({ id: item.id, html: textHtml(item, project, { opacity, motion, selected: item.id === selected }) }));
+    this.syncTexts(shownTexts);
     const texts = new Map(visible.filter((v) => v.item.type === "text").map((v) => [v.item.id, v]));
     for (const child of this.textLayer.children) {
       const el = child as HTMLElement;
@@ -405,6 +413,44 @@ export class Compositor extends CompositorBase {
     this.mix.render(project, frame, playing);
     this.frameEl.dataset.frame = String(Math.floor(frame));
     this.frameEl.dataset.playing = playing ? "true" : "false";
+  }
+
+  /**
+   * Issue #55: the text layer as `texts` (core's textHtml each, in stacking order): a text whose HTML
+   * is unchanged keeps its element, a changed one gets a new one in its place, gone ones leave. The
+   * text being edited in place is hidden while the editor sits over it.
+   */
+  protected syncTexts(texts: ReadonlyArray<{ readonly id: string; readonly html: string }>) {
+    const layer = this.textLayer;
+    const ids = new Set(texts.map((t) => t.id));
+    for (const [id, t] of [...this.texts]) {
+      if (ids.has(id) && t.el.parentElement === layer) continue;
+      t.el.remove();
+      this.texts.delete(id);
+    }
+    // Anything else in the layer goes.
+    const kept = new Set<Element>([...this.texts.values()].map((t) => t.el));
+    for (const child of [...layer.children]) if (!kept.has(child)) child.remove();
+    let at: Element | null = layer.firstElementChild;
+    for (const { id, html } of texts) {
+      let t = this.texts.get(id);
+      if (!t || t.html !== html) {
+        const holder = document.createElement("div");
+        holder.innerHTML = html;
+        const el = holder.firstElementChild as HTMLElement | null;
+        if (!el) continue;
+        if (t) {
+          if (at === t.el) at = el;
+          t.el.replaceWith(el);
+        }
+        t = { el, html };
+        this.texts.set(id, t);
+      }
+      if (t.el !== at) layer.insertBefore(t.el, at);
+      else at = at.nextElementSibling;
+      const hide = id === this.editing ? "hidden" : "";
+      if (t.el.style.visibility !== hide) t.el.style.visibility = hide;
+    }
   }
 
   /** Where the top fully visible video really is, so the clock can follow a late decoder. */
