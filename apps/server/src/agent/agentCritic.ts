@@ -11,8 +11,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Brief, Review, ReviewScores, Storyboard } from "@uncut/contracts";
+import type { Brief, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
+import { soundProfileText } from "@uncut/core";
+import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCategory } from "@uncut/core/skills";
 
 /** The critic's bar: every score at least this. */
 export const REVIEW_PASS = 8;
@@ -46,36 +48,40 @@ const BLOCKER_SCORE: Readonly<Record<string, keyof ReviewScores>> = {
   "unverified-fix": "readability",
   sound: "sound",
 };
-const SCORE_NAMES: Readonly<Record<keyof ReviewScores, string>> = {
+type Category = keyof ReviewScores & RubricCategory;
+const SCORE_NAMES: Readonly<Record<Category, string>> = {
   hook: "hook: the first 2 s make a stranger stop scrolling (motion or a claim on frame 0, no slow fade from black)",
   readability: "readability: every word can be read at 360 px wide on a phone, in the time it's on screen; nothing clipped, overflowing or off-centre",
   motion: "motion: moves have intent and settle (springs, eases), no linear drifts, nothing jittery",
   variety: "variety: shots change every 1 to 3 s, no two scenes look the same, no empty or held frames that say nothing",
-  sound: "sound (from the <sound> sheet, you can't hear it): music whose tempo fits the cutting, cuts and big moments on its beats; sound effects few (at most 4 in any 10 s, the same file at most twice, one big hit), each on something that changes on screen, 6 to 12 dB under the music; no meme sounds or clicks on text unless the brief asks; the voice never masked",
+  sound: "sound (from the <sound> sheet, you can't hear it): music whose tempo fits the cutting, cuts and big moments on its beats; sound effects that fit the video's sound profile, each on something that changes on screen; the voice never masked",
   brand: "brand: the kit's colours, fonts and logo files exactly, real product footage and copy where the brief planned them, nothing invented",
 };
 
 export const CRITIC_SYSTEM = `${CRITIC_MARKER} You are an independent critic of short product videos. You didn't make this video and owe its maker nothing. You see only rendered frames (images), the brief, the brand kit, the storyboard, the rubric and, from round 2, the last round's findings and what the editor says it fixed. You have no tools: judge only what is in the frames.
 Score each category 0 to 10, where 8 means you would post it today as is and 10 is the best you've seen. Don't round up and don't default to the pass mark: a score needs evidence, the frames you looked at ("f 45", "f 90 to f 120") and what you saw there.
-Hard blockers fail the video whatever the scores; list every one you see:
+Score only the categories the <rubric> lists; a category marked "not applicable" gets no score (leave it out). Judge the video as the kind it is (the brief's type): a tutorial needs no hook, a talk no motion graphics, a meme may be loud on purpose.
+Blockers are real defects, and they fail the video whatever the scores. The <rubric> says which kinds are blockers for this video; list every one you see:
 - placeholder: an empty, blank or placeholder screen (a phone, browser or app frame with nothing real in it) where the brief or storyboard planned real footage or UI
 - missing-asset: a planned real asset (logo file, screenshot, recording) that isn't there
 - font: text drawn in a fallback or wrong font (not the kit's fonts; a generic system face where the kit names another)
 - overflow: text cut off, running out of its box or past the frame's edge
 - illegible: text too small, too thin or too low in contrast to read at 360 px wide
-- brand-colour: colours outside the kit where the kit should rule (backgrounds, text, accents)
+- brand-colour: colours outside the kit where the kit should rule (backgrounds, text, accents), only when the rubric lists it
 - invented: a logo, product UI, screen, metric, quote or customer that the brief and kit don't provide
 - blank: a black or blank frame, or one that shows nothing for longer than a beat
 - off-centre: an element meant to be centred (a button glyph, a title, a logo) visibly off its centre
-- sound: from the <sound> sheet: sound effects crowded (more than 4 in any 10 s), at or above the music's level, landing on nothing, a meme sound or a click on text the brief didn't ask for
+- sound: from the <sound> sheet, only when the rubric lists it: sound effects past the sound profile's limits, landing on nothing, a meme sound or a click on text the brief didn't ask for
+Style rules (pacing, a hook, transitions, motion style, the sound's density or level) are defects, not blockers, unless the rubric lists them. Give every defect a kind: the category it belongs to (hook, readability, motion, variety, sound, brand) or a blocker kind.
+Don't raise again what the user marked as intended (<intended>).
 Sound, blindfold first: read the <sound> sheet alone before looking at the frames. Would those sounds by themselves feel like a meme reel or a click track? Then check each effect's time against the frames: does something change on screen right there?
 The editor follows the skills in <skill-checklists>: check every line on the frames; a line the video fails is a defect (or a blocker when it is one of the kinds above), quoting the line.
 Uncut's layout checks are listed as facts about the project: confirm what you see.
 From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim.
 Answer with one JSON object and nothing else:
-{"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...},"motion":{...},"variety":{...},"sound":{...},"brand":{...}},
+{"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...}},
  "blockers":[{"kind":"placeholder","what":"one sentence","at":3.2}],
- "defects":[{"at":1.5,"what":"one sentence","fix":"one sentence"}],
+ "defects":[{"kind":"motion","at":1.5,"what":"one sentence","fix":"one sentence"}],
  "fixes":[{"defect":"d1","verified":false,"note":"what the new frames show"}],
  "summary":"two sentences at most"}
 at is seconds into the video. defects are the worst problems that aren't blockers, worst first, at most 6.`;
@@ -99,6 +105,9 @@ export interface CriticFinding {
   readonly message: string;
   readonly frame?: number;
   readonly hard: boolean;
+  /** D217: the check's key ("sound:density:12") and the frames it covers. */
+  readonly key?: string;
+  readonly range?: { readonly start: number; readonly end: number };
 }
 /** An active skill's review checklist (D207). */
 export interface CriticSkill {
@@ -121,7 +130,23 @@ export interface CriticInput {
   readonly skills?: ReadonlyArray<CriticSkill>;
   /** D207: the sound as lines (core soundSheet), since the critic can't hear. */
   readonly sound?: ReadonlyArray<string>;
+  /** D217: the rubric for this video (absent: every category required, as before). */
+  readonly rubric?: Rubric;
+  /** D217: findings the user marked Intended. */
+  readonly intended?: ReadonlyArray<IntendedFinding>;
 }
+
+/** The categories a rubric scores (all of them without one). */
+export const scoredOf = (rubric: Pick<Rubric, "levels"> | undefined): Array<Category> => REVIEW_SCORES.filter((k) => !rubric || rubric.levels[k] !== "na");
+/** A category's bar under a rubric (REVIEW_PASS without one). */
+const barOf = (rubric: Pick<Rubric, "levels"> | undefined, k: Category) => (rubric ? rubricBar(rubric.levels[k]) : REVIEW_PASS);
+
+/** A check's rule family: "sound:density:12" is "sound:density". */
+const ruleOf = (c: CriticFinding) => (c.key ? c.key.split(":").slice(0, 2).join(":") : c.rule);
+const secs = (frame: number, fps: number) => Math.round((frame / fps) * 100) / 100;
+const checkKind = (c: CriticFinding) => (c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : c.rule === "sound" ? "sound" : "overflow");
+/** A check finding as Intended sees it (kind, rule family, time range in seconds). */
+export const checkRef = (c: CriticFinding, fps: number) => ({ kind: checkKind(c), rule: ruleOf(c), ...(c.frame !== undefined ? { at: secs(c.frame, fps) } : {}), ...(c.range ? { to: secs(c.range.end, fps) } : {}) });
 
 const join2 = (xs: ReadonlyArray<string> | undefined) => (xs ?? []).filter(Boolean).join("; ");
 
@@ -141,17 +166,28 @@ export function criticText(input: CriticInput): string {
   if (sb) parts.push(`<storyboard ${sb.status}>\n${sb.summary}\n${sb.beats.map((x, i) => `${i + 1}. ${x.start} to ${x.end} s ${x.title}: ${x.entry} to ${x.exit} (${x.purpose})${x.assets.length ? ` real assets: ${x.assets.join(", ")}` : ""}${x.sound ? `, on ${x.sound}` : ""}`).join("\n")}\n</storyboard>`);
   const skills = (input.skills ?? []).filter((x) => x.checklist.length);
   if (skills.length) parts.push(`<skill-checklists>\n${skills.map((x) => `${x.name}:\n${x.checklist.map((l) => `- ${l}`).join("\n")}`).join("\n")}\n</skill-checklists>`);
+  // D217: findings the user marked Intended aren't shown.
+  const checks = input.checks.filter((c) => !isIntended(checkRef(c, canvas.fps), input.intended));
   // Uncut's sound findings go with the sheet (they can't be seen on the frames).
-  const soundChecks = input.checks.filter((c) => c.rule === "sound").map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`);
+  const soundChecks = checks.filter((c) => c.rule === "sound").map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`);
   parts.push(`<sound>\n${[...(input.sound?.length ? input.sound : ["No sound sheet."]), ...soundChecks].join("\n")}\n</sound>`);
-  parts.push(`<rubric>\n${REVIEW_SCORES.map((k) => `- ${SCORE_NAMES[k]}`).join("\n")}\nPass: every score ${REVIEW_PASS} or more, no blockers, every claimed fix verified.\n</rubric>`);
+  const rb = input.rubric;
+  if (rb) {
+    const rows = REVIEW_SCORES.map((k) => {
+      const level = rb.levels[k];
+      if (level === "na") return `- ${k}: not applicable to this video, don't score it`;
+      return `- ${level}, pass at ${barOf(rb, k)}: ${SCORE_NAMES[k]}${k === "sound" ? `; sound profile ${soundProfileText(rb.sound)}` : ""}`;
+    });
+    parts.push(`<rubric${rb.type ? ` ${VIDEO_TYPE_NAMES[rb.type]}` : ""}>\n${rows.join("\n")}\nBlockers for this video: ${rb.hardKinds.filter((k) => k !== "unverified-fix" && k !== "other").join(", ")}. Anything else is a defect.\nPass: no blockers, every scored category at its bar, every claimed fix verified.\n</rubric>`);
+  } else parts.push(`<rubric>\n${REVIEW_SCORES.map((k) => `- ${SCORE_NAMES[k]}`).join("\n")}\nPass: every score ${REVIEW_PASS} or more, no blockers, every claimed fix verified.\n</rubric>`);
+  if (input.intended?.length) parts.push(`<intended>\nThe user marked these as intended: don't raise them again.\n${input.intended.map((x) => `${x.kind}${x.from !== undefined ? ` at ${x.from}${x.to !== undefined && x.to !== x.from ? ` to ${x.to}` : ""} s` : ""}: ${x.what}`).join("\n")}\n</intended>`);
   const prev = input.previous;
   if (prev) {
     const found = [...(prev.blockers ?? []).map((x) => `${x.id ?? "?"} (blocker, ${x.kind})${x.at !== undefined ? ` at ${x.at} s` : ""}: ${x.what}`), ...prev.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`)];
     parts.push(`<last-round ${prev.round}>\n${found.join("\n") || "nothing listed"}\n</last-round>`);
   }
   if (input.claims.length) parts.push(`<claimed-fixes>\nThe editor says it fixed these. Check each on the new frames.\n${input.claims.map((c) => `${c.defect}${c.at !== undefined ? ` (at ${c.at} s)` : ""}${c.was ? `, was: ${c.was}` : ""}; the editor: ${c.what}`).join("\n")}\n</claimed-fixes>`);
-  const layout = input.checks.filter((c) => c.rule !== "sound");
+  const layout = checks.filter((c) => c.rule !== "sound");
   if (layout.length) parts.push(`<layout-checks>\n${layout.map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`).join("\n")}\n</layout-checks>`);
   if (input.determinism.differed.length) parts.push(`Graphics that drew differently twice at the same frame: ${input.determinism.differed.join(", ")}.`);
   parts.push(`<images>\n${input.images.map((im, i) => `Image ${i + 1}: ${im.label}`).join("\n")}\n</images>`);
@@ -171,10 +207,10 @@ export function criticMessage(input: CriticInput) {
 }
 
 export interface CriticAnswer {
-  readonly scores: Record<keyof ReviewScores, number>;
+  readonly scores: Partial<Record<Category, number>>;
   readonly evidence: Record<string, string>;
   readonly blockers: ReadonlyArray<{ kind: string; what: string; at?: number }>;
-  readonly defects: ReadonlyArray<{ at: number; what: string; fix?: string }>;
+  readonly defects: ReadonlyArray<{ at: number; what: string; fix?: string; kind?: string }>;
   readonly fixes: ReadonlyArray<{ defect: string; verified: boolean; note?: string }>;
   readonly summary: string;
   /** Scores capped because they cited no frames. */
@@ -186,7 +222,7 @@ const s = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0
 const sec = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : undefined);
 
 /** The critic's JSON (the first object in its answer, fenced or not), or why it isn't one. */
-export function parseCritic(text: string): CriticAnswer | { problem: string } {
+export function parseCritic(text: string, scored: ReadonlyArray<Category> = REVIEW_SCORES): CriticAnswer | { problem: string } {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
   const body = fenced ?? text;
   const a = body.indexOf("{");
@@ -199,10 +235,10 @@ export function parseCritic(text: string): CriticAnswer | { problem: string } {
     return { problem: "the critic's JSON didn't parse" };
   }
   const sc = (raw.scores && typeof raw.scores === "object" ? raw.scores : {}) as Record<string, unknown>;
-  const scores = {} as Record<keyof ReviewScores, number>;
+  const scores: Partial<Record<Category, number>> = {};
   const evidence: Record<string, string> = {};
   const unproven: Array<string> = [];
-  for (const k of REVIEW_SCORES) {
+  for (const k of scored) {
     const v = sc[k];
     const o = (v && typeof v === "object" ? v : { score: v }) as Record<string, unknown>;
     const n = o.score;
@@ -226,7 +262,8 @@ export function parseCritic(text: string): CriticAnswer | { problem: string } {
   const defects = list(raw.defects).flatMap((d) => {
     const what = s(d.what, 300);
     const fix = s(d.fix, 300);
-    return what ? [{ at: sec(d.at) ?? 0, what, ...(fix ? { fix } : {}) }] : [];
+    const kind = s(d.kind, 40);
+    return what ? [{ at: sec(d.at) ?? 0, what, ...(fix ? { fix } : {}), ...(kind ? { kind } : {}) }] : [];
   });
   const fixes = list(raw.fixes).flatMap((f) => {
     const defect = s(f.defect, 20);
@@ -236,29 +273,65 @@ export function parseCritic(text: string): CriticAnswer | { problem: string } {
   return { scores, evidence, blockers: blockers.slice(0, 12), defects: defects.slice(0, 6), fixes, summary: s(raw.summary, 600), unproven };
 }
 
+/** D217: the check findings that become review findings when they don't block (they can't be seen on frames). */
+const CHECK_FINDING = /^sound:(density|loud|level):/;
+
 /**
- * The round as saved (D195, D196): the critic's scores and findings, Uncut's hard layout findings
- * as blockers, every claimed fix the critic didn't verify as a blocker, each blocker capping its
- * score; passed only with no blocker, every score at the bar and every graphic deterministic.
+ * The round as saved (D195, D196, D217): the critic's scores (only the categories the rubric scores)
+ * and findings, Uncut's hard layout findings as blockers, every claimed fix the critic didn't verify
+ * as a blocker, each blocker capping its score. Under a rubric, a blocker whose kind the video
+ * doesn't treat as one (off-brand colour without a required brand, sound outside the strict profile,
+ * "other") becomes a defect, and Uncut's soft sound findings (density, level) are defects from the
+ * check. Findings the user marked Intended are left out (counted). Passed only with no blocker,
+ * every scored category at its bar (required 8, optional 6; 8 for all without a rubric) and every
+ * graphic deterministic.
  */
-export function criticReview(answer: CriticAnswer, ctx: { round: number; claims: ReadonlyArray<CriticClaim>; checks: ReadonlyArray<CriticFinding>; determinism: { checked: Array<string>; differed: Array<string> }; looked: { sheet: boolean; phone: boolean }; revision: number; turnId: string; fps: number }): Review {
-  const blockers: Array<{ id: string; kind: string; what: string; at?: number; source: string }> = [];
+export function criticReview(answer: CriticAnswer, ctx: { round: number; claims: ReadonlyArray<CriticClaim>; checks: ReadonlyArray<CriticFinding>; determinism: { checked: Array<string>; differed: Array<string> }; looked: { sheet: boolean; phone: boolean }; revision: number; turnId: string; fps: number; rubric?: Rubric | undefined; intended?: ReadonlyArray<IntendedFinding> | undefined }): Review {
+  const rubric = ctx.rubric;
+  const hard = (kind: string) => !rubric || rubric.hardKinds.includes(kind);
+  type Blocker = { id: string; kind: string; what: string; at?: number; source: string; rule?: string; to?: number };
+  type Defect = { id: string; at: number; what: string; fix?: string; kind?: string; source?: string; rule?: string; to?: number };
+  const rawBlockers: Array<Omit<Blocker, "id">> = [];
+  const rawDefects: Array<Omit<Defect, "id">> = [];
+  let dropped = 0;
+  const keep = (f: { kind?: string; rule?: string; at?: number; to?: number }) => {
+    if (isIntended(f, ctx.intended)) {
+      dropped++;
+      return false;
+    }
+    return true;
+  };
+  for (const b of answer.blockers) {
+    if (!keep(b)) continue;
+    if (hard(b.kind)) rawBlockers.push({ ...b, source: "critic" });
+    else rawDefects.push({ at: b.at ?? 0, what: b.what, kind: b.kind, source: "critic" });
+  }
+  for (const c of ctx.checks) {
+    const f = checkRef(c, ctx.fps);
+    const at = f.at;
+    if (c.hard) {
+      if (keep(f)) rawBlockers.push({ ...f, what: c.message, source: "check" });
+    } else if (rubric && c.key && CHECK_FINDING.test(c.key) && keep(f)) rawDefects.push({ ...f, at: at ?? 0, what: c.message, source: "check" });
+  }
+  const blockers: Array<Blocker> = [];
   let n = 0;
   const id = () => `d${++n}`;
-  for (const b of answer.blockers) blockers.push({ id: id(), ...b, source: "critic" });
-  for (const c of ctx.checks.filter((x) => x.hard)) blockers.push({ id: id(), kind: c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : c.rule === "sound" ? "sound" : "overflow", what: c.message, ...(c.frame !== undefined ? { at: Math.round((c.frame / ctx.fps) * 100) / 100 } : {}), source: "check" });
+  for (const b of rawBlockers) blockers.push({ id: id(), ...b });
   const fixes = ctx.claims.map((c) => {
     const said = answer.fixes.find((f) => f.defect === c.defect);
     return { defect: c.defect, what: c.what, ...(c.at !== undefined ? { at: c.at } : {}), verified: said?.verified === true, ...(said?.note ? { note: said.note } : said ? {} : { note: "The critic didn't confirm it on the new frames." }) };
   });
   for (const f of fixes) if (!f.verified) blockers.push({ id: id(), kind: "unverified-fix", what: `The fix for ${f.defect} isn't visible on the new frames${f.note ? `: ${f.note}` : "."}`, ...(f.at !== undefined ? { at: f.at } : {}), source: "critic" });
-  const scores = { ...answer.scores };
+  const scored = scoredOf(rubric);
+  const scores: Partial<Record<Category, number>> = {};
+  for (const k of scored) if (answer.scores[k] !== undefined) scores[k] = answer.scores[k];
   for (const b of blockers) {
-    const k = BLOCKER_SCORE[b.kind];
-    if (k) scores[k] = Math.min(scores[k], BLOCKER_CAP);
+    const k = BLOCKER_SCORE[b.kind] as Category | undefined;
+    if (k && scores[k] !== undefined) scores[k] = Math.min(scores[k], BLOCKER_CAP);
   }
-  const defects = answer.defects.map((d) => ({ ...d, id: id() }));
-  const passed = !blockers.length && REVIEW_SCORES.every((k) => scores[k] >= REVIEW_PASS) && !ctx.determinism.differed.length;
+  const critic = answer.defects.filter((d) => keep(d)).map((d) => ({ ...d, ...(rubric ? { source: "critic" } : {}) }));
+  const defects: Array<Defect> = [...critic, ...rawDefects].slice(0, 12).map((d) => ({ ...d, id: id() }));
+  const passed = !blockers.length && scored.every((k) => (scores[k] ?? 0) >= (barOf(rubric, k) ?? 0)) && !ctx.determinism.differed.length;
   return {
     round: ctx.round,
     scores,
@@ -268,6 +341,8 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
     blockers,
     evidence: answer.evidence,
     ...(fixes.length ? { fixes } : {}),
+    ...(rubric ? { rubric: { ...rubric.levels }, ...(rubric.type ? { videoType: rubric.type } : {}), soundProfile: rubric.sound } : {}),
+    ...(dropped ? { intended: dropped } : {}),
     determinism: ctx.determinism,
     looked: ctx.looked,
     passed,
@@ -277,16 +352,23 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
   };
 }
 
+/** A saved review's rubric (its levels), for reviewNext and the cards; none before D217. */
+const levelsOf = (review: Review) => (review.rubric ? { levels: review.rubric as Record<Category, "required" | "optional" | "na"> } : undefined);
+
 /** What the builder does next after a round. */
 export function reviewNext(review: Review, turnRound: number = review.round): string {
-  const low = REVIEW_SCORES.filter((k) => review.scores[k] < REVIEW_PASS);
+  const rb = levelsOf(review);
+  const scored = scoredOf(rb);
+  const low = scored.filter((k) => (review.scores[k] ?? 0) < (barOf(rb, k) ?? 0));
   const det = review.determinism?.differed.length ? ` The graphics ${review.determinism.differed.map((d) => `"${d}"`).join(", ")} drew differently twice at the same frame: they use the clock, timers or Math.random; make render(t) a pure function of t (seeded random from uncut:lib/random.js).` : "";
   const blockers = (review.blockers ?? []).map((b) => `${b.id} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`);
-  const scores = REVIEW_SCORES.map((k) => `${k} ${review.scores[k]}`).join(", ");
-  if (review.passed) return `Uncut's critic passed it (${scores}). Run project_check, fix its warnings, then tell the user in a line or two; the scores are the critic's, not yours.`;
-  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under ${REVIEW_PASS}: ${low.join(", ")}.` : ""}${det}`.trim();
+  const scores = scored.map((k) => `${k} ${review.scores[k]}`).join(", ");
+  const na = rb ? REVIEW_SCORES.filter((k) => rb.levels[k] === "na") : [];
+  const naText = na.length ? ` Not scored for this video: ${na.join(", ")}.` : "";
+  if (review.passed) return `Uncut's critic passed it (${scores}).${naText} Run project_check, fix its warnings, then tell the user in a line or two; the scores are the critic's, not yours.`;
+  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${det}`.trim();
   if (turnRound >= REVIEW_ROUNDS) return `That was round ${turnRound} in this turn, the last one: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
-  return `Not passed. ${open} Fix every blocker first, then the worst defects (their ids are in the review). After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
+  return `Not passed. ${open} Fix every blocker first, then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
 }
 
 /** The critic's command line: no tools, no MCP servers, no settings, no session kept; Uncut's critic prompt replaces Claude Code's own (no tool talk, no hedging). */

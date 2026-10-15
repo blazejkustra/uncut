@@ -8,6 +8,7 @@
 //
 // Browser-safe and pure: the server (store, prompt, critic) and the Brand tab read it.
 import { BUILTIN_BODIES } from "./bodies.ts";
+import { isVideoType, type VideoType } from "./rubric.ts";
 
 export interface BuiltinSkill {
   readonly id: string;
@@ -98,14 +99,41 @@ const ratio = (f: string) => {
   return a > 0 && b > 0 ? a / b : undefined;
 };
 
+const TYPE_SKILL: Readonly<Record<VideoType, string | undefined>> = {
+  "launch-promo": BUILTIN_IDS.launch,
+  "product-demo": BUILTIN_IDS.demo,
+  tutorial: BUILTIN_IDS.demo,
+  talk: BUILTIN_IDS.talking,
+  vlog: BUILTIN_IDS.talking,
+  social: BUILTIN_IDS.social,
+  explainer: BUILTIN_IDS.explainer,
+  "music-video": undefined,
+  meme: BUILTIN_IDS.social,
+  gaming: BUILTIN_IDS.social,
+  other: undefined,
+};
+/** Types whose videos usually have motion graphics (Motion craft is suggested). */
+const MOTION_TYPES: ReadonlySet<string> = new Set(["launch-promo", "explainer", "social", "music-video"]);
+/** Types whose sound design is part of the job (Sound design is suggested). */
+const SOUND_TYPES: ReadonlySet<string> = new Set(["launch-promo", "product-demo"]);
+/** Types that carry a brand (Brand application is suggested with a kit). */
+const BRAND_TYPES: ReadonlySet<string> = new Set(["launch-promo", "product-demo", "tutorial", "talk", "social", "explainer", "other"]);
+
 /**
- * The built-in skills that fit a brief (D207): one or two kinds of film from its words, formats and
- * length, then always Motion craft and Sound design, and Brand application with a kit. In the
- * order they're listed in.
+ * The built-in skills that fit a brief (D207, D217): suggestions only, never turned on by
+ * themselves; the user picks (on an ask_user card or the Brief card). The type's own kind of film,
+ * then one or two more from the brief's words, formats and length (talking head, launch, demo,
+ * explainer over 45 s, titles, social when it has several aspect ratios or asks for cut-downs; a
+ * brief with no type and nothing found: Launch promo); Motion craft only for videos with motion
+ * graphics (a promo, an explainer, a social cut, a music video, titles), Sound design for a promo or
+ * a product video, Brand application with a kit for a branded type. In the order they're listed in.
  */
-export function suggestSkills(brief: BriefLike, o: { readonly hasKit?: boolean } = {}): Array<string> {
+export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: { readonly hasKit?: boolean } = {}): Array<string> {
+  const type = isVideoType(brief.type) ? brief.type : undefined;
   const words = [brief.film, brief.visual, brief.notes, brief.audience];
   const picked = new Set<string>();
+  const own = type ? TYPE_SKILL[type] : undefined;
+  if (own) picked.add(own);
   const talking = has(/talking|to camera|interview|founder|speaker|podcast|webcam|selfie|vlog|presenter|keynote clip/i, ...words, brief.assets);
   const demo = has(/\bdemo|walk ?-?through|tutorial|how to use|screen ?(record|cap)|recording|capture|\bui\b|app flow|onboarding|feature tour/i, ...words, brief.assets);
   const explainer = has(/explain|how it works|under the hood|architecture|concept|diagram|why it|deep dive/i, ...words);
@@ -116,14 +144,20 @@ export function suggestSkills(brief: BriefLike, o: { readonly hasKit?: boolean }
   const multi = kinds.size > 1 || has(/cut-?downs?|every format|all formats|multi-?format|reels.*shorts|shorts.*tiktok/i, ...words, brief.deliverables);
   const length = seconds(brief.duration);
   if (talking) picked.add(BUILTIN_IDS.talking);
-  if (launch || (!talking && !demo && !explainer && !titles)) picked.add(BUILTIN_IDS.launch);
+  if (launch || (!type && !talking && !demo && !explainer && !titles)) picked.add(BUILTIN_IDS.launch);
   if (demo) picked.add(BUILTIN_IDS.demo);
   if (explainer || (length !== undefined && length > 45 && !talking)) picked.add(BUILTIN_IDS.explainer);
   if (titles) picked.add(BUILTIN_IDS.titles);
   if (multi) picked.add(BUILTIN_IDS.social);
   // At most two kinds of film, the first ones found.
   const kindsPicked = [...picked].slice(0, 2);
-  const out = [...kindsPicked, BUILTIN_IDS.motion, BUILTIN_IDS.sound, ...(o.hasKit ? [BUILTIN_IDS.brand] : [])];
+  const motion = type ? MOTION_TYPES.has(type) || kindsPicked.some((k) => k === BUILTIN_IDS.launch || k === BUILTIN_IDS.titles) : true;
+  const sound = type ? SOUND_TYPES.has(type) || kindsPicked.includes(BUILTIN_IDS.launch) : true;
+  const brand = !!o.hasKit && (!type || BRAND_TYPES.has(type));
+  const out = [...kindsPicked, ...(motion ? [BUILTIN_IDS.motion] : []), ...(sound ? [BUILTIN_IDS.sound] : []), ...(brand ? [BUILTIN_IDS.brand] : [])];
   if (multi && !out.includes(BUILTIN_IDS.social)) out.splice(kindsPicked.length, 0, BUILTIN_IDS.social);
   return out;
 }
+
+export { findingKind, guessVideoType, intendedOf, isIntended, isVideoType, OPTIONAL_BAR, REQUIRED_BAR, reviewRubric, RUBRIC_CATEGORIES, rubricBar, scoredCategories, soundProfileFor, VIDEO_TYPE_NAMES, VIDEO_TYPES, DEFECT_KINDS } from "./rubric.ts";
+export type { FindingRef, IntendedRef, Rubric, RubricBrief, RubricCategory, RubricLevel, VideoType } from "./rubric.ts";

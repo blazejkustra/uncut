@@ -12,9 +12,9 @@
 import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
-import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
+import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, IntendedFinding, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
 
-import { BUILTIN_SKILLS, isBuiltinId } from "@uncut/core/skills";
+import { BUILTIN_SKILLS, isBuiltinId, isVideoType } from "@uncut/core/skills";
 
 import { writeAtomic } from "../project/atomicWrite.ts";
 
@@ -322,6 +322,9 @@ export function normBrief(raw: unknown): Brief | undefined {
   const notes = str(b.notes, 4000);
   const updatedAt = str(b.updatedAt, 40);
   const by = b.by === "agent" || b.by === "user" ? b.by : undefined;
+  // D217: the video type (core VIDEO_TYPES) and the suggested skills.
+  const type = isVideoType(b.type) ? b.type : undefined;
+  const skills = strs(b.skills, 12, 80);
   return {
     film: str(b.film, 600),
     audience: str(b.audience, 600),
@@ -334,6 +337,8 @@ export function normBrief(raw: unknown): Brief | undefined {
     ...(notes ? { notes } : {}),
     ...(updatedAt ? { updatedAt } : {}),
     ...(by ? { by } : {}),
+    ...(type ? { type } : {}),
+    ...(skills.length ? { skills } : {}),
   };
 }
 
@@ -364,15 +369,27 @@ export function normReview(raw: unknown): Review | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const r = raw as Record<string, unknown>;
   const sc = (r.scores && typeof r.scores === "object" ? r.scores : {}) as Record<string, unknown>;
-  const score = (k: string) => Math.max(0, Math.min(10, num(sc[k])));
+  // D217: only the categories that were scored (a rubric's na ones are absent); a review before D217 has all six.
+  const scores = Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].flatMap((k) => (typeof sc[k] === "number" && Number.isFinite(sc[k]) ? [[k, Math.max(0, Math.min(10, sc[k] as number))]] : [])));
+  const rubric = r.rubric && typeof r.rubric === "object" ? Object.fromEntries(Object.entries(r.rubric as Record<string, unknown>).flatMap(([k, v]) => (["hook", "readability", "motion", "variety", "sound", "brand"].includes(k) && (v === "required" || v === "optional" || v === "na") ? [[k, v as "required" | "optional" | "na"]] : []))) : undefined;
+  const opt = (o: Record<string, unknown>) => ({
+    ...(str(o.rule, 60) ? { rule: str(o.rule, 60) } : {}),
+    ...(typeof o.to === "number" && Number.isFinite(o.to) ? { to: Math.max(0, o.to) } : {}),
+  });
   const det = r.determinism && typeof r.determinism === "object" ? (r.determinism as Record<string, unknown>) : undefined;
   const looked = r.looked && typeof r.looked === "object" ? (r.looked as Record<string, unknown>) : undefined;
   const notes = str(r.notes, 2000);
   const turnId = str(r.turnId, 80);
   return {
     round: Math.max(1, Math.round(num(r.round, 1))),
-    scores: { hook: score("hook"), readability: score("readability"), motion: score("motion"), variety: score("variety"), sound: score("sound"), brand: score("brand") },
-    defects: (Array.isArray(r.defects) ? r.defects : []).flatMap((d) => (d && typeof d === "object" ? [{ at: Math.max(0, num((d as Record<string, unknown>).at)), what: str((d as Record<string, unknown>).what, 300), ...(str((d as Record<string, unknown>).fix, 300) ? { fix: str((d as Record<string, unknown>).fix, 300) } : {}), ...(str((d as Record<string, unknown>).id, 20) ? { id: str((d as Record<string, unknown>).id, 20) } : {}) }] : [])).slice(0, 10),
+    scores,
+    defects: (Array.isArray(r.defects) ? r.defects : [])
+      .flatMap((x) => {
+        if (!x || typeof x !== "object") return [];
+        const d = x as Record<string, unknown>;
+        return [{ at: Math.max(0, num(d.at)), what: str(d.what, 300), ...(str(d.fix, 300) ? { fix: str(d.fix, 300) } : {}), ...(str(d.id, 20) ? { id: str(d.id, 20) } : {}), ...(str(d.kind, 40) ? { kind: str(d.kind, 40) } : {}), ...(d.source === "check" || d.source === "critic" ? { source: d.source } : {}), ...opt(d) }];
+      })
+      .slice(0, 12),
     ...(notes ? { notes } : {}),
     // D195: rounds before the critic process were the agent's own.
     by: r.by === "critic" ? "critic" : "agent",
@@ -382,7 +399,7 @@ export function normReview(raw: unknown): Review | undefined {
             .flatMap((b) => {
               const o = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
               const what = str(o.what, 300);
-              return what ? [{ ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}), kind: str(o.kind, 40) || "other", what, ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), source: o.source === "check" ? "check" : "critic" }] : [];
+              return what ? [{ ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}), kind: str(o.kind, 40) || "other", what, ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), source: o.source === "check" ? "check" : "critic", ...opt(o) }] : [];
             })
             .slice(0, 20),
         }
@@ -400,6 +417,10 @@ export function normReview(raw: unknown): Review | undefined {
         }
       : {}),
     ...(str(r.error, 400) ? { error: str(r.error, 400) } : {}),
+    ...(rubric && Object.keys(rubric).length ? { rubric } : {}),
+    ...(str(r.videoType, 40) ? { videoType: str(r.videoType, 40) } : {}),
+    ...(str(r.soundProfile, 20) ? { soundProfile: str(r.soundProfile, 20) } : {}),
+    ...(typeof r.intended === "number" && r.intended > 0 ? { intended: Math.round(r.intended) } : {}),
     ...(det ? { determinism: { checked: strs(det.checked, 40, 120), differed: strs(det.differed, 40, 120) } } : {}),
     ...(looked ? { looked: { sheet: looked.sheet === true, phone: looked.phone === true } } : {}),
     passed: r.passed === true,
@@ -412,6 +433,28 @@ export function normReview(raw: unknown): Review | undefined {
 export const briefFile = (dir: string) => join(dir, "brief.json");
 export const storyboardFile = (dir: string) => join(dir, "storyboard.json");
 export const reviewsDir = (dir: string) => join(dir, "reviews");
+/** D217: the findings the user marked Intended. */
+export const intendedFile = (dir: string) => join(dir, "intended.json");
+
+export function normIntended(raw: unknown): Array<IntendedFinding> {
+  return (Array.isArray(raw) ? raw : [])
+    .flatMap((x) => {
+      if (!x || typeof x !== "object") return [];
+      const o = x as Record<string, unknown>;
+      const kind = str(o.kind, 60);
+      if (!kind) return [];
+      const from = typeof o.from === "number" && Number.isFinite(o.from) ? Math.max(0, o.from) : undefined;
+      const to = typeof o.to === "number" && Number.isFinite(o.to) && from !== undefined ? Math.max(from, o.to) : undefined;
+      return [{ kind, what: str(o.what, 300), ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}), at: str(o.at, 40) || new Date().toISOString() }];
+    })
+    .slice(-100);
+}
+
+export async function writeIntended(dir: string, list: ReadonlyArray<IntendedFinding>): Promise<Array<IntendedFinding>> {
+  const norm = normIntended(list);
+  await writeAtomic(intendedFile(dir), `${JSON.stringify(norm, null, 2)}\n`);
+  return norm;
+}
 
 export async function readPlan(dir: string): Promise<AgentPlan> {
   const brief = normBrief(await readJson(briefFile(dir)));
@@ -423,7 +466,8 @@ export async function readPlan(dir: string): Promise<AgentPlan> {
     if (r) reviews.push(r);
   }
   reviews.sort((a, b) => a.at.localeCompare(b.at) || a.round - b.round);
-  return { ...(brief ? { brief } : {}), ...(storyboard ? { storyboard } : {}), reviews };
+  const intended = normIntended(await readJson(intendedFile(dir)));
+  return { ...(brief ? { brief } : {}), ...(storyboard ? { storyboard } : {}), reviews, ...(intended.length ? { intended } : {}) };
 }
 
 export async function writeBrief(dir: string, brief: Brief): Promise<Brief> {

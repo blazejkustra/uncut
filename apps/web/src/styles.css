@@ -1573,6 +1573,18 @@ div.card-head { cursor: default; }
 .fix.ok svg { color: var(--ok); }
 .fix.bad svg { color: var(--error); }
 .score-evidence { grid-column: 1 / -1; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: -1px 0 2px; }
+/* D217: categories the video's rubric doesn't judge, findings the user marked Intended, the Brief card's skills. */
+.score.na { opacity: 0.45; }
+.score.na .score-value { color: var(--muted); }
+.blocker > .grow { order: 2; }
+.blocker > .intended-btn { order: 1; }
+.intended-btn { flex: none; align-self: flex-start; display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; font-size: 10.5px; line-height: 1.5; margin-left: auto; }
+.intended-btn svg { width: 11px; height: 11px; }
+.blocker.marked, .defect.marked { opacity: 0.55; }
+.blocker.marked .grow, .defect.marked .grow { text-decoration: line-through; text-decoration-color: var(--muted); }
+.brief-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.brief-chips .chip-btn { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; font-size: 11px; }
+.brief-chips .chip-btn svg { width: 11px; height: 11px; }
 .question-text, .brief-field textarea, .storyboard-card textarea { font-family: var(--font); }
 .storyboard-card .approval-btns { flex-wrap: wrap; }
 .storyboard-card .approval-btns .btn { display: inline-flex; align-items: center; gap: 4px; }

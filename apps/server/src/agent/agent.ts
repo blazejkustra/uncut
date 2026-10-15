@@ -20,8 +20,8 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
-import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type BrandSkill, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, SOUND_HARD, soundSheet, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, speechItem, transcriptScope, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type IntendedFinding, type Review, type AgentQuestion, type BrandKit, type BrandSkill, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
+import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, speechItem, transcriptScope, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { aliasOf, clipNote, filterFolderSounds, filterSfx, hitKey, libraryMediaOf, limitSentence, onlyWhenAsked } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
@@ -42,11 +42,11 @@ import { isLanguage, type TranscriptResult } from "../analysis/transcription.ts"
 import { framesFor, MAX_RANKED, rankEntry, shotCells, VIDEO_NOTE, videoOut } from "./agentVideo.ts";
 import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, listFolder, listingWords, MAX_CELLS, planImport, sheetFrames, sheetLayout } from "./agentFootage.ts";
 import { answerOut, beatGrid, gateOf, gateRefusal, kitChanges, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, type GridItem } from "./agentPlan.ts";
-import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "./agentCritic.ts";
-import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
+import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "./agentCritic.ts";
+import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeIntended, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
 import { decide, LOOK_DISALLOWED, namedFolders, permissionMode, realPath, sessionSettings, shownPath, type Access } from "./agentPermissions.ts";
 import { downloadToProject } from "./agentDownload.ts";
-import { BUILTIN_IDS, skillChecklist, suggestSkills } from "@uncut/core/skills";
+import { guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
 import { emptyAddedTracks, KEEP_REVISIONS, restoreGraphics, trashGraphics, unusedGraphics } from "./agentCleanup.ts";
 import { accessLine, TOOLS_LINE, bigChange, checksOut, doingLabel, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_CAPTION_CARDS, MAX_FRAMES, mcpTools, modulesList, musicOut, partialFields, playheadLine, projectSummary, stepLabel, SYSTEM_PROMPT, type McpTool } from "./agentTools.ts";
 import { copyLibraryTrack } from "../media/music.ts";
@@ -126,7 +126,7 @@ export interface AgentShape {
   /** The user's answer to the running turn's approval card (D99). */
   readonly approve: (id: string, allow: boolean, source?: string, extra?: CardAnswer) => Effect.Effect<{ readonly accepted: boolean }>;
   /** D188: the user's own edit of the brief or the storyboard. */
-  readonly planSave: (input: { readonly brief?: Brief | undefined; readonly storyboard?: Storyboard | undefined }) => Effect.Effect<AgentPlan, AgentError>;
+  readonly planSave: (input: { readonly brief?: Brief | undefined; readonly storyboard?: Storyboard | undefined; readonly intended?: ReadonlyArray<IntendedFinding> | undefined }) => Effect.Effect<AgentPlan, AgentError>;
   /** D144: the renderer's answer to an allowed screen_record (the uploaded take, or what went wrong). */
   readonly screenTake: (answer: { readonly id: string; readonly path?: string | undefined; readonly source?: string | undefined; readonly problem?: string | undefined }) => Effect.Effect<void>;
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
@@ -388,6 +388,8 @@ interface Running {
   readonly addedTracks: Set<string>;
   // D196: the state the last failed round of this turn reviewed (a new round needs a change).
   reviewedStamp: string | undefined;
+  // D217: what the user picked on this turn's ask_user cards (brief_write's use turns on only those skills).
+  picked: Array<string>;
   // D194: permission cards one at a time (a parallel call's card waits for the one open).
   permissionQueue: Promise<unknown>;
   // D194: tool_use id → tool name in this turn (to tell web results from file data).
@@ -2334,6 +2336,7 @@ export const layer = Layer.effect(
         }, undefined, { question: q });
         const outcome = a === "allow" ? "answered" : a === "deny" ? "skipped" : a;
         const out = answerOut(q, outcome, got);
+        if ("choices" in out && out.choices) r.picked.push(...out.choices);
         addCard(r, { type: "question", question: q, ...("choices" in out || "text" in out ? { answer: { choices: "choices" in out ? (out.choices ?? []) : [], ...("text" in out && out.text ? { text: out.text } : {}) } } : {}), outcome: out.answered ? "answered" : "skipped" }, q.question);
         return textResult(out);
       });
@@ -2341,41 +2344,66 @@ export const layer = Layer.effect(
     /** brief_write (D188): brief.json, a Brief card. */
     const briefWrite = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
-        const brief = normBrief(args);
-        if (!brief || !brief.film.trim()) return textResult("film is the video in one sentence; write the whole brief (film, audience, duration, formats, assets, visual, hardLines, deliverables).", true);
+        const raw = normBrief(args);
+        if (!raw || !raw.film.trim()) return textResult("film is the video in one sentence; write the whole brief (film, audience, duration, formats, assets, visual, hardLines, deliverables).", true);
+        if (args.type !== undefined && !isVideoType(args.type)) return textResult(`type is one of ${VIDEO_TYPES.join(", ")}.`, true);
+        // D217: the type (the agent's, else what the brief's words say) and the suggested skills (the
+        // agent's, else Uncut's for the type); suggestions only.
+        const type = raw.type ?? guessVideoType(raw);
+        const hasKit = yield* Effect.promise(() => readBrand(brandDirs(v)).then((b) => !!b.active.kit).catch(() => false));
+        const brief: Brief = { ...raw, ...(type ? { type } : {}), skills: raw.skills?.length ? raw.skills : suggestSkills({ ...raw, ...(type ? { type } : {}) }, { hasKit }) };
         const saved = yield* Effect.tryPromise({ try: () => writeBrief(v.dir, { ...brief, by: "agent" }), catch: (e) => e as Error }).pipe(Effect.map((b) => ({ ok: true as const, b })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
         if (!saved.ok) return textResult(`Couldn't save the brief: ${saved.message}`, true);
         yield* refreshPlan(r, v);
         addCard(r, { type: "brief", brief: saved.b }, brief.film);
         const sb = r.owner.plan.storyboard;
-        // D207: the skills for this brief. The project's choice stays when it has one (the user's
-        // ticks in the Brand tab, or an earlier brief); else the agent's pick or Uncut's suggestion,
-        // always with Motion craft and Sound design (and Brand application with a kit).
+        // D217 (issue #45): skills are suggested, never turned on silently. The project's choice stays
+        // when it has one (the user's ticks or chips, or an earlier pick); use turns on only skills the
+        // user picked on an ask_user card in this turn; the rest is a suggestion for the Brief card.
         const skills = yield* Effect.promise(async () => {
           try {
             const all = await readBrand(brandDirs(v));
+            const name = (id: string) => all.skills.find((x) => x.id === id)?.name ?? id;
+            const suggested = (saved.b.skills ?? []).filter((id) => all.skills.some((x) => x.id === id));
             const on = all.skills.filter((x) => all.active.skills.includes(x.id));
-            if (on.length) return { kept: true as const, on, unknown: [] as Array<string> };
-            const asked = Array.isArray(args.skills) ? args.skills.filter((x): x is string => typeof x === "string") : [];
-            const unknown = asked.filter((id) => !all.skills.some((x) => x.id === id));
-            const base = asked.length - unknown.length > 0 ? asked.filter((id) => !unknown.includes(id)) : suggestSkills(saved.b, { hasKit: !!all.active.kit });
-            const ids = [...new Set([...base, BUILTIN_IDS.motion, BUILTIN_IDS.sound, ...(all.active.kit ? [BUILTIN_IDS.brand] : [])])];
-            await writeActive(v.dir, { kit: all.active.kit, skills: ids });
-            return { kept: false as const, on: ids.flatMap((id) => all.skills.filter((x) => x.id === id)), unknown };
+            const use = Array.isArray(args.use) ? args.use.filter((x): x is string => typeof x === "string") : [];
+            const picked = new Set(r.picked.map((x) => x.trim().toLowerCase()));
+            const chosen = use.filter((id) => all.skills.some((x) => x.id === id) && (picked.has(id.toLowerCase()) || picked.has(name(id).toLowerCase())));
+            const refused = use.filter((id) => !chosen.includes(id));
+            if (chosen.length) {
+              const ids = [...new Set([...all.active.skills, ...chosen])];
+              await writeActive(v.dir, { kit: all.active.kit, skills: ids });
+              return { on: ids.flatMap((id) => all.skills.filter((x) => x.id === id)), added: chosen, suggested, refused, name };
+            }
+            return { on, added: [] as Array<string>, suggested, refused, name };
           } catch (error) {
-            console.error(`[uncut] couldn't choose the skills of ${v.dir}: ${(error as Error).message}`);
+            console.error(`[uncut] couldn't read the skills of ${v.dir}: ${(error as Error).message}`);
             return undefined;
           }
         });
+        const rubric = yield* rubricOf(v);
         const skillsOut = skills
           ? {
-              skills: skills.on.map((x) => ({ id: x.id, name: x.name, ...(skills.kept ? {} : { body: x.body }) })),
-              skillsNote: skills.kept
-                ? "These skills were already on for this project (the user changes them in the Brand tab): follow them."
-                : `Uncut turned these skills on for this brief (the user can change them in the Brand tab). Follow every rule in them from the storyboard on; the critic checks their review checklists.${skills.unknown.length ? ` No skill has the id ${skills.unknown.join(", ")}.` : ""}`,
+              type: saved.b.type ?? "none (judged as a short product video)",
+              suggestedSkills: skills.suggested.filter((id) => !skills.on.some((x) => x.id === id)).map((id) => ({ id, name: skills.name(id) })),
+              skills: skills.on.map((x) => ({ id: x.id, name: x.name, ...(skills.added.includes(x.id) ? { body: x.body } : {}) })),
+              skillsNote: skills.on.length
+                ? `${skills.added.length ? `Turned on what the user picked: ${skills.added.map(skills.name).join(", ")}.` : "These skills are on for this project (the user changes them on the Brief card or in the Brand tab)."} Follow every rule in them; the critic checks their review checklists.`
+                : "No skills are on. Ask the user which of the suggested ones to use (ask_user, multi, an option per skill by its name), then brief_write again with use: the ids they picked; or they pick on the Brief card. Never turn on a skill they didn't pick.",
+              ...(skills.refused.length ? { refused: `Not turned on (the user didn't pick them on an ask_user card in this turn): ${skills.refused.join(", ")}.` } : {}),
+              rubric: Object.fromEntries(Object.entries(rubric.levels).map(([k, l]) => [k, l === "na" ? "not scored" : l])),
+              sound: soundProfileText(rubric.sound),
             }
           : {};
         return textResult({ saved: "brief.json", ...skillsOut, next: sb?.status === "approved" ? "The storyboard is approved: if the brief changed what it shows, propose it again with storyboard_propose." : "Now propose the storyboard with storyboard_propose; build once the user approves it." });
+      });
+
+    /** D217: the critic's rubric for the open project: its brief, its active skills and whether it has a kit. */
+    const rubricOf = (v: ProjectView) =>
+      Effect.promise(async () => {
+        const plan = await readPlan(v.dir).catch(() => ({ reviews: [] }) as AgentPlan);
+        const active = await readBrand(brandDirs(v)).then((b) => b.active).catch(() => ({ kit: null, skills: [] as ReadonlyArray<string> }));
+        return reviewRubric(plan.brief, { skills: active.skills, hasKit: !!active.kit });
       });
 
     /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
@@ -2512,20 +2540,25 @@ export const layer = Layer.effect(
         const keep = new Set(["text-edge", "small-text", "sound"]);
         // D198: a font that isn't there is a hard finding too (a "font" blocker).
         const fontCheck = yield* fontsRule(v);
-        const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)) }).map((c) => ({ rule: c.id, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && SOUND_HARD.test(c.key)) }));
+        // D217: the rubric (the brief's type, the active skills, a kit) sets the sound profile; density
+        // and level fail a round only under the strict one. Findings the user marked Intended stay out.
+        const rubric = yield* rubricOf(v);
+        const intended = r.owner.plan.intended ?? [];
+        const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)), sound: rubric.sound })
+          .map((c) => ({ rule: c.id, key: c.key, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), ...(c.range ? { range: c.range } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)) }));
         const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as { kit?: BrandKit; files: Record<string, string>; skills: Array<BrandSkill> }));
         const round = r.reviewRounds + 1;
         // The review's number across the project (the card's "round n"); the limit counts this turn's.
         const number = r.owner.plan.reviews.length + 1;
-        const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: brand.skills.map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project) };
+        const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: brand.skills.map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended };
         const bin = yield* Effect.promise(() => findClaude());
         if (!bin) return textResult("Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.", true);
         const answer = yield* Effect.tryPromise({ try: (signal) => runCritic({ bin, env: sessionEnv(process.env), model: r.session.model, message: criticMessage(input), signal: AbortSignal.any([signal, r.abort.signal]) }), catch: (e) => e as Error }).pipe(
-          Effect.map((text) => parseCritic(text)),
+          Effect.map((text) => parseCritic(text, scoredOf(rubric))),
           Effect.catch((e) => Effect.succeed({ problem: e.message })),
         );
         if ("problem" in answer) return textResult(`Uncut's critic couldn't review it: ${answer.problem}. This round doesn't count and nothing passed; try review_submit once more, else tell the user the review couldn't run.`, true);
-        const review = criticReview(answer, { round: number, claims, checks, determinism: { checked, differed }, looked: { ...r.looked }, revision: v.session.revision, turnId: r.turn.id, fps });
+        const review = criticReview(answer, { round: number, claims, checks, determinism: { checked, differed }, looked: { ...r.looked }, revision: v.session.revision, turnId: r.turn.id, fps, rubric, intended });
         yield* Effect.promise(() => writeReview(v.dir, review).catch((e: Error) => (console.error(`[uncut] couldn't save the review: ${e.message}`), review)));
         r.reviewRounds = round;
         r.looked = { sheet: false, phone: false };
@@ -2538,6 +2571,8 @@ export const layer = Layer.effect(
           by: "Uncut's critic (a separate Claude that sees only the frames, the brief, the kit and the storyboard)",
           ...(args.scores !== undefined ? { yourScores: "ignored: the critic scores, not you" } : {}),
           scores: review.scores,
+          ...(review.rubric ? { rubric: review.rubric, sound: soundProfileText(rubric.sound) } : {}),
+          ...(review.intended ? { intended: `${review.intended} finding${review.intended === 1 ? "" : "s"} the user marked Intended left out` } : {}),
           blockers: review.blockers,
           defects: review.defects,
           ...(review.fixes ? { fixes: review.fixes } : {}),
@@ -2881,7 +2916,9 @@ export const layer = Layer.effect(
             const brandRules = kit && kit.colors.length ? [brandColourRule(kit.name, [...kit.colors.map((c) => c.hex), ...(kit.style?.palette.map((c) => c.hex) ?? [])])] : [];
             // D198: fonts that aren't there are an error, not a silent fallback.
             const fonts = yield* fontsRule(v);
-            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts], found: asked.checks, notes: asked.notes, errors: FONT_ERRORS }));
+            // D217: the sound rule follows the video's sound profile; what the user marked Intended stays out.
+            const rubric = yield* rubricOf(v);
+            return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts], found: asked.checks, notes: asked.notes, errors: FONT_ERRORS, sound: rubric.sound, intended: r.owner.plan.intended ?? [] }));
           }
           case "music_list": {
             if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
@@ -3696,6 +3733,7 @@ export const layer = Layer.effect(
           graphicWrites: 0,
           addedTracks: new Set(),
           reviewedStamp: undefined,
+          picked: [],
           permissionQueue: Promise.resolve(),
           toolNames: new Map(),
           downloads: { bytes: 0, count: 0 },
@@ -3719,7 +3757,7 @@ export const layer = Layer.effect(
           approval.answer(allow ? "allow" : "deny", source, extra);
           return { accepted: true };
         }),
-      planSave: ({ brief, storyboard }) =>
+      planSave: ({ brief, storyboard, intended }) =>
         Effect.gen(function* () {
           const owner = yield* ensureLoaded;
           if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -3727,6 +3765,8 @@ export const layer = Layer.effect(
             try: async () => {
               if (brief) await writeBrief(owner.dir, { ...brief, by: "user" });
               if (storyboard) await writeStoryboard(owner.dir, storyboard.status === "approved" ? { ...storyboard, approvedBy: "user" } : storyboard);
+              // D217: the findings the user marked Intended on a review card (the whole list).
+              if (intended) await writeIntended(owner.dir, intended);
               return readPlan(owner.dir);
             },
             catch: (error) => new AgentError({ reason: "failed", message: `Couldn't save the plan: ${(error as Error).message}` }),
