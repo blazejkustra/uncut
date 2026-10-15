@@ -183,7 +183,7 @@ test("G9: speed keeps the media stretch, so the length changes; keepPitch round-
   assert.ok("problem" in planSetSpeed(tight, "o1", 0.5));
 });
 
-test("T8: a group moves by the same frames and lanes, refuses main clips and collisions; ripple delete closes free gaps", () => {
+test("T8: a group moves by the same frames and lanes (main clips along, #58), refuses collisions; ripple delete closes free gaps", () => {
   const p = apply(base, [
     { op: "add_track", track: { id: "v2", kind: "video", name: "V2" }, index: 0 },
     { op: "insert_item", track: "overlay", item: { id: "o2", type: "clip", media: "m", in: 0, start: 100, duration: 30 } },
@@ -209,7 +209,12 @@ test("T8: a group moves by the same frames and lanes, refuses main clips and col
   const toPlayhead = planGroupMove(p, ["o1"], 18, 0, lanes, { targets: snapTargets(p, 21, new Set(["o1"])), threshold: 4 });
   assert.ok(!("problem" in toPlayhead));
   assert.equal(toPlayhead.snapAt, 21);
-  assert.ok("problem" in planGroupMove(p, ["o1", "a"], 10, 0, lanes), "main clips move alone");
+  // #58 (D229): a main clip moves along with the rest (in time, staying on Main).
+  const withMain = planGroupMove(p, ["o1", "a"], 10, 0, lanes);
+  assert.ok(!("problem" in withMain));
+  const m = apply(p, withMain.ops);
+  assert.equal(find(m, "o1")!.start, 10);
+  assert.equal(find(m, "a")!.track, "main");
   assert.ok("problem" in planGroupMove(p, ["s1"], 120, 0, lanes), "s2 is in the way");
   // Ripple delete on a free track: the later item moves left by the deleted length.
   const rip = planRippleDelete(p, ["o1"]);
