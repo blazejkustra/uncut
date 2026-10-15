@@ -151,8 +151,17 @@ test("versions are a version number or nothing, never raw tool output", T, async
   assert.ok(!r.raw.includes("<b>") && !r.raw.includes("hello there"));
 });
 
-test("only a claude.ai login counts as Ready; API keys, tokens and cloud providers say who's billed", T, async () => {
-  const cases = { api_key: /API key/, oauth_token: /token \(CLAUDE_CODE_OAUTH_TOKEN\)/, third_party: /Using bedrock/, something_new: /not with a Claude login \(something_new\)/ };
+test("a claude.ai login and a setup-token login count as Ready; API keys and cloud providers say who's billed", T, async () => {
+  // D219: CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) is the user's subscription, not an API account.
+  {
+    const dir = stubs("auth-oauth_token", { claude: `case "$1" in --version) echo "2.1.296 (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"oauth_token"}';; esac` });
+    const { byId } = await check({ PATH: `${dir}:/usr/bin:/bin` });
+    assert.equal(byId.claude.status, "ready", byId.claude.detail);
+    assert.match(byId.claude.detail, /Claude subscription.*setup-token/);
+    assert.doesNotMatch(byId.claude.detail, /billed|API key/);
+    assert.equal(byId.claude.fix, undefined);
+  }
+  const cases = { api_key: /API key/, third_party: /Using bedrock/, something_new: /not with a Claude login \(something_new\)/ };
   for (const [method, pattern] of Object.entries(cases)) {
     const dir = stubs(`auth-${method}`, { claude: `case "$1" in --version) echo "2.1.296 (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"${method}","apiProvider":"bedrock"}';; esac` });
     const { byId } = await check({ PATH: `${dir}:/usr/bin:/bin` });

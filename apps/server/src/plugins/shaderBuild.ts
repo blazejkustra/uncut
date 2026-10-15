@@ -10,7 +10,8 @@
 import tgpu from "typegpu";
 import * as d from "typegpu/data";
 
-import { MAX_SHADER_WGSL, shaderDefProblems, shaderParamProblems, stripWgslComments, type ShaderParam } from "@uncut/core";
+// The shaders module alone (D219: plugin:check's locked-down child may read just that file of core).
+import { MAX_SHADER_WGSL, shaderDefProblems, shaderParamProblems, stripWgslComments, type ShaderParam } from "@uncut/core/shaders";
 
 type Schema = { readonly type?: string; readonly propTypes?: Record<string, { readonly type?: string }>; $name?: (n: string) => unknown };
 type AnyFn = { readonly resourceType?: unknown; readonly shell?: { readonly argTypes?: ReadonlyArray<Schema>; readonly returnType?: Schema }; $name: (n: string) => unknown };

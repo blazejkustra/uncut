@@ -34,13 +34,18 @@ for (const [net, bits] of [
 ] as const)
   blocked.addSubnet(net, bits, "ipv4");
 for (const [net, bits] of [
-  ["::", 128],
-  ["::1", 128],
+  // D219: ::/96 (IPv4-compatible, also covers :: and ::1), 6to4 (2002::/16 wraps any IPv4 address),
+  // the old site-local fec0::/10 and the local-use NAT64 prefix. (IPv4-mapped addresses are unwrapped
+  // in isPublicAddress: a ::ffff:0:0/96 entry here would also match every IPv4 check.)
+  ["::", 96],
   ["fc00::", 7],
   ["fe80::", 10],
+  ["fec0::", 10],
   ["ff00::", 8],
   ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
   ["2001:db8::", 32],
+  ["2002::", 16],
 ] as const)
   blocked.addSubnet(net, bits, "ipv6");
 
@@ -51,6 +56,12 @@ export function isPublicAddress(address: string): boolean {
   if (family === 6) {
     const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
     if (mapped) return isPublicAddress(mapped[1]!);
+    // D219: the same, written in hex (::ffff:7f00:1 is 127.0.0.1).
+    const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(address);
+    if (hex) {
+      const [hi, lo] = [parseInt(hex[1]!, 16), parseInt(hex[2]!, 16)];
+      return isPublicAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+    }
     return !blocked.check(address, "ipv6");
   }
   return !blocked.check(address, "ipv4");

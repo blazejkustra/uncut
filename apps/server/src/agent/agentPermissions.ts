@@ -238,6 +238,51 @@ type Zone = "cache" | "project" | "root" | "outside";
 /** A secret-looking string: 20+ letters, digits and token characters, with both letters and digits. */
 export const SECRETISH = /(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{20,}/;
 
+/** D219: well-known credential shapes (API keys, tokens, JWTs, private keys). */
+const KNOWN_SECRET = /(?:sk-(?:ant-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abposr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}|-----BEGIN|ssh-(?:rsa|ed25519) AAAA)/;
+
+/**
+ * D219: a run that reads as encoded data: 40+ token characters (between slashes, dots and the
+ * like) mixing upper case, lower case and digits, with few dashes. Hex (a commit SHA), UUIDs and
+ * slugs ("React-Native-0-74-Release-Notes") aren't.
+ */
+const encodedRun = (text: string) =>
+  (text.match(/[A-Za-z0-9+=_-]{40,}/g) ?? []).some((run) => /[A-Z]/.test(run) && /[a-z]/.test(run) && /\d/.test(run) && !/^[0-9a-f-]+$/i.test(run) && (run.match(/-/g)?.length ?? 0) <= run.length / 8);
+
+/**
+ * D219: why a WebFetch address may carry data out (a card), or undefined for an ordinary page. Only
+ * what's sent counts (host, path and query; not the #fragment), decoded: longer than 200
+ * characters, a credential-shaped string, a run of encoded data (a commit SHA, a UUID or a
+ * slug isn't one), or a host name with a long encoded label (DNS exfiltration). Docs, repos,
+ * videos and package pages pass.
+ */
+export function webAddressProblem(raw: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  const decode = (s: string) => {
+    try {
+      return decodeURIComponent(s.replace(/\+/g, " "));
+    } catch {
+      return s;
+    }
+  };
+  const sent = `${url.host}${url.pathname}${url.search}`;
+  const text = decode(`${url.pathname}${url.search}`);
+  if (sent.length > 200) return "The address is unusually long; it could carry data out.";
+  if (KNOWN_SECRET.test(text) || KNOWN_SECRET.test(sent)) return "The address carries a secret-looking string.";
+  // A Google Docs/Drive/Sheets file id (/d/<44 characters>/) is an id, not data (the query still counts).
+  const ids = /(^|\.)google\.com$/i.test(url.hostname) ? decode(url.pathname).replace(/\/d\/[A-Za-z0-9_-]{20,}(?=\/|$)/g, "/d/id") + decode(url.search) : text;
+  if (encodedRun(ids)) return "The address carries a long run of encoded data.";
+  const labels = url.hostname.split(".").slice(0, -2);
+  // A long label of letters and digits (hex, base32), not a dashed name like my-bucket-2024-prod.
+  if (labels.some((l) => l.length >= 40 || (l.length >= 24 && !l.includes("-") && /\d/.test(l) && /[a-z]/i.test(l)))) return "The address's host name carries a long encoded part.";
+  return undefined;
+}
+
 /** Characters and words that make a command more than one simple program call. */
 const COMPLEX = /[$`(){}<>|;&\n\r\\]|<<|\*\*|\bsudo\b/;
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered. */
@@ -297,11 +342,8 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (tool === "WebFetch") {
       const url = str(input.url);
       const leak = [...(ctx.tainted ?? [])].find((t) => url.includes(t));
-      let longQuery = false;
-      try {
-        longQuery = new URL(url).search.length > 300;
-      } catch {}
-      if (leak || longQuery) return { kind: "ask", title: "Open a web address", target: url.slice(0, 2000), why: leak ? "The address carries text read from a file in this turn." : "The address carries a lot of data." };
+      const why = leak ? "The address carries text read from a file in this turn." : webAddressProblem(url);
+      if (why) return { kind: "ask", title: "Open a web address", target: url.slice(0, 2000), why };
     }
     return { kind: "allow" };
   }
@@ -483,7 +525,7 @@ export function namedFolders(text: string, project: string, exists: (p: string) 
  */
 export const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcloud", ".kube", ".docker", "Library/Keychains", ".claude", ".password-store"] as const;
 export const SECRET_FILES = [".netrc", ".npmrc", ".git-credentials", ".claude.json", ".pypirc"] as const;
-export function denyRules(): Array<string> {
+export function denyRules(dataDir?: string): Array<string> {
   const rules: Array<string> = [];
   for (const d of SECRET_DIRS) {
     for (const tool of ["Read", "Edit"]) rules.push(`${tool}(~/${d}/**)`);
@@ -499,6 +541,29 @@ export function denyRules(): Array<string> {
   // A backstop under Uncut's own allowlist: claude refuses these before anyone is asked.
   for (const prefix of ["rm", "rmdir", "shred", "sudo", "su", "doas", "git push", "scp", "sftp", "ssh", "nc", "ncat", "telnet", "dd", "mkfs", "diskutil", "launchctl", "osascript", "chown", "crontab", "defaults write", "security"]) rules.push(`Bash(${prefix}:*)`);
   for (const flag of [" -d ", " --data", " -F ", " --form", " -T ", " --upload-file", " --json"]) rules.push(`Bash(curl*${flag}*)`);
+  rules.push(...appDataRules(dataDir));
+  return rules;
+}
+
+/** A path as a piece of a Bash rule (claude's matcher: `\*` is a literal star, `\\` a literal backslash). */
+const bashSafe = (p: string) => p.replace(/[\\*]/g, (c) => `\\${c}`);
+
+/**
+ * D219: apps' data, Uncut's first. Uncut's data folder holds what a session must never change
+ * (settings.json with the plugin approvals, plugins/, brand kits) and the app's server token: no
+ * file tool writes anywhere in it, the token isn't read, and no command names it. The same for
+ * every app's data in ~/Library/Application Support (browsers' cookies, other apps' tokens): no
+ * writes, no command naming it (the Read tool there gets Uncut's card, like anything outside the
+ * project). Brand kit files stay readable with a card: the agent is shown their paths.
+ */
+export function appDataRules(dataDir?: string): Array<string> {
+  const rules = ["Edit(~/Library/Application Support/**)", "Bash(*Application Support*)", "Bash(*Application\\ Support*)"];
+  if (!dataDir) return rules;
+  const dir = dataDir.replace(/\/+$/, "");
+  rules.push(`Edit(/${globSafe(dir)}/**)`, `Read(/${globSafe(dir)}/server-token)`);
+  // A data folder elsewhere (UNCUT_DATA_DIR) isn't caught by the Application Support rules.
+  // (The folder itself, not a sibling that starts with its name.)
+  if (!/\/Library\/Application Support(\/|$)/.test(dir)) rules.push(...["/", " ", '"', "'"].map((end) => `Bash(*${bashSafe(dir)}${end}*)`), `Bash(*${bashSafe(dir)})`);
   return rules;
 }
 
@@ -538,9 +603,9 @@ export function autoAskRules(): Array<string> {
  * D194, D214: the --settings JSON a session gets: claude's deny rules in every access; in Auto also
  * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
  */
-export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined } = {}): string {
-  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules() } });
-  return JSON.stringify({ permissions: { deny: [...denyRules(), ...ownFileRules(o.projects ?? [])], ask: autoAskRules() } });
+export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined } = {}): string {
+  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir) } });
+  return JSON.stringify({ permissions: { deny: [...denyRules(o.dataDir), ...ownFileRules(o.projects ?? [])], ask: autoAskRules() } });
 }
 
 /** D194: tools a Look only session starts without (--disallowedTools): claude can't even auto-allow a read-only command. */

@@ -54,6 +54,7 @@ import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type 
 import { BACKGROUND_SWITCHES, centredIn, isTestBackground, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES, testMedia } from "./background.ts";
 import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
+import { allowPermission } from "./permissions.ts";
 import { LOCAL_ID, makeEnvironmentStore, normalizeServerUrl, parsePairing, type Crypt, type EnvironmentStore } from "./environments.ts";
 import { pingServer, startRelay, type Relay } from "./relay.ts";
 import { startServer, type ServerProcess } from "./server.ts";
@@ -525,17 +526,15 @@ function createWindow() {
     item.setSavePath(wanted.path);
     item.once("done", (_e, state) => wanted.done(state === "completed" ? { path: wanted.path } : { error: state === "cancelled" ? "The download was cancelled." : "The download stopped before the end." }));
   });
-  // Camera, microphone and screen (D114) only for the app's own top-level page: a graphic's
-  // sandboxed iframe (D78) or any other page gets none. Other permissions keep Electron's default.
+  // Camera, microphone and screen (D114), and the few other permissions the app uses (D219,
+  // permissions.ts), only for the app's own top-level page: a graphic's sandboxed iframe (D78) or
+  // any other page gets none, and nothing else is granted to anyone.
   const session = contents.session;
-  const mediaPermission = (permission: string) => permission === "media" || permission === "display-capture";
   session.setPermissionRequestHandler((requester, permission, callback, details) => {
-    if (!mediaPermission(permission)) return callback(true);
-    callback(requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? ""));
+    callback(allowPermission(permission, requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? "")));
   });
   session.setPermissionCheckHandler((requester, permission, _origin, details) => {
-    if (!mediaPermission(permission)) return true;
-    return requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL());
+    return allowPermission(permission, requester !== null && requester === win?.webContents && details.isMainFrame && isAppUrl(details.requestingUrl ?? requester.getURL()));
   });
   // getDisplayMedia records the screen or window the Capture tab picked (chooseDisplaySource just before).
   // D210: with systemAudio, this Mac's sound too ("loopback": the speakers keep playing); for a

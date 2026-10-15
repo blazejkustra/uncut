@@ -132,10 +132,15 @@ declare const __UNCUT_SERVER_VERSION__: string | undefined;
  * also removes (NODE_OPTIONS, DEBUG), plus CLAUDE_AGENT_SDK_CLIENT_APP=uncut/<version>, the way
  * Anthropic's SDK docs ask an app to identify itself (it becomes claude's x-client-app header).
  * No ANTHROPIC_* key or token, no CLAUDE_CODE_ENTRYPOINT: claude uses the user's own login.
+ * D219: except CLAUDE_CODE_OAUTH_TOKEN, the long-lived subscription token `claude setup-token`
+ * makes (claude only, like t3code, which hands claude its whole environment): it's the user's own
+ * Claude login, not an API key. Every other process (plugins, ffmpeg, the rasteriser) still goes
+ * without it (agentEnv).
  */
 export const claudeEnv = (env: NodeJS.ProcessEnv, version: string = typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev"): Record<string, string> => {
   const out = agentEnv(env);
   for (const k of Object.keys(out)) if (k.startsWith("CLAUDE_AGENT_SDK_") || k === "NODE_OPTIONS" || k === "DEBUG") delete out[k];
+  if (env.CLAUDE_CODE_OAUTH_TOKEN) out.CLAUDE_CODE_OAUTH_TOKEN = env.CLAUDE_CODE_OAUTH_TOKEN;
   out.CLAUDE_AGENT_SDK_CLIENT_APP = `uncut/${version}`;
   return out;
 };
