@@ -128,6 +128,8 @@ test("D222: a no-op effect changes nothing visible, and the preview shows the fi
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
+  await page.click("[data-testid=bottom-timeline]");
+  await page.waitForFunction(() => !!(globalThis as unknown as { __uncutScrub?: unknown }).__uncutScrub, { timeout: 10000 });
   const problems: Array<string> = [];
   for (const [k, c] of CLIPS.entries()) {
     const expected = fileLevels(c.id);
