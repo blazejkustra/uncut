@@ -22,10 +22,16 @@ export function decoderColour(c: StreamColour | undefined, height: number): Vide
   return { matrix, primaries, transfer, fullRange: c.fullRange ?? false };
 }
 
+/** Transfers the lift wasn't measured for (sRGB, linear, PQ, HLG): left as they are. */
+const UNMEASURED = new Set([13, 8, 16, 18]);
+
 /**
- * Whether macOS lifts this footage's mid-tones when it shows the <video> (tone.ts): measured for
- * the BT.709 transfer (tagged, or untagged from 720 lines up), not for BT.601's (untagged SD).
+ * Whether macOS lifts this footage's mid-tones when it shows the <video> (tone.ts). D222, measured
+ * in the packaged app on H.264 grey ramps: it goes by the picture's height, not its tags: 360 lines
+ * and up are lifted (640×360, 360×360, 352×640, 720×404, HD; untagged, BT.709- or BT.601-tagged),
+ * below aren't (320×180 even tagged BT.709, 640×352, 656×352, 1024×288). Likely Chromium's
+ * hardware-decode path, which only takes 360 lines and up. `height`: the <video>'s videoHeight.
  */
 export function liftsTone(c: StreamColour | undefined, height: number): boolean {
-  return (c?.transfer ?? (height < 720 ? 6 : 1)) === 1;
+  return height >= 360 && !(c?.transfer !== undefined && UNMEASURED.has(c.transfer));
 }

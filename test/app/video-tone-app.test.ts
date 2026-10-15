@@ -1,9 +1,7 @@
 // D222 (issue #56): a clip looks the same with and without a no-op effect, and both show the file's
 // values (what the export holds), on the packaged app.
-// Footage: a grey ramp (16 bars, levels 0, 17, ..., 255) in H.264, as untagged SD (640×360, which
-// Chromium's <video> reads as BT.601: not lifted by macOS), untagged HD (1280×720: read as BT.709,
-// lifted) and BT.709-tagged SD and HD (lifted; the SD one is told apart only by its tags, which the
-// scrub cache's index reads). Each is on the timeline twice: plain, and with Pixelate at size 2 (a
+// Footage: a grey ramp (16 bars, levels 0, 17, ..., 255) in H.264, untagged, BT.709- and
+// BT.601-tagged, from 320×180 to HD: macOS lifts those of 360 lines and up (D222), the rest not. Each is on the timeline twice: plain, and with Pixelate at size 2 (a
 // no-op on flat bars that still goes through the effects canvas, D136).
 // - Plain (the <video> at rest) vs with the effect: every bar within 2 levels on screen.
 // - Plain vs the file's own levels (ffmpeg's decode, what the export holds): within 3.
@@ -25,12 +23,19 @@ const skip = existsSync(APP) ? (hasFfmpeg ? false : "needs ffmpeg to make the gr
 const FPS = 30;
 const CLIP = 30;
 const BARS = 16;
-const TAGS_709 = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];
+// Tags written into the stream (setparams; x264's -color_trc output options alone don't reach the SPS here).
+const TAGS_709 = ",setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709";
+const TAGS_601 = ",setparams=color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m";
+// macOS lifts a <video> by its height (D222, measured): 360 lines and up, whatever the tags; below, not even tagged BT.709.
 const CLIPS = [
-  { id: "sd", name: "untagged SD", w: 640, h: 360, tags: [] as Array<string>, lifted: false },
-  { id: "hd", name: "untagged HD", w: 1280, h: 720, tags: [] as Array<string>, lifted: true },
-  { id: "t709sd", name: "BT.709-tagged SD", w: 640, h: 360, tags: TAGS_709, lifted: true },
-  { id: "t709hd", name: "BT.709-tagged HD", w: 1280, h: 720, tags: TAGS_709, lifted: true },
+  { id: "s180", name: "untagged 320×180 (not lifted)", w: 320, h: 180, tags: "" },
+  { id: "s352", name: "untagged 640×352 (not lifted)", w: 640, h: 352, tags: "" },
+  { id: "t709s180", name: "BT.709-tagged 320×180 (not lifted)", w: 320, h: 180, tags: TAGS_709 },
+  { id: "sd", name: "untagged SD", w: 640, h: 360, tags: "" },
+  { id: "hd", name: "untagged HD", w: 1280, h: 720, tags: "" },
+  { id: "t709sd", name: "BT.709-tagged SD", w: 640, h: 360, tags: TAGS_709 },
+  { id: "t709hd", name: "BT.709-tagged HD", w: 1280, h: 720, tags: TAGS_709 },
+  { id: "t601hd", name: "BT.601-tagged HD", w: 1280, h: 720, tags: TAGS_601 },
 ] as const;
 const NOOP = [{ module: "effect.pixelate", params: { size: 2 } }];
 
@@ -51,8 +56,10 @@ before(async () => {
   mkdirSync(join(dir, "media"), { recursive: true });
   for (const c of CLIPS) {
     // Grey is the same under either matrix, so only the transfer (and range) can move it.
-    const ramp = `color=black:s=${c.w}x${c.h}:r=${FPS}:d=1,format=rgb24,geq=r='floor(X*${BARS}/W)*17':g='floor(X*${BARS}/W)*17':b='floor(X*${BARS}/W)*17',format=yuv420p`;
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", ramp, "-c:v", "libx264", "-crf", "4", "-pix_fmt", "yuv420p", ...c.tags, file(c.id)]);
+    const ramp = `color=black:s=${c.w}x${c.h}:r=${FPS}:d=1,format=rgb24,geq=r='floor(X*${BARS}/W)*17':g='floor(X*${BARS}/W)*17':b='floor(X*${BARS}/W)*17',format=yuv420p${c.tags}`;
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", ramp, "-c:v", "libx264", "-crf", "4", "-pix_fmt", "yuv420p", file(c.id)]);
+    const trc = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", file(c.id)], { encoding: "utf8" }).trim();
+    assert.equal(trc, c.tags === TAGS_709 ? "bt709" : c.tags === TAGS_601 ? "smpte170m" : "unknown", `${c.name}: its transfer tag`);
   }
   const items = CLIPS.flatMap((c) => [
     { id: `${c.id}-plain`, type: "clip", media: `m-${c.id}`, in: 0, duration: CLIP },
@@ -122,7 +129,7 @@ const keep = (on: boolean) => page.evaluate((k) => (globalThis as unknown as { _
 const worst = (a: ReadonlyArray<number>, b: ReadonlyArray<number>) => Math.max(...a.map((x, i) => Math.abs(x - b[i]!)));
 const fmt = (l: ReadonlyArray<number>) => l.map((x) => x.toFixed(0)).join(" ");
 
-test("D222: a no-op effect changes nothing visible, and the preview shows the file's levels (untagged SD/HD, BT.709-tagged)", { skip, timeout: 300000 }, async () => {
+test("D222: a no-op effect changes nothing visible, and the preview shows the file's levels (untagged SD/HD, tagged, lifted or not)", { skip, timeout: 300000 }, async () => {
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   page = app.page;
   await waitForWelcome(page);
@@ -139,7 +146,7 @@ test("D222: a no-op effect changes nothing visible, and the preview shows the fi
     // The plain clip at rest: its <video> (the scrub canvas hands back once the <video> is at the frame).
     await keep(false);
     await goTo(2 * k * CLIP + 15);
-    // Its colours are known from the file (the tagged SD clip is lifted only by its tags).
+    // Its colours are known from the file (the scrub cache's index read its tags).
     await page.waitForFunction((id) => (globalThis as unknown as { __uncutScrub: { stats: () => { sources: Array<{ url: string; state: string }> } } }).__uncutScrub.stats().sources.some((s) => s.url.includes(`m-${id}`) && s.state === "ready"), { timeout: 10000 }, c.id);
     await page.waitForFunction(
       (id) => {
@@ -177,7 +184,7 @@ test("D222: a no-op effect changes nothing visible, and the preview shows the fi
     await sleep(400);
     const effect = await shot(`${c.id}-fx`);
 
-    console.log(`# D222 ${c.name} (${c.lifted ? "lifted by macOS" : "not lifted"}; <video> filter ${filter}):\n#   file   ${fmt(expected)}\n#   video  ${fmt(plain)}\n#   scrub  ${fmt(canvas)}\n#   effect ${fmt(effect)}\n#   worst: effect vs video ${worst(effect, plain).toFixed(1)}, video vs file ${worst(plain, expected).toFixed(1)}, scrub vs file ${worst(canvas, expected).toFixed(1)}`);
+    console.log(`# D222 ${c.name} (<video> filter ${filter}):\n#   file   ${fmt(expected)}\n#   video  ${fmt(plain)}\n#   scrub  ${fmt(canvas)}\n#   effect ${fmt(effect)}\n#   worst: effect vs video ${worst(effect, plain).toFixed(1)}, video vs file ${worst(plain, expected).toFixed(1)}, scrub vs file ${worst(canvas, expected).toFixed(1)}`);
     if (worst(effect, plain) > 2) problems.push(`${c.name}: with the no-op effect vs without, ${worst(effect, plain).toFixed(1)} levels apart`);
     if (worst(plain, expected) > 3) problems.push(`${c.name}: the <video> vs the file's levels, ${worst(plain, expected).toFixed(1)} apart`);
     if (worst(canvas, expected) > 3) problems.push(`${c.name}: the scrub canvas vs the file's levels, ${worst(canvas, expected).toFixed(1)} apart`);
