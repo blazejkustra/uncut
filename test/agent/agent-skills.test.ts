@@ -3,8 +3,8 @@
 // suggestSkills from a brief, the store (built-ins listed read-only, never shadowed or saved),
 // planContext's budget, the critic's message (skill checklists, the sound sheet, the blindfold
 // instruction) and a hard sound finding as a "sound" blocker. On the bundled server with
-// fake-claude: the first brief_write turns on the suggested skills and returns their text, the
-// next message carries them, project_check reports a click spam, and review_submit gives the
+// fake-claude: brief_write suggests skills and turns none on (D217); once the user turns them on,
+// the next message carries them, project_check reports a click spam, and review_submit gives the
 // critic the checklists and the sound sheet and fails the round on the density blocker.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -58,7 +58,7 @@ test("skillChecklist: the lines after a checklist heading, any of its names; non
   assert.deepEqual(skillChecklist("Rules\n- a rule"), []);
 });
 
-test("suggestSkills: a kind of film from the brief's words, formats and length, then Motion craft and Sound design, Brand application with a kit", () => {
+test("suggestSkills, a brief with no type (as before D217): a kind of film from the brief's words, formats and length, then Motion craft and Sound design, Brand application with a kit", () => {
   const b = (film: string, extra: Record<string, unknown> = {}) => ({ film, audience: "devs", duration: "20 s", formats: ["4:5"], assets: [], visual: "", deliverables: [], ...extra });
   assert.deepEqual(suggestSkills(b("A 20 s launch teaser for Argent Cloud"), { hasKit: true }), [BUILTIN_IDS.launch, BUILTIN_IDS.motion, BUILTIN_IDS.sound, BUILTIN_IDS.brand]);
   assert.deepEqual(suggestSkills(b("Our founder talks to camera about v2", { formats: ["9:16"] })), [BUILTIN_IDS.talking, BUILTIN_IDS.launch, BUILTIN_IDS.motion, BUILTIN_IDS.sound]);
@@ -99,7 +99,7 @@ test("planContext: the chosen skills whole; with none chosen, the skills there a
   for (const s of chosen) assert.ok(text.includes(s.body), `${s.name} is whole`);
   const none = planContext({ files: {}, skills: [], others: [], available: BUILTIN_SKILLS.map((s) => ({ ...s })) }, plan, gate);
   assert.match(none, /No skills are on for this project\. Uncut's: builtin-launch-promo, builtin-product-demo, /);
-  assert.match(none, /brief_write turns on the ones that fit the brief/);
+  assert.match(none, /brief_write suggests the ones that fit; only those the user picks are turned on/);
   assert.match(SYSTEM_PROMPT, /the critic checks their review checklists/);
   assert.match(SYSTEM_PROMPT, /4 in any 10 s/);
   assert.ok(!/cozy music/.test(SYSTEM_PROMPT));
@@ -139,7 +139,7 @@ type Content = Array<{ type: string; text?: string }>;
 const textOf = (r: { content: Content }) => r.content.find((c) => c.type === "text")!.text!;
 const jsonOf = (r: { content: Content }) => JSON.parse(textOf(r));
 
-test("on the server: brief_write turns on the suggested skills, the next message carries them, project_check and the critic see a click spam", { skip, timeout: 240000 }, async () => {
+test("on the server: brief_write suggests skills and turns none on (D217); the user's picks ride along; project_check and the critic see a click spam and a promo fails on it", { skip, timeout: 240000 }, async () => {
   const base = join(root, "server");
   mkdirSync(join(base, "projects"), { recursive: true });
   const plan = join(base, "plan.json");
@@ -174,18 +174,23 @@ test("on the server: brief_write turns on the suggested skills, the next message
     };
     const prompts = () => readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.refused) as Array<{ prompt: string }>;
 
-    // Turn 1: no skills on yet (the message lists them); the brief turns on the suggestion.
+    // Turn 1: no skills on yet (the message lists them); the brief suggests a set and turns nothing on (D217).
     const brief = { film: "A 10 s launch teaser for Argent Cloud", audience: "React Native devs", duration: "10 s", formats: ["4:5"], assets: ["demo recording"], visual: "Dark, amber", hardLines: ["Never invent UI"], deliverables: ["4:5 mp4"] };
     const t1 = await ask("make a launch teaser", [{ tool: "brief_write", args: brief }, { tool: "library_add", args: { id: "sfx:ui-click" } }]);
     assert.equal(t1.status, "done", t1.error);
     assert.match(prompts()[0]!.prompt, /No skills are on for this project\. Uncut's: builtin-brand-application, .*builtin-launch-promo/);
     const [wrote, added] = fresh();
     const out = jsonOf(wrote!.result);
-    assert.deepEqual(out.skills.map((x: { id: string }) => x.id), [BUILTIN_IDS.launch, BUILTIN_IDS.demo, BUILTIN_IDS.motion, BUILTIN_IDS.sound], "a launch teaser with a demo recording");
-    assert.match(out.skills[0].body, /Review checklist/);
-    assert.match(out.skillsNote, /Uncut turned these skills on for this brief/);
-    assert.deepEqual(JSON.parse(readFileSync(join(snap.dir, "brand", "active.json"), "utf8")).skills, [BUILTIN_IDS.launch, BUILTIN_IDS.demo, BUILTIN_IDS.motion, BUILTIN_IDS.sound]);
+    assert.equal(out.type, "launch-promo", "the brief's words say launch teaser");
+    assert.deepEqual(out.suggestedSkills.map((x: { id: string }) => x.id), [BUILTIN_IDS.launch, BUILTIN_IDS.demo, BUILTIN_IDS.motion, BUILTIN_IDS.sound], "a launch teaser with a demo recording");
+    assert.deepEqual(out.skills, [], "suggested, not turned on");
+    assert.match(out.skillsNote, /Ask the user which of the suggested ones to use/);
+    assert.match(out.sound, /^strict/);
+    assert.deepEqual(JSON.parse(readFileSync(join(snap.dir, "brief.json"), "utf8")).skills, [BUILTIN_IDS.launch, BUILTIN_IDS.demo, BUILTIN_IDS.motion, BUILTIN_IDS.sound]);
+    assert.ok(!existsSync(join(snap.dir, "brand", "active.json")), "no skills written");
     const media = jsonOf(added!.result).media as string;
+    // The user turns the suggestions on, as the Brief card's chips do.
+    await client.ok("brand.setActive", { kit: null, skills: [BUILTIN_IDS.launch, BUILTIN_IDS.demo, BUILTIN_IDS.motion, BUILTIN_IDS.sound] });
 
     // Turn 2: the skills ride along; a text and 8 clicks in 8 s; project_check; the critic's round.
     const clicks = Array.from({ length: 8 }, (_, i) => ({ op: "insert_item", track: "audio", item: { id: `click-${i}`, type: "audio", media, in: 0, start: 6 + i * 30, duration: 6 } }));
@@ -204,7 +209,7 @@ test("on the server: brief_write turns on the suggested skills, the next message
     assert.match(p2, /Skill "Sound design"/);
     const r = fresh();
     const kept = jsonOf(r[0]!.result);
-    assert.match(kept.skillsNote, /already on for this project/, "the second brief keeps the project's choice");
+    assert.match(kept.skillsNote, /These skills are on for this project/, "the second brief keeps the project's choice");
     assert.ok(!kept.skills.some((x: { id: string }) => x.id === BUILTIN_IDS.titles));
     const checks = jsonOf(r[3]!.result).checks as Array<{ key?: string; id: string; message: string }>;
     const messages = checks.map((c) => c.message).join("\n");

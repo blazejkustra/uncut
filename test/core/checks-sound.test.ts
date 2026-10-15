@@ -101,6 +101,8 @@ test("the sound sheet: music with its tempo and level, each effect with its kind
   assert.match(sheet[0]!, /^music 0\.0 s to 21\.5 s: Music, 95 BPM, at 0 dB, fades in, fades out$/);
   assert.match(sheet[1]!, /^sound effect 4\.0 s \(f 119\): whoosh-short \(whoosh\), 0\.4 s, at −9 dB \(−9 dB against the music\); lands on the cut to c2 \(f 120\)/);
   assert.match(sheet[2]!, /ding \(ui\).*lands on nothing that changes on screen/);
-  assert.match(sheet.at(-1)!, /^2 sound effects in 21\.5 s \(0\.9 per 10 s; the bar is at most 4\), 2 different$/);
+  assert.match(sheet.at(-2)!, /^2 sound effects in 21\.5 s \(0\.9 per 10 s; the bar is at most 4\), 2 different$/);
+  // D217: the profile last (strict when the video's brief says nothing).
+  assert.equal(sheet.at(-1), "Sound profile strict: at most 4 effects in any 10 s, 6 dB under the music; too many or too loud fails a review.");
   assert.ok(!/[·•]/.test(sheet.join("\n")));
 });

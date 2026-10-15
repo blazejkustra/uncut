@@ -42,7 +42,8 @@ export { activeWord, autoMaxChars, captionBox, captionSegments, checkCaptionLine
 export type { CaptionCard, CaptionEdit, CaptionLines, CaptionMode, CaptionWord, MakeCaptionsPlan, MakeCaptionsRequest } from "./text/captions.ts";
 export { decodeSubtitleBytes, flattenCues, isPlainCue, isSubtitleTrack, MAX_SUBTITLE_CUES, parseSubtitles, planImportSubtitles, SUBTITLE_FORMATS, SUBTITLE_LANGUAGES, subtitleCues, subtitleFormatOf, subtitleLanguageTag, subtitleTime, writeSrt, writeSubtitles, writeVtt } from "./text/subtitles.ts";
 export type { ImportSubtitlesPlan, ParsedCue, SubtitleCue, SubtitleFormat } from "./text/subtitles.ts";
-export { brandColourRule, CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, planDisableCheck, projectChecks, readFrames, sfxItems, SFX_PER_10S, SFX_REPEAT_MAX, SFX_UNDER_MUSIC_DB, SOUND_HARD, soundSheet, textLabel, visualEvents } from "./checks/checks.ts";
+export { brandColourRule, CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FILLER_PHRASES, planDisableCheck, projectChecks, readFrames, sfxItems, SFX_PER_10S, SFX_REPEAT_MAX, SFX_UNDER_MUSIC_DB, SOUND_HARD, SOUND_LIMITS, SOUND_PROFILES, soundHard, soundProfileText, soundSheet, textLabel, visualEvents } from "./checks/checks.ts";
+export type { SoundProfile } from "./checks/checks.ts";
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
 export { LAYOUT_HARD, LAYOUT_RULES } from "./checks/layout.ts";
 export { filterMusic, libraryTrackOf, mediaIdFor, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";

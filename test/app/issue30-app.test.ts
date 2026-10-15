@@ -1,7 +1,8 @@
 // Issues #30 and #31 (D207) on the packaged app, run invisibly and muted, with the stand-in claude
 // and its scripted critic:
-// - the first brief turns on Uncut's suggested built-in skills; the Brand tab lists them in a
-//   read-only "Built-in" group and ticks them under This project;
+// - the first brief suggests Uncut's built-in skills (D217: it turns none on); the user adds them
+//   with the Brief card's chips; the Brand tab lists them in a read-only "Built-in" group and ticks
+//   them under This project;
 // - a built-in skill opens read-only; Duplicate makes an editable copy that lands under Yours;
 // - a click spam (8 UI clicks in 8 s) fails the critic's round on a "Sound" blocker from Uncut's
 //   sound check, even with the critic's 9s.
@@ -39,7 +40,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("issues #30/#31: built-in skills turned on by the brief, read-only with Duplicate; a click spam fails the critic on sound", { skip, timeout: 300000 }, async () => {
+test("issues #30/#31: built-in skills suggested by the brief and added on its card, read-only with Duplicate; a click spam fails a promo's critic on sound", { skip, timeout: 300000 }, async () => {
   const turns: Array<unknown> = [];
   const nextTurn = (steps: Array<unknown>) => (turns.push(steps), writeFileSync(join(root, "plan.json"), JSON.stringify(turns)));
   const app = await launchApp({
@@ -67,13 +68,21 @@ test("issues #30/#31: built-in skills turned on by the brief, read-only with Dup
     await page.click("[data-testid=create]");
     await waitFor("[data-testid=agent-input]");
 
-    // ---- Turn 1: the brief turns on the suggested skills; a bundled click comes in ----
+    // ---- Turn 1: the brief suggests skills (none on); a bundled click comes in ----
     const brief = { film: "A 10 s launch teaser for Argent Cloud", audience: "React Native devs", duration: "10 s", formats: ["4:5"], assets: ["the logo"], visual: "Dark, amber", hardLines: ["Never invent UI"], deliverables: ["4:5 mp4"] };
-    nextTurn([{ tool: "brief_write", args: brief }, { tool: "library_add", args: { id: "sfx:ui-click" } }, { text: "Brief saved; Launch promo, Motion craft and Sound design are on." }]);
+    nextTurn([{ tool: "brief_write", args: brief }, { tool: "library_add", args: { id: "sfx:ui-click" } }, { text: "Brief saved; pick the skills on its card." }]);
     await send("make a 10 s launch teaser for Argent Cloud");
     await lastDone();
     const results = readFileSync(join(root, "results.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     const media = JSON.parse(results.find((r) => r.tool === "library_add").result.content[0].text).media as string;
+    // The Brief card's suggested chips turn them on (D217).
+    await page.click("[data-testid=agent-card][data-type=brief] .card-head");
+    for (const id of ["builtin-launch-promo", "builtin-motion-craft", "builtin-sound-design"]) {
+      // Centred: the thread's "latest" jump button can sit over a chip near the bottom.
+      await page.$eval(`[data-testid=brief-skill-add-${id}]`, (el) => el.scrollIntoView({ block: "center" }));
+      await page.click(`[data-testid=brief-skill-add-${id}]`);
+      await waitFor(`[data-testid=brief-skill-on-${id}]`);
+    }
 
     // ---- The Brand tab: the built-ins, ticked for this project ----
     await page.click("[data-testid=rail-brand]");

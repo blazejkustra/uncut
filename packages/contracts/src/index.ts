@@ -692,6 +692,11 @@ export const Brief = Schema.Struct({
   notes: Schema.optional(Schema.String),
   updatedAt: Schema.optional(Schema.String),
   by: Schema.optional(Schema.Literals(["agent", "user"])),
+  // D217: the kind of video (core VIDEO_TYPES: "launch-promo", "tutorial", "meme", …); the critic's
+  // rubric and the sound limits follow it. Absent on briefs written before D217 (judged as before).
+  type: Schema.optional(Schema.String),
+  // D217: the skills brief_write suggested for it (ids); only the ones the user picked are on.
+  skills: Schema.optional(Schema.Array(Schema.String)),
 });
 export type Brief = typeof Brief.Type;
 /** One beat of the storyboard / shot list (U9, U15): times in seconds. */
@@ -719,19 +724,28 @@ export const Storyboard = Schema.Struct({
 export type Storyboard = typeof Storyboard.Type;
 /** The critic's scores (U16), 0–10 each. */
 export const REVIEW_SCORES = ["hook", "readability", "motion", "variety", "sound", "brand"] as const;
-export const ReviewScores = Schema.Struct({ hook: Schema.Number, readability: Schema.Number, motion: Schema.Number, variety: Schema.Number, sound: Schema.Number, brand: Schema.Number });
+// D217: only the categories that apply to the video are scored (a tutorial has no hook score).
+export const ReviewScores = Schema.Struct({ hook: Schema.optional(Schema.Number), readability: Schema.optional(Schema.Number), motion: Schema.optional(Schema.Number), variety: Schema.optional(Schema.Number), sound: Schema.optional(Schema.Number), brand: Schema.optional(Schema.Number) });
 export type ReviewScores = typeof ReviewScores.Type;
 /** One review round (`<project>/reviews/review-<n>.json`). */
 export const Review = Schema.Struct({
   round: Schema.Number,
   scores: ReviewScores,
   // id: the critic's defect id (d1, d2, …: what a fix claim names in the next round, D195).
-  defects: Schema.Array(Schema.Struct({ at: Schema.Number, what: Schema.String, fix: Schema.optional(Schema.String), id: Schema.optional(Schema.String) })),
+  // D217: kind (a category or a blocker kind the rubric made a finding), source "check" (Uncut's own),
+  // rule (a check's finding family, "sound:density"), to (where a check's range ends, seconds).
+  defects: Schema.Array(Schema.Struct({ at: Schema.Number, what: Schema.String, fix: Schema.optional(Schema.String), id: Schema.optional(Schema.String), kind: Schema.optional(Schema.String), source: Schema.optional(Schema.String), rule: Schema.optional(Schema.String), to: Schema.optional(Schema.Number) })),
   notes: Schema.optional(Schema.String),
   // D195: who scored it: "critic" (a separate claude process Uncut ran) or "agent" (rounds before D195).
   by: Schema.optional(Schema.Literals(["critic", "agent"])),
   // D195: hard blockers (any one fails the round whatever the scores); source "critic" or "check" (Uncut's layout checks).
-  blockers: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String), kind: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), source: Schema.String }))),
+  blockers: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String), kind: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), source: Schema.String, rule: Schema.optional(Schema.String), to: Schema.optional(Schema.Number) }))),
+  // D217: the rubric the round was judged by: per category required, optional or na (not scored); the
+  // video type and sound profile it came from; how many findings the user marked Intended were left out.
+  rubric: Schema.optional(Schema.Record(Schema.String, Schema.Literals(["required", "optional", "na"]))),
+  videoType: Schema.optional(Schema.String),
+  soundProfile: Schema.optional(Schema.String),
+  intended: Schema.optional(Schema.Number),
   // D195: per score, the frames the critic cites ("f 0, f 45: …").
   evidence: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   // D196: the builder's fix claims and whether the critic saw each fixed on fresh frames.
@@ -748,11 +762,25 @@ export const Review = Schema.Struct({
   turnId: Schema.optional(Schema.String),
 });
 export type Review = typeof Review.Type;
+/**
+ * D217: a review finding the user marked "Intended" on the review card (`<project>/intended.json`):
+ * the critic stops raising it. kind: the finding's rule or kind ("sound:density", "hook"); from/to:
+ * the time range it covers (seconds; absent for a finding with no time).
+ */
+export const IntendedFinding = Schema.Struct({
+  kind: Schema.String,
+  what: Schema.String,
+  from: Schema.optional(Schema.Number),
+  to: Schema.optional(Schema.Number),
+  at: Schema.String,
+});
+export type IntendedFinding = typeof IntendedFinding.Type;
 /** The open project's plan as the Agent tab shows it. */
 export const AgentPlan = Schema.Struct({
   brief: Schema.optional(Brief),
   storyboard: Schema.optional(Storyboard),
   reviews: Schema.Array(Review),
+  intended: Schema.optional(Schema.Array(IntendedFinding)),
 });
 export type AgentPlan = typeof AgentPlan.Type;
 
@@ -1405,7 +1433,7 @@ const AgentApproveRpc = Rpc.make(RPC_METHODS.agentApprove, {
   success: Schema.Struct({ accepted: Schema.Boolean }),
 });
 // D188: the user edits the brief (or the storyboard) by hand; saved to the project and seen by the agent's next message.
-const AgentPlanSaveRpc = Rpc.make(RPC_METHODS.agentPlanSave, { payload: Schema.Struct({ brief: Schema.optional(Brief), storyboard: Schema.optional(Storyboard) }), success: AgentPlan, error: AgentError });
+const AgentPlanSaveRpc = Rpc.make(RPC_METHODS.agentPlanSave, { payload: Schema.Struct({ brief: Schema.optional(Brief), storyboard: Schema.optional(Storyboard), intended: Schema.optional(Schema.Array(IntendedFinding)) }), success: AgentPlan, error: AgentError });
 // D186: brand kits and skills (global and the open project's), and the project's choice.
 const BrandGetRpc = Rpc.make(RPC_METHODS.brandGet, { payload: Empty, success: BrandState, error: BrandError });
 // Saves a kit (new or changed) in its scope; returns the new state.
