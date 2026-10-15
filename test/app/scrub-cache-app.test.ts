@@ -77,52 +77,65 @@ after(async () => {
 const rng = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 
 /**
- * In the page: a recorder of what the preview presents. Video frames by rVFC (only while the scrub
- * canvas is hidden, else they're under it), canvas frames when its data-sample changes (timed at the
- * next animation frame, when it's painted); `t0` is set by the next pointerdown/keydown.
+ * In the page: a recorder of what the preview presents, as the frame on screen changes. Video frames
+ * by rVFC (while the scrub canvas is hidden, else they're under it); canvas frames when it shows or
+ * its data-sample changes (timed at the next animation frame, when it's painted); the <video>'s last
+ * presented frame when the canvas hides (it's on screen from then, without a new rVFC: a frame the
+ * <video> presented under the canvas); and what's on screen when `t0` is set by the next
+ * pointerdown/keydown (a click on the frame already shown).
  */
 async function installRecorder() {
   await page.evaluate((fps) => {
     type Ev = { at: number; late?: number; frame: number; kind: "video" | "canvas" };
     const w = window as unknown as { rec: { t0: number; events: Array<Ev> }; shownFrame: () => { frame: number; kind: string; bar: number } };
     w.rec = { t0: 0, events: [] };
-    const start = () => (w.rec = { t0: performance.now(), events: [] });
+    const canvas = () => document.querySelector<HTMLCanvasElement>("canvas[data-scrub=c1]");
+    const isUp = (c: HTMLCanvasElement | null): c is HTMLCanvasElement => !!c && c.style.visibility !== "hidden";
+    let watched: HTMLVideoElement | undefined;
+    // The watched <video>'s last presented frame (by rVFC), whether or not the canvas covered it.
+    let lastVideo: number | undefined;
+    // `at`: when it was drawn (it's presented with the next rendering step); `late`: the next
+    // animation frame after that, which overcounts by a frame when the draw ran in one already.
+    const push = (frame: number, kind: Ev["kind"]) => {
+      const ev: Ev = { at: performance.now(), late: 0, frame, kind };
+      w.rec.events.push(ev);
+      requestAnimationFrame(() => (ev.late = performance.now()));
+    };
+    const start = () => {
+      w.rec = { t0: performance.now(), events: [] };
+      const c = canvas();
+      const now = isUp(c) ? Math.round(Number(c.dataset.time) * fps) : lastVideo;
+      if (now !== undefined) w.rec.events.push({ at: w.rec.t0, late: w.rec.t0, frame: now, kind: isUp(c) ? "canvas" : "video" });
+    };
     document.addEventListener("pointerdown", start, { capture: true });
     document.addEventListener("keydown", start, { capture: true });
-    const canvas = () => document.querySelector<HTMLCanvasElement>("canvas[data-scrub=c1]");
-    let watched: HTMLVideoElement | undefined;
     const watchVideo = (v: HTMLVideoElement) => {
       const loop = () =>
         v.requestVideoFrameCallback((now, meta) => {
           if (v !== watched) return;
-          const c = canvas();
-          if (!c || c.style.visibility === "hidden") w.rec.events.push({ at: now, frame: Math.round(meta.mediaTime * fps), kind: "video" });
+          lastVideo = Math.round(meta.mediaTime * fps);
+          if (!isUp(canvas())) w.rec.events.push({ at: now, frame: lastVideo, kind: "video" });
           loop();
         });
       loop();
     };
-    let observed: HTMLCanvasElement | undefined;
-    const observer = new MutationObserver(() => {
+    // One observer over the document (a canvas made or replaced, e.g. by the proxy switch, is seen from its first draw).
+    let wasUp = false;
+    const observer = new MutationObserver((records) => {
       const c = canvas();
-      if (!c || c.style.visibility === "hidden") return;
-      const frame = Math.round(Number(c.dataset.time) * fps);
-      // `at`: when it was drawn (it's presented with the next rendering step); `late`: the next
-      // animation frame after that, which overcounts by a frame when the draw ran in one already.
-      const ev = { at: performance.now(), late: 0, frame, kind: "canvas" as const };
-      w.rec.events.push(ev);
-      requestAnimationFrame(() => (ev.late = performance.now()));
+      if (!c || !records.some((r) => r.target === c)) return;
+      const up = isUp(c);
+      if (up) push(Math.round(Number(c.dataset.time) * fps), "canvas");
+      else if (wasUp && lastVideo !== undefined) push(lastVideo, "video");
+      wasUp = up;
     });
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-sample", "style"] });
     const attach = () => {
       const v = document.querySelector<HTMLVideoElement>("video[data-item=c1]");
       if (v && v !== watched) {
         watched = v;
+        lastVideo = undefined;
         watchVideo(v);
-      }
-      const c = canvas();
-      if (c && c !== observed) {
-        observed = c;
-        observer.disconnect();
-        observer.observe(c, { attributes: true, attributeFilter: ["data-sample", "style"] });
       }
       setTimeout(attach, 30);
     };
@@ -367,7 +380,7 @@ test("D221: scrubbing shows the exact frame, faster from the frame cache than <v
     const src = (await cacheStats()).sources.find((x) => x.url.includes(`m-col${k}`));
     console.log(`# D221 colours ${["untagged SD", "untagged HD", "full range"][k]}: canvas ${JSON.stringify(colours.canvas)}, <video> ${JSON.stringify(colours.video)}; decoded as ${src?.colour} from ${src?.colourIn}`);
     for (let q = 0; q < 4; q++) for (let ch = 0; ch < 3; ch++) assert.ok(Math.abs(colours.canvas[q]![ch]! - colours.video[q]![ch]!) <= 3, `${id} quadrant ${q} channel ${ch}: ${colours.canvas[q]} vs ${colours.video[q]}`);
-    // On screen: the canvas (with its tone filter) and the <video> show the grey quadrant alike.
+    // On screen: the canvas and the <video> (through the inverse of its lift when macOS lifts it, D222) show the grey quadrant alike.
     const onScreen = await frameShot(`tone-${k}-canvas`);
     await page.evaluate(() => (globalThis as unknown as { __uncutScrub: { keep: (on: boolean) => void } }).__uncutScrub.keep(false));
     await page.waitForFunction((i) => document.querySelector<HTMLCanvasElement>(`canvas[data-scrub=${i}]`)?.style.visibility === "hidden", { timeout: 5000 }, id);
