@@ -12,7 +12,18 @@ import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverl
 import { FxRenderer } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
-import { type MediaEl, type ScrubView, type PictureEl, pictureReady, FX_POOL, setStyle, px, previewSrc, wanted, reachable, SCRUB_SETTLE_MS, renderTimes } from "./media.ts";
+import { type MediaEl, type ScrubView, type PictureEl, pictureReady, FX_POOL, FX_CONTEXTS, setStyle, px, previewSrc, wanted, reachable, SCRUB_SETTLE_MS, renderTimes, previewStats, playSeek } from "./media.ts";
+
+/**
+ * Issue #55: a clip's effects drawn by the shared renderer (past FX_CONTEXTS), copied into its own
+ * 2D canvas; `sig` is what it holds (the same frame again isn't drawn twice).
+ */
+interface FxCopy {
+  readonly canvas: HTMLCanvasElement;
+  readonly ctx: CanvasRenderingContext2D;
+  sig: string;
+  drawn: boolean;
+}
 
 /** The compositor's state and per-layer helpers; Compositor (Compositor.ts) draws a frame with them. */
 export abstract class CompositorBase {
@@ -33,6 +44,9 @@ export abstract class CompositorBase {
   protected readonly fxCanvas = new Map<string, FxRenderer>();
   protected readonly fxOverlay = new Map<string, { el: HTMLDivElement; html: string }>();
   protected readonly fxPool: Array<FxRenderer> = [];
+  // Issue #55: clips past FX_CONTEXTS: one renderer for all of them, a 2D canvas each.
+  protected readonly fxCopies = new Map<string, FxCopy>();
+  protected fxShared: FxRenderer | undefined;
   protected fxBroken = false;
   // Shader effects (D213): a WebGPU canvas per clip that has one, and the "not drawn here" badges.
   protected readonly shaderCanvas = new Map<string, ShaderCanvas>();
@@ -40,7 +54,8 @@ export abstract class CompositorBase {
   protected readonly shaderBadge = new Map<string, HTMLDivElement>();
   protected readonly offRunner: () => void;
   protected graphicSeq = 0;
-  protected textKey = "";
+  // Issue #55: each text's element and the HTML it was made from.
+  protected readonly texts = new Map<string, { el: HTMLElement; html: string }>();
   // The text being edited in place: hidden while the editor sits over it.
   protected editing: string | undefined;
   protected readonly unsubscribe: () => void;
@@ -74,6 +89,7 @@ export abstract class CompositorBase {
     this.offRunner = whenRunner(() => this.render());
     playback.setFollower((f) => this.follow(f));
     setCurrentMix(this.mix);
+    previewStats.compositors++;
   }
 
   destroy() {
@@ -83,6 +99,8 @@ export abstract class CompositorBase {
     playback.setFollower(undefined);
     for (const id of [...this.els.keys()]) this.drop(id);
     for (const r of this.fxPool.splice(0)) r.dispose();
+    this.fxShared?.dispose();
+    this.fxShared = undefined;
     for (const el of this.solids.values()) el.remove();
     this.solids.clear();
     this.clearOverlays();
@@ -139,7 +157,7 @@ export abstract class CompositorBase {
   /** A clip's effects canvas and overlay off the canvas (its picture element shown again). */
   protected dropFx(id: string) {
     this.dropShader(id);
-    if (this.fxCanvas.has(id)) {
+    if (this.fxCanvas.has(id) || this.fxCopies.has(id)) {
       this.releaseFx(id);
       const el = this.els.get(id);
       if (el) el.style.visibility = "";
@@ -150,7 +168,7 @@ export abstract class CompositorBase {
 
   /** Whether a clip's picture is drawn by a canvas of ours (effects D136, a shader D213, the GPU compositor D221): a new frame needs a render. */
   protected drawsPicture(id: string) {
-    return this.fxCanvas.has(id) || this.shaderCanvas.has(id) || this.onGpu.has(id);
+    return this.fxCanvas.has(id) || this.fxCopies.has(id) || this.shaderCanvas.has(id) || this.onGpu.has(id);
   }
 
   /** A clip's shader canvas and badge off the canvas. */
@@ -216,13 +234,48 @@ export abstract class CompositorBase {
 
   /** A clip's effects canvas off the canvas, its renderer kept for the next clip (a few: a context and shaders each). */
   protected releaseFx(id: string) {
+    const copy = this.fxCopies.get(id);
+    if (copy) {
+      this.fxCopies.delete(id);
+      copy.canvas.remove();
+      return;
+    }
     const r = this.fxCanvas.get(id)!;
     this.fxCanvas.delete(id);
     r.canvas.remove();
     r.onRestored = undefined;
     r.canvas.style.filter = "";
-    if (this.fxPool.length < FX_POOL && !r.lost) this.fxPool.push(r);
+    if (this.fxPool.length < FX_POOL && this.fxCanvas.size + this.fxPool.length < FX_CONTEXTS && !r.lost) this.fxPool.push(r);
     else r.dispose();
+  }
+
+  /** Issue #55: a renderer of the preview's own (one WebGL context); a lost one counts for the tests and draws again when it's back. */
+  protected newFxRenderer(): FxRenderer {
+    const r = new FxRenderer();
+    r.canvas.addEventListener("webglcontextlost", () => previewStats.fxLost++);
+    return r;
+  }
+
+  /**
+   * Issue #55: a clip past FX_CONTEXTS: its effects drawn by the one shared renderer, then copied
+   * into the clip's 2D canvas (the Effects panel's thumbnails do the same). The copy keeps the last
+   * picture, so a paused clip whose frame hasn't changed isn't drawn again.
+   */
+  protected drawShared(copy: FxCopy, source: PictureEl, fx: ClipFx, w: number, h: number, t: number, key: string | undefined): boolean {
+    const r = this.fxShared;
+    if (!r || r.lost) return false;
+    const frame = source instanceof HTMLVideoElement ? `v${source.currentTime}` : source instanceof HTMLImageElement ? `i${source.currentSrc}` : undefined;
+    const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${fx.shake ? t : ""}` : "";
+    if (sig && sig === copy.sig && copy.drawn) return true;
+    if (!r.render(source, fx, w, h, t, 1)) return false;
+    const c = copy.canvas;
+    if (c.width !== w) c.width = w;
+    if (c.height !== h) c.height = h;
+    copy.ctx.globalCompositeOperation = "copy";
+    copy.ctx.drawImage(r.canvas, 0, 0);
+    copy.sig = sig;
+    copy.drawn = true;
+    return true;
   }
 
   /** A clip's compiled effects (D136), remade only when its effects change. */
@@ -263,35 +316,54 @@ export abstract class CompositorBase {
     }
     if (picture && fx) {
       let r = this.fxCanvas.get(item.id);
-      if (!r) {
+      let copy = this.fxCopies.get(item.id);
+      if (!r && !copy) {
         try {
-          r = this.fxPool.pop() ?? new FxRenderer();
+          // Issue #55: a context of its own while there are few; past FX_CONTEXTS the shared one.
+          if (this.fxPool.length || this.fxCanvas.size + this.fxPool.length < FX_CONTEXTS) {
+            r = this.fxPool.pop() ?? this.newFxRenderer();
+            r.canvas.className = "pv-fx-canvas";
+            r.canvas.dataset.fx = item.id;
+            r.onRestored = () => this.render();
+            r.drawn = false;
+            this.fxCanvas.set(item.id, r);
+            el.after(r.canvas);
+          } else {
+            const canvas = document.createElement("canvas");
+            canvas.className = "pv-fx-canvas";
+            canvas.dataset.fx = item.id;
+            canvas.dataset.fxShared = "";
+            canvas.style.visibility = "hidden";
+            if (!this.fxShared) {
+              this.fxShared = this.newFxRenderer();
+              this.fxShared.onRestored = () => this.render();
+            }
+            copy = { canvas, ctx: canvas.getContext("2d")!, sig: "", drawn: false };
+            this.fxCopies.set(item.id, copy);
+            el.after(canvas);
+          }
         } catch {
           this.fxBroken = true;
           return this.drawFx(item, el, wrap, box, opacity, frame, fps, start);
         }
-        r.canvas.className = "pv-fx-canvas";
-        r.canvas.dataset.fx = item.id;
-        r.onRestored = () => this.render();
-        r.drawn = false;
-        this.fxCanvas.set(item.id, r);
-        el.after(r.canvas);
       }
-      const c = r.canvas;
+      const c = r ? r.canvas : copy!.canvas;
       setStyle(c, "left", el.style.left);
       setStyle(c, "top", el.style.top);
       setStyle(c, "width", el.style.width);
       setStyle(c, "height", el.style.height);
       c.style.opacity = el.style.opacity;
       const size = fxPictureSize(box, media?.probe);
-      const ok = pictureReady(el) && r.render(shaded ?? el, fx, size.w, size.h, (Math.floor(frame) - start) / fps, 1, shaded ? undefined : this.fxOf.get(item.id)?.key);
+      const t = (Math.floor(frame) - start) / fps;
+      const key = shaded ? undefined : this.fxOf.get(item.id)?.key;
+      const ok = pictureReady(el) && (r ? r.render(shaded ?? el, fx, size.w, size.h, t, 1, key) : this.drawShared(copy!, shaded ?? el, fx, size.w, size.h, t, key));
       // Until the canvas has a picture (loading, a lost context, a source it can't read) the plain picture shows.
-      const drawn = ok || (r.drawn && !r.lost);
+      const drawn = ok || (r ? r.drawn && !r.lost : copy!.drawn && !this.fxShared?.lost);
       el.style.visibility = drawn || shaded ? "hidden" : "";
       c.style.visibility = drawn ? "" : "hidden";
       if (shaded) shaded.style.visibility = drawn ? "hidden" : "";
       if (drawn) shown = c;
-    } else if (this.fxCanvas.has(item.id)) {
+    } else if (this.fxCanvas.has(item.id) || this.fxCopies.has(item.id)) {
       this.releaseFx(item.id);
       el.style.visibility = shaded ? "hidden" : "";
     }
@@ -356,6 +428,9 @@ export abstract class CompositorBase {
       video.playsInline = true;
       video.preload = "auto";
       video.addEventListener("seeked", () => {
+        // Issue #55: a drift seek while playing has landed: how long it took aims the next one.
+        const ps = playSeek.get(video);
+        if (ps?.from !== undefined) playSeek.set(video, { at: ps.at, lead: Math.min(0.5, (performance.now() - ps.from) / 1000) });
         // The target was set before the length was known: clamp it now, then chase it once more.
         const want = wanted.has(video) ? reachable(video, wanted.get(video)!) : undefined;
         if (want !== undefined && Math.abs(video.currentTime - want) > 0.004) {
