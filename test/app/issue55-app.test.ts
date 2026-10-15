@@ -40,6 +40,8 @@ let root = "";
 let dir = "";
 let app: LaunchedApp | undefined;
 let page: Page;
+/** What the test is doing (failed requests are counted by it). */
+let phase = "open";
 const layers: Array<GlitchLayer> = [];
 const small = new Set<string>();
 const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
@@ -74,7 +76,7 @@ before(async () => {
     kind: "text",
     name: `Text ${k + 1}`,
     items: Array.from({ length: (3 * SEG) / TEXT_LEN }, (_, j) => ({
-      id: `x${k}_${j}`,
+      id: `x${k}-${j}`,
       type: "text",
       start: j * TEXT_LEN,
       duration: TEXT_LEN,
@@ -150,6 +152,7 @@ function report(label: string, r: Awaited<ReturnType<typeof stopGlitchProbe>>, l
 }
 
 async function play(label: string, from: number, ms: number) {
+  phase = label;
   await clickAt(from);
   await ready();
   await sleep(500);
@@ -172,6 +175,16 @@ async function play(label: string, from: number, ms: number) {
 test("issue #55: 20 video overlays and ~20 animated texts play and scrub without glitches", { skip, timeout: 600000 }, async () => {
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   page = app.page;
+  // Requests the page couldn't make, by route (the app's own errors only say "Failed to load resource").
+  const failed = new Map<string, number>();
+  page.on("request", (r) => {
+    const key = `${phase}: requests ${new URL(r.url()).pathname.split("/").slice(0, 3).join("/")}`;
+    failed.set(key, (failed.get(key) ?? 0) + 1);
+  });
+  page.on("requestfailed", (r) => {
+    const key = `${phase}: ${(r.failure()?.errorText ?? "?").replace("net::ERR_", "").toLowerCase()} ${new URL(r.url()).pathname.split("/").slice(0, 3).join("/")}`;
+    failed.set(key, (failed.get(key) ?? 0) + 1);
+  });
   await waitForWelcome(page);
   await page.click("[data-testid=open-project]");
   await waitFor("[data-testid=editor]");
@@ -190,6 +203,7 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
   runs["play B→C"] = await play("play across B→C (20 overlays with effects)", 2 * SEG - 45, 4000);
 
   // Scrubbing: arrow steps in C (every effects layer), then ruler clicks over all three parts.
+  phase = "scrub steps";
   await clickAt(2 * SEG + 60);
   await ready();
   await sleep(500);
@@ -198,6 +212,7 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
     await page.keyboard.press(i < 20 ? "ArrowRight" : "ArrowLeft");
     await sleep(70);
   }
+  phase = "scrub clicks";
   const random = rng(55);
   for (let i = 0; i < 8; i++) {
     await clickAt(30 + Math.floor(random() * (3 * SEG - 60)));
@@ -216,6 +231,7 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
   assert.deepEqual(missing, [], "every layer is drawn once the playhead rests");
   assert.deepEqual(off, [], "every video shows the playhead's frame once it rests");
 
+  console.log(`# issue55 failed requests ${JSON.stringify(Object.fromEntries(failed))}`);
   const stats = scrub.stats;
   console.log(`# issue55 results ${JSON.stringify(Object.fromEntries(Object.entries(runs).map(([k, v]) => [k, { ...v, details: v.details.length }])))}`);
   assert.equal(stats?.compositors, 1, "the preview's compositor was made once (no re-mount)");

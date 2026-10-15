@@ -9,7 +9,7 @@ import { ScrubCache, liftsTone } from "../scrub.ts";
 import { VIDEO_UNTONE_FILTER, ensureUntoneFilter } from "../tone.ts";
 import { GpuCompositor, plainColour } from "../gpu.ts";
 import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverlay, fxOverlayInner, visibleRect } from "@uncut/core/fx";
-import { FxRenderer } from "../fx.ts";
+import { FxRenderer, frameKeyOf, presentedFrames } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
 import { type MediaEl, type ScrubView, type PictureEl, pictureReady, FX_POOL, FX_CONTEXTS, setStyle, px, previewSrc, wanted, reachable, SCRUB_SETTLE_MS, renderTimes, previewStats, playSeek } from "./media.ts";
@@ -49,6 +49,8 @@ export abstract class CompositorBase {
   protected fxShared: FxRenderer | undefined;
   // Issue #55: clips about to start whose effects programs have been compiled ahead.
   protected readonly fxWarmed = new Set<string>();
+  // How many clips' effects may still be warmed up in this render (one a frame: a compile blocks it).
+  protected warmBudget = 0;
   protected fxBroken = false;
   // Shader effects (D213): a WebGPU canvas per clip that has one, and the "not drawn here" badges.
   protected readonly shaderCanvas = new Map<string, ShaderCanvas>();
@@ -75,6 +77,8 @@ export abstract class CompositorBase {
   protected settleTimer = 0;
   // The clips whose scrub canvas this render placed (any other one is hidden).
   protected readonly scrubbed = new Set<string>();
+  // Issue #55: the files whose decode this render has aimed (one clip each; see scrubPicture).
+  protected readonly scrubAimed = new Set<object>();
   // D221: the GPU compositor (behind its setting), made on first use; broken when WebGL2 isn't there.
   protected gpu: GpuCompositor | undefined;
   protected gpuBroken = false;
@@ -254,7 +258,7 @@ export abstract class CompositorBase {
   /** Issue #55: a renderer of the preview's own (one WebGL context); a lost one counts for the tests and draws again when it's back. */
   protected newFxRenderer(): FxRenderer {
     const r = new FxRenderer();
-    r.canvas.addEventListener("webglcontextlost", () => previewStats.fxLost++);
+    r.canvas.addEventListener("webglcontextlost", () => !r.disposed && previewStats.fxLost++);
     return r;
   }
 
@@ -264,11 +268,12 @@ export abstract class CompositorBase {
    * a cut took several), pooled for the clip to take; past FX_CONTEXTS the shared one compiles them.
    */
   protected warmFx(item: Item) {
-    if (this.fxBroken || this.fxWarmed.has(item.id)) return;
+    if (this.fxBroken || this.fxWarmed.has(item.id) || this.warmBudget <= 0) return;
     const media = this.project?.media.find((m) => m.id === item.media);
     const fx = fxSkips(media) ? undefined : this.effectsOf(item);
     if (!fx || !needsPicturePass(fx)) return;
     this.fxWarmed.add(item.id);
+    this.warmBudget--;
     try {
       for (const r of this.fxPool) r.warm(fx);
       if (this.fxCanvas.size + this.fxPool.length < FX_CONTEXTS) {
@@ -295,7 +300,7 @@ export abstract class CompositorBase {
   protected drawShared(copy: FxCopy, source: PictureEl, fx: ClipFx, w: number, h: number, t: number, key: string | undefined): boolean {
     const r = this.fxShared;
     if (!r || r.lost) return false;
-    const frame = source instanceof HTMLVideoElement ? `v${source.currentTime}` : source instanceof HTMLImageElement ? `i${source.currentSrc}` : undefined;
+    const frame = frameKeyOf(source);
     const sig = key !== undefined && frame !== undefined ? `${key}|${frame}|${w}x${h}|${fx.shake ? t : ""}` : "";
     if (sig && sig === copy.sig && copy.drawn) return true;
     if (!r.render(source, fx, w, h, t, 1)) return false;
@@ -473,6 +478,15 @@ export abstract class CompositorBase {
         if (this.drawsPicture(item.id) || this.scrubViews.get(item.id)?.shown) this.render();
       });
       video.addEventListener("loadeddata", () => this.drawsPicture(item.id) && this.render());
+      // Issue #55: count presented frames (effects redraw per new frame); a paused clip's new frame draws.
+      presentedFrames.set(video, 0);
+      const onFrame = () => {
+        if (!video.isConnected && this.els.get(video.dataset.item ?? "") !== video) return;
+        presentedFrames.set(video, (presentedFrames.get(video) ?? 0) + 1);
+        if (video.paused && this.drawsPicture(video.dataset.item ?? "")) this.render();
+        video.requestVideoFrameCallback(onFrame);
+      };
+      video.requestVideoFrameCallback(onFrame);
       // D222: its size is known now (whether macOS lifts it, until the scrub cache reads its colours).
       video.addEventListener("loadedmetadata", () => this.render());
       el = video;
@@ -540,7 +554,14 @@ export abstract class CompositorBase {
       view.movedAt = now;
     }
     const resting = now - view.movedAt >= SCRUB_SETTLE_MS;
-    if (!playing) src.want(t, dir);
+    // Issue #55: one decode per file, aimed by the first clip of it in a render. Several clips of one
+    // file at other times each re-aimed it (an abort and a fresh read per clip per render: 20 clips
+    // made thousands of range requests a second and Chromium refused them); the others show their
+    // cached frame when there is one, else their <video> as with the cache off.
+    if (!playing && !this.scrubAimed.has(src)) {
+      this.scrubAimed.add(src);
+      src.want(t, dir);
+    }
     const hit = src.frame(t);
     const key = hit ? `${src.id}|${hit.sample}` : "";
     // The canvas only covers the time the <video> takes to get to the frame: once it's there, it shows
