@@ -126,6 +126,38 @@ test("D213: the shader plugins and the shader template pass, their WGSL is what 
   assert.deepEqual(checkPluginFolder(SHADER_TEMPLATE_DIR, await gateContext(), { template: true, templateId: SHADER_TEMPLATE_ID }), []);
 });
 
+test("D219: plugin:check's child reads only what resolving needs, and has no network or process.getBuiltinModule", async () => {
+  const { checkPluginShaders, childReadable } = await import("../../scripts/plugin-shaders.ts");
+  const { pluginNew } = await import("../../scripts/plugin-new.ts");
+  const repo = realpathSync(REPO);
+  const readable = childReadable();
+  // Not the repo (its .git/config holds the checkout's credentials), not apps/ or scripts/ as a whole.
+  for (const p of readable) {
+    assert.notEqual(p, repo);
+    for (const off of [join(repo, ".git", "config"), join(repo, "apps", "server", "src", "app", "pairing.ts"), join(repo, "scripts", "plugin-gate.ts")]) assert.ok(!off.startsWith(`${p}/`) && off !== p, `${p} opens ${off}`);
+  }
+  assert.ok(readable.some((p) => /node_modules\/\.pnpm\/typegpu@/.test(p)), "TypeGPU itself is readable");
+  // The workflow that runs plugin:check on a contributor's pull request leaves no token in .git/config.
+  assert.match(readFileSync(join(repo, ".github", "workflows", "plugins.yml"), "utf8"), /uses: actions\/checkout@v4\n\s+with:\n(?:\s+.*\n)*?\s+persist-credentials: false/);
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-shader-jail-")));
+  try {
+    const dir = pluginNew(["acme.jail", "--shader", "--plugins", join(root, "plugins")]).dir;
+    const source = join(dir, "effect.ts");
+    const original = readFileSync(source, "utf8");
+    // fetch, WebSocket and EventSource are gone: the effect still resolves.
+    writeFileSync(source, `if (typeof fetch !== "undefined" || typeof WebSocket !== "undefined" || typeof EventSource !== "undefined") throw new Error("the network is reachable");\n${original}`);
+    assert.deepEqual(checkPluginShaders(dir), []);
+    // No Node module past the resolve hook: process.getBuiltinModule is gone.
+    writeFileSync(source, `(process as unknown as { getBuiltinModule: (m: string) => unknown }).getBuiltinModule("node:child_process");\n${original}`);
+    assert.match(checkPluginShaders(dir).join("\n"), /importing it failed: .*getBuiltinModule is not a function/);
+    // A file of the repo outside the list can't be read (a dynamic import of the gate script).
+    writeFileSync(source, `await import(${JSON.stringify(join(repo, "scripts", "plugin-gate.ts"))});\n${original}`);
+    assert.match(checkPluginShaders(dir).join("\n"), /importing it failed: .*(only typegpu|restricted|ERR_ACCESS_DENIED)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("D213: the gate and plugin:check catch a shader plugin's mistakes; --write fixes a stale wgsl; plugin:new --shader passes", async () => {
   const { checkPluginShaders } = await import("../../scripts/plugin-shaders.ts");
   const { pluginNew } = await import("../../scripts/plugin-new.ts");

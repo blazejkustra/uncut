@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { formatWait, onRateLimit, resultError, resultFailed, signedOutMessage, turnLimits } from "../../apps/server/src/agent/agentLimits.ts";
-import { claudeEnv } from "../../apps/server/src/app/shellEnv.ts";
+import { agentEnv, claudeEnv, pluginEnv } from "../../apps/server/src/app/shellEnv.ts";
 import { sessionArgs, sessionEnv } from "../../apps/server/src/agent/agent.ts";
 import { criticArgs } from "../../apps/server/src/agent/agentCritic.ts";
 
@@ -70,10 +70,20 @@ test("claudeEnv: no keys, no inherited entrypoint or SDK identity, Node switches
     { HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", ANTHROPIC_API_KEY: "k", ANTHROPIC_AUTH_TOKEN: "t", CLAUDE_CODE_OAUTH_TOKEN: "o", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDECODE: "1", CLAUDE_AGENT_SDK_VERSION: "0.3.276", CLAUDE_AGENT_SDK_CLIENT_APP: "x/1", NODE_OPTIONS: "--inspect", DEBUG: "*" },
     "1.2.3",
   );
-  assert.deepEqual(env, { HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", CLAUDE_AGENT_SDK_CLIENT_APP: "uncut/1.2.3" });
+  // D219: the setup-token login (CLAUDE_CODE_OAUTH_TOKEN) is the user's subscription and goes to claude.
+  assert.deepEqual(env, { HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", CLAUDE_CODE_OAUTH_TOKEN: "o", CLAUDE_AGENT_SDK_CLIENT_APP: "uncut/1.2.3" });
+  // ...and to no other process Uncut starts.
+  assert.equal(agentEnv({ CLAUDE_CODE_OAUTH_TOKEN: "o" }).CLAUDE_CODE_OAUTH_TOKEN, undefined);
+  assert.equal(pluginEnv({ CLAUDE_CODE_OAUTH_TOKEN: "o" }).CLAUDE_CODE_OAUTH_TOKEN, undefined);
   const session = sessionEnv({ HOME: "/h", CLAUDE_CODE_ENTRYPOINT: "cli" });
   assert.equal(session.CLAUDE_CODE_ENTRYPOINT, undefined);
   assert.match(session.CLAUDE_AGENT_SDK_CLIENT_APP!, /^uncut\//);
+});
+
+test("D219 argv: the session's --settings keep Uncut's data folder out", () => {
+  const argv = sessionArgs({ cfg: "/tmp/m.json", dataDir: "/Users/me/Library/Application Support/Uncut" });
+  const deny = JSON.parse(argv[argv.indexOf("--settings") + 1]!).permissions.deny as Array<string>;
+  assert.ok(deny.includes("Edit(//Users/me/Library/Application Support/Uncut/**)") && deny.includes("Read(//Users/me/Library/Application Support/Uncut/server-token)") && deny.includes("Bash(*Application Support*)"));
 });
 
 test("argv: the user's claude in print mode, no API key or entrypoint flags; thinking as the SDK passes it", () => {

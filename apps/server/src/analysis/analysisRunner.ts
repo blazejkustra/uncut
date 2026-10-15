@@ -3,6 +3,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
 import { withoutApiKey } from "../app/shellEnv.ts";
+import { localInputs } from "../media/localInputs.ts";
 
 /**
  * ffmpeg's input and output arguments for the first audio stream of `path` as mono 16-bit PCM at
@@ -66,7 +67,7 @@ const lineSplitter = (onLine: ((line: string) => void) | undefined) => {
 export const spawnRunner: Runner = (bin, args, { signal, onStdout, onStdoutData, onStderr, timeoutMs }) =>
   new Promise((resolvePromise, reject) => {
     if (signal.aborted) return reject(new Cancelled());
-    const child = spawn(bin, [...args], { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(bin, localInputs(bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "pipe"] });
     children.add(child);
     const out = lineSplitter(onStdout);
     const err = lineSplitter(onStderr);

@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { shaderFrameBytes, shaderModuleCode, shaderParamBytes, shaderTime, type ShaderUse } from "@uncut/core";
 import { shaderSourceArgs, type CommandOptions, type ExportPlan, type VisualLayer } from "./exportPlan.ts";
 import type { Rasterizer } from "./rasterizer.ts";
+import { localInputs } from "../media/localInputs.ts";
 
 /** The layers with a shader effect, in plan order. */
 export const shadedLayers = (plan: Pick<ExportPlan, "visuals">) => plan.visuals.filter((l) => (l.kind === "video" || l.kind === "image") && !!l.fx?.shader);
@@ -43,7 +44,7 @@ interface Spawned {
 }
 
 function start(bin: string, args: ReadonlyArray<string>, stdin: "ignore" | "pipe"): Spawned {
-  const child = spawn(bin, [...args], { stdio: [stdin, "pipe", "pipe"] });
+  const child = spawn(bin, localInputs(bin, args), { stdio: [stdin, "pipe", "pipe"] });
   const s: Spawned = {
     child,
     stderr: "",

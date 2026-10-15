@@ -347,6 +347,9 @@ test("review: replies can't point Uncut at this Mac or its network (https only, 
   assert.equal(urlProblem(new URL(`${base}/x`), true), undefined);
   for (const ip of ["8.8.8.8", "2606:4700::1111"]) assert.equal(isPublicAddress(ip), true, ip);
   for (const ip of ["127.0.0.1", "10.1.2.3", "169.254.169.254", "::1", "fd12::1", "::ffff:10.0.0.1", "not-an-ip"]) assert.equal(isPublicAddress(ip), false, ip);
+  // D219: IPv4-compatible (::/96), mapped in hex, 6to4, site-local and local-use NAT64 addresses.
+  for (const ip of ["::", "::7f00:1", "::a00:1", "::ffff:7f00:1", "2002:7f00:1::1", "2002:a9fe:a9fe::1", "fec0::1", "64:ff9b:1::a00:1"]) assert.equal(isPublicAddress(ip), false, ip);
+  for (const ip of ["2a00:1450:4001::200e", "::ffff:5db8:d822"]) assert.equal(isPublicAddress(ip), true, ip);
   // Outside tests a name that resolves to this Mac is refused at connect time (the checked lookup).
   const port = new URL(base).port;
   await assert.rejects(getOnce(new URL(`https://localhost:${port}/files/x.mp3`), {}, new AbortController().signal, false), (e: NodeJS.ErrnoException) => e.code === "EPRIVATE");

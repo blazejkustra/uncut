@@ -22,6 +22,7 @@ import { Exporter } from "../export/exporter.ts";
 import { Projects } from "../project/projects.ts";
 import { posterKey } from "./media.ts";
 import { runProbe } from "./probe.ts";
+import { localInputs } from "./localInputs.ts";
 
 export const proxyDir = (projectDir: string) => join(projectDir, ".cache", "proxies");
 export const proxyName = (id: string, key: string) => `${id}--${key}.mp4`;
@@ -288,7 +289,7 @@ export class ProxyQueue {
     const attempt = (encoder: "hardware" | "software") =>
       new Promise<boolean>((resolveRun) => {
         if (run.cancelled) return resolveRun(false);
-        const child = spawn(ffmpeg, proxyArgs(task.path, part, encoder), { stdio: ["ignore", "pipe", "pipe"], env: withoutApiKey(process.env) });
+        const child = spawn(ffmpeg, localInputs(ffmpeg, proxyArgs(task.path, part, encoder)), { stdio: ["ignore", "pipe", "pipe"], env: withoutApiKey(process.env) });
         run.child = child;
         let last = 0;
         child.stdout.setEncoding("utf8");
