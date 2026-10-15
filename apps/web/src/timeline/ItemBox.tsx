@@ -14,6 +14,7 @@ import { actions, getState, projectOf, thumbUrl } from "../state/store.ts";
 import { keyFrames } from "./clip.ts";
 import { draftOf, findItem, visibleBeats } from "./edit.ts";
 import { ItemWaveform } from "./Waveform.tsx";
+import { ClipFilmstrip } from "./Filmstrip.tsx";
 import { RenameField } from "./RenameField.tsx";
 
 // A press has to move this far before it becomes a drag (a click only selects).
@@ -92,7 +93,12 @@ export function ItemBox({
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
-      {poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />}
+      {/* Issue #53: a video clip's frames across its time; stills (and other items) keep the poster. */}
+      {item.type === "clip" && media?.kind === "video" ? (
+        <ClipFilmstrip item={item} media={media} fps={project.canvas.fps} duration={duration} ppf={ppf} poster={poster} />
+      ) : (
+        poster && <div className="strip" style={{ backgroundImage: `url("${poster}")` }} />
+      )}
       {cards && (
         <div className="caption-cards" data-testid="caption-cards" data-count={cards.length}>
           {cards.map((c) => (
