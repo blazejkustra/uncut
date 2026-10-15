@@ -2,13 +2,16 @@
 // with `--permission-prompt-tool stdio` (the SDK's canUseTool): every built-in call claude would
 // ask about reaches Uncut as a can_use_tool control request, and this decides it. Uncut's own MCP
 // tools never come here (--allowedTools mcp__uncut; agent.ts `allowed` gates them).
+// D214: Auto runs claude with `--permission-mode auto` (Claude Code's own classifier approves routine
+// calls, like t3code's Auto); what still reaches Uncut there is decided by the same rules as
+// Edit freely was, and the auto-only --settings rules below send every file and web call here.
 import { homedir } from "node:os";
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { expandHome } from "../paths.ts";
 
-export type Access = "look" | "ask" | "edit";
+export type Access = "look" | "ask" | "auto";
 
 export type Decision =
   | { readonly kind: "allow" }
@@ -16,6 +19,12 @@ export type Decision =
   // A card: `title` ("Run a command"), `target` (the command or path), `grant`: the key "Always for
   // this session" remembers (undefined: it can't be granted, a destructive command always asks).
   | { readonly kind: "ask"; readonly title: string; readonly target: string; readonly why?: string; readonly grant?: string };
+
+/** D214: the composer's names for the access modes (on cards' refusals and in the agent's context). */
+export const ACCESS_NAME: Record<Access, string> = { look: "Look only", ask: "Ask first", auto: "Auto" };
+
+/** D214: claude's --permission-mode per access: Auto is Claude Code's own auto mode; the others ask Uncut. */
+export const permissionMode = (access: Access): "auto" | "default" => (access === "auto" ? "auto" : "default");
 
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
@@ -265,13 +274,16 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   const project = ctx.project;
   const zone = (r: string): Zone =>
     inside(r, join(project, ".cache")) ? "cache" : inside(r, project) ? "project" : ctx.roots.some((d) => r !== d && inside(r, d)) ? "root" : "outside";
-  const mode = ctx.access === "look" ? "Look only" : ctx.access === "ask" ? "Ask before big changes" : "Edit freely";
+  const mode = ACCESS_NAME[ctx.access];
+  // D214 (user): the web taint (after WebSearch/WebFetch, confirmed folders and every command ask)
+  // is Ask first's and Look only's; in Auto, Claude Code's auto mode handles those actions.
+  const webUsed = ctx.webUsed === true && ctx.access !== "auto";
   // A path in a folder the user pasted but hasn't confirmed: the card offers to use it for this chat.
   const candidateOf = (r: string) => (ctx.candidates ?? []).find((d) => r !== d && inside(r, d) && !ctx.roots.includes(d));
   const outsideCard = (title: string, r: string, grant: string | undefined): Decision => {
     const cand = candidateOf(r);
     if (cand) return { kind: "ask", title: "Use a folder you mentioned", target: shownPath(cand, project, home), why: `${title}: ${shownPath(r, project, home)}. Always lets this chat read files in that folder (writing there still asks).`, grant: `Root:${cand}` };
-    return { kind: "ask", title, target: shownPath(r, project, home), why: ctx.webUsed ? "It's outside the project, and this turn has read the web." : "It's outside the project folder.", ...(grant ? { grant } : {}) };
+    return { kind: "ask", title, target: shownPath(r, project, home), why: webUsed ? "It's outside the project, and this turn has read the web." : "It's outside the project folder.", ...(grant ? { grant } : {}) };
   };
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
@@ -310,7 +322,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       const r = raw === p || raw === "." ? real(raw) : real(raw, base);
       const z = zone(r);
       if (z === "cache" || z === "project") continue;
-      if (z === "root" && !ctx.webUsed) continue;
+      if (z === "root" && !webUsed) continue;
       if (ctx.grants.has(`Read:${r}`)) continue;
       return outsideCard(tool === "Read" ? "Read a file" : "Look in a folder", r, `Read:${r}`);
     }
@@ -328,7 +340,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const title = tool === "Write" ? "Write a file" : "Edit a file";
     // "Always" covers this exact file, and only inside the project.
     if (z === "project") {
-      if (ctx.access === "edit") return { kind: "allow" };
+      if (ctx.access === "auto") return { kind: "allow" };
       if (ctx.grants.has(`Write:${r}`)) return { kind: "allow" };
       return { kind: "ask", title, target: shownPath(r, project, home), grant: `Write:${r}` };
     }
@@ -355,7 +367,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (name.includes("/") || WRAPPERS.has(name)) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `It runs ${name.includes("/") ? "a program by its path" : name}, which can do anything.` };
     if (hint) return { kind: "ask", title: "Run a command", target, why: `It ${hint}.` };
     const grant = `Bash:${command.trim()}`;
-    const fine = ctx.access === "edit" && !ctx.webUsed && allowlisted(name, args, (a) => real(a), project);
+    const fine = ctx.access === "auto" && allowlisted(name, args, (a) => real(a), project);
     if (fine || ctx.grants.has(grant)) return { kind: "allow" };
     return { kind: "ask", title: "Run a command", target, grant };
   }
@@ -377,7 +389,7 @@ const FLAGS: Record<string, ReadonlySet<string>> = {
 };
 
 /**
- * Edit freely's commands that run without a card (D194, after two security reviews): ls, cat, head,
+ * Auto's commands that run without a card when claude asks Uncut (D194, after two security reviews): ls, cat, head,
  * tail and stat of, and mkdir -p of, plain relative paths inside the project (no leading / or ~, no
  * .., no * ? [ ] { } or =), with only the flags in FLAGS (head/tail: -n and a number), never on
  * Uncut's own files. Media work goes through Uncut's tools; ffmpeg, ffprobe, file, wc and the rest
@@ -490,8 +502,46 @@ export function denyRules(): Array<string> {
   return rules;
 }
 
-/** D194: the --settings JSON every session gets. */
-export const sessionSettings = () => JSON.stringify({ permissions: { deny: denyRules() } });
+/** A path as a gitignore-style pattern piece (claude's file rules): its wildcard characters escaped. */
+const globSafe = (p: string) => p.replace(/[\\*?[\]{}!]/g, (c) => `\\${c}`);
+
+/**
+ * D214: Auto only. claude's classifier would allow "local file operations within project scope"
+ * itself, so Uncut's own files get claude-side deny rules too: Edit (claude's Edit rules cover every
+ * file-writing tool) of project.json, history.db*, agent/ and brand/active.json at the project's
+ * absolute paths (`//` + the path; the real path and the opened one when they differ), and a command
+ * naming one of them.
+ */
+export function ownFileRules(projects: ReadonlyArray<string>): Array<string> {
+  const rules: Array<string> = [];
+  for (const dir of [...new Set(projects)]) {
+    const base = globSafe(dir.replace(/\/+$/, ""));
+    for (const rel of ["project.json", "history.db*", "agent/**", "brand/active.json"]) rules.push(`Edit(/${base}/${rel})`);
+  }
+  rules.push("Bash(*project.json*)", "Bash(*history.db*)", "Bash(*brand/active.json*)", "Bash(*agent/turns*)");
+  return rules;
+}
+
+/**
+ * D214: Auto only, claude-side ask rules. An ask rule is checked before the classifier, so these calls
+ * never go to it and come to Uncut over stdio as can_use_tool instead, decided by `decide` as before:
+ * every file write (outside the project and in confirmed folders: a card; in the project: no card;
+ * Uncut's own files: refused), every read, glob and grep (outside the project: a card; confirmed
+ * folders: no card), and the web tools (a secret-looking string: a card). Commands stay with the
+ * classifier, also after the web (D214: no web taint in Auto, the user's call).
+ */
+export function autoAskRules(): Array<string> {
+  return ["Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"];
+}
+
+/**
+ * D194, D214: the --settings JSON a session gets: claude's deny rules in every access; in Auto also
+ * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
+ */
+export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined } = {}): string {
+  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules() } });
+  return JSON.stringify({ permissions: { deny: [...denyRules(), ...ownFileRules(o.projects ?? [])], ask: autoAskRules() } });
+}
 
 /** D194: tools a Look only session starts without (--disallowedTools): claude can't even auto-allow a read-only command. */
 export const LOOK_DISALLOWED = ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"] as const;

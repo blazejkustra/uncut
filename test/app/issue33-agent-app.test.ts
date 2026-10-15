@@ -1,9 +1,10 @@
 // Issue #33 (D194) on the packaged app run invisibly and muted, with the stand-in claude: Claude
-// Code's own tools in the Agent tab. "Ask before big changes": a command waits on a permission card
+// Code's own tools in the Agent tab. D214: a new project's composer is in Auto, the access menu
+// offers Look only, Ask first and Auto. "Ask first": a command waits on a permission card
 // (the tool, the command, Deny / Always for this session / Allow once); Always lets the same
 // program run again without a card; a destructive command says why and can't be remembered; Deny
 // refuses it. The work log names each built-in call with its target and opens to its result.
-// Screenshots: test-output/issue33-*.png.
+// Screenshots: test-output/issue33-*.png, test-output/auto-mode-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -39,7 +40,7 @@ after(async () => {
 
 const text = (page: Page, selector: string) => page.$eval(selector, (el) => (el as HTMLElement).innerText.trim());
 
-test("issue 33: built-in tools in the work log with their results, permission cards in Ask before big changes", { skip, timeout: 300000 }, async () => {
+test("issue 33: built-in tools in the work log with their results, permission cards in Ask first; Auto is the default access", { skip, timeout: 300000 }, async () => {
   writeFileSync(
     plan(),
     JSON.stringify([
@@ -68,9 +69,20 @@ test("issue 33: built-in tools in the work log with their results, permission ca
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
     await waitFor("[data-testid=agent-panel]");
+    // D214: Auto by default; the menu's three modes, Auto still offering Ask first.
+    assert.equal(await page.$eval("[data-testid=agent-access]", (el) => (el as HTMLElement).dataset.access), "auto");
+    assert.equal(await text(page, "[data-testid=agent-access] .choice-label"), "Auto");
+    await page.screenshot({ path: resolve("test-output", "auto-mode-composer.png") });
     await page.click("[data-testid=agent-access]");
     await waitFor("[data-testid=agent-access-menu]");
+    const options = await page.$$eval("[data-testid=agent-access-option]", (els) => els.map((el) => [(el as HTMLElement).dataset.access, (el as HTMLElement).innerText.trim().split("\n")[0], (el as HTMLElement).getAttribute("aria-selected")]));
+    assert.deepEqual(options, [["look", "Look only", "false"], ["ask", "Ask first", "false"], ["auto", "Auto", "true"]]);
+    const menu = await text(page, "[data-testid=agent-access-menu]");
+    assert.match(menu, /Claude Code approves routine work itself/);
+    assert.doesNotMatch(menu, /[·*•]|Edit freely/);
+    await page.screenshot({ path: resolve("test-output", "auto-mode-menu.png") });
     await page.click("[data-testid=agent-access-option][data-access=ask]");
+    assert.equal(await text(page, "[data-testid=agent-access] .choice-label"), "Ask first");
 
     await page.click("[data-testid=agent-input]");
     await page.keyboard.type("Make a 20 s promo for Argent");

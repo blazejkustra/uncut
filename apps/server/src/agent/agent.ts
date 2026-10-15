@@ -15,7 +15,7 @@
 // left alone and turns are refused until it can be.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
@@ -44,7 +44,7 @@ import { capSkipped, shortName, CELL_WIDTH, clock, DEFAULT_CELLS, listFolder, li
 import { answerOut, beatGrid, gateOf, gateRefusal, kitChanges, kitLines, mergeKit, planContext, QUESTION_MS, questionOf, type GridItem } from "./agentPlan.ts";
 import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "./agentCritic.ts";
 import { activeBrand, readBrand, readPlan, saveKit, slug, writeActive, writeBrief, writeReview, writeStoryboard, normBrief, normBeats, normReview, normStoryboard, BRAND_ID } from "../brand/store.ts";
-import { decide, LOOK_DISALLOWED, namedFolders, realPath, sessionSettings, shownPath } from "./agentPermissions.ts";
+import { decide, LOOK_DISALLOWED, namedFolders, permissionMode, realPath, sessionSettings, shownPath, type Access } from "./agentPermissions.ts";
 import { downloadToProject } from "./agentDownload.ts";
 import { BUILTIN_IDS, skillChecklist, suggestSkills } from "@uncut/core/skills";
 import { emptyAddedTracks, KEEP_REVISIONS, restoreGraphics, trashGraphics, unusedGraphics } from "./agentCleanup.ts";
@@ -179,12 +179,15 @@ const thinkingDisplay = () => {
  * shell, subagents) plus only Uncut's MCP server, none of the user's own Claude Code settings
  * (--setting-sources "": no hooks, plugins, permissions, skills, MCP servers or rules from
  * ~/.claude; flag and managed settings still apply), Opus/Sonnet/… and effort from the composer
- * (D184). Permissions: the default mode, and every prompt comes to Uncut over stdio as a
- * can_use_tool control request (the SDK's canUseTool), decided per the turn's access
- * (agentPermissions.ts). Uncut's own tools are pre-allowed and gated in `allowed`. `addDirs`: folders
- * the user mentioned in this chat.
+ * (D184). Permissions (D214): Auto is `--permission-mode auto` (Claude Code's classifier approves
+ * routine calls, like t3code's Auto), Ask first and Look only the default mode; in every access each
+ * prompt comes to Uncut over stdio as a can_use_tool control request (the SDK's canUseTool), decided
+ * per the turn's access (agentPermissions.ts). Uncut's own tools are pre-allowed and gated in
+ * `allowed`. `addDirs`: folders the user mentioned in this chat. `projects`: the project folder (as
+ * opened and its real path) for Auto's deny rules.
  */
-export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly look?: boolean | undefined }) {
+export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined }) {
+  const access = o.access ?? "auto";
   const args = [
     "-p",
     "--input-format", "stream-json",
@@ -196,14 +199,14 @@ export function sessionArgs(o: { readonly cfg: string; readonly model?: string |
     "--mcp-config", o.cfg,
     "--setting-sources", "",
     "--allowedTools", "mcp__uncut",
-    "--permission-mode", "default",
+    "--permission-mode", permissionMode(access),
     "--permission-prompt-tool", "stdio",
-    // Secrets stay out whatever the access, before claude's own read-only auto-allow.
-    "--settings", sessionSettings(),
+    // Secrets stay out whatever the access, before claude's own read-only auto-allow and its classifier.
+    "--settings", sessionSettings({ access, projects: o.projects }),
     "--append-system-prompt", SYSTEM_PROMPT,
   ];
   // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
-  if (o.look) args.push("--disallowedTools", LOOK_DISALLOWED.join(","));
+  if (access === "look") args.push("--disallowedTools", LOOK_DISALLOWED.join(","));
   for (const dir of o.addDirs ?? []) args.push("--add-dir", dir);
   if (o.model) args.push("--model", o.model);
   if (o.effort) args.push("--effort", o.effort);
@@ -267,7 +270,7 @@ interface Loaded {
   readonly dirs: Array<string>;
   // D194: folders pasted in this chat's messages, not confirmed yet (a card offers them). Not saved.
   readonly mentioned: Array<string>;
-  // D194: this chat used the web (WebSearch / WebFetch, a subagent's too): anything outside the project asks for the rest of the session.
+  // D194: this chat used the web (WebSearch / WebFetch, a subagent's too): anything outside the project asks for the rest of the session (Ask first and Look only; D214: not in Auto).
   webUsed: boolean;
   // D194: secret-looking strings from tool results in this chat (a web search or address carrying one asks). Not saved.
   readonly tainted: Set<string>;
@@ -297,8 +300,9 @@ interface ClaudeSession {
   readonly dirsKey: string;
   // D194: can_use_tool requests waiting for an answer (request id → close its card).
   readonly prompts: Map<string, () => void>;
-  // D194: started for a Look only chat (--disallowedTools): another access needs another session.
-  readonly look: boolean;
+  // D194, D214: the access it was started for (Look only: --disallowedTools; Auto: --permission-mode
+  // auto and its rules): another access needs another session (it resumes the conversation).
+  readonly access: Access;
   // D194: the initialize control request (as the SDK sends it) and whether it was answered; the
   // first message waits for it (at most INIT_MS).
   readonly initId: string;
@@ -370,7 +374,7 @@ interface Running {
   readonly images: ReadonlyArray<{ readonly mimeType: string; readonly data: string }>;
   // A tool call's input as it streams (stream index → JSON so far), for the now line (D182).
   readonly inputs: Map<number, { at: number; tool: string; json: string; shown: string }>;
-  // D188: "Edit freely" with Settings' skip: storyboard_propose approves itself, the build doesn't wait.
+  // D188: "Auto" with Settings' skip: storyboard_propose approves itself, the build doesn't wait.
   readonly skipStoryboard: boolean;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
@@ -2133,7 +2137,7 @@ export const layer = Layer.effect(
      * click. Without a device it lists the bootable ones by name. With one (its id or name) it asks
      * on a card (the device, its platform, what happens next); Boot boots it through the Capture
      * tab's boot (capture.boot, D143), Don't or no answer leaves it off. A device the user allowed
-     * once in this chat boots again without a card (Edit freely and Ask before big changes alike;
+     * once in this chat boots again without a card (Auto and Ask first alike;
      * Look only never gets here: allowed() refuses it).
      */
     const argentBoot = (r: Running, args: Record<string, unknown>) =>
@@ -2330,7 +2334,7 @@ export const layer = Layer.effect(
           const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
           yield* refreshPlan(r, v);
           addCard(r, { type: "storyboard", storyboard: sb, outcome: "auto" }, summary || "Storyboard");
-          return textResult({ approved: true, by: "setting", message: "Approved by the user's setting (Edit freely skips the storyboard approval). Build it scene by scene." });
+          return textResult({ approved: true, by: "setting", message: "Approved by the user's setting (Auto skips the storyboard approval). Build it scene by scene." });
         }
         const proposed = yield* write({ summary, beats, status: "proposed" });
         yield* refreshPlan(r, v);
@@ -3012,16 +3016,16 @@ export const layer = Layer.effect(
     /**
      * D184: the turn's access. "look": only the tools that read and look (LOOK_TOOLS) run, the
      * rest are refused with why; "ask": a big change (bigChange) waits for Allow on a card first;
-     * "edit": everything (spending over $1 still asks, D99). undefined = go ahead.
+     * "auto": everything (spending over $1 still asks, D99). undefined = go ahead.
      */
     const allowed = (r: Running, tool: string, input: Record<string, unknown>): Effect.Effect<McpResult | undefined> =>
       Effect.gen(function* () {
-        if (r.access === "edit") return undefined;
+        if (r.access === "auto") return undefined;
         if (r.access === "look") {
           if ((LOOK_TOOLS as ReadonlyArray<string>).includes(tool)) return undefined;
           // D206: a timeline_edit dry run changes nothing.
           if (tool === "timeline_edit" && input.dryRun === true) return undefined;
-          return textResult(`Not done: the user set this chat to "Look only", so you can read and look but not change anything (${tool} refused). Say what you would do instead; they can switch to "Edit freely" or "Ask before big changes" in the composer.`, true);
+          return textResult(`Not done: the user set this chat to "Look only", so you can read and look but not change anything (${tool} refused). Say what you would do instead; they can switch to "Auto" or "Ask first" in the composer.`, true);
         }
         const v = view();
         const big = v ? bigChange(tool, input, v.session.project as Project) : undefined;
@@ -3359,7 +3363,7 @@ export const layer = Layer.effect(
      * development, the Electron binary in Node mode in the packaged app (bin.ts took
      * ELECTRON_RUN_AS_NODE out of our environment, so it is set again for this one child).
      */
-    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly look?: boolean }): ClaudeSession | string => {
+    const spawnSession = (owner: Loaded, bin: string, toolsKey: string, resume: boolean, choice: { readonly model: string | undefined; readonly effort: string | undefined; readonly access: Access }): ClaudeSession | string => {
       let dir: string;
       try {
         dir = mkdtempSync(join(tmpdir(), `${TURN_DIR_PREFIX}${process.pid}-`));
@@ -3372,10 +3376,14 @@ export const layer = Layer.effect(
       const mcpEntry = process.env.UNCUT_MCP_ENTRY || besideServer("./mcp.mjs");
       const thinking = thinkingDisplay();
       const addDirs = [...owner.dirs].sort();
-      const look = choice.look === true;
-      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, look });
+      const access = choice.access;
+      let projects = [owner.dir];
+      try {
+        projects = [owner.dir, realpathSync.native(owner.dir)];
+      } catch {}
+      const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects });
       const initId = `init-${randomBytes(4).toString("hex")}`;
-      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), look, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
+      const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
       try {
         writeFileSync(
           cfg,
@@ -3446,7 +3454,7 @@ export const layer = Layer.effect(
         if (s.thinking && !s.gotInit && /thinking-display/i.test(s.stderr)) {
           thinkingDisplayRefused = true;
           console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
-          const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, look: s.look });
+          const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
           if (typeof again === "string") return finish(r, { status: "error", error: again });
           session = again;
           return writeTurn(again, r);
@@ -3455,7 +3463,7 @@ export const layer = Layer.effect(
         if (s.resumed && !s.gotInit && /no conversation found/i.test(s.stderr)) {
           s.owner.sessionId = undefined;
           persist(s.owner);
-          const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, look: s.look });
+          const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, access: s.access });
           if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });
           session = fresh;
           return writeTurn(fresh, r);
@@ -3472,7 +3480,7 @@ export const layer = Layer.effect(
     /** The plugins' tool names now (D97): a session started with other ones is started again. */
     const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => extra.map((t) => t.name).sort().join(",")));
 
-    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "edit", images = [], skipStoryboard = false }) =>
+    const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "auto", images = [], skipStoryboard = false }) =>
       Effect.gen(function* () {
         const owner = yield* ensureLoaded;
         if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -3543,7 +3551,7 @@ export const layer = Layer.effect(
         const foldersBlock = folderLines.length ? `<folders>\nThe folders the user named in this message, each listed by Uncut (top level, hidden files left out). Use every one of them; media_import takes these paths.\n${folderLines.join("\n")}\n</folders>` : "";
         const dirsKey = [...owner.dirs].sort().join("\n");
         // D186/D188: the kit, skills and plan as they are now (the user may have changed them in the Brand panel or by hand).
-        const skip = access === "edit" && skipStoryboard;
+        const skip = access === "auto" && skipStoryboard;
         const planBlock = yield* Effect.promise(async () => {
           try {
             owner.plan = await readPlan(v.dir);
@@ -3561,12 +3569,12 @@ export const layer = Layer.effect(
         // and effort (D184: another choice starts another claude that resumes the conversation).
         const model = modelFor(askedModel);
         let s = session;
-        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || s.dirsKey !== dirsKey || s.look !== (access === "look") || !s.child || s.child.exitCode !== null)) {
+        if (s && (s.closed || s.owner !== owner || s.openId !== owner.openId || s.toolsKey !== toolsKey || s.model !== model || s.effort !== effort || s.dirsKey !== dirsKey || s.access !== access || !s.child || s.child.exitCode !== null)) {
           closeSession(s, "graceful");
           s = undefined;
         }
         if (!s) {
-          const started = spawnSession(owner, bin, toolsKey, true, { model, effort, look: access === "look" });
+          const started = spawnSession(owner, bin, toolsKey, true, { model, effort, access });
           if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
           s = session = started;
         }
