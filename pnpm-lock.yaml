@@ -29,6 +29,9 @@ importers:
       puppeteer-core:
         specifier: 23.11.1
         version: 23.11.1
+      typegpu:
+        specifier: 0.12.6
+        version: 0.12.6
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -65,6 +68,9 @@ importers:
       effect:
         specifier: 4.0.2
         version: 4.0.2
+      typegpu:
+        specifier: 0.12.6
+        version: 0.12.6
     devDependencies:
       esbuild:
         specifier: 0.28.2
@@ -3234,6 +3240,10 @@ packages:
       semver: 5.7.2
     dev: true
 
+  /tinyest@0.3.4:
+    resolution: {integrity: sha512-81EcMHTCQ2IPweOGk9SpMgjbenR9ZJRsAE84btEv0DhvVKwhe7qBy28hWgatoXa9ppWzmtpHiJ+e86SiaAtY6w==}
+    engines: {node: '>=12.20.0'}
+
   /tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
@@ -3263,6 +3273,9 @@ packages:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
     dev: true
 
+  /tsover-runtime@0.0.7:
+    resolution: {integrity: sha512-FHHwMJzZbnP23+fU1PxXljy7j0RRRosL2r1/CRUNTqfW+l7m35JsUkM615x/cAzw4GqRdXPIl3axKMj9qzpZtQ==}
+
   /type-fest@0.13.1:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
     engines: {node: '>=10'}
@@ -3270,9 +3283,21 @@ packages:
     dev: true
     optional: true
 
+  /typed-binary@4.3.3:
+    resolution: {integrity: sha512-W2hLsSzt3k/tg38gDE4Fn/QiwcoqGuUHBc2cb3mXuH7KcYxe/GM57vzW14s2/bawB4R5knGgGq8Xb57vsaJ4Sg==}
+
   /typed-query-selector@2.12.3:
     resolution: {integrity: sha512-/dtuMZyutHLlrxWhhC1uib00ELUr2dZ8C9B8YzZYsJmeE3V56OxRblrSM2UaF142pcMtak7ehZ6+poWGeehNIg==}
     dev: true
+
+  /typegpu@0.12.6:
+    resolution: {integrity: sha512-EypNvqL2IA3BL2IsJbd12oOHaxmvtjFVz0+IZTmquc8BZcYYAlL8piT6V0r+GViIWXGr5703Y0P5FswuLKytMA==}
+    engines: {node: '>=12.20.0'}
+    hasBin: true
+    dependencies:
+      tinyest: 0.3.4
+      tsover-runtime: 0.0.7
+      typed-binary: 4.3.3
 
   /typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}

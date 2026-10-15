@@ -29,6 +29,8 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { sheetHtml, type SheetLayout } from "../agent/agentFootage.ts";
 import { loadGraphicLibs } from "./graphicLibs.ts";
+import { shadeLayers } from "./shaderPass.ts";
+import { clipShader, shaderFrameBytes, shaderModuleCode, shaderParamBytes, shaderTime } from "@uncut/core/shaders";
 import { projectFonts, type ProjectFonts } from "./fonts.ts";
 import { ServerConfig } from "../app/config.ts";
 import {
@@ -609,6 +611,9 @@ export const layer = Layer.effect(
         const onAbort = () => void rasterizer?.close();
         signal.addEventListener("abort", onAbort, { once: true });
         const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css);
+        // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
+        const untagged = await untaggedFiles(bin, plan, signal);
+        const shaded = await shadeLayers(rasterizer, bin, plan, { caps, untagged }, temp, signal);
         signal.removeEventListener("abort", onAbort);
         await rasterizer.close();
         rasterizer = undefined;
@@ -627,7 +632,6 @@ export const layer = Layer.effect(
               });
 
         const partial = join(temp, "export.mp4");
-        const untagged = await untaggedFiles(bin, plan, signal);
         // Subtitles (D105): the cues of the project as it was when the export started, in the edit's time.
         const cues = job.subtitleTrack || job.subtitlesFile ? subtitleCues(project) : [];
         let subtitles: { file: string; language: string; show: boolean } | undefined;
@@ -642,7 +646,7 @@ export const layer = Layer.effect(
         const total = plan.frames / plan.fps;
         const graphFile = join(temp, "graph.txt");
         const encode = async (choice: typeof video) => {
-          const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, video: choice, loudnorm, loudness, output: partial, subtitles, luts });
+          const cmd = exportCommand(plan, { untagged, background, rasters, caps, quality: job.quality, video: choice, loudnorm, loudness, output: partial, subtitles, luts, shaded });
           await writeFile(graphFile, cmd.graph);
           const renderStart = Date.now();
           patch(job.id, { phase: "rendering", progress: 0 });
@@ -969,7 +973,9 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
         const blur = v.blur ? `,${blurFilters((v.blur * H) / ch)}` : "";
         // A clip's looks and effects (D136): picture effects before its box (which it then always has), overlays after it.
         const effects = v.item.type === "clip" && media && !svg ? clipFx(v.item) : undefined;
-        const picture = needsPicturePass(effects) || effects?.blur !== undefined;
+        // D213: a shader effect is a picture pass, drawn first with the rasteriser's WebGPU as the export does.
+        const shader = v.item.type === "clip" && media && !svg ? clipShader(v.item) : undefined;
+        const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;
         const overlay = async () => {
           if (!effects || !hasOverlay(effects) || !v.box) return;
           const png = join(temp, `f${f}-${k}-fx.png`);
@@ -985,10 +991,31 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
           const p = placementOf(v.box, W / cw, H / ch, baseBox(v.item, project.canvas, media.probe));
           const visible = Math.min(p.w, shown - p.x);
           if (visible <= 0) continue;
+          let source = input;
+          let pick = picked;
+          if (shader) {
+            // The source frame at the effects' size, drawn by the shader, then the rest as for any clip.
+            const fit = fitRect(baseBox(v.item, project.canvas, media.probe), v.box.fit, media.probe);
+            const sw = v.box.scale !== 1 ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw;
+            const sh = v.box.scale !== 1 ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch;
+            const raw = join(temp, `f${f}-${k}-src.rgba`);
+            const drawn = join(temp, `f${f}-${k}-shader.rgba`);
+            const d = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...input, "-filter_complex", `[0:v:0]${picked}scale=w=${sw}:h=${sh}:out_range=pc,format=rgba[o]`, "-map", "[o]", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", raw], signal);
+            if (d.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(d.stderr)}`);
+            const params = shaderParamBytes(shader.def.params, shader.values);
+            try {
+              await raster.render({ kind: "shader", width: sw, height: sh, code: shaderModuleCode(shader.def), frame: [...new Float32Array(shaderFrameBytes(sw, sh, shaderTime(f, starts.get(v.item.id) ?? 0, project.canvas.fps), false))], ...(params ? { params: [...new Float32Array(params)] } : {}), input: raw, out: drawn, name: `the shader effect ${shader.def.name}` });
+              source = ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${sw}x${sh}`, "-i", drawn];
+              pick = "trim=end_frame=1,setpts=0,";
+            } catch (error) {
+              // Never silently different (D213): the frame shows the clip plain and says why.
+              notes.push(`the shader effect ${shader.def.name} on "${v.item.name ?? v.item.id}" isn't drawn: ${(error as Error).message.replace(/^The text renderer failed: /, "").replace(/^no-webgpu: /, "this Mac has no WebGPU: ")}`);
+            }
+          }
           k++;
-          inputs.push(...input);
-          if (picture && effects) {
-            const lut = effects.colour ? colourLut(effects.colour) : undefined;
+          inputs.push(...source);
+          if (picture && (effects || shader)) {
+            const lut = effects?.colour ? colourLut(effects.colour) : undefined;
             if (lut && !luts.has(lut.key)) {
               const file = join(temp, `lut-${lut.key}.cube`);
               await writeFile(file, cubeText(lut));
@@ -997,9 +1024,9 @@ async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Me
             // The effects' size as the export's: the picture's fit before any zoom (its placement's when unzoomed).
             const fit = fitRect(baseBox(v.item, project.canvas, media.probe), v.box.fit, media.probe);
             const zoomed = v.box.scale !== 1;
-            const lf = { fx: effects, start: starts.get(v.item.id) ?? 0, w: zoomed ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw, h: zoomed ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch, k: H / ch, ...(lut ? { lut } : {}) };
-            graph.push(`[${k}:v:0]${picked}null[e${k}]`, ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts), ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
-          } else graph.push(`[${k}:v:0]${picked}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+            const lf = { fx: effects ?? {}, start: starts.get(v.item.id) ?? 0, w: zoomed ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw, h: zoomed ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch, k: H / ch, ...(lut ? { lut } : {}) };
+            graph.push(`[${k}:v:0]${pick}null[e${k}]`, ...fxGraph(lf, `e${k}`, `s${k}`, project.canvas.fps, f, luts), ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
+          } else graph.push(`[${k}:v:0]${pick}null[s${k}]`, ...boxGraph([p], `s${k}`, `r${k}`, project.canvas.fps));
           graph.push(`[r${k}]format=rgba${fade}${blur}${visible < p.w ? `,crop=w=${visible}:h=${p.h}:x=0:y=0:exact=1` : ""}${iris(p.x, p.y)}[l${k}]`);
           graph.push(`[${base}][l${k}]overlay=x=${p.x}:y=${p.y}:format=auto[b${k}]`);
           base = `b${k}`;

@@ -13,6 +13,7 @@ import { COMPONENTS } from "../visual/components.ts";
 import { SOLID, textPlacement, wordCount } from "../visual/render.ts";
 import type { ModuleManifest } from "../timeline/types.ts";
 import type { LookDef } from "../visual/fx.ts";
+import { shaderDefProblems, type ShaderDef, type ShaderParam } from "../visual/shaders.ts";
 
 /** Which plugin a contribution came from (the grids' source label). */
 export interface FromPlugin {
@@ -58,14 +59,18 @@ export interface PluginFilter extends FromPlugin {
   readonly look: LookDef;
 }
 
+/** A shader effect for the Effects tab (D213, `contributes.shaders`): the TypeGPU function's WGSL and its typed params. */
+export type PluginShader = ShaderDef & FromPlugin & { readonly description: string };
+
 export interface Contributions {
   readonly looks: ReadonlyArray<PluginLook>;
   readonly components: ReadonlyArray<PluginComponent>;
   readonly rules: ReadonlyArray<PluginRule>;
   readonly filters: ReadonlyArray<PluginFilter>;
+  readonly shaders?: ReadonlyArray<PluginShader>;
 }
 
-export const NO_CONTRIBUTIONS: Contributions = { looks: [], components: [], rules: [], filters: [] };
+export const NO_CONTRIBUTIONS: Contributions = { looks: [], components: [], rules: [], filters: [], shaders: [] };
 
 /** Every id a built-in look, component or check rule has (contributions can't take one). */
 export const BUILTIN_CONTRIBUTION_IDS: ReadonlySet<string> = new Set([...Object.keys(TEXT_STYLES), ...COMPONENTS.map((c) => c.id), ...CHECK_IDS]);
@@ -100,6 +105,7 @@ type RawContributes = {
   readonly components?: ReadonlyArray<{ id: string; name: string; description?: string; params?: Record<string, unknown>; template: string; css?: string }>;
   readonly rules?: ReadonlyArray<{ id: string; title: string; description?: string; severity?: CheckSeverity; hint?: string; rule: RuleSpec }>;
   readonly filters?: ReadonlyArray<{ id: string; name: string; description?: string; look: LookDef }>;
+  readonly shaders?: ReadonlyArray<{ id: string; name: string; description?: string; source: string; export: string; params: ReadonlyArray<ShaderParam>; wgsl: string }>;
 };
 
 /**
@@ -175,7 +181,18 @@ export function readContributions(
     if (!accept(entry.id, "filter")) continue;
     filters.push({ id: entry.id, name: entry.name, description: entry.description ?? "", look: entry.look, ...from });
   }
-  return { contributions: { looks, components, rules, filters }, warnings };
+  const shaders: Array<PluginShader> = [];
+  for (const entry of raw.shaders ?? []) {
+    // The WGSL (resolved from the plugin's TypeGPU source by plugin:check) must pass the checks both drawers rely on.
+    const problems = shaderDefProblems({ params: entry.params, wgsl: entry.wgsl });
+    if (problems.length) {
+      warnings.push(`Its shader effect ${entry.id} is left out: ${problems[0]!.replace(/\.$/, "")}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}.`);
+      continue;
+    }
+    if (!accept(entry.id, "shader effect")) continue;
+    shaders.push({ id: entry.id, name: entry.name, description: entry.description ?? "", params: entry.params, wgsl: entry.wgsl, ...from });
+  }
+  return { contributions: { looks, components, rules, filters, shaders }, warnings };
 }
 
 /**
@@ -186,7 +203,7 @@ export function readContributions(
 export function mergeContributions(list: ReadonlyArray<Contributions>): Contributions {
   const seen = new Set<string>();
   const fresh = <T extends { readonly id: string }>(x: T) => !seen.has(x.id) && (seen.add(x.id), true);
-  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh), filters: list.flatMap((c) => c.filters ?? []).filter(fresh) };
+  return { looks: list.flatMap((c) => c.looks).filter(fresh), components: list.flatMap((c) => c.components).filter(fresh), rules: list.flatMap((c) => c.rules).filter(fresh), filters: list.flatMap((c) => c.filters ?? []).filter(fresh), shaders: list.flatMap((c) => c.shaders ?? []).filter(fresh) };
 }
 
 // ---- rules ----

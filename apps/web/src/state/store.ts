@@ -18,6 +18,7 @@ import { planResetPosition } from "../timeline/clip.ts";
 import { planDetachAudio, planSetSpeed, takenIds } from "@uncut/core/arrange";
 import { musicInProject, musicTrack } from "@uncut/core/music";
 import { effectInfo, lookInfo, planEffect, planSetLook, type LookDef } from "@uncut/core/fx";
+import { planShader, planShaderValues, SHADER, shaderUseOf, type ShaderDef } from "@uncut/core/shaders";
 import { planForAll } from "../timeline/multi.ts";
 import { libraryMediaOf, type LibraryQuery } from "@uncut/core/library";
 import { itemName, momentLabel } from "@uncut/core/mentions";
@@ -892,6 +893,24 @@ export function speedPlan(project: ProjectModel, itemId: string, speed: number, 
   return withOverlayRipple(project, plan);
 }
 
+/**
+ * The shader effects the Effects tab offers (D213): the allowed plugins' and those clips in the
+ * project carry (written by the agent's shader_write, or from a plugin since removed), by id.
+ */
+export function shaderDefs(project: ProjectModel | undefined): Array<ShaderDef & { readonly from: string }> {
+  const out = new Map<string, ShaderDef & { readonly from: string }>();
+  for (const s of state.contributions?.shaders ?? []) out.set(s.id, { id: s.id, name: s.name, description: s.description, params: s.params as ShaderDef["params"], wgsl: s.wgsl, from: s.pluginName });
+  for (const t of project?.tracks ?? [])
+    for (const it of t.items)
+      for (const e of it.effects ?? []) {
+        if (e.module !== SHADER) continue;
+        const use = shaderUseOf(e);
+        if (use && !out.has(use.def.id)) out.set(use.def.id, { ...use.def, from: "This project" });
+      }
+  return [...out.values()];
+}
+const shaderDefOf = (project: ProjectModel, id: string) => shaderDefs(project).find((d) => d.id === id);
+
 export const actions = {
   showNewProject: () => set({ newProjectOpen: true }),
   hideNewProject: () => set({ newProjectOpen: false }),
@@ -1206,12 +1225,18 @@ export const actions = {
       const targets = itemId === undefined ? selection : selection.length > 1 && selection.includes(itemId) ? selection : [itemId];
       const [kind, id = ""] = what.split(/:(.*)/s);
       const custom = kind === "look" ? state.contributions?.filters?.find((f) => f.id === id) : undefined;
-      const one = (p: ProjectModel, target: string) => (kind === "look" ? planSetLook(p, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {}) : planEffect(p, target, id));
+      // A shader effect (D213): a plugin's, or one a clip in this project already carries.
+      const shader = kind === "shader" ? shaderDefOf(project, id) : undefined;
+      if (kind === "shader" && !shader) return { problem: "That shader effect isn't available any more." };
+      const one = (p: ProjectModel, target: string) => (kind === "look" ? planSetLook(p, target, id || undefined, custom ? { custom: custom.look as LookDef, label: custom.name } : {}) : kind === "shader" ? planShader(p, target, shader) : planEffect(p, target, id));
       if (targets.length <= 1) return one(project, targets[0] ?? "");
+      if (shader) return planForAll(project, targets, one, (n) => `${shader.name} on ${n} clips`);
       const look = lookInfo(id)?.name ?? custom?.name ?? id;
       const effect = effectInfo(id)?.name.toLowerCase() ?? id;
       return planForAll(project, targets, one, (n) => (kind !== "look" ? `Add ${effect} to ${n} clips` : id ? `Filter ${look} on ${n} clips` : `Remove the filter from ${n} clips`));
     }),
+  /** Change a clip's shader effect's values (D213): one edit. */
+  setShaderValues: (itemId: string, values: Readonly<Record<string, number | string | boolean>>) => itemEdit((project) => planShaderValues(project, itemId, values)),
   /** Speed (G9, D125): presets and custom, keep pitch or not; the item's length follows. */
   setSpeed: (itemId: string, speed: number, keepPitch?: boolean) => itemEdit((project) => speedPlan(project, itemId, speed, keepPitch)),
   /** Rename a timeline item (T7): its own name, shown on the timeline and in the Inspector; "" goes back to the media's. */

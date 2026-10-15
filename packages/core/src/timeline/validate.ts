@@ -11,6 +11,7 @@ import projectSchemaJson from "../../../../spec/schema/project.schema.json" with
 import moduleSchemaJson from "../../../../spec/schema/module.schema.json" with { type: "json" };
 import editOpsSchemaJson from "../../../../spec/schema/edit-ops.schema.json" with { type: "json" };
 import { projectDuration, resolveStarts, timelineProblems } from "./rules.ts";
+import { SHADER, shaderDefProblems, shaderValueProblems, type ShaderParam } from "../visual/shaders.ts";
 import type { Media, ModuleKind, ModuleManifest, Modules, Problem, Project } from "./types.ts";
 
 export { projectDuration, resolveStarts, timelineProblems };
@@ -183,6 +184,14 @@ export function validateProject(input: unknown, modules: Modules): Array<Problem
         const kinds: ReadonlyArray<ModuleKind> = track.kind === "audio" ? ["audio-processor"] : ["effect"];
         const m = useModule(fx.module, kinds, `${ipath}/effects`);
         checkParams(m, fx.params, `${ipath}/effects/${fx.module}`);
+        // A shader effect (D213): its definition must still pass the checks both drawers rely on.
+        if (fx.module === SHADER && m) {
+          const p = (fx.params ?? {}) as { fields?: unknown; wgsl?: unknown; values?: unknown };
+          if (Array.isArray(p.fields) && typeof p.wgsl === "string") {
+            const fields = p.fields as ReadonlyArray<ShaderParam>;
+            for (const problem of [...shaderDefProblems({ params: fields, wgsl: p.wgsl }), ...shaderValueProblems(fields, (p.values && typeof p.values === "object" ? p.values : {}) as Record<string, unknown>)]) errors.push(err("params", `${ipath}/effects/${fx.module}`, `${SHADER}: ${problem}`));
+          }
+        }
       }
       // The transition's own limits (its module manifest); the timeline rules are in rules.ts.
       if (item.transitionIn) {

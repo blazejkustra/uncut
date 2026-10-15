@@ -122,6 +122,42 @@
             "properties": { "id": { "$ref": "#/$defs/contributionId" }, "name": { "type": "string", "minLength": 1, "maxLength": 60 }, "description": { "type": "string", "maxLength": 300 }, "look": {"type": "object", "additionalProperties": false, "properties": {"mixer": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "number", "minimum": -4, "maximum": 4}, "description": "Channel mixer rows: r, g, b from r, g, b."}, "mono": {"type": "number", "minimum": 0, "maximum": 1}, "adjust": {"type": "object", "additionalProperties": false, "properties": {"exposure": {"type": "number", "minimum": -2, "maximum": 2, "default": 0, "description": "Exposure in stops"}, "contrast": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Contrast, -1 to 1 (0 = unchanged)"}, "saturation": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Saturation, -1 to 1 (0 = unchanged)"}, "temperature": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Temperature, -1 to 1 (0 = unchanged)"}, "tint": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Tint, -1 to 1 (0 = unchanged)"}, "highlights": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Highlights, -1 to 1 (0 = unchanged)"}, "shadows": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Shadows, -1 to 1 (0 = unchanged)"}, "vibrance": {"type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Vibrance, -1 to 1 (0 = unchanged)"}}}, "curve": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "red": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "green": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "blue": {"type": "array", "maxItems": 16, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": 0, "maximum": 1}}}, "shadowTint": {"type": "object", "required": ["color", "amount"], "additionalProperties": false, "properties": {"color": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 1}}, "amount": {"type": "number", "minimum": 0, "maximum": 1}}}, "highlightTint": {"type": "object", "required": ["color", "amount"], "additionalProperties": false, "properties": {"color": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 1}}, "amount": {"type": "number", "minimum": 0, "maximum": 1}}}, "fade": {"type": "number", "minimum": 0, "maximum": 0.5}}} }
           }
         },
+        "shaders": {
+          "type": "array",
+          "maxItems": 50,
+          "description": "Shader effects for the Effects tab (D213): a TypeGPU function in one of the plugin's .ts files (source, export) and the WGSL it resolves to (wgsl, written by pnpm plugin:check --write and checked against the source), with typed params. Drawn with WebGPU in the preview and the export; a clip given one carries the whole effect, so it keeps drawing when the plugin is removed.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "source", "export", "params", "wgsl"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/contributionId" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+              "description": { "type": "string", "maxLength": 300 },
+              "source": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.ts$", "description": "The .ts file at the plugin's top level that exports the TypeGPU function." },
+              "export": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$", "maxLength": 60 },
+              "params": {
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "object",
+                  "required": ["key", "label", "type", "default"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "key": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]{0,30}$" },
+                    "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+                    "type": { "enum": ["number", "color", "bool"] },
+                    "min": { "type": "number" },
+                    "max": { "type": "number" },
+                    "step": { "type": "number", "exclusiveMinimum": 0 },
+                    "default": { "type": ["number", "string", "boolean"] }
+                  }
+                }
+              },
+              "wgsl": { "type": "string", "minLength": 1, "maxLength": 16384 }
+            }
+          }
+        },
         "rules": {
           "type": "array",
           "maxItems": 50,

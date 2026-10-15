@@ -9,8 +9,10 @@ import { Ban, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { FxRenderer } from "../preview/fx.ts";
+import { previewRunner, whenRunner } from "../preview/shader.ts";
+import { shaderFrameBytes, shaderModuleCode, shaderParamBytes, shaderValues, SHADER, type ShaderDef } from "@uncut/core/shaders";
 import { usePlayback } from "../preview/playback.ts";
-import { actions, useApp, type Project } from "../state/store.ts";
+import { actions, shaderDefs, useApp, type Project } from "../state/store.ts";
 import { findItem } from "../timeline/edit.ts";
 import { EFFECT_DRAG_TYPE, setDraggedEffect } from "../timeline/dnd.ts";
 
@@ -124,6 +126,56 @@ function FxThumb({ fx, source, testId }: { fx: ClipFx | undefined; source: Sourc
   );
 }
 
+// Shader thumbnails (D213) are drawn one at a time (they share the runner's read-back buffer).
+let shaderQueue: Promise<unknown> = Promise.resolve();
+
+/** A shader effect's tile: drawn with WebGPU on the source at its defaults, 0.4 s in; "No WebGPU" without it. */
+function ShaderThumb({ def, source }: { def: ShaderDef; source: Source }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [problem, setProblem] = useState<string | undefined>(undefined);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const off = whenRunner(() => setTick((n) => n + 1));
+    return () => void off();
+  }, []);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    canvas.width = THUMB.width;
+    canvas.height = THUMB.height;
+    const g = canvas.getContext("2d")!;
+    g.drawImage(source.el as CanvasImageSource, 0, 0, THUMB.width, THUMB.height);
+    const runner = previewRunner();
+    if (!runner) return;
+    if ("problem" in runner) return setProblem(runner.problem);
+    setProblem(undefined);
+    let live = true;
+    const { width: w, height: h } = THUMB;
+    shaderQueue = shaderQueue
+      .then(() =>
+        runner.drawToPixels(
+          { kind: "external", source: source.el as GPUCopyExternalImageSource, width: source.w, height: source.h },
+          { code: shaderModuleCode(def), frame: shaderFrameBytes(w, h, 0.4, false), params: shaderParamBytes(def.params, shaderValues(def.params, {})), width: w, height: h },
+        ),
+      )
+      .then((px) => {
+        if (!live) return;
+        g.putImageData(new ImageData(new Uint8ClampedArray(px), w, h), 0, 0);
+        canvas.dataset.drawn = source.key;
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [def, source, tick]);
+  return (
+    <div className="thumb fx-thumb" data-testid="shader-thumb">
+      <canvas ref={ref} />
+      {problem && <div className="fx-thumb-note" data-testid="shader-thumb-no-gpu">No WebGPU</div>}
+    </div>
+  );
+}
+
 /** A look as a clip's effects would carry it, compiled. */
 const lookFx = (look: string, custom?: LookDef) => clipFx({ type: "clip", effects: [{ module: LOOK, params: { look, intensity: 1, ...(custom ? { custom } : {}) } }] });
 /** An effect at its defaults, compiled (zoom pulse: a still at its widest). */
@@ -177,6 +229,9 @@ export function EffectsLibrary({ project }: { project: Project }) {
   const plugins = useMemo(() => pluginFilters.map((f) => ({ id: f.id, name: f.name, description: f.description || `From ${f.pluginName}`, fx: lookFx(f.id, f.look as LookDef) })), [pluginFilters]);
   const fxs = useMemo(() => EFFECTS.map((e) => ({ info: e, fx: effectFx(e) })), []);
   const shownLooks = [...looks, ...plugins].filter((l) => matches(query, l.name, l.description));
+  const shaders = useMemo(() => shaderDefs(project), [project, contributions]);
+  const activeShader = (effects.find((e) => e.module === SHADER)?.params as { shader?: string } | undefined)?.shader;
+  const shownShaders = shaders.filter((d) => matches(query, d.name, d.description ?? "", d.from, "shader"));
   const shownFx = fxs.filter((e) => matches(query, e.info.name, e.info.description));
 
   const apply = (what: string, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -260,7 +315,15 @@ export function EffectsLibrary({ project }: { project: Project }) {
             </div>
           </>
         )}
-        {shownLooks.length === 0 && shownFx.length === 0 && (
+        {shownShaders.length > 0 && (
+          <>
+            <div className="lib-label">Shaders</div>
+            <div className="grid2 fx-grid" data-testid="shaders-grid">
+              {shownShaders.map((d) => tile(`shader:${d.id}`, d.name, `${d.name}: ${d.description || "A shader effect"} (${d.from}; drawn with WebGPU)`, activeShader === d.id, <ShaderThumb def={d} source={source} />, "shader-tile", { "data-shader": d.id }))}
+            </div>
+          </>
+        )}
+        {shownLooks.length === 0 && shownFx.length === 0 && shownShaders.length === 0 && (
           <div className="muted small" data-testid="effects-empty">
             Nothing matches
           </div>

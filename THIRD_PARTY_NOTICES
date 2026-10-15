@@ -459,6 +459,14 @@ require-from-string@2.0.2: MIT
   floatdrop/require-from-string
 scheduler@0.27.0: MIT
   https://github.com/facebook/react
+tinyest@0.3.4: MIT
+  https://github.com/software-mansion/TypeGPU
+tsover-runtime@0.0.7: Apache-2.0
+  https://github.com/software-mansion/tsover
+typed-binary@4.3.3: MIT
+  https://github.com/iwoplaza/typed-binary
+typegpu@0.12.6: MIT
+  https://github.com/software-mansion/TypeGPU
 undici@8.11.2: MIT
   https://github.com/nodejs/undici
 undici-types@8.9.0: MIT
