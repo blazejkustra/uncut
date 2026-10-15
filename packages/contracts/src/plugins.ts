@@ -27,6 +27,8 @@ export const PluginInfo = Schema.Struct({
   removable: Schema.optional(Schema.Boolean),
   // What it adds as data (D103), by name: text looks, components, checks.
   contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
+  // D248: a hash of its skills (when it has any): the approval is for these skills; plugins.approve sends it back.
+  skillsHash: Schema.optional(Schema.String),
 });
 export type PluginInfo = typeof PluginInfo.Type;
 

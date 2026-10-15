@@ -192,7 +192,7 @@ function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void
 
 /** What a plugin adds (D103), in words: "Text looks: Soft card. Components: Corner sticker. Checks: …". */
 const addsLine = (c: NonNullable<PluginInfo["contributes"]>) =>
-  [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : "", c.filters?.length ? `Filters: ${c.filters.join(", ")}` : "", c.shaders?.length ? `Shader effects: ${c.shaders.join(", ")}` : ""].filter(Boolean).join(". ");
+  [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : "", c.filters?.length ? `Filters: ${c.filters.join(", ")}` : "", c.shaders?.length ? `Shader effects: ${c.shaders.join(", ")}` : "", c.skills?.length ? `Skills: ${c.skills.join(", ")}` : ""].filter(Boolean).join(". ");
 
 /** Where a plugin came from, in words (the approval dialog and the row's tooltip). */
 const originLines = (p: PluginInfo): Array<[string, string]> => {

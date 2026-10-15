@@ -56,9 +56,10 @@ export const settingsActions = {
     if (result.ok) set({ plugins: result.value });
   },
   /** Allows a plugin to run (D97); its capabilities were shown next to the button. */
-  async approvePlugin(plugin: Pick<PluginInfo, "id" | "dir" | "capabilities">) {
+  async approvePlugin(plugin: Pick<PluginInfo, "id" | "dir" | "capabilities" | "skillsHash">) {
     set({ pluginError: undefined });
-    const result = await call((c) => c["plugins.approve"]({ id: plugin.id, dir: plugin.dir, capabilities: [...plugin.capabilities] }));
+    // D248: the skills it showed too, so a plugin whose skills changed meanwhile is refused.
+    const result = await call((c) => c["plugins.approve"]({ id: plugin.id, dir: plugin.dir, capabilities: [...plugin.capabilities], ...(plugin.skillsHash ? { skills: plugin.skillsHash } : {}) }));
     if (result.ok) set({ plugins: result.value, pluginDialog: undefined });
     else set({ pluginError: plainError(result.error) });
   },

@@ -148,6 +148,15 @@ export function planSplit(project: ProjectModel, selected: string | undefined, f
 function splitAt(project: ProjectModel, target: Placed, f: number, further: string): SplitPlan | { readonly problem: string } {
   const locked = lockOf(target);
   if (locked) return { problem: locked };
+  // D248: a linked sound (or picture) splits with its clip (D123); a locked one would stay whole,
+  // still following only the first half, so the cut is refused and says why.
+  for (const t of project.tracks) {
+    for (const i of t.items) {
+      if (!("linkedTo" in i) || i.linkedTo !== target.item.id || (!t.locked && !i.locked)) continue;
+      const what = i.type === "audio" ? "linked sound" : "linked clip";
+      return { problem: t.locked ? `Its ${what} is on the ${t.name} track, which is locked. Unlock it to cut the clip.` : `Its ${what} is locked. Unlock it to cut the clip.` };
+    }
+  }
   // A transition at either cut needs the half next to it to be at least twice its length.
   if (target.track.role === "main") {
     const at = f - target.start;

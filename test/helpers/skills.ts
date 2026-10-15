@@ -8,7 +8,8 @@ export const SKILLS_MANIFEST = resolve("plugins/uncut-skills/uncut.module.json")
 
 export function bundledSkills(): ReadonlyArray<PluginSkill> {
   const manifest = JSON.parse(readFileSync(SKILLS_MANIFEST, "utf8")) as ModuleManifest;
-  return readContributions(manifest, { reserved: new Set(), moves: new Set() }).contributions.skills ?? [];
+  // D248: discovery marks a bundled plugin's skills (brand builtin comes from that).
+  return (readContributions(manifest, { reserved: new Set(), moves: new Set() }).contributions.skills ?? []).map((x) => ({ ...x, bundled: true as const }));
 }
 
 export const bundledSkill = (name: string) => bundledSkills().find((x) => x.name === name)!;
