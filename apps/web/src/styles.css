@@ -176,8 +176,11 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 /* A clip's box (D75): the wrapper clips and rounds the picture; core places both per frame (full frame by default). */
 .pv-box { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; }
 .pv-box > video, .pv-box > img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; max-width: none; }
-.pv-box > canvas.pv-fx-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.pv-box > canvas.pv-fx-canvas, .pv-box > canvas.pv-scrub { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .pv-box > .pv-fx-overlay { position: absolute; inset: 0; pointer-events: none; }
+/* D221: the GPU compositor's canvas under the media layer, and the layers it draws (kept for sound, clock and clicks, transparent). */
+.pv-layer > canvas.pv-gpu { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.pv-box[data-gpu], .pv-solid[data-gpu] { opacity: 0; }
 .fx-thumb .fx-thumb-note { position: absolute; left: 4px; bottom: 4px; padding: 1px 5px; border-radius: 4px; background: rgba(20, 20, 24, 0.8); color: #ffd27a; font-size: 10px; }
 /* A shader effect that can't be drawn here (no WebGPU, D213): said on the clip, never silently plain. */
 .pv-box > .pv-shader-badge { position: absolute; left: 2%; top: 2%; max-width: 80%; padding: 0.35em 0.6em; border-radius: 0.4em; background: rgba(20, 20, 24, 0.82); color: #ffd27a; font: 500 18px/1.3 "DM Sans", system-ui, sans-serif; pointer-events: none; z-index: 2; }

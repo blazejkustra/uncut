@@ -93,6 +93,8 @@ function driver(page: Page) {
   };
   /** Wait for the preview's videos to show the playhead's frame. */
   const settle = async () => {
+    // D221: 4K footage under a scrub canvas seeks its <video> once the playhead rests; the canvas goes once it has.
+    await page.waitForFunction(() => ![...document.querySelectorAll<HTMLCanvasElement>("canvas.pv-scrub")].some((c) => c.style.visibility !== "hidden"), { timeout: 20000 });
     await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 20000 });
     // Then two animation frames, so the seeked frame has been painted.
     await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
