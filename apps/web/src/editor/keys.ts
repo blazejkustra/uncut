@@ -8,6 +8,7 @@ import { cutSelectedWords } from "../panels/Transcript.tsx";
 import { getTranscripts, transcriptStore } from "../panels/transcript.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { actions, getState, isTextEntry, projectOf } from "../state/store.ts";
+import { installFocusRules, isTyping } from "./focus.ts";
 import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "../timeline/clipboard.ts";
 import { nearbyKey } from "../timeline/clip.ts";
 import { findItem, withGroups } from "../timeline/edit.ts";
@@ -105,7 +106,12 @@ const SHIFT_KEYS = new Set(["ArrowLeft", "ArrowRight", "?", "+", "Backspace", "D
 export function useEditorKeys(fps: number) {
   useEffect(() => {
     const s = () => getState();
-    const blocked = (e: KeyboardEvent) => isEditable(e.target) || s().newProjectOpen || s().setupOpen || s().exportOpen || s().settingsOpen || s().shortcutsOpen;
+    const uninstall = installFocusRules();
+    const dialog = () => s().newProjectOpen || s().setupOpen || s().exportOpen || s().settingsOpen || s().shortcutsOpen;
+    // #48: Space plays unless a text field is really being typed in (editor/focus.ts); a list, a
+    // slider or a field focused for the user doesn't take it.
+    const space = (e: KeyboardEvent) => e.code === "Space" && !e.metaKey && !e.altKey && !e.ctrlKey;
+    const blocked = (e: KeyboardEvent) => (space(e) ? isTyping(e.target) : isEditable(e.target)) || dialog();
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked(e) || e.altKey || e.ctrlKey) return;
       const done = () => e.preventDefault();
@@ -139,6 +145,8 @@ export function useEditorKeys(fps: number) {
       if (e.code === "Space") {
         // Also stops a focused button from being "clicked" by the same key.
         done();
+        // A field focused without the user choosing it lets go, so the next keys are shortcuts too.
+        if (isEditable(e.target)) (e.target as HTMLElement).blur();
         if (!e.repeat) playback.toggle();
         return;
       }
@@ -181,6 +189,7 @@ export function useEditorKeys(fps: number) {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     return () => {
+      uninstall();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
