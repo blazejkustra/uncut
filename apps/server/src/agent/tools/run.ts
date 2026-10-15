@@ -168,10 +168,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
         case "subtitles_export":
           return yield* subtitlesExport(v, args);
         case "timeline_edit": {
-          // D188: once a brief exists, the build waits for an approved storyboard.
+          // D188, D237: in a turn that wrote the brief or proposed the storyboard, the build waits for its approval.
           // D206: a dry run checks the edit and changes nothing, so the storyboard gate doesn't apply.
           const dryRun = args.dryRun === true;
-          const gated = dryRun ? undefined : gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard));
+          const gated = dryRun ? undefined : gateRefusal(r.owner.plan, gateOf(r.owner.plan, r.skipStoryboard, r.planned));
           if (gated) return textResult(gated, true);
           const { baseRevision, summary } = args;
           if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);

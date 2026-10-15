@@ -8,7 +8,7 @@ import type { Project } from "@uncut/core";
 import { contextBlock, mentionLabel } from "@uncut/core/mentions";
 import * as Effect from "effect/Effect";
 import { listFolder, listingWords } from "../agentFootage.ts";
-import { calledSkills, gateOf, planContext, skillBlocks, skillCallsAsWords } from "../agentPlan.ts";
+import { calledSkills, gateOf, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
 import { accessLine, TOOLS_LINE, playheadLine } from "../agentTools.ts";
@@ -121,7 +121,7 @@ export const makeSend = (ctx: SpawnCtx) => {
           return { planBlock: "", skillsBlock: "", called: [] as Array<string> };
         }
       });
-      let message = [skillCallsAsWords(text, called), skillsBlock, contextBlock(project, pointed), foldersBlock, planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
+      let message = [userMessageText(text, called), skillsBlock, contextBlock(project, pointed), foldersBlock, planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
 
       // The session to use: the live one when it's still this opening's with the same tools, model
       // and effort (D184: another choice starts another claude that resumes the conversation).
@@ -198,6 +198,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         looked: { sheet: false, phone: false },
         limits: turnLimits(),
         reviewRounds: 0,
+        planned: false,
         rendered: [],
         graphicWrites: 0,
         addedTracks: new Set(),

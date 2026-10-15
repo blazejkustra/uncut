@@ -125,10 +125,10 @@ test("pure parts: question, gate, verdict, context and the beat grid", () => {
   assert.deepEqual(questionOf({ question: "Length?", options: [{ label: "15 s" }, { label: "30 s" }], multi: true }), { question: "Length?", options: [{ label: "15 s" }, { label: "30 s" }], multi: true, freeText: true });
   assert.ok("problem" in questionOf({ question: " " }));
   const plan = { brief: { film: "x", audience: "", duration: "", formats: [], assets: [], visual: "", hardLines: [], deliverables: [] }, reviews: [] };
-  assert.match(gateRefusal(plan, gateOf(plan, false))!, /no storyboard yet/);
-  assert.equal(gateRefusal(plan, gateOf(plan, true)), undefined, "the setting skips the gate");
+  assert.match(gateRefusal(plan, gateOf(plan, false, true))!, /no storyboard yet/);
+  assert.equal(gateRefusal(plan, gateOf(plan, true, true)), undefined, "the setting skips the gate");
   assert.equal(gateRefusal({ reviews: [] }, gateOf({ reviews: [] }, false)), undefined, "no brief, no gate (small edits)");
-  const ctx = planContext({ files: {}, skills: [], others: [{ id: "argent", name: "Argent" }] }, plan, gateOf(plan, false));
+  const ctx = planContext({ files: {}, skills: [], others: [{ id: "argent", name: "Argent" }] }, plan, gateOf(plan, false, true));
   assert.match(ctx, /No brand kit is chosen[\s\S]*"Argent" \(argent\)/);
   assert.match(ctx, /waits for a storyboard/);
   // 120 bpm, beats at 0.2 + 0.5k s; the strongest every 4th from the 2nd beat.
