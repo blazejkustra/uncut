@@ -190,7 +190,7 @@ test("captions refusals: an image, a bad mode, a word that isn't there", { skip,
 test("captions_make's schema, edit_captions in timeline_edit, labels and the prompt", { skip }, () => {
   assert.ok(TOOL_NAMES.includes("captions_make"));
   const tool = mcpTools().find((t) => t.name === "captions_make")!;
-  assert.deepEqual(Object.keys((tool.inputSchema as any).properties), ["media", "mode", "look", "lines", "hideFillers"]);
+  assert.deepEqual(Object.keys((tool.inputSchema as any).properties), ["media", "item", "mode", "look", "lines", "hideFillers"]);
   const edit = mcpTools().find((t) => t.name === "timeline_edit")!;
   assert.ok(JSON.stringify((edit.inputSchema as any).properties.ops).includes("#/$defs/editCaptions"));
   assert.ok((edit.inputSchema as any).$defs.editCaptions);

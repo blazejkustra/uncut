@@ -363,7 +363,7 @@ test("the agent's tool: transcript_read is offered over MCP with its schema; the
   const { mcpTools, stepLabel, TOOL_NAMES, SYSTEM_PROMPT } = await import("../../apps/server/src/agent/agentTools.ts");
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("transcript_read"));
   const tool = mcpTools().find((t) => t.name === "transcript_read")!;
-  assert.deepEqual(Object.keys((tool.inputSchema as { properties: object }).properties).sort(), ["format", "from", "language", "media", "range"]);
+  assert.deepEqual(Object.keys((tool.inputSchema as { properties: object }).properties).sort(), ["format", "from", "item", "language", "media", "range"]);
   assert.match(SYSTEM_PROMPT, /transcript_read gives what's said/);
   assert.doesNotMatch(SYSTEM_PROMPT, /Transcripts and beats come later/);
   assert.equal(stepLabel("transcript_read", { media: "m-talk" }), "Read the transcript of m-talk");

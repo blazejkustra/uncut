@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_NAME, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, AGENT_UI_PANELS, AgentError, type AgentAccess, type AgentEffort, type AgentImage, type AgentEdit, type AgentFolder, type AgentMention, type Analyzer, type AgentItem, type AgentState, type AgentTurn, type AgentApproval, type AgentCard, type AgentPlan, type AgentAnswer, type StoryboardBeat, type Storyboard, type Brief, type Review, type AgentQuestion, type BrandKit, type BrandSkill, type AgentUi, type AgentUiPanel, type EditRefused, type ProjectError, type ProjectSnapshot } from "@uncut/contracts";
-import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, SOUND_HARD, soundSheet, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
+import { brandColourRule, CHECK_IDS, familyKey, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, LAYOUT_HARD, LAYOUT_RULES, projectChecks, SOUND_HARD, soundSheet, graphicLibsUsed, GRAPHIC_LIBS, captionCardList, subtitleCues, subtitleFormatOf, subtitleTime, MUSIC_TEMPOS, musicInProject, musicMedia, musicTrack, projectIds, decodeEnvelope, DEFAULT_PAUSE_MIN_S, describeOp, duckMediaIds, GRAPHIC_SRC, layout, MAX_GRAPHIC_BYTES, manualEditsNote, planMakeCaptions, pluginCheckRules, planTextCut, speechItem, transcriptScope, TurnDependency, undoTurn, type CaptionLines, type CaptionMode, type MusicTempo, type Op, type Problem, type Project, type Session, type SpeechEnvelope, type TextCutRequest } from "@uncut/core";
 import { aliasOf, clipNote, filterFolderSounds, filterSfx, hitKey, libraryMediaOf, limitSentence, onlyWhenAsked } from "@uncut/core/library";
 import { contextBlock, friendlyText, mentionLabel } from "@uncut/core/mentions";
 import { mediaIdFor } from "@uncut/core/music";
@@ -581,6 +581,40 @@ export const joinNotes = (carried: string | undefined, current: string) =>
 
 type UndoState = AgentTurn["undo"];
 // Sessions are immutable, so a dry run per (session, turn) is computed once.
+/** D215: the media with speech heard through the main track (a main clip's own sound, or its linked microphone), in edit order. */
+export function mediaHeardOnMain(project: Project): Array<string> {
+  const out: Array<string> = [];
+  for (const t of project.tracks) {
+    if (t.role !== "main") continue;
+    for (const i of t.items) {
+      if (i.type !== "clip") continue;
+      const speech = speechItem(project, i);
+      const id = speech?.media ?? (project.media.find((m) => m.id === i.media && m.kind !== "image" && m.probe?.hasAudio !== false) ? i.media : undefined);
+      if (id && !out.includes(id)) out.push(id);
+    }
+  }
+  return out;
+}
+
+/**
+ * D215: an `item` argument of transcript_read / transcript_edit / captions_make: the media its
+ * speech is (its own sound, or its take's microphone) and how transcript_edit cuts it: that main
+ * clip (on Main, or the main clip a sound is linked to), else its transcript scope's items.
+ */
+export function speechOfItem(project: Project, itemId: unknown): { readonly media: string; readonly itemId: string; readonly request: { readonly items?: ReadonlyArray<string>; readonly clips?: ReadonlyArray<string> } } | { readonly problem: string } {
+  if (typeof itemId !== "string") return { problem: "item must be an item id from project_read." };
+  const at = project.tracks.flatMap((t) => t.items.map((i) => ({ item: i, track: t }))).find((x) => x.item.id === itemId);
+  if (!at) return { problem: `There's no item "${itemId}". project_read lists the items on each track.` };
+  const speech = speechItem(project, at.item);
+  if (!speech?.media) return { problem: `${itemId} has no sound (and no linked or grouped sound), so there's no speech to read.` };
+  const onMain = (id: string | undefined) => !!id && project.tracks.some((t) => t.role === "main" && t.items.some((i) => i.id === id));
+  if (at.track.role === "main") return { media: speech.media, itemId, request: { clips: [itemId] } };
+  if (onMain(at.item.linkedTo)) return { media: speech.media, itemId, request: { clips: [at.item.linkedTo!] } };
+  if (onMain(speech.linkedTo)) return { media: speech.media, itemId, request: { clips: [speech.linkedTo!] } };
+  const scope = transcriptScope(project, itemId);
+  return { media: scope?.media ?? speech.media, itemId, request: { items: scope?.items ?? [speech.id] } };
+}
+
 const dryRuns = new WeakMap<Session, Map<string, UndoState>>();
 
 function undoState(turn: StoredTurn, view: ProjectView | undefined, openId: number, validate: (project: Project) => ReadonlyArray<{ readonly message: string }>): UndoState {
@@ -1309,7 +1343,12 @@ export const layer = Layer.effect(
     const transcriptRead = (v: ProjectView, args: Record<string, unknown>) =>
       Effect.gen(function* () {
         const project = v.session.project;
-        if (typeof args.media !== "string") return textResult("Pass media: a media id from project_read.", true);
+        // D215: an item on any track reads the file its speech is.
+        const spoken = args.item !== undefined ? speechOfItem(project as Project, args.item) : undefined;
+        if (spoken && "problem" in spoken) return textResult(spoken.problem, true);
+        if (spoken && args.media !== undefined && args.media !== spoken.media) return textResult(`${String(args.item)}'s speech is ${spoken.media}, not ${String(args.media)}: pass one of them.`, true);
+        if (spoken) args = { ...args, media: spoken.media };
+        if (typeof args.media !== "string") return textResult("Pass media (a media id from project_read) or item (an item id on any track).", true);
         const m = project.media.find((x) => x.id === args.media);
         if (!m) return textResult(`There's no media "${args.media}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
         const range = args.range as { start?: unknown; end?: unknown } | undefined;
@@ -1344,7 +1383,7 @@ export const layer = Layer.effect(
           silences,
           envelope,
         });
-        return textResult({ media: m.id, ...out, note: [("note" in out && typeof out.note === "string") ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : ""].filter(Boolean).join(" ") });
+        return textResult({ media: m.id, ...(spoken ? { item: args.item } : {}), ...out, note: [("note" in out && typeof out.note === "string") ? out.note : "", result.hasAudio ? TRANSCRIPT_NOTE : ""].filter(Boolean).join(" ") });
       });
 
     // transcript_edit (D69): cut words (w12–w20 ranges), pauses and/or hesitation fillers of a media
@@ -1355,13 +1394,14 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const project = v.session.project;
         const fps = project.canvas.fps;
-        let mediaId = args.media;
+        // D215: item cuts that item (any track) and what belongs to it.
+        const spoken = args.item !== undefined ? speechOfItem(project as Project, args.item) : undefined;
+        if (spoken && "problem" in spoken) return textResult(spoken.problem, true);
+        if (spoken && args.media !== undefined && args.media !== spoken.media) return textResult(`${String(args.item)}'s speech is ${spoken.media}, not ${String(args.media)}: pass one of them.`, true);
+        let mediaId = spoken ? spoken.media : args.media;
         if (mediaId === undefined) {
-          const heard = [...new Set(project.tracks.filter((t) => t.role === "main").flatMap((t) => t.items.filter((i) => i.type === "clip" && i.media).map((i) => i.media!)))].filter((id) => {
-            const m = project.media.find((x) => x.id === id);
-            return m && m.kind !== "image" && m.probe?.hasAudio !== false;
-          });
-          if (heard.length !== 1) return textResult(heard.length ? `Several media with sound are on the main track (${heard.join(", ")}): pass media.` : "No clip with sound is on the main track. Pass media, or put the talk on the timeline first.", true);
+          const heard = mediaHeardOnMain(project as Project);
+          if (heard.length !== 1) return textResult(heard.length ? `Several media with sound are on the main track (${heard.join(", ")}): pass media.` : "No clip with sound is on the main track. Pass media or item, or put the talk on the timeline first.", true);
           mediaId = heard[0];
         }
         if (typeof mediaId !== "string") return textResult("media must be a media id from project_read.", true);
@@ -1369,7 +1409,7 @@ export const layer = Layer.effect(
         if (!m) return textResult(`There's no media "${mediaId}". project_read lists the media ids: ${project.media.map((x) => x.id).join(", ") || "(none yet)"}.`, true);
         if (m.kind === "image") return textResult(`${m.id} is a still image: there's no speech to cut.`, true);
         const word = (value: unknown) => (Number.isInteger(value) && (value as number) >= 0 ? (value as number) : typeof value === "string" && /^w?\d+$/.test(value) ? Number(value.replace(/^w/, "")) : undefined);
-        const request: { remove?: Array<{ from: number; to: number }>; pauses?: { min: number }; fillers?: boolean } = {};
+        const request: { remove?: Array<{ from: number; to: number }>; pauses?: { min: number }; fillers?: boolean; items?: ReadonlyArray<string>; clips?: ReadonlyArray<string> } = { ...(spoken?.request ?? {}) };
         if (args.remove !== undefined) {
           if (!Array.isArray(args.remove) || !args.remove.length) return textResult('remove must be a list of word ranges like {"from":"w12","to":"w20"} (word ids from transcript_read).', true);
           const ranges: Array<{ from: number; to: number }> = [];
@@ -1408,6 +1448,19 @@ export const layer = Layer.effect(
         const fresh = view();
         if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
         if (!fresh.session.project.media.some((x) => x.id === m.id)) return textResult(`${m.id} isn't in the project any more.`, true);
+        // A media no main clip plays is cut where it plays (D215), as the user's items there.
+        if (!spoken && !request.items && !mediaHeardOnMain(fresh.session.project as Project).includes(m.id)) {
+          const elsewhere = fresh.session.project.tracks.filter((t) => t.role !== "main").flatMap((t) => t.items.filter((i) => (i.type === "clip" || i.type === "audio") && i.media === m.id).map((i) => i.id));
+          if (elsewhere.length) request.items = elsewhere;
+        }
+        // The item's pieces as they are now (an earlier cut may have split it).
+        if (spoken?.itemId) {
+          const now = speechOfItem(fresh.session.project as Project, spoken.itemId);
+          if ("problem" in now) return textResult(now.problem, true);
+          delete request.items;
+          delete request.clips;
+          Object.assign(request, now.request);
+        }
         const plan = planTextCut(fresh.session.project, m.id, { words: result.words, language: result.language, seconds: result.seconds, segments: result.segments }, { ...request, silences, envelope } as TextCutRequest);
         if ("problem" in plan) return textResult(plan.problem, true);
         const secs = (frames: number) => Number((frames / fps).toFixed(2));
@@ -1421,7 +1474,7 @@ export const layer = Layer.effect(
           seconds: secs(c.frames),
           clips: c.clips,
         }));
-        const base = { media: m.id, removed, framesRemoved: plan.framesRemoved, secondsSaved: secs(plan.framesRemoved), ...(plan.notes.length ? { notes: plan.notes } : {}) };
+        const base = { media: m.id, ...(spoken ? { item: spoken.itemId } : {}), removed, framesRemoved: plan.framesRemoved, secondsSaved: secs(plan.framesRemoved), ...(plan.notes.length ? { notes: plan.notes } : {}) };
         if (args.dryRun === true || !plan.ops.length) {
           return textResult({
             ...base,
@@ -1520,13 +1573,14 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const project = v.session.project;
         const fps = project.canvas.fps;
-        let mediaId = args.media;
+        // D215: an item on any track makes captions of its speech.
+        const spoken = args.item !== undefined ? speechOfItem(project as Project, args.item) : undefined;
+        if (spoken && "problem" in spoken) return textResult(spoken.problem, true);
+        if (spoken && args.media !== undefined && args.media !== spoken.media) return textResult(`${String(args.item)}'s speech is ${spoken.media}, not ${String(args.media)}: pass one of them.`, true);
+        let mediaId = spoken ? spoken.media : args.media;
         if (mediaId === undefined) {
-          const heard = [...new Set(project.tracks.filter((t) => t.role === "main").flatMap((t) => t.items.filter((i) => i.type === "clip" && i.media).map((i) => i.media!)))].filter((id) => {
-            const m = project.media.find((x) => x.id === id);
-            return m && m.kind !== "image" && m.probe?.hasAudio !== false;
-          });
-          if (heard.length !== 1) return textResult(heard.length ? `Several media with sound are on the main track (${heard.join(", ")}): pass media.` : "No clip with sound is on the main track. Put the talk on the timeline first.", true);
+          const heard = mediaHeardOnMain(project as Project);
+          if (heard.length !== 1) return textResult(heard.length ? `Several media with sound are on the main track (${heard.join(", ")}): pass media.` : "No clip with sound is on the main track. Pass media or item, or put the talk on the timeline first.", true);
           mediaId = heard[0];
         }
         if (typeof mediaId !== "string") return textResult("media must be a media id from project_read.", true);
@@ -1592,7 +1646,8 @@ export const layer = Layer.effect(
           cardCount: cards.length,
           cards: cards.slice(0, MAX_CAPTION_CARDS),
           revision: snapshot.revision,
-          ...(cards.length ? {} : { notes: ["No speech of this media plays on the main track yet, so no card shows."] }),
+          ...(item.anyTrack ? { follows: "every item that plays the media, on any track (it isn't heard through the main track)" } : {}),
+          ...(cards.length ? {} : { notes: [item.anyTrack ? "No speech of this media plays on the timeline yet, so no card shows." : "No speech of this media plays on the main track yet, so no card shows."] }),
           note: `One edit on your turn (Undo turn reverts it). Frames are the edit's. Fix words with timeline_edit {"op":"edit_captions","item":"${plan.itemId}","words":[{"word":"w12","text":"…"}]}; look at a card with render_frames.`,
           ...(userChanges ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
         });

@@ -10,7 +10,7 @@
 //   text-2", "id title-3").
 import { applyEdit, createSession } from "./apply-ops.ts";
 import { busySpans, isFree, takenIds } from "./arrange.ts";
-import { resolveStarts } from "./rules.ts";
+import { fitsTrackKind, resolveStarts } from "./rules.ts";
 import { overlaps } from "../visual/transitions.ts";
 import type { Item, Op, Problem, Project, Track } from "./types.ts";
 
@@ -306,8 +306,9 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
     case "item-track-kind": {
       if (!at) return undefined;
       const want = at.item.type === "text" || at.item.type === "captions" ? "text" : at.item.type === "audio" ? "audio" : "video";
-      const fits = after.tracks.filter((t) => t.kind === want && !t.locked).map((t) => t.id);
-      return fits.length ? `A ${at.item.type} item goes on a ${want} track: ${fits.slice(0, 6).join(", ")}.` : `Add a ${want} track first (add_track) and put it there.`;
+      // D215: the main track takes any picture (text too).
+      const fits = after.tracks.filter((t) => !t.locked && (t.role === "main" ? fitsTrackKind(at.item.type, t) : t.kind === want)).map((t) => t.id);
+      return fits.length ? `A ${at.item.type} item goes on ${want === "video" || at.item.type === "text" ? "the main track or " : ""}a ${want} track: ${fits.slice(0, 6).join(", ")}.` : `Add a ${want} track first (add_track) and put it there.`;
     }
     case "missing-start": {
       if (!at) return undefined;

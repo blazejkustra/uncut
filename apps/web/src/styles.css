@@ -716,6 +716,8 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 /* Transcript panel (D32, D69) */
 /* U11 (D177): the Transcript in the left column: its tools wrap above the words, which scroll. */
 .library.tx-panel { overflow: hidden; }
+.tx-source { flex: none; padding: 0 12px 8px; }
+.tx-source .tx-select { width: 100%; }
 .tx-toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 12px 10px; border-bottom: 1px solid var(--border); }
 .tx-toolbar .tx-status { flex-basis: 100%; min-height: 0; }
 .tx-toolbar .tx-status:empty { display: none; }

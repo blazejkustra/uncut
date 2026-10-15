@@ -132,7 +132,11 @@ export interface Item {
   readonly keepPitch?: boolean;
   /** Clip, audio (D123): makes no sound. Detach audio sets it on the clip whose sound went to an audio item. */
   readonly mute?: boolean;
-  /** Audio (D123): the clip this sound was detached from; while set it follows that clip (arrange.ts withLinkedAudio). */
+  /**
+   * Audio and off-main clips (D123, D215): the clip this item follows (a detached sound, a take's
+   * microphone or other picture under its picture on Main); while set it follows that clip
+   * (arrange.ts withLinkedAudio).
+   */
   readonly linkedTo?: Id;
   // clip, audio
   readonly gainDb?: number;
@@ -158,6 +162,8 @@ export interface Item {
   readonly hideFillers?: boolean;
   /** Captions (D82): draw wherever the source plays on main, whatever start/duration say (set by Make captions). */
   readonly coversMain?: boolean;
+  /** Captions (D215): follow every item that plays the source on any track (a take's microphone off Main), not only the main track's clips. */
+  readonly anyTrack?: boolean;
   /** Drawn text only (captions' cards, never saved): transform.y is the box's bottom edge, so wrapping grows upward. */
   readonly anchor?: "bottom";
   // clip, audio

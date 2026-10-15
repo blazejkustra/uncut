@@ -3,12 +3,13 @@
 // menu), the server (a Finder drop imports and places in one edit) and the agent's convenience ops.
 // Browser-safe.
 //
-// D122, what "main" means: the main track is the magnetic spine (back to back, ripple, transitions,
-// transcript cuts, captions follow its clips). Every other video track is an overlay with free
-// starts, drawn over the tracks below it (track order is the stacking order); clips there never
-// ripple, carry no transitions, aren't cut by the transcript and aren't followed by captions.
+// D122, what "main" means: the main track is the magnetic spine (back to back, ripple, transitions).
+// Every other video track is an overlay with free starts, drawn over the tracks below it (track
+// order is the stacking order); clips there never ripple and carry no transitions. D215: Main takes
+// any picture (text too), a take goes on it with its parts linked (planPutOnMain), and transcripts
+// and captions work on any item (transcript.ts, captions.ts).
 import { applyEdit, createSession, EditError } from "./apply-ops.ts";
-import { timelineProblems } from "./rules.ts";
+import { MAIN_ITEM_TYPES, timelineProblems } from "./rules.ts";
 import { layout } from "./timeline.ts";
 import { soundMedia } from "../audio/audio.ts";
 import type { Frame, Id, Item, Media, Op, Project, Track } from "./types.ts";
@@ -339,17 +340,19 @@ const retimes = (op: Op): string | undefined => {
 };
 
 /**
- * Linked sound (D123): an audio item with `linkedTo` (Detach audio sets it) follows its clip until
- * the user moves, trims, splits or retimes the sound itself. This returns `ops` plus the ops that
- * keep every linked sound in step with what `ops` did to its clip: the same start, in point, length
- * and speed (a ripple, a trim, a speed change, a move), a piece per piece when the clip was split or
- * cut by its transcript (the words cut from the picture are cut from the sound too), gone when the
- * clip is gone. A sound the ops touch directly is unlinked instead. If keeping them in step would
- * break the timeline (something else in the way on the sound's track), they're unlinked rather than
- * the edit refused. Pure; run where edits are applied (the server) and drafted (the renderer).
+ * Linked sound (D123), and linked parts of a take (D215): an audio item or an off-main clip with
+ * `linkedTo` follows its clip until the user moves, trims, splits or retimes the linked item itself.
+ * This returns `ops` plus the ops that keep every linked item in step with what `ops` did to its
+ * clip: the same start, length and speed, its in point moved by as much as the clip's (a detached
+ * sound plays the clip's own media from the same point; a take's microphone keeps its own offset
+ * into its file), a piece per piece when the clip was split or cut by its transcript (the words cut
+ * from the picture are cut from the sound too), gone when the clip is gone. An item the ops touch
+ * directly is unlinked instead. If keeping them in step would break the timeline (something else in
+ * the way on the linked item's track), they're unlinked rather than the edit refused. Pure; run where
+ * edits are applied (the server) and drafted (the renderer).
  */
 export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): ReadonlyArray<Op> {
-  const linked = project.tracks.flatMap((t) => t.items.filter((i) => i.type === "audio" && typeof i.linkedTo === "string").map((i) => ({ item: i, track: t })));
+  const linked = project.tracks.flatMap((t) => (t.role === "main" ? [] : t.items.filter((i) => (i.type === "audio" || i.type === "clip") && typeof i.linkedTo === "string").map((i) => ({ item: i, track: t }))));
   if (!linked.length || !ops.length) return ops;
   let after: Project;
   try {
@@ -366,12 +369,13 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   for (const op of ops) if (op.op === "split_item") origin.set(op.newId, op.item);
   const touched = new Set(ops.map(retimes).filter((id): id is string => !!id));
   const { starts } = layout(after);
+  const beforeItems = new Map(project.tracks.flatMap((t) => t.items.map((i) => [i.id, i] as const)));
   const afterItems = new Map(after.tracks.flatMap((t) => t.items.map((i) => [i.id, { item: i, track: t }] as const)));
   const taken = takenIds(after);
   const extra: Array<Op> = [];
   const unlink: Array<Op> = [];
   for (const { item: a } of linked) {
-    // The sound itself was moved, trimmed, split or retimed: it's on its own now (its halves too).
+    // The linked item itself was moved, trimmed, split or retimed: it's on its own now (its halves too).
     const own = [...afterItems.keys()].filter((id) => originOf(id) === a.id);
     if (touched.has(a.id) || [...touched].some((id) => originOf(id) === a.id)) {
       for (const id of own) if (afterItems.get(id)?.item.linkedTo !== undefined) unlink.push({ op: "update_item", item: id, set: { linkedTo: null } });
@@ -381,21 +385,25 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
     // Locked: left exactly as it is.
     if (!now || now.track.locked || now.item.locked) continue;
     const clip = a.linkedTo!;
+    const clipBefore = beforeItems.get(clip);
     const pieces = [...afterItems.values()]
       .filter(({ item }) => item.type === "clip" && originOf(item.id) === clip)
       .sort((x, y) => (starts.get(x.item.id) ?? 0) - (starts.get(y.item.id) ?? 0));
     if (!pieces.length) {
-      // Its clip is gone (deleted, or every word of it cut): so is its sound.
+      // Its clip is gone (deleted, or every word of it cut): so is the linked item.
       extra.push({ op: "delete_item", item: a.id });
       continue;
     }
     const media = after.media.find((m) => m.id === a.media);
-    const frames = media?.probe?.frames;
+    const frames = media?.kind === "image" ? undefined : media?.probe?.frames;
+    // The linked item's in point moves with the clip's (equal for a detached sound: D123 unchanged).
+    const offset = (a.in ?? 0) - (clipBefore?.in ?? a.in ?? 0);
+    const isClip = a.type === "clip";
     pieces.forEach(({ item: d }, i) => {
       const speed = d.speed ?? 1;
-      const from = d.in ?? 0;
+      const from = Math.max(0, (d.in ?? 0) + offset);
       let duration = d.duration;
-      if (frames && !d.loop && from + duration * speed > frames) duration = Math.max(1, Math.floor((frames - from) / speed));
+      if (frames && !d.loop && !(isClip && a.hold) && from + duration * speed > frames) duration = Math.max(1, Math.floor((frames - from) / speed));
       const start = starts.get(d.id) ?? 0;
       const several = pieces.length > 1;
       const fadeIn = i === 0 && a.fadeIn ? Math.min(a.fadeIn, duration) : undefined;
@@ -406,18 +414,26 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
         const same = cur.start === want.start && (cur.in ?? 0) === want.in && cur.duration === want.duration && cur.speed === want.speed && cur.keepPitch === want.keepPitch && cur.linkedTo === want.linkedTo && !several;
         if (same) return;
         const keys = cur.gainKeys?.length && (several || cur.in !== want.in || cur.duration !== want.duration || cur.speed !== want.speed);
+        const boxKeys = isClip && cur.keys?.length && (several || cur.duration !== want.duration || cur.speed !== want.speed);
         extra.push({
           op: "update_item",
           item: a.id,
-          set: { start, in: from, duration, speed: want.speed ?? null, keepPitch: want.keepPitch ?? null, linkedTo: d.id, fadeIn: fadeIn || null, fadeOut: fadeOut && fadeOut > 0 ? fadeOut : null, ...(keys ? { gainKeys: null } : {}) },
+          set: { start, in: from, duration, speed: want.speed ?? null, keepPitch: want.keepPitch ?? null, linkedTo: d.id, fadeIn: fadeIn || null, fadeOut: fadeOut && fadeOut > 0 ? fadeOut : null, ...(keys ? { gainKeys: null } : {}), ...(boxKeys ? { keys: null } : {}) },
         });
+        return;
+      }
+      if (isClip) {
+        // A linked picture's piece: the same clip (box, effects, look) over the piece's stretch.
+        const { fadeIn: _fi, fadeOut: _fo, keys: _k, gainKeys: _g, animation: _a, speed: _s, keepPitch: _p, ...rest } = a;
+        const id = uniqueIn(a.id.replace(/-\d+$/, "") || "clip", taken);
+        extra.push({ op: "insert_item", track: now.track.id, item: { ...rest, id, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), linkedTo: d.id } as Item });
         return;
       }
       const id = uniqueIn("audio", taken);
       extra.push({
         op: "insert_item",
         track: now.track.id,
-        item: { id, type: "audio", media: a.media!, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(a.gainDb !== undefined ? { gainDb: a.gainDb } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), linkedTo: d.id },
+        item: { id, type: "audio", media: a.media!, in: from, start, duration, ...(want.speed ? { speed: want.speed } : {}), ...(want.keepPitch === false ? { keepPitch: false } : {}), ...(a.gainDb !== undefined ? { gainDb: a.gainDb } : {}), ...(a.mute ? { mute: true } : {}), ...(a.name ? { name: a.name } : {}), ...(fadeOut && fadeOut > 0 ? { fadeOut } : {}), linkedTo: d.id },
       });
     });
   }
@@ -425,6 +441,100 @@ export function withLinkedAudio(project: Project, ops: ReadonlyArray<Op>): Reado
   if (!extra.length) return synced;
   const check = tryOps(project, synced);
   if (!("problem" in check)) return synced;
-  // Something is in the way: the sounds stop following rather than the edit failing.
+  // Something is in the way: the linked items stop following rather than the edit failing.
   return [...ops, ...unlink, ...linked.filter(({ item }) => afterItems.has(item.id) && !unlink.some((u) => (u as { item: string }).item === item.id)).map(({ item }) => ({ op: "update_item" as const, item: item.id, set: { linkedTo: null } }))];
+}
+
+/** A take's picture (D215): the clip a "Put on Main" puts on the main track when `item` is one of its sounds. */
+function takePicture(project: Pick<Project, "tracks" | "media">, item: Item): Item | undefined {
+  if (MAIN_ITEM_TYPES.has(item.type)) return item;
+  if (item.linkedTo) return undefined;
+  if (!item.group) return undefined;
+  const mates = project.tracks.flatMap((t) => (t.role === "main" ? [] : t.items.filter((i) => i.group === item.group && i.type === "clip" && i.id !== item.id).map((i) => ({ i, t }))));
+  const named = (re: RegExp) => mates.find(({ i, t }) => re.test(t.name) || re.test(project.media.find((m) => m.id === i.media)?.name ?? ""))?.i;
+  return named(/screen/i) ?? named(/camera/i) ?? mates[0]?.i;
+}
+
+export interface PutOnMainPlan {
+  readonly ops: ReadonlyArray<Op>;
+  readonly summary: string;
+  /** The item that went on Main, and its index there. */
+  readonly itemId: Id;
+  readonly index: number;
+  /** Its parts that now follow it (linkedTo). */
+  readonly linked: ReadonlyArray<Id>;
+}
+
+/**
+ * "Put on Main" (D215): a picture (clip, element, graphic or text) off the main track goes into the
+ * main track at the cut nearest `frame` (default: where its middle is), which ripples what comes
+ * after. A take's parts (its group: the microphone, this Mac's sound, the other picture) that play
+ * over exactly its stretch become linked to it (D123's linkedTo, the in offsets kept): they stay on
+ * their tracks, start where it starts on Main and follow its moves, trims, ripple, splits and
+ * transcript cuts. A part whose track isn't free there goes on another free track of its kind (a new
+ * one when none is). Group members that aren't parts (other lengths, text) stay as they are. A sound
+ * of a take picks the take's picture (the screen, else the camera). One edit; the track the picture
+ * leaves empty goes.
+ */
+export function planPutOnMain(project: Project, itemId: Id, at: { readonly frame?: number | undefined } = {}): PutOnMainPlan | { readonly problem: string } {
+  const found = locate(project, itemId);
+  if (!found) return { problem: "That item isn't in the project any more." };
+  const main = project.tracks.find((t) => t.role === "main");
+  if (!main) return { problem: "This project has no main track." };
+  if (found.track.role === "main") return { problem: "It's already on the main track." };
+  const picture = takePicture(project, found.item);
+  if (!picture) return { problem: found.item.type === "captions" ? "Captions follow the speech: they stay on their own track." : "A sound stays on an audio track: put its picture on the main track." };
+  const placed = locate(project, picture.id)!;
+  const locked = lockProblem(placed.track, picture);
+  if (locked) return { problem: locked };
+  if (main.locked) return { problem: `The ${main.name} track is locked. Unlock it to add to it.` };
+  const { starts } = layout(project);
+  const start = starts.get(picture.id) ?? 0;
+  const desired = at.frame !== undefined && Number.isFinite(at.frame) ? Math.max(0, at.frame) : start;
+  const index = mainSlot(main.items, desired + picture.duration / 2);
+  const newStart = main.items.slice(0, index).reduce((n, i) => n + i.duration, 0);
+  const ops: Array<Op> = [];
+  const before = main.items[index];
+  if (before?.transitionIn) ops.push({ op: "set_transition", item: before.id, transition: null });
+  ops.push({ op: "move_item", item: picture.id, track: main.id, index });
+  if (picture.group || picture.linkedTo) ops.push({ op: "update_item", item: picture.id, set: { ...(picture.group ? { group: null } : {}), ...(picture.linkedTo ? { linkedTo: null } : {}) } });
+  // The take's parts: same stretch, a clip or a sound, unlocked.
+  const members = picture.group ? project.tracks.flatMap((t) => (t.role === "main" ? [] : t.items.filter((i) => i.group === picture.group && i.id !== picture.id).map((i) => ({ item: i, track: t })))) : [];
+  const parts = members.filter(({ item, track }) => (item.type === "audio" || item.type === "clip") && (starts.get(item.id) ?? 0) === start && item.duration === picture.duration && !item.locked && !track.locked);
+  const rest = members.filter((m) => !parts.includes(m));
+  // Where each part goes: its own track when free at the new start, else another of its kind, else a new one.
+  let tracks: Array<Track> = project.tracks.map((t) => ({ ...t, items: t.items.filter((i) => i.id !== picture.id && !parts.some((p) => p.item.id === i.id)) }));
+  const taken = takenIds(project);
+  const linked: Array<Id> = [];
+  const span = picture.duration;
+  for (const { item, track } of parts) {
+    const audio = item.type === "audio";
+    let target = tracks.find((t) => t.id === track.id)!;
+    if (!isFree(target, newStart, span)) {
+      const mi = tracks.findIndex((t) => t.role === "main");
+      const other = audio ? freeAudioTrack({ tracks }, newStart, span) : tracks.slice(0, Math.max(0, mi)).reverse().find((t) => t.kind === "video" && t.role !== "main" && !t.locked && isFree(t, newStart, span));
+      if (other) target = other;
+      else {
+        const id = uniqueIn(audio ? "audio-track" : "video-track", taken);
+        const name = nextName({ tracks }, audio ? "Audio" : "Video");
+        const index = audio ? tracks.length : Math.max(0, mi);
+        ops.push({ op: "add_track", track: { id, kind: audio ? "audio" : "video", name }, index });
+        target = { id, kind: audio ? "audio" : "video", name, items: [] };
+        tracks.splice(index, 0, target);
+      }
+    }
+    ops.push({ op: "move_item", item: item.id, ...(target.id !== track.id ? { track: target.id } : {}), start: newStart });
+    ops.push({ op: "update_item", item: item.id, set: { linkedTo: picture.id, group: null } });
+    const moved = { ...item, start: newStart };
+    tracks = tracks.map((t) => (t.id === target.id ? { ...t, items: [...t.items, moved] } : t));
+    linked.push(item.id);
+  }
+  // A group of one is no group.
+  if (picture.group && rest.length === 1) ops.push({ op: "update_item", item: rest[0]!.item.id, set: { group: null } });
+  // The track it leaves empty goes (as Bring forward / Send backward does).
+  const left = tracks.find((t) => t.id === placed.track.id);
+  if (left && !left.items.length && !left.locked && left.role !== "main") ops.push({ op: "delete_track", track: left.id });
+  const check = tryOps(project, ops);
+  if ("problem" in check) return check;
+  return { ops, summary: `Put ${picture.name ?? picture.id} on Main`, itemId: picture.id, index, linked };
 }

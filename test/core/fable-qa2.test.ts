@@ -99,7 +99,8 @@ test("F6 (D149): a clip dragged from Main onto a text lane lands on a new video 
   const p = apply(base, planMoveToNewTrack(base, "b", { index: index! }, 150));
   assert.deepEqual(p.tracks.map((t) => t.id), ["text", "video-track-1", "overlay", "main", "sfx"]);
   assert.equal(itemIn(p, "b").start, 150);
-  assert.equal(newTrackIndexOver(base, itemIn(base, "t1"), base.tracks[2]!), 2, "text over main: above it");
+  assert.equal(newTrackIndexOver(base, itemIn(base, "t1"), base.tracks[2]!), undefined, "D215: text over main is a plain move (Main takes text)");
+  assert.equal(newTrackIndexOver(base, itemIn(base, "t1"), base.tracks[1]!), 1, "text over an overlay video lane: a new text track above it");
   assert.equal(newTrackIndexOver(base, itemIn(base, "pip"), base.tracks[2]!), undefined, "a lane that takes it is a plain move");
   assert.equal(newTrackIndexOver(base, itemIn(base, "whoosh"), base.tracks[0]!), undefined, "sounds stay with the audio lanes");
 });

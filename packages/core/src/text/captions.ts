@@ -10,7 +10,8 @@
 import { TEXT_STYLES, textLook } from "./looks.ts";
 import { safeMargin, textDecor, textPlacement, type RenderTarget } from "../visual/render.ts";
 import { lookItem } from "./textPlan.ts";
-import { editWords, fillersOf, speechWords, type CutTranscript, type SpeechEnvelope } from "./transcript.ts";
+import { editWords, fillersOf, soundParts, speechWords, type CutTranscript, type SpeechEnvelope } from "./transcript.ts";
+import { projectDuration, resolveStarts } from "../timeline/rules.ts";
 import type { FieldSet, Item, Op, Project, Track } from "../timeline/types.ts";
 
 export type CaptionMode = "line" | "word" | "single";
@@ -117,12 +118,21 @@ export function captionWordText(item: Pick<Item, "words" | "edits">, index: numb
 /** Word text made safe for textHtml's markup ([[accent]], **bold**, `mono` stay literal-ish). */
 const plain = (text: string) => text.replace(/`/g, "'").replace(/\*\*+/g, "*").replace(/\[\[+/g, "[").replace(/\]\]+/g, "]").replace(/\s+/g, " ");
 
-/** The main track's played words of the item's source, per clip in edit order (the editWords rule). */
+/** The items a captions item follows when it has `anyTrack` (D215): every clip or sound that plays its source, on any track, unmuted. */
+function followedItems(project: Pick<Project, "tracks">, item: Item): Set<string> {
+  return new Set(project.tracks.flatMap((t) => t.items.filter((i) => (i.type === "clip" || i.type === "audio") && i.media === item.source && !i.mute).map((i) => i.id)));
+}
+
+/**
+ * The played words of the item's source, per clip in edit order (the editWords rule): through the
+ * main track (a main clip's own sound or its linked microphone, D215), or with `anyTrack` (D215)
+ * through every item that plays the source wherever it is.
+ */
 function heardByClip(project: Pick<Project, "tracks" | "canvas">, item: Item) {
   const words = item.words ?? [];
   const out: Array<{ clip: string; words: Array<{ index: number; from: number; to: number }> }> = [];
   if (!item.source || !words.length) return out;
-  for (const w of editWords(project, new Map([[item.source, words]]))) {
+  for (const w of editWords(project, new Map([[item.source, words]]), item.anyTrack ? followedItems(project, item) : undefined)) {
     const last = out.at(-1);
     if (last && last.clip === w.clip) last.words.push({ index: w.index, from: w.start, to: w.end });
     else out.push({ clip: w.clip, words: [{ index: w.index, from: w.start, to: w.end }] });
@@ -169,7 +179,7 @@ function group(words: ReadonlyArray<{ index: number; text: string; from: number;
   return cards;
 }
 
-const memo = new WeakMap<Item, { main: Track | undefined; canvas: unknown; theme: unknown; cards: ReadonlyArray<CaptionCard> }>();
+const memo = new WeakMap<Item, { main: unknown; canvas: unknown; theme: unknown; cards: ReadonlyArray<CaptionCard> }>();
 
 /**
  * Every card of a captions item, in timeline order, inside its window [start, start + duration):
@@ -181,9 +191,11 @@ const memo = new WeakMap<Item, { main: Track | undefined; canvas: unknown; theme
 export function captionCards(project: Pick<Project, "tracks" | "canvas"> & Partial<Pick<Project, "theme">>, item: Item): ReadonlyArray<CaptionCard> {
   if (item.type !== "captions") return [];
   const main = project.tracks.find((t) => t.role === "main");
+  // D215: captions that follow any track depend on every track, not only Main.
+  const key: unknown = item.anyTrack ? project.tracks : main;
   const fps = project.canvas.fps;
   const known = memo.get(item);
-  if (known && known.main === main && known.canvas === project.canvas && known.theme === project.theme) return known.cards;
+  if (known && known.main === key && known.canvas === project.canvas && known.theme === project.theme) return known.cards;
   const s = captionSettings(item, project);
   const breaks = new Set(item.breaks ?? []);
   const hideFillers = item.hideFillers === true;
@@ -203,12 +215,20 @@ export function captionCards(project: Pick<Project, "tracks" | "canvas"> & Parti
   const hi = item.coversMain ? Infinity : lo + item.duration;
   // Where each main clip ends, and whether the next clip plays the same media (a hold may run into it).
   const clipEnds = new Map<string, { end: number; sameNext: boolean }>();
-  let t = 0;
-  main?.items.forEach((it, k) => {
-    t += it.duration;
-    const next = main.items[k + 1];
-    clipEnds.set(it.id, { end: t, sameNext: next?.type === "clip" && next.media === item.source });
-  });
+  if (item.anyTrack) {
+    // Each followed item's end, and whether another one plays on from there (D215).
+    const starts = resolveStarts(project);
+    const followed = followedItems(project, item);
+    const spans = project.tracks.flatMap((tr) => tr.items.filter((i) => followed.has(i.id)).map((i) => ({ id: i.id, start: starts.get(i.id) ?? 0, end: (starts.get(i.id) ?? 0) + i.duration })));
+    for (const sp of spans) clipEnds.set(sp.id, { end: sp.end, sameNext: spans.some((o) => o.id !== sp.id && o.start === sp.end) });
+  } else {
+    let t = 0;
+    main?.items.forEach((it, k) => {
+      t += it.duration;
+      const next = main.items[k + 1];
+      clipEnds.set(it.id, { end: t, sameNext: next?.type === "clip" && next.media === item.source });
+    });
+  }
   const cards: Array<CaptionCard> = [];
   raw.forEach((c, i) => {
     const from = c.words[0]!.from;
@@ -223,7 +243,7 @@ export function captionCards(project: Pick<Project, "tracks" | "canvas"> & Parti
     const b = Math.min(to, hi);
     if (b > a) cards.push({ from: a, to: b, clip: c.clip, words: c.words, lines: c.lines });
   });
-  memo.set(item, { main, canvas: project.canvas, theme: project.theme, cards });
+  memo.set(item, { main: key, canvas: project.canvas, theme: project.theme, cards });
   return cards;
 }
 
@@ -389,8 +409,13 @@ export function planMakeCaptions(project: Pick<Project, "canvas" | "theme" | "tr
   const media = project.media.find((m) => m.id === req.media);
   if (!media) return { problem: `There's no media "${req.media}".` };
   if (media.kind === "image" || !(media.kind === "audio" || media.probe?.hasAudio)) return { problem: `${media.name} has no sound, so there's nothing to caption.` };
+  // Heard through Main (a main clip of it, or one whose linked microphone it is: D215), else
+  // wherever it plays: then the captions follow those items (anyTrack).
   const main = project.tracks.find((t) => t.role === "main");
-  if (!main?.items.some((i) => i.type === "clip" && i.media === media.id)) return { problem: `${media.name} isn't on the main track: captions follow the main-track clips that use it.` };
+  const onMain = !!main?.items.some((i) => i.type === "clip" && (i.media === media.id || soundParts(project, i).some((p) => p.media === media.id && !p.mute)));
+  const anywhere = project.tracks.some((t) => t.items.some((i) => (i.type === "clip" || i.type === "audio") && i.media === media.id));
+  if (!onMain && !anywhere) return { problem: `${media.name} isn't on the timeline: captions follow the items that play it.` };
+  const anyTrack = !onMain;
   const look = req.look ?? CAPTION_DEFAULTS.look;
   if (!TEXT_STYLES[look]) return { problem: `There's no text look called ${look}. modules_list with kind "text-style" lists them.` };
   if (req.mode !== undefined && !CAPTION_MODES.includes(req.mode)) return { problem: `mode must be one of ${CAPTION_MODES.join(", ")}.` };
@@ -399,7 +424,7 @@ export function planMakeCaptions(project: Pick<Project, "canvas" | "theme" | "tr
   const hes = new Set(fillersOf(t.words, t.language).filter((f) => f.kind === "hesitation").flatMap((f) => Array.from({ length: f.n }, (_, k) => f.i + k)));
   const heard = speechWords(t.words, { segments: t.segments, silences: req.silences, seconds: t.seconds, envelope: req.envelope });
   const words: Array<CaptionWord> = heard.map((w, i) => ({ text: w.text.trim(), start: w.start, end: w.end, ...(hes.has(i) ? { filler: true } : {}) }));
-  const duration = Math.max(1, mainLength(project));
+  const duration = Math.max(1, anyTrack ? projectDuration(project) : mainLength(project));
   let lines: CaptionLines | undefined;
   if (req.lines !== undefined) {
     const checked = checkCaptionLines(req.lines);
@@ -411,7 +436,7 @@ export function planMakeCaptions(project: Pick<Project, "canvas" | "theme" | "tr
     if (existing.track.locked || existing.item.locked) return { problem: `${media.name}'s captions are locked: unlock them to remake them.` };
     const old = existing.item.words ?? [];
     const same = old.length === words.length && old.every((w, i) => w.text === words[i]!.text);
-    const set: Record<string, unknown> = { words, start: 0, duration, coversMain: true };
+    const set: Record<string, unknown> = { words, start: 0, duration, coversMain: true, ...(anyTrack ? { anyTrack: true } : existing.item.anyTrack ? { anyTrack: null } : {}) };
     if (req.mode) set.mode = req.mode;
     if (req.look && req.look !== existing.item.style?.preset) {
       const fields = lookItem(TEXT_STYLES[look]!, project, duration);
@@ -446,6 +471,7 @@ export function planMakeCaptions(project: Pick<Project, "canvas" | "theme" | "tr
     start: 0,
     duration,
     coversMain: true,
+    ...(anyTrack ? { anyTrack: true } : {}),
     mode: styled?.mode ?? req.mode ?? CAPTION_DEFAULTS.mode,
     transform: fields.transform,
     style: (styled ? captionStyleFields(styled.id, project.canvas) : fields.style) as Item["style"],
