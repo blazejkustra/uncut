@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { API_VERSION } from "../packages/plugin-sdk/src/index.ts";
 import { loadModules, readContributions, type ModuleManifest } from "../packages/core/src/index.ts";
 import { checkManifest, MANIFEST_FILE } from "../apps/server/src/plugins/plugins.ts";
+import { shaderEntries } from "./plugin-shaders.ts";
 
 export const REPO = fileURLToPath(new URL("..", import.meta.url));
 export const MAX_FILES = 40;
@@ -15,6 +16,9 @@ export const MAX_BYTES = 512 * 1024;
 /** The catalog's template (D104): checked like a plugin, but it's copied, never loaded or shipped. */
 export const TEMPLATE_DIR = join(REPO, "plugins/catalog/_template");
 export const TEMPLATE_ID = "example.template";
+/** The shader effect template (D213): `pnpm plugin:new <id> --shader` copies it. */
+export const SHADER_TEMPLATE_DIR = join(REPO, "plugins/catalog/_shader-template");
+export const SHADER_TEMPLATE_ID = "example.shader";
 
 /** Plugin folders under a plugins root: the bundled ones at the top, the catalog's under catalog/ (no hidden or "_" folders). */
 export function pluginDirs(root = join(REPO, "plugins")) {
@@ -40,9 +44,11 @@ function walk(dir: string, out: Array<{ path: string; kind: string; bytes: numbe
   return out;
 }
 
-// What a plugin's code may import: Node's built-ins, the SDK, and its own files next to it.
+// What a plugin's code may import: Node's built-ins, the SDK, and its own files next to it; a
+// shader effect's source (D213) TypeGPU and its own files only.
 const IMPORT = /(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*["']([^"']+)["']|(?:^|[\s;(])import\s*\(?\s*["']([^"']+)["']/gm;
 const allowedImport = (spec: string) => spec.startsWith("node:") || spec === "@uncut/plugin-sdk" || /^\.\/[^/]+\.(ts|json)$/.test(spec);
+const allowedShaderImport = (spec: string) => /^typegpu(\/(data|std))?$/.test(spec) || /^\.\/[^/]+\.ts$/.test(spec);
 
 export interface GateContext {
   readonly builtinIds: ReadonlySet<string>;
@@ -70,13 +76,20 @@ export async function gateContext(): Promise<GateContext> {
  * The problems of one plugin folder. `template`: the catalog's template, whose folder isn't named
  * after its id (it's `_template`, so nothing loads it).
  */
-export function checkPluginFolder(dir: string, ctx: GateContext, { template = false } = {}): Array<string> {
+export function checkPluginFolder(dir: string, ctx: GateContext, { template = false, templateId = TEMPLATE_ID } = {}): Array<string> {
   const problems: Array<string> = [];
   const where = relative(REPO, dir) || dir;
   const say = (problem: string) => problems.push(`${where}: ${problem}`);
   if (!existsSync(join(dir, MANIFEST_FILE))) return [`${where}: there's no ${MANIFEST_FILE}.`];
 
   const files = walk(dir);
+  // The .ts files its shader effects name (D213): TypeGPU sources, checked as such.
+  let shaderSources = new Set<string>();
+  try {
+    shaderSources = new Set(shaderEntries(JSON.parse(readFileSync(join(dir, MANIFEST_FILE), "utf8"))).map((e) => e.source));
+  } catch {
+    // reported below
+  }
   for (const f of files) {
     const rel = f.path.slice(dir.length + 1);
     if (f.kind !== "file") say(`${rel}: only regular files (no symlinks, pipes or devices).`);
@@ -88,7 +101,9 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
       const source = readFileSync(f.path, "utf8");
       for (const m of source.matchAll(IMPORT)) {
         const spec = m[1] ?? m[2]!;
-        if (!allowedImport(spec)) say(`${rel} imports ${spec}: a plugin imports only node: built-ins, @uncut/plugin-sdk and its own files (./x.ts).`);
+        if (shaderSources.has(rel)) {
+          if (!allowedShaderImport(spec)) say(`${rel} imports ${spec}: a shader effect's source imports only typegpu, typegpu/data, typegpu/std and its own files (./x.ts).`);
+        } else if (!allowedImport(spec)) say(`${rel} imports ${spec}: a plugin imports only node: built-ins, @uncut/plugin-sdk and its own files (./x.ts).`);
       }
     }
   }
@@ -112,7 +127,7 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
   if (manifest.apiVersion !== API_VERSION) say(`declare "apiVersion": "${API_VERSION}".`);
   const folder = basename(dir);
   if (template) {
-    if (manifest.id !== TEMPLATE_ID) say(`the template's id stays ${TEMPLATE_ID} (pnpm plugin:new replaces it).`);
+    if (manifest.id !== templateId) say(`the template's id stays ${templateId} (pnpm plugin:new replaces it).`);
   } else if (folder !== manifest.id.replaceAll(".", "-")) say(`the folder is named after the id: ${manifest.id.replaceAll(".", "-")}, not ${folder}.`);
   const earlier = ctx.ids.get(manifest.id);
   if (earlier) say(`the id ${manifest.id} is taken (${relative(REPO, earlier) || earlier}).`);
@@ -130,8 +145,11 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
 
   const runtime = manifest.runtime as { type: string; command?: string; args?: Array<string> };
   if (runtime.type === "data") {
+    // Its manifest, plus the TypeGPU sources its shader effects name (D213): resolved by
+    // plugin:check, never run by Uncut (the manifest carries their WGSL).
     const names = files.map((f) => f.path.slice(dir.length + 1));
-    if (names.length !== 1 || names[0] !== MANIFEST_FILE) say(`a data plugin is its ${MANIFEST_FILE} alone, no code.`);
+    if (!names.includes(MANIFEST_FILE) || names.some((n) => n !== MANIFEST_FILE && !shaderSources.has(n))) say(`a data plugin is its ${MANIFEST_FILE} alone, no code (and the .ts sources of its shader effects).`);
+    for (const source of shaderSources) if (!names.includes(source)) say(`its shader effects' source ${source} isn't in the folder.`);
   } else if (runtime.command === "node") {
     const entry = (runtime.args ?? []).find((a) => a.endsWith(".ts"));
     if (!entry || !existsSync(join(dir, entry))) say(`its node entry (a .ts file in runtime.args) is in the folder.`);

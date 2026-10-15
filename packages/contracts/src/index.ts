@@ -397,7 +397,7 @@ export const PluginInfo = Schema.Struct({
   // In Uncut's own plugins folder, so Remove can delete it.
   removable: Schema.optional(Schema.Boolean),
   // What it adds as data (D103), by name: text looks, components, checks.
-  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String) })),
+  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)) })),
 });
 export type PluginInfo = typeof PluginInfo.Type;
 
@@ -412,6 +412,8 @@ export const PluginContributions = Schema.Struct({
   rules: Schema.Array(Schema.Unknown),
   // D136: colour looks for the Effects tab (core LookDef numbers).
   filters: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, look: Schema.Unknown }))),
+  // D213: shader effects (core ShaderDef: typed params and the TypeGPU function's WGSL).
+  shaders: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, description: Schema.String, plugin: Schema.String, pluginName: Schema.String, params: Schema.Array(Schema.Unknown), wgsl: Schema.String }))),
 });
 export type PluginContributions = typeof PluginContributions.Type;
 
@@ -429,7 +431,7 @@ export const CatalogEntry = Schema.Struct({
   tools: Schema.Array(Schema.String),
   // Whether it runs a program (a "process" plugin) or only adds data.
   runs: Schema.Boolean,
-  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String) })),
+  contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)) })),
   // Enabled: a copy is in Uncut's plugins folder (it may still need allowing).
   enabled: Schema.Boolean,
 });

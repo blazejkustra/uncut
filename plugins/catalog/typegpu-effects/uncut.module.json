@@ -1,0 +1,74 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "typegpu.effects",
+  "kind": "pack",
+  "name": "TypeGPU effects",
+  "version": "0.1.0",
+  "description": "GPU video effects written with TypeGPU: water ripples, an RGB shift, halftone dots and an old CRT. Drawn with WebGPU; nothing in it runs as a program.",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "data" },
+  "contributes": {
+    "shaders": [
+      {
+        "id": "typegpu.effects.ripple",
+        "name": "Ripple",
+        "description": "Water ripples rolling out from a point, with a glint on the crests.",
+        "source": "effects.ts",
+        "export": "ripple",
+        "params": [
+          { "key": "amplitude", "label": "Strength", "type": "number", "min": 0, "max": 0.05, "step": 0.001, "default": 0.012 },
+          { "key": "wavelength", "label": "Wavelength", "type": "number", "min": 0.02, "max": 0.5, "step": 0.01, "default": 0.12 },
+          { "key": "speed", "label": "Speed", "type": "number", "min": 0, "max": 20, "step": 0.5, "default": 6 },
+          { "key": "centerX", "label": "Centre x", "type": "number", "min": 0, "max": 1, "step": 0.01, "default": 0.5 },
+          { "key": "centerY", "label": "Centre y", "type": "number", "min": 0, "max": 1, "step": 0.01, "default": 0.5 }
+        ],
+        "wgsl": "struct Params {\n  amplitude: f32,\n  wavelength: f32,\n  speed: f32,\n  centerX: f32,\n  centerY: f32,\n}\n\nfn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {\n  let aspect = vec2f(size.x / size.y, 1.0);\n  let away = (uv - vec2f(p.centerX, p.centerY)) * aspect;\n  let dist = length(away);\n  let phase = dist / max(p.wavelength, 0.001) * 6.2831853 - t * p.speed;\n  let fade = 1.0 / (1.0 + dist * 4.0);\n  let push = normalize(away + vec2f(0.00001)) * sin(phase) * p.amplitude * fade / aspect;\n  let c = frame(uv + push);\n  let glint = max(cos(phase), 0.0) * p.amplitude * fade * 6.0;\n  return vec4f(c.rgb + vec3f(glint), 1.0);\n}"
+      },
+      {
+        "id": "typegpu.effects.rgb-shift",
+        "name": "RGB shift",
+        "description": "Red and blue pulled apart along a slowly turning angle, breathing with time.",
+        "source": "effects.ts",
+        "export": "rgbShift",
+        "params": [
+          { "key": "amount", "label": "Split (px)", "type": "number", "min": 0, "max": 40, "step": 0.5, "default": 8 },
+          { "key": "breathe", "label": "Breathe", "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.4 },
+          { "key": "spin", "label": "Spin", "type": "number", "min": 0, "max": 3, "step": 0.05, "default": 0.5 }
+        ],
+        "wgsl": "struct Params {\n  amount: f32,\n  breathe: f32,\n  spin: f32,\n}\n\nfn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {\n  let angle = t * p.spin;\n  let px = p.amount * (1.0 + p.breathe * sin(t * 2.3));\n  let dir = vec2f(cos(angle), sin(angle)) * px / size;\n  let r = frame(uv + dir).r;\n  let g = frame(uv).g;\n  let b = frame(uv - dir).b;\n  return vec4f(r, g, b, 1.0);\n}"
+      },
+      {
+        "id": "typegpu.effects.halftone",
+        "name": "Halftone",
+        "description": "Print-style ink dots on paper, sized by how dark the picture is.",
+        "source": "effects.ts",
+        "export": "halftone",
+        "params": [
+          { "key": "cell", "label": "Dot size (px)", "type": "number", "min": 3, "max": 60, "step": 1, "default": 12 },
+          { "key": "angle", "label": "Angle", "type": "number", "min": 0, "max": 90, "step": 1, "default": 45 },
+          { "key": "ink", "label": "Ink", "type": "color", "default": "#1b1b2f" },
+          { "key": "paper", "label": "Paper", "type": "color", "default": "#f4ecd8" },
+          { "key": "color", "label": "Colour dots", "type": "bool", "default": false }
+        ],
+        "wgsl": "struct Params {\n  cell: f32,\n  angle: f32,\n  ink: vec3f,\n  paper: vec3f,\n  color: f32,\n}\n\nfn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {\n  let a = radians(p.angle);\n  let rot = mat2x2f(cos(a), -sin(a), sin(a), cos(a));\n  let px = rot * (uv * size);\n  let cellPx = max(p.cell, 2.0);\n  let center = (floor(px / cellPx) + 0.5) * cellPx;\n  let back = transpose(rot) * center / size;\n  let c = frame(back).rgb;\n  let dark = 1.0 - dot(c, vec3f(0.2126, 0.7152, 0.0722));\n  let radius = sqrt(dark) * cellPx * 0.62;\n  let edge = clamp(radius - length(px - center) + 0.5, 0.0, 1.0);\n  let ink = select(p.ink, c * 0.85, p.color > 0.5);\n  return vec4f(mix(p.paper, ink, edge), 1.0);\n}"
+      },
+      {
+        "id": "typegpu.effects.crt",
+        "name": "CRT",
+        "description": "An old tube screen: rolling scanlines, a barrel curve, an RGB mask and a flicker.",
+        "source": "effects.ts",
+        "export": "crt",
+        "params": [
+          { "key": "lines", "label": "Lines", "type": "number", "min": 60, "max": 600, "step": 10, "default": 240 },
+          { "key": "strength", "label": "Strength", "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.35 },
+          { "key": "curve", "label": "Curve", "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.3 },
+          { "key": "flicker", "label": "Flicker", "type": "number", "min": 0, "max": 0.3, "step": 0.01, "default": 0.04 },
+          { "key": "glow", "label": "Glow", "type": "color", "default": "#3cff9a" }
+        ],
+        "wgsl": "struct Params {\n  lines: f32,\n  strength: f32,\n  curve: f32,\n  flicker: f32,\n  glow: vec3f,\n}\n\nfn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {\n  let q = uv * 2.0 - 1.0;\n  let bent = q * (1.0 + p.curve * dot(q, q) * 0.25);\n  let at = bent * 0.5 + 0.5;\n  let inside = step(0.0, at.x) * step(at.x, 1.0) * step(0.0, at.y) * step(at.y, 1.0);\n  var c = frame(clamp(at, vec2f(0.0), vec2f(1.0))).rgb;\n  let line = 0.5 + 0.5 * sin((at.y * p.lines + t * 2.0) * 6.2831853);\n  c = c * (1.0 - p.strength * line);\n  let mask = fract(uv.x * size.x / 3.0);\n  let rgb = vec3f(step(mask, 0.333), step(0.333, mask) * step(mask, 0.666), step(0.666, mask));\n  c = c * mix(vec3f(1.0), 0.75 + rgb * 0.5, p.strength * 0.6);\n  c = c * (1.0 - p.flicker * (0.5 + 0.5 * sin(t * 47.0)));\n  let vignette = 1.0 - dot(q, q) * 0.18;\n  return vec4f((c + p.glow * 0.04) * vignette * inside, 1.0);\n}"
+      }
+    ]
+  }
+}

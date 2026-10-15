@@ -61,7 +61,9 @@ import { withHistory, type TurnRecord } from "../project/history.ts";
 import { MediaLibrary, type MediaEntry } from "../media/media.ts";
 import { MediaCore } from "../media/mediaCore.ts";
 import { importablePath, MAX_FOUND, MediaIndex } from "../media/mediaIndex.ts";
-import { Plugins } from "../plugins/plugins.ts";
+import { Plugins, shaderForAgent } from "../plugins/plugins.ts";
+import { projectShaders, writeProjectShader } from "./agentShaders.ts";
+import { expandShaderEffects, SHADER, shaderUseOf, type ShaderDef } from "@uncut/core/shaders";
 import { applyDeclared, appliedNote, Capture } from "../capture/capture.ts";
 import { uploadedTake } from "../capture/takes.ts";
 import { CONFIRM_OVER, Generator, needsKeyLine, TURN_CAP } from "../generate/generate.ts";
@@ -2704,6 +2706,20 @@ export const layer = Layer.effect(
         return textResult(beatGrid(result, { id: item.id, media: m.id, start: (layout(project).starts.get(item.id) ?? item.start ?? 0), in: item.in ?? 0, duration: item.duration, speed: item.speed ?? 1 } satisfies GridItem, fps, range as { start: number; end: number } | undefined, snap));
       });
 
+    /** The shader effects the agent can name (D213): allowed plugins', the project's shaders/ folder's, and those clips carry. */
+    const shaderDefsOf = (v: ProjectView) =>
+      Effect.gen(function* () {
+        const defs = new Map<string, ShaderDef>();
+        for (const it of (v.session.project as Project).tracks.flatMap((t) => t.items))
+          for (const e of it.effects ?? []) {
+            const use = e.module === SHADER ? shaderUseOf(e) : undefined;
+            if (use) defs.set(use.def.id, use.def);
+          }
+        for (const [id, def] of yield* Effect.promise(() => projectShaders(v.dir))) defs.set(id, def);
+        for (const s of (yield* plugins.contributions).shaders ?? []) defs.set(s.id, s);
+        return defs as ReadonlyMap<string, ShaderDef>;
+      });
+
     const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
       Effect.gen(function* () {
         const v = view();
@@ -2717,8 +2733,26 @@ export const layer = Layer.effect(
           }
           case "modules_list": {
             const kind = typeof args.kind === "string" ? args.kind : undefined;
+            // D213: the shader effects there are (allowed plugins', the project's), each with its params.
+            const shaders = kind === undefined || kind === "effect" ? [...(yield* shaderDefsOf(v)).values()].map((d) => ({ kind: "effect", module: "effect.shader", ...shaderForAgent({ id: d.id, name: d.name, description: d.description ?? "", params: d.params }), source: d.id.startsWith("project.") ? "project" : "plugin" })) : [];
             // The built-in modules, then the plugins (D97) with their source, approval and warnings.
-            return textResult([...modulesList(format.modules, kind), ...(yield* plugins.modules(kind))]);
+            return textResult([...modulesList(format.modules, kind), ...shaders, ...(yield* plugins.modules(kind))]);
+          }
+          case "shader_write": {
+            const out = yield* Effect.promise(() => writeProjectShader(v.dir, args as Parameters<typeof writeProjectShader>[1]));
+            if (!out.ok) return textResult({ refused: out.problems.join(" ") }, true);
+            const answer = {
+              ok: true,
+              id: out.def.id,
+              file: out.file,
+              ...(out.replaced ? { replaced: "It replaced the earlier file of that name; clips that have the effect keep the copy they carry until you apply it again." } : {}),
+              params: out.def.params.map((p) => p.key),
+              ...(out.note ? { note: out.note } : {}),
+              next: `Apply it with timeline_edit: update_item set effects [...the clip's other effects, {"module":"effect.shader","params":{"shader":"${out.def.id}","values":{}}}] (Uncut fills in the code; one shader per clip). Then look with render_frames.`,
+            };
+            return out.png
+              ? { content: [{ type: "text", text: JSON.stringify(answer) }, { type: "image", data: out.png.toString("base64"), mimeType: "image/png" }] }
+              : textResult(answer);
           }
           case "render_frames": {
             const frames = Array.isArray(args.frames) ? args.frames : [];
@@ -2854,7 +2888,10 @@ export const layer = Layer.effect(
             // D206: place_item (overlaps resolved as asked) and set_transition's allowTrim.
             const placed = expandPlacement(v.session.project as Project, arranged.ops);
             if ("problem" in placed) return textResult({ refused: placed.problem, revision: v.session.revision }, true);
-            const ops = placed.ops;
+            // D213: effect.shader entries named by id get their definition (a plugin's or the project's).
+            const shaded = expandShaderEffects(placed.ops, yield* shaderDefsOf(v));
+            if ("problem" in shaded) return textResult({ refused: shaded.problem, revision: v.session.revision }, true);
+            const ops = shaded.ops;
             const placements = placed.notes.length ? { placed: placed.notes } : {};
             if (!r.owner.seen.has(baseRevision)) {
               return textResult(

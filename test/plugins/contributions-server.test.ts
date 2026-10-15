@@ -45,7 +45,7 @@ test("catalog, enable and allow, contributions only when allowed, process checks
   const jobs = client.subscribe("export.jobs");
   try {
     const none = await client.ok("plugins.contributions", {});
-    assert.deepEqual(none, { looks: [], components: [], rules: [] }, "nothing before it's allowed (proc.checks isn't either)");
+    assert.deepEqual(none, { looks: [], components: [], rules: [], filters: [], shaders: [] }, "nothing before it's allowed (proc.checks isn't either)");
 
     // The catalog: shipped, off.
     const catalog = await client.ok("plugins.catalog", {});

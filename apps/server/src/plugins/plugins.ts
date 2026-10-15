@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { PluginError, type CatalogEntry, type PluginInfo } from "@uncut/contracts";
 import { parseFindings, CHECK_TIMEOUT_MS } from "./contributions.ts";
 import type { Check } from "@uncut/core";
-import { mergeContributions, NO_CONTRIBUTIONS, readContributions, validateModule, type Contributions, type ModuleManifest } from "@uncut/core";
+import { mergeContributions, NO_CONTRIBUTIONS, readContributions, validateModule, type Contributions, type ModuleManifest, type PluginShader } from "@uncut/core";
 import { API_VERSION, API_VERSIONS } from "@uncut/plugin-sdk";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -123,9 +123,9 @@ export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { 
   const runtime = manifest.runtime as { type: string; command?: string };
   if (runtime.type === "data") {
     // A data plugin (D103): nothing runs, so it has no tools and needs something to contribute.
-    const c = (manifest.contributes ?? {}) as { looks?: Array<unknown>; components?: Array<unknown>; rules?: Array<unknown> };
+    const c = (manifest.contributes ?? {}) as { looks?: Array<unknown>; components?: Array<unknown>; rules?: Array<unknown>; filters?: Array<unknown>; shaders?: Array<unknown> };
     if ((manifest.agentTools as Array<unknown> | undefined)?.length) return fail(`It's a "data" plugin with agent tools; tools need a "process" plugin that runs a program.`);
-    if (!c.looks?.length && !c.components?.length && !c.rules?.length) return fail(`It's a "data" plugin that contributes nothing (no looks, components or rules).`);
+    if (!c.looks?.length && !c.components?.length && !c.rules?.length && !c.filters?.length && !c.shaders?.length) return fail(`It's a "data" plugin that contributes nothing (no looks, components, rules, filters or shader effects).`);
   } else {
     if (runtime.type !== "process") return fail(`It's a "${runtime.type}" module; only "process" and "data" plugins load from a plugin folder.`);
     if (!runtime.command) return fail(`Its runtime has no command, so Uncut can't start it.`);
@@ -222,7 +222,7 @@ export async function discoverPlugins(
       // Ids are checked per plugin here; across plugins only allowed ones claim ids (mergeContributions).
       const read = readContributions(manifest, { reserved: reserved.moduleIds, moves });
       warnings.push(...read.warnings);
-      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length > 0;
+      const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length + (read.contributions.shaders?.length ?? 0) > 0;
       // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent; a
       // plugin that contributes looks, components or checks (D103) is used without tools.
       if (!declared.length && manifest.kind !== "analyzer" && !contributes) warnings.push("It has no agent tools, so the agent can't use it.");
@@ -297,7 +297,9 @@ export const isApproved = (plugin: Pick<FoundPlugin, "source" | "dir" | "capabil
 
 /** A plugin's contributions in words for Settings (names), or undefined when it has none. */
 const contributesOf = (c: Contributions) =>
-  c.looks.length || c.components.length || c.rules.length || c.filters.length ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}) } : undefined;
+  c.looks.length || c.components.length || c.rules.length || c.filters.length || c.shaders?.length
+    ? { looks: c.looks.map((l) => l.name), components: c.components.map((x) => x.name), rules: c.rules.map((r) => r.title), ...(c.filters.length ? { filters: c.filters.map((f) => f.name) } : {}), ...(c.shaders?.length ? { shaders: c.shaders.map((x) => x.name) } : {}) }
+    : undefined;
 
 /** A plugin's contributions for the agent's modules_list (ids, names and what each is). */
 const contributesFor = (c: Contributions) => ({
@@ -305,6 +307,16 @@ const contributesFor = (c: Contributions) => ({
   components: c.components.map((x) => ({ id: x.id, name: x.name, description: x.description, params: x.params })),
   checks: c.rules.map((r) => ({ id: r.id, title: r.title, description: r.description, severity: r.severity })),
   ...(c.filters.length ? { filters: c.filters.map((f) => ({ id: f.id, name: f.name, description: f.description, note: `effect.look with look "${f.id}" and its definition as custom (the clip carries it)`, custom: f.look })) } : {}),
+  ...(c.shaders?.length ? { shaders: c.shaders.map((x) => shaderForAgent(x)) } : {}),
+});
+
+/** A shader effect (D213) as the agent sees it: its params, and how to apply it (Uncut fills in the rest). */
+export const shaderForAgent = (x: Pick<PluginShader, "id" | "name" | "description" | "params">) => ({
+  id: x.id,
+  name: x.name,
+  description: x.description,
+  params: x.params.map((p) => ({ key: p.key, label: p.label, type: p.type, ...(p.type === "number" ? { min: p.min, max: p.max } : {}), default: p.default })),
+  note: `A GPU shader effect: timeline_edit update_item effects [... the clip's other effects, {"module": "effect.shader", "params": {"shader": "${x.id}", "values": {<param>: <value>}}}]; Uncut fills in its code. One per clip; drawn with WebGPU (an export refuses on a Mac without it).`,
 });
 
 export function pluginInfos(

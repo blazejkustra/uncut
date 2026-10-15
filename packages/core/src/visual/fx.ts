@@ -20,6 +20,7 @@
 // numbers, so both draw the same colours. Browser-safe and pure.
 import type { Item, ModuleUse } from "../timeline/types.ts";
 import { fitRect, moveBox, type ClipBox, type Rect } from "./box.ts";
+import { SHADER } from "./shaders.ts";
 
 export const LOOK = "effect.look";
 export const ADJUST = "effect.color";
@@ -719,7 +720,7 @@ export function planRemoveEffect(project: Target, itemId: string, module: string
   if ("problem" in c) return c;
   const list = (c.item.effects ?? []).filter((e) => e.module !== module);
   if (list.length === (c.item.effects ?? []).length) return { problem: "That clip doesn't have it." };
-  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : (effectInfo(module)?.name.toLowerCase() ?? module);
+  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : module === SHADER ? "the shader effect" : (effectInfo(module)?.name.toLowerCase() ?? module);
   return setEffects(itemId, list, `Remove ${name} from ${c.name}`);
 }
 
@@ -737,7 +738,7 @@ export function planEffectBypass(project: Target, itemId: string, module: string
   if (!list[at]!.bypass === on) return { problem: on ? "It's already on." : "It's already off." };
   const { bypass: _, ...rest } = list[at]!;
   list[at] = on ? rest : { ...rest, bypass: true };
-  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : (effectInfo(module)?.name.toLowerCase() ?? module);
+  const name = module === LOOK ? "the filter" : module === ADJUST ? "the adjustments" : module === SHADER ? "the shader effect" : (effectInfo(module)?.name.toLowerCase() ?? module);
   return setEffects(itemId, list, `Turn ${name} on ${c.name} ${on ? "on" : "off"}`);
 }
 
@@ -756,6 +757,10 @@ export function fxWords(effects: unknown): string {
         const a = adjustOf(e.params);
         const parts = ADJUST_INFO.filter((i) => a[i.key] !== 0).map((i) => `${i.name.toLowerCase()} ${adjustWord(i.key, a[i.key])}`);
         return (parts.length ? parts.join(", ") : "no adjustments") + (e.bypass ? " (off)" : "");
+      }
+      if (e.module === SHADER) {
+        const p = (e.params ?? {}) as Record<string, unknown>;
+        return `shader ${typeof p.name === "string" ? p.name : String(p.shader)}${e.bypass ? " (off)" : ""}`;
       }
       const info = effectInfo(e.module);
       if (!info) return e.module;

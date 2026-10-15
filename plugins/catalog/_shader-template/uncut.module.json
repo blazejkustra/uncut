@@ -1,0 +1,30 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "example.shader",
+  "kind": "pack",
+  "name": "Example shader",
+  "version": "0.1.0",
+  "description": "A shader effect plugin: one TypeGPU effect, drawn with WebGPU. Nothing in it runs as a program.",
+  "author": "",
+  "license": "MIT",
+  "runtime": { "type": "data" },
+  "contributes": {
+    "shaders": [
+      {
+        "id": "example.shader.duotone",
+        "name": "Duotone",
+        "description": "The picture's light mapped between two colours, with a slow shimmer.",
+        "source": "effect.ts",
+        "export": "duotone",
+        "params": [
+          { "key": "amount", "label": "Amount", "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 1 },
+          { "key": "dark", "label": "Dark", "type": "color", "default": "#1d1442" },
+          { "key": "light", "label": "Light", "type": "color", "default": "#ffd166" },
+          { "key": "shimmer", "label": "Shimmer", "type": "bool", "default": true }
+        ],
+        "wgsl": "struct Params {\n  amount: f32,\n  dark: vec3f,\n  light: vec3f,\n  shimmer: f32,\n}\n\nfn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {\n  let c = frame(uv).rgb;\n  let lum = dot(c, vec3f(0.2126, 0.7152, 0.0722));\n  let wave = 0.04 * p.shimmer * sin(uv.y * 12.0 + t * 3.0);\n  let tone = mix(p.dark, p.light, clamp(lum + wave, 0.0, 1.0));\n  return vec4f(mix(c, tone, p.amount), 1.0);\n}"
+      }
+    ]
+  }
+}

@@ -3,9 +3,10 @@
 // reset, and Reset all) and its effects with their settings, each with an on/off switch (F18). Each control previews while it moves
 // (a local draft) and commits once: one edit, one ⌘Z. Core's planners (fx.ts) make the edits.
 import { ADJUST, ADJUST_INFO, adjustOf, effectInfo, effectParams, LOOK, lookInfo, planAdjust, planEffect, planEffectBypass, planRemoveEffect, planSetLook, type AdjustKey } from "@uncut/core/fx";
+import { planShader, planShaderValues, SHADER, shaderUseOf } from "@uncut/core/shaders";
 import type { Item } from "@uncut/core/types";
 import { RotateCcw, X } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { PreviewDraft } from "../preview/playback.ts";
 import { type ProjectModel } from "../state/project.ts";
@@ -104,6 +105,7 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
           </Prop>
         ))}
       </Section>
+      <ShaderEditor project={project} item={item} locked={locked} />
       {others.length > 0 && (
         <Section title="Effects" testId="insp-effects" remember="effects">
           {others.map((e) => {
@@ -130,4 +132,64 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
       )}
     </div>
   );
+}
+
+/** A clip's shader effect (D213): its name, on/off, remove, and a control per param (one edit each). */
+function ShaderEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
+  const entry = (item.effects ?? []).find((e) => e.module === SHADER);
+  const use = entry ? shaderUseOf(entry) : undefined;
+  if (!entry || !use) return null;
+  const { def, values } = use;
+  return (
+    <Section
+      title="Shader"
+      testId="insp-shader"
+      remember="shader"
+      action={
+        <>
+          <Power item={item} module={SHADER} off={entry.bypass === true} name="the shader effect" testId="insp-shader-power" disabled={locked} />
+          <button className="icon-btn" title={`Remove ${def.name}`} data-testid="insp-shader-remove" disabled={locked} onClick={() => send((p) => planShader(p, item.id, undefined))}>
+            <X />
+          </button>
+        </>
+      }
+    >
+      <div className={`fx-entry${entry.bypass ? " off" : ""}`} data-testid="insp-shader-entry" data-shader={def.id}>
+        <div className="fx-entry-head">
+          <span className="grow">{def.name}</span>
+        </div>
+        {def.params.map((d) => {
+          const v = values[d.key];
+          const reset = v !== d.default && !locked ? () => send((p) => planShaderValues(p, item.id, { [d.key]: d.default })) : undefined;
+          return (
+            <Prop key={d.key} label={d.label} testId={`insp-shader-${d.key}`} onReset={reset}>
+              {d.type === "number" ? (
+                <Live project={project} value={round(Number(v), d.step ?? (d.max! - d.min!) / 100)} min={d.min!} max={d.max!} step={d.step ?? (d.max! - d.min!) / 100} testId={`insp-shader-${d.key}-value`} disabled={locked} plan={(p, x) => planShaderValues(p, item.id, { [d.key]: Math.min(d.max!, Math.max(d.min!, x)) })} />
+              ) : d.type === "color" ? (
+                <ShaderColor value={String(v)} testId={`insp-shader-${d.key}-value`} disabled={locked} onCommit={(c) => send((p) => planShaderValues(p, item.id, { [d.key]: c }))} />
+              ) : (
+                <Toggle testId={`insp-shader-${d.key}-value`} label={d.label} value={v === true} disabled={locked} onChange={(on) => send((p) => planShaderValues(p, item.id, { [d.key]: on }))} />
+              )}
+            </Prop>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+/** A colour for a shader param: picked freely, one edit when the picker closes (or the field loses focus). */
+function ShaderColor({ value, testId, disabled, onCommit }: { value: string; testId: string; disabled: boolean; onCommit: (hex: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const ref = useRef<HTMLInputElement>(null);
+  // The native "change" event fires once the picker is done (React's onChange is every move).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const done = () => el.value.toLowerCase() !== value && onCommit(el.value.toLowerCase());
+    el.addEventListener("change", done);
+    return () => el.removeEventListener("change", done);
+  }, [value, onCommit]);
+  return <input ref={ref} type="color" className="shader-color" data-testid={testId} value={draft} disabled={disabled} onChange={(e) => setDraft(e.target.value)} />;
 }
