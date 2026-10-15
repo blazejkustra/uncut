@@ -325,8 +325,8 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     const bgProps = () => onDisk().tracks.find((t: { id: string }) => t.id === "main").items[0].props;
     assert.deepEqual(bgProps(), { color: "#0B1D3A", to: "#3B1E54", angle: 160 });
     await page.waitForFunction((sel) => document.querySelector(`${sel} .nm`)?.textContent === "Gradient #0B1D3A → #3B1E54", {}, bgItem);
-    // The Linear button keeps focus, and ⌘Z there undoes the project (it isn't a text field).
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-testid")), "bg-fill");
+    // A mouse-pressed button lets go of focus (D227), so ⌘Z undoes the project, not a text field.
+    assert.equal(await page.evaluate(() => document.activeElement === document.body || document.activeElement === null), true);
     await meta(page, "KeyZ");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=background-editor]")?.dataset.fill === "solid");
     assert.deepEqual(bgProps(), { color: "#0B1D3A" });
