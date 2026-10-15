@@ -2,6 +2,7 @@
 // timeline that uses it, and fitting a sound (music) to the video's length. Pure planners: the UI
 // and the agent send their ops as one edit (one revision, one ⌘Z).
 import { gapOf } from "./rules.ts";
+import { rippleMainGaps } from "./arrange/gaps.ts";
 import type { Id, Item, Op, Project, Track } from "./types.ts";
 
 type Plan = { readonly ops: ReadonlyArray<Op>; readonly summary: string };
@@ -67,6 +68,8 @@ export function planRemoveMedia(project: Pick<Project, "tracks" | "media">, medi
     });
   }
   for (const u of uses) ops.push({ op: "delete_item", item: u.item.id });
+  // D224: closes up like ripple delete, but the space before a removed main clip stays.
+  for (const track of project.tracks) if (track.role === "main") ops.push(...rippleMainGaps(track, gone));
   ops.push({ op: "delete_media", media: mediaId });
   const n = uses.length;
   return { ops, summary: n ? `Remove ${media.name} from the project (and ${n} item${n === 1 ? "" : "s"} using it)` : `Remove ${media.name} from the project`, items: n };
