@@ -188,6 +188,56 @@ test("a crash mid-turn ends the turn with why; the next message resumes the sess
   }
 });
 
+test("D218: a usage limit pauses the turn with a notice in the Agent tab, then ends it with a clear message; no retry, the same claude takes the next message", { skip, timeout: 60000 }, async () => {
+  const s = await setup("limit");
+  try {
+    const resetsAt = Math.floor(Date.now() / 1000) + 7500 - 20;
+    const id = await s.start("one", [
+      { tool: "project_read" },
+      { raw: { type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt } } },
+      { raw: { type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt } } },
+      { sleep: 1500 },
+      { raw: { type: "assistant", error: "rate_limit", message: { id: "msg_limit", role: "assistant", content: [{ type: "text", text: "API Error: Claude usage limit reached" }] } } },
+      { result: { subtype: "success", is_error: true, api_error_status: 429, result: "API Error: Claude usage limit reached" } },
+    ]);
+    const isPaused = (st: any) => /usage limit/.test(st?.warning ?? "");
+    await s.agent.until(isPaused, 10000);
+    assert.equal(s.agent.values.find(isPaused).warning, "Claude usage limit reached. This turn is paused until the 5-hour limit resets in 2h 5m. Wait, or press Stop and send it again later.");
+    assert.equal(s.turn(id).status, "running", "paused, not ended: Stop still works");
+    const t = await s.done(id);
+    assert.equal(t.status, "error");
+    assert.equal(t.error, "Claude usage limit reached. Send the message again once the limit resets (in 2h 5m).");
+    assert.equal(s.agent.values.at(-1)?.warning, undefined, "the notice goes with the turn");
+    const next = await s.ask("two", [{ text: "Back." }]);
+    assert.equal(next.status, "done", next.error);
+    const runs = s.runs();
+    assert.equal(runs.length, 2, "each message sent once: no retry");
+    assert.equal(new Set(runs.map((r) => r.pid)).size, 1, "no respawn");
+  } finally {
+    await s.stop();
+  }
+});
+
+test("D218: signed out, overloaded and rate-limited results say so in words", { skip, timeout: 60000 }, async () => {
+  const s = await setup("auth");
+  try {
+    const signedOut = await s.ask("one", [
+      { raw: { type: "assistant", error: "authentication_failed", message: { id: "msg_auth", role: "assistant", content: [{ type: "text", text: "Invalid API key · Please run /login" }] } } },
+      { result: { subtype: "success", is_error: true, result: "Invalid API key · Please run /login" } },
+    ]);
+    assert.equal(signedOut.status, "error");
+    assert.match(signedOut.error, /^Claude Code isn't signed in\b.*Run `claude auth login` in Terminal to sign in with your Claude subscription, then send the message again\.$/);
+    const overloaded = await s.ask("two", [{ result: { subtype: "success", is_error: false, api_error_status: 529, result: "" } }]);
+    assert.equal(overloaded.status, "error", "a 529 labelled success still failed");
+    assert.equal(overloaded.error, "Claude API is overloaded (529). Try again shortly.");
+    const limited = await s.ask("three", [{ result: { subtype: "success", is_error: true, api_error_status: 429, result: "API Error: 429" } }]);
+    assert.equal(limited.error, "Claude API rate limit reached. Try again later.", "a 429 without a rejected window is a rate limit");
+    assert.equal(s.runs().length, 3, "no retries");
+  } finally {
+    await s.stop();
+  }
+});
+
 test("an idle session closes after its timeout (stdin closed, claude exits); the next message resumes", { skip, timeout: 60000 }, async () => {
   const s = await setup("idle", { UNCUT_AGENT_IDLE_MS: "700" });
   try {

@@ -14,7 +14,7 @@ import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "./config.ts";
 import { runProbe, type ProbeResult } from "../media/probe.ts";
-import { withoutApiKey } from "./shellEnv.ts";
+import { claudeEnv, withoutApiKey } from "./shellEnv.ts";
 
 // Generous: a cold CLI start (first run after an update, a busy machine, macOS scanning a new
 // binary) can take seconds; a hung one still gives up quickly enough to show an error.
@@ -47,6 +47,9 @@ export const versionToken = (output: string): string | undefined => /\d+(?:\.\d+
 // so onboarding reports what the agent will actually do.
 const run = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) =>
   runProbe(command, args, { timeoutMs, env: withoutApiKey(process.env) });
+// D218: Claude Code's probes get exactly the environment the agent's claude gets (claudeEnv: no
+// API keys, no CLAUDE_CODE_* such as CLAUDE_CODE_OAUTH_TOKEN), so the sign-in row is the agent's.
+const runClaude = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) => runProbe(command, args, { timeoutMs, env: claudeEnv(process.env) });
 
 /** Why a found tool couldn't answer, in words. */
 const problem = (path: string, result: ProbeResult): string =>
@@ -109,13 +112,13 @@ export const layer = Layer.effect(
           fix: { text: "Install it, then run claude once to sign in.", command: "curl -fsSL https://claude.ai/install.sh | bash" },
         };
       }
-      const versionRun = await run(bin, ["--version"]);
+      const versionRun = await runClaude(bin, ["--version"]);
       if (versionRun.kind !== "done" || versionRun.code !== 0) return errorRow(base, problem(bin, versionRun), bin);
       const version = versionToken(versionRun.stdout);
       // `claude auth status --json` reads the local sign-in (exit 1 when signed out). It can
       // briefly report signed-out while Claude Code refreshes its token, so ask twice.
       const ask = async () => {
-        const r = await run(bin, ["auth", "status", "--json"], AUTH_TIMEOUT_MS);
+        const r = await runClaude(bin, ["auth", "status", "--json"], AUTH_TIMEOUT_MS);
         if (r.kind !== "done") return undefined;
         try {
           const parsed = JSON.parse(r.stdout) as Record<string, unknown>;

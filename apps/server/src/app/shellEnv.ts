@@ -121,6 +121,25 @@ export const agentEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   return out;
 };
 
+declare const __UNCUT_SERVER_VERSION__: string | undefined;
+
+/**
+ * Every `claude` Uncut starts (the agent session, the critic, the SVG generator, the setup probes)
+ * gets this environment (D218): agentEnv, minus what would make claude misreport who started it
+ * (an inherited CLAUDE_AGENT_SDK_VERSION / CLAUDE_AGENT_SDK_CLIENT_APP from a host that launched
+ * Uncut; CLAUDE_CODE_ENTRYPOINT is already out with the other CLAUDE_CODE_* variables, so claude
+ * names its own entrypoint, "sdk-cli" in print mode) and the Node/debug switches the Agent SDK
+ * also removes (NODE_OPTIONS, DEBUG), plus CLAUDE_AGENT_SDK_CLIENT_APP=uncut/<version>, the way
+ * Anthropic's SDK docs ask an app to identify itself (it becomes claude's x-client-app header).
+ * No ANTHROPIC_* key or token, no CLAUDE_CODE_ENTRYPOINT: claude uses the user's own login.
+ */
+export const claudeEnv = (env: NodeJS.ProcessEnv, version: string = typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev"): Record<string, string> => {
+  const out = agentEnv(env);
+  for (const k of Object.keys(out)) if (k.startsWith("CLAUDE_AGENT_SDK_") || k === "NODE_OPTIONS" || k === "DEBUG") delete out[k];
+  out.CLAUDE_AGENT_SDK_CLIENT_APP = `uncut/${version}`;
+  return out;
+};
+
 /**
  * A plugin's environment (D97): the agent's, minus anything that looks like a secret (*_KEY,
  * *_TOKEN, *_SECRET, *_PASSWORD, AWS_* and other cloud credentials), Uncut's own variables (the

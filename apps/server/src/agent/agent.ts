@@ -77,7 +77,8 @@ import { Library } from "../library/library.ts";
 import { isTestRun } from "../generate/providers.ts";
 import { Projects, type ProjectView } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
-import { agentEnv } from "../app/shellEnv.ts";
+import { agentEnv, claudeEnv } from "../app/shellEnv.ts";
+import { onRateLimit, resultError, resultFailed, turnLimits, type TurnLimits } from "./agentLimits.ts";
 import type { VideoResult } from "../analysis/videoAnalysis.ts";
 import { DEFAULT_BEST_SECONDS, RANK_BY, rankValue, type RankBy } from "../analysis/videoScores.ts";
 import { besideServer, expandHome } from "../paths.ts";
@@ -210,7 +211,8 @@ export function sessionArgs(o: { readonly cfg: string; readonly model?: string |
   for (const dir of o.addDirs ?? []) args.push("--add-dir", dir);
   if (o.model) args.push("--model", o.model);
   if (o.effort) args.push("--effort", o.effort);
-  if (o.thinking) args.push("--thinking-display", o.thinking);
+  // D218: as the Agent SDK turns t3code's `thinking: { type: "adaptive", display: "summarized" }` into argv.
+  if (o.thinking) args.push("--thinking", "adaptive", "--thinking-display", o.thinking);
   if (o.resume) args.push("--resume", o.resume);
   return args;
 }
@@ -221,7 +223,8 @@ export function sessionArgs(o: { readonly cfg: string; readonly model?: string |
  * files and no auto memory. The keychain login is untouched (no --bare, same CLAUDE_CONFIG_DIR).
  */
 export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
-  ...agentEnv(env),
+  // D218: claudeEnv adds Uncut's honest client id (CLAUDE_AGENT_SDK_CLIENT_APP) and drops NODE_OPTIONS/DEBUG.
+  ...claudeEnv(env),
   ENABLE_TOOL_SEARCH: "false",
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
@@ -378,6 +381,8 @@ interface Running {
   readonly skipStoryboard: boolean;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
+  // D218: the subscription limits and sign-in problems claude reported in this turn (agentLimits.ts).
+  readonly limits: TurnLimits;
   // D189: review rounds in this turn.
   reviewRounds: number;
   // D196: frames of the edit the agent rendered in this turn, by revision (render_frames, contact_sheet): a fix claim needs its moment rendered at the current revision.
@@ -766,6 +771,8 @@ export const layer = Layer.effect(
     let running: Running | undefined;
     // D194: shown in the Agent tab while the last claude didn't answer initialize (approvals fail closed).
     let initWarning: string | undefined;
+    // D218: shown in the Agent tab while the running turn is paused on a Claude usage limit.
+    let limitWarning: string | undefined;
     let session: ClaudeSession | undefined;
     // Every claude still running, the live one and any closing (graceful or killed, not yet gone).
     const sessions = new Set<ClaudeSession>();
@@ -790,7 +797,7 @@ export const layer = Layer.effect(
         turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
         ...(owner.ui ? { ui: owner.ui } : {}),
         plan: owner.plan,
-        ...(initWarning ? { warning: initWarning } : {}),
+        ...(initWarning || limitWarning ? { warning: [initWarning, limitWarning].filter(Boolean).join(" ") } : {}),
         ...(approval && running && running.owner === owner && running.turn.id === approval.card.turnId ? { approval: approval.card } : {}),
         ...(() => {
           const live = running && running.owner === owner ? [...screenWaits].find(([, w]) => w.turnId === running!.turn.id)?.[0] : undefined;
@@ -3178,6 +3185,8 @@ export const layer = Layer.effect(
       const now = view();
       if (now && now.openId === r.openId) r.owner.bounds.set(r.turn.id, { ...r.owner.bounds.get(r.turn.id), end: now.session.revision });
       if (r.session.turn === r) r.session.turn = undefined;
+      // D218: a limit notice belongs to the turn it paused.
+      limitWarning = undefined;
       armIdle(r.session);
       if (running === r) running = undefined;
       persist(r.owner);
@@ -3360,6 +3369,21 @@ export const layer = Layer.effect(
       if (msg.type === "control_response" || msg.type === "control_request" || msg.type === "keep_alive") return;
       const r = s.turn;
       if (!r || r.turn.status !== "running") return;
+      // D218: a rejected window pauses claude (it holds the turn until the window reopens): say so
+      // in the Agent tab, once per window; Stop still works. Nothing is retried.
+      if (msg.type === "rate_limit_event") {
+        const info = msg.rate_limit_info;
+        if (!info || typeof info !== "object") return;
+        const { notice, cleared } = onRateLimit(r.limits, info, Date.now());
+        if (notice) limitWarning = notice;
+        else if (cleared) limitWarning = undefined;
+        if (notice || cleared) publishNow();
+        return;
+      }
+      if (msg.type === "assistant" && !msg.parent_tool_use_id) {
+        r.limits.rateLimited = msg.error === "rate_limit";
+        if (msg.error === "authentication_failed") r.limits.authFailed = true;
+      }
       // D194: what the turn did with the web and read from files, the subagents' work included.
       watchData(r, msg);
       // Work from a subagent (none today) isn't the turn's own.
@@ -3393,7 +3417,8 @@ export const layer = Layer.effect(
         // A Stop that crossed a successful result doesn't relabel the finished turn.
         if (r.cancelled && msg.is_error) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
         if (r.turn.error) return finish(r, { status: "error" });
-        if (!msg.is_error) {
+        // D218: claude reports API failures (429, 529) and give-ups as a "success" result too.
+        if (!msg.is_error && !resultFailed(msg)) {
           const patch = { status: "done" as const, ...(typeof msg.duration_ms === "number" ? { seconds: Math.round(msg.duration_ms / 100) / 10 } : {}) };
           // D206: the clean-up first (unused graphics to the trash, empty tracks it made removed), then the turn ends.
           return void Effect.runPromise(turnCleanup(r))
@@ -3401,7 +3426,8 @@ export const layer = Layer.effect(
             .finally(() => finish(r, patch));
         }
         const why = (isString(msg.result) && msg.result.trim()) || (Array.isArray(msg.errors) && msg.errors.filter(isString).join(" ")) || msg.subtype || "it reported an error";
-        return finish(r, { status: "error", error: `Claude Code stopped: ${why}` });
+        // D218: a usage limit, rate limit, overload or sign-in problem in words (like t3code), else claude's own.
+        return finish(r, { status: "error", error: resultError(msg, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR) ?? `Claude Code stopped: ${why}` });
       }
     };
 
@@ -3543,7 +3569,7 @@ export const layer = Layer.effect(
         if (r.cancelled) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
         if (r.turn.error) return finish(r, { status: "error" });
         // D181: a claude that doesn't take --thinking-display: again without it (and never again here).
-        if (s.thinking && !s.gotInit && /thinking-display/i.test(s.stderr)) {
+        if (s.thinking && !s.gotInit && /--thinking/i.test(s.stderr)) {
           thinkingDisplayRefused = true;
           console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
           const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
@@ -3562,7 +3588,7 @@ export const layer = Layer.effect(
         }
         // It died mid-turn (a crash, a kill): the next message starts another with --resume.
         const why = s.stderr.trim().split("\n").slice(-3).join(" ") || `exit code ${code}`;
-        return finish(r, { status: "error", error: `Claude Code stopped: ${why}` });
+        return finish(r, { status: "error", error: resultError({ result: why }, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR) ?? `Claude Code stopped: ${why}` });
       };
       child.once("error", (error) => settle(null, error));
       child.once("close", (code) => settle(code));
@@ -3728,6 +3754,7 @@ export const layer = Layer.effect(
           inputs: new Map(),
           skipStoryboard: skip,
           looked: { sheet: false, phone: false },
+          limits: turnLimits(),
           reviewRounds: 0,
           rendered: [],
           graphicWrites: 0,

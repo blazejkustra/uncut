@@ -84,7 +84,7 @@ async function setup(name: string, env: Record<string, string> = {}) {
 }
 
 test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with every Uncut tool loaded and thinking summaries asked for", { skip, timeout: 60000 }, async () => {
-  const s = await setup("argv", { ANTHROPIC_API_KEY: "sk-test-should-not-pass", CLAUDE_CONFIG_DIR: join(root, "argv", "claude-config"), CLAUDE_CODE_DISABLE_CLAUDE_MDS: "0" });
+  const s = await setup("argv", { ANTHROPIC_API_KEY: "sk-test-should-not-pass", CLAUDE_CONFIG_DIR: join(root, "argv", "claude-config"), CLAUDE_CODE_DISABLE_CLAUDE_MDS: "0", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDE_AGENT_SDK_VERSION: "9.9.9", CLAUDE_AGENT_SDK_CLIENT_APP: "someone-else/1.0" });
   try {
     const t = await s.ask("hello", [{ tool: "project_read" }]);
     assert.equal(t.status, "done", t.error);
@@ -99,6 +99,8 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     assert.equal(flagValue(argv, "--permission-mode"), "auto", "D214: no access sent is Auto, Claude Code's own auto mode");
     assert.equal(flagValue(argv, "--permission-prompt-tool"), "stdio");
     assert.equal(flagValue(argv, "--thinking-display"), "summarized", "thinking summaries in print mode");
+    // D218: as the Agent SDK passes t3code's thinking: { type: "adaptive", display: "summarized" }.
+    assert.equal(flagValue(argv, "--thinking"), "adaptive");
     assert.ok(!argv.includes("--bare"), "no --bare: it would skip the keychain login");
     assert.ok(!/showThinkingSummaries/.test(flagValue(argv, "--settings") ?? ""), "no dead showThinkingSummaries setting");
     assert.ok(JSON.parse(flagValue(argv, "--settings")!).permissions.deny.includes("Read(~/.ssh/**)"), "D194: the secret deny rules");
@@ -109,6 +111,11 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     assert.equal(run.envValues.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1");
     assert.equal(run.envValues.ANTHROPIC_API_KEY, null, "D41: no API key, the subscription login");
     assert.equal(run.envValues.CLAUDE_CONFIG_DIR, join(root, "argv", "claude-config"), "the login's config dir is untouched");
+    // D218: claude names its own entrypoint; Uncut identifies itself only through the SDK's documented client-app variable.
+    assert.equal(run.envValues.CLAUDE_CODE_ENTRYPOINT, null, "no entrypoint from outside, none made up");
+    assert.equal(run.envValues.CLAUDE_AGENT_SDK_VERSION, null, "not presented as the Agent SDK");
+    assert.match(run.envValues.CLAUDE_AGENT_SDK_CLIENT_APP ?? "", /^uncut\/\d+\.\d+\.\d+/, "Uncut's own client id, not an inherited one");
+    assert.ok(!argv.some((a) => /api-key|apiKey/i.test(a)), "no API key on the command line");
     assert.match(run.system, /mcp__uncut__graphic_write/, "the prompt names the full tool names");
     assert.match(run.system, /scene by scene/, "U6: build scene by scene");
     assert.match(run.prompt, /<editor-context>[\s\S]*Access: Auto\./);
