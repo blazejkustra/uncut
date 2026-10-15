@@ -1,0 +1,84 @@
+/* Issue #63 (D234): the Generate tab, in the composer's look (panel-2 boxes, strong borders,
+   quiet labels), and the Generated badge in Media. Scoped under .gen-panel so the older rules in
+   styles.css don't reach it. */
+
+.gen-panel .gen-form { display: flex; flex-direction: column; gap: 12px; padding-top: 2px; }
+
+/* The type switch: three equal segments. */
+.gen-panel .gen-types { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); }
+.gen-panel .gen-types button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 6px; border-radius: 7px; font-size: 12.5px; color: var(--muted); white-space: nowrap; transition: background 120ms, color 120ms; }
+.gen-panel .gen-types button:hover { color: var(--fg); }
+.gen-panel .gen-types button.active { background: var(--raised); color: var(--fg); box-shadow: 0 0 0 1px var(--border-strong), 0 1px 2px rgb(0 0 0 / 40%); }
+.gen-panel .gen-types svg.lucide { width: 14px; height: 14px; }
+
+/* The models: a list like the composer's model menu. */
+.gen-models { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); }
+.gen-group-label { font-size: 10.5px; color: var(--dim); padding: 8px 6px 3px; letter-spacing: 0.02em; }
+.gen-model { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 5px 8px 5px 6px; border-radius: var(--radius-sm); text-align: left; border: 1px solid transparent; }
+.gen-model:hover { background: var(--raised); }
+.gen-model.active { background: var(--raised); border-color: var(--border-strong); }
+.gen-model.soon .gen-model-name, .gen-model.soon .gen-mark { opacity: 0.6; }
+.gen-model.soon.active .gen-model-name, .gen-model.soon.active .gen-mark { opacity: 0.85; }
+.gen-model-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gen-model-name { font-size: 12.5px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gen-model-sub { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gen-model.later .gen-model-sub { color: var(--warn); }
+.gen-model-price { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gen-model.active .gen-model-price { color: var(--fg); }
+.gen-soon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.gen-soon-grid .gen-model { min-height: 34px; gap: 7px; padding: 4px 6px; }
+.gen-soon-grid .gen-mark { width: 20px; height: 20px; border-radius: 5px; }
+.gen-soon-grid .gen-mark-logo { width: 12px; height: 12px; }
+.gen-soon-grid .gen-model-name { font-size: 12px; }
+.gen-soon-grid .gen-model-sub { font-size: 10.5px; }
+
+/* A lab's mark in a small tile. */
+.gen-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--fg); }
+.gen-mark-logo { width: 14px; height: 14px; display: block; }
+.gen-mark.claude { background: rgb(217 119 87 / 12%); box-shadow: inset 0 0 0 1px rgb(217 119 87 / 28%); }
+.gen-mark-letter { font-size: 12px; font-weight: 700; letter-spacing: -0.02em; }
+.gen-mark.higgsfield { background: #f2f2f2; color: #0a0a0a; box-shadow: none; }
+
+/* The prompt, in a box like the composer's. */
+.gen-box { border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--panel-2); display: flex; flex-direction: column; transition: border-color 120ms; }
+.gen-box:focus-within { border-color: rgb(255 255 255 / 22%); }
+.gen-panel .gen-box .gen-prompt { border: 0; border-radius: var(--radius); background: transparent; resize: vertical; min-height: 84px; padding: 9px 11px; font: 13px/1.45 var(--font); color: var(--fg); outline: 0; }
+.gen-panel .gen-box .gen-prompt::placeholder { color: var(--dim); }
+
+/* Options: label column and chips. */
+.gen-options { display: flex; flex-direction: column; gap: 8px; }
+.gen-options:empty { display: none; }
+.gen-panel .gen-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.gen-panel .gen-chips .k { font-size: 11px; color: var(--dim); min-width: 64px; margin-right: 0; }
+.gen-panel .chip-btn { height: 24px; padding: 0 10px; font-size: 11.5px; }
+.gen-panel .chip-btn:not(:disabled):hover { color: var(--fg); border-color: var(--border-strong); }
+.gen-panel .chip-btn.active { border-color: rgb(255 255 255 / 22%); background: var(--raised); color: var(--fg); }
+.gen-options.soon .chip-btn, .gen-options.soon .gen-frame, .gen-options.soon .gen-toggle, .gen-options.soon .gen-text { opacity: 0.55; cursor: not-allowed; }
+.gen-frames { display: flex; gap: 6px; flex-wrap: wrap; }
+.gen-frame { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 74px; height: 50px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); font-size: 10px; color: var(--muted); }
+.gen-frame svg.lucide { width: 14px; height: 14px; }
+.gen-toggle { font-size: 11.5px; color: var(--muted); gap: 7px; padding-left: 69px; }
+.gen-text { flex: 1; height: 26px; font-size: 12px; }
+
+/* Generate: the one big button, and what it costs under it. */
+.gen-panel .gen-go { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.gen-run { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border-radius: var(--radius); font-size: 13.5px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #6d8cff 0%, #8b6dff 55%, #b46dff 100%); box-shadow: 0 1px 0 rgb(255 255 255 / 18%) inset, 0 6px 18px -6px rgb(124 110 255 / 60%); transition: filter 120ms, transform 80ms, box-shadow 120ms; }
+.gen-run:not(:disabled):hover { filter: brightness(1.1); box-shadow: 0 1px 0 rgb(255 255 255 / 22%) inset, 0 8px 24px -6px rgb(124 110 255 / 75%); }
+.gen-run:not(:disabled):active { transform: translateY(1px); }
+.gen-run:disabled { background: var(--raised); color: var(--dim); box-shadow: inset 0 0 0 1px var(--border-strong); cursor: not-allowed; }
+.gen-run svg.lucide { width: 15px; height: 15px; }
+.gen-run kbd { position: absolute; right: 10px; font-size: 10.5px; padding: 1px 5px; background: rgb(0 0 0 / 22%); border-color: rgb(255 255 255 / 20%); color: inherit; opacity: 0.85; }
+.gen-run:disabled kbd { background: transparent; border-color: var(--border); }
+.gen-panel .gen-cost { text-align: center; color: var(--muted); font-size: 11px; }
+
+/* After a run. */
+.gen-panel .gen-done { grid-template-columns: auto 1fr; }
+.gen-done-actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.gen-done-actions .link-btn svg.lucide { width: 12px; height: 12px; margin-top: 0; }
+
+/* Media › Generated: the badge on each result. */
+.gen-section-label { display: flex; align-items: center; gap: 5px; }
+.gen-section-label svg.lucide { width: 12px; height: 12px; color: #9b8cff; }
+.gen-result .gen-thumb { position: relative; }
+.gen-badge { position: absolute; left: 3px; bottom: 3px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #6d8cff, #b46dff); color: #fff; }
+.gen-result .gen-thumb .gen-badge svg.lucide { width: 10px; height: 10px; color: #fff; }
