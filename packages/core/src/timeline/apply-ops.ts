@@ -110,8 +110,9 @@ function applyOp(project: Draft, op: Op) {
       return;
     }
     case "update_item": {
-      // Locking or unlocking an item is the one change a locked item takes.
-      const onlyLock = Object.keys(op.set).every((k) => k === "locked");
+      // Locking or unlocking an item is the one content change a locked item takes; its gap (D224)
+      // is its position, which may shift like a ripple shifts it (D52), so a delete before it works.
+      const onlyLock = Object.keys(op.set).every((k) => k === "locked" || k === "gap");
       merge((onlyLock ? locate(project, op.item) : editable(project, op.item)).item, op.set);
       return;
     }

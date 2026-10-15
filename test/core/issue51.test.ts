@@ -3,7 +3,7 @@
 // a gap, and every place that walks the main track (layout, captions, transcript, cuts) counts it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyEdit, audibleAt, createSession, cutsOf, editWords, layout, loadModules, mainEnd, planTextCut, resolveStarts, timelineProblems, transitionLimits, undoTurn, validateProject, visualsAt, type CutTranscript, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
+import { applyEdit, audibleAt, planRemoveMedia, createSession, cutsOf, editWords, layout, loadModules, mainEnd, planTextCut, resolveStarts, timelineProblems, transitionLimits, undoTurn, validateProject, visualsAt, type CutTranscript, type Item, type Op, type Project } from "../../packages/core/src/index.ts";
 import { mainSlot, planPlaceMedia } from "../../packages/core/src/timeline/arrange.ts";
 import { draftOf, planDelete, planMove, planRippleDelete } from "../../apps/web/src/timeline/edit.ts";
 import { copyItems, planDeleteMany, planPaste } from "../../apps/web/src/timeline/clipboard.ts";
@@ -198,4 +198,22 @@ test("copy and paste (⌘C/⌘V, ⌘D) don't carry a main clip's gap; a part of 
   // The agent's note reads the gap in words.
   assert.equal(describeOp({ op: "update_item", item: "b", set: { gap: 90 } }, p), "Left a 3.0s gap before Talk.mp4 (b) on the main track");
   assert.equal(describeOp({ op: "update_item", item: "b", set: { gap: null } }, p), "Closed the gap before Talk.mp4 (b) on the main track");
+});
+
+test("review fixes: a delete or ripple delete before a locked main clip works (its gap may change, nothing else); Remove media keeps the gap before a removed clip", () => {
+  const p = projectWith([clip("a", 30), clip("b", 30), clip("c", 30, { locked: true })]);
+  let after = run(p, ok(planDelete(p, "b")).ops);
+  assert.deepEqual(startsOf(after), [["a", 0], ["c", 60]]);
+  after = run(p, ok(planDeleteMany(p, ["b"])).ops);
+  assert.deepEqual(startsOf(after), [["a", 0], ["c", 60]]);
+  const gapped = projectWith([clip("a", 30), clip("b", 30, { gap: 40 }), clip("c", 30, { locked: true })]);
+  after = run(gapped, ok(planRippleDelete(gapped, ["b"])).ops);
+  assert.deepEqual(startsOf(after), [["a", 0], ["c", 70]]);
+  // Anything else on a locked item is still refused.
+  assert.throws(() => run(p, [{ op: "update_item", item: "c", set: { gap: 5, duration: 10 } }]), /locked/);
+  // Remove media: b (another media) goes, c closes up but keeps the space before b.
+  const base = projectWith([clip("a", 30), clip("b", 30, { gap: 40, media: "m2" }), clip("c", 30)]);
+  const two: Project = { ...base, media: [...base.media, { id: "m2", kind: "video", name: "B.mp4", path: "/tmp/B.mp4", probe: { frames: 600, fps: 30, hasAudio: false } }] };
+  after = run(two, ok(planRemoveMedia(two, "m2")).ops);
+  assert.deepEqual(startsOf(after), [["a", 0], ["c", 70]]);
 });
