@@ -12,7 +12,9 @@
 //   acompressor. The static curve is the same; the detectors' timing differs (documented in D84).
 // - Voice (audio.voice-enhance): one slot standing for high-pass 80 Hz + presence peak + gentle
 //   compression (voiceStages); the Mixer's Voice preset adds the same as an EQ and a compressor.
-// - Noise removal (audio.denoise): export only (ffmpeg afftdn); the preview skips it (D88).
+// - Noise removal (audio.denoise): ffmpeg afftdn in the export (D88); the preview runs core's
+//   SpectralDenoiser (denoise.ts) in an AudioWorklet, fitted to afftdn (D246). Both start from the
+//   track's measured noise floor (trackNoiseFloorDb).
 // - Ducking (audio.duck) is gain automation, not a stage: ducking.ts.
 // - The limiter (audio.limiter) belongs to the master: masterLimiter. On a track it does nothing.
 //
@@ -31,10 +33,8 @@ export const LIMITER = "audio.limiter";
 
 /** The effects the Mixer offers on a track, in its menu's order. */
 export const TRACK_EFFECTS = [EQ, COMPRESSOR, VOICE, DENOISE] as const;
-/** Effects heard only in the export (the preview marks them "applied on export"). */
-export const EXPORT_ONLY_EFFECTS: ReadonlyArray<string> = [DENOISE];
-/** Effects heard in the preview as in the export (modules_list: showsInPreview). */
-export const HEARD_EFFECTS: ReadonlyArray<string> = [EQ, COMPRESSOR, VOICE, DUCK, LIMITER];
+/** Effects heard in the preview as in the export (modules_list: showsInPreview): all of them since D246. */
+export const HEARD_EFFECTS: ReadonlyArray<string> = [EQ, COMPRESSOR, VOICE, DENOISE, DUCK, LIMITER];
 
 export const EFFECT_NAMES: Readonly<Record<string, string>> = {
   [EQ]: "EQ",
@@ -138,15 +138,21 @@ export function effectStages(fx: ModuleUse): Array<Stage> {
   }
 }
 
-/** A track's stages in list order; `preview` leaves out the export-only ones (noise removal). */
-export function trackStages(track: Pick<Track, "mixer">, { preview = false } = {}): Array<Stage> {
+/**
+ * A track's stages in list order. With `envelopes` (media id → loudness envelope), noise removal
+ * gets the track's measured noise floor (trackNoiseFloorDb): the preview and the export call this
+ * the same way, so both start from the same floor (D88, D246).
+ */
+export function trackStages(track: Pick<Track, "mixer" | "items">, project?: Pick<Project, "media">, envelopes?: ReadonlyMap<string, SpeechEnvelope | null>): Array<Stage> {
   const out: Array<Stage> = [];
-  for (const fx of track.mixer?.effects ?? []) for (const s of effectStages(fx)) if (!(preview && s.kind === "denoise")) out.push(s);
+  let floor: number | undefined;
+  for (const fx of track.mixer?.effects ?? [])
+    for (const s of effectStages(fx)) {
+      if (s.kind === "denoise" && project && envelopes) out.push({ ...s, floorDb: (floor ??= trackNoiseFloorDb(project, track, envelopes)) });
+      else out.push(s);
+    }
   return out;
 }
-
-/** Whether a track has an export-only effect switched on (the preview's "applied on export" badge). */
-export const hasExportOnly = (track: Pick<Track, "mixer">) => (track.mixer?.effects ?? []).some((fx) => !fx.bypass && EXPORT_ONLY_EFFECTS.includes(fx.module));
 
 /** The noise floor noise removal assumes when the track's sound hasn't been measured (dBFS RMS). */
 export const DENOISE_FLOOR_DB = -40;
@@ -160,6 +166,14 @@ export function noiseFloorDb(env: SpeechEnvelope): number {
   const sorted = Float32Array.from(env.db as ArrayLike<number>).sort();
   const p10 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.1))] ?? DENOISE_FLOOR_DB;
   return Math.round(Math.min(-20, Math.max(-80, p10 + 6)) * 10) / 10;
+}
+/** A track's noise floor for noise removal: the quietest of its sounding media's (noiseFloorDb), DENOISE_FLOOR_DB when none is measured. */
+export function trackNoiseFloorDb(project: Pick<Project, "media">, track: Pick<Track, "items">, envelopes: ReadonlyMap<string, SpeechEnvelope | null>): number {
+  const floors = track.items.flatMap((i) => {
+    const env = i.media && soundMedia(project, i) ? envelopes.get(i.media) : undefined;
+    return env ? [noiseFloorDb(env)] : [];
+  });
+  return floors.length ? Math.min(...floors) : DENOISE_FLOOR_DB;
 }
 /** Media on tracks with noise removal on (their envelopes give the noise floor, D88). */
 export function denoiseMediaIds(project: Pick<Project, "tracks" | "media">): Array<string> {

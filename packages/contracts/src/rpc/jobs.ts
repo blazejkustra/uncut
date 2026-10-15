@@ -30,6 +30,17 @@ export const ExportSubtitlesRpc = Rpc.make(RPC_METHODS.exportSubtitles, {
   error: ExportError,
 });
 
+/**
+ * D246: the loudness gain the export would use for `targetLufs` on the open project as it is now
+ * (its own measuring passes: one gain before the limiter, checked through it), so the preview can
+ * play at the target. gainDb is absent for silence. A newer call cancels a running one.
+ */
+export const ExportLoudnessRpc = Rpc.make(RPC_METHODS.exportLoudness, {
+  payload: Schema.Struct({ targetLufs: Schema.Number }),
+  success: Schema.Struct({ gainDb: Schema.optional(Schema.Number), lufs: Schema.optional(Schema.Number), cancelled: Schema.optional(Schema.Boolean) }),
+  error: ExportError,
+});
+
 // Analyses a media item of the open project (all analyzers when none are named). A cached result
 // or a file without sound is "done" at once; otherwise a job is queued (or an equal one joined).
 export const AnalysisStartRpc = Rpc.make(RPC_METHODS.analysisStart, {

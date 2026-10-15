@@ -1,5 +1,5 @@
 // The modules list and the timeline_edit ops expanded before they're applied.
-import { type ModuleManifest, DRAWN_MOVES, DRAWN_TRANSITIONS, DRAWN_COMPONENTS, HEARD_EFFECTS, TEXT_STYLES, type Modules, UNDRAWN_COMPONENTS, EXPORT_ONLY_EFFECTS, type Project, applyEdit, createSession, type Op, planDeviceFrame, type Device, type TextLook, planInsertText } from "@uncut/core";
+import { type ModuleManifest, DRAWN_MOVES, DRAWN_TRANSITIONS, DRAWN_COMPONENTS, HEARD_EFFECTS, TEXT_STYLES, type Modules, UNDRAWN_COMPONENTS, type Project, applyEdit, createSession, type Op, planDeviceFrame, type Device, type TextLook, planInsertText } from "@uncut/core";
 import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed } from "@uncut/core/arrange";
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
@@ -32,8 +32,6 @@ export function modulesList(modules: Modules, kind?: string) {
       ...(m.kind === "component" && m.component && typeof m.component === "object" ? { component: m.component } : {}),
       ...(UNDRAWN_COMPONENTS[m.id] ? { notDrawn: UNDRAWN_COMPONENTS[m.id] } : {}),
       showsInPreview: SHOWN_IN_PREVIEW(m),
-      // Audio effects heard only in the export (D88: noise removal).
-      ...(EXPORT_ONLY_EFFECTS.includes(m.id) ? { exportOnly: true } : {}),
     }));
 }
 

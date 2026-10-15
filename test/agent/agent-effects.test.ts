@@ -1,6 +1,6 @@
 // Phase 6 chunk 7 (D84–D88) on the bundled server through the scripted stand-in for claude
 // (helpers/fake-claude.ts, never the real one) and the real MCP server: modules_list shows the audio
-// effects (heard in the preview, noise removal export-only); the agent adds the voice preset to the
+// effects (heard in the preview, noise removal too, D246); the agent adds the voice preset to the
 // voice track, ducks the music under the voice and sets a −23 LUFS target with timeline_edit; the
 // edit starts the voice's loudness analysis (ducking needs it) and says so; the card's lines read
 // the chain; the export plan of the result ducks the music during the speech; Undo turn takes it
@@ -122,12 +122,12 @@ test("the agent lists the audio effects, adds the voice preset, ducks the music 
   ]);
   assert.equal(turn.status, "done", turn.error);
   const mine = results().slice(before);
-  // modules_list: the six audio processors with their params; heard ones show in the preview, noise removal is export-only.
+  // modules_list: the six audio processors with their params; every one is heard in the preview.
   const modules = JSON.parse(mine[0].result.content[0].text) as Array<{ id: string; showsInPreview: boolean; exportOnly?: boolean; params?: { properties?: Record<string, unknown> } }>;
   const byId = new Map(modules.map((m) => [m.id, m]));
-  for (const id of ["audio.eq", "audio.compressor", "audio.voice-enhance", "audio.duck", "audio.limiter"]) assert.equal(byId.get(id)?.showsInPreview, true, `${id} is heard in the preview`);
-  assert.equal(byId.get("audio.denoise")?.showsInPreview, false);
-  assert.equal(byId.get("audio.denoise")?.exportOnly, true);
+  // Every one is heard in the preview since D246 (noise removal too); nothing is export-only.
+  for (const id of ["audio.eq", "audio.compressor", "audio.voice-enhance", "audio.denoise", "audio.duck", "audio.limiter"]) assert.equal(byId.get(id)?.showsInPreview, true, `${id} is heard in the preview`);
+  assert.equal(byId.get("audio.denoise")?.exportOnly, undefined);
   assert.ok(byId.get("audio.eq")?.params?.properties?.lowCutHz, "EQ params listed");
   assert.ok(byId.get("audio.duck")?.params?.properties?.attackMs, "duck params listed");
   // The edit: saved as sent; the answer says the voice's loudness was measured for ducking.
@@ -186,7 +186,8 @@ test("the system prompt: effects, the voice preset, ducking, the limiter and tar
   assert.match(SYSTEM_PROMPT, /"module":"audio\.duck","params":\{"under":\["voice"\]/);
   assert.match(SYSTEM_PROMPT, /The master limiter \(D86\) is on by default at −1 dBTP/);
   assert.match(SYSTEM_PROMPT, /master\.loudness \{"targetLufs":-23\}/);
-  assert.match(SYSTEM_PROMPT, /noise removal \(audio\.denoise\) is applied on export only/);
+  assert.doesNotMatch(SYSTEM_PROMPT, /export only/);
+  assert.match(SYSTEM_PROMPT, /track effects \(EQ, compressor, voice, noise removal\)/);
   const prompt = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!);
   assert.match(prompt.system ?? "", /audio\.duck/, "the CLI gets it");
 });

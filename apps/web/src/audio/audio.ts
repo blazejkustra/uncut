@@ -19,9 +19,9 @@
 // frame towards the value one ramp ahead, so volume and fades follow smoothly and a cut starts or
 // stops with a ~17 ms ramp instead of a click. Paused or scrubbing: silent.
 //
-// Track effects (D84): each bus runs its track's stages (core trackStages, the preview's: noise
-// removal is export-only, D88) between its input and its pan, as the export filters each track's
-// sum: BiquadFilterNodes for the EQ (the cookbook curves core biquadResponseDb states; Web Audio
+// Track effects (D84): each bus runs its track's stages (core trackStages, the export's own: noise
+// removal too since D246, an AudioWorklet running core's SpectralDenoiser from the track's measured
+// noise floor) between its input and its pan, as the export filters each track's sum: BiquadFilterNodes for the EQ (the cookbook curves core biquadResponseDb states; Web Audio
 // takes a high-/low-pass Q in dB) and a DynamicsCompressorNode with a gain after it that cancels
 // its built-in make-up gain (core makeupCompensationDb) and adds the effect's own. Ducking (D85) is
 // core's duck curve added to each item's gain on the ducked track (ducking.ts duckCurvesOf), the
