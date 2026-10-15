@@ -2,6 +2,7 @@ import { type AgentAccess, type AgentEffort, AGENT_MODELS, AGENT_EFFORTS, AGENT_
 import { Eye, ShieldCheck, Sparkles, ChevronDown, Gauge, Check, Search, Star } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useAgentPrefs, setAgentPrefs, toggleFavourite } from "../../state/agentPrefs.ts";
+import { ClaudeMark, OpenAIMark } from "./providerMarks.tsx";
 
 export const ACCESS_INFO: Record<AgentAccess, { name: string; short: string; detail: string; icon: typeof Eye }> = {
   look: { name: "Look only", short: "Look only", detail: "Reads and looks, changes nothing", icon: Eye },
@@ -14,21 +15,20 @@ type Menu = "provider" | "model" | "effort" | "access" | undefined;
 type Provider = "claude" | "codex";
 
 /**
- * D209 (issue #23): the providers' marks. Anthropic's trademark guidelines allow its marks only in
- * materials it approves beforehand, and OpenAI's ask for permission before its logo is used, so
- * neither logo ships: each provider is its product's name set as a wordmark in the app's own type,
- * with a plain monogram tile beside it (no lab colours, no drawn logo), and "Claude" never as
- * "Claude Code" branding.
+ * Issue #50 (supersedes D209's no-logo rule, maintainer's call): each provider shows its real mark,
+ * embedded like t3code does (providerMarks.tsx), next to its product's name; the provider menu
+ * still says Uncut isn't made by or affiliated with either lab.
  */
-const PROVIDERS: Record<Provider, { readonly name: string; readonly lab: string; readonly monogram: string }> = {
-  claude: { name: "Claude", lab: "Anthropic", monogram: "C" },
-  codex: { name: "Codex", lab: "OpenAI", monogram: "Cx" },
+const PROVIDERS: Record<Provider, { readonly name: string; readonly lab: string; readonly Mark: typeof ClaudeMark }> = {
+  claude: { name: "Claude", lab: "Anthropic", Mark: ClaudeMark },
+  codex: { name: "Codex", lab: "OpenAI", Mark: OpenAIMark },
 };
 
 export function ProviderMark({ provider, size = "sm" }: { provider: Provider; size?: "sm" | "md" }) {
+  const { Mark } = PROVIDERS[provider];
   return (
     <span className={`provider-mark ${size}`} data-testid="provider-mark" data-provider={provider} aria-hidden>
-      {PROVIDERS[provider].monogram}
+      <Mark className="provider-logo" focusable="false" />
     </span>
   );
 }

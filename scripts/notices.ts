@@ -143,6 +143,29 @@ export function render(): string {
   s += "three.LICENSE.txt beside it) and inlined into graphics that load it. Its licence:\n\n";
   s += readFileSync(join(ROOT, "assets/graphic-libs/three.LICENSE.txt"), "utf8").trimEnd() + "\n";
 
+  // Issue #50: the providers' marks in the composer, embedded the way t3code does.
+  s += section("Provider marks: from t3code (MIT)");
+  s += "The Claude and OpenAI marks in the Agent tab's model picker (apps/web/src/panels/composer/\n";
+  s += "providerMarks.tsx) are the SVGs t3code embeds (https://github.com/pingdotgg/t3code,\n";
+  s += "apps/web/src/components/Icons.tsx). The marks are trademarks of Anthropic and OpenAI, shown only\n";
+  s += "to name the agent a model runs on; Uncut isn't made by or affiliated with either. t3code's licence:\n\n";
+  s += "MIT License\n\nCopyright (c) 2026 T3 Tools Inc.\n\n";
+  s += "Permission is hereby granted, free of charge, to any person obtaining a copy\n";
+  s += "of this software and associated documentation files (the \"Software\"), to deal\n";
+  s += "in the Software without restriction, including without limitation the rights\n";
+  s += "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n";
+  s += "copies of the Software, and to permit persons to whom the Software is\n";
+  s += "furnished to do so, subject to the following conditions:\n\n";
+  s += "The above copyright notice and this permission notice shall be included in all\n";
+  s += "copies or substantial portions of the Software.\n\n";
+  s += "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n";
+  s += "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n";
+  s += "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n";
+  s += "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n";
+  s += "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n";
+  s += "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n";
+  s += "SOFTWARE.\n";
+
   s += section("Electron and Chromium");
   s += `Uncut runs on Electron ${String(electron.version)} (MIT, https://github.com/electron/electron).\n`;
   s += "Electron includes Chromium, Node.js and their dependencies under their own licences (BSD-style\n";
