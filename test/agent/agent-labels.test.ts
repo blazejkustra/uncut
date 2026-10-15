@@ -1,5 +1,5 @@
 // D182, D184: the now line's present-tense labels (also from a call's input still streaming in),
-// what a "Look only" chat may use, and what "Ask before big changes" asks about.
+// what a "Look only" chat may use, and what "Ask first" asks about.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { accessLine, bigChange, doingLabel, LOOK_TOOLS, partialFields, stepLabel, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
@@ -31,7 +31,7 @@ test("partialFields: string fields once their closing quote arrived, escapes dec
   assert.deepEqual(partialFields('{"baseRevision":3,"summary":"Scene \\"2\\"","ops":[{"op":"insert_item","item":{"id":"x"'), { summary: 'Scene "2"', id: "x" });
 });
 
-test("access: Look only tools read and look; Ask before big changes asks about removals, project changes, many ops and transcript cuts", () => {
+test("access: Look only tools read and look; Ask first asks about removals, project changes, many ops and transcript cuts", () => {
   for (const t of LOOK_TOOLS) assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes(t), t);
   for (const t of ["timeline_edit", "transcript_edit", "graphic_write", "media_import", "generate_media", "screen_record", "music_add", "captions_make"]) assert.ok(!(LOOK_TOOLS as ReadonlyArray<string>).includes(t), t);
   assert.equal(bigChange("timeline_edit", { summary: "Add", ops: [{ op: "insert_item", track: "text", item: { id: "a", type: "text", start: 0, duration: 9, text: "a" } }] }, project), undefined);
@@ -45,6 +45,8 @@ test("access: Look only tools read and look; Ask before big changes asks about r
   assert.equal(bigChange("transcript_edit", { media: "m-a", fillers: true, dryRun: true }, project), undefined);
   assert.equal(bigChange("graphic_write", { name: "a.html" }, project), undefined);
   assert.match(accessLine("look"), /^Access: Look only\./);
-  assert.match(accessLine("ask"), /^Access: Ask before big changes\./);
-  assert.match(accessLine("edit"), /^Access: Edit freely\. Commands and file writes inside the project run without asking; deleting or writing outside the project, sudo, git push and uploads ask the user first\.$/);
+  assert.match(accessLine("ask"), /^Access: Ask first\./);
+  // D214: Auto is Claude Code's own auto mode; the limits stay.
+  assert.match(accessLine("auto"), /^Access: Auto\. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first\.$/);
+  for (const a of ["look", "ask", "auto"] as const) assert.doesNotMatch(accessLine(a), /[·*•]|Edit freely|Ask before big changes/);
 });

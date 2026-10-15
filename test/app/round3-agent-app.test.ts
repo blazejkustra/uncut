@@ -8,7 +8,7 @@
 // - U1/U2: no empty thinking rows; the now line says the call streaming in with its target ("Writing
 //   graphic s3-enter.html"); a failed call is a ✕ step with its reason.
 // - U6: three scene edits in one turn land one by one, each glowing on the timeline as it lands.
-// - U4 access: "Ask before big changes" puts a removal on a card; Allow applies it.
+// - U4 access: "Ask first" puts a removal on a card; Allow applies it.
 // Screenshots: test-output/round3-agent-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -158,7 +158,7 @@ test("round 3 agent: composer choices and images, moments, live status, failed s
     assert.equal(first.images.length, 1);
     assert.equal(first.images[0].media_type, "image/png");
     assert.match(first.prompt, /@0:01 = the moment at frame 30 \(1\.00 s\)/);
-    assert.match(first.prompt, /Access: Ask before big changes\./);
+    assert.match(first.prompt, /Access: Ask first\./);
 
     // ---- U5: right-click the ruler: a moment, then the In/Out range ----
     const ruler = await page.$eval("[data-testid=ruler]", (el) => el.getBoundingClientRect().toJSON());

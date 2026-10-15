@@ -2,7 +2,7 @@
 // the spawned claude's command line and environment (isolation, tool loading, thinking display), the
 // fallback when claude refuses --thinking-display, model/effort choices restarting with --resume,
 // failed tool calls with their reason, empty thinking dropped, the now line's present-tense target
-// while a call streams in, access modes (Look only, Ask before big changes), attached images, moment
+// while a call streams in, access modes (Look only, Ask first), attached images, moment
 // and range chips with what's on screen, and edits landing one by one.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -96,7 +96,7 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     assert.equal(flagValue(argv, "--tools"), "default", "the built-in tools are on");
     assert.ok(!argv.some((a, i) => a === "--tools" && argv[i + 1] === ""), "no --tools \"\"");
     assert.equal(flagValue(argv, "--allowedTools"), "mcp__uncut");
-    assert.equal(flagValue(argv, "--permission-mode"), "default");
+    assert.equal(flagValue(argv, "--permission-mode"), "auto", "D214: no access sent is Auto, Claude Code's own auto mode");
     assert.equal(flagValue(argv, "--permission-prompt-tool"), "stdio");
     assert.equal(flagValue(argv, "--thinking-display"), "summarized", "thinking summaries in print mode");
     assert.ok(!argv.includes("--bare"), "no --bare: it would skip the keychain login");
@@ -111,7 +111,7 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     assert.equal(run.envValues.CLAUDE_CONFIG_DIR, join(root, "argv", "claude-config"), "the login's config dir is untouched");
     assert.match(run.system, /mcp__uncut__graphic_write/, "the prompt names the full tool names");
     assert.match(run.system, /scene by scene/, "U6: build scene by scene");
-    assert.match(run.prompt, /<editor-context>[\s\S]*Access: Edit freely\./);
+    assert.match(run.prompt, /<editor-context>[\s\S]*Access: Auto\./);
   } finally {
     await s.stop();
   }
@@ -197,7 +197,7 @@ test("U2/U1: failed calls show ✕ with why; empty thinking isn't kept; a call s
   }
 });
 
-test("U4 access: Look only refuses changes with why; Ask before big changes puts a removal on a card (Don't refuses, Allow applies)", { skip, timeout: 60000 }, async () => {
+test("U4 access: Look only refuses changes with why; Ask first puts a removal on a card (Don't refuses, Allow applies)", { skip, timeout: 60000 }, async () => {
   const s = await setup("access");
   try {
     const title = { id: "title-1", type: "text", start: 0, duration: 60, text: "Hello" };

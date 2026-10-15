@@ -1,7 +1,8 @@
 // Issue #33 (D194) on the bundled server with fake-claude's session: Claude Code's own tools
 // (WebSearch, WebFetch, Bash, Read, Write, Task) in the work log with their labels and results,
-// permission prompts over stdio (can_use_tool) decided by the composer's access: Edit freely runs
-// them and asks only for destructive commands, Ask before big changes puts commands and writes on
+// permission prompts over stdio (can_use_tool) decided by the composer's access: Auto (D214, claude's
+// own auto mode; what still reaches Uncut is decided as Edit freely was) runs them and asks only for
+// destructive commands, Ask first puts commands and writes on
 // a card (Allow once, Always for this session, Deny), Look only refuses commands and writes
 // without a card; a Stop closes an open card; a pasted folder joins --add-dir; media_download
 // brings a file from the web (a loopback stub here) into media/downloads and imports it.
@@ -82,8 +83,8 @@ async function setup(name: string, env: Record<string, string> = {}) {
 
 const stepsOf = (t: any) => t.items.filter((i: any) => i.kind === "step");
 
-test("D194 Edit freely: web search, fetch, reads, subagents and plain commands run without a card, with their labels and results; a destructive command asks, can't be remembered, and Deny refuses it", { skip, timeout: 60000 }, async () => {
-  const s = await setup("edit");
+test("D194/D214 Auto: web search, fetch, reads, subagents and plain commands run without a card, with their labels and results; a destructive command asks, can't be remembered, and Deny refuses it", { skip, timeout: 60000 }, async () => {
+  const s = await setup("auto");
   try {
     const id = await s.start("make a promo for Argent", [
       { builtin: "Bash", args: { command: "ls media", description: "List media" }, result: "a.mp4\nb.mp4" },
@@ -128,7 +129,7 @@ test("D194 Edit freely: web search, fetch, reads, subagents and plain commands r
   }
 });
 
-test("D194 Ask before big changes: a command waits for a card; Allow once runs it once; Always for this session lets that exact command run again without a card; a write in .cache goes, elsewhere it asks", { skip, timeout: 60000 }, async () => {
+test("D194 Ask first: a command waits for a card; Allow once runs it once; Always for this session lets that exact command run again without a card; a write in .cache goes, elsewhere it asks", { skip, timeout: 60000 }, async () => {
   const s = await setup("ask");
   try {
     const dir = s.dir;
@@ -161,8 +162,8 @@ test("D194 Ask before big changes: a command waits for a card; Allow once runs i
     const steps = stepsOf(t);
     assert.deepEqual(steps.map((x: any) => x.text), ["Ran `ls -la`", "Ran `ls media`", "Ran `ls media`", "Wrote .cache/notes.txt", "Wrote script.sh"]);
     assert.equal(steps[4].status, "error");
-    // Uncut's own files are never written by hand, even in Edit freely.
-    const id2 = await s.start("fix the project", [{ builtin: "Edit", args: { file_path: join(dir, "project.json"), old_string: "a", new_string: "b" } }], { access: "edit" });
+    // Uncut's own files are never written by hand, even in Auto.
+    const id2 = await s.start("fix the project", [{ builtin: "Edit", args: { file_path: join(dir, "project.json"), old_string: "a", new_string: "b" } }], { access: "auto" });
     const t2 = await s.done(id2);
     assert.match(stepsOf(t2)[0].error, /project\.json is Uncut's own file/);
   } finally {
@@ -283,14 +284,14 @@ test("D194 media_download: a picture from the web (redirect followed) lands in m
   }
 });
 
-test("D194 the SDK's initialize handshake goes first; the secret deny rules ride every session; Look only starts claude without Bash and the file-writing tools (a change of access restarts it with --resume)", { skip, timeout: 60000 }, async () => {
+test("D194/D214 the SDK's initialize handshake goes first; the secret deny rules ride every session; Look only starts claude without Bash and the file-writing tools; Auto is --permission-mode auto, Ask first and Look only the default mode (a change of access restarts it with --resume)", { skip, timeout: 60000 }, async () => {
   const s = await setup("modes");
   try {
     const a = await s.done(await s.start("look", [{ text: "ok" }], { access: "look" }));
     assert.equal(a.status, "done", a.error);
     const b = await s.done(await s.start("look again", [{ text: "ok" }], { access: "look" }));
     assert.equal(b.status, "done", b.error);
-    const c = await s.done(await s.start("now edit", [{ text: "ok" }], { access: "edit" }));
+    const c = await s.done(await s.start("now edit", [{ text: "ok" }], { access: "auto" }));
     assert.equal(c.status, "done", c.error);
     const d = await s.done(await s.start("ask", [{ text: "ok" }], { access: "ask" }));
     assert.equal(d.status, "done", d.error);
@@ -298,10 +299,14 @@ test("D194 the SDK's initialize handshake goes first; the secret deny rules ride
     assert.ok(runs.every((r) => r.initialized), "every message came after initialize was answered (fake-claude refuses one before it)");
     assert.equal(flagValue(runs[0]!.argv, "--disallowedTools"), "Bash,Write,Edit,MultiEdit,NotebookEdit");
     assert.equal(runs[1]!.pid, runs[0]!.pid, "same access, same claude");
-    assert.notEqual(runs[2]!.pid, runs[1]!.pid, "Look only to Edit freely: another claude");
+    assert.notEqual(runs[2]!.pid, runs[1]!.pid, "Look only to Auto: another claude");
     assert.equal(flagValue(runs[2]!.argv, "--resume"), "fake-session");
     assert.equal(flagValue(runs[2]!.argv, "--disallowedTools"), undefined);
-    assert.equal(runs[3]!.pid, runs[2]!.pid, "Edit freely and Ask share a session (Uncut decides per request)");
+    assert.notEqual(runs[3]!.pid, runs[2]!.pid, "Auto to Ask first: another claude (another permission mode)");
+    assert.equal(flagValue(runs[3]!.argv, "--resume"), "fake-session");
+    assert.deepEqual(runs.map((r) => flagValue(r.argv, "--permission-mode")), ["default", "default", "auto", "default"]);
+    assert.ok(runs.every((r) => flagValue(r.argv, "--permission-prompt-tool") === "stdio"), "every access asks Uncut over stdio");
+    assert.ok(runs.every((r) => !r.argv.includes("--permission-prompts")), "--permission-prompts stays at its default (host)");
     for (const run of runs) {
       const settings = JSON.parse(flagValue(run.argv, "--settings")!);
       const deny: Array<string> = settings.permissions.deny;
@@ -326,18 +331,50 @@ test("D194 a claude that never answers initialize gets the message after the wai
   }
 });
 
-test("D194 the web marks the whole chat: after a WebSearch, a later turn's outside read and allowlisted command ask", { skip, timeout: 60000 }, async () => {
+test("D214 no web taint in Auto: after a WebSearch, a later turn's allowlisted command runs without a card in the same claude, commands never join the ask rules", { skip, timeout: 60000 }, async () => {
   const s = await setup("websession");
   try {
     const a = await s.done(await s.start("research", [{ builtin: "WebSearch", args: { query: "Argent" } }]));
     assert.equal(a.status, "done", a.error);
-    const id = await s.start("now list", [{ builtin: "Bash", args: { command: "ls" } }]);
-    const card = await s.card(id);
-    assert.equal(card.permission.target, "ls");
-    await s.client.ok("agent.approve", { id: card.id, allow: true });
-    const b = await s.done(id);
+    const b = await s.done(await s.start("now list", [{ builtin: "Bash", args: { command: "ls" } }]));
     assert.equal(b.status, "done", b.error);
+    assert.deepEqual(s.decisions().map((d) => [d.builtin, d.decision.behavior]), [["WebSearch", "allow"], ["Bash", "allow"]], "no card after the web");
+    const runs = s.runs();
+    assert.equal(runs[1]!.pid, runs[0]!.pid, "the web doesn't restart an Auto claude");
+    assert.ok(runs.every((r) => !JSON.parse(flagValue(r.argv, "--settings")!).permissions.ask.includes("Bash")), "commands stay with Claude Code's classifier");
   } finally {
     await s.stop();
+  }
+});
+
+test("D214 Auto keeps Uncut's limits: --permission-mode auto with the secret deny rules, Uncut's own files denied claude-side, file and web calls sent to Uncut; an outside write gets a card that can't be remembered, project.json is refused, a project write runs", { skip, timeout: 60000 }, async () => {
+  const s = await setup("autolimits");
+  const outside = mkdtempSync(join(tmpdir(), "uncut-auto-outside-"));
+  try {
+    const id = await s.start("save things", [
+      { builtin: "Write", args: { file_path: join(s.dir, "graphics", "s1.html"), content: "<p>hi</p>" } },
+      { builtin: "Edit", args: { file_path: join(s.dir, "project.json"), old_string: "a", new_string: "b" } },
+      { builtin: "Write", args: { file_path: join(outside, "notes.txt"), content: "x" } },
+    ]);
+    const card = await s.card(id);
+    assert.equal(card.permission.tool, "Write");
+    assert.match(card.permission.why, /outside the project/);
+    assert.equal(card.permission.always, false, "an outside write is never remembered");
+    await s.client.ok("agent.approve", { id: card.id, allow: false });
+    const t = await s.done(id);
+    assert.equal(t.status, "done", t.error);
+    assert.deepEqual(s.decisions().map((d) => [d.builtin, d.decision.behavior]), [["Write", "allow"], ["Edit", "deny"], ["Write", "deny"]]);
+    assert.match(s.decisions()[1]!.decision.message!, /Uncut's own file/);
+    const run = s.runs()[0]!;
+    assert.equal(flagValue(run.argv, "--permission-mode"), "auto");
+    assert.equal(flagValue(run.argv, "--permission-prompt-tool"), "stdio");
+    assert.equal(flagValue(run.argv, "--disallowedTools"), undefined);
+    const settings = JSON.parse(flagValue(run.argv, "--settings")!);
+    const deny: Array<string> = settings.permissions.deny;
+    for (const rule of ["Read(~/.ssh/**)", "Bash(rm:*)", "Bash(sudo:*)", "Bash(git push:*)", `Edit(/${realpathSync(s.dir)}/project.json)`, `Edit(/${realpathSync(s.dir)}/agent/**)`, "Bash(*project.json*)"]) assert.ok(deny.includes(rule), rule);
+    for (const tool of ["Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]) assert.ok(settings.permissions.ask.includes(tool), tool);
+  } finally {
+    await s.stop();
+    rmSync(outside, { recursive: true, force: true });
   }
 });

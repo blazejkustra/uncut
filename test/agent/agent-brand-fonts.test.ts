@@ -65,7 +65,7 @@ async function setup(name: string) {
     start: async (prompt: string, steps: Array<unknown>) => {
       turns.push(steps);
       writeFileSync(plan, JSON.stringify(turns));
-      const { turnId } = await client.ok("agent.send", { prompt, access: "edit" });
+      const { turnId } = await client.ok("agent.send", { prompt, access: "auto" });
       return turnId as string;
     },
     done: async (id: string) => {

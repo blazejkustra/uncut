@@ -7,7 +7,7 @@
 // text, chips and images live in the store.
 import { AGENT_ACCESS, AGENT_EFFORTS, AGENT_IMAGE_MAX, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, AGENT_MODELS, type AgentAccess, type AgentEffort, type AgentImage, type AgentMention, type AgentTurn } from "@uncut/contracts";
 import { mentionCandidates, momentLabel, parseMoment } from "@uncut/core/mentions";
-import { ArrowLeftRight, ArrowUp, AtSign, Bot, Check, ChevronDown, Clock3, Eye, Film, Flag, Gauge, ListVideo, MousePointer2, Music, Paperclip, PencilLine, Rows3, Search, ShieldCheck, Sparkles, Square, Star, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, AtSign, Bot, Check, ChevronDown, Clock3, Eye, Film, Flag, Gauge, ListVideo, MousePointer2, Music, Paperclip, Rows3, Search, ShieldCheck, Sparkles, Square, Star, X } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { usePlayback } from "../preview/playback.ts";
@@ -51,8 +51,8 @@ const KIND_ICON = { media: Film, item: ListVideo, track: Rows3, marker: Flag, mo
 
 export const ACCESS_INFO: Record<AgentAccess, { name: string; short: string; detail: string; icon: typeof Eye }> = {
   look: { name: "Look only", short: "Look only", detail: "Reads and looks, changes nothing", icon: Eye },
-  ask: { name: "Ask before big changes", short: "Ask first", detail: "Removals, transcript cuts and large edits wait for your Allow", icon: ShieldCheck },
-  edit: { name: "Edit freely", short: "Edit freely", detail: "Edits as it goes; every turn can be undone", icon: PencilLine },
+  ask: { name: "Ask first", short: "Ask first", detail: "Commands, file writes, removals and large edits wait for your Allow", icon: ShieldCheck },
+  auto: { name: "Auto", short: "Auto", detail: "Claude Code approves routine work itself; risky steps still ask. Every turn can be undone", icon: Sparkles },
 };
 const EFFORT_NAME: Record<AgentEffort, string> = { low: "Low", medium: "Medium", high: "High", max: "Max" };
 

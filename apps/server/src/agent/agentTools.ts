@@ -394,11 +394,11 @@ export function partialFields(json: string): Record<string, string> {
 /** D184: the tools a "Look only" chat may use: they read, look and point, and change nothing. */
 export const LOOK_TOOLS = ["project_read", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "project_check", "music_list", "library_search", "media_search", "contact_sheet", "ui_show", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "reference_frames", "beat_grid"] as const;
 
-/** D184: more ops than this in one timeline_edit is a big change in "Ask before big changes". */
+/** D184: more ops than this in one timeline_edit is a big change in "Ask first". */
 export const BIG_EDIT_OPS = 12;
 
 /**
- * D184: whether a call is a big change that "Ask before big changes" puts on a card first: a
+ * D184: whether a call is a big change that "Ask first" puts on a card first: a
  * timeline_edit that removes items, tracks or media, changes the project's settings or has more
  * than BIG_EDIT_OPS ops; a transcript_edit that cuts (not a dry run). The card's words, or undefined.
  */
@@ -421,10 +421,10 @@ export function bigChange(tool: string, input: Record<string, unknown>, project:
 }
 
 /** D184, D194: the access line of the message's <editor-context>. */
-export function accessLine(access: "look" | "ask" | "edit"): string {
+export function accessLine(access: "look" | "ask" | "auto"): string {
   if (access === "look") return "Access: Look only. You may read files, search and read the web, use subagents, look, point (ui_show), ask (ask_user) and plan (brief_write, storyboard_propose) and ask for a review (review_submit), but don't run commands, write files or change the timeline, the media, the brand kit or graphics; say what you would do.";
-  if (access === "ask") return `Access: Ask before big changes. Commands (Bash), file writes outside the project's .cache, removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; reading, the web and small edits don't. If they say no, don't retry it in this turn.`;
-  return "Access: Edit freely. Commands and file writes inside the project run without asking; deleting or writing outside the project, sudo, git push and uploads ask the user first.";
+  if (access === "ask") return `Access: Ask first. Commands (Bash), file writes outside the project's .cache, removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; reading, the web and small edits don't. If they say no, don't retry it in this turn.`;
+  return "Access: Auto. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first.";
 }
 
 /**

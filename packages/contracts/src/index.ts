@@ -711,7 +711,7 @@ export const Storyboard = Schema.Struct({
   summary: Schema.String,
   beats: Schema.Array(StoryboardBeat),
   status: Schema.Literals(["proposed", "approved", "declined"]),
-  // "user": approved on the card; "setting": Edit freely with the gate skipped.
+  // "user": approved on the card; "setting": Auto with the gate skipped.
   approvedBy: Schema.optional(Schema.Literals(["user", "setting"])),
   note: Schema.optional(Schema.String),
   updatedAt: Schema.optional(Schema.String),
@@ -829,7 +829,8 @@ export type AgentEffort = typeof AgentEffort.Type;
  * changes wait for Allow on a card: removing things, cutting by transcript, many items at once)
  * and edit (everything, as before; spending over $1 still asks, D99).
  */
-export const AGENT_ACCESS = ["look", "ask", "edit"] as const;
+// D214: "auto" (Claude Code's own auto mode) replaced "edit" (Edit freely); stored prefs migrate in the web app.
+export const AGENT_ACCESS = ["look", "ask", "auto"] as const;
 export const AgentAccess = Schema.Literals(AGENT_ACCESS);
 export type AgentAccess = typeof AgentAccess.Type;
 /** An image attached to a message: base64 data, at most AGENT_IMAGE_MAX bytes, AGENT_IMAGES_MAX per message. */
@@ -942,7 +943,7 @@ export const AgentApproval = Schema.Struct({
   // window (the agent's `source` preselected by name), Record or Don't. The renderer records and
   // answers with agent.screenTake. Absent: a spend card (D99).
   screen: Schema.optional(Schema.Struct({ source: Schema.optional(Schema.String), seconds: Schema.Number, withMic: Schema.Boolean })),
-  // D184: a big change asked for in "Ask before big changes": what it would do, in words.
+  // D184: a big change asked for in "Ask first": what it would do, in words.
   edit: Schema.optional(Schema.Struct({ lines: Schema.Array(Schema.String) })),
   // D187: a question (ask_user): answered with agent.approve's answer; Skip is allow false.
   question: Schema.optional(AgentQuestion),
@@ -1360,7 +1361,7 @@ const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     effort: Schema.optional(AgentEffort),
     access: Schema.optional(AgentAccess),
     images: Schema.optional(Schema.Array(AgentImage)),
-    // D188: Settings › App › Agent "Edit freely skips the storyboard approval".
+    // D188: Settings › App › Agent "Auto skips the storyboard approval".
     skipStoryboard: Schema.optional(Schema.Boolean),
   }),
   success: Schema.Struct({ turnId: Schema.String }),

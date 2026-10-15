@@ -58,7 +58,7 @@ export const styleLine = (s: BrandStyle) =>
 export interface BuildGate {
   /** A brief exists and its storyboard isn't approved: timeline_edit waits. */
   readonly closed: boolean;
-  /** "Edit freely" with Settings' skip: storyboard_propose approves itself. */
+  /** "Auto" with Settings' skip: storyboard_propose approves itself. */
   readonly skip: boolean;
 }
 

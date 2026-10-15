@@ -505,7 +505,7 @@ function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { bran
     const [path] = await actions.pickBrandFiles();
     if (!path) return;
     if (getState().agent?.running) return setNote("The agent is busy");
-    await actions.agentSend(`Make a style guide for the kit "${saved?.name ?? (d.name.trim() || view.id)}" (${view.id}) from this reference: ${path}`, [], [], { access: "edit" });
+    await actions.agentSend(`Make a style guide for the kit "${saved?.name ?? (d.name.trim() || view.id)}" (${view.id}) from this reference: ${path}`, [], [], { access: "auto" });
     actions.openPanel("agent");
   };
 

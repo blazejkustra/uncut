@@ -235,8 +235,8 @@ test("U15: a storyboard sent back with a note keeps the build waiting; the Plan 
     assert.equal(brief.brief.by, "user");
     await s.ask("go on", [{ text: "ok" }]);
     assert.match(s.prompts().at(-1)!.prompt, /Brief \(edited by the user\):[\s\S]*audience: React Native teams/);
-    // Edit freely with the setting: the storyboard approves itself, no card.
-    const auto = await s.ask("new storyboard", [{ tool: "storyboard_propose", args: { summary: "Again", beats: BEATS } }], { access: "edit", skipStoryboard: true });
+    // Auto with the setting: the storyboard approves itself, no card.
+    const auto = await s.ask("new storyboard", [{ tool: "storyboard_propose", args: { summary: "Again", beats: BEATS } }], { access: "auto", skipStoryboard: true });
     const out = jsonOf(s.results().at(-1)!.result);
     assert.equal(out.approved, true);
     assert.equal(out.by, "setting");
@@ -297,7 +297,7 @@ test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are c
         // 20: round 3.
         { tool: "review_submit", args: { fixes: [{ defect: "d1", what: "the recording plays in the phone" }] } },
       ],
-      { access: "edit", skipStoryboard: true },
+      { access: "auto", skipStoryboard: true },
     );
     assert.equal(t.status, "done", t.error);
     const r = s.results().slice(2);
