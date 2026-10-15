@@ -286,6 +286,7 @@ export class Compositor extends CompositorBase {
 
     if (!scrubCacheOn() && this.scrub.lru.size) this.scrub.clear();
     this.scrubbed.clear();
+    this.scrubAimed.clear();
     clips.forEach((c) => {
       const media = mediaKind(c.item)!;
       const el = this.elementFor(c.item, media.kind === "image" ? "image" : "video");
@@ -330,6 +331,7 @@ export class Compositor extends CompositorBase {
       if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
       else if (!el.paused) el.pause();
     });
+    this.warmBudget = 1;
     for (const id of this.fxWarmed) if (!aheads.some((a) => a.id === id)) this.fxWarmed.delete(id);
     for (const ahead of aheads) {
       if (clips.some((c) => c.item.id === ahead.id)) continue;
