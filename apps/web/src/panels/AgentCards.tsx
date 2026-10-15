@@ -3,11 +3,13 @@
 // happened (question and answer, brief, storyboard, review, brand; the latest brief is edited and
 // the latest storyboard approved on its card) and the pinned Plan chip that jumps to the latest
 // brief, storyboard and review cards.
-import { REVIEW_SCORES, type AgentApproval, type AgentCard, type AgentPlan, type AgentQuestion, type Brief, type Review, type Storyboard, type StoryboardBeat } from "@uncut/contracts";
-import { Check, ChevronDown, ChevronRight, ClipboardList, Clapperboard, Gauge, HelpCircle, Palette, Pencil, X } from "lucide-react";
+import { REVIEW_SCORES, type AgentApproval, type AgentCard, type AgentPlan, type AgentQuestion, type Brief, type IntendedFinding, type Review, type Storyboard, type StoryboardBeat } from "@uncut/contracts";
+import { soundProfileText } from "@uncut/core/checks";
+import { intendedOf, isIntended, isVideoType, OPTIONAL_BAR, REQUIRED_BAR, soundProfileFor, VIDEO_TYPE_NAMES, VIDEO_TYPES, type FindingRef } from "@uncut/core/skills";
+import { Check, ChevronDown, ChevronRight, ClipboardList, Clapperboard, Gauge, HelpCircle, Palette, Pencil, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { actions } from "../state/store.ts";
+import { actions, useApp } from "../state/store.ts";
 
 const SCORE_NAMES: Readonly<Record<(typeof REVIEW_SCORES)[number], string>> = {
   hook: "Hook in 2 s",
@@ -170,16 +172,34 @@ export function StoryboardApproval({ approval, storyboard, online }: { approval:
   );
 }
 
-/** A review's scores as bars (8 and up passes), with the critic's evidence under each. */
+/**
+ * A review's scores as bars, with the critic's evidence under each (D217: only the categories the
+ * video's rubric scores; a required one passes at 8, an optional one at 6; not applicable ones greyed).
+ */
 export function ScoreBars({ review }: { review: Review }) {
   return (
     <div className="scores" data-testid="agent-review-scores">
       {REVIEW_SCORES.map((k) => {
-        const v = review.scores[k];
+        const level = review.rubric?.[k] ?? "required";
+        if (level === "na") {
+          return (
+            <div key={k} className="score na" data-testid="agent-review-score" data-score={k} data-applies="na">
+              <span className="score-name">{SCORE_NAMES[k]}</span>
+              <span className="score-bar" />
+              <span className="score-value">N/A</span>
+              <span className="score-evidence">Not judged for this video</span>
+            </div>
+          );
+        }
+        const v = review.scores[k] ?? 0;
+        const bar = level === "optional" ? OPTIONAL_BAR : REQUIRED_BAR;
         const ev = review.evidence?.[k];
         return (
-          <div key={k} className={`score ${v >= 8 ? "ok" : "low"}`} data-testid="agent-review-score" data-score={k} data-value={v}>
-            <span className="score-name">{SCORE_NAMES[k]}</span>
+          <div key={k} className={`score ${v >= bar ? "ok" : "low"} ${level}`} data-testid="agent-review-score" data-score={k} data-value={v} data-applies={level}>
+            <span className="score-name">
+              {SCORE_NAMES[k]}
+              {level === "optional" && <span className="muted"> (optional)</span>}
+            </span>
             <span className="score-bar">
               <span style={{ width: `${v * 10}%` }} />
             </span>
@@ -211,26 +231,50 @@ const BLOCKER_NAMES: Readonly<Record<string, string>> = {
   other: "Blocker",
 };
 
-function ReviewBody({ review }: { review: Review }) {
+/** D217: mark a finding Intended (the critic stops raising it), or take the mark back. */
+function IntendedButton({ finding, what, marked, online }: { finding: FindingRef; what: string; marked: boolean; online: boolean }) {
+  return (
+    <button
+      className={`chip-btn intended-btn ${marked ? "active" : ""}`}
+      data-testid="agent-review-intended"
+      aria-pressed={marked}
+      disabled={!online}
+      title={marked ? "The critic won't raise this again. Click to take it back." : "This is on purpose: the critic stops raising it"}
+      onClick={() => void actions.agentMarkIntended({ ...intendedOf(finding), what }, !marked)}
+    >
+      {marked ? <Check /> : null}
+      Intended
+    </button>
+  );
+}
+
+function ReviewBody({ review, intended, online }: { review: Review; intended: ReadonlyArray<IntendedFinding>; online: boolean }) {
   const blockers = review.blockers ?? [];
+  const type = isVideoType(review.videoType) ? VIDEO_TYPE_NAMES[review.videoType] : undefined;
   return (
     <>
       <div className="review-by small muted" data-testid="agent-review-by" data-by={review.by ?? "agent"} title={review.by === "critic" ? "A separate Claude that sees only the frames, the brief, the kit and the storyboard" : undefined}>
         {review.by === "critic" ? "Independent critic" : "Self-scored"}
+        {type && <span data-testid="agent-review-type">, judged as {type.toLowerCase()}</span>}
+        {review.intended ? <span data-testid="agent-review-left-out">, {review.intended === 1 ? "1 finding" : `${review.intended} findings`} you marked Intended left out</span> : null}
       </div>
       {review.error && <div className="small err">{review.error}</div>}
       {blockers.length > 0 && (
         <div className="blockers" data-testid="agent-review-blockers">
-          {blockers.map((b, i) => (
-            <div key={i} className="blocker" data-testid="agent-review-blocker" data-kind={b.kind} data-source={b.source}>
-              <span className="blocker-kind">{BLOCKER_NAMES[b.kind] ?? b.kind}</span>
-              {b.at !== undefined && <span className="defect-at">{seconds(b.at)}</span>}
-              <span className="grow">
-                {b.what}
-                {b.source === "check" && <span className="muted"> (Uncut's {b.kind === "sound" ? "sound" : "layout"} check)</span>}
-              </span>
-            </div>
-          ))}
+          {blockers.map((b, i) => {
+            const marked = isIntended(b, intended);
+            return (
+              <div key={i} className={`blocker ${marked ? "marked" : ""}`} data-testid="agent-review-blocker" data-kind={b.kind} data-source={b.source} data-intended={marked}>
+                <span className="blocker-kind">{BLOCKER_NAMES[b.kind] ?? b.kind}</span>
+                {b.at !== undefined && <span className="defect-at">{seconds(b.at)}</span>}
+                <span className="grow">
+                  {b.what}
+                  {b.source === "check" && <span className="muted"> (Uncut's {b.kind === "sound" ? "sound" : "layout"} check)</span>}
+                </span>
+                {b.kind !== "unverified-fix" && <IntendedButton finding={b} what={b.what} marked={marked} online={online} />}
+              </div>
+            );
+          })}
         </div>
       )}
       {review.fixes && review.fixes.length > 0 && (
@@ -249,15 +293,20 @@ function ReviewBody({ review }: { review: Review }) {
       <ScoreBars review={review} />
       {review.defects.length > 0 && (
         <div className="defects" data-testid="agent-review-defects">
-          {review.defects.map((d, i) => (
-            <div key={i} className="defect">
-              <span className="defect-at">{seconds(d.at)}</span>
-              <span>
-                {d.what}
-                {d.fix && <span className="muted">, fix: {d.fix}</span>}
-              </span>
-            </div>
-          ))}
+          {review.defects.map((d, i) => {
+            const marked = isIntended(d, intended);
+            return (
+              <div key={i} className={`defect ${marked ? "marked" : ""}`} data-testid="agent-review-defect" data-kind={d.kind} data-source={d.source} data-rule={d.rule} data-intended={marked}>
+                <span className="defect-at">{seconds(d.at)}</span>
+                <span className="grow">
+                  {d.what}
+                  {d.fix && <span className="muted">, fix: {d.fix}</span>}
+                  {d.source === "check" && <span className="muted"> (Uncut's {d.rule?.startsWith("sound") ? "sound" : "layout"} check)</span>}
+                </span>
+                {review.by === "critic" && <IntendedButton finding={d} what={d.what} marked={marked} online={online} />}
+              </div>
+            );
+          })}
         </div>
       )}
       {review.notes && review.by === "critic" && <div className="small">{review.notes}</div>}
@@ -270,9 +319,44 @@ function ReviewBody({ review }: { review: Review }) {
   );
 }
 
-function BriefBody({ brief }: { brief: Brief }) {
+/** D217 (issue #45): the project's skills on the latest Brief card: on ones with a one-click remove, suggested ones to add. */
+function BriefSkills({ brief, online }: { brief: Brief; online: boolean }) {
+  const brand = useApp().brand;
+  if (!brand) return null;
+  const on = brand.active.skills;
+  const suggested = (brief.skills ?? []).filter((id) => !on.includes(id) && brand.skills.some((x) => x.id === id));
+  const name = (id: string) => brand.skills.find((x) => x.id === id)?.name ?? id;
+  const set = (skills: ReadonlyArray<string>) => void actions.brandSetActive({ kit: brand.active.kit, skills: [...skills] });
+  return (
+    <div className="brief-row" data-testid="brief-skills">
+      <span className="brief-key">Skills</span>
+      <span className="brief-chips">
+        {on.map((id) => (
+          <button key={id} className="chip-btn active" data-testid={`brief-skill-on-${id}`} disabled={!online} title={`Turn ${name(id)} off for this project`} onClick={() => set(on.filter((x) => x !== id))}>
+            {name(id)}
+            <X />
+          </button>
+        ))}
+        {suggested.map((id) => (
+          <button key={id} className="chip-btn" data-testid={`brief-skill-add-${id}`} disabled={!online} title={`Turn ${name(id)} on for this project`} onClick={() => set([...on, id])}>
+            <Plus />
+            {name(id)}
+          </button>
+        ))}
+        {!on.length && !suggested.length && <span className="muted">None</span>}
+      </span>
+    </div>
+  );
+}
+
+function BriefBody({ brief, live }: { brief: Brief; live?: CardLive | undefined }) {
+  const brand = useApp().brand;
+  const active = brand?.active.skills ?? [];
+  const type = isVideoType(brief.type) ? VIDEO_TYPE_NAMES[brief.type] : "";
+  const sound = soundProfileText(soundProfileFor(brief, active));
   const rows: Array<[string, string]> = [
     ["Film", brief.film],
+    ["Type", type],
     ["Audience", brief.audience],
     ["Length", brief.duration],
     ["Formats", brief.formats.join(", ")],
@@ -282,6 +366,10 @@ function BriefBody({ brief }: { brief: Brief }) {
     ["Deliver", brief.deliverables.join(", ")],
     ["Notes", brief.notes ?? ""],
   ];
+  // The latest card follows the project's skills (the agent or the Brand tab may have changed them).
+  useEffect(() => {
+    if (live) void actions.brandGet();
+  }, [live?.plan.brief?.updatedAt]);
   return (
     <div className="brief-rows" data-testid="agent-brief-rows">
       {rows
@@ -292,6 +380,13 @@ function BriefBody({ brief }: { brief: Brief }) {
             <span>{v}</span>
           </div>
         ))}
+      {live && (
+        <div className="brief-row" data-testid="brief-sound">
+          <span className="brief-key">Sound</span>
+          <span>{sound.charAt(0).toUpperCase() + sound.slice(1)}</span>
+        </div>
+      )}
+      {live && <BriefSkills brief={brief} online={live.online} />}
     </div>
   );
 }
@@ -318,6 +413,9 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
   const [open, setOpen] = useState(card.type === "review" || card.type === "question");
   const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const app = useApp();
+  const intended = app.agent?.plan?.intended ?? [];
+  const online = app.connection === "connected";
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -378,7 +476,7 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
         {head}
         {open ? <ChevronDown /> : <ChevronRight />}
       </button>
-      {open && brief && card.type === "brief" && (editing && live ? <BriefForm brief={brief} onDone={() => setEditing(false)} /> : <BriefBody brief={brief} />)}
+      {open && brief && card.type === "brief" && (editing && live ? <BriefForm brief={brief} onDone={() => setEditing(false)} /> : <BriefBody brief={brief} live={live} />)}
       {open && brief && card.type === "brief" && live && !editing && (
         <div className="approval-btns card-btns">
           <button className="btn ghost" data-testid="plan-brief-edit" disabled={!live.online} onClick={() => setEditing(true)}>
@@ -402,7 +500,7 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
           </button>
         </div>
       )}
-      {open && card.review && <ReviewBody review={card.review} />}
+      {open && card.review && <ReviewBody review={card.review} intended={intended} online={online} />}
     </div>
   );
 }
@@ -428,6 +526,17 @@ function BriefForm({ brief, onDone }: { brief: Brief; onDone: () => void }) {
   return (
     <div className="brief-form" data-testid="plan-brief-form">
       {field("film", "Film", 2)}
+      <label className="brief-field">
+        <span className="brief-key">Type</span>
+        <select className="field input" data-testid="plan-brief-type" value={b.type ?? ""} onChange={(e) => setB(e.target.value ? { ...b, type: e.target.value } : (({ type: _t, ...rest }) => rest)(b))}>
+          <option value="">Not set</option>
+          {VIDEO_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {VIDEO_TYPE_NAMES[t]}
+            </option>
+          ))}
+        </select>
+      </label>
       {field("audience", "Audience")}
       {field("duration", "Length")}
       {list("formats", "Formats")}
@@ -536,7 +645,7 @@ export function PlanChip({ plan }: { plan: AgentPlan }) {
           )}
           {shown === "review" && last && (
             <div className="plan-body">
-              <ReviewBody review={last} />
+              <ReviewBody review={last} intended={plan.intended ?? []} online={false} />
             </div>
           )}
         </div>

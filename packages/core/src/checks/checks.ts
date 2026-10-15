@@ -62,6 +62,8 @@ export interface CheckContext {
   readonly speech: ReadonlySet<Id>;
   /** trackAudible by track id, filled as rules ask. */
   readonly audible: Map<Id, boolean>;
+  /** D217: how strict the sound rule is (the brief's video type and skills; strict when unknown). */
+  readonly sound: SoundProfile;
 }
 
 export interface Placed {
@@ -273,6 +275,40 @@ export const SFX_SYNC_AFTER_S = 0.2;
 export const SLOW_BPM = 95;
 export const FAST_CUT_S = 2;
 
+/**
+ * D217 (issue #44): how strict the sound rule is, from the brief's video type and skills
+ * (core skills soundProfileFor). strict: a promo or product video, or one that asks for subtle sound:
+ * the numbers above, and density and level fail a critic round; standard: the same numbers as
+ * findings; loose: a meme, gaming, social or music edit that may want dense, loud effects (much looser
+ * numbers, still findings; no click or meme notes); off: no sound-effect limits at all.
+ */
+export type SoundProfile = "strict" | "standard" | "loose" | "off";
+export const SOUND_PROFILES: ReadonlyArray<SoundProfile> = ["strict", "standard", "loose", "off"];
+export interface SoundLimits {
+  /** Effects starting in any 10 s. */
+  readonly per10s: number;
+  /** The same file this many times or more is a finding. */
+  readonly repeatMax: number;
+  /** Big hits in any 15 s. */
+  readonly hitsPer15s: number;
+  /** An effect sits at least this many dB under the music (negative: it may be that much over it). */
+  readonly underDb: number;
+  /** Clicks on text and meme sounds are noted. */
+  readonly taste: boolean;
+}
+export const SOUND_LIMITS: Readonly<Record<Exclude<SoundProfile, "off">, SoundLimits>> = {
+  strict: { per10s: SFX_PER_10S, repeatMax: SFX_REPEAT_MAX, hitsPer15s: SFX_HITS_PER_15S, underDb: SFX_UNDER_MUSIC_DB, taste: true },
+  standard: { per10s: SFX_PER_10S, repeatMax: SFX_REPEAT_MAX, hitsPer15s: SFX_HITS_PER_15S, underDb: SFX_UNDER_MUSIC_DB, taste: true },
+  loose: { per10s: 12, repeatMax: 8, hitsPer15s: 4, underDb: -3, taste: false },
+};
+/** The profile in a few words (the Brief card, project_check, the critic's sheet). */
+export function soundProfileText(p: SoundProfile): string {
+  if (p === "off") return "off: no limits on sound effects";
+  const l = SOUND_LIMITS[p];
+  const level = l.underDb > 0 ? `${l.underDb} dB under the music` : `up to ${-l.underDb} dB over the music`;
+  return `${p}: at most ${l.per10s} effects in any 10 s, ${level}${p === "strict" ? "; too many or too loud fails a review" : "; too many or too loud is a finding"}`;
+}
+
 const SFX_NAME = /\b(sfx|fx|whoosh|swoosh|swish|whip|click|tap|pop|boom|hit|impact|riser|rise|ding|chime|glitch|notification|swipe|thud|stinger|sting|blip|beep|typing|keyboard)\b/i;
 const SFX_TRACK = /\b(sfx|fx|effects?|sound effects?)\b/i;
 const MEME_NAME = /\b(bruh|airhorn|air horn|scratch|trombone|crickets|laugh|laughter|applause|vine|fahh?|oof|meme)\b/i;
@@ -409,7 +445,7 @@ const dbText = (db: number) => `${db > 0 ? "+" : db < 0 ? "−" : ""}${Math.abs(
  * The sound as lines (D207): music, voices and every effect with its time, kind, level, what it
  * lands on, then the counts. The critic reads it (it can't hear), and so can the agent.
  */
-export function soundSheet(project: Project, options: { readonly speechMedia?: Iterable<Id> } = {}): Array<string> {
+export function soundSheet(project: Project, options: { readonly speechMedia?: Iterable<Id>; readonly sound?: SoundProfile } = {}): Array<string> {
   const ctx = checkContext(project, options);
   const fps = ctx.fps;
   const lines: Array<string> = [];
@@ -429,12 +465,15 @@ export function soundSheet(project: Project, options: { readonly speechMedia?: I
   }
   const length = Math.max(1, ctx.end);
   if (!music.length && !sfx.length) lines.push("No music and no sound effects.");
-  else lines.push(`${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; the bar is at most ${SFX_PER_10S}), ${new Set(sfx.map((s) => s.sound)).size} different`);
+  else lines.push(`${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; ${ctx.sound === "off" ? "no limit for this video" : `the bar is at most ${SOUND_LIMITS[ctx.sound].per10s}`}), ${new Set(sfx.map((s) => s.sound)).size} different`);
+  lines.push(`Sound profile ${soundProfileText(ctx.sound)}.`);
   return lines;
 }
 
-/** The sound rule's findings that fail a critic round (density and level), by key. */
+/** The sound rule's findings that fail a critic round (density and level) under the strict profile, by key. */
 export const SOUND_HARD = /^sound:(density|loud):/;
+/** D217: whether a sound finding fails a critic round: density or level, and only under the strict profile. */
+export const soundHard = (key: string, profile: SoundProfile) => profile === "strict" && SOUND_HARD.test(key);
 
 // ---- the rules ----
 
@@ -888,6 +927,9 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
     severity: "warn",
     check: (ctx) => {
       const out: Array<Omit<Check, "id" | "severity"> & { severity?: CheckSeverity }> = [];
+      // D217: the video's sound profile sets the numbers; off: no sound-effect limits.
+      if (ctx.sound === "off") return out;
+      const lim = SOUND_LIMITS[ctx.sound];
       const fps = ctx.fps;
       const sfx = sfxItems(ctx);
       const music = musicItems(ctx);
@@ -895,7 +937,7 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
       const length = Math.max(1, ctx.end);
       // Density: the busiest 10 s (a shorter video pro rata, at least 2).
       const window = Math.min(10 * fps, length);
-      const limit = Math.max(2, Math.floor((SFX_PER_10S * window) / (10 * fps)));
+      const limit = Math.max(2, Math.floor((lim.per10s * window) / (10 * fps)));
       const dense = busiest(sfx.map((s) => s.start), 10 * fps);
       if (dense.count > limit) {
         const inWindow = sfx.filter((s) => s.start >= dense.from && s.start <= dense.to);
@@ -912,19 +954,19 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
       const bySound = new Map<string, Array<PlacedSfx>>();
       for (const s of sfx) bySound.set(s.sound, [...(bySound.get(s.sound) ?? []), s]);
       for (const [sound, uses] of bySound) {
-        if (uses.length < SFX_REPEAT_MAX) continue;
+        if (uses.length < lim.repeatMax) continue;
         out.push({
           key: `sound:repeat:${sound}`,
           message: `${uses[0]!.label} plays ${uses.length} times (${uses.map((s) => secs(s.start, fps)).join(", ")}); the same sound again and again reads as a template.`,
           itemIds: uses.map((s) => s.item.id),
           frame: uses[0]!.start,
-          hint: `Keep it on at most ${SFX_REPEAT_MAX - 1} real events, or use different sounds for different kinds of event.`,
+          hint: `Keep it on at most ${lim.repeatMax - 1} real events, or use different sounds for different kinds of event.`,
         });
       }
       // Big hits.
       const hits = sfx.filter((s) => s.kind === "hit");
       const heavy = busiest(hits.map((s) => s.start), 15 * fps);
-      if (heavy.count > SFX_HITS_PER_15S) {
+      if (heavy.count > lim.hitsPer15s) {
         const these = hits.filter((s) => s.start >= heavy.from && s.start <= heavy.to);
         out.push({
           key: `sound:hits:${heavy.from}`,
@@ -937,8 +979,8 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
       for (const s of sfx) {
         // Level against the music it plays over.
         const under = musicAt(music, s.start);
-        if (under && s.gain - under.gain > -SFX_UNDER_MUSIC_DB) {
-          const target = Math.round((under.gain - SFX_FIX_UNDER_DB - trackGain(s.track)) * 10) / 10;
+        if (under && s.gain - under.gain > -lim.underDb) {
+          const target = Math.round((under.gain - (lim.underDb > 0 ? SFX_FIX_UNDER_DB : 0) - trackGain(s.track)) * 10) / 10;
           const ok = !s.track.locked && !s.item.locked && target >= -60;
           // Only the pack's level is known (peak-normalised): another file's may already be quiet,
           // so it's a soft "level" finding to listen to or measure, never a hard one.
@@ -946,11 +988,13 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
             key: `sound:${s.bundled ? "loud" : "level"}:${s.item.id}`,
             ...(s.bundled ? {} : { severity: "info" as const }),
             message: s.bundled
-              ? `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; effects sit ${SFX_UNDER_MUSIC_DB} to 12 dB under the music (the pack's effects are peak-normalised, so at the same gain they jump out).`
-              : `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; its own loudness is unknown, so check it sits ${SFX_UNDER_MUSIC_DB} to 12 dB under the music (media_analyze loudness, or listen).`,
+              ? lim.underDb > 0
+                ? `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; effects sit ${lim.underDb} to 12 dB under the music (the pack's effects are peak-normalised, so at the same gain they jump out).`
+                : `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}, more than ${-lim.underDb} dB over it even for a loud edit.`
+              : `${s.label} at ${secs(s.start, fps)} is at ${dbText(s.gain)} over music at ${dbText(under.gain)}; its own loudness is unknown, so check it sits ${lim.underDb > 0 ? `${lim.underDb} to 12 dB under` : `no more than ${-lim.underDb} dB over`} the music (media_analyze loudness, or listen).`,
             itemIds: [s.item.id],
             frame: s.start,
-            ...(ok ? { fix: { summary: `Put ${s.label} ${SFX_FIX_UNDER_DB} dB under the music`, ops: [{ op: "update_item" as const, item: s.item.id, set: { gainDb: target } }] } } : { hint: "Turn it down in the Inspector." }),
+            ...(ok ? { fix: { summary: lim.underDb > 0 ? `Put ${s.label} ${SFX_FIX_UNDER_DB} dB under the music` : `Put ${s.label} at the music's level`, ops: [{ op: "update_item" as const, item: s.item.id, set: { gainDb: target } }] } } : { hint: "Turn it down in the Inspector." }),
           });
         }
         // What it lands on.
@@ -964,7 +1008,7 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
             frame: s.start,
             hint: s.kind === "whoosh" ? "Start a whoosh 1 to 2 frames before the cut or move it carries, or delete it." : s.kind === "riser" ? "End a riser on the reveal it builds to, or delete it." : "Move it onto the frame its event happens (1 to 2 frames early), or delete it.",
           });
-        } else if (s.kind === "ui" && on.every((e) => e.text)) {
+        } else if (lim.taste && s.kind === "ui" && on.every((e) => e.text)) {
           out.push({
             key: `sound:click-text:${s.item.id}`,
             message: `${s.label} at ${secs(s.start, fps)} clicks on a text (${on[0]!.what}); a click belongs on a click the viewer sees, and a text arriving or typing isn't one.`,
@@ -973,7 +1017,7 @@ export const CHECK_RULES: ReadonlyArray<CheckRule> = [
             hint: "Delete it, or put it where a cursor or a finger presses something.",
           });
         }
-        if (s.kind === "meme") {
+        if (lim.taste && s.kind === "meme") {
           out.push({ key: `sound:meme:${s.item.id}`, severity: "info", message: `${s.label} at ${secs(s.start, fps)} is a meme sound; use one only when the user asked for that joke.`, itemIds: [s.item.id], frame: s.start, hint: "Delete it unless the brief asks for meme humour." });
         }
       }
@@ -1021,7 +1065,7 @@ export const disabledChecks = (project: Pick<Project, "checks">): ReadonlyArray<
  * by frame. `speechMedia`: media known to hold speech (a transcript), for the ducking rule; media
  * that captions were made from count too. Never throws: a rule that fails is skipped.
  */
-export function projectChecks(project: Project, options: { readonly rules?: ReadonlyArray<CheckRule>; readonly disabled?: ReadonlyArray<string>; readonly speechMedia?: Iterable<Id> } = {}): Array<Check> {
+export function projectChecks(project: Project, options: { readonly rules?: ReadonlyArray<CheckRule>; readonly disabled?: ReadonlyArray<string>; readonly speechMedia?: Iterable<Id>; readonly sound?: SoundProfile } = {}): Array<Check> {
   const off = new Set([...disabledChecks(project), ...(options.disabled ?? [])]);
   const ctx = checkContext(project, options);
   const out: Array<Check> = [];
@@ -1038,7 +1082,7 @@ export function projectChecks(project: Project, options: { readonly rules?: Read
 }
 
 /** What every rule gets (projectChecks, soundSheet). */
-function checkContext(project: Project, options: { readonly speechMedia?: Iterable<Id> } = {}): CheckContext {
+function checkContext(project: Project, options: { readonly speechMedia?: Iterable<Id>; readonly sound?: SoundProfile } = {}): CheckContext {
   const { starts, duration } = layout(project);
   const end = project.tracks.some((t) => t.items.some((i) => i.type !== "captions")) ? duration : 0;
   const texts: Array<Placed> = [];
@@ -1049,7 +1093,7 @@ function checkContext(project: Project, options: { readonly speechMedia?: Iterab
     for (const item of track.items) if (item.type === "text") texts.push({ item, track, start: starts.get(item.id) ?? 0 });
   }
   texts.sort((a, b) => a.start - b.start);
-  return { project, fps: project.canvas.fps, starts, end, texts, scale: Math.min(project.canvas.width, project.canvas.height) / 1080, media: new Map(project.media.map((m) => [m.id, m])), speech, audible: new Map() };
+  return { project, fps: project.canvas.fps, starts, end, texts, scale: Math.min(project.canvas.width, project.canvas.height) / 1080, media: new Map(project.media.map((m) => [m.id, m])), speech, audible: new Map(), sound: options.sound ?? "strict" };
 }
 
 /** The built-in rules with a module's added (same id: the module's replaces the built-in one). */

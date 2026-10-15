@@ -92,14 +92,14 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
   // D207: no skill on yet: what there is, so brief_write's skills can pick (Uncut suggests a set otherwise).
   if (!brand.skills.length && brand.available?.length) {
     const own = brand.available.filter((s) => !s.id.startsWith("builtin-"));
-    b.push(`No skills are on for this project. Uncut's: ${brand.available.filter((s) => s.id.startsWith("builtin-")).map((s) => s.id).join(", ")}${own.length ? `; the user's: ${own.map((s) => `${s.id} (${s.name})`).join(", ")}` : ""}. brief_write turns on the ones that fit the brief (its skills, else Uncut's suggestion).`);
+    b.push(`No skills are on for this project. Uncut's: ${brand.available.filter((s) => s.id.startsWith("builtin-")).map((s) => s.id).join(", ")}${own.length ? `; the user's: ${own.map((s) => `${s.id} (${s.name})`).join(", ")}` : ""}. brief_write suggests the ones that fit; only those the user picks are turned on.`);
   }
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
   const p: Array<string> = [];
   if (plan.brief) {
     const br = plan.brief;
     p.push(
-      [`Brief${br.by === "user" ? " (edited by the user)" : ""}:`, line(" film", br.film), line(" audience", br.audience), line(" duration", br.duration), line(" formats", br.formats), line(" assets", br.assets), line(" visual", br.visual), line(" hard lines", br.hardLines), line(" deliverables", br.deliverables), line(" notes", br.notes)]
+      [`Brief${br.by === "user" ? " (edited by the user)" : ""}:`, line(" film", br.film), line(" type", br.type), line(" audience", br.audience), line(" duration", br.duration), line(" formats", br.formats), line(" assets", br.assets), line(" visual", br.visual), line(" hard lines", br.hardLines), line(" deliverables", br.deliverables), line(" notes", br.notes)]
         .filter(Boolean)
         .join("\n"),
     );
@@ -114,7 +114,7 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
   if (last) {
     // D195: the critic's findings by id, so the next round's fix claims can name them.
     const open = [...(last.blockers ?? []).map((b) => `${b.id ?? "?"} blocker ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`), ...last.defects.map((d) => `${d.id ?? "?"} at ${d.at} s: ${d.what}`)];
-    p.push(`Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.map((k) => `${k} ${last.scores[k]}`).join(", ")}${last.passed ? " (passed)" : " (not passed)"}${last.error ? `, ${last.error}` : ""}.${open.length && !last.passed ? `\n${open.join("\n")}` : ""}`);
+    p.push(`Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.filter((k) => last.scores[k] !== undefined).map((k) => `${k} ${last.scores[k]}`).join(", ")}${last.passed ? " (passed)" : " (not passed)"}${last.error ? `, ${last.error}` : ""}.${open.length && !last.passed ? `\n${open.join("\n")}` : ""}`);
   }
   // Nothing planned yet: no block (a small edit needs none).
   if (p.length) parts.push(`<plan>\n${p.join("\n")}\n</plan>`);

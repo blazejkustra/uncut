@@ -5,7 +5,7 @@
 // re-sent in full on every reconnect, so the screen always ends up showing what the server
 // has. Call results are applied too (for snappiness) but never over a newer revision.
 import { transitionSeconds } from "../timeline/transitionLength.ts";
-import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, type SoundFolderInfo, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, PROXY_PATH, type ProxyState, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
+import { AGENT_IMAGE_PATH, BRAND_FILE_PATH, GRAPHIC_PATH, UPLOAD_PATH, type AgentImage, type FileListing, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, type SoundFolderInfo, MUSIC_FILE_PATH, SFX_FILE_PATH, THUMB_PATH, RECENT_THUMB_PATH, type MediaRecentEntry, PROXY_PATH, type ProxyState, type LibrarySearchResult, type LibraryState, TOKEN_QUERY_PARAM, WAVEFORM_PATH, type AgentMention, type AgentState, type AnalysisJob, type AgentUi, type AgentUiPanel, type ExportJob, type HistoryState, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ImportJob, type MediaImportResult, type ProjectSnapshot, type RecentProject, type ServerConnection, type PluginInfo, type CaptureState, type CaptureOptions, type TakeKind, type GenerateJob, type GenerateKind, type GeneratorInfo, type KeyInfo, type KeyProvider, type ServerHello, type SetupCheck, type TranscriptionState, type PluginContributions, type CatalogEntry, type AgentAccess, type AgentAnswer, type Brief, type IntendedFinding, type Storyboard, type StoryboardBeat, type BrandActive, type BrandImported, type BrandKit, type BrandScope, type BrandSkill, type BrandState } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 import { takeUploadName, type MultiLayout } from "@uncut/contracts";
@@ -1451,10 +1451,17 @@ export const actions = {
     return result.ok && result.value.accepted;
   },
   /** D188: the user's own brief or storyboard (approved on the Plan card); false with the reason in the Agent tab when it didn't save. */
-  async agentPlanSave(input: { readonly brief?: Brief; readonly storyboard?: Storyboard }): Promise<boolean> {
-    const result = await call((c) => c["agent.planSave"]({ ...(input.brief ? { brief: input.brief } : {}), ...(input.storyboard ? { storyboard: input.storyboard } : {}) }));
+  async agentPlanSave(input: { readonly brief?: Brief; readonly storyboard?: Storyboard; readonly intended?: ReadonlyArray<IntendedFinding> }): Promise<boolean> {
+    const result = await call((c) => c["agent.planSave"]({ ...(input.brief ? { brief: input.brief } : {}), ...(input.storyboard ? { storyboard: input.storyboard } : {}), ...(input.intended ? { intended: [...input.intended] } : {}) }));
     if (!result.ok) set({ agentError: plainError(result.error) });
     return result.ok;
+  },
+  /** D217: a review finding the user marked Intended (the critic stops raising it), or unmarked. */
+  async agentMarkIntended(finding: Omit<IntendedFinding, "at">, on = true): Promise<boolean> {
+    const now = state.agent?.plan?.intended ?? [];
+    const same = (x: IntendedFinding) => x.kind === finding.kind && x.from === finding.from && x.to === finding.to;
+    const next = on ? [...now.filter((x) => !same(x as IntendedFinding)), { ...finding, at: new Date().toISOString() }] : now.filter((x) => !same(x as IntendedFinding));
+    return actions.agentPlanSave({ intended: next });
   },
   /** D144: the take an allowed screen_record recorded (uploaded), or why there's none. */
   agentScreenTake: (id: string, answer: { readonly path?: string; readonly source?: string; readonly problem?: string }) => call((c) => c["agent.screenTake"]({ id, ...answer })),

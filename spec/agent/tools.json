@@ -926,7 +926,7 @@
     },
     {
       "name": "brief_write",
-      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes. The first brief turns on the skills for the film (skills, else Uncut's suggestion) and returns their text.",
+      "description": "Save the production brief (brief.json in the project), shown to the user as a Brief card they can edit. Co-write it with the user before building a new video; write it again when it changes. It records the video's type (the critic's rubric and the sound limits follow it) and suggests skills; it never turns a skill on by itself: ask the user which to use (ask_user), then pass use, or they pick on the Brief card.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -995,6 +995,11 @@
             "type": "string",
             "maxLength": 4000
           },
+          "type": {
+            "type": "string",
+            "enum": ["launch-promo", "product-demo", "tutorial", "talk", "vlog", "social", "explainer", "music-video", "meme", "gaming", "other"],
+            "description": "The kind of video. The critic judges it as that kind (a tutorial needs no hook, a meme may be loud) and the sound limits follow it. Leave it out and Uncut guesses from the brief's words."
+          },
           "skills": {
             "type": "array",
             "maxItems": 8,
@@ -1002,7 +1007,16 @@
               "type": "string",
               "maxLength": 64
             },
-            "description": "The skills (ids from <brand>) that fit this film, when none are on yet: e.g. builtin-launch-promo, builtin-product-demo. Motion craft and Sound design are always added (and Brand application with a kit). Leave it out and Uncut suggests a set from the brief."
+            "description": "Skills (ids from <brand>) to suggest for this video, shown on the Brief card for the user to pick. Leave it out and Uncut suggests a set from the type and the brief. Suggesting turns nothing on."
+          },
+          "use": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Skill ids to turn on: only ones the user picked on an ask_user card in this turn (its options named by the skills' names); any other is refused."
           }
         }
       },
@@ -1090,7 +1104,7 @@
     },
     {
       "name": "review_submit",
-      "description": "Ask Uncut's critic for a review round of the built video. The critic is a separate Claude that sees only frames Uncut renders now (a contact sheet, phone-size frames, each claimed fix's moment), the brief, the brand kit, the storyboard and a strict rubric; it scores hook, phone readability, motion, variety, sound and brand with evidence and lists hard blockers (any one fails the round). Needs a contact_sheet of the edit and render_frames with phone true in this turn since the last round. From round 2, claim each fix by the last review's id; a claimed fix needs its moment rendered (render_frames) after your last change, and the critic checks it on fresh frames. You don't score it yourself.",
+      "description": "Ask Uncut's critic for a review round of the built video. The critic is a separate Claude that sees only frames Uncut renders now (a contact sheet, phone-size frames, each claimed fix's moment), the brief, the brand kit, the storyboard and a rubric for the brief's video type and the active skills; it scores the categories that apply (hook, phone readability, motion, variety, sound, brand; a tutorial has no hook score, no brand without a kit) with evidence and lists blockers, real defects only (any one fails the round); style rules are findings unless the brief asks for them. Findings the user marked Intended on the review card are left out. Needs a contact_sheet of the edit and render_frames with phone true in this turn since the last round. From round 2, claim each fix by the last review's id; a claimed fix needs its moment rendered (render_frames) after your last change, and the critic checks it on fresh frames. You don't score it yourself.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
