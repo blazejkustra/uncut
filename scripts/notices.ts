@@ -166,6 +166,33 @@ export function render(): string {
   s += "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n";
   s += "SOFTWARE.\n";
 
+  // Issue #63 (D234): the labs' marks in the Generate tab.
+  s += section("Provider marks: Simple Icons (CC0 1.0) and lobe-icons (MIT)");
+  s += "The Generate tab's model list (apps/web/src/panels/generate/marks.tsx) shows each lab's mark.\n";
+  s += "Claude and OpenAI are t3code's (above). Google, ByteDance and ElevenLabs are the paths of\n";
+  s += "Simple Icons 16.35.0 (https://simpleicons.org, icons google, bytedance and elevenlabs), released\n";
+  s += "under CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/); no credit is\n";
+  s += "required. xAI's is from lobe-icons (https://github.com/lobehub/lobe-icons, @lobehub/icons-static-svg\n";
+  s += "1.95.1, icon xai). Higgsfield has no mark under a permissive licence and is shown as a monogram.\n";
+  s += "The marks are trademarks of their owners (Google, ByteDance, ElevenLabs, xAI), shown only to say\n";
+  s += "who makes a model; Uncut isn't made by or affiliated with any of them. lobe-icons' licence:\n\n";
+  s += "MIT License\n\nCopyright (c) 2023 LobeHub\n\n";
+  s += "Permission is hereby granted, free of charge, to any person obtaining a copy\n";
+  s += "of this software and associated documentation files (the \"Software\"), to deal\n";
+  s += "in the Software without restriction, including without limitation the rights\n";
+  s += "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n";
+  s += "copies of the Software, and to permit persons to whom the Software is\n";
+  s += "furnished to do so, subject to the following conditions:\n\n";
+  s += "The above copyright notice and this permission notice shall be included in all\n";
+  s += "copies or substantial portions of the Software.\n\n";
+  s += "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n";
+  s += "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n";
+  s += "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n";
+  s += "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n";
+  s += "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n";
+  s += "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n";
+  s += "SOFTWARE.\n";
+
   s += section("Electron and Chromium");
   s += `Uncut runs on Electron ${String(electron.version)} (MIT, https://github.com/electron/electron).\n`;
   s += "Electron includes Chromium, Node.js and their dependencies under their own licences (BSD-style\n";

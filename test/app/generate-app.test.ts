@@ -3,9 +3,9 @@
 // picture with progress, it lands in Media › Generated with its prompt, and "Add at playhead" puts
 // it on the timeline. A keyed generator without its key says "Needs your OpenAI key" with a link
 // that opens Settings at Keys. No provider is called and no key is stored.
-// D145 (the redesign): the prompt first, the type switch (Picture, Video, Sound, Title card) with the
-// models for each (price per item, key set or not), a key field right there for a missing key,
-// size and length chips, results as a grid.
+// D145, D234 (issue #63): the type switch (Picture, Video, Sound) first, the models for each (price
+// per item, key set or not; the title card is a Picture model), a key field right there for a
+// missing key, size and length chips; results go to Media › Generated.
 // Screenshots: test-output/generate-tab.png, generate-video.png, generate-needs-key.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -65,22 +65,23 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     await page.click("[data-testid=create]");
     await waitFor(page, "[data-testid=editor]");
 
-    // The Generate tab (D145): the prompt box first, then the type switch, then the models for it.
+    // The Generate tab (D234): the type switch first, then the models for it (the working ones, then Coming soon).
     await page.click("[data-testid=rail-generate]");
     await waitFor(page, "[data-testid=generator][data-id='generate.gpt-image']");
-    const firsts = await page.$$eval("[data-testid=generate-library] .gen-form > *", (els) => els.slice(0, 3).map((e) => (e as HTMLElement).dataset.testid));
-    assert.deepEqual(firsts, ["generate-prompt", "generate-types", "generators"]);
-    const models = () => page.$$eval("[data-testid=generator]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id, ready: (e as HTMLElement).dataset.ready, text: (e as HTMLElement).innerText })));
+    const firsts = await page.$$eval("[data-testid=generate-library] .gen-form > *", (els) => els.slice(0, 2).map((e) => (e as HTMLElement).dataset.testid));
+    assert.deepEqual(firsts, ["generate-types", "generators"]);
+    const models = () => page.$$eval("[data-testid=generator][data-soon=false]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id, ready: (e as HTMLElement).dataset.ready, text: (e as HTMLElement).innerText })));
     let rows = await models();
-    assert.deepEqual(rows.map((r) => [r.id, r.ready]), [["generate.svg", "true"], ["generate.gpt-image", "false"]]);
-    assert.match(rows[0]!.text, /Drawn by Claude \(SVG\)\s*On your Claude subscription\s*Free/);
-    assert.match(rows[1]!.text, /Needs your OpenAI key\s*About \$0\.05 each/);
+    assert.deepEqual(rows.map((r) => [r.id, r.ready]), [["generate.svg", "true"], ["title-card", "true"], ["generate.gpt-image", "false"]]);
+    assert.match(rows[0]!.text, /Drawn by Claude\s*Uses your Claude subscription/);
+    assert.match(rows[1]!.text, /Title card by Claude/);
+    assert.match(rows[2]!.text, /\$0\.05 each, needs your OpenAI key/);
     await page.click("[data-testid=generate-type-video]");
-    await page.waitForFunction(() => document.querySelectorAll("[data-testid=generator]").length === 2 && !!document.querySelector("[data-testid=generator][data-id='generate.veo']"));
+    await page.waitForFunction(() => !!document.querySelector("[data-testid=generator][data-id='generate.veo']"));
     rows = await models();
     assert.deepEqual(rows.map((r) => r.id), ["generate.svg", "generate.veo"]);
     assert.match(rows[0]!.text, /Animation by Claude/);
-    assert.match(rows[1]!.text, /Needs your Google key\s*\$0\.40 a second/);
+    assert.match(rows[1]!.text, /\$0\.40 a second, needs your Google key/);
     await page.click("[data-testid=generator][data-id='generate.veo']");
     await waitFor(page, "[data-testid=generate-seconds-8]");
     await page.click("[data-testid=generate-seconds-8]");
@@ -88,10 +89,7 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     assert.match(await text(page, "[data-testid=generate-estimate]"), /About \$3\.20, billed to your Google key/);
     await page.screenshot({ path: "test-output/generate-video.png" });
     await page.click("[data-testid=generate-type-audio]");
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generator]")].map((e) => e.dataset.id).join() === "generate.sound");
-    await page.click("[data-testid=generate-type-title]");
-    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generator]")].map((e) => e.dataset.id).join() === "generate.svg");
-    assert.match(await text(page, "[data-testid=generator]"), /Title card by Claude/);
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generator][data-soon=false]")].map((e) => e.dataset.id).join() === "generate.sound");
     await page.click("[data-testid=generate-type-image]");
 
     // GPT Image without its key: the line with a key field right there, Generate disabled, and the
@@ -120,19 +118,22 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await page.type("[data-testid=generate-prompt]", "A yellow sun over a navy sea");
-    assert.match(await text(page, "[data-testid=generate-estimate]"), /Free on your Claude subscription/);
+    assert.match(await text(page, "[data-testid=generate-estimate]"), /^Uses your Claude subscription$/);
     await page.click("[data-testid=generate-run]");
     await waitFor(page, "[data-testid=generate-progress]", 10000);
     assert.match(await text(page, "[data-testid=generate-progress]"), /Claude is drawing it|Starting/);
     await waitFor(page, "[data-testid=generate-done]", 60000);
     assert.match(await text(page, "[data-testid=generate-done]"), /^Yellow sun over a navy sea is in Media\./);
-    await waitFor(page, "[data-testid=generated-item]");
+    assert.ok(!(await page.$("[data-testid=generate-library] [data-testid=generated-item]")), "no results list in the tab");
+    assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=generate-library]")), "no dots or stars between words");
+    // The result is in Media › Generated, marked Generated.
+    await page.click("[data-testid=generate-show]");
+    await waitFor(page, "[data-testid=library] [data-testid=generated-item] [data-testid=generated-badge]");
     assert.match(await text(page, "[data-testid=generated-item] [data-testid=generated-prompt]"), /A yellow sun over a navy sea/);
     await page.waitForFunction(() => (document.querySelector<HTMLImageElement>("[data-testid=generated-item] img")?.naturalWidth ?? 0) > 0, { timeout: 10000 });
-    assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=generate-library]")), "no dots or stars between words");
 
     // Add at playhead: on a new video track above the main one, at the playhead, 5 s.
-    assert.equal(await page.$$eval(".gen-grid [data-testid=generated-item]", (els) => els.length), 1, "a grid tile");
+    assert.equal(await page.$$eval("[data-testid=library] [data-testid=generated-item]", (els) => els.length), 1, "one result in Media");
     await page.click("[data-testid=generated-item] [data-testid=generated-add]");
     const dir = join(root, "projects", readdirSync(join(root, "projects")).find((f) => f.endsWith(".uncut"))!);
     const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
@@ -150,8 +151,7 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     assert.equal(track.kind, "video");
     assert.notEqual(track.role, "main");
     assert.ok(project.tracks.indexOf(track) < project.tracks.findIndex((t: any) => t.role === "main"), "above the main track");
-    // The tab after the add: the form, the result under Generated and the clip on the timeline.
-    await page.$eval("[data-testid=generate-library]", (el) => el.scrollTo(0, el.scrollHeight));
+    // Media after the add: the result under Generated and the clip on the timeline.
     await new Promise((r) => setTimeout(r, 400));
     await page.screenshot({ path: "test-output/generate-tab.png" });
     const item = track.items.find((i: any) => i.media === media.id);
