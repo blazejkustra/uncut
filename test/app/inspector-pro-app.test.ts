@@ -231,6 +231,8 @@ test("E1/E2/E3: the Elements grid (general elements, + centred, hide remembered,
   // E3: the Background: radial, a middle colour, grain; the preview draws exactly that.
   await page.click("[data-testid=timeline]");
   await page.keyboard.press("End");
+  // Nothing selected: + adds it at once, no Behind this / Whole edit question (D220).
+  await page.keyboard.press("Escape");
   await page.click("[data-testid=rail-elements]");
   const r = await revision();
   await page.hover("[data-testid=background-tile]");

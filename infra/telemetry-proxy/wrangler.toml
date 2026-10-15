@@ -1,0 +1,19 @@
+# Uncut telemetry proxy. Deploy steps: see the header comment in src/index.ts.
+name = "uncut-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-09-15"
+workers_dev = true
+# Requests are never logged with bodies; keep Workers Logs off too.
+observability = { enabled = false }
+
+[vars]
+GRAFANA_OTLP_URL = "https://otlp-gateway-prod-eu-north-0.grafana.net/otlp"
+GRAFANA_INSTANCE_ID = "1876240"
+# Secrets (wrangler secret put): GRAFANA_TOKEN, APP_TOKEN, optional APP_TOKEN_NEXT.
+
+# Per-IP limit: 60 requests per 60 s per Cloudflare location (period must be 10 or 60).
+# A client batches up to 20 events every 10 s, so a normal app sends <= 6 requests a minute.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }

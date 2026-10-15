@@ -297,6 +297,9 @@ test("text CapCut-style: select on the canvas, edit in the Inspector and in plac
     await page.click("[data-testid=rail-elements]");
     await page.hover("[data-testid=background-tile]");
     await page.click("[data-testid=background-add]");
+    // With a text selected + asks (D220): behind it, a card on main as before.
+    await waitFor(page, "[data-testid=menu-background-behind]");
+    await page.click("[data-testid=menu-background-behind]");
     rev = await savedAfter(page, rev);
     const main = onDisk().tracks.find((t: { id: string }) => t.id === "main");
     assert.deepEqual(main.items, [{ id: "background-1", type: "component", component: "component.solid", duration: 90, props: { color: "#0B1D3A" } }]);

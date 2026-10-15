@@ -1,0 +1,23 @@
+{
+  "name": "uncut-telemetry-proxy",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that checks Uncut's app token and forwards OTLP logs to Grafana Cloud.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260930.2",
+    "typescript": "7.0.2",
+    "wrangler": "4.145.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blazejkustra/uncut.git",
+    "directory": "infra/telemetry-proxy"
+  }
+}
