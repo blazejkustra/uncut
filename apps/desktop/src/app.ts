@@ -300,7 +300,7 @@ app.on("second-instance", () => {
 
 app.whenReady().then(() => {
   installSignals();
-  // D222: main's crashes go to the server's telemetry spool.
+  // D223: main's crashes go to the server's telemetry spool.
   installCrashReports(process.env.UNCUT_DATA_DIR || app.getPath("userData"));
   setEnvironments(makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt));
   setServer(startServer({

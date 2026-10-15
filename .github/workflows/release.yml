@@ -21,6 +21,9 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+        env:
+          # Telemetry's app token (D223); without it the build sends nothing.
+          UNCUT_TELEMETRY_TOKEN: ${{ secrets.UNCUT_TELEMETRY_TOKEN }}
       # publish never: electron-builder doesn't upload anything itself; the steps below do.
       - run: pnpm --filter @uncut/desktop exec electron-builder --config electron-builder.yml --publish never
       - uses: actions/upload-artifact@v4

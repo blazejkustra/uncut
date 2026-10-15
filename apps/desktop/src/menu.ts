@@ -19,6 +19,16 @@ const openLegal = (name: "LICENSE" | "THIRD_PARTY_NOTICES") => {
   });
 };
 
+/**
+ * Help › Send Feedback… (issue #13, D223): the bug report form on GitHub with the version and the
+ * Mac filled in; the user writes the rest and sees everything before it is sent. Nothing else
+ * (no logs, paths or project) goes in.
+ */
+export const feedbackUrl = (version: string, macos: string, arch: string) => {
+  const query = new URLSearchParams({ template: "bug.yml", version, macos: `macOS ${macos}, ${arch === "arm64" ? "Apple silicon" : arch}` });
+  return `${REPO_URL}/issues/new?${query}`;
+};
+
 export function setAppMenu(state: AppState, send: (command: MenuCommand) => void) {
   // The shortcut is shown but not registered: the renderer handles these keys itself (it
   // knows whether a text field has focus), so menu clicks and keys share one code path.
@@ -87,6 +97,7 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         item("Keyboard Shortcuts", undefined, { type: "shortcuts" }),
         { type: "separator" },
         { label: "Uncut on GitHub", click: () => void shell.openExternal(REPO_URL) },
+        { label: "Send Feedback…", click: () => void shell.openExternal(feedbackUrl(app.getVersion(), process.getSystemVersion(), process.arch)) },
         { label: "Report an Issue…", click: () => void shell.openExternal(`${REPO_URL}/issues/new/choose`) },
         { type: "separator" },
         { label: "Licence", click: () => openLegal("LICENSE") },

@@ -466,6 +466,28 @@ the app. Each package's licence text is in its source repository and npm tarball
   https://github.com/Effect-TS/effect
 @effect/platform-node-shared@4.0.2: MIT
   https://github.com/Effect-TS/effect
+@opentelemetry/api@1.9.1: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/api-logs@0.222.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/core@2.11.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/exporter-logs-otlp-http@0.222.0: Apache-2.0
+  https://github.com/open-telemetry/opentelemetry-js
+@opentelemetry/otlp-exporter-base@0.222.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/otlp-transformer@0.222.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/resources@2.11.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/sdk-logs@0.222.0: Apache-2.0
+  https://github.com/open-telemetry/opentelemetry-js
+@opentelemetry/sdk-metrics@2.11.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/sdk-trace@2.11.0: Apache-2.0
+  open-telemetry/opentelemetry-js
+@opentelemetry/semantic-conventions@1.43.0: Apache-2.0
+  open-telemetry/opentelemetry-js
 @types/node@26.6.5: MIT
   https://github.com/DefinitelyTyped/DefinitelyTyped
 @types/ws@8.18.2: MIT

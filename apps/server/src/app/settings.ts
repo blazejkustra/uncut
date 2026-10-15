@@ -17,6 +17,8 @@ export interface SettingsShape {
   readonly setOnboarded: Effect.Effect<void>;
   readonly whisperModel: Effect.Effect<string | undefined>;
   readonly setWhisperModel: (id: string) => Effect.Effect<void>;
+  /** Settings › App's usage-data toggle (D223): "telemetry": { "enabled": boolean }. */
+  readonly setTelemetryEnabled: (enabled: boolean) => Effect.Effect<void>;
   /** Plugins the user allowed (D97), by plugin id. */
   readonly pluginApprovals: Effect.Effect<Readonly<Record<string, PluginApproval>>>;
   /** Saves (or, with undefined, removes) one plugin's approval. */
@@ -107,6 +109,7 @@ export const layer = Layer.effect(
       setOnboarded: update({ onboarded: true }),
       whisperModel: Effect.map(read, (s) => (typeof s.whisperModel === "string" ? s.whisperModel : undefined)),
       setWhisperModel: (id) => update({ whisperModel: id }),
+      setTelemetryEnabled: (enabled) => update({ telemetry: { enabled } }),
       pluginApprovals: Effect.map(read, approvalsOf),
       setPluginApproval: (id, approval) =>
         updateOrFail((settings) => {

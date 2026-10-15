@@ -33,6 +33,7 @@ import { Recents } from "../project/recents.ts";
 import { Settings } from "./settings.ts";
 import { Setup } from "./setup.ts";
 import { Whisper } from "../analysis/whisper.ts";
+import { setTelemetryChoice, telemetryStatus, trackRendererCrash } from "../telemetry/telemetry.ts";
 
 export { tokensMatch } from "./auth.ts";
 
@@ -112,6 +113,14 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.setupCheck]: () => setup.check,
     [RPC_METHODS.setupState]: () => Effect.map(settings.onboarded, (onboarded) => ({ onboarded })),
     [RPC_METHODS.setupComplete]: () => settings.setOnboarded,
+    // Telemetry (D223): the Settings toggle, and the window's uncaught errors (only a fingerprint leaves).
+    [RPC_METHODS.telemetryState]: () => Effect.sync(telemetryStatus),
+    [RPC_METHODS.telemetrySet]: ({ enabled }) =>
+      Effect.map(settings.setTelemetryEnabled(enabled), () => {
+        setTelemetryChoice(enabled);
+        return telemetryStatus();
+      }),
+    [RPC_METHODS.telemetryCrash]: ({ name, stack }) => Effect.sync(() => trackRendererCrash(name, stack)),
     [RPC_METHODS.agentSubscribe]: () => agent.changes,
     [RPC_METHODS.agentSend]: (input) => agent.send(input),
     [RPC_METHODS.agentCancel]: () => agent.cancel,

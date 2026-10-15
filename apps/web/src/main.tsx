@@ -6,6 +6,7 @@ import { isMiniWindow, MiniRecorder } from "./capture/MiniRecorder.tsx";
 import { loadFonts, syncKitFonts } from "./preview/fonts.ts";
 import { installLeave } from "./state/leave.tsx";
 import { installScrollbars } from "./editor/scrollbars.ts";
+import { installCrashReports } from "./state/crashReports.ts";
 import { brandFileUrl, getState, start, subscribeApp } from "./state/store.ts";
 import "./styles.css";
 
@@ -32,6 +33,8 @@ if (!mini) {
   installLeave();
   // D209: thin overlay scrollbars everywhere.
   installScrollbars();
+  // D223: uncaught errors to telemetry (a fingerprint at most).
+  installCrashReports();
 }
 
 // D198: the chosen brand kit's font files, loaded for the preview whenever the kit or its files change.
