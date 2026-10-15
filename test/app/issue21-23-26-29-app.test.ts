@@ -6,7 +6,7 @@
 //   Reset order; hidden tabs are in More.
 // - #29: scroll areas have no gutter; a thin bar shows over the content while scrolling or
 //   hovering, can be dragged, and fades; the timeline's horizontal one too.
-// - #23: the provider menu and the model menu show each provider's mark and name (no lab logos),
+// - #23: the provider menu and the model menu show each provider's mark and name (#50: the real marks),
 //   model rows with NEW and ⌘1 to ⌘4, and ⌘2 picks the second model.
 // Screenshots: test-output/issue21-scrub.png, issue26-drag.png, issue26-more.png,
 // issue29-scrollbar.png, issue29-timeline.png, issue23-provider.png, issue23-models.png.
@@ -240,7 +240,8 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
     await page.click("[data-testid=agent-provider]");
     await page.waitForSelector("[data-testid=agent-provider-menu]");
     assert.deepEqual(await page.$$eval("[data-testid=agent-provider-menu] [data-testid=provider-wordmark]", (els) => els.map((e) => e.textContent)), ["Claude", "Codex"]);
-    assert.equal(await page.$$eval("[data-testid=agent-provider-menu] svg", (els) => els.filter((e) => !e.classList.contains("lucide")).length), 0, "no lab logo drawn");
+    // #50 superseded D209's no-logo rule: the real marks (issue50-app.test.ts checks them closely).
+    assert.deepEqual(await page.$$eval("[data-testid=agent-provider-menu] [data-testid=provider-mark] svg.provider-logo", (els) => els.map((e) => (e.parentElement as HTMLElement).dataset.provider)), ["claude", "codex"]);
     await shot(page, "issue23-provider");
     await page.click("[data-testid=agent-provider]");
     await page.click("[data-testid=agent-model]");
