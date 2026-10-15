@@ -14,7 +14,10 @@
 //
 // Transitions (D73): each cut between two main-track clips can be clicked to select it; a
 // transition on it shows as a marker straddling the cut (CutMarkers).
-import { ChevronsLeftRight, Link2, Magnet, Scissors, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+//
+// Tools (issue #57, D230): Select (V) works as above; Blade (C) cuts the item clicked at the
+// snapped frame under the pointer, with a line where it would cut; Hand (H) drags the view.
+import { ChevronsLeftRight, Hand, Link2, Magnet, MousePointer2, Scissors, Slice, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cutsOf } from "@uncut/core/transitions";
 import { captionCards, captionExtent } from "@uncut/core/captions";
@@ -42,6 +45,10 @@ import { makeItemDrag } from "./gestures/itemDrag.ts";
 import { makeTransitionDrag } from "./gestures/transitionDrag.ts";
 import { makeScrubMarquee } from "./gestures/scrubMarquee.ts";
 import { makeLaneDrop } from "./gestures/laneDrop.ts";
+import { type BladeHover, makeToolPress } from "./gestures/toolPress.ts";
+import { setTool, TOOLS, useTool, type Tool } from "./tools.ts";
+
+const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand };
 
 export { BottomTabs } from "./BottomTabs.tsx";
 export { MEDIA_DRAG_TYPE, setDraggedTransition, TRANSITION_DRAG_TYPE } from "./dnd.ts";
@@ -75,6 +82,12 @@ export function Timeline({ project }: { project: ProjectModel }) {
   const [renamingTrack, setRenamingTrack] = useState<string | undefined>();
   // The beat the playhead stuck to while scrubbing (for the snap line).
   const [scrubSnap, setScrubSnap] = useState<number | undefined>();
+  const tool = useTool();
+  const [blade, setBlade] = useState<BladeHover | undefined>();
+  const [panning, setPanning] = useState(false);
+  useEffect(() => {
+    if (tool !== "blade") setBlade(undefined);
+  }, [tool]);
   // The running drag's cancel: a new press or unmounting (another project) ends it.
   const stopDrag = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => stopDrag.current?.(), []);
@@ -155,6 +168,8 @@ export function Timeline({ project }: { project: ProjectModel }) {
 
   const { onTransitionDown } = makeTransitionDrag({ project, fps, online, snapshot, frameAt, setDrag, stopDrag });
 
+  const toolPress = makeToolPress({ project, ppf, online, lanesRef, bodyRef, frameAt, setBlade, setPanning });
+
   const { scrub, onEmptyDown } = makeScrubMarquee({ project, ppf, lanesRef, frameAt, setScrubSnap, setMarquee });
 
   const { cutNear, overLanes, onDragOver, onDrop } = makeLaneDrop({ fps, ppf, online, cuts, lanesRef, bodyRef, frameAt, laneHit, dropCut, dropLane, dropSpan, setDropCut, setDropLane, setDropSpan, setDropping });
@@ -192,6 +207,17 @@ export function Timeline({ project }: { project: ProjectModel }) {
         <BottomTabs />
         <span className="muted small">{project.tracks.length === 1 ? "1 track" : `${project.tracks.length} tracks`}</span>
         <div className="toolbar-spacer" />
+        <div className="tool-picker" role="radiogroup" aria-label="Timeline tool" data-testid="tool-picker">
+          {TOOLS.map((t) => {
+            const Icon = TOOL_ICONS[t.id];
+            return (
+              <button key={t.id} className={`icon-btn ${tool === t.id ? "on" : ""}`} role="radio" aria-checked={tool === t.id} aria-pressed={tool === t.id} data-testid={`tool-${t.id}`} title={t.label} onClick={() => setTool(t.id)}>
+                <Icon />
+              </button>
+            );
+          })}
+        </div>
+        <div className="toolbar-sep" />
         <button className="icon-btn" data-testid="split" title="Split at the playhead (S)" disabled={!online || empty} onClick={() => void actions.split()}>
           <Scissors />
         </button>
@@ -254,10 +280,14 @@ export function Timeline({ project }: { project: ProjectModel }) {
             ))}
           </div>
           <div
-            className={`tl-lanes ${dropping ? "dropping" : ""}`}
+            className={`tl-lanes ${dropping ? "dropping" : ""} tool-${tool} ${panning ? "panning" : ""}`}
             data-testid="lanes"
+            data-tool={tool}
             ref={lanesRef}
             style={{ width }}
+            onPointerDownCapture={toolPress.onPointerDownCapture}
+            onPointerMove={toolPress.onPointerMove}
+            onPointerLeave={toolPress.onPointerLeave}
             onDragOver={onDragOver}
             onDragLeave={(e) => {
               if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -378,6 +408,18 @@ export function Timeline({ project }: { project: ProjectModel }) {
                 className="marquee"
                 data-testid="marquee"
                 style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }}
+              />
+            )}
+            {blade && !drag && (
+              <div
+                className={`blade-line ${blade.refused ? "refused" : ""}`}
+                data-testid="blade-line"
+                data-frame={blade.frame}
+                data-item={blade.item}
+                data-snapped={blade.snapAt !== undefined ? "true" : undefined}
+                data-refused={blade.refused ? "true" : undefined}
+                title={blade.refused}
+                style={{ left: blade.frame * ppf, top: blade.top, height: blade.height }}
               />
             )}
             {drag?.snapAt !== undefined && <div className="snap-line" data-testid="snap-line" data-frame={drag.snapAt} style={{ left: drag.snapAt * ppf }} />}

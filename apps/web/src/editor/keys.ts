@@ -12,6 +12,7 @@ import { installFocusRules, isTyping } from "./focus.ts";
 import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "../timeline/clipboard.ts";
 import { nearbyKey } from "../timeline/clip.ts";
 import { findItem, withGroups } from "../timeline/edit.ts";
+import { toolForKey, toolKeys } from "../timeline/tools.ts";
 
 export interface Shortcut {
   readonly keys: ReadonlyArray<string>;
@@ -38,6 +39,7 @@ export const SHORTCUTS: ReadonlyArray<Shortcut> = [
   { group: "Edit", keys: ["Esc"], does: "Deselect" },
   { group: "Timeline", keys: ["+", "−"], does: "Zoom the timeline in or out (also ⌘= and ⌘−)" },
   { group: "Timeline", keys: ["⌘0"], does: "Fit the project in the timeline" },
+  { group: "Timeline", keys: ["V", "C", "H"], does: "Select, Blade (a click cuts there) or Hand tool; held down, only until you let go" },
   { group: "Timeline", keys: ["⌘ scroll", "Pinch"], does: "Zoom the timeline around the pointer" },
   { group: "Timeline", keys: ["⇧ scroll"], does: "Scroll the timeline sideways" },
   { group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item" },
@@ -170,6 +172,9 @@ export function useEditorKeys(fps: number) {
       if (e.shiftKey && !SHIFT_KEYS.has(e.key)) return;
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       const snapshot = s().snapshot;
+      // Issue #57 (D230): V, C, H pick the timeline's tool (held: only while down).
+      const tool = e.shiftKey ? undefined : toolForKey(key);
+      if (tool) return (done(), toolKeys.down(tool, key, e.repeat));
       if (key === "ArrowLeft") (playback.step(e.shiftKey ? -fps : -1), done());
       else if (key === "ArrowRight") (playback.step(e.shiftKey ? fps : 1), done());
       else if (key === "ArrowUp" || key === "ArrowDown") {
@@ -201,13 +206,21 @@ export function useEditorKeys(fps: number) {
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space" && !blocked(e)) e.preventDefault();
+      // A held tool key gives the tool back wherever focus went meanwhile.
+      if (e.key.length === 1) toolKeys.up(e.key);
     };
+    const onPointerDown = () => toolKeys.pointer();
+    const onBlur = () => toolKeys.blur();
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("blur", onBlur);
     return () => {
       uninstall();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("blur", onBlur);
     };
   }, [fps]);
 }

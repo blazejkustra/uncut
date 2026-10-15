@@ -141,6 +141,11 @@ export function planSplit(project: ProjectModel, selected: string | undefined, f
     target = item && findItem(project, item.id);
     if (!target) return { problem: "Put the playhead over a clip on the main track (or select an item) to split it." };
   }
+  return splitAt(project, target, f, "Move the playhead further from it.");
+}
+
+/** Split `target` at frame `f` (inside it): locks and transitions checked (planSplit, planBladeSplit). */
+function splitAt(project: ProjectModel, target: Placed, f: number, further: string): SplitPlan | { readonly problem: string } {
   const locked = lockOf(target);
   if (locked) return { problem: locked };
   // A transition at either cut needs the half next to it to be at least twice its length.
@@ -148,10 +153,27 @@ export function planSplit(project: ProjectModel, selected: string | undefined, f
     const at = f - target.start;
     const own = target.item.transitionIn?.duration ?? 0;
     const into = target.track.items[target.index + 1]?.transitionIn?.duration ?? 0;
-    if (at < 2 * own || target.item.duration - at < 2 * into) return { problem: "That's too close to a transition to split there. Move the playhead further from it." };
+    if (at < 2 * own || target.item.duration - at < 2 * into) return { problem: `That's too close to a transition to split there. ${further}` };
   }
   const newId = uniqueId(project, target.item.id.replace(/-\d+$/, "") || "item");
   return { ops: [{ op: "split_item", item: target.item.id, at: f - target.start, newId }], summary: `Split ${target.item.id}`, newId };
+}
+
+/**
+ * The blade (issue #57, D230): cut the item that was pressed at `frame` (whole frames; snap it
+ * first with bladeFrame). One split_item, so one edit and one ⌘Z; a linked sound splits with its
+ * clip (D123). Locked tracks and items refuse; on an item's edge there's nothing to cut (no ops).
+ * Captions follow the speech and aren't cut.
+ */
+export function planBladeSplit(project: ProjectModel, itemId: string, frame: number): SplitPlan | { readonly problem: string } {
+  const target = findItem(project, itemId);
+  if (!target) return { problem: "That item isn't in the project any more." };
+  if (target.item.type === "captions") return { problem: "Captions follow the speech: cut the clip under them instead." };
+  const locked = lockOf(target);
+  if (locked) return { problem: locked };
+  const f = Math.round(frame);
+  if (!(target.start < f && f < target.start + target.item.duration)) return { ops: [], summary: "", newId: "" };
+  return splitAt(project, target, f, "Cut further from it.");
 }
 
 /** Delete an item; it leaves its space, on main too (D224: the clips after it stay; ripple delete closes up). */

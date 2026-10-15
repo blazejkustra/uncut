@@ -164,3 +164,15 @@ export function nearestSnap(edges: ReadonlyArray<number>, snap: Snap | undefined
   }
   return best;
 }
+
+/**
+ * Where the blade (issue #57, D230) cuts `itemId` when pressed at `frame`: the nearest snap target
+ * within `snap.threshold` frames (the playhead, 0, markers, every other item's edges, beats: as a
+ * move snaps), else the frame rounded. The item's own edges aren't targets (there's nothing to cut
+ * there). `snap` undefined: snapping is off.
+ */
+export function bladeFrame(project: ProjectModel, itemId: string, frame: number, snap: { readonly playhead: number; readonly threshold: number; readonly beats?: BeatSnap } | undefined): { frame: number; snapAt?: number } {
+  if (!snap) return { frame: Math.round(frame) };
+  const hit = nearestSnap([frame], { targets: snapTargets(project, snap.playhead, itemId, snap.beats), threshold: snap.threshold });
+  return hit ? { frame: hit.at, snapAt: hit.at } : { frame: Math.round(frame) };
+}
