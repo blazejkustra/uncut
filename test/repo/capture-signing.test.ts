@@ -77,7 +77,8 @@ test("test media: only with UNCUT_CDP, fake devices, states from the test (grant
 });
 
 test("the desktop shell asks macOS, lists screens and opens System Settings only outside test media", () => {
-  const app = read("apps/desktop/src/app.ts");
+  // app.ts and the module its media-access functions moved to (#54).
+  const app = [read("apps/desktop/src/app.ts"), read("apps/desktop/src/app/mediaAccess.ts")].join("\n");
   // Each real call sits after a test-media early return in its function.
   const body = (name: string) => {
     const start = app.indexOf(`function ${name}(`);
