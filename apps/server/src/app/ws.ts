@@ -28,6 +28,7 @@ import { Generator } from "../generate/generate.ts";
 import { Keys } from "../generate/keys.ts";
 import { Library } from "../library/library.ts";
 import { Projects } from "../project/projects.ts";
+import { Proxies } from "../media/proxies.ts";
 import { Recents } from "../project/recents.ts";
 import { Settings } from "./settings.ts";
 import { Setup } from "./setup.ts";
@@ -53,10 +54,11 @@ interface Services {
   readonly keys: typeof Keys.Service;
   readonly sounds: typeof Library.Service;
   readonly mediaIndex: typeof MediaIndex.Service;
+  readonly proxies: typeof Proxies.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex }: Services) => {
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies }: Services) => {
   const brand = brandRpc(config.dataDir, projects.view);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
@@ -84,6 +86,7 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.mediaImport]: ({ paths, drop }) => library.startImport(paths, drop),
     [RPC_METHODS.mediaJobs]: () => library.jobs,
     [RPC_METHODS.mediaThumbnails]: () => library.thumbnails,
+    [RPC_METHODS.mediaProxies]: () => proxies.states,
     [RPC_METHODS.musicAdd]: ({ track }) =>
       Effect.gen(function* () {
         const open = yield* projects.current;
@@ -218,7 +221,8 @@ export const layer = Layer.unwrap(
     const keys = yield* Keys;
     const sounds = yield* Library;
     const mediaIndex = yield* MediaIndex;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex }).pipe(
+    const proxies = yield* Proxies;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

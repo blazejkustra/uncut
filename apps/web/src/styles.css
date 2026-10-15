@@ -365,6 +365,10 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .thumb-scrub-bar { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--select); pointer-events: none; }
 .tile-used { position: absolute; left: 4px; top: 4px; padding: 0 5px; height: 15px; line-height: 15px; border-radius: 3px; font-size: 9.5px; font-weight: 600; background: var(--select); color: #000; pointer-events: none; }
 .media-list .tile .tile-used { top: 3px; left: 3px; }
+/* D212: the preview proxy badge: dim while queued, filling while made. */
+.tile-proxy { position: absolute; left: 4px; bottom: 4px; font: 10px var(--mono); color: var(--fg); background-color: rgb(0 0 0 / 60%); padding: 0 4px; border-radius: 3px; pointer-events: auto; }
+.tile-proxy.queued { color: var(--muted); }
+.media-list .tile .tile-proxy { display: none; }
 .confirm-modal { width: 360px; max-width: 100%; padding: 18px 18px 14px; }
 .confirm-title { font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
 .confirm-text { color: var(--muted); font-size: 12px; margin-bottom: 14px; }

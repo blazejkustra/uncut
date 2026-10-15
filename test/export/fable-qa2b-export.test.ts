@@ -25,16 +25,16 @@ const VT: Caps = { encoders: new Set(["h264_videotoolbox", "hevc_videotoolbox", 
 const SW: Caps = { encoders: new Set(["libx264", "libx265"]), videotoolboxDecode: false, major: 8 };
 const arg = (args: ReadonlyArray<string>, flag: string) => args[args.indexOf(flag) + 1];
 
-test("F4: every preset encodes H.264 (High at a higher bitrate); HEVC only when chosen; a bitrate replaces the preset's", () => {
+test("F4: every preset encodes H.264; HEVC only when chosen; a bitrate replaces the preset's", () => {
   const hd = { width: 1920, height: 1080 };
-  for (const q of ["draft", "standard", "high"] as const) {
-    assert.equal(arg(videoCodec(q, VT, hd, 30), "-c:v"), "h264_videotoolbox", q);
-    assert.equal(arg(videoCodec(q, SW, hd, 30), "-c:v"), "libx264", q);
-  }
-  // High's bitrate is above Standard's at the same size (the shared table the dialog shows).
-  assert.equal(arg(videoCodec("high", VT, hd, 30), "-b:v"), `${presetBitrateMbps("high", "h264", hd, 30)}M`);
-  assert.ok(presetBitrateMbps("high", "h264", hd, 30) > presetBitrateMbps("standard", "h264", hd, 30));
-  assert.equal(arg(videoCodec("high", VT, hd, 30, { codec: "hevc" }), "-c:v"), "hevc_videotoolbox");
+  // D212: Draft and Standard on VideoToolbox, High on libx264 (Advanced can swap either).
+  for (const q of ["draft", "standard"] as const) assert.equal(arg(videoCodec(q, VT, hd, 30), "-c:v"), "h264_videotoolbox", q);
+  assert.equal(arg(videoCodec("high", VT, hd, 30), "-c:v"), "libx264");
+  for (const q of ["draft", "standard", "high"] as const) assert.equal(arg(videoCodec(q, SW, hd, 30), "-c:v"), "libx264", q);
+  // HEVC's bitrate: High above Standard at the same size (the shared table the dialog shows).
+  assert.equal(arg(videoCodec("high", VT, hd, 30, { codec: "hevc", encoder: "hardware" }), "-b:v"), `${presetBitrateMbps("high", "hevc", hd, 30)}M`);
+  assert.ok(presetBitrateMbps("high", "hevc", hd, 30) > presetBitrateMbps("standard", "hevc", hd, 30));
+  assert.equal(arg(videoCodec("standard", VT, hd, 30, { codec: "hevc" }), "-c:v"), "hevc_videotoolbox");
   assert.equal(arg(videoCodec("high", VT, hd, 30, { codec: "hevc" }), "-tag:v"), "hvc1");
   assert.equal(arg(videoCodec("standard", SW, hd, 30, { codec: "hevc" }), "-c:v"), "libx265");
   assert.equal(arg(videoCodec("standard", VT, hd, 30, { bitrateMbps: 12 }), "-b:v"), "12M");

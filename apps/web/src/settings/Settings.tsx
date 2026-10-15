@@ -12,6 +12,7 @@ import { actions, projectOf, useApp, type SettingsSection } from "../state/store
 import { ProjectSettings } from "./ProjectSettings.tsx";
 import { ShortcutList } from "./Shortcuts.tsx";
 import { DefaultLengths } from "./DefaultLengths.tsx";
+import { setProxiesOn, useProxiesOn } from "./proxies.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
@@ -69,6 +70,7 @@ export function Settings() {
 
 function AppSettings() {
   const snapping = usePlayback((s) => s.snapping);
+  const proxies = useProxiesOn();
   return (
     <div data-testid="app-settings">
       <div className="group">
@@ -79,6 +81,13 @@ function AppSettings() {
         </label>
       </div>
       <DefaultLengths />
+      <div className="group">
+        <div className="group-label">Preview</div>
+        <label className="check-row">
+          <input type="checkbox" data-testid="settings-proxies" checked={proxies} onChange={(e) => setProxiesOn(e.target.checked)} />
+          Use proxies for preview
+        </label>
+      </div>
       <div className="group">
         <div className="group-label">Captions</div>
         <DefaultCaptionStyleRow />

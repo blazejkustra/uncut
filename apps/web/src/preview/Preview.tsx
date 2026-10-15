@@ -15,14 +15,15 @@ import { componentHtml, isDrawnComponent } from "@uncut/core/components";
 import { graphicInfo } from "@uncut/core/graphics";
 import { irisRadius, maskClipPath, overlaps } from "@uncut/core/transitions";
 import { canvasBackground, RENDER_CSS, SOLID, solidBackground, textHtml } from "@uncut/core/render";
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Sparkles, X } from "lucide-react";
 
 import { Mix, PREROLL_S, setCurrentMix } from "../audio/audio.ts";
 import { draftOf, findItem, lockOf, planLayer } from "../timeline/edit.ts";
 import { getPlayback, playback, usePlayback, type PreviewDraft } from "./playback.ts";
 import { layoutOf, type Item, type ProjectModel } from "../state/project.ts";
-import { actions, getState, graphicUrl, mediaUrl, textPresets, useApp } from "../state/store.ts";
+import { actions, getState, graphicUrl, mediaUrl, proxyOf, proxyUrl, subscribeApp, textPresets, useApp } from "../state/store.ts";
+import { proxiesOn, useProxiesOn } from "../settings/proxies.ts";
 import { changeLabel } from "../state/agentFollow.ts";
 import { requestTextFocus } from "../inspector/focus.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, draggedText, planAddComponent, setDraggedText, TEXT_DRAG_TYPE } from "./components.ts";
@@ -64,6 +65,16 @@ function useFit(width: number, height: number) {
 
 type MediaEl = HTMLVideoElement | HTMLImageElement;
 // Where a video was last asked to be; while a seek runs only the newest target is kept.
+/**
+ * D212: what a clip's element plays: the media item's proxy when the server has made one and
+ * "Use proxies for preview" is on, else the original. The URL carries a tag of the file's path (or
+ * the proxy's key), so a relinked file gets a new element, never a <video> that has buffered the old file.
+ */
+function previewSrc(media: { readonly id: string; readonly path: string }, kind: "video" | "image") {
+  const proxy = kind === "video" && proxiesOn() ? proxyOf(getState(), media.id) : undefined;
+  return proxy?.phase === "done" && proxy.key ? proxyUrl(media.id, proxy.key) : mediaUrl(media.id, media.path);
+}
+
 const wanted = new WeakMap<HTMLVideoElement, number>();
 
 /**
@@ -365,9 +376,7 @@ class Compositor {
   /** The element for a clip, made on first use; replaced if the clip now shows other media. */
   private elementFor(item: Item, kind: "video" | "image"): MediaEl | undefined {
     const media = item.media ? this.project?.media.find((m) => m.id === item.media) : undefined;
-    // The URL carries a tag of the file's path, so a relinked file gets a new element, never a
-    // <video> that has buffered the old file.
-    const src = media ? mediaUrl(media.id, media.path) : undefined;
+    const src = media ? previewSrc(media, kind) : undefined;
     if (!src || !media) return undefined;
     let el = this.els.get(item.id);
     if (el && el.dataset.src === src) return el;
@@ -837,6 +846,10 @@ export function Stage({ project, dir }: { project: ProjectModel; dir: string }) 
     };
   }, [dir]);
   useEffect(() => compositor.current?.setProject(project), [project]);
+  // D212: a proxy that's ready (or the setting turned) swaps the clip's element for the other file.
+  const proxies = useSyncExternalStore(subscribeApp, () => getState().proxies);
+  const useProxies = useProxiesOn();
+  useEffect(() => compositor.current?.render(), [proxies, useProxies]);
   useEffect(() => compositor.current?.setEditing(editing?.id), [editing?.id]);
   // Canvas pixels per screen pixel, and its inverse: how the canvas-size layer is scaled.
   const scale = width / Math.max(1, size.w);
