@@ -330,8 +330,10 @@ export class Compositor extends CompositorBase {
       if (scrubbed.seek) drive(el, c.source, playing && !heldPast(project, c.item, frame - starts.get(c.item.id)!), c.item.speed ?? 1, c.item.keepPitch !== false);
       else if (!el.paused) el.pause();
     });
+    for (const id of this.fxWarmed) if (!aheads.some((a) => a.id === id)) this.fxWarmed.delete(id);
     for (const ahead of aheads) {
       if (clips.some((c) => c.item.id === ahead.id)) continue;
+      if (!gpuOn) this.warmFx(ahead);
       const el = this.elementFor(ahead, "video");
       if (el instanceof HTMLVideoElement) {
         const wrap = this.boxes.get(ahead.id)!;

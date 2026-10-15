@@ -98,6 +98,8 @@ export function drive(el: HTMLVideoElement, source: number, playing: boolean, sp
       seek(el, target + lead * speed);
     }
   } else {
+    // A drift seek still in flight when playback stops would time a scrub's seek as its own.
+    playSeek.delete(el);
     if (!el.paused) el.pause();
     seek(el, target);
   }
