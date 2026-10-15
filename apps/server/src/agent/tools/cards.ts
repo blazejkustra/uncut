@@ -64,6 +64,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const brief: Brief = { ...raw, ...(type ? { type } : {}), skills: raw.skills?.length ? raw.skills : suggestSkills({ ...raw, ...(type ? { type } : {}) }, { hasKit }) };
       const saved = yield* Effect.tryPromise({ try: () => writeBrief(v.dir, { ...brief, by: "agent" }), catch: (e) => e as Error }).pipe(Effect.map((b) => ({ ok: true as const, b })), Effect.catch((e) => Effect.succeed({ ok: false as const, message: e.message })));
       if (!saved.ok) return textResult(`Couldn't save the brief: ${saved.message}`, true);
+      // D237: this turn is planning the video, so its build waits for the storyboard.
+      r.planned = true;
       yield* refreshPlan(r, v);
       addCard(r, { type: "brief", brief: saved.b }, brief.film);
       const sb = r.owner.plan.storyboard;
@@ -109,6 +111,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       if (!beats.length) return textResult("beats is the shot list: each {start, end (seconds), title, entry, exit, purpose, assets, sound}.", true);
       const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 600) : "";
       const write = (sb: Storyboard) => Effect.promise(() => writeStoryboard(v.dir, sb).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), sb)));
+      r.planned = true;
       if (r.skipStoryboard) {
         const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
         yield* refreshPlan(r, v);

@@ -149,6 +149,8 @@ export interface Running {
   readonly inputs: Map<number, { at: number; tool: string; json: string; shown: string }>;
   // D188: "Auto" with Settings' skip: storyboard_propose approves itself, the build doesn't wait.
   readonly skipStoryboard: boolean;
+  // D237: this turn wrote the brief or proposed a storyboard: its timeline_edits wait for the approval.
+  planned: boolean;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
   // D218: the subscription limits and sign-in problems claude reported in this turn (agentLimits.ts).
