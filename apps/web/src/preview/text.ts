@@ -3,6 +3,7 @@
 // every gesture becomes one project.edit, so it is validated, undoes in one step and is listed in
 // the agent's next note. update_item replaces nested objects whole, so every plan here sends the
 // complete style / transform / animation / props, built from the item as it is now.
+import { mainEnd as mainEndOf } from "@uncut/core/rules";
 import { SOLID, safeMargin, textDecor, textLook, textPlacement, TEXT_STYLES, themeColors, type RenderTarget } from "@uncut/core/render";
 import { lookItem } from "@uncut/core/textPlan";
 import type { FieldSet, Item, TextBackground, TextShadow, TextStroke, TimedModule } from "@uncut/core/types";
@@ -347,7 +348,7 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
   const mainIndex = project.tracks.findIndex((t) => t.role === "main");
   const main = project.tracks[mainIndex];
   if (!main) return { problem: "This project has no main track." };
-  const mainEnd = main.items.reduce((n, i) => n + i.duration, 0);
+  const mainEnd = mainEndOf(project);
   const end = layoutOf(project).end;
   const at = Math.max(0, Math.floor(frame));
   let start: number;

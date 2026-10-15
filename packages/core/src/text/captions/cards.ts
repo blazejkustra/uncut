@@ -1,7 +1,7 @@
 import { textLook } from "../looks.ts";
 import { textPlacement, textDecor } from "../../visual/render.ts";
 import { editWords } from "../transcript.ts";
-import { resolveStarts } from "../../timeline/rules.ts";
+import { gapOf, resolveStarts } from "../../timeline/rules.ts";
 import type { Project, Item } from "../../timeline/types.ts";
 import { captionSettings, SENTENCE_END, ABBREVIATIONS, type CaptionCard, captionWordText, CAPTION_HOLD_S, CAPTION_BRIDGE_S, CAPTION_MIN_S, captionMode, CAPTION_DEFAULTS, CAPTION_LINE_BOUNDS } from "./settings.ts";
 
@@ -114,9 +114,10 @@ export function captionCards(project: Pick<Project, "tracks" | "canvas"> & Parti
   } else {
     let t = 0;
     main?.items.forEach((it, k) => {
-      t += it.duration;
+      t += gapOf(it) + it.duration;
       const next = main.items[k + 1];
-      clipEnds.set(it.id, { end: t, sameNext: next?.type === "clip" && next.media === item.source });
+      // A gap after it (D224): nothing plays on from its end.
+      clipEnds.set(it.id, { end: t, sameNext: next?.type === "clip" && next.media === item.source && gapOf(next) === 0 });
     });
   }
   const cards: Array<CaptionCard> = [];

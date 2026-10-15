@@ -2,7 +2,7 @@
 // Select (the Inspector shows the item), move a text item (and onto another item: it lands on the
 // nearest free spot), reorder main clips, trim both edges of a clip (the next clip ripples, the
 // preview shows the new in-point) and a text item, split at the playhead (the picture doesn't
-// change across the cut), delete with ripple, snap to the playhead, hide and lock tracks. Every
+// change across the cut), delete (leaving a gap on main, D224), snap to the playhead, hide and lock tracks. Every
 // action is one ⌘Z. The agent (a scripted stand-in for claude) is refused on a locked track, and
 // its prompt lists the manual edits in words (D6). Screenshots: test-output/timeline-edit-*.png.
 import { test, before, after } from "node:test";
@@ -228,11 +228,15 @@ test("move a text item: the saved start changes; onto another item it lands on t
 
 test("reorder two main clips by dragging", { skip, timeout: 60000 }, async () => {
   const r = await revision();
+  // D224: dropped at 150, its middle past clip-2's: after clip-2, which stays at 120 (a gap
+  // before it), and it can't start before clip-2's end.
   await dragItem("clip-1", 150, { meta: true });
   await waitRevision(r + 1);
   assert.deepEqual(mainIds(), ["clip-2", "clip-1"]);
-  assert.deepEqual(await shown("clip-1"), { start: 120, duration: 120 });
+  assert.deepEqual(await shown("clip-2"), { start: 120, duration: 120 });
+  assert.deepEqual(await shown("clip-1"), { start: 240, duration: 120 });
   assert.equal(saved("clip-1")!.start, undefined, "main items have no start");
+  assert.equal(saved("clip-2")!.gap, 120);
   await undo();
   assert.deepEqual(mainIds(), ["clip-1", "clip-2"]);
 });
@@ -326,13 +330,13 @@ test("split at the playhead: two items with the right in and duration, the pictu
   assert.equal(saved("title-2"), undefined);
 });
 
-test("delete: Backspace removes the selected item and the main track closes up; the toolbar button too", { skip, timeout: 60000 }, async () => {
+test("delete: Backspace removes the selected item and leaves its space on main (D224); the toolbar button too", { skip, timeout: 60000 }, async () => {
   const r = await revision();
   await page.click(itemSel("clip-1"));
   await page.keyboard.press("Backspace");
   await waitRevision(r + 1);
   assert.deepEqual(mainIds(), ["clip-2"]);
-  assert.deepEqual(await shown("clip-2"), { start: 0, duration: 120 });
+  assert.deepEqual(await shown("clip-2"), { start: 120, duration: 120 });
   assert.equal(await page.$("[data-testid=inspector-item]"), null, "nothing selected after a delete");
   await undo();
   assert.deepEqual(mainIds(), ["clip-1", "clip-2"]);

@@ -172,7 +172,7 @@ export function expandPlacement(project: Project, ops: ReadonlyArray<unknown>): 
     if (track.locked) return { problem: `${where}: the track "${track.id}" is locked.` };
     const id = body.id;
     if (track.role === "main") {
-      // The main track is magnetic: items play back to back, so an insert always ripples.
+      // Main items play in order (D224: after their gap), so an insert always ripples.
       const starts = resolveStarts(now);
       const others = track.items.filter((x) => x.id !== id);
       let index = Number.isInteger(op.index) ? Math.min(op.index as number, others.length) : others.length;
@@ -301,6 +301,10 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
     }
     case "transition-first":
       return `Put the transition on the second or a later item of the main track (it goes into that item from the one before).`;
+    case "transition-gap":
+      return `The item has a gap before it: remove the gap (update_item set gap null) to put a transition there.`;
+    case "gap-track":
+      return `Only main-track items take a gap; give a free-track item a start instead.`;
     case "transition-track":
       return `Only main-track items take transitions; animate an overlay in and out with its animation instead.`;
     case "item-track-kind": {
@@ -316,7 +320,7 @@ function fixFor(after: Project, taken: ReadonlySet<string>, starts: Map<string, 
       return `Give it a start frame; ${end} is free after the last item on "${at.track.id}".`;
     }
     case "main-item-start":
-      return `Drop start: main-track items play back to back; pass index on insert_item or move_item instead.`;
+      return `Drop start: main-track items play in order; pass index on insert_item or move_item instead, and gap (empty frames before the item) to leave space.`;
     case "unknown-media":
       return after.media.length ? `Media ids in the project: ${after.media.slice(0, 10).map((m) => m.id).join(", ")}${after.media.length > 10 ? ` and ${after.media.length - 10} more` : ""}.` : `The project has no media yet: media_import or media_search first.`;
     case "media-range": {

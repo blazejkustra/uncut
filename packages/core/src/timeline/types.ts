@@ -112,8 +112,13 @@ export interface Item {
   readonly id: Id;
   readonly type: ItemType;
   readonly name?: string;
-  /** Free tracks only; main-track items play back to back. */
+  /** Free tracks only; main-track items are placed by their order and `gap`. */
   readonly start?: Frame;
+  /**
+   * Main track only (D224): empty frames before the item, after the one before it (or frame 0).
+   * Absent = 0, back to back. A gap shows black and is silent; a transition can't cross one.
+   */
+  readonly gap?: Frame;
   readonly duration: Frame;
   readonly locked?: boolean;
   /** D157: items with the same group move, trim and delete together on the timeline (a kicker and its title). */

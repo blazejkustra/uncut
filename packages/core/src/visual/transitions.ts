@@ -412,6 +412,7 @@ export function transitionLimits(project: Pick<Project, "tracks" | "media">, ite
   if (!track) return { problem: "Transitions go between two clips on the main track." };
   const index = track.items.findIndex((i) => i.id === itemId);
   if (index < 1) return { problem: "The first clip on the main track has nothing to transition from." };
+  if ((track.items[index]!.gap ?? 0) > 0) return { problem: "There's a gap before this clip: close it (move the clip up to the one before) to put a transition here." };
   const limits = TRANSITION_LIMITS[module];
   const prev = track.items[index - 1]!;
   const item = track.items[index]!;
@@ -455,13 +456,15 @@ export interface Cut {
   readonly frame: number;
 }
 
-/** Every cut between two main-track items, in time order. */
+/** Every cut between two main-track items, in time order. Two items with a gap between them (D224) don't meet: no cut there. */
 export function cutsOf(track: Track | undefined): Array<Cut> {
   if (!track || track.role !== "main") return [];
   const out: Array<Cut> = [];
   let t = 0;
   track.items.forEach((item, index) => {
-    if (index > 0) out.push({ item, prev: track.items[index - 1]!, index, frame: t });
+    const gap = typeof item.gap === "number" && item.gap > 0 ? item.gap : 0;
+    t += gap;
+    if (index > 0 && gap === 0) out.push({ item, prev: track.items[index - 1]!, index, frame: t });
     t += item.duration;
   });
   return out;

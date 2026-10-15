@@ -2,6 +2,7 @@
 // in-app clipboard (⌘C/⌘X/⌘V, ⌘D). Pure: they turn the project and a gesture into edit ops the
 // server validates, like edit.ts.
 import type { Op } from "@uncut/core/types";
+import { keepMainTimes } from "@uncut/core/arrange";
 
 import { layoutOf, uniqueId, type Item, type ProjectModel, type Track } from "../state/project.ts";
 import { findItem, fitsTrack, homeKind, lockOf, type Plan } from "./edit.ts";
@@ -27,7 +28,7 @@ export function nextEditPoint(project: ProjectModel, frame: number, direction: 1
   return direction > 0 ? points.find((p) => p > f) : points.findLast((p) => p < f);
 }
 
-/** Delete several items in one edit (main closes up; a transition into a clip that now follows another goes). */
+/** Delete several items in one edit (D224: they leave their space, on main too; a transition into a clip that now follows a gap goes). */
 export function planDeleteMany(project: ProjectModel, ids: ReadonlyArray<string>): Plan | { readonly problem: string } {
   const placed = [...new Set(ids)].map((id) => findItem(project, id)).filter((p) => p !== undefined);
   if (!placed.length) return { problem: "Select an item to delete it." };
@@ -39,11 +40,13 @@ export function planDeleteMany(project: ProjectModel, ids: ReadonlyArray<string>
   const ops: Array<Op> = [];
   for (const p of placed) {
     if (p.track.role !== "main") continue;
-    // The next clip that stays now follows another clip (or none): its transition goes.
+    // The next clip that stays now follows a gap (or another clip): its transition goes.
     const next = p.track.items.slice(p.index + 1).find((i) => !gone.has(i.id));
     if (next?.transitionIn && !ops.some((o) => o.op === "set_transition" && o.item === next.id)) ops.push({ op: "set_transition", item: next.id, transition: null });
   }
   for (const p of placed) ops.push({ op: "delete_item", item: p.item.id });
+  const main = project.tracks.find((t) => t.role === "main");
+  if (main && placed.some((p) => p.track.id === main.id)) ops.push(...keepMainTimes(main, gone));
   return { ops, summary: placed.length === 1 ? `Delete ${placed[0]!.item.id}` : `Delete ${placed.length} items` };
 }
 

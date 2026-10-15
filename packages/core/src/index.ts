@@ -1,7 +1,7 @@
 // @uncut/core: the reference format code shared by the server, the renderer and the tests.
 export type * from "./timeline/types.ts";
 export { loadModules, lookProblems, validateModule, validateOps, validateProject } from "./timeline/validate.ts";
-export { fitsTrackKind, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
+export { fitsTrackKind, gapOf, mainEnd, mainStarts, MAIN_ITEM_TYPES, resolveStarts, projectDuration, timelineProblems } from "./timeline/rules.ts";
 export { EditError, EditConflict, TurnDependency, createSession, applyEdit, undoTurn } from "./timeline/apply-ops.ts";
 export { describeOp, effectsWords, manualEditsNote } from "./timeline/edit-log.ts";
 export { animationAt, moveEase, moveFades, wordProgress, zoomScale, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline/timeline.ts";
