@@ -106,14 +106,14 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
   /* The panels' sizes: these defaults, or what the user dragged them to (editor/layout.ts, G5). */
   --lib-col: clamp(200px, 20vw, 272px); --side-col: clamp(260px, 24vw, 320px); --bottom-row: clamp(170px, 30vh, 280px);
   grid-template-columns: 56px var(--lib-col) minmax(0, 1fr) var(--side-col);
-  /* The bottom row gives way too (U13): banners on a short window never push the grid past the window. */
-  grid-template-rows: 40px auto minmax(0, 1fr) minmax(0, var(--bottom-row));
+  /* The bottom row gives way too (U13): the grid never grows past the window. */
+  grid-template-rows: 40px minmax(0, 1fr) minmax(0, var(--bottom-row));
   /* The timeline spans the whole window; the rail and the left panel sit above it (S1, T4). */
-  grid-template-areas: "top top top top" "banners banners banners banners" "rail lib stage side" "bottom bottom bottom bottom";
+  grid-template-areas: "top top top top" "rail lib stage side" "bottom bottom bottom bottom";
 }
 /* Panel resize handles (G5): thin strips over the panels' edges. */
 .resizer { position: relative; z-index: 20; }
-.resizer.v { grid-row: 3; width: 7px; cursor: col-resize; }
+.resizer.v { grid-row: 2; width: 7px; cursor: col-resize; }
 .resizer.h { grid-area: bottom; align-self: start; height: 7px; margin-top: -3px; cursor: row-resize; }
 .resizer-lib { grid-column: 2; justify-self: end; margin-right: -4px; }
 .resizer-side { grid-column: 4; justify-self: start; margin-left: -4px; }
@@ -140,9 +140,9 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .saved { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; margin-right: 6px; }
 .saved svg.lucide { width: 14px; height: 14px; }
 
-/* Banners push the panels down rather than covering them. */
-.banners { grid-area: banners; display: flex; flex-direction: column; }
-.banner { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: var(--raised); border-bottom: 1px solid var(--border-strong); font-size: 12px; }
+/* Banners float over the panels under the top bar (#52): showing or dismissing one never moves a panel. */
+.banners { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); width: min(680px, calc(100% - 32px)); z-index: 30; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; background: var(--raised); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 30px rgb(0 0 0 / 45%); font-size: 12px; pointer-events: auto; }
 .banner svg.lucide { width: 14px; height: 14px; color: var(--muted); }
 .banner .icon-btn { margin-left: auto; }
 .banner.warn { background: #2a2310; color: #f6d77b; }
