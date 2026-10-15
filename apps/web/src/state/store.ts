@@ -1155,8 +1155,8 @@ export const actions = {
     const { src, name, props } = result.value;
     await addPlanned((project) => planAddGraphic(project, { src, name, props: (props ?? {}) as Record<string, unknown>, idBase: id.split(".").at(-1) ?? "graphic" }, getPlayback().frame));
   },
-  /** Elements tab → a full-frame background (see planAddBackground). */
-  addBackground: (props: BackgroundProps) => addPlanned((project) => planAddBackground(project, props, getPlayback().frame, getPlayback().selected)),
+  /** Elements tab → a full-frame background (see planAddBackground): over the whole edit, or behind the selected item (D220). */
+  addBackground: (props: BackgroundProps, behindSelected = false) => addPlanned((project) => planAddBackground(project, props, getPlayback().frame, behindSelected ? getPlayback().selected : undefined)),
   /** S: split at the playhead (see planSplit); the part after the playhead is selected. */
   async split() {
     if (!state.snapshot) return;

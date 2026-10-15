@@ -319,18 +319,31 @@ export type BackgroundProps = { readonly color: string; readonly to?: string; re
 
 export type PlannedAdd = (Plan & { readonly itemId: string; readonly start: number }) | Problem;
 
+/** An item a background can go behind (D220): a clip with a picture, a text, a graphic or an element; not a sound or captions. */
+export function canGoBehind(project: ProjectModel, id: string | undefined): boolean {
+  const placed = findItem(project, id);
+  if (!placed || placed.track.kind === "audio") return false;
+  const { item } = placed;
+  if (item.type === "clip") return project.media.find((m) => m.id === item.media)?.kind !== "audio";
+  return item.type === "text" || item.type === "graphic" || item.type === "component";
+}
+
 /**
- * A background (component.solid), D53 amended by D146: it is drawn behind everything. Its time:
- * the selected text item's; else, with the playhead over the footage, the whole edit (frame 0 to
- * the end); else (past the footage) the stretch from the playhead to the end, at least a text's default length (F30, 3 s). Where:
- * at the end of the main track when that's where it starts (an empty project, or the playhead at
- * main's end): a card in the sequence. Otherwise on a video track below main (the nearest one free
- * for that stretch), so the footage and everything else stay over it; if none is free, a new
- * "Background" track goes directly below main. Projects made before D146 keep their tracks.
+ * A background (component.solid), D53 amended by D146 and D220. It is drawn behind everything.
+ * Whole edit (`behind` undefined; the Elements tab's default with nothing selected): with the playhead over the
+ * footage it spans the whole edit (frame 0 to the end); else (past the footage) the stretch from
+ * the playhead to the end, at least a text's default length (F30, 3 s). It goes at the end of the main track
+ * when that's where it starts (an empty project, or the playhead at main's end), a card in the sequence;
+ * otherwise on a video track below main (the nearest one free for that stretch), so the footage and
+ * everything else stay over it; if none is free, a new "Background" track goes directly below main.
+ * Behind this (`behind` an item's id, D220): that item's time, on the video track right under the item's
+ * (free for that time, not main), else a new "Background" track right there; behind a main clip that's the
+ * whole-edit path's tracks below main; behind a text right above main where main ends at the text's start
+ * (an empty project's title), a card on main as before. Projects made before keep their tracks.
  */
-export function planAddBackground(project: ProjectModel, props: BackgroundProps, frame: number, selected: string | undefined): PlannedAdd {
+export function planAddBackground(project: ProjectModel, props: BackgroundProps, frame: number, behind: string | undefined): PlannedAdd {
   const fps = project.canvas.fps;
-  const sel = findItem(project, selected);
+  const sel = canGoBehind(project, behind) ? findItem(project, behind) : undefined;
   const mainIndex = project.tracks.findIndex((t) => t.role === "main");
   const main = project.tracks[mainIndex];
   if (!main) return { problem: "This project has no main track." };
@@ -339,30 +352,41 @@ export function planAddBackground(project: ProjectModel, props: BackgroundProps,
   const at = Math.max(0, Math.floor(frame));
   let start: number;
   let duration: number;
-  if (sel && sel.item.type === "text") [start, duration] = [sel.start, sel.item.duration];
+  if (sel) [start, duration] = [sel.start, sel.item.duration];
   else if (at < mainEnd) [start, duration] = [0, end];
   else [start, duration] = [at, Math.max(defaultFrames("text", fps), end - at)];
   const taken = new Set<string>();
   const itemId = uniqueId(project, "background", taken);
   taken.add(itemId);
   const item: Item = { id: itemId, type: "component", component: SOLID, duration, props: { ...props } };
-  if (start === mainEnd && !main.locked) {
-    return { ops: [{ op: "insert_item", track: main.id, item }], summary: "Add a background", itemId, start };
+  const card = () => ({ ops: [{ op: "insert_item" as const, track: main.id, item }], summary: "Add a background", itemId, start });
+  const free = (t: Track) => t.kind === "video" && t.role !== "main" && !t.locked && t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
+  // Under this track index: the free video track right there (or, under main, the nearest free one
+  // below it), else a new one inserted there. Tracks are listed top to bottom and the preview and
+  // export stack them in that order, so it draws under that track's items.
+  let index: number;
+  let track: Track | undefined;
+  if (!sel || sel.track.role === "main") {
+    if (start === mainEnd && !main.locked && !sel) return card();
+    index = mainIndex + 1;
+    track = project.tracks.slice(mainIndex + 1).filter((t) => t.kind === "video" && !t.locked).find(free);
+  } else {
+    index = project.tracks.findIndex((t) => t.id === sel.track.id) + 1;
+    const next = project.tracks[index];
+    if (next?.role === "main" && start === mainEnd && !main.locked) return card();
+    track = next && free(next) ? next : undefined;
   }
-  const free = (t: Track) => t.items.every((i) => (i.start ?? 0) + i.duration <= start || start + duration <= (i.start ?? 0));
-  // Video tracks below main, nearest first (the project lists tracks top to bottom and the preview
-  // and export stack them in that order, so these draw under the footage).
-  const below = project.tracks.slice(mainIndex + 1).filter((t) => t.kind === "video" && !t.locked);
-  const track = below.find(free);
   const ops: Array<Plan["ops"][number]> = [];
   let trackId = track?.id;
   if (!trackId) {
     trackId = uniqueId(project, "background-track", taken);
-    const n = project.tracks.slice(mainIndex + 1).filter((t) => t.kind === "video").length;
-    ops.push({ op: "add_track", index: mainIndex + 1, track: { id: trackId, kind: "video", name: n ? `Background ${n + 1}` : "Background" } });
+    const names = new Set(project.tracks.map((t) => t.name));
+    let name = "Background";
+    for (let n = 2; names.has(name); n++) name = `Background ${n}`;
+    ops.push({ op: "add_track", index, track: { id: trackId, kind: "video", name } });
   }
   ops.push({ op: "insert_item", track: trackId, item: { ...item, start } });
-  return { ops, summary: "Add a background", itemId, start };
+  return { ops, summary: sel ? `Add a background behind ${sel.item.name ?? sel.item.id}` : "Add a background", itemId, start };
 }
 
 /** A background's colours (props merged; a null `to` makes it a plain colour again). */
