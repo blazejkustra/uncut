@@ -2,22 +2,20 @@
 // (ffprobe for formats it can't read), add them in one undoable edit to the project that was
 // open when the import started, then make poster thumbnails. Footage is referenced by path,
 // never copied (D12). Jobs run one at a time and aren't tied to the request that started them.
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
-import { ProjectError, type ImportJob, type MediaImportResult, type ProjectSnapshot } from "@uncut/contracts";
-import { canvasForClip, decodeSubtitleBytes, parseSubtitles, planImportSubtitles, planReshoot, subtitleFormatOf, type Overrun, type ParsedCue, type Project } from "@uncut/core";
+import { ProjectError, type ImportJob, type MediaImportResult } from "@uncut/contracts";
+import { planImportSubtitles, planReshoot, subtitleFormatOf, type ParsedCue, type Project } from "@uncut/core";
 import { cameraName } from "@uncut/core/mentions";
 import { planPlaceMulti, planPlaceTake, type MultiKind, type MultiLayoutName, type PlacedMulti, type TakePlacement } from "@uncut/core/place";
 import { planPlaceMedia, type PlaceMedia } from "@uncut/core/arrange";
 import * as Cause from "effect/Cause";
-import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
-import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { ServerConfig } from "../app/config.ts";
@@ -28,260 +26,13 @@ import { MATCH_FIRST_CLIP, Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { recordSubtitleSources } from "../export/subtitleSources.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
-
-export interface MediaLibraryShape {
-  /** Queue an import into the open project; returns the job id at once. */
-  /** `drop` (T9, D128): also put the files on the timeline at that frame / track, in the same edit (core planPlaceMedia). */
-  readonly startImport: (paths: ReadonlyArray<string>, drop?: MediaDrop) => Effect.Effect<{ jobId: string }, ProjectError>;
-  readonly jobs: Stream.Stream<ReadonlyArray<ImportJob>>;
-  /** Media ids of the open project whose current poster exists. */
-  readonly thumbnails: Effect.Effect<ReadonlyArray<string>>;
-  /** The poster file for a media id of the open project, if it exists. */
-  readonly posterFor: (id: string) => Effect.Effect<string | undefined>;
-  /**
-   * The agent's media_import (D65): an import job like the Library's, but its edit is the agent's
-   * (tagged with the turn, so Undo turn removes it and the manual-edit note doesn't list it).
-   * Resolves once the media is in the project; posters carry on in the background.
-   */
-  readonly importForAgent: (input: AgentImportInput) => Effect.Effect<AgentImport, ProjectError>;
-  /**
-   * A recording a capture plugin made (D98): imported like media_import, with its `source`, stored
-   * relative to the project when it's inside it (media/captures/...). The agent's (turnId) or,
-   * without one, the user's edit (the Capture tab: one ⌘Z removes it).
-   */
-  readonly importCapture: (input: CaptureImportInput) => Effect.Effect<AgentImport, ProjectError>;
-  /** D211: a multi-source take's files as one edit, placed start-aligned and grouped when `frame` is given. */
-  readonly importMulti: (input: MultiImportInput) => Effect.Effect<AgentImport, ProjectError>;
-  /**
-   * A re-shot recording swapped in for media `mediaId` (D98): probed, then one edit that changes
-   * the media's file and trims or holds clips past the new end (core planReshoot); a new poster.
-   */
-  readonly replaceMedia: (input: ReplaceMediaInput) => Effect.Effect<ReplacedMedia, ProjectError>;
-}
-
-/** Files dropped on the timeline (T9, D128): where they go. */
-export interface MediaDrop {
-  readonly frame: number;
-  readonly track?: string | undefined;
-}
-
-export interface CaptureImportInput {
-  readonly openId: number;
-  readonly dir: string;
-  readonly path: string;
-  readonly name?: string | undefined;
-  readonly source: { readonly module: string; readonly [key: string]: unknown };
-  readonly turnId?: string | undefined;
-  /** D114: also put it on the timeline at this frame, in the same edit (core planPlaceTake). */
-  readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
-}
-
-/** D211: a multi-source take's files, imported (and with `frame`, placed) as one edit. */
-export interface MultiImportInput {
-  readonly openId: number;
-  readonly dir: string;
-  readonly parts: ReadonlyArray<{ readonly path: string; readonly name: string; readonly kind: MultiKind; readonly offsetMs: number; readonly source: { readonly module: string; readonly [key: string]: unknown } }>;
-  readonly frame?: number | undefined;
-  readonly layout?: MultiLayoutName | undefined;
-  readonly summary: string;
-}
-
-export interface ReplaceMediaInput {
-  readonly openId: number;
-  readonly dir: string;
-  readonly mediaId: string;
-  readonly path: string;
-  readonly source?: { readonly module: string; readonly [key: string]: unknown } | undefined;
-  readonly overrun?: Overrun | undefined;
-  readonly turnId?: string | undefined;
-}
-
-export interface ReplacedMedia {
-  readonly snapshot: ProjectSnapshot | undefined;
-  readonly entry: MediaEntry;
-  /** The file it had before. */
-  readonly previousPath: string;
-  readonly warnings: ReadonlyArray<string>;
-  /** The edit's ops (update_media, then the trims and holds). */
-  readonly ops: ReadonlyArray<unknown>;
-}
-
-export interface AgentImportInput {
-  readonly openId: number;
-  readonly dir: string;
-  readonly turnId: string;
-  readonly paths: ReadonlyArray<string>;
-  /** Display names to use instead of the file name, by path. */
-  readonly names?: ReadonlyMap<string, string> | undefined;
-  /** D205: store files inside the project relative to it (a copy from another project in media/imports). */
-  readonly relativePaths?: boolean | undefined;
-}
-
-export interface AgentImport {
-  /** The project after the import, or undefined when nothing was added. */
-  readonly snapshot: ProjectSnapshot | undefined;
-  readonly entries: ReadonlyArray<MediaEntry>;
-  readonly skipped: ReadonlyArray<{ readonly path: string; readonly reason: string }>;
-  readonly failed: ReadonlyArray<{ readonly path: string; readonly message: string }>;
-  /** D105: .srt / .vtt files read into a Subtitles text track. */
-  readonly subtitles?: ReadonlyArray<ImportedSubtitles>;
-  /** D114: the timeline item a placed take got. */
-  readonly placed?: { readonly itemId: string; readonly trackId: string; readonly start: number };
-  /** D211: a multi-source take's items and group. */
-  readonly multi?: PlacedMulti;
-}
-
-export interface ImportedSubtitles {
-  readonly path: string;
-  readonly track: string;
-  readonly cues: number;
-}
-
-/** A subtitles file bigger than this isn't read (an hour of dense subtitles is ~100 kB). */
-export const MAX_SUBTITLE_BYTES = 10 * 1024 * 1024;
-
-/** A .srt / .vtt file's cues, or why it can't be imported (a sentence). */
-export async function readSubtitleFile(path: string): Promise<{ readonly cues: ReadonlyArray<ParsedCue> } | { readonly problem: string }> {
-  const name = basename(path);
-  try {
-    const s = await stat(path);
-    if (s.size > MAX_SUBTITLE_BYTES) return { problem: `${name} is too big for a subtitles file (over ${MAX_SUBTITLE_BYTES / 1024 / 1024} MB).` };
-    const parsed = parseSubtitles(decodeSubtitleBytes(await readFile(path)), name);
-    return "problem" in parsed ? parsed : { cues: parsed.cues };
-  } catch {
-    return { problem: `${name} couldn't be read.` };
-  }
-}
-
-export class MediaLibrary extends Context.Service<MediaLibrary, MediaLibraryShape>()("uncut/MediaLibrary") {}
-
-export interface MediaEntry {
-  readonly id: string;
-  readonly kind: "video" | "audio" | "image";
-  readonly name: string;
-  readonly path: string;
-  readonly probe: { frames?: number; fps?: number; width?: number; height?: number; hasAudio: boolean };
-  readonly source?: { readonly module: string; readonly [key: string]: unknown };
-}
-
-/** A file inside the project folder is stored relative to it (media/captures/x.mp4, D12). */
-const storedPath = (path: string, projectDir: string) => {
-  const rel = relative(projectDir, path);
-  return rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel : path;
-};
-
-type ProjectShape = {
-  canvas: { fps: number };
-  media: ReadonlyArray<{ id: string; path: string }>;
-  tracks: ReadonlyArray<{ id: string; items: ReadonlyArray<{ id: string }> }>;
-  scenes?: ReadonlyArray<{ id: string }>;
-};
-
-export const thumbDir = (projectDir: string) => join(projectDir, ".cache", "thumbs");
-
-/** "DJI_0005 (final).MP4" → "m-dji-0005-final", made unique against `taken`. */
-export const mediaId = (name: string, taken: Set<string>) => {
-  const stem = name.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "media";
-  let id = `m-${stem}`;
-  for (let n = 2; taken.has(id); n++) id = `m-${stem}-${n}`;
-  taken.add(id);
-  return id;
-};
-
-/** Every id the validator requires to be unique: media, tracks, items, scenes. */
-const allIds = (project: ProjectShape) =>
-  new Set([
-    ...project.media.map((m) => m.id),
-    ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
-    ...(project.scenes ?? []).map((s) => s.id),
-  ]);
-
-const realOr = (path: string) => realpath(path).catch(() => path);
-
-/**
- * A poster belongs to the file it was made from: its name carries a short hash of the path,
- * size and modification time, so a reused id or a changed file never shows a stale picture.
- */
-export const posterKey = async (path: string) => {
-  try {
-    const s = await stat(path);
-    return createHash("sha1").update(`${path}\0${s.size}\0${s.mtimeMs}`).digest("hex").slice(0, 12);
-  } catch {
-    return undefined;
-  }
-};
-const posterName = (id: string, key: string) => `${id}--${key}.jpg`;
-
-const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".svg"]);
-// ffmpeg reads "shot%d.png" as an image sequence; for one image, say it's one file.
-const imageInput = (path: string) => ["-f", "image2", "-pattern_type", "none", "-i", path];
-
-const PROBE_ERRORS: Record<string, string> = {
-  "not-found": "The file doesn't exist.",
-  unsupported: "Uncut can't read this kind of file yet.",
-  unreadable: "The file couldn't be read",
-};
-
-/** ffprobe's JSON in the media core's shape, for formats the core doesn't parse. */
-const fromFfprobe = (json: string): ProbeInfo | undefined => {
-  let j: { streams?: Array<Record<string, unknown>>; format?: Record<string, unknown> };
-  try {
-    j = JSON.parse(json);
-  } catch {
-    return undefined;
-  }
-  const streams = j.streams ?? [];
-  const image = /png_pipe|jpeg_pipe|image2|webp_pipe|gif|tiff_pipe|bmp_pipe/.test(String(j.format?.format_name ?? ""));
-  const video = streams
-    .filter((s) => s.codec_type === "video" && !(s.disposition as Record<string, number> | undefined)?.attached_pic)
-    .sort((a, b) => Number(b.width) * Number(b.height) - Number(a.width) * Number(a.height))[0];
-  const audio = streams.find((s) => s.codec_type === "audio");
-  if (!video && !audio) return undefined;
-  const [num, den] = String(video?.r_frame_rate ?? "0/0").split("/").map(Number);
-  const duration = Number(j.format?.duration ?? video?.duration ?? audio?.duration);
-  return {
-    kind: image ? "image" : video ? "video" : "audio",
-    container: String(j.format?.format_name ?? "unknown").split(",")[0]!,
-    ...(Number.isFinite(duration) && !image ? { durationSeconds: duration } : {}),
-    ...(video ? { width: Number(video.width), height: Number(video.height), videoCodec: String(video.codec_name) } : {}),
-    ...(num && den && !image ? { fps: `${num}/${den}`, fpsValue: num / den } : {}),
-    ...(audio ? { audioCodec: String(audio.codec_name) } : {}),
-    hasAudio: Boolean(audio),
-    via: "ffprobe",
-  };
-};
+import { MediaLibrary, type MediaEntry, type AgentImport, type MediaDrop, type ImportedSubtitles, type AgentImportInput, type CaptureImportInput, type MultiImportInput, type ReplaceMediaInput } from "./mediaLibrary/service.ts";
+import { IMAGE_EXT, imageInput, fromFfprobe, posterKey, thumbDir, posterName, realOr, readSubtitleFile, PROBE_ERRORS, type ProjectShape, allIds, matchPending, matchCanvas, mediaId, storedPath, probeOf } from "./mediaLibrary/helpers.ts";
+export { MediaLibrary } from "./mediaLibrary/service.ts";
+export type { MediaLibraryShape, MediaDrop, CaptureImportInput, MultiImportInput, ReplaceMediaInput, ReplacedMedia, AgentImportInput, AgentImport, ImportedSubtitles, MediaEntry } from "./mediaLibrary/service.ts";
+export { MAX_SUBTITLE_BYTES, readSubtitleFile, thumbDir, mediaId, posterKey } from "./mediaLibrary/helpers.ts";
 
 const MAX_JOBS_KEPT = 10;
-
-/** A probe in project terms: the length in project frames, the picture as shown. */
-/** D209: whether the project was made with "Match first clip" and hasn't matched one yet. */
-const matchPending = (dir: string) =>
-  stat(join(dir, ".cache", MATCH_FIRST_CLIP)).then(
-    () => true,
-    () => false,
-  );
-
-/**
- * D209: the canvas the first video asks for, when the project has no video yet and an empty
- * timeline (a rate change retimes nothing then); undefined otherwise or when it's the same.
- */
-function matchCanvas(project: Project, probed: ReadonlyArray<{ readonly info: ProbeInfo }>): Project["canvas"] | undefined {
-  if (project.media.some((m) => m.kind === "video") || project.tracks.some((t) => t.items.length)) return undefined;
-  const clip = probed.find((p) => p.info.kind === "video" && p.info.width && p.info.height)?.info;
-  if (!clip) return undefined;
-  const next = canvasForClip(project.canvas, { width: clip.width, height: clip.height, fps: clip.fpsValue, rotation: clip.rotation });
-  if (!next || (next.width === project.canvas.width && next.height === project.canvas.height && next.fps === project.canvas.fps)) return undefined;
-  return next;
-}
-
-const probeOf = (info: ProbeInfo, fps: number): MediaEntry["probe"] => {
-  // The project stores the picture as shown: a phone clip turned 90° is portrait.
-  const turned = info.rotation === 90 || info.rotation === 270;
-  const width = turned ? info.height : info.width;
-  const height = turned ? info.width : info.height;
-  const frames = info.kind !== "image" && info.durationSeconds ? Math.max(1, Math.floor(info.durationSeconds * fps)) : undefined;
-  return { ...(frames ? { frames } : {}), ...(info.fpsValue ? { fps: info.fpsValue } : {}), ...(width ? { width } : {}), ...(height ? { height } : {}), hasAudio: info.hasAudio };
-};
 
 export const layer = Layer.effect(
   MediaLibrary,
