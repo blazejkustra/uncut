@@ -6,6 +6,7 @@ import { type CardLive, CardItem, QuestionCard, StoryboardApproval } from "../Ag
 import { agentImageUrl, actions } from "../../state/store.ts";
 import { useFriendly } from "./context.ts";
 import { groupItems, WorkLog, EditRow, MediaRow, Thinking, NowLine } from "./workLog.tsx";
+import { CopyButton } from "./copy.tsx";
 import { ScreenApprovalCard, BootCard, PermissionCard, BrandDiffCard, ApprovalCard, CleanupLine } from "./approvals.tsx";
 
 export function TurnCard({ turn: t, busy, online, approval, latest, live }: { turn: AgentTurn; busy: boolean; online: boolean; approval?: AgentApproval | undefined; latest: ReadonlySet<string>; live: CardLive | undefined }) {
@@ -186,7 +187,7 @@ function ManualNote({ note }: { note: string }) {
   );
 }
 
-/** The little markdown agents write: paragraphs, "- " bullets, **bold** and `code`. */
+/** The little markdown agents write: paragraphs, "- " bullets, **bold**, `code` and ``` code blocks (#49: each with a Copy button, like the reply). */
 function Reply({ text, live = false }: { text: string; live?: boolean }) {
   const inline = (s: string): ReactNode =>
     s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) =>
@@ -198,13 +199,15 @@ function Reply({ text, live = false }: { text: string; live?: boolean }) {
         <Fragment key={i}>{part}</Fragment>
       ),
     );
-  return (
-    <div className={`reply ${live ? "live" : ""}`} data-testid="agent-reply" data-live={live ? "true" : undefined}>
-      {text.split(/\n{2,}/).map((block, i) => {
+  const prose = (chunk: string, at: number) =>
+    chunk
+      .split(/\n{2,}/)
+      .filter((block) => block.trim() !== "")
+      .map((block, i) => {
         const lines = block.split("\n");
         if (lines.every((l) => /^\s*[-*] /.test(l))) {
           return (
-            <ul key={i}>
+            <ul key={`${at}-${i}`}>
               {lines.map((l, j) => (
                 <li key={j}>{inline(l.replace(/^\s*[-*] /, ""))}</li>
               ))}
@@ -212,7 +215,7 @@ function Reply({ text, live = false }: { text: string; live?: boolean }) {
           );
         }
         return (
-          <p key={i}>
+          <p key={`${at}-${i}`}>
             {lines.map((l, j) => (
               <Fragment key={j}>
                 {j > 0 && <br />}
@@ -221,7 +224,22 @@ function Reply({ text, live = false }: { text: string; live?: boolean }) {
             ))}
           </p>
         );
-      })}
+      });
+  // ``` fences (an unclosed one while it streams runs to the end).
+  const parts = text.split(/^```[^\n]*\n?/m);
+  return (
+    <div className={`reply ${live ? "live" : ""}`} data-testid="agent-reply" data-live={live ? "true" : undefined}>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <div key={`c${i}`} className="reply-code" data-testid="agent-code">
+            <pre>{part.replace(/\n$/, "")}</pre>
+            <CopyButton text={part.replace(/\n$/, "")} what="code" />
+          </div>
+        ) : (
+          prose(part, i)
+        ),
+      )}
+      {!live && text.trim() !== "" && <CopyButton text={text} what="reply" className="reply-copy" />}
     </div>
   );
 }

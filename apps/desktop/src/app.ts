@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
+import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, Menu, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 
 import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_SOURCES_CHANNEL, CHOOSE_DISPLAY_SOURCE_CHANNEL, SYSTEM_AUDIO_CHANNEL, CHOOSE_FOLDER_CHANNEL, CHOOSE_MEDIA_CHANNEL, CHOOSE_SAVE_PATH_CHANNEL, CLOSE_ANSWER_CHANNEL, CLOSE_REQUEST_CHANNEL, COPY_TEXT_CHANNEL, CLIPBOARD_PATHS_CHANNEL, DOWNLOAD_EXPORT_CHANNEL, ENVIRONMENT_ADD_CHANNEL, ENVIRONMENT_REMOVE_CHANNEL, ENVIRONMENT_RENAME_CHANNEL, ENVIRONMENT_STATUS_CHANNEL, ENVIRONMENT_SWITCH_CHANNEL, ENVIRONMENT_TEST_CHANNEL, ENVIRONMENTS_CHANNEL, MEDIA_ACCESS_CHANNEL, MENU_COMMAND_CHANNEL, OPEN_PRIVACY_SETTINGS_CHANNEL, SERVER_CONNECTION_CHANNEL, SERVER_EXIT_CHANNEL, SHOW_IN_FOLDER_CHANNEL, SILENT_AUDIO_CHANNEL, type AppInfo, type AppState, type CloseAnswer, type EnvironmentTest, type FolderPurpose, type MenuCommand, WINDOW_MODE_CHANNEL, MINI_RECORDER_ACTION_CHANNEL, MINI_RECORDER_CHANNEL, type MiniRecorderAction, type MiniRecorderState } from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
@@ -8,9 +8,11 @@ import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATUR
 import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { allowPermission } from "./permissions.ts";
+import { textMenu } from "./textMenu.ts";
 import { makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
 import { pingServer } from "./relay.ts";
 import { startServer } from "./server.ts";
+import { installCrashReports, reportServerExit } from "./crashReports.ts";
 import { testBackground, mediaTest, devServerUrl, appUrl, testDialogs } from "./app/testMode.ts";
 import { win, environments, server, setWin, setEnvironments, setServer } from "./app/state.ts";
 import { downloads, activeConnection, closeRelay, relay, downloadExport } from "./app/remote.ts";
@@ -202,6 +204,14 @@ function createWindow() {
     return { action: "deny" };
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
+  // Issue #49: Cut, Copy, Paste and Select All on selected text and in text fields. Tests log the
+  // menu instead of opening it (a native menu would wait for a click nobody makes).
+  contents.on("context-menu", (_event, params) => {
+    const items = textMenu(params);
+    if (!items || !win) return;
+    if (process.env.UNCUT_CDP) return void console.log(`[test] text menu ${items.map((i) => ("role" in i ? `${i.role}${i.enabled ? "" : ":off"}` : "-")).join(",")}`);
+    Menu.buildFromTemplate(items.map((i) => ({ ...i }))).popup({ window: win });
+  });
   // The only downloads are the ones downloadExport asked for (D109); anything else is cancelled.
   contents.session.on("will-download", (_event, item) => {
     const wanted = downloads.get(item.getURL());
@@ -290,6 +300,8 @@ app.on("second-instance", () => {
 
 app.whenReady().then(() => {
   installSignals();
+  // D222: main's crashes go to the server's telemetry spool.
+  installCrashReports(process.env.UNCUT_DATA_DIR || app.getPath("userData"));
   setEnvironments(makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt));
   setServer(startServer({
     ...resources,
@@ -297,6 +309,7 @@ app.whenReady().then(() => {
     dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
     // The local server going away matters to the window only while it shows Local.
     onExit: (reason) => {
+      reportServerExit(process.env.UNCUT_DATA_DIR || app.getPath("userData"), reason);
       if (environments?.active().kind !== "remote") win?.webContents.send(SERVER_EXIT_CHANNEL, reason);
     },
     // Generator keys (D99): safeStorage (its own key lives in the macOS Keychain); only the
