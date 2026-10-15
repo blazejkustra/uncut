@@ -21,6 +21,7 @@ import * as Generate from "../generate/generate.ts";
 import * as Keys from "../generate/keys.ts";
 import * as SoundLibrary from "../library/library.ts";
 import * as Media from "../media/media.ts";
+import * as Proxies from "../media/proxies.ts";
 import * as MediaFiles from "../media/mediaFiles.ts";
 import * as MediaIndex from "../media/mediaIndex.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
@@ -92,6 +93,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     Layer.provide(Analysis.layer),
     // whisper-cli and the speech models (D68), for transcripts and the Setup row.
     Layer.provideMerge(Whisper.layer),
+    Layer.provideMerge(Proxies.layer),
     Layer.provide(Media.layer),
     Layer.provide(Exporter.layer),
     Layer.provideMerge(MediaCore.layer),

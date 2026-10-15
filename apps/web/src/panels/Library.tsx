@@ -13,7 +13,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } f
 import { bridge } from "../state/bridge.ts";
 import { timecode } from "../state/format.ts";
 import { TEXT_PRESETS, type TextPreset } from "../state/project.ts";
-import { actions, activeAnalyses, activeJobs, getState, isRemote, mediaUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
+import { actions, activeAnalyses, activeJobs, getState, isRemote, mediaUrl, proxyOf, proxyUrl, textPresets, thumbUrl, useApp, type MediaItem, type Project } from "../state/store.ts";
+import { useProxiesOn } from "../settings/proxies.ts";
 import { COMPONENT_DRAG_TYPE, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../preview/components.ts";
 import { setDragChip } from "./dragChip.ts";
 import { hideElement, showElement, useHiddenElements } from "./elementsGrid.ts";
@@ -641,6 +642,9 @@ function MediaTile({ item, fps, online, used, selected, onSelect, onRemove }: { 
   // An SVG has no poster (ffmpeg can't read it): the tile shows the file itself (D76).
   const src = thumbIds.has(item.id) ? thumbUrl(item.id, item.path) : item.kind === "image" && /\.svg$/i.test(item.path) ? mediaUrl(item.id, item.path) : undefined;
   const seconds = item.probe?.frames ? item.probe.frames / fps : undefined;
+  // D212: the preview proxy of heavy footage (made in the background after import).
+  const proxy = proxyOf(app, item.id);
+  const proxiesOn = useProxiesOn();
   // F26 (D168): hovering a video's thumbnail scrubs through it (one muted video, only while hovered).
   const [scrub, setScrub] = useState<number | undefined>(undefined);
   const scrubRef = useRef<HTMLVideoElement>(null);
@@ -692,13 +696,24 @@ function MediaTile({ item, fps, online, used, selected, onSelect, onRemove }: { 
         {src && !broken ? <img key={src} src={src} alt="" draggable={false} onError={() => setBroken(true)} data-testid="thumb" /> : <Icon />}
         {canScrub && scrub !== undefined && (
           <>
-            <video ref={scrubRef} className="thumb-scrub" data-testid="thumb-scrub" src={mediaUrl(item.id, item.path)} muted playsInline preload="auto" />
+            <video ref={scrubRef} className="thumb-scrub" data-testid="thumb-scrub" src={proxiesOn && proxy?.phase === "done" && proxy.key ? proxyUrl(item.id, proxy.key) : mediaUrl(item.id, item.path)} muted playsInline preload="auto" />
             <span className="thumb-scrub-bar" style={{ left: `${scrub * 100}%` }} />
           </>
         )}
         {used && (
           <span className="tile-used" data-testid="media-used" title="On the timeline">
             Used
+          </span>
+        )}
+        {proxy && proxy.phase !== "failed" && (
+          <span
+            className={`tile-proxy ${proxy.phase}`}
+            data-testid="media-proxy"
+            data-phase={proxy.phase}
+            title={proxy.phase === "done" ? (proxiesOn ? "The preview plays a proxy of this file; export uses the original." : "Proxy made; the preview plays the original (Settings).") : proxy.phase === "running" ? "Making a proxy for the preview" : proxy.waiting ? "Proxy waits for the export to finish" : "Proxy queued"}
+            style={proxy.phase === "running" ? { backgroundImage: `linear-gradient(90deg, rgb(255 255 255 / 22%) ${Math.round((proxy.progress ?? 0) * 100)}%, transparent 0)` } : undefined}
+          >
+            {proxy.phase === "running" ? `Proxy ${Math.round((proxy.progress ?? 0) * 100)}%` : "Proxy"}
           </span>
         )}
         {seconds !== undefined && !analysis && (

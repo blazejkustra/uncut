@@ -7,7 +7,7 @@
 import type { ExportJob, ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
-import { CODEC_NAMES, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps, type ExportCodec } from "@uncut/core/export";
+import { CODEC_NAMES, defaultEncoder, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps, type ExportCodec, type ExportEncoder } from "@uncut/core/export";
 import { choiceOfTarget, LOUDNESS_PRESETS, masterLimiter, projectTargetLufs, targetWords } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
 import { Check, ChevronDown, ChevronRight, Copy, Download, FolderOpen, X } from "lucide-react";
@@ -22,6 +22,8 @@ import { usePlayback } from "../preview/playback.ts";
 import { findItem } from "../timeline/edit.ts";
 import { NumberField } from "../inspector/fields.tsx";
 import { effectiveRange, type RangeKind } from "./exportRange.ts";
+
+const ENCODER_NAMES: Readonly<Record<ExportEncoder, string>> = { hardware: "hardware", software: "software" };
 
 const QUALITIES: ReadonlyArray<{ readonly id: ExportQuality; readonly label: string; readonly hint: string }> = [
   { id: "draft", label: "Draft", hint: "Fast, for a quick look" },
@@ -77,6 +79,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const [advanced, setAdvanced] = useState(false);
   const [codec, setCodec] = useState<ExportCodec>("h264");
   const [bitrate, setBitrate] = useState<number | undefined>();
+  // D212: undefined = the preset's (High software, Draft and Standard hardware).
+  const [encoder, setEncoder] = useState<ExportEncoder | undefined>();
   const [shortSide, setShortSide] = useState<number | undefined>();
   const [outFps, setOutFps] = useState<number | undefined>();
   const [copied, setCopied] = useState(false);
@@ -138,7 +142,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     setBusy(true);
     setError(undefined);
     const subtitles: ExportSubtitles | undefined = cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
-    const video = { ...(codec !== "h264" ? { codec } : {}), ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}), ...(shortSide !== undefined ? { shortSide } : {}), ...(outFps !== undefined ? { fps: outFps } : {}) };
+    const video = { ...(codec !== "h264" ? { codec } : {}), ...(encoder !== undefined ? { encoder } : {}), ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}), ...(shortSide !== undefined ? { shortSide } : {}), ...(outFps !== undefined ? { fps: outFps } : {}) };
     const refused = await actions.startExport({ output, quality, loudness, ...(Object.keys(video).length ? { video } : {}), ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}) });
     setBusy(false);
     if (refused) {
@@ -287,7 +291,8 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <div className="wiz-cards">
           {QUALITIES.map((q) => {
             const size = outputSize(project.canvas, q.id, shortSide);
-            const mbps = q.id === quality && bitrate !== undefined ? bitrate : presetBitrateMbps(q.id, codec, size, outFps ?? fps);
+            const mbps = q.id === quality && bitrate !== undefined ? bitrate : codec === "hevc" ? presetBitrateMbps(q.id, codec, size, outFps ?? fps) : undefined;
+            const enc = q.id === quality && encoder !== undefined ? encoder : defaultEncoder(q.id);
             return (
               <button type="button" key={q.id} className={`wiz-card ${q.id === quality ? "active" : ""}`} data-testid={`quality-${q.id}`} data-active={q.id === quality} data-codec={codec} onClick={() => setQuality(q.id)}>
                 {q.label}
@@ -295,7 +300,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                   {size.width}×{size.height}, {fpsText(outFps ?? fps)}
                 </span>
                 <span data-testid={`quality-codec-${q.id}`}>
-                  {CODEC_NAMES[codec]}, {mbps} Mb/s
+                  {CODEC_NAMES[codec]}, {mbps !== undefined ? `${mbps} Mb/s` : ENCODER_NAMES[enc]}
                 </span>
                 <span>{q.hint}</span>
               </button>
@@ -305,7 +310,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <button type="button" className="export-advanced-toggle" data-testid="export-advanced" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
           {advanced ? <ChevronDown /> : <ChevronRight />}
           Advanced
-          {!advanced && (codec !== "h264" || bitrate !== undefined || shortSide !== undefined || outFps !== undefined) && <span className="muted">{[codec !== "h264" ? CODEC_NAMES[codec] : "", bitrate !== undefined ? `${bitrate} Mb/s` : "", shortSide !== undefined ? `${shortSide}p` : "", outFps !== undefined ? fpsText(outFps) : ""].filter(Boolean).join(", ")}</span>}
+          {!advanced && (codec !== "h264" || encoder !== undefined || bitrate !== undefined || shortSide !== undefined || outFps !== undefined) && <span className="muted">{[codec !== "h264" ? CODEC_NAMES[codec] : "", encoder !== undefined ? ENCODER_NAMES[encoder] : "", bitrate !== undefined ? `${bitrate} Mb/s` : "", shortSide !== undefined ? `${shortSide}p` : "", outFps !== undefined ? fpsText(outFps) : ""].filter(Boolean).join(", ")}</span>}
         </button>
         {advanced && (
           <div className="export-advanced" data-testid="export-advanced-body">
@@ -315,6 +320,16 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 {(["h264", "hevc"] as const).map((c) => (
                   <button type="button" key={c} role="radio" aria-checked={codec === c} className={codec === c ? "active" : ""} data-testid={`export-codec-${c}`} onClick={() => setCodec(c)}>
                     {c === "h264" ? "H.264" : "HEVC (smaller, Apple devices)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="export-adv-row">
+              <span className="muted">Encoder</span>
+              <div className="seg" data-testid="export-encoder" role="radiogroup" aria-label="Encoder">
+                {(["hardware", "software"] as const).map((e) => (
+                  <button type="button" key={e} role="radio" aria-checked={(encoder ?? defaultEncoder(quality)) === e} className={(encoder ?? defaultEncoder(quality)) === e ? "active" : ""} data-testid={`export-encoder-${e}`} onClick={() => setEncoder(e === defaultEncoder(quality) ? undefined : e)}>
+                    {e === "hardware" ? "Hardware (faster)" : "Software (smaller)"}
                   </button>
                 ))}
               </div>
@@ -344,7 +359,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
             </div>
             <div className="export-adv-row">
               <span className="muted">Bitrate</span>
-              <NumberField label="Mb/s" testId="export-bitrate" value={bitrate} placeholder={`${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}`} step={1} min={0.1} max={500} onCommit={(v) => setBitrate(v)} />
+              <NumberField label="Mb/s" testId="export-bitrate" value={bitrate} placeholder={codec === "hevc" ? `${presetBitrateMbps(quality, codec, outputSize(project.canvas, quality, shortSide), outFps ?? fps)}` : "Auto"} step={1} min={0.1} max={500} onCommit={(v) => setBitrate(v)} />
             </div>
           </div>
         )}

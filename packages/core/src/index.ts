@@ -32,7 +32,7 @@ export type { LookBackground, LookMove, LookShadow, LookStroke, TextPreset, Word
 export { lookItem, lookSnapshot, planInsertText, resetLookFields } from "./text/textPlan.ts";
 export type { InsertTextPlan, InsertTextRequest } from "./text/textPlan.ts";
 export type { FontFile, Motion, RenderTarget, TextLook } from "./visual/render.ts";
-export { CODEC_NAMES, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps } from "./export.ts";
+export { CODEC_NAMES, defaultEncoder, exportFrameRates, exportShortSides, HARDWARE_H264_QUALITY, outputSize, presetBitrateMbps, SOFTWARE_H264_CRF, type ExportEncoder } from "./export.ts";
 export type { ExportCodec, ExportQuality } from "./export.ts";
 export { decodeEnvelope, DEFAULT_PAUSE_MIN_S, editWords, encodeEnvelope, ENVELOPE_RATE, FILLERS, fillersOf, handleFrames, HEAD_S, PAUSE_MIN_S, pausesOf, planTextCut, speechEdges, speechThreshold, speechWords, TAIL_S, tailFrames } from "./text/transcript.ts";
 export type { CutTranscript, CutWord, EditWord, Filler, Pause, SpeechEnvelope, SpeechSegment, StoredEnvelope, TextCut, TextCutPlan, TextCutRequest } from "./text/transcript.ts";
