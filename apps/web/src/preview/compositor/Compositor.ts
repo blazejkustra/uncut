@@ -300,8 +300,6 @@ export class Compositor extends CompositorBase {
         gpuPictures.set(c.item.id, {
           id: c.item.id,
           source: pic,
-          // As macOS shows the <video> (tone.ts): known from the file once the scrub cache read it, else Chromium's guess from the size.
-          lift: el instanceof HTMLVideoElement && (this.scrub.peek(el.dataset.src ?? "")?.state === "ready" ? this.scrub.peek(el.dataset.src ?? "")!.lift : el.videoHeight >= 720),
           box: c.box,
           opacity: c.opacity,
           wipe: c.wipe,
