@@ -23,7 +23,7 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "electron": "44.6.0",
-    "puppeteer-core": "23.11.1",
+    "puppeteer-core": "25.13.0",
     "typegpu": "0.12.6",
     "typescript": "7.0.2"
   },
