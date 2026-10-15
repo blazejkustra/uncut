@@ -1,5 +1,5 @@
 // Move planners (edit.ts): one item, onto a new track, a group, and the layer order (F15).
-import { gapOpsFor, mainSlot, mainStartsById, nearestFreeSpot, planPutOnMain } from "@uncut/core/arrange";
+import { gapOpsFor, mainSlot, mainStartsById, nearestFreeSpot, planPutOnMain, shiftMainItems } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type ProjectModel, uniqueId, type Item, type Track } from "../../state/project.ts";
 import { type Plan, findItem, lockOf, fitsTrack, lockedProblem, dropTransitions, TRACK_KINDS, type Placed } from "./base.ts";
@@ -163,9 +163,12 @@ export interface GroupMovePlan extends Plan {
  * Move several selected items together (T8, D126): every one by the same number of frames (snapped
  * when any of their edges comes near a target that isn't in the group) and the same number of lanes
  * (`laneOffset`, in the timeline's lane order `lanes`), so they keep their offsets in time and
- * across tracks. Only free-track items move in a group: the main track is magnetic, so a selection
- * with main clips is refused. Each must land on a free, compatible, unlocked track where nothing
- * outside the group is in the way; captions never move.
+ * across tracks. Each free item must land on a free, compatible, unlocked track where nothing
+ * outside the group is in the way; captions never move. Main clips in the group (issue #58, D229)
+ * move along in time, staying on Main in their order with the spaces between them (core
+ * shiftMainItems: the other main clips stay put unless one lands on them); then the group moves in
+ * time only (the lane offset is ignored). Items linked to a main clip of the group (D123, D215)
+ * get no op of their own: they follow their clip, still linked.
  */
 export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>, delta: number, laneOffset: number, lanes: ReadonlyArray<string>, snap?: Snap): GroupMovePlan | { readonly problem: string } {
   const placed = [...new Set(ids)].map((id) => findItem(project, id)).filter((p): p is Placed => p !== undefined && p.item.type !== "captions");
@@ -174,7 +177,8 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
     const locked = lockOf(p);
     if (locked) return { problem: locked };
   }
-  if (placed.some((p) => p.track.role === "main")) return { problem: "Main clips move one at a time: leave them out of the group to move the rest." };
+  const mains = placed.filter((p) => p.track.role === "main");
+  const lanesBy = mains.length ? 0 : laneOffset;
   let shift = Math.round(delta);
   const minStart = Math.min(...placed.map((p) => p.start));
   shift = Math.max(shift, -minStart);
@@ -182,9 +186,9 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
   if (snapped) shift = Math.max(-minStart, shift + snapped.shift);
   // D215: a group dragged onto the main track goes on it (a take: its picture on Main, its sounds
   // linked under it) at the cut nearest where it's dropped, instead of being refused.
-  const ontoMain = laneOffset ? placed.find((p) => {
+  const ontoMain = lanesBy ? placed.find((p) => {
     const from = lanes.indexOf(p.track.id);
-    return from !== -1 && project.tracks.find((t) => t.id === lanes[from + laneOffset])?.role === "main";
+    return from !== -1 && project.tracks.find((t) => t.id === lanes[from + lanesBy])?.role === "main";
   }) : undefined;
   if (ontoMain) {
     const put = planPutOnMain(project, ontoMain.item.id, { frame: ontoMain.start + shift });
@@ -193,10 +197,14 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
   }
   const group = new Set(placed.map((p) => p.item.id));
   const ops: Array<Op> = [];
+  if (mains.length && shift !== 0) ops.push(...shiftMainItems(mains[0]!.track, new Set(mains.map((p) => p.item.id)), shift).ops);
+  // Linked to a main clip that moves: withLinkedAudio carries it (a move_item would unlink it).
+  const follows = (p: Placed) => typeof p.item.linkedTo === "string" && mains.some((m) => m.item.id === p.item.linkedTo);
   const landing = new Map<string, Array<{ start: number; end: number }>>();
   for (const p of placed) {
+    if (p.track.role === "main" || follows(p)) continue;
     const from = lanes.indexOf(p.track.id);
-    const toId = laneOffset && from !== -1 ? lanes[from + laneOffset] : p.track.id;
+    const toId = lanesBy && from !== -1 ? lanes[from + lanesBy] : p.track.id;
     const target = project.tracks.find((t) => t.id === toId);
     if (!target) return { problem: "There's no track there for all of them." };
     if (target.role === "main") return { problem: "A group can't be dropped on the main track: move clips onto it one at a time." };
