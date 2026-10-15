@@ -90,3 +90,19 @@ test("blade frame: snaps to the playhead, other items' edges and markers within 
   // Snapping off.
   assert.deepEqual(bladeFrame(p, "b", 108, undefined), { frame: 108 });
 });
+
+// D248 (review Low of #57): a clip whose linked sound is locked can't be cut (the sound would stay
+// whole, following only the first half); the blade line takes its refusal from planBladeSplit, so
+// it's grey exactly when a click would be refused.
+test("blade: a clip whose linked sound is locked (track or item) is refused, saying why", () => {
+  const withMic = (trackLocked: boolean, itemLocked: boolean): Project => {
+    const p = project();
+    return { ...p, tracks: [p.tracks[0]!, { id: "voice", kind: "audio", name: "Voice", items: [{ id: "mic", type: "audio", media: "m", in: 0, start: 90, duration: 60, linkedTo: "b", ...(itemLocked ? { locked: true } : {}) }], ...(trackLocked ? { locked: true } : {}) }] };
+  };
+  assert.match((planBladeSplit(withMic(true, false), "b", 110) as { problem: string }).problem, /linked sound is on the Voice track, which is locked/);
+  assert.match((planBladeSplit(withMic(false, true), "b", 110) as { problem: string }).problem, /linked sound is locked/);
+  // Unlocked: one split_item; the sound splits with it as the server applies it (D123).
+  const plan = planBladeSplit(withMic(false, false), "b", 110);
+  assert.ok(!("problem" in plan));
+  assert.equal(plan.ops.length, 1);
+});

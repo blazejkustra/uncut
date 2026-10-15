@@ -79,7 +79,8 @@ test("the store (D232): a plugin's skills listed read-only, never saved, deleted
   mkdirSync(join(projectDir, "brand"), { recursive: true });
   const skills = bundledSkills();
   const dirs = { dataDir, projectDir, skills };
-  // A file with a plugin skill's id (or an old built-in's) on disk is ignored.
+  // A file with an old built-in's id on disk is ignored; one with a plugin skill's id is the user's
+  // own from before D232, renamed to a free id (D248) instead of shadowing or vanishing.
   writeFileSync(join(dataDir, "brand", "skills", "sound-design.json"), JSON.stringify({ id: "sound-design", name: "Hacked", description: "", body: "boom everywhere" }));
   writeFileSync(join(dataDir, "brand", "skills", "builtin-sound-design.json"), JSON.stringify({ id: "builtin-sound-design", name: "Hacked", description: "", body: "boom everywhere" }));
   await saveSkill(dirs, { id: "my-promo", name: "My promo", scope: "global", description: "", body: "Review checklist\n- Mine" });
@@ -92,13 +93,15 @@ test("the store (D232): a plugin's skills listed read-only, never saved, deleted
   assert.match(sound.body, /Review checklist/);
   assert.ok(state.skills.some((s) => s.id === "my-promo" && !s.plugin));
   assert.ok(!state.skills.some((s) => s.id === "builtin-sound-design"));
+  assert.equal(state.skills.find((s) => s.id === "sound-design-2")?.name, "Hacked");
   await assert.rejects(saveSkill(dirs, { ...sound }), /A plugin's skills can't be changed/);
-  await assert.rejects(saveSkill(dirs, { id: "", name: "Sound design", scope: "global", description: "", body: "" }), /A plugin's skills can't be changed/, "a name that slugs to a plugin skill's id");
+  // D248: a new skill named like a plugin's gets a free id of its own.
+  assert.equal((await saveSkill(dirs, { id: "", name: "Sound design", scope: "global", description: "", body: "" })).id, "sound-design-3");
   await assert.rejects(deleteSkill(dirs, BUILTIN_IDS.sound, "global"), /can't be deleted here/);
-  // Without the plugin (not allowed, or removed) its skills aren't there; the user's own file with that id is.
+  // Without the plugin (not allowed, or removed) its skills aren't there; the user's own are.
   const alone = await readBrand({ dataDir, projectDir });
   assert.ok(!alone.skills.some((s) => s.plugin));
-  assert.equal(alone.skills.find((s) => s.id === BUILTIN_IDS.sound)?.name, "Hacked");
+  assert.equal(alone.skills.find((s) => s.id === "sound-design-2")?.name, "Hacked");
   // An old project's choice (before D232) reads as the skills' names now.
   writeFileSync(join(projectDir, "brand", "active.json"), JSON.stringify({ kit: null, skills: ["builtin-launch-promo", "my-promo", "builtin-sound-design"] }));
   assert.deepEqual((await readBrand(dirs)).active.skills, [BUILTIN_IDS.launch, "my-promo", BUILTIN_IDS.sound]);

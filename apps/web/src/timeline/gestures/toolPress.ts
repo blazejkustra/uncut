@@ -5,7 +5,7 @@ import { getBeats } from "../../audio/beats.ts";
 import { getPlayback } from "../../preview/playback.ts";
 import type { ProjectModel } from "../../state/project.ts";
 import { actions } from "../../state/store.ts";
-import { bladeFrame, findItem, lockOf, planBladeSplit, SNAP_PX } from "../edit.ts";
+import { bladeFrame, findItem, planBladeSplit, SNAP_PX } from "../edit.ts";
 import { getTool } from "../tools.ts";
 import type { LaneGeometry } from "./lanes.ts";
 
@@ -16,7 +16,7 @@ export interface BladeHover {
   readonly snapAt?: number;
   readonly top: number;
   readonly height: number;
-  /** Why a click wouldn't cut there (a locked track or item). */
+  /** Why a click wouldn't cut there (planBladeSplit's problem: a lock, a locked linked sound, a transition). */
   readonly refused?: string;
 }
 
@@ -48,7 +48,9 @@ export function makeToolPress(ctx: ToolPressCtx) {
     if (!(placed.start < at.frame && at.frame < placed.start + placed.item.duration)) return undefined;
     const r = lane.getBoundingClientRect();
     const top = r.top - lanesRef.current.getBoundingClientRect().top;
-    const refused = lockOf(placed);
+    // D248: the line says what the click would do: planBladeSplit's refusal (locks, a locked linked sound, a transition).
+    const plan = planBladeSplit(project, placed.item.id, at.frame);
+    const refused = "problem" in plan ? plan.problem : undefined;
     return { item: placed.item.id, frame: at.frame, ...(at.snapAt !== undefined ? { snapAt: at.snapAt } : {}), top, height: r.height, ...(refused ? { refused } : {}) };
   };
 

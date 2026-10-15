@@ -293,7 +293,7 @@ export async function installPlugin(input: { readonly source: string; readonly r
     } catch (error) {
       throw new InstallError("invalid", (error as NodeJS.ErrnoException).code === "ENOENT" ? `There's no ${MANIFEST_FILE} at the top of ${source.kind === "git" ? "that repository" : "that folder"}, so it isn't an Uncut plugin.` : `Its ${MANIFEST_FILE} isn't valid JSON.`);
     }
-    const checked = checkManifest(raw, ctx.builtinIds);
+    const checked = checkManifest(raw, ctx.builtinIds, "user");
     if ("problem" in checked) throw new InstallError("invalid", checked.problem);
     const manifest: ModuleManifest = checked.manifest;
     const bundledName = ctx.bundled.get(manifest.id);

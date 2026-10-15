@@ -2,7 +2,7 @@
 import { gapOpsFor, mainSlot, mainStartsById, nearestFreeSpot, planPutOnMain, shiftMainItems } from "@uncut/core/arrange";
 import type { Op } from "@uncut/core/types";
 import { type ProjectModel, uniqueId, type Item, type Track } from "../../state/project.ts";
-import { type Plan, findItem, lockOf, fitsTrack, lockedProblem, dropTransitions, TRACK_KINDS, type Placed } from "./base.ts";
+import { type Plan, findItem, lockOf, fitsTrack, lockedProblem, dropTransitions, draftOf, TRACK_KINDS, type Placed } from "./base.ts";
 import { type Snap, nearestSnap } from "./snap.ts";
 
 export interface MovePlan extends Plan {
@@ -195,11 +195,17 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
     if ("problem" in put) return put;
     return { ops: put.ops, summary: put.summary, delta: shift };
   }
-  const group = new Set(placed.map((p) => p.item.id));
   const ops: Array<Op> = [];
   if (mains.length && shift !== 0) ops.push(...shiftMainItems(mains[0]!.track, new Set(mains.map((p) => p.item.id)), shift).ops);
   // Linked to a main clip that moves: withLinkedAudio carries it (a move_item would unlink it).
   const follows = (p: Placed) => typeof p.item.linkedTo === "string" && mains.some((m) => m.item.id === p.item.linkedTo);
+  // D248: the free items land among the others where they'll be once the main clips have moved:
+  // the sounds that follow them (selected or not, and those of main clips pushed later) included,
+  // so nothing is refused for a sound that's moving away, and nothing lands on one that's coming
+  // (withLinkedAudio would unlink it rather than fail).
+  const projected = ops.length ? draftOf(project, ops) : { project };
+  if ("problem" in projected) return projected;
+  const moving = new Set(placed.filter((p) => p.track.role !== "main" && !follows(p)).map((p) => p.item.id));
   const landing = new Map<string, Array<{ start: number; end: number }>>();
   for (const p of placed) {
     if (p.track.role === "main" || follows(p)) continue;
@@ -212,7 +218,8 @@ export function planGroupMove(project: ProjectModel, ids: ReadonlyArray<string>,
     if (target.locked) return { problem: lockedProblem(target) };
     const start = p.start + shift;
     const end = start + p.item.duration;
-    const outside = target.items.filter((i) => !group.has(i.id)).every((i) => end <= (i.start ?? 0) || start >= (i.start ?? 0) + i.duration);
+    const there = projected.project.tracks.find((t) => t.id === target.id)?.items ?? target.items;
+    const outside = there.filter((i) => !moving.has(i.id)).every((i) => end <= (i.start ?? 0) || start >= (i.start ?? 0) + i.duration);
     const mine = landing.get(target.id) ?? [];
     if (!outside || mine.some((b) => end > b.start && start < b.end)) return { problem: `Something on the ${target.name} track is in the way.` };
     mine.push({ start, end });

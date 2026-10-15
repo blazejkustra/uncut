@@ -129,10 +129,10 @@ test("on the server: brand.get lists the bundled plugin's skills, and a user plu
     const list = await client.ok("plugins.list", {});
     const row = list.find((p: { id: string }) => p.id === "acme.pack");
     assert.equal(row.status, "needs-approval");
-    assert.deepEqual(row.contributes.skills, ["Cold open"]);
-    assert.match(row.asks[0], /skills \(instructions the agent reads\)/);
+    assert.deepEqual(row.contributes.skills, ["Cold open (/cold-open)"]);
+    assert.match(row.asks[0], /adds a skill\. Its skills are instructions the agent follows/);
     assert.deepEqual(list.find((p: { id: string }) => p.id === "uncut.skills").contributes.skills.length, 10);
-    await client.ok("plugins.approve", { id: row.id, dir: row.dir, capabilities: row.capabilities });
+    await client.ok("plugins.approve", { id: row.id, dir: row.dir, capabilities: row.capabilities, skills: row.skillsHash });
     const after = await client.ok("brand.get", {});
     const cold = after.skills.find((x: { id: string }) => x.id === "cold-open");
     assert.deepEqual([cold.name, cold.plugin, cold.pluginName, cold.builtin], ["Cold open", "acme.pack", "Pack acme.pack", undefined]);

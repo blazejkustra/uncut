@@ -2,8 +2,11 @@ import { existsSync } from "node:fs";
 import { realpath, readdir, stat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readContributions } from "@uncut/core";
+import { BUILTIN_IDS } from "@uncut/core/skills";
 import type { McpTool } from "../../agent/agentTools.ts";
 import { type PluginSource, type Discovery, type FoundPlugin, type BrokenPlugin, messageOf, MANIFEST_FILE, checkManifest, TOOL_NAME, str, DEFAULT_TIMEOUT_S } from "./manifest.ts";
+
+const RESERVED_SKILLS: ReadonlySet<string> = new Set(Object.values(BUILTIN_IDS));
 
 /**
  * Every plugin folder under `roots`, in order: a subfolder with an uncut.module.json. A manifest
@@ -56,7 +59,7 @@ export async function discoverPlugins(
         skip(`Its ${MANIFEST_FILE} isn't valid JSON (${messageOf(error)}).`);
         continue;
       }
-      const checked = checkManifest(raw, reserved.moduleIds);
+      const checked = checkManifest(raw, reserved.moduleIds, root.source);
       if ("problem" in checked) {
         skip(checked.problem, checked.id, checked.name);
         continue;
@@ -91,7 +94,10 @@ export async function discoverPlugins(
       }
       const runs = runtime.type === "process";
       // Ids are checked per plugin here; across plugins only allowed ones claim ids (mergeContributions).
-      const read = readContributions(manifest, { reserved: reserved.moduleIds, moves });
+      // D248: only a plugin that ships with Uncut may have Uncut's own skill names, and its skills say so.
+      const bundled = root.source === "bundled";
+      const read0 = readContributions(manifest, { reserved: reserved.moduleIds, moves, ...(bundled ? {} : { reservedSkills: RESERVED_SKILLS }) });
+      const read = bundled && read0.contributions.skills?.length ? { ...read0, contributions: { ...read0.contributions, skills: read0.contributions.skills.map((x) => ({ ...x, bundled: true as const })) } } : read0;
       warnings.push(...read.warnings);
       const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length + (read.contributions.shaders?.length ?? 0) + (read.contributions.skills?.length ?? 0) > 0;
       // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent; a

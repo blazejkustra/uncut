@@ -1,4 +1,5 @@
 import { type ModuleManifest, type Contributions, validateModule } from "@uncut/core";
+import { SKILLS_PLUGIN_ID } from "@uncut/core/skills";
 import { API_VERSIONS, API_VERSION } from "@uncut/plugin-sdk";
 import type { McpTool } from "../../agent/agentTools.ts";
 
@@ -61,7 +62,7 @@ export const messageOf = (error: unknown) => (error instanceof Error ? error.mes
  * schema, whose fields it may not know), the module schema, a process plugin with a command, and
  * not a built-in module's id. Else one sentence (and the id and name, when it has them).
  */
-export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { readonly manifest: ModuleManifest } | { readonly problem: string; readonly id: string | undefined; readonly name: string | undefined } {
+export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>, source: PluginSource = "bundled"): { readonly manifest: ModuleManifest } | { readonly problem: string; readonly id: string | undefined; readonly name: string | undefined } {
   const loose = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const fail = (problem: string, manifest?: { id?: unknown; name?: unknown }) => ({ problem, id: str((manifest ?? loose).id), name: str((manifest ?? loose).name) });
   const api = loose.apiVersion;
@@ -85,5 +86,7 @@ export function checkManifest(raw: unknown, builtinIds: ReadonlySet<string>): { 
     if (!runtime.command) return fail(`Its runtime has no command, so Uncut can't start it.`);
   }
   if (builtinIds.has(manifest.id)) return fail(`Its id ${manifest.id} belongs to a built-in module.`);
+  // D248: Uncut's own skills plugin can't be replaced or hidden by a plugin from elsewhere.
+  if (source !== "bundled" && manifest.id === SKILLS_PLUGIN_ID) return fail(`Its id ${manifest.id} belongs to Uncut's own skills, which can't be replaced.`);
   return { manifest };
 }
