@@ -1,7 +1,7 @@
 // D221 scrub cache (scrub.ts): one source file's index, decoder and decode queue.
 import { type Mp4Index, readMp4Index, sampleAt, keyframeOf } from "@uncut/core/mp4index";
 import type { ScrubCache } from "./cache.ts";
-import { decoderColour, liftsTone } from "./colour.ts";
+import { decoderColour } from "./colour.ts";
 import { cachedSize, windowRanks } from "./frames.ts";
 
 /** Largest byte range read at once while decoding a long GOP. */
@@ -36,8 +36,6 @@ export class ScrubSource {
   colour = "";
   /** What the stream says and what the decoder was configured with (for diagnosis). */
   colourIn = "";
-  /** Whether the <video> of this file is shown with its mid-tones lifted (tone.ts). */
-  lift = false;
   /** Why it isn't used (for diagnosis). */
   reason = "";
   index: Mp4Index | undefined;
@@ -100,7 +98,6 @@ export class ScrubSource {
       const index = await readMp4Index((o, l) => this.read(o, l), size);
       if (!index) return this.fail("not an indexable MP4/MOV with H.264 or HEVC");
       const colorSpace = decoderColour(index.colour, index.codedHeight);
-      this.lift = liftsTone(index.colour, index.codedHeight);
       this.colourIn = JSON.stringify({ stream: index.colour ?? "unknown", config: colorSpace ?? "webcodecs" });
       const config: VideoDecoderConfig = { codec: index.codec, description: index.description, codedWidth: index.codedWidth, codedHeight: index.codedHeight, optimizeForLatency: true, ...(colorSpace ? { colorSpace } : {}) };
       const support = await VideoDecoder.isConfigSupported(config).catch(() => undefined);
