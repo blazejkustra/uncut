@@ -25,6 +25,8 @@ before(() => {
   if (!hasFfmpeg) return;
   // 12 s of testsrc2 (a moving picture with a running clock), 16:9.
   ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "12", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(root, "long.mp4"));
+  // Like a D212 proxy: a keyframe every 10 frames, no B-frames.
+  ff("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-t", "12", "-c:v", "libx264", "-g", "10", "-bf", "0", "-pix_fmt", "yuv420p", join(root, "proxy.mp4"));
 });
 after(() => {
   killAll();
@@ -146,7 +148,25 @@ test("a real sprite: made once with ffmpeg, the tiles differ, then read from the
   // A new key (the file changed): made again, the old key's files go.
   const remade = await generate(folder, "m-long", { ...source, key: "ba9876543210", seconds: 12 }, { ffmpeg, ffprobe });
   assert.equal(remade.kind, "ok");
-  assert.deepEqual(readdirSync(folder).sort(), ["m-long--ba9876543210.jpg", "m-long--ba9876543210.json"]);
+  assert.deepEqual(readdirSync(folder).filter((f) => f.startsWith("m-long-")).sort(), ["m-long--ba9876543210.jpg", "m-long--ba9876543210.json"]);
+
+  // From a proxy (keyframes only): the same layout, and still different pictures along it.
+  const fromProxy = await generate(folder, "m-proxy", { ...source, input: join(root, "proxy.mp4"), proxy: true, seconds: 12 }, { ffmpeg, ffprobe });
+  assert.equal(fromProxy.kind, "ok");
+  if (fromProxy.kind === "ok") {
+    assert.deepEqual(fromProxy.layout, made.layout);
+    const p = rgbaOf(join(folder, "m-proxy--0123456789ab.jpg"));
+    const pTile = (n: number) => {
+      const o: Array<number> = [];
+      for (let y = Math.floor(n / 10) * 64; y < Math.floor(n / 10) * 64 + 64; y++) for (let x = (n % 10) * 114; x < (n % 10) * 114 + 114; x++) o.push(p[(y * W + x) * 4]!, p[(y * W + x) * 4 + 1]!, p[(y * W + x) * 4 + 2]!);
+      return o;
+    };
+    assert.ok(diff(pTile(0), pTile(12)) > 2, "keyframe-only tiles differ");
+  }
+  // A proxy that's gone by the time ffmpeg runs: made from the original instead.
+  const fallback = await generate(folder, "m-fallback", { ...source, input: join(root, "gone-proxy.mp4"), proxy: true, seconds: 12 }, { ffmpeg, ffprobe });
+  assert.equal(fallback.kind, "ok");
+  if (fallback.kind === "ok") assert.equal(fallback.from, "decode");
 
   // No ffmpeg and nothing cached: failed (try later), not "none".
   const none = await generate(folder, "m-other", source, { ffmpeg: async () => undefined, ffprobe });
