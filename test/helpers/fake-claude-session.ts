@@ -14,6 +14,8 @@
 //   { exit: true }     finish the turn, then exit (as an idle claude that went away)
 //   { missing: name, args } claude's own failure for a tool it doesn't have (bare name): the call
 //     shows, then an is_error tool_result "No such tool available" (the MCP server isn't asked)
+//   { raw: {...} }      D218: one stream-json line as given (a rate_limit_event, an assistant message with `error`)
+//   { result: {...} }   D218: end the turn with this result line (session_id added), e.g. a 429 or blocking_limit
 //   { tool, args, slowInput: ms } the call's input streams in pieces, ms apart (input_json_delta)
 //   { builtin: "Bash", args, result?, prompt? } D194: a built-in tool call (WebSearch, WebFetch, Bash,
 //     Write, ...): the tool_use shows, then (unless prompt is false: claude's own auto-allow) a
@@ -44,6 +46,8 @@ type Step =
   | { sleep: number }
   | { fail: string }
   | { await: string }
+  | { raw: Record<string, unknown> }
+  | { result: Record<string, unknown> }
   | { crash: true }
   | { exit: true };
 interface RpcReply {
@@ -163,7 +167,7 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
         message: messages,
         env: Object.keys(process.env),
         // D181: the values that matter for isolation and tool loading.
-        envValues: Object.fromEntries(["ENABLE_TOOL_SEARCH", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR"].map((k) => [k, process.env[k] ?? null])),
+        envValues: Object.fromEntries(["ENABLE_TOOL_SEARCH", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "CLAUDE_AGENT_SDK_CLIENT_APP", "CLAUDE_AGENT_SDK_VERSION", "CLAUDE_CODE_ENTRYPOINT", "NODE_OPTIONS"].map((k) => [k, process.env[k] ?? null])),
         argv,
         alwaysLoad: cfg.alwaysLoad ?? null,
         images,
@@ -210,6 +214,14 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     if ("exit" in step) {
       exitAfter = true;
       continue;
+    }
+    if ("raw" in step) {
+      out({ parent_tool_use_id: null, session_id: sessionId, ...step.raw });
+      continue;
+    }
+    if ("result" in step && !("builtin" in step)) {
+      out({ type: "result", duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId, ...step.result });
+      return;
     }
     if ("think" in step) {
       const id = await assistant({ type: "thinking", thinking: step.think });

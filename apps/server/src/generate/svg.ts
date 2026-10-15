@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 import { graphicDocument } from "@uncut/core";
 
-import { agentEnv } from "../app/shellEnv.ts";
+import { claudeEnv } from "../app/shellEnv.ts";
 import { which } from "../app/setup.ts";
 import { rasterizerCommand, startRasterizer } from "../export/rasterizer.ts";
 import { svgSize } from "../export/svg.ts";
@@ -173,7 +173,7 @@ export async function askClaude(input: { readonly prompt: string; readonly kind:
   if (process.env.UNCUT_AGENT_MODEL) args.push("--model", process.env.UNCUT_AGENT_MODEL);
   try {
     const out = await new Promise<string>((resolve, reject) => {
-      const child = spawn(bin, args, { cwd, env: agentEnv(process.env), stdio: ["pipe", "pipe", "pipe"], detached: true });
+      const child = spawn(bin, args, { cwd, env: claudeEnv(process.env), stdio: ["pipe", "pipe", "pipe"], detached: true });
       let stdout = "";
       let stderr = "";
       const kill = () => {

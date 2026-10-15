@@ -11,6 +11,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resultError, resultFailed, turnLimits } from "./agentLimits.ts";
+
 import type { Brief, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
 import { soundProfileText } from "@uncut/core";
@@ -414,14 +416,15 @@ export async function runCritic(o: { bin: string; env: Record<string, string>; m
           const line = buf.slice(0, nl).trim();
           buf = buf.slice(nl + 1);
           if (!line) continue;
-          let m: { type?: unknown; is_error?: unknown; result?: unknown };
+          let m: Record<string, any>;
           try {
             m = JSON.parse(line);
           } catch {
             continue;
           }
           if (m.type !== "result") continue;
-          if (m.is_error === true || typeof m.result !== "string") finish(() => reject(new Error(`the critic stopped: ${String(m.result ?? "no answer").slice(0, 300)}`)));
+          // D218: a usage limit or sign-in problem in the same words as the Agent tab.
+          if (m.is_error === true || resultFailed(m) || typeof m.result !== "string") finish(() => reject(new Error(`the critic stopped: ${resultError(m, turnLimits(), Date.now()) ?? String(m.result ?? "no answer").slice(0, 300)}`)));
           else finish(() => resolve(m.result as string));
         }
       });
