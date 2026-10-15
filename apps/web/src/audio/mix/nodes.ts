@@ -1,0 +1,134 @@
+// Web Audio node builders for the mix: effect stage chains (D84) and the master limiter (D86).
+import { type Stage, makeupCompensationDb, LIMITER_MARGIN_DB } from "@uncut/core/effects";
+
+/** dB → linear (no cutoff: for node parameters). */
+const lin = (db: number) => 10 ** (db / 20);
+
+/** The nodes of a chain of effect stages, and how to set their parameters without rebuilding. */
+export interface StageChain {
+  /** Kinds and types in order: a chain with the same shape is updated in place. */
+  readonly shape: string;
+  readonly first: AudioNode | undefined;
+  readonly last: AudioNode | undefined;
+  readonly nodes: ReadonlyArray<AudioNode>;
+  /** Set every parameter from `stages` (same shape), gliding over `ramp` seconds (0: at once). */
+  readonly set: (stages: ReadonlyArray<Stage>, ramp: number) => void;
+  /** Compressors' gain reduction now (dB, ≤ 0), the deepest. */
+  readonly reduction: () => number;
+}
+export const stageShape = (stages: ReadonlyArray<Stage>) => stages.map((s) => (s.kind === "biquad" ? s.type : s.kind)).join(",");
+
+/**
+ * Web Audio nodes for effect stages (D84), in order, connected one to the next. Noise removal has
+ * no preview node (D88: export only; trackStages leaves it out for the preview). Works on any
+ * context (the live mix, and the app tests' OfflineAudioContext checks).
+ */
+export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>): StageChain {
+  type Part = { readonly stage: Stage["kind"]; readonly nodes: ReadonlyArray<AudioNode>; readonly set: (s: Stage, at: (p: AudioParam, v: number) => void) => void };
+  const parts: Array<Part> = [];
+  for (const stage of stages) {
+    if (stage.kind === "biquad") {
+      const f = ctx.createBiquadFilter();
+      f.type = stage.type;
+      parts.push({
+        stage: "biquad",
+        nodes: [f],
+        set: (s, at) => {
+          if (s.kind !== "biquad") return;
+          at(f.frequency, s.freq);
+          // Web Audio: a high-/low-pass's Q is in dB (20·log10 of the cookbook's Q); a peak's is linear; shelves ignore it (slope 1).
+          at(f.Q, s.type === "highpass" || s.type === "lowpass" ? 20 * Math.log10(s.q) : s.q);
+          at(f.gain, s.gainDb);
+        },
+      });
+    } else if (stage.kind === "compressor") {
+      const c = ctx.createDynamicsCompressor();
+      const g = ctx.createGain();
+      c.knee.value = 0;
+      c.connect(g);
+      parts.push({
+        stage: "compressor",
+        nodes: [c, g],
+        set: (s, at) => {
+          if (s.kind !== "compressor") return;
+          at(c.threshold, s.thresholdDb);
+          at(c.ratio, s.ratio);
+          at(c.attack, s.attackMs / 1000);
+          at(c.release, s.releaseMs / 1000);
+          at(g.gain, lin(s.makeupDb - makeupCompensationDb(s.thresholdDb, s.ratio)));
+        },
+      });
+    }
+  }
+  for (let i = 1; i < parts.length; i++) parts[i - 1]!.nodes.at(-1)!.connect(parts[i]!.nodes[0]!);
+  const apply = (list: ReadonlyArray<Stage>, ramp: number) => {
+    const shown = list.filter((s) => s.kind !== "denoise");
+    const now = ctx.currentTime;
+    const at = (p: AudioParam, v: number) => {
+      if (ramp <= 0) {
+        p.cancelScheduledValues(now);
+        p.value = v;
+        return;
+      }
+      p.cancelScheduledValues(now);
+      p.setValueAtTime(p.value, now);
+      p.linearRampToValueAtTime(v, now + ramp);
+    };
+    shown.forEach((s, i) => parts[i]?.set(s, at));
+  };
+  apply(stages, 0);
+  const compressors = parts.filter((p) => p.stage === "compressor").map((p) => p.nodes[0] as DynamicsCompressorNode);
+  return {
+    shape: stageShape(stages.filter((s) => s.kind !== "denoise")),
+    first: parts[0]?.nodes[0],
+    last: parts.at(-1)?.nodes.at(-1),
+    nodes: parts.flatMap((p) => p.nodes),
+    set: apply,
+    reduction: () => compressors.reduce((m, c) => Math.min(m, c.reduction), 0),
+  };
+}
+
+/** The limiter's release (s) and attack (s): close to the export's alimiter (50 ms; its 5 ms lookahead is an attack here). */
+const LIMITER_RELEASE_S = 0.05;
+const LIMITER_ATTACK_S = 0.001;
+/** A hard clip at ±ceiling (linear), as a WaveShaper curve: identity inside, flat outside (input past ±1 maps to the ends). */
+function clipCurve(ceiling: number): Float32Array<ArrayBuffer> {
+  const n = 4097;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.max(-ceiling, Math.min(ceiling, x));
+  }
+  return curve;
+}
+
+/** The master limiter's nodes (D86): compressor → compensation gain → clip. */
+export interface LimiterNodes {
+  readonly input: DynamicsCompressorNode;
+  readonly gain: GainNode;
+  readonly clip: WaveShaperNode;
+  ceilingDb: number;
+}
+export function buildLimiter(ctx: BaseAudioContext, ceilingDb: number): LimiterNodes {
+  const input = ctx.createDynamicsCompressor();
+  input.knee.value = 0;
+  input.ratio.value = 20;
+  input.attack.value = LIMITER_ATTACK_S;
+  input.release.value = LIMITER_RELEASE_S;
+  const gain = ctx.createGain();
+  const clip = ctx.createWaveShaper();
+  clip.oversample = "none";
+  input.connect(gain);
+  gain.connect(clip);
+  const nodes: LimiterNodes = { input, gain, clip, ceilingDb };
+  setLimiter(nodes, ceilingDb);
+  return nodes;
+}
+/** The compressor works LIMITER_MARGIN_DB under the ceiling, as the export's alimiter does; the clip is at the ceiling itself. */
+export function setLimiter(l: LimiterNodes, ceilingDb: number) {
+  l.ceilingDb = ceilingDb;
+  const threshold = ceilingDb - LIMITER_MARGIN_DB;
+  l.input.threshold.value = threshold;
+  l.gain.gain.value = lin(-makeupCompensationDb(threshold, 20));
+  l.clip.curve = clipCurve(lin(ceilingDb));
+}
