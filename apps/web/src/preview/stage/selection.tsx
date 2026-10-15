@@ -4,6 +4,7 @@ import { findItem, lockOf } from "../../timeline/edit.ts";
 import { usePlayback } from "../playback.ts";
 import type { ProjectModel } from "../../state/project.ts";
 import { clipState, type Corner } from "../../timeline/clip.ts";
+import "./selection.css";
 
 /**
  * The selected clip's box on the canvas (D75): an outline and four corner handles (drag one to
@@ -38,7 +39,8 @@ export function ClipSelection({ project }: { project: ProjectModel }) {
 /**
  * The selected text's handles on the canvas (F20, D158): four corner marks around the drawn text
  * (measured from the text layer, which lays out at canvas size), so a text just added from the Text
- * tab shows as selected. They don't take presses: the text itself drags, and a double click edits it.
+ * tab shows as selected. The text itself drags, and a double click edits it; a corner resizes a text
+ * item (issue #72, D242: its font size, the opposite corner staying). Captions only show them.
  */
 export function TextSelection({ layer, project }: { layer: React.RefObject<HTMLDivElement | null>; project: ProjectModel }) {
   const selected = usePlayback((s) => s.selected);
@@ -57,6 +59,8 @@ export function TextSelection({ layer, project }: { layer: React.RefObject<HTMLD
     raf = requestAnimationFrame(measure);
     return () => cancelAnimationFrame(raf);
   }, [selected, frame, layer, project, draft]);
+  const placed = findItem(draft && draft.base === project ? draft.project : project, selected);
+  const resizable = placed?.item.type === "text" && placed.item.anchor !== "bottom" && !lockOf(placed);
   if (!box) return null;
   const corners = [
     ["nw", box.x, box.y],
@@ -67,7 +71,7 @@ export function TextSelection({ layer, project }: { layer: React.RefObject<HTMLD
   return (
     <>
       {corners.map(([c, cx, cy]) => (
-        <div key={c} className="pv-handle text" data-testid="text-handle" data-item={selected} data-corner={c} style={{ left: cx, top: cy }} />
+        <div key={c} className="pv-handle text" data-testid="text-handle" data-item={selected} data-corner={c} data-text-handle={resizable ? c : undefined} style={{ left: cx, top: cy }} />
       ))}
     </>
   );

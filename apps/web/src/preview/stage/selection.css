@@ -1,0 +1,4 @@
+/* Issue #72 (D242): a selected text's corners resize it (its font size), like a clip's (D75). */
+.pv-handle.text[data-text-handle] { pointer-events: auto; }
+.pv-handle.text[data-text-handle=nw], .pv-handle.text[data-text-handle=se] { cursor: nwse-resize; }
+.pv-handle.text[data-text-handle=ne], .pv-handle.text[data-text-handle=sw] { cursor: nesw-resize; }
