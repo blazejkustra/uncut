@@ -52,6 +52,9 @@ test("ffmpeg arguments: local inputs only, picture only, a frame per interval ti
   assert.equal(args.at(-1), "/out/a.jpg");
   assert.ok(!args.includes("-skip_frame"));
   const proxy = filmstripArgs("/p.mp4", "/o.jpg", 7, { keyframesOnly: true });
+  const hw = filmstripArgs("/p.mp4", "/o.jpg", 7, { hardware: true });
+  assert.deepEqual(hw.slice(hw.indexOf("-hwaccel"), hw.indexOf("-hwaccel") + 2), ["-hwaccel", "videotoolbox"]);
+  assert.ok(hw.indexOf("-hwaccel") < hw.indexOf("-i"));
   assert.ok(proxy.indexOf("-skip_frame") < proxy.indexOf("-i"), "keyframes only (a proxy), as an input option");
 });
 
@@ -167,6 +170,16 @@ test("a real sprite: made once with ffmpeg, the tiles differ, then read from the
   const fallback = await generate(folder, "m-fallback", { ...source, input: join(root, "gone-proxy.mp4"), proxy: true, seconds: 12 }, { ffmpeg, ffprobe });
   assert.equal(fallback.kind, "ok");
   if (fallback.kind === "ok") assert.equal(fallback.from, "decode");
+
+  // The project closes mid-run: ffmpeg is killed, nothing is left behind, and it's "failed" (not cached).
+  const abort = new AbortController();
+  const closing = generate(folder, "m-closed", { ...source, seconds: 12 }, { ffmpeg, ffprobe, signal: abort.signal });
+  setTimeout(() => abort.abort(), 30);
+  assert.deepEqual(await closing, { kind: "failed", why: "the project closed" });
+  assert.ok(!readdirSync(folder).some((f) => f.startsWith("m-closed")), "no sprite or temp file left");
+  // VideoToolbox asked for (macOS): made with it, or without it when it can't.
+  const hw = await generate(folder, "m-hw", { ...source, seconds: 12 }, { ffmpeg, ffprobe, hardware: true });
+  assert.equal(hw.kind, "ok");
 
   // No ffmpeg and nothing cached: failed (try later), not "none".
   const none = await generate(folder, "m-other", source, { ffmpeg: async () => undefined, ffprobe });

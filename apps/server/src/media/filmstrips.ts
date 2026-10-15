@@ -6,6 +6,10 @@
 // posters and waveforms by the original file's path, size and modification time, so a changed or
 // relinked file gets a new strip and the next request is a file read. Requests for the same file
 // share one run; one runs at a time. Same token and answers as the waveform route (waveforms.ts).
+// Heavy originals (what D212 would proxy: 4K, HEVC, high-bitrate long-GOP) decode keyframes only,
+// with VideoToolbox on macOS (a 5 min 4K HEVC drone clip in ~6 s, not minutes); while such a file's
+// proxy is being made the strip waits for it (503, retry). A run is killed when its project closes
+// (another opens), when the server stops and when the process exits.
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
@@ -14,12 +18,13 @@ import { FILMSTRIP_PATH, FILMSTRIP_TILE_H, type FilmstripLayout } from "@uncut/c
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { ServerConfig } from "../app/config.ts";
 import { posterKey } from "./media.ts";
 import { Projects } from "../project/projects.ts";
-import { Proxies, videoFacts } from "./proxies.ts";
+import { needsProxy, Proxies, videoFacts } from "./proxies.ts";
 import { which } from "../app/setup.ts";
 import { withoutApiKey } from "../app/shellEnv.ts";
 import { presentedToken, tokensMatch } from "../app/auth.ts";
@@ -65,10 +70,11 @@ export function tilesFor(seconds: number) {
 }
 
 /** ffmpeg's arguments (before localInputs): the first picture, a frame every `interval` s, scaled and tiled into one JPEG. */
-export function filmstripArgs(input: string, output: string, seconds: number, { keyframesOnly = false } = {}): Array<string> {
+export function filmstripArgs(input: string, output: string, seconds: number, { keyframesOnly = false, hardware = false } = {}): Array<string> {
   const { interval, cols, rows } = tilesFor(seconds);
   return [
     "-hide_banner", "-nostdin", "-y", "-v", "error",
+    ...(hardware ? ["-hwaccel", "videotoolbox"] : []),
     // A proxy has a keyframe every 10 frames (D212): decoding only those is near enough and much faster.
     ...(keyframesOnly ? ["-skip_frame", "nokey"] : []),
     "-an", "-sn", "-dn",
@@ -115,18 +121,29 @@ process.on("exit", () => {
   for (const child of running) child.kill("SIGKILL");
 });
 
+export interface SpriteOptions {
+  readonly keyframesOnly?: boolean;
+  readonly hardware?: boolean;
+  /** Aborting kills the run (its project closed, the server is stopping). */
+  readonly signal?: AbortSignal | undefined;
+}
+
 /** Runs ffmpeg to make the sprite at `output` (written aside and renamed). Whether it worked. */
-export function makeSprite(ffmpeg: string, input: string, output: string, seconds: number, options: { keyframesOnly?: boolean } = {}): Promise<boolean> {
+export function makeSprite(ffmpeg: string, input: string, output: string, seconds: number, options: SpriteOptions = {}): Promise<boolean> {
   const tmp = `${output}.tmp-${process.pid}.jpg`;
+  if (options.signal?.aborted) return Promise.resolve(false);
   return new Promise((done) => {
     const child = spawn(ffmpeg, localInputs(ffmpeg, filmstripArgs(input, tmp, seconds, options)), { env: withoutApiKey(process.env), stdio: ["ignore", "ignore", "ignore"] });
     running.add(child);
-    const timer = setTimeout(() => child.kill("SIGKILL"), RUN_TIMEOUT_MS);
+    const kill = () => child.kill("SIGKILL");
+    options.signal?.addEventListener("abort", kill, { once: true });
+    const timer = setTimeout(kill, RUN_TIMEOUT_MS);
     let settled = false;
     const finish = (code: number | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", kill);
       running.delete(child);
       if (code !== 0) return void rm(tmp, { force: true }).then(() => done(false));
       rename(tmp, output).then(
@@ -172,30 +189,51 @@ export async function readCached(folder: string, id: string, key: string): Promi
   }
 }
 
+export interface Tools {
+  readonly ffmpeg: () => Promise<string | undefined>;
+  readonly ffprobe: () => Promise<string | undefined>;
+  readonly slot?: () => Promise<void>;
+  readonly release?: () => void;
+  /** Whether to ask for VideoToolbox decoding (macOS); a run that fails with it is tried without. */
+  readonly hardware?: boolean;
+  readonly signal?: AbortSignal | undefined;
+}
+
 /** Makes (or reads) the strip of `id` into `folder`. `tools` finds ffmpeg and ffprobe. */
-export async function generate(folder: string, id: string, source: Source, tools: { ffmpeg: () => Promise<string | undefined>; ffprobe: () => Promise<string | undefined>; slot?: () => Promise<void>; release?: () => void }): Promise<Generated> {
+export async function generate(folder: string, id: string, source: Source, tools: Tools): Promise<Generated> {
   const cached = await readCached(folder, id, source.key);
   if (cached) return cached;
   const ffmpeg = await tools.ffmpeg();
   if (!ffmpeg) return { kind: "failed", why: "ffmpeg isn't installed" };
   let seconds = source.seconds;
-  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
+  // An original: is it heavy to decode (what D212 proxies)? Then keyframes only.
+  let heavy = false;
+  if (!source.proxy || !seconds || !Number.isFinite(seconds) || seconds <= 0) {
     const ffprobe = await tools.ffprobe();
-    seconds = ffprobe ? (await videoFacts(ffprobe, source.input))?.seconds : undefined;
+    const facts = ffprobe ? await videoFacts(ffprobe, source.input) : undefined;
+    heavy = !source.proxy && facts !== undefined && needsProxy(facts);
+    if (!seconds || !Number.isFinite(seconds) || seconds <= 0) seconds = facts?.seconds;
   }
   if (!seconds || seconds <= 0) return { kind: "failed", why: "the video's length isn't known" };
   await mkdir(folder, { recursive: true }).catch(() => {});
   const jpg = join(folder, `${id}--${source.key}.jpg`);
   await tools.slot?.();
-  let made: boolean;
+  let made = false;
   try {
-    made = await makeSprite(ffmpeg, source.input, jpg, seconds, { keyframesOnly: source.proxy });
-    // A proxy that went away mid-run (remade, cleaned up): the original.
-    if (!made && source.proxy) made = await makeSprite(ffmpeg, source.path, jpg, seconds);
+    const run = (input: string, keyframesOnly: boolean) => async () => {
+      if (tools.hardware && (await makeSprite(ffmpeg, input, jpg, seconds, { keyframesOnly, hardware: true, signal: tools.signal }))) return true;
+      return makeSprite(ffmpeg, input, jpg, seconds, { keyframesOnly, signal: tools.signal });
+    };
+    // A proxy (short GOP) decodes keyframes only; one that went away mid-run falls back to the original.
+    const attempts = source.proxy ? [run(source.input, true), run(source.path, heavy)] : [run(source.input, heavy)];
+    for (const attempt of attempts) {
+      if (tools.signal?.aborted) break;
+      if ((made = await attempt())) break;
+    }
   } finally {
     tools.release?.();
   }
-  if (!made) return { kind: "failed", why: "the video couldn't be decoded" };
+  if (!made) return { kind: "failed", why: tools.signal?.aborted ? "the project closed" : "the video couldn't be decoded" };
   const bytes = await readFile(jpg).catch(() => undefined);
   const layout = bytes && layoutOf(bytes, seconds);
   if (!bytes || !layout) {
@@ -232,7 +270,32 @@ export const layer = Layer.unwrap(
       await config.shellReady;
       return which(name, process.env.PATH ?? "");
     };
-    const tools = { ffmpeg: tool("ffmpeg"), ffprobe: tool("ffprobe"), slot, release };
+    const tools = { ffmpeg: tool("ffmpeg"), ffprobe: tool("ffprobe") };
+    const hardware = process.platform === "darwin";
+    // One abort per open project: closing it (or opening another) kills its runs; so does stopping.
+    const aborts = new Map<string, AbortController>();
+    const abortFor = (dir: string) => {
+      let a = aborts.get(dir);
+      if (!a) aborts.set(dir, (a = new AbortController()));
+      return a.signal;
+    };
+    const abortAllBut = (keep: string | undefined) => {
+      for (const [dir, a] of aborts) {
+        if (dir === keep) continue;
+        a.abort();
+        aborts.delete(dir);
+      }
+    };
+    yield* Effect.forkScoped(Stream.runForEach(projects.changes, (snapshot) => Effect.sync(() => abortAllBut(snapshot?.dir))));
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        abortAllBut(undefined);
+        for (const child of running) child.kill("SIGKILL");
+      }),
+    );
+    // D212: which media have a proxy on the way (their strip waits for it).
+    let proxyStates: ReadonlyArray<{ readonly mediaId: string; readonly phase: string }> = [];
+    yield* Effect.forkScoped(Stream.runForEach(proxies.states, (states) => Effect.sync(() => void (proxyStates = states))));
 
     return HttpRouter.add(
       "GET",
@@ -253,6 +316,10 @@ export const layer = Layer.unwrap(
         const path = isAbsolute(media.path) ? media.path : resolve(open.dir, media.path);
         const dir = open.dir;
         const proxy = yield* proxies.proxyFor(id);
+        // Its proxy is being made: wait for it rather than decode the heavy original now.
+        if (!proxy && proxyStates.some((p) => p.mediaId === id && (p.phase === "queued" || p.phase === "running"))) {
+          return HttpServerResponse.text("Filmstrip unavailable: waiting for the preview proxy", { status: 503, headers: { ...CORS, "retry-after": "10" } });
+        }
         const probe = media.probe;
         const seconds = probe?.frames && probe.fps ? probe.frames / probe.fps : undefined;
         const result = yield* Effect.promise(async (): Promise<Generated | undefined> => {
@@ -261,7 +328,7 @@ export const layer = Layer.unwrap(
           const name = `${dir}\0${id}--${key}`;
           let job = inFlight.get(name);
           if (!job) {
-            job = generate(filmstripDir(dir), id, { path, key, input: proxy ?? path, proxy: proxy !== undefined, seconds }, tools)
+            job = generate(filmstripDir(dir), id, { path, key, input: proxy ?? path, proxy: proxy !== undefined, seconds }, { ffmpeg: tools.ffmpeg, ffprobe: tools.ffprobe, slot, release, hardware, signal: abortFor(dir) })
               .catch((): Generated => ({ kind: "failed", why: "the strip couldn't be made" }))
               .finally(() => inFlight.delete(name));
             inFlight.set(name, job);
