@@ -1,15 +1,18 @@
 // Ducking in the editor (D85): the loudness envelopes (D74) of the media on the key tracks of every
-// ducked track, read from the server's analysis cache (analysis.cached), and the duck curves core
+// ducked track (and on tracks with noise removal: their noise floor, D246), read from the server's
+// analysis cache (analysis.cached), and the duck curves core
 // computes from them (ducking.ts duckCurves) for the preview's mix (audio.ts adds the curve to each
 // item's gain, as the export does) and the timeline (the duck line on the ducked track's items).
 // A key media that hasn't been analysed gets its loudness analysis started once (the Library's
 // Analyze job, on demand like D66, here because ducking asked for it), and is read again when that
 // job finishes; meanwhile the Mixer says the ducking waits for it.
 import { duckCurves, duckMediaIds, type DuckCurve } from "@uncut/core/ducking";
+import { denoiseMediaIds } from "@uncut/core/effects";
 import { decodeEnvelope, type SpeechEnvelope } from "@uncut/core/transcript";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import type { ProjectModel } from "../state/project.ts";
+import { useLoudnessMeasuring } from "./loudnessPreview.ts";
 import { actions, useApp } from "../state/store.ts";
 
 export interface DuckState {
@@ -88,11 +91,14 @@ async function load(dir: string, mediaId: string, measure: boolean) {
   emit();
 }
 
-/** Keeps the envelopes ducking needs loaded for the open project (mounted by the Editor). */
+/** Keeps the envelopes ducking needs loaded for the open project (mounted by the Editor), and the preview's At target gain measured (D246). */
 export function useDuckLoading(project: ProjectModel, dir: string) {
   const { analysisJobs, exportJobs, connection } = useApp();
+  const envelopes = useDuckState((s) => s.envelopes);
+  useLoudnessMeasuring(project, [...envelopes.keys()].join(","));
   const online = connection === "connected";
-  const media = duckMediaIds(project);
+  // Ducking's key media, and noise removal's (its track's noise floor, D88/D246).
+  const media = [...new Set([...duckMediaIds(project), ...denoiseMediaIds(project)])].sort();
   const key = media.join(",");
   const seen = useRef(new Set<string>());
   useEffect(() => forProject(dir), [dir]);

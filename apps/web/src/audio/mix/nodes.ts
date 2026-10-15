@@ -1,5 +1,29 @@
-// Web Audio node builders for the mix: effect stage chains (D84) and the master limiter (D86).
-import { type Stage, makeupCompensationDb, LIMITER_MARGIN_DB } from "@uncut/core/effects";
+// Web Audio node builders for the mix: effect stage chains (D84), noise removal's worklet (D246)
+// and the master limiter (D86).
+import { type Stage, makeupCompensationDb, LIMITER_MARGIN_DB, DENOISE_FLOOR_DB } from "@uncut/core/effects";
+import denoiseWorkletUrl from "./denoiseWorklet.ts?worker&url";
+
+/**
+ * Noise removal's AudioWorklet module (D246), loaded once per context. Until it has loaded a
+ * denoise stage passes the sound through (its shape says "denoise…" so the chain is rebuilt once it
+ * is ready); a context where it can't load keeps passing through and says so in the console.
+ */
+const worklets = new WeakMap<BaseAudioContext, { ready: boolean; promise: Promise<boolean> }>();
+export function loadDenoise(ctx: BaseAudioContext): Promise<boolean> {
+  const known = worklets.get(ctx);
+  if (known) return known.promise;
+  const entry = { ready: false, promise: Promise.resolve(false) };
+  entry.promise = ctx.audioWorklet
+    .addModule(denoiseWorkletUrl)
+    .then(() => (entry.ready = true))
+    .catch((error: unknown) => {
+      console.warn(`noise removal can't play in the preview: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    });
+  worklets.set(ctx, entry);
+  return entry.promise;
+}
+export const denoiseReady = (ctx: BaseAudioContext) => worklets.get(ctx)?.ready === true;
 
 /** dB → linear (no cutoff: for node parameters). */
 const lin = (db: number) => 10 ** (db / 20);
@@ -16,16 +40,21 @@ export interface StageChain {
   /** Compressors' gain reduction now (dB, ≤ 0), the deepest. */
   readonly reduction: () => number;
 }
-export const stageShape = (stages: ReadonlyArray<Stage>) => stages.map((s) => (s.kind === "biquad" ? s.type : s.kind)).join(",");
+/** A chain's shape on `ctx`: a denoise stage reads "denoise…" until its worklet has loaded there. */
+export const stageShape = (stages: ReadonlyArray<Stage>, ctx?: BaseAudioContext) =>
+  stages.map((s) => (s.kind === "biquad" ? s.type : s.kind === "denoise" && !(ctx && denoiseReady(ctx)) ? "denoise…" : s.kind)).join(",");
 
 /**
- * Web Audio nodes for effect stages (D84), in order, connected one to the next. Noise removal has
- * no preview node (D88: export only; trackStages leaves it out for the preview). Works on any
- * context (the live mix, and the app tests' OfflineAudioContext checks).
+ * Web Audio nodes for effect stages (D84), in order, connected one to the next. Noise removal is an
+ * AudioWorkletNode running core's SpectralDenoiser (D246) once its module has loaded (loadDenoise);
+ * before that it passes through. Works on any context (the live mix, and the app tests'
+ * OfflineAudioContext checks).
  */
 export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>): StageChain {
   type Part = { readonly stage: Stage["kind"]; readonly nodes: ReadonlyArray<AudioNode>; readonly set: (s: Stage, at: (p: AudioParam, v: number) => void) => void };
   const parts: Array<Part> = [];
+  const denoise = denoiseReady(ctx);
+  // Parts line up with the stages: a pending denoise stage has no nodes (and is skipped when wiring).
   for (const stage of stages) {
     if (stage.kind === "biquad") {
       const f = ctx.createBiquadFilter();
@@ -58,11 +87,31 @@ export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>)
           at(g.gain, lin(s.makeupDb - makeupCompensationDb(s.thresholdDb, s.ratio)));
         },
       });
+    } else if (stage.kind === "denoise") {
+      if (!denoise) {
+        parts.push({ stage: "denoise", nodes: [], set: () => {} });
+        continue;
+      }
+      const w = new AudioWorkletNode(ctx, "uncut-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: "explicit", channelInterpretation: "speakers" });
+      let last = "";
+      parts.push({
+        stage: "denoise",
+        nodes: [w],
+        set: (s) => {
+          if (s.kind !== "denoise") return;
+          const msg = { amount: s.amount, floorDb: s.floorDb ?? DENOISE_FLOOR_DB };
+          const key = `${msg.amount},${msg.floorDb}`;
+          if (key === last) return;
+          last = key;
+          w.port.postMessage(msg);
+        },
+      });
     }
   }
-  for (let i = 1; i < parts.length; i++) parts[i - 1]!.nodes.at(-1)!.connect(parts[i]!.nodes[0]!);
+  const wired = parts.filter((p) => p.nodes.length);
+  for (let i = 1; i < wired.length; i++) wired[i - 1]!.nodes.at(-1)!.connect(wired[i]!.nodes[0]!);
   const apply = (list: ReadonlyArray<Stage>, ramp: number) => {
-    const shown = list.filter((s) => s.kind !== "denoise");
+    const shown = list;
     const now = ctx.currentTime;
     const at = (p: AudioParam, v: number) => {
       if (ramp <= 0) {
@@ -79,9 +128,9 @@ export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>)
   apply(stages, 0);
   const compressors = parts.filter((p) => p.stage === "compressor").map((p) => p.nodes[0] as DynamicsCompressorNode);
   return {
-    shape: stageShape(stages.filter((s) => s.kind !== "denoise")),
-    first: parts[0]?.nodes[0],
-    last: parts.at(-1)?.nodes.at(-1),
+    shape: stageShape(stages, ctx),
+    first: wired[0]?.nodes[0],
+    last: wired.at(-1)?.nodes.at(-1),
     nodes: parts.flatMap((p) => p.nodes),
     set: apply,
     reduction: () => compressors.reduce((m, c) => Math.min(m, c.reduction), 0),

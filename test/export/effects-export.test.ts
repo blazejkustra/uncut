@@ -261,7 +261,7 @@ test("targets: −14 / −16 / −23 LUFS land within ±1 LU (a music-like bed, 
   assert.ok(custom.lufs < -5, "as mixed stays as mixed");
 });
 
-test("noise removal: broadband noise down ≥ 6 dB with the tone kept (±1 dB), from the measured noise floor; the preview's stages leave it out", { skip, timeout: 120000 }, async () => {
+test("noise removal: broadband noise down ≥ 6 dB with the tone kept (±1 dB), from the measured noise floor; the preview builds the same stages", { skip, timeout: 120000 }, async () => {
   const denoise: ModuleUse = { module: "audio.denoise", params: { amount: 1 } };
   // The noise floor comes from the track's loudness envelope (the export measures it when it isn't cached).
   const loud = await analyzeLoudness("ffmpeg", join(dir, "noisy.wav"), { signal: new AbortController().signal });
@@ -284,5 +284,6 @@ test("noise removal: broadband noise down ≥ 6 dB with the tone kept (±1 dB), 
   console.log(`noise removal: floor ${floor} dBFS, noise −${noiseCut.toFixed(1)} dB, tone ${toneDiff.toFixed(2)} dB`);
   const t: Track = track("voice", [], { effects: [denoise, { module: "audio.eq", params: { lowCutHz: 80 } }] });
   assert.deepEqual(trackStages(t).map((s) => s.kind), ["denoise", "biquad"]);
-  assert.deepEqual(trackStages(t, { preview: true }).map((s) => s.kind), ["biquad"]);
+  // The preview builds the same stages (D246); with envelopes the denoise stage carries the track's floor (−40 with no media).
+  assert.deepEqual(trackStages(t, { media: [] }, envelopes)[0], { kind: "denoise", amount: 1, floorDb: -40 });
 });

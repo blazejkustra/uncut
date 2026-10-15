@@ -38,6 +38,7 @@
     "./subtitles": "./src/text/subtitles.ts",
     "./effects": "./src/audio/effects.ts",
     "./ducking": "./src/audio/ducking.ts",
+    "./denoise": "./src/audio/denoise.ts",
     "./checks": "./src/checks/checks.ts",
     "./music": "./src/audio/music.ts",
     "./library": "./src/audio/library.ts",

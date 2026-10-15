@@ -53,6 +53,6 @@ export { untaggedFilter, sourceFramePick, frameLookup, cornerMask, boxGraph, vid
 export type { CommandOptions } from "./plan/video.ts";
 export { planLuts, fxGraph } from "./plan/fx.ts";
 export { exportCommand, silentFailure } from "./plan/command.ts";
-export { loudnessCommand, parseEbur128, LOUDNESS_CHECKS, LOUDNESS_TOLERANCE_LU, parseLoudness, loudnormFilter, planLoudness } from "./plan/loudness.ts";
+export { loudnessCommand, parseEbur128, LOUDNESS_CHECKS, LOUDNESS_TOLERANCE_LU, parseLoudness, loudnormFilter, planLoudness, loudnessGain } from "./plan/loudness.ts";
 export type { LoudnessMeasure } from "./plan/loudness.ts";
 export { outputSize };

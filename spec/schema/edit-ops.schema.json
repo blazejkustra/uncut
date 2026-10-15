@@ -82,7 +82,7 @@
         },
         {
           "type": "object",
-          "description": "Change fields on a track: name, locked, hidden or mixer. mixer is replaced whole (send the fields to keep): gainDb (-60..12, -60 silent), pan (-1 left .. 0 centre .. 1 right; the near side stays at 0 dB and the far side fades, never a boost; a balance for stereo), mute, solo (if any track is soloed only soloed tracks sound, in the preview and the export; mute wins), effects: the chain in order (D84–D88: audio.eq, audio.compressor, audio.voice-enhance, audio.denoise (export only), audio.duck {under, amountDb, attackMs, releaseMs, thresholdDb}; {bypass: true} keeps an entry but skips it). D83.",
+          "description": "Change fields on a track: name, locked, hidden or mixer. mixer is replaced whole (send the fields to keep): gainDb (-60..12, -60 silent), pan (-1 left .. 0 centre .. 1 right; the near side stays at 0 dB and the far side fades, never a boost; a balance for stereo), mute, solo (if any track is soloed only soloed tracks sound, in the preview and the export; mute wins), effects: the chain in order (D84–D88: audio.eq, audio.compressor, audio.voice-enhance, audio.denoise, audio.duck {under, amountDb, attackMs, releaseMs, thresholdDb}; {bypass: true} keeps an entry but skips it). D83.",
           "required": ["op", "track", "set"],
           "additionalProperties": false,
           "properties": { "op": { "const": "update_track" }, "track": { "$ref": "#/$defs/id" }, "set": { "type": "object", "minProperties": 1 } }

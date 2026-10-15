@@ -7,7 +7,9 @@ import { masterLimiter, trackStages, type Stage } from "@uncut/core/effects";
 import type { ProjectModel } from "../../state/project.ts";
 import { bridge } from "../../state/bridge.ts";
 import { type Bus, type Route, outputMuted, liveOutputs, UNWIRE_S, RAMP_S } from "./elements.ts";
-import { type LimiterNodes, buildLimiter, buildStages, stageShape, setLimiter } from "./nodes.ts";
+import { type LimiterNodes, buildLimiter, buildStages, stageShape, setLimiter, loadDenoise } from "./nodes.ts";
+import { getDuckState } from "../ducking.ts";
+import { previewLoudnessGain } from "../loudnessPreview.ts";
 import { type Capture, type Levels, type StereoLevel, levelOf, SILENT, type CaptureResult, sinkOf } from "./levels.ts";
 
 export class MixGraph {
@@ -39,6 +41,8 @@ export class MixGraph {
         // Background test runs play to no device: no sound, and no output latency between the
         // clock and the captured mix (Bluetooth headphones as the default output add ~0.25 s).
         const ctx = new AudioContext({ latencyHint: "interactive", ...(bridge.silentAudio ? { sinkId: { type: "none" } } : {}) } as AudioContextOptions);
+        // Noise removal's worklet (D246): its chains pass through until it has loaded, then rebuild.
+        void loadDenoise(ctx);
         const master = ctx.createGain();
         master.gain.value = this.masterTarget;
         // After the master volume: the limiter (D86, wired by mixer()), then `post`, what is heard and metered.
@@ -177,8 +181,10 @@ export class MixGraph {
   /** Pan every sounding track's bus and set the master volume (D83); drop buses of tracks that went. */
   protected mixer(project: ProjectModel) {
     this.limiterTarget = masterLimiter(project);
+    // The master volume, and At target's loudness gain (D246) where the export puts it: before the limiter.
+    const master = masterGain(project) * previewLoudnessGain();
     if (!this.ctx) {
-      this.masterTarget = masterGain(project);
+      this.masterTarget = master;
       return;
     }
     this.wireLimiter();
@@ -187,7 +193,8 @@ export class MixGraph {
     for (const track of project.tracks) {
       const bus = this.buses.get(track.id);
       if (!bus) continue;
-      this.effects(bus, trackStages(track, { preview: true }));
+      // The export's stages (D246: noise removal too, from the same measured floor).
+      this.effects(bus, trackStages(track, project, getDuckState().envelopes));
       const want = panGains(trackPan(track));
       const had = this.panTarget.get(bus);
       if (had && had.left === want.left && had.right === want.right) continue;
@@ -200,7 +207,6 @@ export class MixGraph {
         bus.right.gain.value = want.right;
       }
     }
-    const master = masterGain(project);
     if (master !== this.masterTarget && this.master) {
       this.masterTarget = master;
       this.glide(this.master.gain, master);
@@ -209,11 +215,12 @@ export class MixGraph {
 
   /** A bus's effect chain to `stages` (D84): parameters glide when its shape is the same, else it is rebuilt between input and splitter. */
   protected effects(bus: Bus, stages: ReadonlyArray<Stage>) {
-    const key = JSON.stringify(stages);
+    const shape = stageShape(stages, this.ctx);
+    const key = `${shape}|${JSON.stringify(stages)}`;
     if (this.stageKeys.get(bus) === key) return;
     const had = this.stageKeys.has(bus);
     this.stageKeys.set(bus, key);
-    if (bus.chain.shape === stageShape(stages)) {
+    if (bus.chain.shape === shape) {
       bus.chain.set(stages, had ? RAMP_S : 0);
       return;
     }

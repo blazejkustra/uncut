@@ -1,5 +1,5 @@
 import type { Stage } from "@uncut/core/effects";
-import { buildStages, buildLimiter } from "./nodes.ts";
+import { buildStages, buildLimiter, loadDenoise } from "./nodes.ts";
 import { type CaptureResult, SILENT } from "./levels.ts";
 import type { Mix } from "../audio.ts";
 
@@ -41,6 +41,7 @@ const b64 = (a: Float32Array) => {
   },
   offlineTone: async ({ stages = [], ceilingDb, amp, freq = 1000, seconds = 2, sampleRate = 48000 }: { stages?: ReadonlyArray<Stage>; ceilingDb?: number; amp: number; freq?: number; seconds?: number; sampleRate?: number }) => {
     const ctx = new OfflineAudioContext(2, Math.round(seconds * sampleRate), sampleRate);
+    await loadDenoise(ctx);
     const osc = ctx.createOscillator();
     osc.frequency.value = freq;
     const g = ctx.createGain();
@@ -69,6 +70,26 @@ const b64 = (a: Float32Array) => {
       peak = Math.max(peak, Math.abs(data[i]!));
     }
     return { rms: Math.sqrt(sum / (data.length - from)), peak };
+  },
+  // Test-only (D246): a mono signal (float32, base64) through `stages` on an OfflineAudioContext
+  // (noise removal's worklet included), returned the same way (left channel).
+  offlineRender: async ({ stages, input, sampleRate = 48000 }: { stages: ReadonlyArray<Stage>; input: string; sampleRate?: number }) => {
+    const bytes = Uint8Array.from(atob(input), (c) => c.charCodeAt(0));
+    const x = new Float32Array(bytes.buffer);
+    const ctx = new OfflineAudioContext(2, x.length, sampleRate);
+    const ready = await loadDenoise(ctx);
+    const buf = ctx.createBuffer(1, x.length, sampleRate);
+    buf.copyToChannel(x, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const chain = buildStages(ctx, stages);
+    if (chain.first && chain.last) {
+      src.connect(chain.first);
+      chain.last.connect(ctx.destination);
+    } else src.connect(ctx.destination);
+    src.start();
+    const out = await ctx.startRendering();
+    return { ready, output: b64(out.getChannelData(0)) };
   },
   stopCapture: () => {
     const r = capturing?.stop();

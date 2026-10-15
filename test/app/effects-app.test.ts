@@ -157,8 +157,8 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
     await page.click("[data-testid=fx-popover] [data-testid=fx-up]");
     rev = await savedAfter(page, rev);
     assert.deepEqual(fxOf("voice").map((f) => f.module), ["audio.compressor", "audio.eq"]);
-    await page.click(`${strip("voice")} [data-testid=fx-slot][data-module="audio.compressor"]`);
-    await waitFor(page, "[data-testid=fx-popover]");
+    // The popover follows the moved entry (D246): still open on the compressor, now first.
+    await page.waitForFunction(() => document.querySelector("[data-testid=fx-popover] .fxp-title")?.textContent?.includes("slot 1 of 2"), { timeout: 5000 });
     await page.click("[data-testid=fx-popover] [data-testid=fx-bypass]");
     rev = await savedAfter(page, rev);
     assert.equal(fxOf("voice")[0]!.bypass, true);
