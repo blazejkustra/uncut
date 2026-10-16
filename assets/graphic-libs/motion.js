@@ -10,6 +10,15 @@
      uncutMotion.flood(t, { at, x, y, r, width, height, dur: 0.3, until, to: { x, y, r } })
                                                          // { x, y, r, full }: a circle that overscales past the frame's corners, then contracts into the next shape
      uncutMotion.cover(x, y, width, height)              // the radius that covers the frame from (x, y), 6 % past the farthest corner
+     uncutMotion.shape(t, [{ at, x, y, w, h, r }, { at, bleed: true }, ...], { width, height, spring })
+                                                         // { x, y, w, h, r, full }: ONE rounded rect (x, y its centre) morphing key to key;
+                                                         // bleed: true is the whole frame 12 % past every edge, square corners (a flood is a morph)
+     uncutMotion.shapePath(ctx, s)                       // that shape as the canvas path (clip to it, then draw the footage)
+     uncutMotion.footageRect(srcW, srcH, width, height, s) // { x, y, w, h }: draw the clip there: covers the frame and the shape,
+                                                         // the same scale while the shape fits the frame (no zoom-in that goes soft, no flat edges)
+     uncutMotion.riseText(ctx, text, x, baseline, t, { at, out, size })
+                                                         // draws a line rising out of its mask line and leaving upward, whole:
+                                                         // the mask has room for ascenders and descenders, the exit is quick (spring.snap)
      uncutMotion.iris(open, { x, y, r, blades: 6, turn }) // blade polygons [[x, y], ...]: open 1 = no blades in the circle, 0 = closed
      uncutMotion.squeeze(xs, widths, anchor, f)           // [{ x, scale }]: letters pulled toward anchor by f (1 = as set, 0 = in the anchor), widths follow
      uncutMotion.cursor(t, [{ at, x, y, click }], { spring })  // { x, y, scale, down }: a drawn cursor's path with real presses
@@ -130,6 +139,69 @@
     }
     return { x: x, y: y, r: r, full: r >= cover(x, y, o.width, o.height) / 1.06 };
   }
+  // D296: one rounded rect morphing between keys (centre x, y, size w, h, corner r); bleed keys
+  // fill the frame past its edges. Each field is a sum of springs (springs), so it's continuous.
+  function shape(t, keys, o) {
+    o = o || {};
+    var W = o.width || 1080;
+    var H = o.height || 1350;
+    var pre = o.spring || "spring.snap";
+    var ks = sorted(keys).map(function (k) {
+      if (!k.bleed) return k;
+      return { at: k.at, x: W / 2, y: H / 2, w: W * 1.24, h: H * 1.24, r: 0, spring: k.spring };
+    });
+    if (!ks.length) return { x: W / 2, y: H / 2, w: W, h: H, r: 0, full: true };
+    var out = {};
+    ["x", "y", "w", "h", "r"].forEach(function (f) {
+      out[f] = springs(t, ks, pre, f);
+    });
+    out.w = Math.max(0, out.w);
+    out.h = Math.max(0, out.h);
+    out.r = clamp(out.r, 0, Math.min(out.w, out.h) / 2);
+    out.full = out.x - out.w / 2 <= 0 && out.y - out.h / 2 <= 0 && out.x + out.w / 2 >= W && out.y + out.h / 2 >= H;
+    return out;
+  }
+  function shapePath(ctx, s) {
+    var x = s.x - s.w / 2, y = s.y - s.h / 2, r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + s.w, y, x + s.w, y + s.h, r);
+    ctx.arcTo(x + s.w, y + s.h, x, y + s.h, r);
+    ctx.arcTo(x, y + s.h, x, y, r);
+    ctx.arcTo(x, y, x + s.w, y, r);
+    ctx.closePath();
+  }
+  // Where to draw a srcW × srcH clip so it covers the frame and the shape's whole extent, centred on
+  // the frame: while the shape stays inside the frame the scale never changes (no zoom on resize).
+  function footageRect(srcW, srcH, W, H, s) {
+    var x0 = 0, y0 = 0, x1 = W, y1 = H;
+    if (s) {
+      x0 = Math.min(0, s.x - s.w / 2);
+      y0 = Math.min(0, s.y - s.h / 2);
+      x1 = Math.max(W, s.x + s.w / 2);
+      y1 = Math.max(H, s.y + s.h / 2);
+    }
+    var bw = 2 * Math.max(W / 2 - x0, x1 - W / 2);
+    var bh = 2 * Math.max(H / 2 - y0, y1 - H / 2);
+    var k = Math.max(bw / srcW, bh / srcH);
+    return { x: W / 2 - (srcW * k) / 2, y: H / 2 - (srcH * k) / 2, w: srcW * k, h: srcH * k };
+  }
+  // A line rising out of its mask line and leaving upward, never cut while it rests: the mask runs
+  // from 1.05 × size above the baseline to 0.35 × size below it, the line travels that whole box.
+  function riseText(ctx, text, x, baseline, t, o) {
+    var size = o.size || 96;
+    var top = baseline - size * 1.05;
+    var h = size * 1.4;
+    var r = rise(t, { at: o.at, out: o.out, height: h, spring: o.spring || "spring.snap", outSpring: o.outSpring || "spring.snap" });
+    if (!r.visible) return false;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-1e5, top, 2e5, h);
+    ctx.clip();
+    ctx.fillText(text, x, baseline + r.y);
+    ctx.restore();
+    return true;
+  }
   // Iris: `blades` blades around a regular polygon aperture. Each blade is its two aperture vertices,
   // both edge extensions out to the circle, and the short arc between them.
   function iris(open, o) {
@@ -233,6 +305,10 @@
     rise: rise,
     flood: flood,
     cover: cover,
+    shape: shape,
+    shapePath: shapePath,
+    footageRect: footageRect,
+    riseText: riseText,
     iris: iris,
     squeeze: squeeze,
     cursor: cursor,

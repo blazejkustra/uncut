@@ -28,6 +28,10 @@ interface Motion {
   loop: (t: number, d: number) => number;
   ease: { inOut: (p: number) => number };
   mixColor: (a: string, b: string, p: number) => string;
+  shape: (t: number, keys: Array<Record<string, unknown>>, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; full: boolean };
+  shapePath: (ctx: unknown, s: { x: number; y: number; w: number; h: number; r: number }) => void;
+  footageRect: (sw: number, sh: number, w: number, h: number, s?: Record<string, number>) => { x: number; y: number; w: number; h: number };
+  riseText: (ctx: unknown, text: string, x: number, baseline: number, t: number, o: Record<string, unknown>) => boolean;
 }
 
 const load = (): Motion => {
@@ -163,4 +167,50 @@ test("squeeze, cursor, camera, beat, loop, colours", () => {
   assert.equal(M.mixColor("#000", "#ffffff", 0.5), "rgb(128, 128, 128)");
   assert.equal(M.ease.inOut(0), 0);
   assert.equal(M.ease.inOut(1), 1);
+});
+
+// D296: the hero shape morphs (a flood is a morph to bleed), the footage covers the shape's whole
+// extent at one scale, and a rising line's mask never cuts a resting glyph.
+test("shape: one rounded rect morphing key to key; bleed fills past every edge; continuous", () => {
+  const W = 1080;
+  const H = 1350;
+  const keys = [{ at: 0, x: 540, y: 675, w: 980, h: 1250, r: 48 }, { at: 1, bleed: true }, { at: 2, x: 540, y: 600, w: 700, h: 700, r: 350 }];
+  const a = M.shape(0.5, keys, { width: W, height: H });
+  assert.deepEqual([a.w, a.h, a.r, a.full], [980, 1250, 48, false]);
+  const b = M.shape(1.9, keys, { width: W, height: H });
+  assert.ok(b.full && b.r < 1 && b.w > W && b.h > H, JSON.stringify(b));
+  const c = M.shape(3.5, keys, { width: W, height: H });
+  assert.ok(near(c.w, 700, 0.5) && near(c.r, 350, 0.5) && !c.full);
+  // No jump between frames at 60 fps.
+  for (let f = 0; f < 240; f++) {
+    const p = M.shape(f / 60, keys, { width: W, height: H });
+    const q = M.shape((f + 1) / 60, keys, { width: W, height: H });
+    assert.ok(Math.abs(q.w - p.w) < W * 0.2, `frame ${f}`);
+  }
+  const path: Array<string> = [];
+  M.shapePath({ beginPath: () => path.push("b"), moveTo: () => path.push("m"), arcTo: () => path.push("a"), closePath: () => path.push("z") }, a);
+  assert.equal(path.join(""), "bmaaaaz");
+});
+
+test("footageRect: covers the frame and the growing shape; the same scale while the shape fits", () => {
+  const inside = M.footageRect(3840, 2160, 1080, 1350, { x: 540, y: 675, w: 600, h: 600, r: 300 });
+  const frame = M.footageRect(3840, 2160, 1080, 1350);
+  assert.deepEqual(inside, frame, "no zoom while the shape is inside the frame");
+  assert.ok(frame.w >= 1080 && frame.h >= 1350 && near(frame.h, 1350, 1e-6));
+  // A circle grown past the corners: the clip still covers all of it (no flat edges).
+  const big = { x: 540, y: 675, w: 2000, h: 2000, r: 1000 };
+  const f = M.footageRect(3840, 2160, 1080, 1350, big);
+  assert.ok(f.x <= big.x - big.w / 2 && f.y <= big.y - big.h / 2 && f.x + f.w >= big.x + big.w / 2 && f.y + f.h >= big.y + big.h / 2, JSON.stringify(f));
+});
+
+test("riseText: at rest the mask holds the whole line (ascenders and descenders); it's gone after it leaves", () => {
+  const calls: Array<{ op: string; args: Array<number | string> }> = [];
+  const ctx = new Proxy({}, { get: (_t, op: string) => (...args: Array<number | string>) => calls.push({ op, args }) });
+  assert.equal(M.riseText(ctx, "Uncut", 100, 500, 0.4, { at: 0.5, size: 100 }), false, "before it rises");
+  assert.equal(M.riseText(ctx, "Uncut", 100, 500, 2, { at: 0.5, out: 3, size: 100 }), true);
+  const rect = calls.find((c) => c.op === "rect")!.args as Array<number>;
+  const text = calls.find((c) => c.op === "fillText")!.args;
+  assert.ok(rect[1]! <= 500 - 100 && rect[1]! + rect[3]! >= 500 + 30, `mask ${rect[1]} to ${rect[1]! + rect[3]!}`);
+  assert.ok(Math.abs((text[2] as number) - 500) < 0.5, "at rest on its baseline");
+  assert.equal(M.riseText(ctx, "Uncut", 100, 500, 4, { at: 0.5, out: 3, size: 100 }), false, "left within a second");
 });
