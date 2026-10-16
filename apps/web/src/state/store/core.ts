@@ -1,7 +1,6 @@
 import type { PluginContributions, ProjectSnapshot } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 import { bridge } from "../bridge.ts";
-import { savedFollow } from "../agentFollow.ts";
 import type { CheckRule } from "@uncut/core/checks";
 import { type PluginRule, pluginCheckRules, pluginRuleEntries, type PluginLook } from "@uncut/core/contributions";
 import { type TextPreset, TEXT_PRESETS } from "../project.ts";
@@ -28,7 +27,6 @@ export let state: AppStateShape = {
   agentMentions: [],
   agentImages: [],
   agentFocus: 0,
-  agentFollow: savedFollow(),
   history: null,
   exportOpen: false,
   exportJobs: [],
