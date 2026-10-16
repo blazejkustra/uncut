@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="280 230 464 562">
+  <!-- Uncut's mark: the app icon's U with its cut (apps/web/src/editor/Wordmark.tsx). -->
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <path d="M270 506 L466 403" stroke="#000" stroke-width="26"/>
+    </mask>
+  </defs>
+  <path d="M368 318 V560 A144 144 0 0 0 656 560 V318" fill="none" stroke="#000" stroke-width="128" stroke-linecap="round" mask="url(#cut)"/>
+</svg>

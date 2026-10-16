@@ -6,7 +6,7 @@ import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { API_VERSION } from "../packages/plugin-sdk/src/index.ts";
-import { loadModules, readContributions, type ModuleManifest } from "../packages/core/src/index.ts";
+import { checkPluginIcon, loadModules, readContributions, type ModuleManifest } from "../packages/core/src/index.ts";
 import { checkManifest, MANIFEST_FILE } from "../apps/server/src/plugins/plugins.ts";
 import { shaderEntries } from "./plugin-shaders.ts";
 import { BUILTIN_IDS, SKILLS_PLUGIN_ID } from "../packages/core/src/skills/skills.ts";
@@ -91,8 +91,12 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
   const files = walk(dir);
   // The .ts files its shader effects name (D213): TypeGPU sources, checked as such.
   let shaderSources = new Set<string>();
+  // D281: its icon, the one .svg it may have (the schema keeps it a file name at the top).
+  let iconFile: string | undefined;
   try {
-    shaderSources = new Set(shaderEntries(JSON.parse(readFileSync(join(dir, MANIFEST_FILE), "utf8"))).map((e) => e.source));
+    const parsed = JSON.parse(readFileSync(join(dir, MANIFEST_FILE), "utf8")) as { icon?: unknown };
+    shaderSources = new Set(shaderEntries(parsed).map((e) => e.source));
+    if (typeof parsed.icon === "string") iconFile = parsed.icon;
   } catch {
     // reported below
   }
@@ -100,7 +104,7 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
     const rel = f.path.slice(dir.length + 1);
     if (f.kind !== "file") say(`${rel}: only regular files (no symlinks, pipes or devices).`);
     if (rel.split("/").some((part) => part.startsWith("."))) say(`${rel}: no hidden files.`);
-    if (!/\.(json|ts)$/.test(rel)) say(`${rel}: only .json and .ts files.`);
+    if (!/\.(json|ts)$/.test(rel) && rel !== iconFile) say(`${rel}: only .json and .ts files (and the .svg its manifest names as its icon).`);
     if (rel.includes("/")) say(`${rel}: files sit at the plugin's top level (the app ships */*.ts only).`);
     if (rel.includes("node_modules")) say(`${rel}: no node_modules (plugins import only the SDK).`);
     if (f.kind === "file" && rel.endsWith(".ts") && !rel.includes("/")) {
@@ -139,6 +143,13 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
   if (earlier) say(`the id ${manifest.id} is taken (${relative(REPO, earlier) || earlier}).`);
   ctx.ids.set(manifest.id, dir);
   if (manifest.builtin !== undefined) say(`plugins aren't built-in modules: remove "builtin".`);
+  if (iconFile) {
+    if (!existsSync(join(dir, iconFile))) say(`its icon ${iconFile} isn't in the folder.`);
+    else {
+      const icon = checkPluginIcon(readFileSync(join(dir, iconFile), "utf8"));
+      if ("problem" in icon) say(`its icon ${iconFile} would be left out: ${icon.problem}.`);
+    }
+  }
 
   const { warnings } = readContributions(manifest, { reserved: ctx.builtinIds, moves: ctx.moves, taken: ctx.taken });
   for (const w of warnings) say(w);
@@ -162,7 +173,7 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
     // Its manifest, plus the TypeGPU sources its shader effects name (D213): resolved by
     // plugin:check, never run by Uncut (the manifest carries their WGSL).
     const names = files.map((f) => f.path.slice(dir.length + 1));
-    if (!names.includes(MANIFEST_FILE) || names.some((n) => n !== MANIFEST_FILE && !shaderSources.has(n))) say(`a data plugin is its ${MANIFEST_FILE} alone, no code (and the .ts sources of its shader effects).`);
+    if (!names.includes(MANIFEST_FILE) || names.some((n) => n !== MANIFEST_FILE && n !== iconFile && !shaderSources.has(n))) say(`a data plugin is its ${MANIFEST_FILE} alone, no code (and the .ts sources of its shader effects); an icon .svg may sit beside it.`);
     for (const source of shaderSources) if (!names.includes(source)) say(`its shader effects' source ${source} isn't in the folder.`);
   } else if (runtime.command === "node") {
     const entry = (runtime.args ?? []).find((a) => a.endsWith(".ts"));

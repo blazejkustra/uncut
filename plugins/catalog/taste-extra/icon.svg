@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Uncut's own mark: a soft card with a corner sticker. -->
+  <rect x="2.5" y="6" width="15" height="13" rx="3"/>
+  <path d="M6.5 11.5h7M6.5 15h4.5"/>
+  <circle cx="18" cy="6" r="3.5" fill="#000" stroke="none"/>
+</svg>

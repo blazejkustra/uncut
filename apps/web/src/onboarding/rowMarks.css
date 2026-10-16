@@ -1,2 +1,5 @@
 /* D277: the agents' and keyed providers' marks on the setup wizard and Settings rows, the size of the lucide icons beside them. */
 .wiz-row > svg.wiz-mark { flex: none; width: 20px; height: 20px; color: var(--fg); }
+/* D281: a plugin's own icon, its shape in the row's text colour (PluginIcon). */
+.plugin-mark { flex: none; display: inline-block; width: 20px; height: 20px; background-color: currentColor; color: var(--fg); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center; -webkit-mask-size: contain; mask-size: contain; }
+.pm-icon .plugin-mark { width: 16px; height: 16px; color: var(--fg); }

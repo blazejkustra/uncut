@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Uncut's own mark: a kit of parts (a look, a component, a skill and an effect). -->
+  <rect x="3" y="3" width="8" height="8" rx="2"/>
+  <circle cx="17" cy="7" r="4"/>
+  <path d="M7 13.5l4.2 7.5H2.8z"/>
+  <rect x="13" y="13" width="8" height="8" rx="4" fill="none" stroke="#000" stroke-width="2"/>
+</svg>

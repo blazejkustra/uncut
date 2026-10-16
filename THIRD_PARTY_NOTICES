@@ -435,6 +435,29 @@ Universal (https://creativecommons.org/publicdomain/zero/1.0/). The marks remain
 respective owners, shown only to say who makes a model; Uncut isn't made by or affiliated with any of them.
 
 ==============================================================================
+Tool and plugin marks
+==============================================================================
+
+The setup wizard's and Settings' rows (apps/web/src/onboarding/toolMarks.tsx) and the plugins'
+icons (icon.svg in each plugin folder) are drawn in one colour, the row's text colour:
+
+FFmpeg: Simple Icons 16.33.0 (https://simpleicons.org, icon ffmpeg), CC0 1.0 Universal.
+Argent: the mark from Argent's logo, https://github.com/software-mansion/argent,
+  packages/docs/static/img/logo.svg at commit 36aa14a, Apache License 2.0 (the repository's
+  licence, whose full text is among the npm packages' licence texts below); its outline is
+  drawn thicker. Also plugins/argent-capture/icon.svg.
+TypeGPU: its logomark, https://github.com/software-mansion/TypeGPU,
+  apps/typegpu-docs/public/typegpu-logomark-monodark.svg at commit 425afd3, MIT (the
+  repository's licence, Copyright (c) 2025 Software Mansion, the same text as the typegpu npm
+  package's below); in plugins/catalog/typegpu-effects/icon.svg.
+whisper.cpp has no logo of its own, so its row and the Whisper plugin show Uncut's own mark;
+the other plugin icons are Uncut's own drawings too.
+
+These marks are trademarks of their respective owners (FFmpeg of Fabrice Bellard, Argent and
+TypeGPU of Software Mansion), shown only to name the program a row or plugin is about. Uncut
+isn't made by, endorsed by or affiliated with any of them.
+
+==============================================================================
 Electron and Chromium
 ==============================================================================
 

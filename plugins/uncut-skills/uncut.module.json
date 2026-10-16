@@ -4,6 +4,7 @@
   "id": "uncut.skills",
   "kind": "pack",
   "name": "Uncut skills",
+  "icon": "icon.svg",
   "version": "1.0.0",
   "description": "Uncut's own skills: production recipes the agent loads when they fit (launch promo, product demo, motion, sound, brand) and the brand kit maker. Type / in the composer to use one.",
   "author": "Uncut",

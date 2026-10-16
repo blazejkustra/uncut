@@ -4,6 +4,7 @@
   "id": "example.template",
   "kind": "pack",
   "name": "Example template",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "A starting point for a plugin: one tool the agent can call (it counts the words on screen) and one text look.",
   "author": "Your name",

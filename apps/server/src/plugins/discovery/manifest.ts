@@ -38,6 +38,8 @@ export interface FoundPlugin {
   readonly runs: boolean;
   /** Its looks, components and check rules (D103), shown only once it's allowed. */
   readonly contributions: Contributions;
+  /** D281: its icon.svg as a data: URL, checked (checkPluginIcon); undefined for the generic icon. */
+  readonly icon?: string | undefined;
 }
 
 export interface BrokenPlugin {

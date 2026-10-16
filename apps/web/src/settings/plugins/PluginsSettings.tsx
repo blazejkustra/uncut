@@ -4,10 +4,12 @@
 // plugin step (D97, D102, D103, D248): Install copies a catalog plugin in and opens the dialog;
 // Enable… opens it for a copy that isn't allowed; Disable stops allowing it; Remove deletes the copy.
 import type { CatalogEntry, PluginInfo } from "@uncut/contracts";
-import { Blocks, Check, CircleAlert, Plus, Search, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Check, CircleAlert, Plus, Search, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { PluginIcon } from "../../onboarding/PluginIcon.tsx";
 import { AddPlugin, PluginApproval } from "../../onboarding/plugins.tsx";
+import "../../onboarding/rowMarks.css";
 import { actions, useApp } from "../../state/store.ts";
 import { MakePlugin } from "./MakePlugin.tsx";
 import "./plugins.css";
@@ -140,12 +142,12 @@ function Marketplace({ query, setQuery, highlight }: { query: string; setQuery: 
   );
 }
 
-function CardBody({ name, author, version, description, kinds, asks, capabilities }: { name: string; author: string | undefined; version: string | undefined; description: string | undefined; kinds: ReadonlyArray<string>; asks: ReadonlyArray<string>; capabilities: ReadonlyArray<string> }) {
+function CardBody({ id, icon, name, author, version, description, kinds, asks, capabilities }: { id: string; icon: string | undefined; name: string; author: string | undefined; version: string | undefined; description: string | undefined; kinds: ReadonlyArray<string>; asks: ReadonlyArray<string>; capabilities: ReadonlyArray<string> }) {
   return (
     <>
       <div className="pm-card-head">
         <span className="pm-icon">
-          <Blocks />
+          <PluginIcon icon={icon} id={id} />
         </span>
         <div className="pm-title">
           <div className="pm-name">{name}</div>
@@ -180,7 +182,7 @@ function CardBody({ name, author, version, description, kinds, asks, capabilitie
 function AvailableCard({ entry: e, busy, highlight }: { entry: CatalogEntry; busy: boolean; highlight: boolean }) {
   return (
     <div className={`pm-card${highlight ? " highlight" : ""}`} data-testid="market-card" data-id={e.id} data-state="available">
-      <CardBody name={e.name} author={e.author} version={e.version} description={e.description} kinds={kindsOf(e.contributes, e.tools.length, e.runs)} asks={e.asks ?? []} capabilities={e.capabilities} />
+      <CardBody id={e.id} icon={e.icon} name={e.name} author={e.author} version={e.version} description={e.description} kinds={kindsOf(e.contributes, e.tools.length, e.runs)} asks={e.asks ?? []} capabilities={e.capabilities} />
       <div className="pm-actions">
         <button className="btn primary" data-testid={`market-install-${e.id}`} disabled={busy} onClick={() => void actions.enablePlugin(e.id)}>
           Install…
@@ -195,7 +197,7 @@ function InstalledCard({ plugin: p, entry, busy, highlight }: { plugin: PluginIn
   const from = p.source === "bundled" ? "Ships with Uncut" : p.origin?.kind === "catalog" ? "From Uncut's catalog" : p.origin?.kind === "git" ? `From ${p.origin.source}` : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
   return (
     <div className={`pm-card${highlight ? " highlight" : ""}`} data-testid="market-card" data-id={p.id} data-state={state}>
-      <CardBody name={p.name} author={p.author ?? entry?.author} version={p.version} description={p.problem ?? p.description} kinds={kindsOf(p.contributes, p.tools.length, p.runs)} asks={p.asks} capabilities={p.capabilities} />
+      <CardBody id={p.id} icon={p.status === "broken" ? undefined : p.icon} name={p.name} author={p.author ?? entry?.author} version={p.version} description={p.problem ?? p.description} kinds={kindsOf(p.contributes, p.tools.length, p.runs)} asks={p.asks} capabilities={p.capabilities} />
       {p.warnings.length > 0 && (
         <div className="pm-warn" title={p.warnings.join("\n")}>
           {p.warnings[0]}
