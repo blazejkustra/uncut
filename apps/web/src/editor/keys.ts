@@ -101,7 +101,8 @@ export function useEditorKeys(fps: number) {
     };
     const blocked = (e: KeyboardEvent) => (space(e) || chatChord(e) ? isTyping(e.target) : isEditable(e.target)) || dialog();
     const onKeyDown = (e: KeyboardEvent) => {
-      if (blocked(e)) return;
+      // A key the menu's handler (store/keys.ts, registered first) already took isn't run twice.
+      if (e.defaultPrevented || blocked(e)) return;
       const done = () => e.preventDefault();
       const bottom = getPlayback().bottom;
       // U11 (D177): the Transcript is a rail tab next to the timeline. Words selected in it (which

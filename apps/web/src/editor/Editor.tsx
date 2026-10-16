@@ -163,6 +163,9 @@ function useAgentStage(project: Project, dir: string, focus: boolean): { staged:
   const staged = !focus && stageWanted(project, dir, agent, dismissed);
   // The chat goes on in the Agent tab (the side panel back if hidden), sliding in from the middle.
   const dock = useCallback(() => {
+    // D266: docked is remembered like a dismissal, so undoing the import that docked it doesn't
+    // bring the stage back over the editor (the Agent tab's empty state still can).
+    stage.dismiss(dir);
     panels.show("side");
     markDocked();
     rememberSideTab(dir, "agent");

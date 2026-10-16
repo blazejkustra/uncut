@@ -12,6 +12,7 @@ import type { Loaded, Running, ClaudeSession } from "./types.ts";
 import { isString, resultText, RESULT_MAX } from "../turns/history.ts";
 import { TURN_DIR_PREFIX } from "./stale.ts";
 import { sessionEnv, initMs, sessionArgs } from "./config.ts";
+import { forgetSentBlocks } from "./send.ts";
 import type { StreamCtx } from "./stream.ts";
 
 /**
@@ -60,6 +61,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       }
       return;
     }
+    // D266: after a compaction the brand kit and plan go whole with the next message.
+    if (msg.type === "system" && msg.subtype === "compact_boundary") return void forgetSentBlocks(s);
     // D194: claude asks whether a built-in tool may run (--permission-prompt-tool stdio).
     if (msg.type === "control_request" && msg.request?.subtype === "can_use_tool") return void canUseTool(s, msg);
     if (msg.type === "control_response" && String(msg.response?.request_id ?? "") === s.initId) {

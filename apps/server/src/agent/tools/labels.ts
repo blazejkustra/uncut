@@ -144,6 +144,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       const n = Array.isArray(args.fixes) ? args.fixes.length : 0;
       return n ? `Asked the critic to check ${n} fix${n === 1 ? "" : "es"}` : "Asked the critic for a review";
     }
+    case "plan_read":
+      return "Read the plan";
     case "docs_read":
       return typeof args.topic === "string" && args.topic.trim() ? `Read the ${clip(args.topic.trim(), 30)} reference` : "Read the reference";
     case "skill_read":

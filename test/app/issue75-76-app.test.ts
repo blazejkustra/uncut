@@ -115,6 +115,22 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   assert.ok(await has(page, "[data-testid=side-staged]"), "the Agent tab says the chat is in the middle");
   await shot(page, "stage");
 
+  // D266: a drop on the card that imports nothing says why in the card (not only in Media, under
+  // the backdrop); the stage stays. Banners and toasts draw above the stage.
+  writeFileSync(join(root, "broken.mp4"), "not a video at all");
+  const cardBox = await rect(page, "[data-testid=agent-stage-card]");
+  const cdp = await page.target().createCDPSession();
+  const dropData = { items: [], files: [join(root, "broken.mp4")], dragOperationsMask: 1 };
+  for (const type of ["dragEnter", "dragOver", "drop"] as const) await cdp.send("Input.dispatchDragEvent", { type, x: cardBox.x + cardBox.width / 2, y: cardBox.y + cardBox.height / 2, data: dropData });
+  await waitFor(page, "[data-testid=agent-stage-card] [data-testid=agent-stage-import-report]", 30000);
+  assert.match(await page.$eval("[data-testid=agent-stage-import-report]", (el) => el.textContent ?? ""), /broken\.mp4/);
+  assert.ok(await has(page, "[data-testid=agent-stage-card]"), "the stage stays: nothing was imported");
+  const z = await page.evaluate(() => ({ banners: Number(getComputedStyle(document.querySelector(".app > .banners")!).zIndex), stage: Number(getComputedStyle(document.querySelector("[data-testid=agent-stage]")!).zIndex) }));
+  assert.ok(z.banners > z.stage, `banners and toasts above the stage (${JSON.stringify(z)})`);
+  await shot(page, "stage-import-failed");
+  await page.click("[data-testid=agent-stage-import-report] .link-btn");
+  await gone(page, "[data-testid=agent-stage-import-report]");
+
   // Esc goes to the editor; the Agent tab's empty state brings the stage back.
   await page.keyboard.press("Escape");
   await gone(page, "[data-testid=agent-stage]");

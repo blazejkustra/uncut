@@ -48,3 +48,6 @@
 /* Bringing it back from the Agent tab's empty state; the side panel while the stage has the chat. */
 .agent-stage-back { align-self: center; margin-top: 4px; }
 .side-staged { margin: auto; padding: 24px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--muted); font-size: 12px; }
+
+/* D266: what a drop on the card couldn't import, above the foot line. */
+.agent-stage-card .agent-stage-report { margin: 0 24px 10px; max-height: 120px; overflow-y: auto; }

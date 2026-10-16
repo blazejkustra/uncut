@@ -24,7 +24,7 @@ import { mergePath, pluginEnv } from "../app/shellEnv.ts";
 import { Projects } from "../project/projects.ts";
 import { MediaLibrary } from "./media.ts";
 import { runProbe } from "./probe.ts";
-import { checkLink, linkFileStem, linkMediaName, LINKS_DIR, parseLine, plainYtDlpError, ytDlpArgs } from "./linkArgs.ts";
+import { checkLink, labsRefusal, linkFileStem, linkMediaName, LINKS_DIR, parseLine, plainYtDlpError, ytDlpArgs } from "./linkArgs.ts";
 
 const MAX_JOBS_KEPT = 10;
 const STDERR_KEEP = 64 * 1024;
@@ -43,6 +43,16 @@ export class LinkImport extends Context.Service<LinkImport, LinkImportShape>()("
 /** Where to look for yt-dlp: PATH, then the Homebrew folders (unless UNCUT_SHELL_ENV=off, the tests' bare PATH). */
 export const ytDlpSearchPath = (env: NodeJS.ProcessEnv) => mergePath(env.PATH, env.UNCUT_SHELL_ENV === "off" ? "" : HOMEBREW_DIRS.join(":"));
 
+/** Whether any process of the group led by `pid` is still there. */
+const groupAlive = (pid: number) => {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
 /** Kills a detached child's whole process group: TERM, then KILL if it's still there. */
 const killTree = (child: ChildProcess) => {
   const signal = (s: NodeJS.Signals) => {
@@ -55,15 +65,27 @@ const killTree = (child: ChildProcess) => {
     }
   };
   signal("SIGTERM");
-  setTimeout(() => child.exitCode === null && child.signalCode === null && signal("SIGKILL"), 3000).unref();
+  // The group, not just the leader: an ffmpeg can outlive yt-dlp (D266).
+  setTimeout(() => ((child.exitCode === null && child.signalCode === null) || (child.pid && groupAlive(child.pid))) && signal("SIGKILL"), 3000).unref();
 };
 
-/** Runs yt-dlp, handing each output line to `onLine`; resolves with its exit code and the tail of stderr. */
-export const runYtDlp = (bin: string, args: ReadonlyArray<string>, onLine: (line: string) => void, signal: AbortSignal) =>
+/** Waits (up to `ms`) for a process group to be gone: yt-dlp's ffmpeg can outlive it and still write. */
+const groupGone = async (pid: number | undefined, ms: number) => {
+  if (!pid) return;
+  const until = Date.now() + ms;
+  while (groupAlive(pid) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+};
+
+/**
+ * Runs yt-dlp in `cwd` (the output folder: its -o is relative), handing each output line to
+ * `onLine`; resolves with its exit code and the tail of stderr once its whole process group is
+ * gone (D266: an ffmpeg that outlives a cancelled yt-dlp can't leave a .temp after the cleanup).
+ */
+export const runYtDlp = (bin: string, args: ReadonlyArray<string>, onLine: (line: string) => void, signal: AbortSignal, cwd?: string) =>
   new Promise<{ code: number | null; stderr: string; spawnError?: string }>((resolve) => {
     let child: ChildProcess;
     try {
-      child = spawn(bin, [...args], { env: { ...pluginEnv(process.env), PATH: process.env.PATH ?? "" }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+      child = spawn(bin, [...args], { env: { ...pluginEnv(process.env), PATH: process.env.PATH ?? "" }, stdio: ["ignore", "pipe", "pipe"], detached: true, ...(cwd ? { cwd } : {}) });
     } catch (e) {
       return resolve({ code: null, stderr: "", spawnError: (e as Error).message });
     }
@@ -95,7 +117,8 @@ export const runYtDlp = (bin: string, args: ReadonlyArray<string>, onLine: (line
     });
     child.on("close", (code) => {
       signal.removeEventListener("abort", onAbort);
-      resolve({ code, stderr });
+      // The SIGKILL comes 3 s after a cancel's SIGTERM: a little longer than that.
+      void groupGone(child.pid, signal.aborted ? 4000 : 1000).then(() => resolve({ code, stderr }));
     });
   });
 
@@ -152,7 +175,7 @@ export const layer = Layer.effect(
         const folder = yield* linksFolder(target.dir);
         const stem = `link-${id.slice(0, 8)}`;
         const ffmpeg = yield* Effect.promise(() => which("ffmpeg", process.env.PATH ?? ""));
-        const args = ytDlpArgs({ url: request.url, kind: request.kind, quality: request.quality, outBase: join(folder, stem), ffmpeg });
+        const args = ytDlpArgs({ url: request.url, kind: request.kind, quality: request.quality, stem, ffmpeg });
         let title: string | undefined;
         let printed: string | undefined;
         const result = yield* Effect.promise(() =>
@@ -170,6 +193,7 @@ export const layer = Layer.effect(
               else update(id, { status: read.status });
             },
             signal,
+            folder,
           ),
         );
         if (signal.aborted) {
@@ -187,8 +211,9 @@ export const layer = Layer.effect(
         // The finished file: the one yt-dlp printed (only if it's ours, in the folder), else ours by name.
         const made = yield* Effect.promise(async () => {
           const ours = (p: string) => dirname(p) === folder && basename(p).startsWith(`${stem}.`) && !/\.(part|ytdl|temp)$/.test(p);
-          if (printed && isAbsolute(printed)) {
-            const real = await realpath(printed).catch(() => undefined);
+          // Relative to the folder it ran in (its -o is relative).
+          if (printed) {
+            const real = await realpath(isAbsolute(printed) ? printed : join(folder, printed)).catch(() => undefined);
             if (real && ours(real) && (await stat(real).catch(() => undefined))?.isFile()) return real;
           }
           const files = (await readdir(folder).catch(() => [] as Array<string>)).filter((f) => f.startsWith(`${stem}.`) && !/\.f\d+\./.test(f) && !/\.(part|ytdl|temp)$/.test(f));
@@ -236,6 +261,8 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new LinkError({ reason: "no-project", message: "Open a project first: what's imported goes into its Media." });
+        const off = labsRefusal(request);
+        if (off) return yield* new LinkError({ reason: "failed", message: off });
         const checked = checkLink(request.url);
         if ("problem" in checked) return yield* new LinkError({ reason: "bad-url", message: checked.problem });
         const bin = yield* find;

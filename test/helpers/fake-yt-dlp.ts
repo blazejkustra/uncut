@@ -8,7 +8,10 @@
 // line each. $FAKE_YTDLP_SLEEP_MS: take that long downloading (progress meanwhile), so a test can
 // cancel (a link with "slow" in it: a minute); $FAKE_YTDLP_PID_FILE: where to write the pid of a
 // child it starts (like ffmpeg), which a cancel must kill too. $FAKE_YTDLP_ERROR (or a link with
-// "unsupported" in it): fail with that ERROR: line instead (exit 1).
+// "unsupported" in it): fail with that ERROR: line instead (exit 1). Like the real one, it expands
+// $VARS (and ${VARS}) in the -o template (D266), and writes relative to its working folder.
+// $FAKE_YTDLP_TEMP_ON_TERM: the child, sent SIGTERM, writes <out>.temp 300 ms later, then exits
+// (an ffmpeg finishing up after yt-dlp itself is gone).
 import { spawn } from "node:child_process";
 import { appendFileSync, copyFileSync, writeFileSync } from "node:fs";
 
@@ -22,7 +25,10 @@ const dash = argv.indexOf("--");
 const url = dash >= 0 ? argv[dash + 1] : argv[argv.length - 1];
 const opts = dash >= 0 ? argv.slice(0, dash) : argv;
 const values = (name: string) => opts.flatMap((a, i) => (a === name && i + 1 < opts.length ? [opts[i + 1]!] : []));
-const template = values("-o")[0];
+// yt-dlp's expand_path (os.path.expandvars): known variables are replaced, unknown ones stay.
+const expandVars = (t: string) => t.replace(/\$(\w+|\{[^}]*\})/g, (m, name: string) => process.env[name.replace(/^\{|\}$/g, "")] ?? m);
+const rawTemplate = values("-o")[0];
+const template = rawTemplate === undefined ? undefined : expandVars(rawTemplate);
 const audio = opts.includes("-x");
 const title = process.env.FAKE_YTDLP_TITLE ?? "Fake video";
 const prints = values("--print");
@@ -46,7 +52,10 @@ const printFor = (when: string, file: string) => {
 printFor("before_dl", out);
 
 // A child like the real one's ffmpeg: a cancel must take it down too (the process group).
-const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 600000)"], { stdio: "ignore" });
+const onTerm = process.env.FAKE_YTDLP_TEMP_ON_TERM
+  ? `process.on("SIGTERM", () => setTimeout(() => { require("node:fs").writeFileSync(${JSON.stringify(`${out}.temp`)}, "ffmpeg's"); process.exit(0); }, 300));`
+  : "";
+const child = spawn(process.execPath, ["-e", `${onTerm} setTimeout(() => {}, 600000)`], { stdio: "ignore" });
 if (process.env.FAKE_YTDLP_PID_FILE) writeFileSync(process.env.FAKE_YTDLP_PID_FILE, String(child.pid));
 
 const sleepMs = url.includes("slow") ? 60000 : Number(process.env.FAKE_YTDLP_SLEEP_MS ?? 0);

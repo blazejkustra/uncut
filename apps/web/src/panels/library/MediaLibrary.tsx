@@ -13,10 +13,11 @@ import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { call } from "../../state/store/server.ts";
 import { dragMayHoldLink, linkFromDrag, liveLinkJob, openLinkImport, useLinkJobs } from "./linkImport.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
+import { ImportReport } from "./ImportReport.tsx";
 
 export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => void }) {
   const app = useApp();
-  const { importReport, connection, uploading } = app;
+  const { connection, uploading } = app;
   const running = activeJobs(app);
   const importing = running.length > 0 || uploading !== undefined;
   const [dragging, setDragging] = useState(false);
@@ -138,29 +139,7 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
           </button>
         </div>
       )}
-      {importReport && (
-        <div className="import-report" data-testid="import-report">
-          {importReport.failed.map((f) => (
-            <div key={`f-${f.path}`} className="import-line error">
-              <span className="ellipsis" title={f.path}>
-                {f.path.split("/").pop()}
-              </span>
-              <span>{f.message}</span>
-            </div>
-          ))}
-          {importReport.skipped.map((s) => (
-            <div key={`s-${s.path}`} className="import-line">
-              <span className="ellipsis" title={s.path}>
-                {s.path.split("/").pop()}
-              </span>
-              <span>{s.reason}</span>
-            </div>
-          ))}
-          <button className="link-btn" onClick={actions.dismissImportReport}>
-            Dismiss
-          </button>
-        </div>
-      )}
+      <ImportReport />
       {media.length === 0 && generated.size === 0 ? (
         <Empty icon={<Film />} title="No media yet" testId="media-empty">
           <button className="btn" data-testid="import" disabled={!online} onClick={() => void actions.importMedia()}>

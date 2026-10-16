@@ -96,8 +96,15 @@ if (shareable) {
 }
 
 // 3. Build (with the telemetry token), then sign.
-if (skipBuild) console.log("\n--skip-build: packaging the apps/*/dist already built.");
-else {
+if (skipBuild) {
+  console.log("\n--skip-build: packaging the apps/*/dist already built.");
+  // D266: the plugins are staged from the repo even so (cheap), so a plugins/ change since the last
+  // build isn't packaged stale.
+  step("Staging the plugins (plugins/bundled.json)");
+  const { stagePlugins } = await import("../../../scripts/plugin-bundle.ts");
+  const staged = stagePlugins(undefined, join(desktop, "stage/plugins"));
+  console.log(`plugins: ${staged.bundled.length} bundled, ${staged.catalog.length} in the catalog`);
+} else {
   // stdout only (the password), piped, never on the terminal or in an argv.
   const k = process.env.UNCUT_TELEMETRY_TOKEN?.trim() ? undefined : spawnSync("security", ["find-generic-password", "-s", TELEMETRY_KEYCHAIN_SERVICE, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   const fromKeychain = k && { code: k.status ?? 1, out: k.stdout ?? "" };
