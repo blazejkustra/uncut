@@ -102,15 +102,17 @@ function useTakeSeconds() {
 
 /**
  * D209: the recording bar: a big record button; then the 3-2-1; then the timer, the level meter
- * (when the take has sound), Pause, Stop and Cancel; then saving.
+ * (when the take has sound), Pause, Stop and Cancel; then saving. (D238: the meter before a take
+ * is the Microphone card's.)
  */
-export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }: { mode: TakeMode; disabled: boolean; onRecord: () => void; label?: string; meter: boolean }) {
+export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }: { mode?: TakeMode; disabled: boolean; onRecord: () => void; label?: string; meter: boolean }) {
   const phase = useRecorder((s) => s.phase);
   const count = useRecorder((s) => s.count);
   const paused = useRecorder((s) => s.paused);
   const runningMode = useRecorder((s) => s.mode);
   const seconds = useTakeSeconds();
-  const mine = runningMode === mode;
+  // D238: without a mode the bar is the one recorder's, for any take.
+  const mine = mode === undefined || runningMode === mode;
   if (phase === "idle" || !mine) {
     return (
       <div className="record-bar idle" data-testid="capture-record-bar" data-state="idle">
@@ -118,7 +120,6 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
           <span className="record-dot" />
           <span className="record-label">{label}</span>
         </button>
-        {meter && <LevelMeter testId="capture-bar-level" compact />}
       </div>
     );
   }

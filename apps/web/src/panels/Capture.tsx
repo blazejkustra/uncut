@@ -1,5 +1,6 @@
-// The Capture tab (D98, D143): This Mac first (microphone, camera, screen or window: CaptureThisMac,
-// D114), then Argent's simulators and emulators with Record and Stop and a running timer; a stopped
+// The Capture tab (D98, D143): This Mac first (one recorder for any mix of screen, microphone,
+// camera and Mac sound: CaptureThisMac, D114, D238), then Argent's simulators and emulators: one
+// searchable device picker (D238) with Record beside it, Stop and a running timer; a stopped
 // take lands in the Library (Media) as one edit (⌘Z removes it). A shut-down simulator or an AVD
 // that isn't running has "Boot and record" (Argent boots it on that click only). Options for the
 // next take: a saved flow to replay (the take ends with it), an app to open first, the orientation,
@@ -15,17 +16,16 @@ import {
   CircleDot,
   Copy,
   LoaderCircle,
-  Monitor,
   Power,
   RefreshCw,
-  Smartphone,
   Square,
-  TabletSmartphone,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 import { actions, useApp } from "../state/store.ts";
+import { DevicePicker, deviceIcon, deviceSub } from "./capture/DevicePicker.tsx";
 import { CaptureThisMac } from "./CaptureThisMac.tsx";
+import { Option } from "./thisMac/controls.tsx";
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -51,6 +51,8 @@ interface ArgentOptions {
   readonly maxSeconds: number;
   readonly showTouches: boolean;
   readonly trimStatic: boolean;
+  /** D238: the device chosen in the picker. */
+  readonly device: string;
 }
 const OPTIONS_KEY = "uncut.capture.argent";
 const DEFAULT_OPTIONS: ArgentOptions = {
@@ -60,6 +62,7 @@ const DEFAULT_OPTIONS: ArgentOptions = {
   maxSeconds: 600,
   showTouches: false,
   trimStatic: false,
+  device: "",
 };
 const MAX_LENGTHS: ReadonlyArray<[number, string]> = [
   [30, "30 s"],
@@ -125,6 +128,9 @@ export function CaptureLibrary() {
   const devices = [...(capture?.devices ?? [])].sort(
     (a, b) => rank(a) - rank(b),
   );
+  // D238: the remembered device if it's still there, else the first that records (the list's order).
+  const selected =
+    devices.find((d) => d.id === options.device) ?? devices[0];
   const ready = !!capture && capture.installed && !capture.problem;
   return (
     <aside className="library" data-testid="capture-library">
@@ -186,19 +192,32 @@ export function CaptureLibrary() {
         ) : (
           <>
             <div className="capture-devices" data-testid="capture-devices">
-              {devices.map((d) => (
-                <DeviceRow
-                  key={d.id}
-                  device={d}
-                  running={recording.get(d.id)}
-                  now={now}
-                  busy={busy.has(d.id)}
-                  booting={booting.has(d.id)}
-                  online={online}
-                  anyOpen={!!app.snapshot}
-                  options={effective}
-                />
-              ))}
+              {[selected, ...devices.filter((d) => d.id !== selected?.id && recording.has(d.id))].map(
+                (d) =>
+                  d && (
+                    <DeviceRow
+                      key={d.id}
+                      device={d}
+                      picker={
+                        d.id === selected?.id ? (
+                          <DevicePicker
+                            devices={devices}
+                            value={selected}
+                            recording={new Set(recording.keys())}
+                            onChange={(id) => setOptions({ device: id })}
+                          />
+                        ) : undefined
+                      }
+                      running={recording.get(d.id)}
+                      now={now}
+                      busy={busy.has(d.id)}
+                      booting={booting.has(d.id)}
+                      online={online}
+                      anyOpen={!!app.snapshot}
+                      options={effective}
+                    />
+                  ),
+              )}
             </div>
             <ArgentOptionsForm
               options={effective}
@@ -244,102 +263,98 @@ function ArgentOptionsForm({
   const timed = !options.flow;
   return (
     <div className="capture-options" data-testid="capture-options">
-      <label className="field">
-        <span className="k">Flow</span>
-        <select
-          className="gen-select"
-          data-testid="capture-opt-flow"
-          value={options.flow}
-          onChange={(e) => setOptions({ flow: e.target.value })}
-        >
-          <option value="">None, record until Stop</option>
-          {flows.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span className="k">Open app</span>
-        <input
-          className="gen-select"
-          data-testid="capture-opt-app"
-          placeholder="com.example.app"
-          spellCheck={false}
-          value={options.bundleId}
-          maxLength={200}
-          onChange={(e) => setOptions({ bundleId: e.target.value })}
-        />
-      </label>
-      <label className="field">
-        <span className="k">Orientation</span>
-        <select
-          className="gen-select"
-          data-testid="capture-opt-orientation"
-          value={options.orientation}
-          onChange={(e) =>
-            setOptions({
-              orientation: e.target.value as ArgentOptions["orientation"],
-            })
-          }
-        >
-          {ORIENTATIONS.map(([v, label]) => (
-            <option key={v || "keep"} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span className="k">Max length</span>
-        <select
-          className="gen-select"
-          data-testid="capture-opt-max"
-          value={options.maxSeconds}
-          disabled={!timed}
-          title={
-            timed
-              ? "The take stops by itself after this long"
-              : "A flow's take lasts as long as the flow"
-          }
-          onChange={(e) => setOptions({ maxSeconds: Number(e.target.value) })}
-        >
-          {MAX_LENGTHS.map(([v, label]) => (
-            <option key={v} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          data-testid="capture-opt-touches"
+      <div className="capture-options-grid">
+        <label className="capture-opt">
+          <span>Flow</span>
+          <select
+            data-testid="capture-opt-flow"
+            value={options.flow}
+            onChange={(e) => setOptions({ flow: e.target.value })}
+          >
+            <option value="">None, until Stop</option>
+            {flows.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="capture-opt">
+          <span>Max length</span>
+          <select
+            data-testid="capture-opt-max"
+            value={options.maxSeconds}
+            disabled={!timed}
+            title={
+              timed
+                ? "The take stops by itself after this long"
+                : "A flow's take lasts as long as the flow"
+            }
+            onChange={(e) => setOptions({ maxSeconds: Number(e.target.value) })}
+          >
+            {MAX_LENGTHS.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="capture-opt">
+          <span>Orientation</span>
+          <select
+            data-testid="capture-opt-orientation"
+            value={options.orientation}
+            onChange={(e) =>
+              setOptions({
+                orientation: e.target.value as ArgentOptions["orientation"],
+              })
+            }
+          >
+            {ORIENTATIONS.map(([v, label]) => (
+              <option key={v || "keep"} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="capture-opt">
+          <span>Open app</span>
+          <input
+            data-testid="capture-opt-app"
+            placeholder="com.example.app"
+            spellCheck={false}
+            value={options.bundleId}
+            maxLength={200}
+            onChange={(e) => setOptions({ bundleId: e.target.value })}
+          />
+        </label>
+      </div>
+      <div className="opt-row">
+        <Option
+          testId="capture-opt-touches"
           checked={options.showTouches}
-          onChange={(e) => setOptions({ showTouches: e.target.checked })}
-        />
-        Show touches
-      </label>
-      <label
-        className="check-row"
-        title={timed ? "" : "A flow's take keeps every frame"}
-      >
-        <input
-          type="checkbox"
-          data-testid="capture-opt-trim"
+          onChange={(v) => setOptions({ showTouches: v })}
+          title="Draw touches into the take"
+        >
+          Show touches
+        </Option>
+        <Option
+          testId="capture-opt-trim"
           checked={options.trimStatic && timed}
           disabled={!timed}
-          onChange={(e) => setOptions({ trimStatic: e.target.checked })}
-        />
-        Cut parts where nothing moves
-      </label>
+          onChange={(v) => setOptions({ trimStatic: v })}
+          title={timed ? "Cut the parts where nothing moves" : "A flow's take keeps every frame"}
+        >
+          Cut still parts
+        </Option>
+      </div>
     </div>
   );
 }
 
 function DeviceRow({
   device,
+  picker,
   running,
   now,
   busy,
@@ -349,6 +364,8 @@ function DeviceRow({
   options,
 }: {
   device: CaptureDevice;
+  /** D238: the chosen device's row is the picker; a device recording besides it is a plain row. */
+  picker: React.ReactNode;
   running: { startedAt: string; flow?: string | undefined } | undefined;
   now: number;
   busy: boolean;
@@ -357,49 +374,41 @@ function DeviceRow({
   anyOpen: boolean;
   options: ArgentOptions;
 }) {
-  const Icon =
-    device.platform === "ios"
-      ? Smartphone
-      : device.platform === "android"
-        ? TabletSmartphone
-        : Monitor;
+  const Icon = deviceIcon(device);
   const recording = running !== undefined;
-  const kind =
-    device.platform === "ios"
-      ? "iOS simulator"
-      : device.platform === "android"
-        ? "Android"
-        : device.platform;
   const record = () =>
     options.flow
       ? actions.recordFlow(device.id, options.flow, takeOptions(options))
       : actions.startCapture(device.id, takeOptions(options));
   return (
     <div
-      className={`capture-row${device.recordable || device.bootable ? "" : " later"}${recording ? " recording" : ""}`}
+      className={`capture-row${device.recordable || device.bootable ? "" : " later"}${recording ? " recording" : ""}${picker ? " chosen" : ""}`}
       data-testid="capture-device"
       data-id={device.id}
       data-recordable={device.recordable}
       data-bootable={device.bootable === true}
       title={
-        device.recordable
-          ? device.id
-          : `${device.id}: ${device.reason ?? "not recordable yet"}`
+        picker
+          ? undefined
+          : device.recordable
+            ? device.id
+            : `${device.id}: ${device.reason ?? "not recordable yet"}`
       }
     >
-      <Icon />
-      <span className="capture-name">
-        {device.name}
-        <span className="capture-sub">
-          {recording && running.flow
-            ? `Playing ${running.flow}`
-            : device.recordable
-              ? kind
-              : device.bootable
-                ? `${kind}, off`
-                : (device.reason ?? "")}
-        </span>
-      </span>
+      {picker ?? (
+        <>
+          <Icon />
+          <span className="capture-name">
+            {device.name}
+            <span className="capture-sub">
+              {recording && running.flow ? `Playing ${running.flow}` : deviceSub(device)}
+            </span>
+          </span>
+        </>
+      )}
+      {picker && recording && running.flow && (
+        <span className="capture-note">Playing {running.flow}</span>
+      )}
       {recording ? (
         <>
           <span className="capture-timer" data-testid="capture-timer">
@@ -458,7 +467,7 @@ function DeviceRow({
         </button>
       ) : (
         <span className="capture-note" data-testid="capture-not-recordable">
-          Not recordable yet
+          Can't record
         </span>
       )}
     </div>
