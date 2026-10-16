@@ -1,6 +1,7 @@
 /* D258 (#90): Settings › Plugins, the marketplace and Make a plugin. */
 .pm { display: flex; flex-direction: column; min-height: 0; }
-.pm-tabs { display: flex; gap: 4px; padding: 10px 14px 0; border-bottom: 1px solid var(--border); }
+/* Sticky under Settings' own sticky head (53px), so the tabs stay reachable from a scrolled marketplace. */
+.pm-tabs { display: flex; gap: 4px; padding: 10px 14px 0; border-bottom: 1px solid var(--border); position: sticky; top: 53px; z-index: 1; background: var(--panel); }
 .pm-tabs button { padding: 6px 10px 8px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 13px; }
 .pm-tabs button:hover { color: var(--fg); }
 .pm-tabs button.active { color: var(--fg); border-bottom-color: var(--fg); }
@@ -28,7 +29,7 @@
 .pm-by { font-size: 11px; color: var(--dim); }
 .pm-desc { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pm-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
-.pm-kind { font-size: 10px; padding: 2px 7px; border-radius: 999px; background: var(--raised); color: var(--muted); }
+.pm-kind { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--raised); color: var(--muted); }
 .pm-perms { display: flex; gap: 6px; font-size: 11px; color: var(--dim); line-height: 1.4; }
 .pm-perms svg.lucide { width: 13px; height: 13px; flex: none; margin-top: 1px; }
 .pm-perms p { margin: 0; }
@@ -46,7 +47,9 @@
 .pg-hero-sub { font-size: 12px; color: var(--muted); }
 .pg-hero-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .pg-hero-btns a.btn { text-decoration: none; color: inherit; }
-.pg-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+.pg-toc { display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin: 10px 0 2px; padding-left: 10px; border-left: 1px solid var(--border); }
+.pg-toc .link-btn { padding: 2px 6px; }
+.pg-toc .link-btn:hover { color: var(--fg); }
 .pg-section { scroll-margin-top: 8px; }
 .pg-section h3 { margin: 14px 0 6px; font-size: 14px; font-weight: 600; }
 .pg-section p { margin: 0 0 8px; color: var(--muted); }
