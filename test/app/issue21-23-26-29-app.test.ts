@@ -160,7 +160,8 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
 
     // ---- #29: overlay scrollbars ----
     await page.click("[data-testid=rail-sfx]");
-    await page.click("[data-testid=library-view-included]");
+    await page.waitForSelector("[data-testid=library-source]");
+    await page.select("[data-testid=library-source]", "pack");
     await page.waitForSelector("[data-testid=sfx-included]");
     await page.waitForFunction(() => {
       const lib = document.querySelector(".library");

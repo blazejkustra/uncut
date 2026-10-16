@@ -153,20 +153,17 @@ test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and
     await sleep(200);
     assert.ok((await sample(page)).rms < 0.005, "paused is silent");
 
-    // Audio tab: nothing yet; import the music; + puts it on the audio track at the playhead.
+    // Audio tab (D249): import the music (it lands in Media); its tile's + puts it on the audio track at the playhead.
     await page.click("[data-testid=rail-audio]");
     await waitFor(page, "[data-testid=audio-library]");
-    await waitFor(page, "[data-testid=audio-empty]");
-    // The music library (D91) lists its tracks under the project's sounds, in Included (D134).
-    await page.click("[data-testid=library-view-included]");
-    await waitFor(page, "[data-testid=music-library]");
-    assert.equal((await page.$$("[data-testid=music-row]")).length, 5);
+    await waitFor(page, "[data-testid=library-source]");
     await page.click("[data-testid=audio-import]");
-    await waitFor(page, '[data-testid=audio-row][data-id="m-music"]', 20000);
+    await page.click("[data-testid=rail-media]");
+    await waitFor(page, '[data-testid=media-tile][data-id="m-music"]', 20000);
     await page.click("[data-testid=timeline]");
     await page.keyboard.press("Home");
     let rev = await revision(page);
-    await page.click('[data-testid=audio-row][data-id="m-music"] [data-testid=audio-add]');
+    await page.click('[data-testid=media-tile][data-id="m-music"] [data-testid=add-to-timeline]');
     rev = await savedAfter(page, rev);
     assert.deepEqual(music(), { id: "audio-1", type: "audio", media: "m-music", in: 0, duration: 240, start: 0 });
     await page.waitForFunction(() => {

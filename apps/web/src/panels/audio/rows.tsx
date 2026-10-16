@@ -1,6 +1,5 @@
-import { type LibraryHit, type LibraryKind, hitKey, libraryMediaOf, lengthLabel, LICENSE_NAMES, filterSfx, SFX_CATEGORIES, type SfxSound } from "@uncut/core/library";
+import { type LibraryHit, type LibraryKind, hitKey, libraryMediaOf, lengthLabel, LICENSE_NAMES, filterSfx, type SfxSound } from "@uncut/core/library";
 import { Square, Play, RefreshCw, Plus } from "lucide-react";
-import { useState } from "react";
 import { type Project, libraryPreviewUrl, actions, useApp, sfxUrl } from "../../state/store.ts";
 import { type Preview, Wave, TogetherButton } from "./preview.tsx";
 
@@ -40,24 +39,15 @@ export function HitRow({ hit, kind, project, online, preview, adding }: { hit: L
   );
 }
 
-/** The bundled sound-effects pack (D134): CC0 sounds by category, listen and +. */
-export function IncludedSfx({ project, online, query, preview }: { project: Project; online: boolean; query: string; preview: Preview }) {
-  const [category, setCategory] = useState<string | undefined>();
+/** The bundled sound-effects pack (D134, D250): CC0 sounds matching the search and the kind select, listen and +. */
+export function IncludedSfx({ project, online, query, category, preview }: { project: Project; online: boolean; query: string; category: string | undefined; preview: Preview }) {
   const sounds = filterSfx({ query, category });
-  const used = new Set(SFX_CATEGORIES.map((c) => c.id).filter((id) => filterSfx({ category: id }).length > 0));
   return (
     <div data-testid="sfx-included">
-      <div className="music-chips">
-        {SFX_CATEGORIES.filter((c) => used.has(c.id)).map((c) => (
-          <button key={c.id} className={`music-chip${category === c.id ? " active" : ""}`} data-testid="sfx-category" data-chip={c.id} aria-pressed={category === c.id} onClick={() => setCategory(category === c.id ? undefined : c.id)}>
-            {c.name}
-          </button>
-        ))}
-      </div>
       <div data-testid="sfx-list">
         {sounds.length === 0 && (
           <div className="muted small" data-testid="sfx-empty">
-            No sound matches
+            No sound matches. Try other words, or generate one.
           </div>
         )}
         {sounds.map((s) => (
@@ -76,7 +66,7 @@ function SfxRow({ sound: s, project, online, preview }: { sound: SfxSound; proje
   // The pack's peaks come with it (make-sfx, D208): the waveform shows before it's played.
   const peaks = preview.peaks[key] ?? s.peaks.map((p) => p / 100);
   return (
-    <div className="music-row" data-testid="sfx-row" data-id={s.id} title={`${s.title} by ${s.author}, CC0: ${s.source}`}>
+    <div className="music-row" data-testid="sfx-row" data-id={s.id} title={s.provider === "uncut" ? `${s.title}: made by Uncut, CC0` : `${s.title} by ${s.author}, CC0: ${s.source}`}>
       <button className={`icon-btn${playing ? " playing" : ""}`} data-testid="sfx-play" data-playing={playing} title={playing ? "Stop" : "Listen"} onClick={() => preview.toggle(key, sfxUrl(s.file), true)}>
         {playing ? <Square /> : <Play />}
       </button>

@@ -430,16 +430,21 @@ test("exit check: a 14 s promo from the DJI clip, made by hand and exported, mat
 
     // ---- Music: imported from the Audio tab, added at the start, cut at the end of the video
     // (select it, split at the playhead, delete the rest), faded in and out, turned down.
+    const tileIds = () => page.$$eval("[data-testid=media-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.id!));
+    await page.click("[data-testid=rail-media]");
+    const tilesBefore = await tileIds();
     await page.click("[data-testid=rail-audio]");
     await page.click("[data-testid=audio-import]");
-    // The row shows once the import's add_media edit is in the snapshot: that edit has its own
-    // revision, so read it again before waiting for the next one.
-    await ui.waitFor("[data-testid=audio-row]", 30000);
+    // The import lands in Media (D249). Its tile shows once the import's add_media edit is in the
+    // snapshot: that edit has its own revision, so read it again before waiting for the next one.
+    await page.click("[data-testid=rail-media]");
+    await page.waitForFunction((n) => document.querySelectorAll("[data-testid=media-tile]").length > n, { timeout: 30000 }, tilesBefore.length);
+    const musicTile = (await tileIds()).find((id) => !tilesBefore.includes(id))!;
     rev = await ui.revision();
     await page.click("[data-testid=timeline]");
     await page.keyboard.press("Escape");
     await page.keyboard.press("Home");
-    await page.click("[data-testid=audio-row] [data-testid=audio-add]");
+    await page.click(`[data-testid=media-tile][data-id="${musicTile}"] [data-testid=add-to-timeline]`);
     rev = await ui.savedAfter(rev);
     await page.waitForFunction(() => document.querySelector('[data-testid=lane][data-track="audio"] [data-testid=timeline-item]'), { timeout: 10000 });
     const bedId = (await ui.timeline()).audio![0]!.id!;

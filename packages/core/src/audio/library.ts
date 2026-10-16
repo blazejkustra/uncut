@@ -15,9 +15,10 @@ import { expandQuery, matchesQuery, scoreSound, SOUND_ALIASES } from "./search.t
 export { aliasOf, clipNote, expandQuery, matchesQuery, normalizeText, rankSounds, scoreSound, SOUND_ALIASES, squash, synonymsOf, wordsOf, type ExpandedQuery, type Rankable, type SoundAlias } from "./search.ts";
 
 export type LibraryKind = "music" | "sfx";
-export type LibrarySource = "openverse" | "freesound";
-export const LIBRARY_SOURCES: ReadonlyArray<LibrarySource> = ["openverse", "freesound"];
-export const LIBRARY_SOURCE_NAMES: Readonly<Record<LibrarySource, string>> = { openverse: "Openverse", freesound: "Freesound" };
+/** Online sources (D134; Jamendo with the user's own client ID, D249). */
+export type LibrarySource = "openverse" | "freesound" | "jamendo";
+export const LIBRARY_SOURCES: ReadonlyArray<LibrarySource> = ["openverse", "freesound", "jamendo"];
+export const LIBRARY_SOURCE_NAMES: Readonly<Record<LibrarySource, string>> = { openverse: "Openverse", freesound: "Freesound", jamendo: "Jamendo" };
 
 /** Licences the library offers: both allow commercial use and changes. */
 export type LibraryLicense = "cc0" | "by";
@@ -69,7 +70,7 @@ export interface LibraryHit {
 /** A hit's id across sources, as the agent and the renderer name it: openverse:<uuid>, freesound:<n>. */
 export const hitKey = (hit: Pick<LibraryHit, "source" | "id">) => `${hit.source}:${hit.id}`;
 export function parseHitKey(key: string): { readonly source: LibrarySource; readonly id: string } | undefined {
-  const m = /^(openverse|freesound):([A-Za-z0-9-]{1,64})$/.exec(key);
+  const m = /^(openverse|freesound|jamendo):([A-Za-z0-9-]{1,64})$/.exec(key);
   return m ? { source: m[1] as LibrarySource, id: m[2]! } : undefined;
 }
 
@@ -125,8 +126,11 @@ export interface SfxSound {
   /** 48 peaks, 0 to 100, for the list's waveform. */
   readonly peaks: ReadonlyArray<number>;
   readonly author: string;
-  /** Where it came from: a Freesound sound page, or a Kenney pack page (with the file in the pack). */
-  readonly provider: "freesound" | "kenney";
+  /**
+   * Where it came from: a Freesound sound page, a Kenney pack page (with the file in the pack), or
+   * Uncut's own synthesiser (scripts/sfx-synth.ts, D250: made from nothing, so CC0 by Uncut).
+   */
+  readonly provider: "freesound" | "kenney" | "uncut";
   readonly source: string;
   readonly sourceFile?: string;
   readonly license: string;
@@ -149,12 +153,12 @@ export function filterSfx({ query, category }: { readonly query?: string | undef
     return matchesQuery({ id: s.id, title: s.title, tags: s.tags, category: s.category, extra: `${s.author} ${categoryName}` }, q);
   });
   if (!q.groups.length) return found;
-  const scored = found.map((s, i) => ({ s, i, score: (q.alias?.bundled.includes(s.id) ? 10 - q.alias.bundled.indexOf(s.id) : 0) + scoreSound({ ...s, license: "cc0" }, q) }));
+  const scored = found.map((s, i) => ({ s, i, score: (q.alias?.bundled.includes(s.id) ? 20 - 5 * q.alias.bundled.indexOf(s.id) : 0) + scoreSound({ ...s, license: "cc0" }, q) }));
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).map((e) => e.s);
 }
 
 /** The modules a library media's source carries. */
-export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", bundled: "library.bundled", folder: "library.folder" } as const;
+export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", jamendo: "library.jamendo", bundled: "library.bundled", folder: "library.folder" } as const;
 
 /** What a media item added from the library records about itself (its `source`). */
 export interface LibraryCredit {
@@ -317,7 +321,14 @@ export interface SoundFolder {
   readonly missing?: boolean;
   /** More audio files than an index holds: the rest aren't listed. */
   readonly truncated?: boolean;
+  /** D249: the Music app's library (its DRM-free files), added as "@music", not a folder the user picked. */
+  readonly system?: "music";
+  /** Songs of the Music library left out (Apple Music, protected or cloud-only). */
+  readonly skipped?: number;
 }
+
+/** The path that adds the Music app's library as a folder (D249). */
+export const MUSIC_LIBRARY_PATH = "@music";
 
 /** Audio files a folder's index lists. */
 export const FOLDER_AUDIO_EXTENSIONS: ReadonlyArray<string> = ["wav", "mp3", "m4a", "aac", "aif", "aiff", "flac", "ogg", "oga", "opus", "caf"];

@@ -13,7 +13,9 @@ import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "nod
 import { homedir } from "node:os";
 import { basename, extname, isAbsolute, join, sep } from "node:path";
 
-import { FOLDER_AUDIO_EXTENSIONS, type FolderSound, type SoundFolder } from "@uncut/core/library";
+import { FOLDER_AUDIO_EXTENSIONS, MUSIC_LIBRARY_PATH, type FolderSound, type SoundFolder } from "@uncut/core/library";
+
+import { MUSIC_FOLDER_NAME, readMusicLibrary } from "./musicApp.ts";
 
 /** The most audio files one folder's index lists, folders it walks, and how deep. */
 export const MAX_FOLDER_FILES = 5000;
@@ -31,6 +33,7 @@ interface Stored {
 interface Indexed {
   readonly at: number;
   readonly folder: SoundFolder;
+  /** The folder's real path ("" for the Music library, whose songs can sit anywhere: D249). */
   readonly real: string;
   readonly paths: ReadonlyMap<string, string>;
 }
@@ -96,7 +99,7 @@ async function walk(root: string, folderId: string): Promise<{ sounds: Array<Fol
   return { sounds, paths, truncated };
 }
 
-export function soundFolders({ dataDir, now = Date.now }: { readonly dataDir: string; readonly now?: () => number }) {
+export function soundFolders({ dataDir, now = Date.now, musicRoot }: { readonly dataDir: string; readonly now?: () => number; readonly musicRoot?: string | undefined }) {
   const file = join(dataDir, "sound-folders.json");
   const indexes = new Map<string, Indexed>();
   let lock: Promise<unknown> = Promise.resolve();
@@ -124,6 +127,14 @@ export function soundFolders({ dataDir, now = Date.now }: { readonly dataDir: st
   async function index(f: Stored, rescan: boolean): Promise<Indexed> {
     const known = indexes.get(f.id);
     if (known && !rescan && now() - known.at < INDEX_MS) return known;
+    if (f.path === MUSIC_LIBRARY_PATH) {
+      // D249: the Music app's library, its DRM-free songs (musicApp.ts).
+      const lib = await readMusicLibrary(musicRoot, f.id, walk);
+      const folder: SoundFolder = { id: f.id, path: lib.where || "~/Music", name: MUSIC_FOLDER_NAME, sounds: lib.sounds, system: "music", ...(lib.found ? {} : { missing: true }), ...(lib.truncated ? { truncated: true } : {}), ...(lib.skipped ? { skipped: lib.skipped } : {}) };
+      const entry: Indexed = { at: now(), real: "", paths: lib.paths, folder };
+      indexes.set(f.id, entry);
+      return entry;
+    }
     const name = basename(f.path) || f.path;
     let real: string;
     try {
@@ -148,6 +159,14 @@ export function soundFolders({ dataDir, now = Date.now }: { readonly dataDir: st
 
   function add(raw: string): Promise<Array<SoundFolder>> {
     return locked(async () => {
+      if (raw.trim() === MUSIC_LIBRARY_PATH) {
+        // D249: the Music app's library, asked for in the Audio tab (never scanned before that).
+        const folders = await stored();
+        const id = hash(MUSIC_LIBRARY_PATH);
+        if (!folders.some((f) => f.id === id)) await save([...folders, { id, path: MUSIC_LIBRARY_PATH, added: new Date(now()).toISOString() }]);
+        indexes.delete(id);
+        return list();
+      }
       const path = expandHome(raw);
       if (!path || !isAbsolute(path)) throw new FolderError("Choose a folder (a full path).");
       let real: string;
@@ -190,7 +209,9 @@ export function soundFolders({ dataDir, now = Date.now }: { readonly dataDir: st
     const path = entry.paths.get(soundId)!;
     try {
       const real = await realpath(path);
-      if (!real.startsWith(`${entry.real}${sep}`) || !(await stat(real)).isFile()) return undefined;
+      // A folder's file must still sit inside it; a Music library song can be anywhere, but must be a file of an audio type.
+      if (entry.folder.system === "music" ? !EXTENSIONS.has(extname(real).slice(1).toLowerCase()) : !real.startsWith(`${entry.real}${sep}`)) return undefined;
+      if (!(await stat(real)).isFile()) return undefined;
       const sound = entry.folder.sounds.find((s) => s.id === soundId)!;
       return { path: real, sound, folder: entry.folder };
     } catch {

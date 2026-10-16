@@ -125,7 +125,7 @@ test("library_search and library_add: online hits and bundled sounds into media/
     { tool: "library_add", args: { id: `openverse:${BOOM}` } },
     { tool: "library_add", args: { id: "sfx:airhorn" } },
     { tool: "library_add", args: { id: `openverse:${BOOM}` } },
-    { tool: "library_add", args: { id: "jamendo:1" } },
+    { tool: "library_add", args: { id: "pixabay:1" } },
     { tool: "library_search", args: { kind: "sfx" } },
     { tool: "project_read", args: {} },
   ]);

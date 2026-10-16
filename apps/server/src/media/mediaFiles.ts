@@ -272,7 +272,7 @@ export const layer = Layer.unwrap(
           const url = authorised(request);
           if (!url) return unauthorized();
           const [source, id] = (decode(url.pathname.slice(LIBRARY_PREVIEW_PATH.length + 1)) ?? "").split("/");
-          if ((source !== "openverse" && source !== "freesound") || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return notFound();
+          if ((source !== "openverse" && source !== "freesound" && source !== "jamendo") || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return notFound();
           const controller = new AbortController();
           const res = yield* Effect.promise(() => sounds.preview(`${source}:${id}`, request.headers["range"], controller.signal).catch(() => "failed" as const));
           if (res === undefined) return notFound();

@@ -3,7 +3,7 @@ import { bridge } from "../../bridge.ts";
 import { isTransportError } from "../../connection.ts";
 import { getPlayback } from "../../../preview/playback.ts";
 import { musicTrack, musicInProject } from "@uncut/core/music";
-import { type LibraryQuery, libraryMediaOf } from "@uncut/core/library";
+import { type LibraryQuery, libraryMediaOf, MUSIC_LIBRARY_PATH } from "@uncut/core/library";
 import { planAddAtPlayhead, planAddMedia, planAddMusic, planAddLibrarySound } from "../../project.ts";
 import { set, state, online, projectOf, isRemote } from "../core.ts";
 import { pickRemote } from "./remote.ts";
@@ -58,6 +58,11 @@ export const mediaActions = {
     } else path = await bridge.chooseFolder("sounds");
     if (!path) return undefined;
     const result = await call((c) => c["library.folderAdd"]({ path }));
+    return result.ok ? result.value : { error: plainError(result.error) };
+  },
+  /** D249: list the Music app's library (its DRM-free songs) as one of the user's folders. */
+  async addMusicLibrary(): Promise<ReadonlyArray<SoundFolderInfo> | { readonly error: string }> {
+    const result = await call((c) => c["library.folderAdd"]({ path: MUSIC_LIBRARY_PATH }));
     return result.ok ? result.value : { error: plainError(result.error) };
   },
   async removeSoundFolder(id: string): Promise<ReadonlyArray<SoundFolderInfo> | { readonly error: string }> {

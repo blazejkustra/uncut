@@ -1,96 +1,123 @@
 import type { SoundFolderInfo } from "@uncut/contracts";
 import { type LibraryKind, filterFolderSounds, libraryMediaOf } from "@uncut/core/library";
-import { FolderPlus, RefreshCw, X, Square, Play, Plus } from "lucide-react";
+import { Folder, FolderPlus, Library, RefreshCw, X, Square, Play, Plus } from "lucide-react";
 import { useState, useEffect } from "react";
 import { type Project, useApp, actions, folderSoundUrl } from "../../state/store.ts";
 import { type Preview, Wave, TogetherButton } from "./preview.tsx";
 
-/** The most rows the Folders view draws at once (search narrows the rest). */
+/** The most rows the list draws at once (search narrows the rest). */
 const FOLDER_ROWS = 200;
 const sizeLabel = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+type Result = ReadonlyArray<SoundFolderInfo> | { readonly error: string } | undefined;
 
 /**
- * The user's sound folders (D208): Add a folder, then its sound files as a library (search, listen,
- * +). The files stay where they are; + copies one into the project's media/.
+ * The user's own sounds (D208, D249): "folders" lists the folders they added (a plain list, each
+ * with its count and ×) and their sound files; "music" lists the Music app's library (its DRM-free
+ * songs), once they ask for it. The files stay where they are; + copies one into the project.
  */
-export function FolderSounds({ kind, project, online, query, preview }: { kind: LibraryKind; project: Project; online: boolean; query: string; preview: Preview }) {
+export function FolderSounds({ kind, mode, project, online, query, preview }: { kind: LibraryKind; mode: "folders" | "music"; project: Project; online: boolean; query: string; preview: Preview }) {
   const app = useApp();
-  const [folders, setFolders] = useState<ReadonlyArray<SoundFolderInfo> | undefined>();
+  const [all, setAll] = useState<ReadonlyArray<SoundFolderInfo> | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const [only, setOnly] = useState<string | undefined>();
-  const apply = (r: ReadonlyArray<SoundFolderInfo> | { readonly error: string } | undefined) => {
+  const apply = (r: Result) => {
     if (!r) return;
     if ("error" in r) return setError(r.error);
     setError(undefined);
-    setFolders(r);
+    setAll(r);
   };
-  const load = async (rescan = false) => {
+  const run = async (task: () => Promise<Result>) => {
     setBusy(true);
-    apply(await actions.soundFolders(rescan));
+    apply(await task());
     setBusy(false);
   };
   useEffect(() => {
-    if (online) void load();
+    if (online) void run(() => actions.soundFolders());
   }, [online]);
-  const sounds = folders ? filterFolderSounds(folders, query, only) : [];
+  const folders = all?.filter((f) => (mode === "music" ? f.system === "music" : !f.system));
+  const library = mode === "music" ? folders?.[0] : undefined;
+  const sounds = folders ? filterFolderSounds(folders, query) : [];
+
   return (
-    <div data-testid="folder-sounds" data-busy={busy}>
-      <div className="lib-filters">
-        <button
-          className="btn ghost"
-          data-testid="folder-add"
-          disabled={!online}
-          onClick={async () => {
-            setBusy(true);
-            apply(await actions.addSoundFolder());
-            setBusy(false);
-          }}
-        >
-          <FolderPlus /> Add a folder
-        </button>
-        {!!folders?.length && (
-          <button className="icon-btn" data-testid="folder-rescan" disabled={!online || busy} title="Look for new files in your folders" onClick={() => void load(true)}>
-            <RefreshCw className={busy ? "spin" : ""} />
+    <div className="lib-folders" data-testid={mode === "music" ? "music-app" : "folder-sounds"} data-busy={busy}>
+      {mode === "folders" ? (
+        <div className="lib-actions">
+          <button className="btn ghost" data-testid="folder-add" disabled={!online} onClick={() => void run(() => actions.addSoundFolder())}>
+            <FolderPlus /> Add a folder
           </button>
-        )}
-      </div>
+          {!!folders?.length && (
+            <button className="icon-btn" data-testid="folder-rescan" disabled={!online || busy} title="Look for new files in your folders" onClick={() => void run(() => actions.soundFolders(true))}>
+              <RefreshCw className={busy ? "spin" : ""} />
+            </button>
+          )}
+        </div>
+      ) : (
+        folders &&
+        !library && (
+          <div className="lib-explain" data-testid="music-app-empty">
+            <p>List the songs in your Music app library that are plain files on this Mac: songs you bought or imported. Apple Music songs can't be used in a video, so they're left out.</p>
+            <button className="btn" data-testid="music-app-connect" disabled={!online || busy} onClick={() => void run(() => actions.addMusicLibrary())}>
+              <Library /> Show my Music library
+            </button>
+          </div>
+        )
+      )}
       {error && (
         <div className="lib-limit error" data-testid="folder-error">
           {error}
         </div>
       )}
-      {folders && folders.length === 0 && (
+      {mode === "folders" && folders && folders.length === 0 && (
         <div className="muted small" data-testid="folder-empty">
-          Add a folder of your own sounds. Uncut lists its sound files here and copies one into the project only when you add it.
+          Add a folder of your own {kind === "music" ? "music" : "sounds"}. Uncut lists its sound files here and copies one into the project only when you add it.
         </div>
       )}
-      {!!folders?.length && (
-        <div className="music-chips" data-testid="sound-folders">
+      {mode === "folders" && !!folders?.length && (
+        <div className="lib-folder-list" data-testid="sound-folders">
           {folders.map((f) => (
-            <span key={f.id} className={`music-chip folder-chip${only === f.id ? " active" : ""}`} data-testid="sound-folder" data-id={f.id} data-missing={!!f.missing} title={f.missing ? `${f.path} can't be opened` : f.path}>
-              <button className="folder-chip-name" aria-pressed={only === f.id} onClick={() => setOnly(only === f.id ? undefined : f.id)}>
-                {f.name} {f.missing ? "(missing)" : `(${f.sounds.length}${f.truncated ? "+" : ""})`}
-              </button>
+            <div key={f.id} className="lib-folder" data-testid="sound-folder" data-id={f.id} data-missing={!!f.missing} title={f.missing ? `${f.path} can't be opened` : f.path}>
+              <Folder />
+              <span className="lib-folder-name">{f.name}</span>
+              <span className="lib-folder-count">{f.missing ? "missing" : `${f.sounds.length}${f.truncated ? "+" : ""}`}</span>
               <button
-                className="folder-chip-remove"
+                className="icon-btn"
                 data-testid="sound-folder-remove"
                 title="Remove this folder from the list (its files stay)"
-                onClick={async () => {
-                  if (only === f.id) setOnly(undefined);
-                  apply(await actions.removeSoundFolder(f.id));
-                }}
+                onClick={() => void run(() => actions.removeSoundFolder(f.id))}
               >
                 <X />
               </button>
-            </span>
+            </div>
           ))}
         </div>
       )}
+      {library && (
+        <div className="lib-folder-list" data-testid="music-app-summary" data-missing={!!library.missing} data-count={library.sounds.length} data-skipped={library.skipped ?? 0}>
+          <div className="lib-folder" title={library.path}>
+            <Library />
+            <span className="lib-folder-name">
+              {library.missing
+                ? "No Music library found"
+                : `${library.sounds.length}${library.truncated ? "+" : ""} song${library.sounds.length === 1 ? "" : "s"}${library.skipped ? `, ${library.skipped} Apple Music or protected left out` : ""}`}
+            </span>
+            <button className="icon-btn" data-testid="music-app-rescan" disabled={!online || busy} title="Read the Music library again" onClick={() => void run(() => actions.soundFolders(true))}>
+              <RefreshCw className={busy ? "spin" : ""} />
+            </button>
+            <button className="icon-btn" data-testid="music-app-remove" title="Stop listing the Music library" onClick={() => void run(() => actions.removeSoundFolder(library.id))}>
+              <X />
+            </button>
+          </div>
+          {library.missing && (
+            <div className="muted small" data-testid="music-app-missing">
+              Uncut looks for ~/Music/Music/Media and for the library's XML copy (in Music, Settings, Advanced: Share Library XML with other applications).
+            </div>
+          )}
+        </div>
+      )}
       <div data-testid="folder-list">
-        {folders && folders.length > 0 && sounds.length === 0 && (
+        {folders && folders.some((f) => f.sounds.length) && sounds.length === 0 && (
           <div className="muted small" data-testid="folder-none">
-            {query.trim() ? `No sound in your folders matches "${query.trim()}".` : "No sound files in these folders yet."}
+            {query.trim() ? `Nothing matches "${query.trim()}".` : "No sound files here yet."}
           </div>
         )}
         {sounds.slice(0, FOLDER_ROWS).map((f) => {
@@ -99,6 +126,7 @@ export function FolderSounds({ kind, project, online, query, preview }: { kind: 
           const playing = preview.playing === key && preview.mode === "alone";
           const inProject = !!libraryMediaOf(project, key);
           const peaks = preview.peaks[key];
+          const artist = mode === "music" ? f.rel.split("/").slice(0, -1).join(", ") : f.folderName;
           return (
             <div key={f.id} className="music-row" data-testid="folder-row" data-id={f.id} title={f.rel}>
               <button className={`icon-btn${playing ? " playing" : ""}`} data-testid="folder-play" data-playing={playing} title={playing ? "Stop" : "Listen"} onClick={() => preview.toggle(key, url, f.bytes < 20 * 1024 * 1024)}>
@@ -106,7 +134,7 @@ export function FolderSounds({ kind, project, online, query, preview }: { kind: 
               </button>
               <span className="music-text">
                 <span className="music-title">{f.name}</span>
-                <span className="music-meta">{[f.folderName, f.ext, sizeLabel(f.bytes), ...(inProject ? ["in the project"] : [])].join(", ")}</span>
+                <span className="music-meta">{[artist, f.ext, sizeLabel(f.bytes), ...(inProject ? ["in the project"] : [])].filter(Boolean).join(", ")}</span>
                 {peaks && <Wave peaks={peaks} progress={preview.playing === key ? preview.progress : 0} />}
               </span>
               {kind === "sfx" && <TogetherButton preview={preview} soundKey={key} url={url} wave={f.bytes < 20 * 1024 * 1024} />}

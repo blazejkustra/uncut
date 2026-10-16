@@ -80,26 +80,32 @@ export interface SoundAlias {
  * none, so those names search for what the sound is instead).
  */
 export const SOUND_ALIASES: ReadonlyArray<SoundAlias> = [
-  { id: "fahh", name: "Fahh", variants: ["fahh", "faah", "fahhh", "fah meme"], online: "frustrated yell", tag: "yell", bundled: ["frustrated-yell"], clip: true, chip: true },
-  { id: "boom", name: "Vine boom", variants: ["vine boom", "vineboom", "boom meme"], online: "bass boom", tag: "boom", bundled: ["bass-boom", "impact-boom"], clip: true, chip: true },
+  { id: "fahh", name: "Fahh", variants: ["fahh", "faah", "fahhh", "fah meme"], online: "frustrated yell", tag: "yell", bundled: ["exaggerated-shout", "frustrated-yell"], clip: true, chip: true },
+  { id: "boom", name: "Vine boom", variants: ["vine boom", "vineboom", "boom meme"], online: "bass boom", tag: "boom", bundled: ["dramatic-boom", "bass-boom", "impact-boom"], clip: true, chip: true },
   { id: "bruh", name: "Bruh", variants: ["bruh", "bro", "bruh moment"], online: "bruh", tag: "bruh", bundled: ["bruh"], chip: true },
-  { id: "airhorn", name: "Airhorn", variants: ["airhorn", "air horn", "mlg horn", "dj horn", "mlg"], online: "airhorn", tag: "airhorn", bundled: ["airhorn"], chip: true },
-  { id: "scratch", name: "Record scratch", variants: ["record scratch", "vinyl scratch", "scratch"], online: "record scratch", tag: "scratch", bundled: ["record-scratch"], chip: true },
-  { id: "trombone", name: "Sad trombone", variants: ["sad trombone", "wah wah", "womp womp", "wah wah wah", "fail trombone", "sad horn"], online: "sad trombone", tag: "trombone", bundled: ["sad-trombone"], chip: true },
+  { id: "airhorn", name: "Airhorn", variants: ["airhorn", "air horn", "mlg horn", "dj horn", "mlg"], online: "airhorn", tag: "airhorn", bundled: ["airhorn", "air-horn-blast"], chip: true },
+  { id: "scratch", name: "Record scratch", variants: ["record scratch", "vinyl scratch", "scratch"], online: "record scratch", tag: "scratch", bundled: ["record-scratch", "vinyl-scratch"], chip: true },
+  { id: "trombone", name: "Sad trombone", variants: ["sad trombone", "wah wah", "womp womp", "wah wah wah", "fail trombone", "sad horn"], online: "sad trombone", tag: "trombone", bundled: ["sad-trombone", "womp-womp"], chip: true },
   { id: "wow", name: "Wow", variants: ["wow", "owen wilson wow", "anime wow", "woah", "whoa"], online: "wow", tag: "wow", bundled: ["wow"], chip: true },
   { id: "oof", name: "Oof", variants: ["oof", "roblox oof", "ouch"], online: "oof", tag: "oof", bundled: ["oof"], chip: true },
   { id: "crickets", name: "Crickets", variants: ["crickets", "cricket", "awkward silence", "awkward"], online: "crickets", tag: "crickets", bundled: ["crickets"], chip: true },
   { id: "rimshot", name: "Rimshot", variants: ["rimshot", "ba dum tss", "badum tss", "ba dum tiss", "badumtss", "joke drum"], online: "rimshot", tag: "rimshot", bundled: ["rimshot"], chip: true },
   { id: "drumroll", name: "Drum roll", variants: ["drum roll", "drumroll"], online: "drum roll", tag: "drumroll", bundled: ["drum-roll"], chip: true },
-  { id: "boing", name: "Boing", variants: ["boing", "cartoon boing", "bounce", "spring"], online: "cartoon boing", tag: "boing", bundled: ["boing"], chip: true },
+  { id: "boing", name: "Boing", variants: ["boing", "cartoon boing", "bounce", "spring"], online: "cartoon boing", tag: "boing", bundled: ["boing", "spring-boing"], chip: true },
   { id: "bassdrop", name: "Bass drop", variants: ["bass drop", "drop the bass", "wub"], online: "bass drop", tag: "bass-drop", bundled: ["bass-drop"], chip: true },
-  { id: "ding", name: "Ding", variants: ["ding", "correct answer", "correct"], online: "ding", tag: "ding", bundled: ["ding", "glass-ping"], chip: true },
+  { id: "ding", name: "Ding", variants: ["ding", "correct answer", "correct"], online: "ding", tag: "ding", bundled: ["ding", "bell-ding", "correct-ding", "glass-ping"], chip: true },
   { id: "laugh", name: "Laugh", variants: ["laugh track", "sitcom laugh", "crowd laugh", "laugh", "laughing"], online: "laugh", tag: "laugh", bundled: ["crowd-laugh"], chip: true },
   { id: "applause", name: "Applause", variants: ["applause", "clapping", "claps"], online: "applause", tag: "applause", bundled: ["applause"] },
-  { id: "error", name: "Error", variants: ["windows error", "error sound", "wrong buzzer", "wrong answer", "error"], online: "error", tag: "error", bundled: ["error"] },
-  { id: "dramatic", name: "Dun dun dun", variants: ["dun dun dun", "dun dun", "dramatic sting"], online: "dun dun dun", tag: "dramatic", bundled: [], clip: true },
-  { id: "tacobell", name: "Taco Bell bong", variants: ["taco bell bong", "taco bell"], online: "bong", tag: "bong", bundled: ["bong"], clip: true },
-  { id: "huh", name: "Huh", variants: ["huh", "huh cat"], online: "huh", tag: "huh", bundled: [] },
+  { id: "error", name: "Error", variants: ["windows error", "error sound", "wrong buzzer", "wrong answer", "error"], online: "error", tag: "error", bundled: ["error", "wrong-buzzer"] },
+  { id: "dramatic", name: "Dun dun dun", variants: ["dun dun dun", "dun dun", "dramatic sting"], online: "dun dun dun", tag: "dramatic", bundled: ["dun-dun-dun"], clip: true },
+  { id: "tacobell", name: "Taco Bell bong", variants: ["taco bell bong", "taco bell"], online: "bong", tag: "bong", bundled: ["deep-bong", "bong"], clip: true },
+  { id: "huh", name: "Huh", variants: ["huh", "huh cat"], online: "huh", tag: "huh", bundled: ["questioning-huh"] },
+  // D250: more names people search for, answered by Uncut's own synthesised sounds.
+  { id: "bonk", name: "Bonk", variants: ["bonk", "horny bonk", "bonk meme"], online: "bonk", tag: "bonk", bundled: ["bonk"] },
+  { id: "kaching", name: "Cash register", variants: ["ka ching", "kaching", "cha ching", "cash register", "money sound"], online: "cash register", tag: "cash-register", bundled: ["cash-register"] },
+  { id: "slidewhistle", name: "Slide whistle", variants: ["slide whistle", "cartoon whistle"], online: "slide whistle", tag: "whistle", bundled: ["slide-whistle-up", "slide-whistle-down"] },
+  { id: "levelup", name: "Level up", variants: ["level up", "levelup", "8 bit win", "chiptune win"], online: "level up", tag: "levelup", bundled: ["level-up", "coin"] },
+  { id: "laser", name: "Laser", variants: ["laser", "pew pew", "pew", "zap"], online: "laser", tag: "laser", bundled: ["laser-zap"] },
 ];
 
 /** The alias a query names, when it names one (the whole query, spelling and spaces aside). */
