@@ -2,8 +2,8 @@
 // on this machine (nothing reaches the internet):
 // - Included: the designed pack by category (Swipes, Pops, Success, Glitch, Typing...), every row
 //   with its waveform before it's played, found by synonyms ("keyboard" finds typing);
-// - Online: "fahh" searches for its free sound-alikes ("frustrated yell") and says why; the Fahh
-//   meme chip does the same;
+// - Online: "fahh" searches for its free sound-alikes ("frustrated yell") and says why (no pills:
+//   one source select and a kind select, D249);
 // - Folders: Add a folder (the dialog answered by UNCUT_TEST_DIALOG) lists its sound files,
 //   searchable by spelling; Listen streams the file through the server; + copies it into media/
 //   (the original untouched) on a track at the playhead; remove forgets the folder.
@@ -141,20 +141,22 @@ test("issue #32: the designed pack with waveforms, meme names to free sound-alik
   // Included: the whole pack, each row with its waveform before it's played.
   await page.click("[data-testid=rail-sfx]");
   await waitFor("[data-testid=sfx-browser]");
-  await page.click("[data-testid=library-view-included]");
+  await page.select("[data-testid=library-source]", "pack");
   await waitFor("[data-testid=sfx-included]");
   await page.waitForFunction((n) => document.querySelectorAll("[data-testid=sfx-row]").length === n, {}, SFX_SOUNDS.length);
   assert.equal(await page.$$eval("[data-testid=sfx-row] [data-testid=library-wave]", (els) => els.length), SFX_SOUNDS.length, "every row shows its waveform");
-  const categories = await page.$$eval("[data-testid=sfx-category]", (els) => els.map((e) => e.textContent));
+  // D249: the categories are one select, not pills.
+  const categories = await page.$$eval("[data-testid=library-mood] option", (els) => els.map((e) => e.textContent));
   for (const c of ["Swipes", "Pops", "Success", "Glitch", "Typing"]) assert.ok(categories.includes(c), `${c} in ${categories.join(", ")}`);
-  await page.click("[data-testid=sfx-category][data-chip=typing]");
+  await page.select("[data-testid=library-mood]", "typing");
+  await page.waitForFunction((n) => document.querySelectorAll("[data-testid=sfx-row]").length === n, {}, SFX_SOUNDS.filter((s) => s.category === "typing").length);
   assert.deepEqual(await rows("[data-testid=sfx-row]"), SFX_SOUNDS.filter((s) => s.category === "typing").map((s) => s.id));
-  await page.click("[data-testid=sfx-category][data-chip=typing]");
+  await page.select("[data-testid=library-mood]", "");
   // Synonyms and meme names find the pack's sounds.
   await typeSearch("keyboard");
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=sfx-row]")].some((e) => e.dataset.id === "typing-mechanical"));
   await typeSearch("vine boom");
-  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === "bass-boom");
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === "dramatic-boom");
   await typeSearch("swoosh");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=sfx-row]").length >= 5);
   await page.click('[data-testid=sfx-row][data-id="swoosh-soft"] [data-testid=sfx-play]');
@@ -164,8 +166,8 @@ test("issue #32: the designed pack with waveforms, meme names to free sound-alik
   await page.click('[data-testid=sfx-row][data-id="swoosh-soft"] [data-testid=sfx-play]');
 
   // Online: "fahh" goes out as its sound-alike search, the note says why; ranked (the yell first).
-  await page.click("[data-testid=library-view-online]");
-  await waitFor("[data-testid=sfx-browser][data-view=online]");
+  await page.select("[data-testid=library-source]", "openverse");
+  await waitFor("[data-testid=sfx-browser][data-view=openverse]");
   await typeSearch("fahh", true);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 2, { timeout: 15000 });
   assert.equal(searches.at(-1)!.get("q"), "frustrated yell");
@@ -175,20 +177,16 @@ test("issue #32: the designed pack with waveforms, meme names to free sound-alik
   assert.match(note, /Searched for "frustrated yell"\./);
   await sleep(200);
   await page.screenshot({ path: out("issue32-online-fahh.png") });
-  // The meme chip does the same.
-  await page.click("[data-testid=sfx-chip][data-chip=meme]");
-  await waitFor("[data-testid=meme-chip][data-chip=fahh]");
-  await page.click("[data-testid=meme-chip][data-chip=fahh]");
-  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=sfx-search]")!.value === "Fahh");
-  await waitFor("[data-testid=library-alias]");
+  // No pills anywhere in the tab (D249).
+  assert.equal(await page.$$eval("[data-testid=sfx-library] .music-chip", (els) => els.length), 0);
 
   // Folders: empty, then Add a folder lists its sound files (not the text file).
-  await page.click("[data-testid=library-view-folders]");
+  await page.select("[data-testid=library-source]", "folders");
   await waitFor("[data-testid=folder-empty]");
   await typeSearch("");
   await page.click("[data-testid=folder-add]");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 2, { timeout: 15000 });
-  assert.match(await page.$eval("[data-testid=sound-folder]", (el) => el.textContent ?? ""), /My Sounds \(2\)/);
+  assert.match(await page.$eval("[data-testid=sound-folder]", (el) => el.textContent ?? ""), /My Sounds\s*2/);
   await typeSearch("faaah");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=folder-row]").length === 1);
   assert.match(await page.$eval("[data-testid=folder-row] .music-title", (el) => el.textContent ?? ""), /^FAHHH meme$/);

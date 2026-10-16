@@ -50,10 +50,16 @@ test("synonyms and spellings find bundled sounds; meme names find their sound-al
   assert.ok(ids("tap").includes("ui-click"));
   assert.ok(ids("chime").includes("glass-ping") || ids("chime").includes("chime"));
   assert.ok(ids("sucess").includes("success-chord"), "a missing letter (squashed)");
-  assert.equal(ids("fahh")[0], "frustrated-yell");
-  assert.equal(ids("vine boom")[0], "bass-boom");
+  // D250: Uncut's own sound-alikes answer first, the recordings after.
+  assert.deepEqual(ids("fahh").slice(0, 2), ["exaggerated-shout", "frustrated-yell"]);
+  assert.equal(ids("faaaahhh")[0], "exaggerated-shout");
+  assert.equal(ids("vine boom")[0], "dramatic-boom");
+  assert.equal(ids("taco bell")[0], "deep-bong");
   assert.equal(ids("ba dum tss")[0], "rimshot");
-  assert.deepEqual(ids("trombone"), ["sad-trombone"]);
+  assert.equal(ids("bonk")[0], "bonk");
+  assert.equal(ids("ka-ching")[0], "cash-register");
+  assert.equal(ids("dun dun dun")[0], "dun-dun-dun");
+  assert.deepEqual(ids("trombone"), ["sad-trombone", "womp-womp"]);
   assert.deepEqual(ids("zzqx"), []);
   // A category narrows; no words: the whole category in the pack's order.
   assert.ok(ids("", "typing").length >= 3);
@@ -102,16 +108,16 @@ test("the user's folders: filtered by name, subfolder and spelling, best first",
   assert.equal(filterFolderSounds(folders, "click")[0]!.folderName, "Sounds");
 });
 
-test("the designed pack (D208): 40 to 80 CC0 sounds, each with its source, licence check, level, waveform and in the notices", () => {
-  assert.ok(SFX_SOUNDS.length >= 40 && SFX_SOUNDS.length <= 80, String(SFX_SOUNDS.length));
+test("the designed pack (D208, D250): 100 to 160 CC0 sounds, each with its source, licence check, level, waveform and in the notices (Uncut's own aside)", () => {
+  assert.ok(SFX_SOUNDS.length >= 100 && SFX_SOUNDS.length <= 160, String(SFX_SOUNDS.length));
   const notices = readFileSync("THIRD_PARTY_NOTICES", "utf8");
   const categories = new Set(SFX_CATEGORIES.map((c) => c.id));
   let total = 0;
   for (const s of SFX_SOUNDS) {
     assert.equal(s.license, "CC0-1.0", s.id);
-    assert.ok(s.provider === "freesound" || s.provider === "kenney", s.id);
+    assert.ok(s.provider === "freesound" || s.provider === "kenney" || s.provider === "uncut", s.id);
     assert.match(s.licenseChecked, /^\d{4}-\d{2}-\d{2}$/, s.id);
-    assert.match(s.licenseProof, s.provider === "kenney" ? /License\.txt: Creative Commons Zero, CC0/ : /Freesound page links the CC0 1\.0 deed/, s.id);
+    assert.match(s.licenseProof, s.provider === "kenney" ? /License\.txt: Creative Commons Zero, CC0/ : s.provider === "uncut" ? /^Synthesised by scripts\/sfx-synth\.ts .*no recording or sample/ : /Freesound page links the CC0 1\.0 deed/, s.id);
     if (s.provider === "kenney") assert.match(s.sourceFile ?? "", /^Audio\/[A-Za-z0-9_]+\.ogg$/, s.id);
     assert.ok(categories.has(s.category), s.id);
     assert.ok(s.tags.length >= 2, s.id);
@@ -126,10 +132,11 @@ test("the designed pack (D208): 40 to 80 CC0 sounds, each with its source, licen
     assert.ok(s.peakDb <= -0.9, `${s.id}: peak ${s.peakDb}`);
     assert.equal(s.peaks.length, 48, s.id);
     assert.ok(s.peaks.every((p) => Number.isInteger(p) && p >= 0 && p <= 100) && s.peaks.includes(100), s.id);
-    assert.ok(notices.includes(s.file) && notices.includes(s.source), `${s.id} in THIRD_PARTY_NOTICES`);
+    if (s.provider === "uncut") assert.ok(!notices.includes(s.file), `${s.id} is Uncut's own, not a third-party notice`);
+    else assert.ok(notices.includes(s.file) && notices.includes(s.source), `${s.id} in THIRD_PARTY_NOTICES`);
     assert.equal(sfxCredit(s).provider, s.provider);
   }
-  assert.ok(total < 3 * 1024 * 1024, `pack ${total} bytes`);
+  assert.ok(total < 4 * 1024 * 1024, `pack ${total} bytes`);
   // What a product video needs, several of each.
   for (const [category, least] of [["ui", 6], ["pop", 3], ["swipe", 3], ["whoosh", 3], ["transition", 3], ["riser", 3], ["impact", 4], ["notification", 4], ["success", 4], ["glitch", 3], ["typing", 3]] as const) {
     assert.ok(filterSfx({ category }).length >= least, `${category}: ${filterSfx({ category }).length}`);

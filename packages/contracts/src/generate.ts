@@ -6,7 +6,7 @@ export const GenerateKind = Schema.Literals(["image", "video", "audio"]);
 export type GenerateKind = typeof GenerateKind.Type;
 
 /** A provider whose API key the user can store (Settings › Keys). */
-export const KeyProvider = Schema.Literals(["openai", "google", "elevenlabs", "freesound"]);
+export const KeyProvider = Schema.Literals(["openai", "google", "elevenlabs", "freesound", "jamendo"]);
 export type KeyProvider = typeof KeyProvider.Type;
 
 /** One provider's key: whether one is stored, never the key itself. */

@@ -1,12 +1,12 @@
 // A1, A2 and the credits (D134, D135) on the packaged app, run invisibly, through the UI only, with
 // Openverse stubbed on this machine (UNCUT_OPENVERSE_BASE; nothing reaches the internet):
-// - the Audio tab opens on Online without a request; a genre chip searches (CC0 + CC BY,
+// - the Audio tab opens on Openverse without a request; a mood searches (CC0 + CC BY,
 //   commercial, no Wikimedia), rows show creator, length and licence; Listen streams the preview
 //   through the server (a waveform appears, nothing is saved); + downloads the CC BY song into
 //   media/ with its credits on the media item, at the playhead on the free audio track with fades,
 //   in one edit; Copy credits copies the attribution;
-// - Included lists the bundled CC0 music; the Sound effects tab: category chips, meme chips that
-//   search for sound-alikes, and the bundled pack, whose + copies the sound in whole on a track of
+// - the sources (Epidemic Sound coming soon, disabled); the Sound effects tab: a kind select, a meme
+//   name that searches for sound-alikes, and the bundled pack, whose + copies the sound in whole on a track of
 //   its own; a 429 from Openverse shows the limit state, an earlier search still comes from the
 //   cache; the Freesound row in Settings › Keys with its one-line terms note.
 // Screenshots: test-output/audio-online.png, audio-limit.png, sfx-online.png, sfx-included.png, keys-freesound.png.
@@ -138,15 +138,16 @@ test("the sound library: online music and sound effects, previews, adds with cre
   await waitFor("[data-testid=editor]");
   let rev = await revision();
 
-  // The Audio tab: Online first, chips, filters and the Openverse notice; nothing fetched yet.
+  // The Audio tab (D249): Openverse first, one search field, a source and a mood select, the Openverse notice; nothing fetched yet.
   await page.click("[data-testid=rail-audio]");
-  await waitFor("[data-testid=music-browser][data-view=online]");
-  await waitFor("[data-testid=music-genre][data-chip=lofi]");
+  await waitFor("[data-testid=music-browser][data-view=openverse]");
+  await waitFor("[data-testid=library-mood]");
   assert.match(await page.$eval("[data-testid=library-notice]", (el) => el.textContent ?? ""), /^Made with Openverse, not endorsed by Openverse$/);
   assert.equal(searches.length, 0, "no request until a search");
+  assert.equal(await page.$$eval("[data-testid=audio-library] .music-chip", (els) => els.length), 0, "no pills");
 
-  // A genre chip searches; two rows with creator, length and licence.
-  await page.click("[data-testid=music-genre][data-chip=lofi]");
+  // A mood searches; two rows with creator, length and licence.
+  await page.select("[data-testid=library-mood]", "lofi");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 2, { timeout: 15000 });
   assert.equal(searches.length, 1);
   const q = searches[0]!;
@@ -160,12 +161,6 @@ test("the sound library: online music and sound effects, previews, adds with cre
   assert.equal(await page.$eval(`${songRow} .music-meta`, (el) => el.textContent), "Some Artist, 6.0 s, jamendo");
   assert.equal(await page.$eval(`${songRow} [data-testid=library-license]`, (el) => el.textContent), "CC BY");
   assert.equal(await page.$eval(`[data-testid=library-row][data-id="openverse:${LOOP}"] [data-testid=library-license]`, (el) => el.textContent), "CC0");
-  // Songs only searches again with Openverse's music category.
-  await page.click("[data-testid=library-songs]");
-  await waitSearches(2);
-  assert.equal(searches.at(-1)!.get("category"), "music");
-  await page.click("[data-testid=library-songs]");
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 2 && document.querySelector("[data-testid=library-results]")?.getAttribute("data-busy") === "false");
 
   // Listen: streamed through the server's preview route; a waveform; nothing saved in the project.
   await page.click(`${songRow} [data-testid=library-play]`);
@@ -217,39 +212,39 @@ test("the sound library: online music and sound effects, previews, adds with cre
   const copied = app.output().slice(app.output().lastIndexOf("[test] copied ") + "[test] copied ".length);
   assert.ok(copied.startsWith('Music and sound\n"Lofi Morning" by Some Artist (https://www.jamendo.com/track/000a), licensed under CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)\n\nFound with Openverse (openverse.org)\n'), copied);
 
-  // Included: the bundled CC0 tracks, filtered by the same search field.
-  await page.click("[data-testid=library-view-included]");
-  await waitFor("[data-testid=music-library]");
-  assert.deepEqual(await rows("[data-testid=music-row]"), ["cozy-1", "cozy-3", "cozy-5"], "lofi");
-  await page.click("[data-testid=music-search]", { clickCount: 3 });
-  await page.keyboard.press("Backspace");
-  await page.waitForFunction(() => document.querySelectorAll("[data-testid=music-row]").length === 5);
-  await page.click("[data-testid=library-view-online]");
+  // The sources (D249): Folders, the Music library, Openverse, Jamendo; Epidemic Sound shown, disabled, coming soon.
+  const sources = await page.$$eval("[data-testid=library-source] option", (els) => els.map((e) => [(e as HTMLOptionElement).value, (e as HTMLOptionElement).disabled]));
+  assert.deepEqual(sources, [["folders", false], ["music-app", false], ["openverse", false], ["jamendo", false], ["epidemic", true]]);
+  assert.equal(await page.$eval("[data-testid=epidemic-soon]", (el) => (el as HTMLButtonElement).disabled), true);
 
-  // Sound effects: categories, meme chips that search for sound-alikes, and the bundled pack.
+  // Sound effects: the pack first (D250); Openverse searches a meme name's sound-alike.
   await page.click("[data-testid=rail-sfx]");
-  await waitFor("[data-testid=sfx-browser][data-view=online]");
-  const chips = await page.$$eval("[data-testid=sfx-chip]", (els) => els.map((e) => e.textContent));
-  assert.deepEqual(chips, ["Whoosh", "Transitions", "Swipes", "UI clicks", "Pops", "Impacts", "Risers", "Notifications", "Success", "Glitch", "Typing", "Laughs and applause", "Memes"]);
-  await page.click("[data-testid=sfx-chip][data-chip=meme]");
-  await waitFor("[data-testid=meme-chips]");
+  await waitFor("[data-testid=sfx-browser][data-view=pack]");
+  const kinds = await page.$$eval("[data-testid=library-mood] option", (els) => els.map((e) => e.textContent));
+  assert.deepEqual(kinds, ["Any kind", "Whoosh", "Transitions", "Swipes", "UI clicks", "Pops", "Impacts", "Risers", "Notifications", "Success", "Glitch", "Typing", "Laughs and applause", "Memes"]);
+  await page.select("[data-testid=library-source]", "openverse");
+  await waitFor("[data-testid=sfx-browser][data-view=openverse]");
+  await page.type("[data-testid=sfx-search]", "vine boom");
+  await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
-  assert.equal(searches.at(-1)!.get("q"), "bass boom", "Memes searches for a sound-alike that exists");
-  await page.click("[data-testid=meme-chip][data-chip=bruh]");
-  // D208: a meme chip searches by its name; the server sends what finds it.
-  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=sfx-search]")!.value === "Bruh");
+  assert.equal(searches.at(-1)!.get("q"), "bass boom", "a meme name searches for a sound-alike that exists (D208)");
+  await page.click("[data-testid=sfx-search]", { clickCount: 3 });
+  await page.type("[data-testid=sfx-search]", "Bruh");
+  await page.keyboard.press("Enter");
   await waitUntil(() => searches.at(-1)!.get("q") === "bruh");
-  await page.click("[data-testid=meme-chip][data-chip=boom]");
+  await page.click("[data-testid=sfx-search]", { clickCount: 3 });
+  await page.type("[data-testid=sfx-search]", "vine boom");
+  await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
   await sleep(300);
   await page.screenshot({ path: out("sfx-online.png") });
 
-  await page.click("[data-testid=library-view-included]");
+  await page.select("[data-testid=library-source]", "pack");
   await waitFor("[data-testid=sfx-included]");
   await page.click("[data-testid=sfx-search]", { clickCount: 3 });
   await page.keyboard.press("Backspace");
   await page.waitForFunction((n) => document.querySelectorAll("[data-testid=sfx-row]").length === n, {}, SFX_SOUNDS.length);
-  await page.click("[data-testid=sfx-category][data-chip=meme]");
+  await page.select("[data-testid=library-mood]", "meme");
   const memes = await rows("[data-testid=sfx-row]");
   assert.deepEqual(memes, SFX_SOUNDS.filter((x) => x.category === "meme").map((x) => x.id));
   await page.click('[data-testid=sfx-row][data-id="bruh"] [data-testid=sfx-play]');
@@ -271,8 +266,9 @@ test("the sound library: online music and sound effects, previews, adds with cre
   await waitFor("[data-testid=copy-credits][data-attribution='1']");
   assert.ok(!/[·•∙⋅*]/.test(await page.$eval("[data-testid=sfx-library]", (el) => (el as HTMLElement).innerText)), "no dots or stars between words");
 
-  await page.click("[data-testid=library-view-online]");
-  await waitFor("[data-testid=sfx-browser][data-view=online]");
+  await page.select("[data-testid=library-mood]", "");
+  await page.select("[data-testid=library-source]", "openverse");
+  await waitFor("[data-testid=sfx-browser][data-view=openverse]");
   // The limit (last: it holds every search for 30 s): a 429 shows when searching works again; an earlier search still comes from the cache.
   limited = true;
   await page.click("[data-testid=sfx-search]", { clickCount: 3 });
@@ -282,7 +278,9 @@ test("the sound library: online music and sound effects, previews, adds with cre
   assert.match(await page.$eval("[data-testid=library-limit]", (el) => el.textContent ?? ""), /^Openverse's search limit is reached\. Try again in (2\d|30) s\.$/);
   await page.screenshot({ path: out("audio-limit.png") });
   const before = searches.length;
-  await page.click("[data-testid=sfx-chip][data-chip=meme]");
+  await page.click("[data-testid=sfx-search]", { clickCount: 3 });
+  await page.type("[data-testid=sfx-search]", "vine boom");
+  await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
   assert.equal(searches.length, before, "answered from the cache");
   limited = false;

@@ -77,12 +77,12 @@ export const MusicAddRpc = Rpc.make(RPC_METHODS.musicAdd, {
   error: ProjectError,
 });
 
-// Searches the online library (Openverse, or Freesound with the user's key): CC0 and CC BY only.
+// Searches the online library (Openverse, or Freesound / Jamendo with the user's key): CC0 and CC BY only.
 export const LibrarySearchRpc = Rpc.make(RPC_METHODS.librarySearch, {
   payload: Schema.Struct({
     kind: Schema.Literals(["music", "sfx"]),
     query: Schema.String,
-    source: Schema.optional(Schema.Literals(["openverse", "freesound"])),
+    source: Schema.optional(Schema.Literals(["openverse", "freesound", "jamendo"])),
     license: Schema.optional(Schema.Literals(["cc0", "by"])),
     length: Schema.optional(Schema.Literals(["short", "medium", "long"])),
     songs: Schema.optional(Schema.Boolean),
