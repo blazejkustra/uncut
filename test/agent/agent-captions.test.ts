@@ -193,8 +193,9 @@ test("captions_make's schema, edit_captions in timeline_edit, labels and the pro
   const tool = mcpTools().find((t) => t.name === "captions_make")!;
   assert.deepEqual(Object.keys((tool.inputSchema as any).properties), ["media", "item", "mode", "look", "lines", "hideFillers"]);
   const edit = mcpTools().find((t) => t.name === "timeline_edit")!;
-  assert.ok(JSON.stringify((edit.inputSchema as any).properties.ops).includes("#/$defs/editCaptions"));
-  assert.ok((edit.inputSchema as any).$defs.editCaptions);
+  // D285: a convenience op, listed in the description with its fields and checked by the server.
+  assert.ok((edit.inputSchema as any).$defs.convenienceOp.properties.op.enum.includes("edit_captions"));
+  assert.match(edit.description, /"op":"edit_captions", item, words\?: \[\{word, text\}\]/);
   assert.equal(stepLabel("captions_make", { media: "m-a" }), "Made captions for m-a");
   assert.equal(stepLabel("captions_make", { mode: "single" }), "Made one-word captions");
   assert.match(AGENT_TEXT, /captions_make mode "line"/);

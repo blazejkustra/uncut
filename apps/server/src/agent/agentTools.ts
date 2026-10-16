@@ -11,6 +11,9 @@ export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
 export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, COMPACT_ITEMS } from "./tools/summary.ts";
 export { modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
 export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
+export { withoutDecisionIds } from "./tools/decisionIds.ts";
+import { withoutDecisionIds, scrubDescriptions } from "./tools/decisionIds.ts";
+import { CONVENIENCE_LINES, opsSchema } from "./tools/opShapes.ts";
 
 // The tools that work today. render_frames came with the export rasteriser (phase 4 chunk 6,
 // D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze with
@@ -48,34 +51,21 @@ export const mcpTools = (): ReadonlyArray<McpTool> =>
     .filter((t) => (TOOL_NAMES as ReadonlyArray<string>).includes(t.name))
     .map((t) => {
       const schema = structuredClone(t.inputSchema);
-      // timeline_edit's ops: the edit ops, or the convenience ops the server expands (insert_device_frame D76, insert_text D80, edit_captions D82, detach_audio D123, set_speed D125, place_item and set_transition's allowTrim D206, put_on_main D215).
-      if (schema.properties?.ops) schema.properties.ops = { type: "array", minItems: 1, items: { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }, { $ref: "#/$defs/editCaptions" }, { $ref: "#/$defs/detachAudio" }, { $ref: "#/$defs/setSpeed" }, { $ref: "#/$defs/placeItem" }, { $ref: "#/$defs/setTransitionTrim" }, { $ref: "#/$defs/putOnMain" }] } };
+      // D285: timeline_edit's ops: the edit ops strict but without their descriptions, the
+      // convenience ops the server expands as one branch listed in the description (tools/opShapes.ts).
+      let description = t.description;
+      if (schema.properties?.ops) {
+        const { ops, defs } = opsSchema();
+        schema.properties.ops = ops;
+        schema.$defs = defs;
+        description = `${description}\nConvenience ops (Uncut expands them):\n${CONVENIENCE_LINES}`;
+      }
       // D236 (issue #81): only the defs this tool reaches through its $refs (transitively), not
       // the whole shared block in every tool (that was ~250k tokens per call).
-      const defs = defsFor(schema);
+      const defs = { ...defsFor(schema), ...((schema.$defs as Record<string, unknown> | undefined) ?? {}) };
       if (Object.keys(defs).length) schema.$defs = defs;
-      return { name: t.name, description: withoutDecisionIds(t.description), inputSchema: scrubDescriptions(schema) as Record<string, unknown> };
+      return { name: t.name, description: withoutDecisionIds(description), inputSchema: scrubDescriptions(schema) as Record<string, unknown> };
     });
-
-/**
- * D260 (issue #81): decision ids (D76, D83–D88) mean nothing to the model: they're taken out of
- * every description it reads, whether a parenthesis of their own or a tag inside one.
- */
-export function withoutDecisionIds(text: string): string {
-  return text
-    .replace(/^D\d{2,3}(?:[–-]D\d{2,3})?: (.)/, (_, c: string) => c.toUpperCase())
-    .replace(/ ?\((?:D\d{2,3}(?:[–-]D\d{2,3})?(?:, ?)?)+\)/g, "")
-    .replace(/[,;] ?D\d{2,3}(?:[–-]D\d{2,3})?(?=[)\]:;,])/g, "")
-    .replace(/\(D\d{2,3}(?:[–-]D\d{2,3})?[:;,] ?/g, "(")
-    .replace(/ D\d{2,3}(?:[–-]D\d{2,3})?\.(?=\s|$)/g, "");
-}
-
-/** A schema with every "description" string passed through withoutDecisionIds. */
-function scrubDescriptions(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(scrubDescriptions);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === "description" && typeof v === "string" ? withoutDecisionIds(v) : scrubDescriptions(v)]));
-}
 
 /** The shared defs every tool may reach: the spec's own and the edit ops'. */
 const ALL_DEFS: Readonly<Record<string, unknown>> = { ...toolsSpec.$defs, ...editOpsSchema.$defs };
@@ -131,7 +121,7 @@ The edit model:
 Tools:
 - Uncut's tools are mcp__uncut__<name> (this prompt says project_read for mcp__uncut__project_read); all are available directly. Their descriptions carry the details; modules_list gives every installed module's params.
 - plan_read gives the brief, the storyboard's beats and the last review's defect ids again (a message's <plan> may just say "Unchanged").
-- docs_read {topic} gives an area's reference with exact fields and examples: production, text, picture, sound, components, graphics, footage. Read the topic before you first work in that area in this conversation, instead of guessing fields.
+- docs_read {topic} gives an area's reference with exact fields and examples: edits (every timeline_edit op), production, text, picture, sound, components, graphics, footage. Read the topic before you first work in that area in this conversation, instead of guessing fields.
 - You also have Claude Code's own tools: WebSearch and WebFetch, Read, Glob and Grep (files on this Mac), Bash, Write and Edit, Task (subagents). Your working folder is the project folder. Look up what you can instead of asking: for a product, its site and docs (what it does, its tagline, real copy, logo, screenshots); the files and folders the user points at. media_download {url} brings a real asset (a logo, a screenshot, a demo video) into Media. Change the project only with Uncut's tools, never by editing project.json; Bash and file writes are for what Uncut's tools can't do.
 - The access line in <editor-context> decides what runs freely and what waits for the user's Allow on a card; a refusal is final for that call.
 

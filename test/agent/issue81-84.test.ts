@@ -34,7 +34,9 @@ test("#81: each tool carries only the defs it reaches, and the whole list stays 
       assert.ok(r.slice(8) in defs, `${t.name}: ${r} has no def`);
     }
     // And nothing it doesn't reach.
-    assert.deepEqual(Object.keys(defs).sort(), Object.keys(defsFor({ ...t.inputSchema, $defs: undefined })).sort(), t.name);
+    // (timeline_edit also carries its convenience-op branch, D285, which isn't a shared def.)
+    const own = t.name === "timeline_edit" ? ["convenienceOp"] : [];
+    assert.deepEqual(Object.keys(defs).sort(), [...Object.keys(defsFor({ ...t.inputSchema, $defs: undefined })), ...own].sort(), t.name);
     const used = new Set([...all].map((r) => r.slice(8)));
     for (const k of Object.keys(defs)) assert.ok(used.has(k), `${t.name} carries ${k} it never refers to`);
   }

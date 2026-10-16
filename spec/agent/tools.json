@@ -33,7 +33,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The main track takes any picture: clips, components, graphics and text (a text there is a title card in the spine: it ripples and takes transitions, with no footage needed). {\"op\":\"put_on_main\", \"item\": ...} (see $defs/putOnMain) puts a picture off Main onto it at the nearest cut, and a multi-source take with it: its picture on Main, its microphone and other parts linked under it (they follow its moves, trims, ripple and transcript cuts). The mix: update_track's mixer {gainDb, pan, mute, solo, effects} and update_project's master {gainDb, loudness, effects} (docs_read sound has the fields and effects). Looks and effects on a clip are its effects list, set with update_item (docs_read picture; modules_list kind \"effect\" gives params). Overlaps: {\"op\":\"place_item\", \"track\", \"item\" (a new item, or an id to move), \"start\", \"place\": \"after\" | \"free-track\" | \"ripple\"} (see $defs/placeItem) puts it where asked when that's free, else after the item in the way, on another track of that kind that is free there (a new one when none is), or pushes that track's later items along; the result's placed says where each went. A set_transition with allowTrim: true (see $defs/setTransitionTrim) trims exactly the spare media an overlapping transition lacks; without it, a lack is refused with the frames missing. dryRun: true checks the edit and returns the planned ops, lines, diff (added, removed, moved items) and conflicts without changing anything. A refusal gives each problem a fix (a start frame, a track, a free id): use it as it is.",
+      "description": "Apply edit ops atomically: one call is one undo step in your turn. Pass the revision you last read as baseRevision; if the user changed the same items since then, the edit is refused and you get their changes. A refusal gives each problem a fix (a start frame, a track, a free id): use it as it is. dryRun: true checks the edit and returns the planned lines, diff and conflicts without changing anything.\nEdit ops (fields in the schema): insert_item (main track: index, default the end; other tracks: the item needs a start), update_item (null removes a field; transform, style, animation, effects and keys are replaced whole, so send what you keep), trim_item (frames > 0 shortens, < 0 lengthens; on main the rest ripples), split_item (at counts from the item's start; the second half gets newId), move_item (main: index; other tracks: start), delete_item (on main the rest closes up), set_transition (on the incoming main item, not the first; null clears it; modules_list kind \"transition\" lists the modules and their frame limits; allowTrim: true trims the spare media an overlap lacks), add_track, update_track (mixer replaced whole), delete_track, add_media, update_media, delete_media (no item may still use it), update_project (master replaced whole).\ndocs_read edits gives every op's fields and rules; docs_read text, picture and sound give the style, transform, keys, effects and mixer fields.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -61,7 +61,7 @@
           }
         }
       },
-      "returns": "the new revision (and placed, when place_item or allowTrim moved anything), or a conflict with the user's newer edits, or the problems each with a fix; with dryRun the planned result"
+      "returns": "{ ok, revision, duration, seconds, placed? (where place_item or allowTrim put things), userChanges? }, or a refusal: { refused, details (each problem, with a fix), fix?, shapes? (the shape of each op it names), revision, userChanges? }; with dryRun: { lines (one per planned op), diff (added, removed, moved), duration } and nothing changes"
     },
     {
       "name": "render_frames",
@@ -1107,7 +1107,7 @@
     },
     {
       "name": "docs_read",
-      "description": "Uncut's reference for one area: how its items and fields fit together, with exact JSON examples and limits. production: the brand, brief, storyboard, build, sound and critic steps for a new video, skills, styles from a reference; text: text items, looks, style fields, animations; picture: backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws; sound: volume, fades, mixer, track effects, ducking, limiter, loudness, music; components: end cards, terminals, charts, device frames; graphics: graphic_write, its libraries, generate_media; footage: import, scanning, takes, transcripts, captions, subtitles, recording. Read a topic before you first work in that area in a conversation.",
+      "description": "Uncut's reference for one area: how its items and fields fit together, with exact JSON examples and limits. edits: every timeline_edit op with its fields and rules; production: the brand, brief, storyboard, build, sound and critic steps for a new video, skills, styles from a reference; text: text items, looks, style fields, animations; picture: backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws; sound: volume, fades, mixer, track effects, ducking, limiter, loudness, music; components: end cards, terminals, charts, device frames; graphics: graphic_write, its libraries, generate_media; footage: import, scanning, takes, transcripts, captions, subtitles, recording. Read a topic before you first work in that area in a conversation.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1117,6 +1117,7 @@
         "properties": {
           "topic": {
             "enum": [
+              "edits",
               "production",
               "text",
               "picture",

@@ -13,6 +13,7 @@ import { expandShaderEffects } from "@uncut/core/shaders";
 import { applyDeclared, appliedNote } from "../../capture/capture.ts";
 import { type Running, pushEdit } from "../session/types.ts";
 import { noteFor } from "../turns/notes.ts";
+import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import type { McpResult } from "../agent.ts";
 import type { LibraryCtx } from "./library.ts";
@@ -184,25 +185,33 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const { baseRevision, summary } = args;
           if (typeof baseRevision !== "number" || !Number.isInteger(baseRevision)) return textResult("Pass baseRevision: the revision from your last project_read.", true);
           if (!Array.isArray(args.ops)) return textResult("ops must be a list of edit ops.", true);
+          // D285: the tool list carries the convenience ops loosely, so every op is checked here
+          // (and by the expanders and core validateOps); a refusal names the shape of the ops it names.
+          const refuse = (problem: string) => {
+            const shapes = shapeHint(problem);
+            return textResult({ refused: problem, ...(shapes ? { shapes } : {}), revision: v.session.revision }, true);
+          };
+          const unknown = unknownOp(args.ops);
+          if (unknown) return refuse(unknown);
           // insert_device_frame (D76) becomes the edit ops that make it (tracks, the screen clip, the frame).
           const expanded = expandDeviceFrames(v.session.project as Project, args.ops);
-          if ("problem" in expanded) return textResult({ refused: expanded.problem, revision: v.session.revision }, true);
+          if ("problem" in expanded) return refuse(expanded.problem);
           // insert_text (D80) becomes the inserts (and text tracks) of a text in a look.
           const pluginLooks = Object.fromEntries((yield* plugins.contributions).looks.map((l) => [l.id, l]));
           const texts = expandTextLooks(v.session.project as Project, expanded.ops, pluginLooks);
-          if ("problem" in texts) return textResult({ refused: texts.problem, revision: v.session.revision }, true);
+          if ("problem" in texts) return refuse(texts.problem);
           // edit_captions (D82) becomes the update_item of the captions it changes.
           const captions = expandCaptionEdits(v.session.project as Project, texts.ops);
-          if ("problem" in captions) return textResult({ refused: captions.problem, revision: v.session.revision }, true);
+          if ("problem" in captions) return refuse(captions.problem);
           // detach_audio (D123) and set_speed (D125) become the item ops that do them.
           const arranged = expandArrangeOps(v.session.project as Project, captions.ops);
-          if ("problem" in arranged) return textResult({ refused: arranged.problem, revision: v.session.revision }, true);
+          if ("problem" in arranged) return refuse(arranged.problem);
           // D206: place_item (overlaps resolved as asked) and set_transition's allowTrim.
           const placed = expandPlacement(v.session.project as Project, arranged.ops);
-          if ("problem" in placed) return textResult({ refused: placed.problem, revision: v.session.revision }, true);
+          if ("problem" in placed) return refuse(placed.problem);
           // D213: effect.shader entries named by id get their definition (a plugin's or the project's).
           const shaded = expandShaderEffects(placed.ops, yield* shaderDefsOf(v));
-          if ("problem" in shaded) return textResult({ refused: shaded.problem, revision: v.session.revision }, true);
+          if ("problem" in shaded) return refuse(shaded.problem);
           const ops = shaded.ops;
           const placements = placed.notes.length ? { placed: placed.notes } : {};
           if (!r.owner.seen.has(baseRevision)) {
@@ -222,12 +231,14 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             // D206: each problem with a concrete fix (a start frame, a track, an id, the missing frames).
             const details = "details" in outcome.error && Array.isArray(outcome.error.details) ? refusalFixes(v.session.project as Project, ops, outcome.error.details as ReadonlyArray<Problem>) : [];
             const fixes = [...new Set(details.flatMap((d) => (d.fix ? [d.fix] : [])))];
+            const shapes = shapeHint(...details.filter((d) => d.code === "schema" || d.code === "unknown-op").map((d) => d.message));
             return textResult(
               {
                 ...(dryRun ? { dryRun: true } : {}),
                 refused: outcome.error.message,
                 details: details.length ? details : "details" in outcome.error ? outcome.error.details : [],
                 ...(fixes.length ? { fix: fixes.slice(0, 6).join(" ") } : {}),
+                ...(shapes ? { shapes } : {}),
                 revision: now?.session.revision,
                 ...(userChanges ? { userChanges } : {}),
               },
