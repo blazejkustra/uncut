@@ -1,0 +1,32 @@
+name: Question
+description: Ask how to do something in Uncut, or how a part of it works.
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you're trying to do, and what you've tried so far.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Timeline and editing
+        - Preview
+        - Export
+        - Agent
+        - Captions and transcription
+        - Capture (Argent)
+        - Plugins
+        - Remote environments
+        - Setup and install
+        - Building from source
+        - Something else
+  - type: input
+    id: version
+    attributes:
+      label: Uncut version
+      description: Optional. Uncut › About Uncut, or the commit if you built from source.

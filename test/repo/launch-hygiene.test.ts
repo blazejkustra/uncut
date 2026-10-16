@@ -2,7 +2,8 @@
 // not ignored ones, so a new file is checked before it's committed). No one's home folder or temp
 // paths, no email addresses, no Software Mansion domain (the repo is the author's own until it moves), no big
 // files beyond the bundled music and fonts, no footage, nothing that looks like a secret, no .md
-// but README.md and CONTRIBUTING.md at the root (the user's rule: other prose stays private), and an MIT LICENSE that every package names.
+// but README.md and CONTRIBUTING.md at the root and GitHub's pull request template (D253) (the user's
+// rule: other prose stays private), and an MIT LICENSE that every package names.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -10,7 +11,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 
 const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" }).split("\0").filter((f) => f && existsSync(f));
 /** The only Markdown that's published; the scans below cover them like any other text file. */
-const PUBLIC_MD = ["README.md", "CONTRIBUTING.md"];
+const PUBLIC_MD = ["README.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md"];
 const BINARY = /\.(m4a|mp3|wav|woff2?|ttf|otf|png|jpe?g|gif|icns|ico|webp)$/i;
 const texts = files.filter((f) => !BINARY.test(f)).map((f) => ({ file: f, text: readFileSync(f, "utf8") }));
 
@@ -31,7 +32,7 @@ test("git ls-files sees the repo", () => {
   assert.ok(files.includes("package.json") && files.length > 100, `${files.length} files`);
 });
 
-test("README.md and CONTRIBUTING.md are published and go through every check below", () => {
+test("README.md, CONTRIBUTING.md and the PR template are published and go through every check below", () => {
   for (const f of PUBLIC_MD) {
     assert.ok(files.includes(f), `${f} is ignored or missing`);
     assert.ok(texts.some((t) => t.file === f), `${f} is not scanned`);
@@ -66,7 +67,7 @@ test("no file over 5 MB but the bundled music and fonts", () => {
 
 test("no footage, no .md, no fixtures", () => {
   assert.deepEqual(files.filter((f) => /\.(mp4|mov|m4v|mkv|avi|webm|mxf|braw|r3d|insv|lrf|dng)$/i.test(f)), [], "footage");
-  assert.deepEqual(files.filter((f) => /\.md$/i.test(f) && !PUBLIC_MD.includes(f)), [], ".md files stay private but README.md and CONTRIBUTING.md (the user's rule)");
+  assert.deepEqual(files.filter((f) => /\.md$/i.test(f) && !PUBLIC_MD.includes(f)), [], ".md files stay private but README.md, CONTRIBUTING.md and the PR template (the user's rule)");
   assert.deepEqual(files.filter((f) => f.startsWith("fixtures/") || f.startsWith("planning/")), [], "fixtures and planning");
 });
 
