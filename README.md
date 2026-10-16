@@ -40,10 +40,32 @@ pnpm test:fast   # typecheck and everything but the packaged-app tests
 pnpm test:app    # the packaged-app tests (run pnpm dist first)
 ```
 
+## Privacy
+
+Uncut is made by Błażej Kustra, who is the controller for the usage data below. Contact: <contact>.
+
+**Usage data is off unless you turn it on.** The first time you open Uncut, the setup asks (an unticked checkbox; skipping the setup is a no), and an install that never answered is asked once. Nothing is sent before you say yes, not even the app starting. Change your answer any time in Settings › App › Usage data; `DO_NOT_TRACK=1` or `UNCUT_TELEMETRY=off` also keeps it off. Builds made from source send nothing either way.
+
+When it's on, Uncut sends only these events, each with the app version, macOS or Linux, the processor type, a session id and a random install id made when you said yes (not linked to your name or derived from your Mac; delete `install-id` in Uncut's data folder for a new one):
+
+- `app:start`: the app started (and whether it runs headless).
+- `app:crash`: which process crashed, the error's class name and code, and a fingerprint of the top stack frames with folders and messages removed.
+- `export:complete`, `export:fail`, `export:cancel`: how long the export took, its length, quality, codec, encoder, size and frame rate, whether it was a range or had subtitles, or the stage that failed.
+- `agent:turn`, `agent:fail`: whether an agent turn finished, failed or was cancelled, how long it took, how many edits and steps, or a fixed word for why it failed (usage limit, rate limit, signed out and so on).
+
+Never your footage, frames, transcripts, prompts, file names, paths or error messages. The events go through a Cloudflare Worker (it keeps no request logs and doesn't forward your IP address) to Grafana Cloud's logs service in the EU, where they are kept for 14 days (the plan's retention) and then deleted.
+
+What else leaves your Mac, and only when you use it:
+
+- **The agent.** Uncut runs your own Claude Code, which sends Anthropic what the agent works with: your prompts, frames from your video, transcripts, file and project names, under your Claude Code account and Anthropic's terms.
+- **Generators.** Image, video and voice generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
+- **Sound search.** Searching for sounds online sends the search words to Openverse, or to Freesound with your key.
+- **Downloads.** The speech model comes from Hugging Face; updates are checked for and downloaded from GitHub, which sees your IP address and the app version.
+
 ## Contributing
 
 Bug reports, fixes and plugins are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Bundled fonts, music and packages are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
+MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).

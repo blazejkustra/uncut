@@ -17,7 +17,7 @@ export interface SettingsShape {
   readonly setOnboarded: Effect.Effect<void>;
   readonly whisperModel: Effect.Effect<string | undefined>;
   readonly setWhisperModel: (id: string) => Effect.Effect<void>;
-  /** Settings › App's usage-data toggle (D223): "telemetry": { "enabled": boolean }. */
+  /** The usage-data answer (D223, opt-in since D278; never answered = no): "telemetry": { "enabled": boolean }. */
   readonly setTelemetryEnabled: (enabled: boolean) => Effect.Effect<void>;
   /** Plugins the user allowed (D97), by plugin id. */
   readonly pluginApprovals: Effect.Effect<Readonly<Record<string, PluginApproval>>>;

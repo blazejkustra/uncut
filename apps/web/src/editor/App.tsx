@@ -11,6 +11,7 @@ import { Settings } from "../settings/Settings.tsx";
 import { ShortcutsSheet } from "../settings/Shortcuts.tsx";
 import { LeaveDialog } from "../state/leave.tsx";
 import { UpdateToast } from "../ui/UpdateToast.tsx";
+import { UsageDataPrompt } from "../settings/telemetry.tsx";
 
 type WindowMode = "welcome" | "editor";
 
@@ -56,6 +57,8 @@ export function App() {
       {/* Phase 9: Environments (over everything, also while the server is away), and the remote file browser. */}
       {app.environmentsOpen && <Environments />}
       {app.remotePicker && <RemoteBrowser key={app.remotePicker.seq} request={app.remotePicker} />}
+      {/* #103 (D278): an install that never answered is asked about usage data once (the wizard asks first launches). */}
+      {!app.setupOpen && <UsageDataPrompt />}
       {/* U12: leaving with work in progress asks here, over everything. */}
       <LeaveDialog />
       {/* #102 (D276): "Uncut X is ready", over every screen. */}

@@ -7,6 +7,8 @@ import { app, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import type { AppState, MenuCommand } from "./ipc.ts";
 
 export const REPO_URL = "https://github.com/blazejkustra/uncut";
+/** README.md's Privacy section (issue #103, D278); Settings › App and the setup wizard link it too. */
+export const PRIVACY_URL = `${REPO_URL}#privacy`;
 
 /**
  * Help › Licence and Third-Party Notices (D112): the copies shipped in Resources when packaged
@@ -147,6 +149,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         { label: "Send Feedback…", click: () => void shell.openExternal(feedbackUrl(app.getVersion(), process.getSystemVersion(), process.arch)) },
         { label: "Report an Issue…", click: () => void shell.openExternal(`${REPO_URL}/issues/new/choose`) },
         { type: "separator" },
+        // Issue #103 (D278): what Uncut sends where (README's Privacy section).
+        { label: "Privacy", click: () => void shell.openExternal(PRIVACY_URL) },
         { label: "Licence", click: () => openLegal("LICENSE") },
         { label: "Third-Party Notices", click: () => openLegal("THIRD_PARTY_NOTICES") },
       ],

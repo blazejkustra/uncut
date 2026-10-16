@@ -1,10 +1,13 @@
-// Anonymous usage telemetry and crash reports (issue #13, D223), the way Argent does it.
+// Usage data and crash reports (issue #13, D223), the way Argent does it; opt-in (issue #103, D278).
 //
 // - Inert without a token: the token is put in at build time (UNCUT_TELEMETRY_TOKEN, the CI
 //   secret, through esbuild's define); dev builds and forks have none, so nothing is constructed,
 //   no id is made and nothing is sent.
-// - Opt-out, checked on every track(): DO_NOT_TRACK, then UNCUT_TELEMETRY=0/false/no/off, then
-//   Settings › App (settings.json "telemetry": { "enabled": false }); otherwise on.
+// - Opt-in, checked on every track(): DO_NOT_TRACK, then UNCUT_TELEMETRY=0/false/no/off, then the
+//   user's answer (the setup wizard's checkbox or Settings › App, settings.json "telemetry":
+//   { "enabled": true }). Never answered is no: nothing is sent, not even app:start, and no id is
+//   made. Saying yes sends this run's app:start then.
+// - The id is a random UUID in the app's data (identity.ts), never derived from the machine.
 // - Only catalogued events with allowlisted attributes (events.ts) leave the machine.
 // - Never breaks the app: every call is wrapped, track() only queues, sending is batched and
 //   bounded (client.ts), and nothing here delays startup or exit.
@@ -38,13 +41,13 @@ export interface TelemetryStatus {
 
 const OFF_WORDS = ["0", "false", "no", "off"];
 
-/** Whether telemetry may send, and why. `choice` is the Settings toggle (undefined: never touched). */
+/** Whether telemetry may send, and why. `choice` is the user's answer (undefined: never asked or never answered, which is no). */
 export function consentOf(env: NodeJS.ProcessEnv, choice: boolean | undefined): { enabled: boolean; source: ConsentSource } {
   const dnt = (env.DO_NOT_TRACK ?? "").trim().toLowerCase();
   if (dnt && !OFF_WORDS.includes(dnt)) return { enabled: false, source: "do-not-track" };
   if (OFF_WORDS.includes((env.UNCUT_TELEMETRY ?? "").trim().toLowerCase())) return { enabled: false, source: "env" };
-  if (choice === false) return { enabled: false, source: "settings" };
-  return { enabled: true, source: choice === true ? "settings" : "default" };
+  if (choice === true) return { enabled: true, source: "settings" };
+  return { enabled: false, source: choice === false ? "settings" : "default" };
 }
 
 const isLoopback = (url: string) => {
@@ -82,10 +85,9 @@ export interface TelemetryOptions {
   readonly version: string;
   readonly headless?: boolean;
   readonly env?: NodeJS.ProcessEnv;
-  /** Tests: the built-in token, the sink's batch timing, the hardware id probe. */
+  /** Tests: the built-in token, the sink's batch timing. */
   readonly token?: string;
   readonly sink?: Partial<Pick<SinkOptions, "scheduledDelayMillis" | "maxExportBatchSize">>;
-  readonly probe?: () => Promise<string | undefined>;
 }
 
 interface State {
@@ -165,7 +167,7 @@ function flush(s: State): void {
 
 function loadId(s: State): void {
   if (s.id || s.idLoading) return;
-  s.idLoading = loadOrCreateId(s.options.dataDir, s.options.probe)
+  s.idLoading = loadOrCreateId(s.options.dataDir)
     .then((id) => {
       s.id = id;
       flush(s);
@@ -214,12 +216,15 @@ function noteCrash(crash: Record<string, unknown>) {
   track("app:crash", crash);
 }
 
-/** Settings › App toggled (the caller has saved it). Turning it off drops whatever is queued. */
+/** The user answered (the wizard's checkbox or Settings › App; the caller has saved it). Yes sends this run's app:start; no drops whatever is queued. */
 export function setTelemetryChoice(enabled: boolean): void {
   try {
-    if (!state) return;
-    state.choice = enabled;
-    if (!enabled) state.pending = [];
+    const s = state;
+    if (!s) return;
+    const was = enabledNow(s);
+    s.choice = enabled;
+    if (!enabled) s.pending = [];
+    else if (!was) track("app:start", { headless: s.options.headless === true });
   } catch {}
 }
 
