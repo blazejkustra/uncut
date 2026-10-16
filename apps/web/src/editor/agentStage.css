@@ -18,12 +18,14 @@
 .agent-stage-kicker { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .agent-stage-head .grow, .agent-stage-foot .grow { flex: 1; }
 .agent-stage-card .agent { min-height: 0; }
-/* Room to read: the suggestions sit side by side, the composer is bigger. */
+/* Room to read, and a bigger composer. Before the first turn the question and the composer sit
+   together in the middle of the card (the thread shrinks to the question). */
 .agent-stage-card .agent-thread { padding: 8px 28px 12px; }
-.agent-stage-card .agent-empty .empty-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
-.agent-stage-card .agent-empty-sub { max-width: 460px; font-size: 13px; }
-.agent-stage-card .agent-examples { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 600px; margin-inline: auto; }
-.agent-stage-card .agent-example { padding: 10px 12px; font-size: 12.5px; }
+.agent-stage-card .agent:has(.agent-empty) { justify-content: center; }
+.agent-stage-card .agent:has(.agent-empty) > .agent-thread { flex: 0 0 auto; overflow: visible; padding-bottom: 20px; }
+.agent-stage-card .agent-empty { padding: 0; gap: 10px; }
+.agent-stage-card .agent-empty-title { font-size: 30px; letter-spacing: -0.02em; }
+.agent-stage-card .agent-empty-sub { font-size: 14px; }
 .agent-stage-card .composer { margin: 0 24px 10px; border-radius: 12px; }
 .agent-stage-card .composer-box > textarea, .agent-stage-card .composer-hl { min-height: 76px; font-size: 14px; }
 .agent-stage-foot { display: flex; align-items: center; gap: 6px; padding: 0 26px 14px; font-size: 11.5px; color: var(--muted); }
