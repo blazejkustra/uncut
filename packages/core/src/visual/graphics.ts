@@ -16,7 +16,7 @@
 // never overwrites, so earlier revisions keep their look).
 //
 // Bundled libraries (D193): a graphic loads one with a marker, <script src="uncut:lib/three.js">
-// </script> (also confetti.js, globe.js, spring.js, random.js). resolveGraphicLibs replaces each
+// </script> (also confetti.js, globe.js, spring.js, random.js, motion.js). resolveGraphicLibs replaces each
 // marker with the library's source as an inline script (so the CSP stays as it is and nothing loads
 // from anywhere), right after the graphic file is read (the server's readGraphics, which the preview
 // route, the export and render_frames all go through), so preview == export by construction. Core
@@ -65,7 +65,7 @@ export const graphicInfo = (item: Pick<Item, "duration" | "props">, canvas: Pick
  * answers { uncut: "rendered", seq }.
  */
 /** The libraries a graphic may load with <script src="uncut:lib/<name>"></script> (D193). */
-export const GRAPHIC_LIBS = ["three.js", "confetti.js", "globe.js", "spring.js", "random.js"] as const;
+export const GRAPHIC_LIBS = ["three.js", "confetti.js", "globe.js", "spring.js", "random.js", "motion.js"] as const;
 export type GraphicLib = (typeof GRAPHIC_LIBS)[number];
 
 /** The most a graphic's whole document may hold, libraries in (bytes): base64 of it must stay under Chromium's 2 MB URL limit. */
@@ -124,11 +124,12 @@ export function resolveGraphicBrand(html: string, logos: Readonly<Partial<Record
 /** For the agent's system prompt (D193): the render(t) contract and the bundled libraries. */
 export const GRAPHIC_LIBS_DOC = [
   "Graphics (graphic_write) draw everything from t alone: render(t, info) is called for each frame in any order, in the preview and again in the export, so no timers, no requestAnimationFrame loops, no Date.now or performance.now, no Math.random (use uncutRandom(seed)), no state carried from one frame to the next; nothing loads from the network.",
-  'Bundled libraries load with a marker in the HTML, inlined by Uncut (the same in the preview and the export): <script src="uncut:lib/three.js"></script>, and likewise uncut:lib/confetti.js, uncut:lib/globe.js, uncut:lib/spring.js, uncut:lib/random.js; any other name is not loaded.',
+  'Bundled libraries load with a marker in the HTML, inlined by Uncut (the same in the preview and the export): <script src="uncut:lib/three.js"></script>, and likewise uncut:lib/confetti.js, uncut:lib/globe.js, uncut:lib/spring.js, uncut:lib/random.js, uncut:lib/motion.js; any other name is not loaded.',
   "three.js (0.169, window.THREE): create the renderer once at load, new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true }) with a canvas of info.width by info.height (renderer.setSize(info.width, info.height, false), pixel ratio 1), then inside render(t) set the camera and every object from t and call renderer.render(scene, camera).",
   "uncutConfetti.draw(ctx, t, { seed, count, at, origin: { x, y } as canvas fractions, angle, spread, velocity, gravity, drag, size, life, colors, shapes }) draws a confetti burst on a 2D context as a pure function of t (clear the canvas first).",
   "uncutGlobe.draw(ctx, t, { x, y, radius, dots, rotation, speed in degrees per second, tilt, dotSize, ocean, markers: [{ lat, lon, color, size }], colors: { dot, marker, sphere, rim } }) draws a dotted spinning globe; uncutGlobe.project(ctx, t, lat, lon, options) gives { x, y, visible }.",
   'uncutSpring(t, "spring.land" or { stiffness, damping, mass, velocity }) is the spring Uncut uses for eases (0 at t = 0 seconds, settling at 1; presets spring.snap, spring.settle, spring.land, spring.bounce), with uncutSpring.ease(preset)(p) fitted to p from 0 to 1.',
+  'uncutMotion (motion.js) is for one-take motion films, all pure functions of t: springs(t, [{ at, to }], "spring.snap") sums one spring per target change (a value retargeted many times stays continuous); edges(t, [{ at, left, right }], { lead, trail }) gives a liquid tab indicator\'s two edges, the leading one on the faster spring; rise(t, { at, out, height }) gives the y of text rising out of a mask line (in an overflow: hidden box); flood(t, { at, x, y, r, width, height, dur: 0.3, until, to: { x, y, r } }) grows a circle past the frame\'s corners and contracts it into the next shape; iris(open, { x, y, r, blades: 6 }) gives blade polygons; squeeze(xs, widths, anchor, f) pulls a wordmark\'s letters into its period; cursor(t, [{ at, x, y, click }]) gives a drawn cursor\'s { x, y, scale, down }; camera(t, [{ at, x, y, zoom }]) a screen-studio zoom; beat(n, { bpm, offset }), loop(t, duration), ease.inOut/out/in, mix, mixColor.',
   "uncutRandom(seed) returns a seeded generator (rnd() in [0, 1), rnd.range(a, b), rnd.int(a, b), rnd.pick(list), rnd.normal()); uncutRandom.noise(seed, x) is smooth noise.",
   'Fonts: name a family in CSS font-family or in ctx.font (for example ctx.font = "600 64px \'DM Sans\', sans-serif") and Uncut declares it inside the graphic when it is DM Sans, DM Mono or a font file of the brand kit, loaded before the first frame; fonts installed on this Mac work by name. Any other family is a project_check error (it would fall back to another font), so never ask for one that isn\'t there.',
   'Brand logos: src="uncut:brand/logo-light" (also logo-dark, logo-mark) in an <img> or a CSS url() is the kit\'s logo file as it is (an SVG stays vector), inlined by Uncut.',

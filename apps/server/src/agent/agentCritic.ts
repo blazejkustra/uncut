@@ -55,7 +55,7 @@ type Category = keyof ReviewScores & RubricCategory;
 const SCORE_NAMES: Readonly<Record<Category, string>> = {
   hook: "hook: the first 2 s make a stranger stop scrolling (motion or a claim on frame 0, no slow fade from black)",
   readability: "readability: every word can be read at 360 px wide on a phone, in the time it's on screen; nothing clipped, overflowing or off-centre",
-  motion: "motion: moves have intent and settle (springs, eases), no linear drifts, nothing jittery",
+  motion: "motion: moves have intent and settle (springs, eases), no linear drifts, nothing jittery; over time (the frame strips and the <motion> scan): changes land on the music's beats, no single-frame pops, no hold over 1 s where something should move, and a film that loops meets its first frame at the seam",
   variety: "variety: shots change every 1 to 3 s, no two scenes look the same, no empty or held frames that say nothing",
   sound: "sound (from the <sound> sheet, you can't hear it): music whose tempo fits the cutting, cuts and big moments on its beats; sound effects that fit the video's sound profile, each on something that changes on screen; the voice never masked",
   brand: "brand: the kit's colours, fonts and logo files exactly, real product footage and copy where the brief planned them, nothing invented",
@@ -80,6 +80,7 @@ Don't raise again what the user marked as intended (<intended>).
 Sound, blindfold first: read the <sound> sheet alone before looking at the frames. Would those sounds by themselves feel like a meme reel or a click track? Then check each effect's time against the frames: does something change on screen right there?
 The editor follows the skills in <skill-checklists>: check every line on the frames; a line the video fails is a defect (or a blocker when it is one of the kinds above), quoting the line.
 Uncut's layout checks are listed as facts about the project: confirm what you see.
+Motion over time: stills can't show timing, so you also get frame strips (a row of consecutive moments 1/12 s apart around each scene change, left to right) and Uncut's frame-difference scan in <motion>. From the strips judge whether each change lands on its beat (the storyboard's and the sound sheet's times), whether moves ease in and settle or snap, and whether text swapping inside a moving shape overlaps. The scan's pops (a frame unlike both its neighbours), one-frame jumps, holds over 1 s and the loop seam are measured, not guessed: confirm them on the strips and frames, and judge them as motion defects (a pop is always one; a cut or a hold is one only when the brief or the skills ask for one take with no holds).
 From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim.
 Answer with one JSON object and nothing else:
 {"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...}},
@@ -137,6 +138,8 @@ export interface CriticInput {
   readonly rubric?: Rubric;
   /** D217: findings the user marked Intended. */
   readonly intended?: ReadonlyArray<IntendedFinding>;
+  /** D292: the frame-difference scan as facts (criticMotion.ts motionLines) and how many frame strips are among the images. */
+  readonly motion?: { readonly lines: ReadonlyArray<string>; readonly strips: number };
 }
 
 /** The categories a rubric scores (all of them without one). */
@@ -147,7 +150,7 @@ const barOf = (rubric: Pick<Rubric, "levels"> | undefined, k: Category) => (rubr
 /** A check's rule family: "sound:density:12" is "sound:density". */
 const ruleOf = (c: CriticFinding) => (c.key ? c.key.split(":").slice(0, 2).join(":") : c.rule);
 const secs = (frame: number, fps: number) => Math.round((frame / fps) * 100) / 100;
-const checkKind = (c: CriticFinding) => (c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : c.rule === "sound" ? "sound" : "overflow");
+const checkKind = (c: CriticFinding) => (c.rule === "layout-off-centre" ? "off-centre" : c.rule === "font-missing" ? "font" : c.rule === "sound" ? "sound" : c.rule === "motion" ? "motion" : "overflow");
 /** A check finding as Intended sees it (kind, rule family, time range in seconds). */
 export const checkRef = (c: CriticFinding, fps: number) => ({ kind: checkKind(c), rule: ruleOf(c), ...(c.frame !== undefined ? { at: secs(c.frame, fps) } : {}), ...(c.range ? { to: secs(c.range.end, fps) } : {}) });
 
@@ -190,7 +193,10 @@ export function criticText(input: CriticInput): string {
     parts.push(`<last-round ${prev.round}>\n${found.join("\n") || "nothing listed"}\n</last-round>`);
   }
   if (input.claims.length) parts.push(`<claimed-fixes>\nThe editor says it fixed these. Check each on the new frames.\n${input.claims.map((c) => `${c.defect}${c.at !== undefined ? ` (at ${c.at} s)` : ""}${c.was ? `, was: ${c.was}` : ""}; the editor: ${c.what}`).join("\n")}\n</claimed-fixes>`);
-  const layout = checks.filter((c) => c.rule !== "sound");
+  // D292: the motion scan (facts) and its findings.
+  const motionChecks = checks.filter((c) => c.rule === "motion").map((c) => `${c.frame !== undefined ? `f ${c.frame}: ` : ""}${c.message}`);
+  if (input.motion || motionChecks.length) parts.push(`<motion>\n${[...(input.motion?.lines ?? []), ...(input.motion?.strips ? [`${input.motion.strips} frame strip${input.motion.strips === 1 ? "" : "s"} among the images, one per scene change.`] : []), ...motionChecks].join("\n")}\n</motion>`);
+  const layout = checks.filter((c) => c.rule !== "sound" && c.rule !== "motion");
   if (layout.length) parts.push(`<layout-checks>\n${layout.map((c) => `${c.hard ? "fails" : "check"}${c.frame !== undefined ? ` at f ${c.frame}` : ""}: ${c.message}`).join("\n")}\n</layout-checks>`);
   if (input.determinism.differed.length) parts.push(`Graphics that drew differently twice at the same frame: ${input.determinism.differed.join(", ")}.`);
   parts.push(`<images>\n${input.images.map((im, i) => `Image ${i + 1}: ${im.label}`).join("\n")}\n</images>`);
@@ -278,6 +284,8 @@ export function parseCritic(text: string, scored: ReadonlyArray<Category> = REVI
 
 /** D217: the check findings that become review findings when they don't block (they can't be seen on frames). */
 const CHECK_FINDING = /^sound:(density|loud|level):/;
+/** D292: the motion scan's findings (pops; jumps, holds and the seam when asked for) are defects from the check, with or without a rubric. */
+const MOTION_FINDING = /^motion:(pop|jump|hold|seam):/;
 
 /**
  * The round as saved (D195, D196, D217): the critic's scores (only the categories the rubric scores)
@@ -314,7 +322,7 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
     const at = f.at;
     if (c.hard) {
       if (keep(f)) rawBlockers.push({ ...f, what: c.message, source: "check" });
-    } else if (rubric && c.key && CHECK_FINDING.test(c.key) && keep(f)) rawDefects.push({ ...f, at: at ?? 0, what: c.message, source: "check" });
+    } else if (c.key && ((rubric && CHECK_FINDING.test(c.key)) || MOTION_FINDING.test(c.key)) && keep(f)) rawDefects.push({ ...f, at: at ?? 0, what: c.message, source: "check" });
   }
   const blockers: Array<Blocker> = [];
   let n = 0;

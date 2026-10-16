@@ -30,7 +30,7 @@ test("markers: known libraries are inlined, unknown ones become a comment, the r
   assert.equal(out.split("window.THREE = { ok: 1 };").length - 1, 1, "a library is inlined once");
   assert.match(out, /<!-- uncut:lib\/three\.js is already loaded above -->/, "a repeated marker is a comment");
   assert.match(out, /<script>\/\* uncut:lib\/spring\.js \*\/\nwindow\.uncutSpring = 1; var s = '<\\\/script>';\n<\/script>/, "a </script inside a library can't close its tag");
-  assert.match(out, /<!-- uncut:lib\/nope\.js is not a bundled library \(bundled: three\.js, confetti\.js, globe\.js, spring\.js, random\.js\) -->/);
+  assert.match(out, /<!-- uncut:lib\/nope\.js is not a bundled library \(bundled: three\.js, confetti\.js, globe\.js, spring\.js, random\.js, motion\.js\) -->/);
   assert.ok(out.startsWith('<canvas id="c"></canvas>\n'));
   assert.ok(out.endsWith('<script>const label = "uncut:lib/three.js"; window.render = (t) => {};</script>'), "a marker-like string in the author's code stays");
   assert.ok(!/src="uncut:lib/.test(out.replace('"uncut:lib/three.js";', "")), "no marker left");
@@ -204,7 +204,7 @@ test("spring.js is core's spring, value for value", () => {
 });
 
 test("libraries: no clocks, no Math.random, no timers, nothing that closes an inline script; the doc covers the contract", () => {
-  for (const n of ["confetti.js", "globe.js", "spring.js", "random.js"]) {
+  for (const n of ["confetti.js", "globe.js", "spring.js", "random.js", "motion.js"]) {
     const s = source(n);
     // The code, not its comments (which say what not to use).
     assert.doesNotMatch(s.replace(/\/\*[\s\S]*?\*\//g, ""), /Math\.random|Date\.now|performance\.now|setTimeout|setInterval|requestAnimationFrame|new Date/, n);
