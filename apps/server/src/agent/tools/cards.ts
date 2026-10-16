@@ -37,9 +37,10 @@ export function runFacts(beats: number | undefined, reviews: ReadonlyArray<{ rea
  * promo's held end card, motion craft's one thing at a time and sound design's few effects contradict
  * it, so only the film's checklist and the brand's go to the critic.
  */
-export function criticSkills<S extends { readonly name: string }>(skills: ReadonlyArray<S>): ReadonlyArray<S> {
-  if (!skills.some((x) => x.name === BUILTIN_IDS.film)) return skills;
-  return skills.filter((x) => x.name === BUILTIN_IDS.film || x.name === BUILTIN_IDS.brand);
+// Compared by id: a skill's name is its title ("Motion film (one take)"), never the id slug.
+export function criticSkills<S extends { readonly id: string }>(skills: ReadonlyArray<S>): ReadonlyArray<S> {
+  if (!skills.some((x) => x.id === BUILTIN_IDS.film)) return skills;
+  return skills.filter((x) => x.id === BUILTIN_IDS.film || x.id === BUILTIN_IDS.brand);
 }
 
 /** D297: what the critic hears when the scan couldn't run (rehearsal 3 marked motion down for it). */
@@ -326,7 +327,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
       // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
       const hasFootage = project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "clip"));
-      const intent = motionIntent({ skills: brand.skills.map((x) => x.name), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.assets ?? []), ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n"), hasFootage });
+      const intent = motionIntent({ skills: brand.skills.map((x) => x.id), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.assets ?? []), ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n"), hasFootage });
       const anchors = motionAnchors(sb?.beats, fps, duration);
       const strips = stripPlan(anchors, fps, duration);
       const scanList = scanPlan(anchors, fps, duration);
@@ -427,7 +428,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
       // Why there's no scan without an error: no ffmpeg, or too few frames rendered to compare.
       const scanMissing = yield* Effect.promise(async () => ((await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH"));
-      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.name === BUILTIN_IDS.film) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
+      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.id === BUILTIN_IDS.film) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
       // D292: the time budget left some of the scan's frames out.
       const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
