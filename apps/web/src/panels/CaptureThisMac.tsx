@@ -1,5 +1,6 @@
 // The Capture tab's This Mac section (D114, first on the tab since D143), one recorder since D238
-// (issue #65): toggle any mix of Screen, Microphone, Camera and Mac sound, then one Record. Each
+// (issue #65): toggle any mix of Screen, Microphone, Camera and Mac sound; one Record (at the top since
+// D267, starting straight away). Each
 // source on says whether macOS allows it (not asked yet, off with how to turn it on, or allowed)
 // and shows its device; the screen or window is picked in a modal (SourcePicker). A live picture
 // shows the screen with the camera's bubble over it (D211's layouts), or the camera alone.
@@ -154,6 +155,16 @@ export function CaptureThisMac() {
   return (
     <div className="lib-section capture-this-mac" data-testid="capture-this-mac" data-phase={phase} data-parts={parts.join(",")} {...(recordedMs !== undefined ? { "data-recorded-ms": recordedMs } : {})} {...(offsets ? { "data-offsets": JSON.stringify(offsets) } : {})}>
       <div className="lib-label">This Mac</div>
+      {/* D267: Record first, then what it records. */}
+      <RecordBar label={label} meter={micOn} disabled={!canRecord} onRecord={record} />
+      <div className="small muted" data-testid="capture-where">
+        {where}
+      </div>
+      {message && (
+        <div className={`capture-message small ${message.kind}`} data-testid={`capture-take-${message.kind}`}>
+          {message.text}
+        </div>
+      )}
       <div className="capture-toggles" role="group" aria-label="What to record" data-testid="capture-toggles">
         {SOURCES.map(({ kind, label: name, icon: Icon }) => (
           <button
@@ -256,15 +267,6 @@ export function CaptureThisMac() {
               On the timeline
             </Option>
           )}
-        </div>
-      )}
-      <div className="small muted" data-testid="capture-where">
-        {where}
-      </div>
-      <RecordBar label={label} meter={micOn} disabled={!canRecord} onRecord={record} />
-      {message && (
-        <div className={`capture-message small ${message.kind}`} data-testid={`capture-take-${message.kind}`}>
-          {message.text}
         </div>
       )}
       {picking && <SourcePicker picked={source?.id ?? ""} onPick={(id) => set({ source: id })} onClose={() => setPicking(false)} />}

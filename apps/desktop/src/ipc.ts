@@ -85,7 +85,8 @@ export interface MiniRecorderState {
   readonly at: number;
   readonly count?: number | undefined;
 }
-export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel";
+/** "ready": the mini window is listening (D267: a take now starts at once, so its state can come before the window does). */
+export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel" | "ready";
 export const CHOOSE_DISPLAY_SOURCE_CHANNEL = "uncut:choose-display-source";
 // D210: whether this Mac can record its own sound.
 export const SYSTEM_AUDIO_CHANNEL = "uncut:system-audio";

@@ -17,7 +17,7 @@ import { installOpenFile } from "./openFile.ts";
 import { testBackground, mediaTest, devServerUrl, appUrl, testDialogs } from "./app/testMode.ts";
 import { win, environments, server, setWin, setEnvironments, setServer } from "./app/state.ts";
 import { downloads, activeConnection, closeRelay, relay, downloadExport } from "./app/remote.ts";
-import { showMini, mini } from "./app/miniRecorder.ts";
+import { showMini, mini, resendMini } from "./app/miniRecorder.ts";
 import { crypt } from "./app/crypt.ts";
 import { resources } from "./app/resources.ts";
 import { appInfo, chooseFolder, chooseMedia, chooseSavePath } from "./app/dialogs.ts";
@@ -461,7 +461,9 @@ app.whenReady().then(() => {
     showMini(state && typeof state === "object" && typeof state.name === "string" ? state : null);
   });
   ipcMain.on(MINI_RECORDER_ACTION_CHANNEL, (event, action: MiniRecorderAction) => {
-    if (!mini || event.sender !== mini.webContents || !["stop", "pause", "resume", "cancel"].includes(action)) return;
+    if (!mini || event.sender !== mini.webContents) return;
+    if (action === "ready") return resendMini();
+    if (!["stop", "pause", "resume", "cancel"].includes(action)) return;
     if (testBackground) console.log(`[test] mini recorder ${action}`);
     win?.webContents.send(MINI_RECORDER_ACTION_CHANNEL, action);
   });
