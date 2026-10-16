@@ -393,7 +393,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
       // Why there's no scan without an error: no ffmpeg, or too few frames rendered to compare.
       const scanMissing = yield* Effect.promise(async () => ((await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH"));
-      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, intent) : []), ...flatFindings(flatStrips, fps, intent.footage)];
+      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.name === BUILTIN_IDS.film) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
       // D292: the time budget left some of the scan's frames out.
       const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
