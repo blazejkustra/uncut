@@ -396,14 +396,18 @@ export class Compositor extends CompositorBase {
     if (this.gpu && !this.gpu.lost) {
       if (onGpu.size) {
         const scale = (this.frameEl.clientWidth / project.canvas.width) * (window.devicePixelRatio || 1);
-        this.gpu.begin(project.canvas.width, project.canvas.height, scale);
-        for (const v of drawn) {
-          if (!onGpu.has(v.item.id)) break;
-          const p = gpuPictures.get(v.item.id);
-          if (p) this.gpu.drawPicture(p);
-          else if (v.item.type === "component") this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
-        }
-        this.gpu.end();
+        // Issue #82 (D241): a layer with nothing to draw yet (the next clip's <video> still seeking at
+        // a cut) keeps the last frame up a moment instead of a transparent hole over the black frame.
+        if (!this.gpu.holds(gpuPictures.values(), project.canvas.width, project.canvas.height, scale)) {
+          this.gpu.begin(project.canvas.width, project.canvas.height, scale);
+          for (const v of drawn) {
+            if (!onGpu.has(v.item.id)) break;
+            const p = gpuPictures.get(v.item.id);
+            if (p) this.gpu.drawPicture(p);
+            else if (v.item.type === "component") this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
+          }
+          this.gpu.end();
+        } else this.frameEl.dataset.gpuHeld = String(Number(this.frameEl.dataset.gpuHeld ?? 0) + 1);
       } else this.gpu.clear();
       this.frameEl.dataset.gpuLayers = String(onGpu.size);
     }
