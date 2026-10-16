@@ -91,7 +91,10 @@ export function exportCommand(plan: ExportPlan, opts: CommandOptions): { inputs:
         inputs.push("-f", "image2", "-pattern_type", "none", "-i", raster.png);
         source = [`[${index}:v:0]${toYuv(true)}`, `loop=loop=${frames - 1}:size=1:start=0`, `settb=1/${fps}`];
       } else {
-        inputs.push("-f", "image2", "-framerate", String(fps), "-start_number", "0", "-i", raster.pattern);
+        // A sequence, or a streamed layer's video (D291): one picture per frame either way, its
+        // timestamps made again from the frame count (the video's are rounded to its container's).
+        if (raster.kind === "video") inputs.push("-i", raster.file);
+        else inputs.push("-f", "image2", "-framerate", String(fps), "-start_number", "0", "-i", raster.pattern);
         source = [`[${index}:v:0]${toYuv(true)}`, `trim=end_frame=${frames}`, `settb=1/${fps}`];
       }
       if (geo) {

@@ -3,8 +3,15 @@ import type { Quality } from "./types.ts";
 
 // ---- ffmpeg ----
 
-/** What the rasteriser made for a raster layer: one PNG, or a numbered sequence (one file per frame). */
-export type RasterOutput = { readonly kind: "still"; readonly png: string } | { readonly kind: "sequence"; readonly pattern: string };
+/**
+ * What the rasteriser made for a raster layer: one PNG, a numbered sequence (one file per frame,
+ * hard links to its few looks), or a streamed layer's one lossless video (D291: FFV1, straight
+ * BGRA, alpha exact) of `frames` frames.
+ */
+export type RasterOutput =
+  | { readonly kind: "still"; readonly png: string }
+  | { readonly kind: "sequence"; readonly pattern: string }
+  | { readonly kind: "video"; readonly file: string; readonly frames: number };
 
 export interface Caps {
   readonly encoders: ReadonlySet<string>;
