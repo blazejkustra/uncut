@@ -86,7 +86,10 @@ export function useViewport(area: RefObject<HTMLDivElement | null>, fitScale: nu
     target.setPointerCapture(e.pointerId);
     target.classList.add("panning");
     const move = (ev: PointerEvent) => setPan({ x: start.pan.x + ev.clientX - start.x, y: start.pan.y + ev.clientY - start.y });
-    const up = () => {
+    // The release lands the pan where the pointer let go: a busy frame (the GPU compositor) can
+    // coalesce the last pointermove away before the pointerup arrives.
+    const up = (ev: PointerEvent) => {
+      if (ev.type === "pointerup") move(ev);
       target.classList.remove("panning");
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
