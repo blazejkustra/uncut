@@ -111,14 +111,15 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
     assert.equal(t.license, "CC0-1.0");
     assert.ok(readFileSync(join(installed, "Contents/Resources/sfx", t.file)).equals(readFileSync(resolve("assets/sfx", t.file))), t.file);
   }
-  // The Argent capture plugin ships as a bundled plugin (D98): its manifest and server, no tests or notes.
+  // The Argent capture plugin ships as a bundled plugin (D98): its manifest, server and icon (D281), no tests or notes.
   const shipped = join(installed, "Contents/Resources/plugins/argent-capture");
   assert.deepEqual(readFileSync(join(shipped, "uncut.module.json")), readFileSync(resolve("plugins/argent-capture/uncut.module.json")));
   assert.ok(readFileSync(join(shipped, "server.ts")).equals(readFileSync(resolve("plugins/argent-capture/server.ts"))));
-  assert.deepEqual(readdirSync(shipped).sort(), ["server.ts", "uncut.module.json"]);
-  // So does the Whisper plugin (D100): manifest, server and its whisper.ts.
+  assert.deepEqual(readdirSync(shipped).sort(), ["icon.svg", "server.ts", "uncut.module.json"]);
+  assert.ok(readFileSync(join(shipped, "icon.svg")).equals(readFileSync(resolve("plugins/argent-capture/icon.svg"))));
+  // So does the Whisper plugin (D100): manifest, server, its whisper.ts and icon (D281).
   const whisper = join(installed, "Contents/Resources/plugins/whisper-transcribe");
-  assert.deepEqual(readdirSync(whisper).sort(), ["server.ts", "uncut.module.json", "whisper.ts"]);
+  assert.deepEqual(readdirSync(whisper).sort(), ["icon.svg", "server.ts", "uncut.module.json", "whisper.ts"]);
   for (const f of readdirSync(whisper)) assert.ok(readFileSync(join(whisper, f)).equals(readFileSync(resolve("plugins/whisper-transcribe", f))), f);
   assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "catalog", "uncut-skills", "whisper-transcribe"]);
   // The catalog (D103): every plugin in plugins/catalog, as in the repo, off until enabled.

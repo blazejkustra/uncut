@@ -69,9 +69,12 @@ export function seek(el: HTMLVideoElement, t: number) {
  * Issue #55: a playing <video>'s drift seeks. A seek while playing lands where the clock was when it
  * started, so it is aimed ahead by how long the last one took (`lead`, source s at 1×), and the next
  * one waits a second (`at`): with many decoders busy a seek can take longer than the drift allowed,
- * and chasing each landing with another seek kept a layer frozen on its last frame.
+ * and chasing each landing with another seek kept a layer frozen on its last frame. The first one is
+ * aimed blind (`blind`: no seek timed yet, so no lead): on a busy machine it lands as far behind as it
+ * took (0.3 s with 20 decoders and the CPU loaded), so one landing still off may seek again at once,
+ * now aimed by the time it just measured; after that the second's wait applies.
  */
-export const playSeek = new WeakMap<HTMLVideoElement, { at: number; lead: number; from?: number }>();
+export const playSeek = new WeakMap<HTMLVideoElement, { at: number; lead: number; from?: number; blind?: boolean }>();
 
 /**
  * Keep a <video> at `source` seconds: playing at the clip's speed (pitch kept), seeked only when
@@ -91,9 +94,11 @@ export function drive(el: HTMLVideoElement, source: number, playing: boolean, sp
       const now = performance.now();
       const last = playSeek.get(el);
       // Not a jump (the playhead moved while playing): that seeks at once.
-      if (last && now - last.at < 1000 && Math.abs(el.currentTime - target) < 1) return;
-      const lead = last?.lead ?? 0;
-      playSeek.set(el, { at: now, lead, from: now });
+      if (last && !last.blind && now - last.at < 1000 && Math.abs(el.currentTime - target) < 1) return;
+      // After a blind one, no further ahead than it fell behind: its time can include a playhead
+      // that hadn't started moving yet (playback starting), which would aim this one past it.
+      const lead = last?.blind ? Math.min(last.lead, Math.max(0, target - el.currentTime) / Math.max(speed, 1e-3)) : (last?.lead ?? 0);
+      playSeek.set(el, { at: now, lead, from: now, blind: !last });
       previewStats.playSeeks++;
       seek(el, target + lead * speed);
     }
