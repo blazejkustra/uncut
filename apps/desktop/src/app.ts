@@ -13,6 +13,7 @@ import { makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./enviro
 import { pingServer } from "./relay.ts";
 import { startServer } from "./server.ts";
 import { installCrashReports, reportServerExit } from "./crashReports.ts";
+import { installOpenFile } from "./openFile.ts";
 import { testBackground, mediaTest, devServerUrl, appUrl, testDialogs } from "./app/testMode.ts";
 import { win, environments, server, setWin, setEnvironments, setServer } from "./app/state.ts";
 import { downloads, activeConnection, closeRelay, relay, downloadExport } from "./app/remote.ts";
@@ -281,6 +282,9 @@ const fromAppWindow = (event: IpcMainInvokeEvent | IpcMainEvent) => {
   return win !== undefined && event.sender === win.webContents && frame !== null && frame.parent === null && isAppUrl(frame.url);
 };
 const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent === null && frame === win.webContents.mainFrame && isAppUrl(frame.url);
+
+// D252: a .uncut project opened from Finder or the Dock (before ready, so the first open-file isn't missed).
+installOpenFile({ isAppWindow: fromAppWindow, send: sendMenuCommand, show: () => { if (testBackground) return; win?.show(); win?.focus(); } });
 
 // ---- recording on this Mac (D114) ----
 
