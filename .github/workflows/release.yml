@@ -5,6 +5,10 @@
 # UNCUT_TELEMETRY_TOKEN (D223; without it the build's telemetry is inert).
 # Without MACOS_CERT_P12 the job falls back to the old ad-hoc dmg, so a tag never fails for a missing
 # certificate; that dmg warns on other Macs.
+# Auto-update (#102, D276): on the signed path the release also gets the update zip, the blockmaps
+# and latest-mac.yml; installed apps find them once the draft release is published (electron-updater's
+# GitHub provider reads the latest published release, never a draft). The ad-hoc fallback uploads
+# only the dmg: an ad-hoc app never updates itself, and its zip would not install over a signed one.
 name: Release
 
 on:
@@ -55,8 +59,19 @@ jobs:
           xcrun notarytool store-credentials uncut-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$KC"
           echo "UNCUT_NOTARY_KEYCHAIN=$KC" >> "$GITHUB_ENV"
 
+      # The app compares the feed's version with its own: the tag must be v<apps/desktop/package.json version>.
+      - name: Tag matches the app version
+        if: env.HAS_CERT == 'true'
+        run: |
+          VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $VERSION (expected v$VERSION); auto-update would offer the wrong version."
+            exit 1
+          fi
+
       # Build, sign every binary, notarize and staple the app and the DMG, check them with stapler
-      # and spctl, copy to release/Uncut-<version>-<YYYYMMDD>-arm64.dmg.
+      # and spctl, copy to release/Uncut-<version>-<YYYYMMDD>-arm64.dmg, with the auto-update feed
+      # (Uncut-<version>-arm64-mac.zip, the .blockmap files, latest-mac.yml).
       - name: pnpm dist:signed
         if: env.HAS_CERT == 'true'
         env:
@@ -77,11 +92,21 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Uncut-dmg
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+      # Signed: the dmg plus the auto-update feed (zip, blockmaps, latest-mac.yml). Ad-hoc: the dmg only.
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/*.dmg --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+        run: |
+          if [ "$HAS_CERT" = "true" ]; then
+            gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+          else
+            gh release create "$GITHUB_REF_NAME" release/*.dmg --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+          fi
       - name: Remove the signing keychain
         if: always() && env.UNCUT_NOTARY_KEYCHAIN != ''
         run: security delete-keychain "$UNCUT_NOTARY_KEYCHAIN"

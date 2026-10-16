@@ -205,3 +205,32 @@ export function telemetryToken(envToken: string | undefined, keychain: { readonl
   if (fromKeychain) return { token: fromKeychain, line: `Telemetry app token: from the keychain (${TELEMETRY_KEYCHAIN_SERVICE}).` };
   return { line: `Telemetry app token: none (no UNCUT_TELEMETRY_TOKEN, no keychain item ${TELEMETRY_KEYCHAIN_SERVICE}); this build's telemetry is inert.` };
 }
+
+// ---------- the auto-update feed (#102, D276) ----------
+
+/** The zip Squirrel.Mac installs from (electron-updater picks the file whose name says arm64). */
+export const updateZipName = (version: string) => `Uncut-${version}-arm64-mac.zip`;
+
+/** ditto's arguments for the update zip of the stapled app (what electron-builder's mac zip and Apple use). */
+export const updateZipArgs = (app: string, zip: string) => ["-c", "-k", "--sequesterRsrc", "--keepParent", app, zip];
+
+export type FeedFile = { readonly url: string; readonly sha512: string; readonly size: number };
+
+/**
+ * latest-mac.yml, as electron-builder writes it: the version, the zip first (path/sha512 at the top
+ * are the zip's, for old updaters) then the DMG, sha512 in base64, and the release date. The GitHub
+ * provider fetches it from the release of the tag v<version>; each file's url is the asset's name.
+ */
+export function latestMacYaml(input: { readonly version: string; readonly zip: FeedFile; readonly dmg: FeedFile; readonly releaseDate: Date }): string {
+  const file = (f: FeedFile) => [`  - url: ${f.url}`, `    sha512: ${f.sha512}`, `    size: ${f.size}`];
+  return [
+    `version: ${input.version}`,
+    "files:",
+    ...file(input.zip),
+    ...file(input.dmg),
+    `path: ${input.zip.url}`,
+    `sha512: ${input.zip.sha512}`,
+    `releaseDate: '${input.releaseDate.toISOString()}'`,
+    "",
+  ].join("\n");
+}

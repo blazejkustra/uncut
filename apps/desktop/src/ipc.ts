@@ -104,3 +104,24 @@ export interface CaptureSource {
   /** A window's app icon (a data: URL), the fallback when its picture is empty (D209). */
   readonly icon?: string;
 }
+
+// #102 (D276): auto-update. Main checks and downloads; the renderer shows the toasts, reports
+// whether an export, a recording or an agent turn is running, and asks to restart.
+export const UPDATE_STATUS_CHANNEL = "uncut:update-status";
+export const UPDATE_BUSY_CHANNEL = "uncut:update-busy";
+export const UPDATE_INSTALL_CHANNEL = "uncut:update-install";
+export const UPDATE_CHECK_CHANNEL = "uncut:update-check";
+
+/**
+ * What the updater is doing. `manual`: the user asked (Uncut › Check for Updates…), so checking,
+ * up to date and the download's progress show; an automatic check shows only "downloaded". A
+ * failed check is never shown (logged only): it's "idle" again.
+ */
+export type UpdateStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "checking"; readonly manual: boolean }
+  | { readonly kind: "none"; readonly manual: boolean; readonly version: string }
+  | { readonly kind: "downloading"; readonly manual: boolean; readonly version: string; readonly percent: number }
+  | { readonly kind: "downloaded"; readonly version: string };
+/** Restart to update's answer: "busy" while an export, a recording or an agent turn runs. */
+export type UpdateInstallResult = "installing" | "busy" | "not-ready";

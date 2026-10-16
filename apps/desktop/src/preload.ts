@@ -40,6 +40,11 @@ import {
   MINI_RECORDER_CHANNEL,
   MINI_RECORDER_STATE_CHANNEL,
   WINDOW_MODE_CHANNEL,
+  UPDATE_BUSY_CHANNEL,
+  UPDATE_CHECK_CHANNEL,
+  UPDATE_INSTALL_CHANNEL,
+  UPDATE_STATUS_CHANNEL,
+  type UpdateStatus,
 } from "./ipc.ts";
 import { PENDING_OPEN_CHANNEL } from "./projectPath.ts";
 
@@ -102,6 +107,12 @@ contextBridge.exposeInMainWorld("uncut", {
   onMiniRecorderAction: (listener: (action: MiniRecorderAction) => void) => subscribe(MINI_RECORDER_ACTION_CHANNEL, listener),
   onMiniRecorderState: (listener: (state: MiniRecorderState | null) => void) => subscribe(MINI_RECORDER_STATE_CHANNEL, listener),
   miniRecorderAction: (action: MiniRecorderAction) => ipcRenderer.send(MINI_RECORDER_ACTION_CHANNEL, action),
+  // #102 (D276): auto-update. The status as it changes (and now), busy from the renderer, Restart to update.
+  updateStatus: () => ipcRenderer.invoke(UPDATE_STATUS_CHANNEL),
+  onUpdateStatus: (listener: (status: UpdateStatus) => void) => subscribe(UPDATE_STATUS_CHANNEL, listener),
+  setUpdateBusy: (busy: boolean) => ipcRenderer.send(UPDATE_BUSY_CHANNEL, busy),
+  checkForUpdates: () => ipcRenderer.invoke(UPDATE_CHECK_CHANNEL),
+  installUpdate: () => ipcRenderer.invoke(UPDATE_INSTALL_CHANNEL),
   // True only in a background test run: the preview's audio goes to no device.
   silentAudio: ipcRenderer.sendSync(SILENT_AUDIO_CHANNEL) === true,
 });

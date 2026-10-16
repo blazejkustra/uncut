@@ -29,7 +29,23 @@ export const feedbackUrl = (version: string, macos: string, arch: string) => {
   return `${REPO_URL}/issues/new?${query}`;
 };
 
+/** #102 (D276): Uncut › Check for Updates…: on in a signed release, else off with the reason. */
+export interface UpdateMenu {
+  readonly enabled: boolean;
+  readonly sublabel?: string | undefined;
+  readonly check: () => void;
+}
+let updateMenu: UpdateMenu = { enabled: false, sublabel: "Only in signed releases", check: () => {} };
+let last: { readonly state: AppState; readonly send: (command: MenuCommand) => void } | undefined;
+
+/** Sets the Check for Updates… item (once the updater knows its policy) and rebuilds the menu. */
+export function setUpdateMenu(menu: UpdateMenu) {
+  updateMenu = menu;
+  if (last) setAppMenu(last.state, last.send);
+}
+
 export function setAppMenu(state: AppState, send: (command: MenuCommand) => void) {
+  last = { state, send };
   // The shortcut is shown but not registered: the renderer handles these keys itself (it
   // knows whether a text field has focus), so menu clicks and keys share one code path.
   const item = (label: string, accelerator: string | undefined, command: MenuCommand): MenuItemConstructorOptions => ({
@@ -56,6 +72,9 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
       label: app.name,
       submenu: [
         { role: "about" },
+        updateMenu.enabled
+          ? { label: "Check for Updates…", click: () => updateMenu.check() }
+          : { label: "Check for Updates…", enabled: false, ...(updateMenu.sublabel ? { sublabel: updateMenu.sublabel, toolTip: updateMenu.sublabel } : {}) },
         { type: "separator" },
         item("Settings…", "CmdOrCtrl+,", { type: "open-settings" }),
         item("Agents and Setup…", undefined, { type: "open-setup" }),

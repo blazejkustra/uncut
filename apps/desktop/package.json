@@ -27,6 +27,7 @@
     "@uncut/contracts": "workspace:*",
     "electron": "44.6.0",
     "electron-builder": "26.15.6",
+    "electron-updater": "6.8.10",
     "esbuild": "0.28.2"
   }
 }

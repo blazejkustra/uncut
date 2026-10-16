@@ -105,7 +105,21 @@ export interface UncutBridge {
   readonly onMiniRecorderAction?: (listener: (action: MiniRecorderAction) => void) => () => void;
   readonly onMiniRecorderState?: (listener: (state: MiniRecorderState | null) => void) => () => void;
   readonly miniRecorderAction?: (action: MiniRecorderAction) => void;
+  /** #102 (D276): auto-update. The status now and as it changes; busy (export, recording, agent turn); Restart to update. */
+  readonly updateStatus?: () => Promise<UpdateStatus>;
+  readonly onUpdateStatus?: (listener: (status: UpdateStatus) => void) => () => void;
+  readonly setUpdateBusy?: (busy: boolean) => void;
+  readonly checkForUpdates?: () => Promise<void>;
+  readonly installUpdate?: () => Promise<"installing" | "busy" | "not-ready">;
 }
+
+/** What the updater is doing (apps/desktop/src/ipc.ts); `manual`: the user asked (Check for Updates…). */
+export type UpdateStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "checking"; readonly manual: boolean }
+  | { readonly kind: "none"; readonly manual: boolean; readonly version: string }
+  | { readonly kind: "downloading"; readonly manual: boolean; readonly version: string; readonly percent: number }
+  | { readonly kind: "downloaded"; readonly version: string };
 
 /** What the mini recorder shows (D209). */
 export interface MiniRecorderState {
