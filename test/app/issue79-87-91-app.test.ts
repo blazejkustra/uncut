@@ -37,7 +37,13 @@ const meta = async (page: Page, key: KeyInput) => {
   await page.keyboard.up("Meta");
 };
 const disabled = (page: Page, id: string) => page.$eval(`[data-testid=${id}]`, (el) => (el as HTMLButtonElement).disabled);
-const title = (page: Page, id: string) => page.$eval(`[data-testid=${id}]`, (el) => (el as HTMLElement).title);
+// The Labs hint is the app tooltip on a wrapper (a disabled button gets no hover): hover, read it.
+const title = async (page: Page, id: string) => {
+  await page.mouse.move(0, 0);
+  await page.hover(`[data-testid=labs-tip]:has([data-testid=${id}])`);
+  await page.waitForSelector(".tooltip", { timeout: 3000 });
+  return page.$eval(".tooltip", (el) => el.textContent ?? "");
+};
 
 before(async () => {
   if (skip) return;

@@ -17,3 +17,6 @@
 .env-chip:disabled:hover { border-color: var(--border); color: var(--muted); }
 .labs-hint .link-btn { padding: 0; font-size: 11px; color: var(--select); }
 .labs-hint .link-btn:hover { background: none; text-decoration: underline; }
+/* A control disabled by a Labs flag: the wrapper takes the hover (a disabled button gets none). */
+.labs-tip { display: inline-flex; cursor: help; }
+.labs-tip > :disabled { pointer-events: none; }
