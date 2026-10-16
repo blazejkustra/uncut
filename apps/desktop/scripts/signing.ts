@@ -183,8 +183,36 @@ export function releaseDmgName(version: string, date: Date): string {
   return `Uncut-${version}-${ymd}-arm64.dmg`;
 }
 
-/** hdiutil's arguments for a compressed DMG of a staging folder (the app and an Applications link). */
-export const dmgCreateArgs = (stagingDir: string, out: string) => ["create", "-volname", "Uncut", "-srcfolder", stagingDir, "-fs", "HFS+", "-format", "UDZO", "-ov", out];
+/** The DMG electron-builder writes into the output folder given to dmgBuilderArgs. */
+export const BUILT_DMG_NAME = "Uncut.dmg";
+
+/**
+ * electron-builder's arguments (run in apps/desktop) for the installer DMG of an already signed and
+ * stapled app (D288): its dmg target with --prepackaged, which neither packs nor signs nor runs the
+ * afterSign hook, only lays out the DMG from electron-builder.yml's `dmg` block (background, window,
+ * icon positions, volume name and icon) with dmgbuild, headless. Compressed HFS+ (UDZO); no blockmap
+ * (stapling changes the bytes, the feed makes its own from the final file); not signed here, the
+ * script signs it with dmgSignArgs. Into its own folder, so `pnpm dist`'s dist/ is never touched.
+ */
+export function dmgBuilderArgs(app: string, outDir: string): Array<string> {
+  return [
+    "--config",
+    "electron-builder.yml",
+    "--mac",
+    "dmg",
+    "--arm64",
+    "--prepackaged",
+    app,
+    "--publish",
+    "never",
+    "-c.dmg.sign=false",
+    "-c.dmg.writeUpdateInfo=false",
+    "-c.dmg.format=UDZO",
+    "-c.dmg.filesystem=HFS+",
+    `-c.dmg.artifactName=${BUILT_DMG_NAME}`,
+    `-c.directories.output=${outDir}`,
+  ];
+}
 
 /** codesign's arguments for the DMG itself: the identity and a secure timestamp. */
 export const dmgSignArgs = (identityHash: string, dmg: string) => ["--force", "--sign", identityHash, "--timestamp", dmg];

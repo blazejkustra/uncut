@@ -37,13 +37,13 @@ export const onU = (x: number, y: number) => {
 export const U_WHITE: Rgb = [242, 241, 238];
 
 /**
- * Rasterises a SIZE×SIZE RGBA image: `colour(x, y)` gives the colour at a point, or undefined where
+ * Rasterises a width×height (default SIZE×SIZE) RGBA image: `colour(x, y)` gives the colour at a point, or undefined where
  * the icon is transparent. Colours are averaged over covered samples only; alpha carries the edge.
  */
-export function rasterize(colour: (x: number, y: number) => Rgb | undefined): Buffer {
-  const px = Buffer.alloc(SIZE * SIZE * 4);
-  for (let j = 0; j < SIZE; j++) {
-    for (let i = 0; i < SIZE; i++) {
+export function rasterize(colour: (x: number, y: number) => Rgb | undefined, width = SIZE, height = SIZE): Buffer {
+  const px = Buffer.alloc(width * height * 4);
+  for (let j = 0; j < height; j++) {
+    for (let i = 0; i < width; i++) {
       let r = 0, g = 0, b = 0, a = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
@@ -53,7 +53,7 @@ export function rasterize(colour: (x: number, y: number) => Rgb | undefined): Bu
         }
       }
       const n = SS * SS;
-      const o = (j * SIZE + i) * 4;
+      const o = (j * width + i) * 4;
       const k = a ? n / (a / 255) : 0;
       px[o] = Math.round((r / n) * k);
       px[o + 1] = Math.round((g / n) * k);
@@ -83,13 +83,14 @@ const chunk = (type: string, data: Buffer) => {
   sum.writeUInt32BE(crc(body));
   return Buffer.concat([len, body, sum]);
 };
-export function encodePng(px: Buffer): Buffer {
+export function encodePng(px: Buffer, width = SIZE, height = SIZE): Buffer {
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(SIZE, 0);
-  ihdr.writeUInt32BE(SIZE, 4);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
   ihdr.set([8, 6, 0, 0, 0], 8);
-  const raw = Buffer.alloc(SIZE * (SIZE * 4 + 1));
-  for (let j = 0; j < SIZE; j++) px.copy(raw, j * (SIZE * 4 + 1) + 1, j * SIZE * 4, (j + 1) * SIZE * 4);
+  const row = width * 4;
+  const raw = Buffer.alloc(height * (row + 1));
+  for (let j = 0; j < height; j++) px.copy(raw, j * (row + 1) + 1, j * row, (j + 1) * row);
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw, { level: 9 })), chunk("IEND", Buffer.alloc(0))]);
 }
 
