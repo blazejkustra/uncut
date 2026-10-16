@@ -17,4 +17,6 @@ fixtures/
 # Build outputs
 dist/
 apps/*/dist/
+# pnpm dist:signed's notarized DMGs (D247).
+release/
 native/media/target/

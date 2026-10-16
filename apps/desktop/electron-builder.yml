@@ -68,6 +68,8 @@ mac:
     NSMicrophoneUsageDescription: Uncut records voiceovers and the sound of camera and screen takes from your microphone.
     NSCameraUsageDescription: Uncut records camera takes for your videos.
     NSAudioCaptureUsageDescription: Uncut records the sound this Mac plays when you ask it to.
+    # Not read by macOS today (screen recording asks with its own sheet); kept for the record (D247).
+    NSScreenCaptureUsageDescription: Uncut records your screen or a window when you start a screen take.
   # Ad-hoc signed ("-"), not Developer ID: Apple Silicon refuses to run an unsigned bundle,
   # and a real identity + notarization comes later. `pnpm dist:signed` (D114) overrides these
   # three on the command line: a keychain identity, the hardened runtime, build/signed.entitlements.plist.
