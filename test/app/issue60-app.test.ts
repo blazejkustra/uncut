@@ -37,7 +37,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const OWN = ["launch-promo", "product-demo", "talking-head", "social-cutdown", "explainer", "title-sequence", "motion-craft", "sound-design", "brand-application", "make-brand-kit"];
+const OWN = ["launch-promo", "product-demo", "talking-head", "social-cutdown", "explainer", "title-sequence", "motion-craft", "sound-design", "brand-application", "make-brand-kit", "motion-film"];
 
 test("issue #60: the Skills tab lists the bundled skills; / in the composer autocompletes and calls one; Make from reference prefills the composer", { skip, timeout: 240000 }, async () => {
   const app = await launchApp({
