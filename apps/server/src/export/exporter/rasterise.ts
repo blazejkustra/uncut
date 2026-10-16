@@ -49,6 +49,13 @@ const diskFull = (folder: string) => `The disk filled up in ${folder} while the 
  */
 export const ffv1Args = (width: number, height: number) => ["-c:v", "ffv1", "-level", "3", "-coder", "1", "-context", "1", "-g", "1", "-slices", Math.min(width, height) >= 64 ? "16" : "1"];
 
+/** A thrown value's message; one that isn't an Error (or has none) said as what it is, never "undefined". */
+const messageOf = (error: unknown): string => {
+  const m = (error as { message?: unknown } | null | undefined)?.message;
+  if (typeof m === "string" && m) return m;
+  return error === undefined || error === null ? "it failed without saying why" : String(error);
+};
+
 /** Requests sent ahead of the one being drawn (D291): the rasteriser's round trips overlap its drawing. */
 const IN_FLIGHT = 4;
 
@@ -89,9 +96,11 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
     drawnLooks.set(html, out);
   }
   const graphicName = (layer: VisualLayer) => `"${layer.item.name ?? layer.item.id}" (${layer.item.src})`;
-  const graphicError = (layer: VisualLayer, local: number) => (error: Error) => {
+  const graphicError = (layer: VisualLayer, local: number) => (error: unknown) => {
     if (error instanceof Cancelled) throw error;
-    throw new Error(`The graphic "${layer.item.name ?? layer.item.id}" (${layer.item.src}) couldn't be drawn at ${(local / plan.fps).toFixed(2)} s: ${error.message.replace(/^The text renderer failed: /, "")}`);
+    // Its own name comes first in the rasteriser's message ("film" (graphics/x.html): …): said once.
+    const why = messageOf(error).replace(/^The text renderer failed: /, "").replace(`${graphicName(layer)}: `, "");
+    throw new Error(`The graphic "${layer.item.name ?? layer.item.id}" (${layer.item.src}) couldn't be drawn at ${(local / plan.fps).toFixed(2)} s (its frame ${local}): ${why}`);
   };
   for (const [k, layer] of plan.visuals.entries()) {
     if (signal.aborted) throw new Cancelled();

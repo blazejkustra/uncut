@@ -35,6 +35,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     // Telemetry (D223): where a failed export stopped, as a fixed code (never its message).
     let stage: (typeof EXPORT_FAIL_CODES)[number] = "no-ffmpeg";
     let usedEncoder: "hardware" | "software" | undefined;
+    const keepTemp = process.env.UNCUT_KEEP_EXPORT_TEMP === "1";
     try {
       const bin = await ffmpegBin();
       stage = "measure";
@@ -164,12 +165,15 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       end = { phase: "done", progress: 1, etaSeconds: 0 };
     } catch (error) {
       const cancelled = error instanceof Cancelled || signal.aborted;
-      end = cancelled ? { phase: "cancelled" } : { phase: "failed", error: (error as NodeJS.ErrnoException)?.code ? plainFsError(error, "the temp folder") : (error as Error).message || "The export stopped unexpectedly." };
+      end = cancelled ? { phase: "cancelled" } : { phase: "failed", error: (error as NodeJS.ErrnoException)?.code ? plainFsError(error, "the temp folder") : (error as Error)?.message || "The export stopped unexpectedly." };
+      // A failure is logged with where it stopped (the app's log), the stack included, so it can be
+      // looked into after the dialog is closed; UNCUT_KEEP_EXPORT_TEMP=1 keeps the work folder too.
+      if (!cancelled) console.error(`[uncut] export ${job.id} failed at ${stage}${temp ? ` (work folder ${temp}${keepTemp ? ", kept" : ""})` : ""}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
     } finally {
       // Everything it started and wrote is gone before the job says it's over.
       await rasterizer?.close().catch(() => {});
       graphicMedia?.close();
-      if (temp) await rm(temp, { recursive: true, force: true }).catch(() => {});
+      if (temp && !(keepTemp && end.phase === "failed")) await rm(temp, { recursive: true, force: true }).catch(() => {});
     }
     const durationMs = Date.now() - started;
     if (end.phase === "done") {

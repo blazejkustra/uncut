@@ -149,7 +149,17 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   window.__uncutRender = async (t, info) => {
     await fontsReady();
     await window.__uncutMedia.ready();
-    if (typeof window.render === "function") await window.render(t, info);
+    // Whatever render throws comes back as an Error with its name and message: a DOMException
+    // (drawImage of a closed bitmap, a failed decode) or a thrown string would reach the export as
+    // a value without a message.
+    if (typeof window.render === "function") {
+      try {
+        await window.render(t, info);
+      } catch (e) {
+        const text = e && typeof e.message === "string" ? (e.name && e.name !== "Error" ? e.name + ": " : "") + e.message : String(e);
+        throw new Error(text || "render(t) failed");
+      }
+    }
     await frames();
     window.__uncutMedia.sweep();
     return true;

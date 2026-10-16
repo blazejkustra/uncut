@@ -163,6 +163,14 @@ const isSeqRequest = (v: unknown): v is SeqRequest => {
   }
 };
 
+/** A thrown value as a sentence: an Error's message, a DOMException-like object's name and message, else String() of it. */
+const messageOf = (error: unknown): string => {
+  const e = error as { name?: unknown; message?: unknown } | null | undefined;
+  if (e && typeof e === "object" && typeof e.message === "string" && e.message) return `${typeof e.name === "string" && e.name && e.name !== "Error" && !(error instanceof Error) ? `${e.name}: ` : ""}${e.message}`;
+  const s = error === undefined || error === null ? "" : String(error);
+  return s && s !== "[object Object]" ? s : "it failed without saying why";
+};
+
 const reply = (msg: Record<string, unknown>) => process.stdout.write(`${JSON.stringify({ uncut: "render", ...msg })}\n`);
 
 // Never share the app's profile (Chromium locks it) and never write to the user's. The server
@@ -385,7 +393,8 @@ async function main() {
       if (!gw.isDestroyed()) gw.destroy();
       graphicWin = undefined;
       graphicDoc = "";
-      throw error instanceof Error && !error.message.startsWith(name) ? new Error(`${name}${error.message}`) : error;
+      const message = messageOf(error);
+      throw message.startsWith(name) ? (error instanceof Error ? error : new Error(message)) : new Error(`${name}${message}`);
     } finally {
       clearTimeout(timer);
     }
@@ -450,7 +459,7 @@ async function main() {
     } catch (error) {
       work.catch(() => {});
       shaderInput = undefined;
-      const message = (error as Error).message.replace(/^Error invoking remote method[^:]*: /, "").replace(/^(Uncaught )?Error: /, "");
+      const message = messageOf(error).replace(/^Error invoking remote method[^:]*: /, "").replace(/^(Uncaught )?Error: /, "");
       if (!/^no-webgpu: /.test(message) && shaderWin && !shaderWin.isDestroyed()) {
         shaderWin.destroy();
         shaderWin = undefined;
@@ -594,7 +603,7 @@ async function main() {
     chain = chain.then(() =>
       render(request).then(
         () => void reply({ id: request.id, ok: true }),
-        (error: Error) => void reply({ id: request.id, ok: false, error: error.message }),
+        (error: unknown) => void reply({ id: request.id, ok: false, error: messageOf(error) }),
       ),
     );
   });
