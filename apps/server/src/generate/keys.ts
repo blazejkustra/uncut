@@ -29,6 +29,8 @@ export const PROVIDERS: ReadonlyArray<{ readonly id: KeyProvider; readonly name:
   // D134: the sound library's second source, with the user's own API key (a shipped key would break
   // Freesound's non-commercial API terms).
   { id: "freesound", name: "Freesound", usedBy: ["Music and sound effects search"], note: "Freesound's API is free for non-commercial use only" },
+  // D249: Jamendo's read API needs a client ID from devportal.jamendo.com; the user's own, never shipped.
+  { id: "jamendo", name: "Jamendo", usedBy: ["Music search"], note: "A client ID from devportal.jamendo.com (free, read-only)" },
 ];
 export const providerName = (id: KeyProvider) => PROVIDERS.find((p) => p.id === id)?.name ?? id;
 

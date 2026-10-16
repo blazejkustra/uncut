@@ -1,40 +1,56 @@
 import type { LibrarySearchResult } from "@uncut/contracts";
-import { type LibraryKind, type LibrarySource, type LibraryLength, type LibraryLicense, MUSIC_GENRES, SFX_CATEGORIES, MEME_SOUNDS, LIBRARY_SOURCE_NAMES, LIBRARY_LENGTHS, limitSentence, hitKey } from "@uncut/core/library";
+import { type LibraryKind, type LibrarySource, MUSIC_GENRES, SFX_CATEGORIES, limitSentence, hitKey } from "@uncut/core/library";
 import { Search, RefreshCw } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { type Project, useApp, actions } from "../../state/store.ts";
 import { usePreview } from "./preview.tsx";
 import { HitRow, IncludedSfx } from "./rows.tsx";
 import { FolderSounds } from "./FolderSounds.tsx";
-import { MusicLibrary } from "./MusicLibrary.tsx";
-
-const VIEW_KEY = (kind: LibraryKind) => `uncut.library.view.${kind}`;
-type View = "online" | "included" | "folders";
-const VIEWS: ReadonlyArray<{ readonly id: View; readonly name: string }> = [
-  { id: "online", name: "Online" },
-  { id: "included", name: "Included" },
-  { id: "folders", name: "Folders" },
-];
+import { KeyRow } from "./KeyRow.tsx";
+import { GenerateSfx } from "./GenerateSfx.tsx";
+import "./audio.css";
 
 /**
- * The library for one kind of sound: a search field, then Online (Openverse, or Freesound with the
- * user's key: quick searches, length and licence filters, results with listen and +) or Included
- * (Uncut's own CC0 files). Nothing goes online until a search is asked for.
+ * Where sounds come from (D249, D250): the bundled pack (sound effects), the user's folders, the
+ * Music app's library (music), the online sources, and Epidemic Sound (coming soon, never picked).
+ */
+export type BrowserSource = "pack" | "folders" | "music-app" | LibrarySource | "epidemic";
+const SOURCE_LABEL: Readonly<Record<BrowserSource, string>> = {
+  pack: "Uncut sounds",
+  folders: "Your folders",
+  "music-app": "Music library",
+  openverse: "Openverse",
+  jamendo: "Jamendo",
+  freesound: "Freesound",
+  epidemic: "Epidemic Sound (coming soon)",
+};
+const isOnline = (s: BrowserSource): s is LibrarySource => s === "openverse" || s === "jamendo" || s === "freesound";
+const SOURCES: Readonly<Record<LibraryKind, ReadonlyArray<BrowserSource>>> = {
+  music: ["folders", "music-app", "openverse", "jamendo", "freesound", "epidemic"],
+  sfx: ["pack", "openverse", "freesound", "folders", "epidemic"],
+};
+const DEFAULT: Readonly<Record<LibraryKind, BrowserSource>> = { music: "openverse", sfx: "pack" };
+const SOURCE_KEY = (kind: LibraryKind) => `uncut.library.source.${kind}`;
+
+function savedSource(kind: LibraryKind): BrowserSource {
+  try {
+    const saved = localStorage.getItem(SOURCE_KEY(kind)) as BrowserSource | null;
+    if (saved && saved !== "epidemic" && SOURCES[kind].includes(saved)) return saved;
+  } catch {}
+  return DEFAULT[kind];
+}
+
+/**
+ * The library for one kind of sound (D249): one search field and one source select (plus a mood or
+ * kind select where it narrows), then the source's list. Local sources filter as you type; online
+ * ones search on Enter. Nothing goes online until a search is asked for.
  */
 export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; project: Project; online: boolean }) {
   const app = useApp();
-  const [view, setView] = useState<View>(() => {
-    const saved = localStorage.getItem(VIEW_KEY(kind));
-    return saved === "included" || saved === "folders" ? saved : "online";
-  });
+  const [source, setSource] = useState<BrowserSource>(() => savedSource(kind));
   const [query, setQuery] = useState("");
-  const [chip, setChip] = useState<string | undefined>();
-  const [meme, setMeme] = useState<string | undefined>();
-  const [source, setSource] = useState<LibrarySource>("openverse");
-  const [sources, setSources] = useState<ReadonlyArray<LibrarySource>>(["openverse"]);
-  const [length, setLength] = useState<LibraryLength | undefined>();
-  const [license, setLicense] = useState<LibraryLicense | undefined>();
-  const [songs, setSongs] = useState(false);
+  const [mood, setMood] = useState<string | undefined>();
+  const [keyed, setKeyed] = useState<ReadonlyArray<LibrarySource>>(["openverse"]);
   const [result, setResult] = useState<(LibrarySearchResult & { readonly words: string }) | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -44,11 +60,7 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
 
   useEffect(() => {
     if (!online) return;
-    void actions.libraryState().then((s) => {
-      if (!s) return;
-      setSources(s.sources);
-      if (!s.sources.includes(source)) setSource("openverse");
-    });
+    void actions.libraryState().then((s) => s && setKeyed(s.sources));
   }, [online, app.keys]);
   // A limit's countdown.
   useEffect(() => {
@@ -57,167 +69,108 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
     return () => clearInterval(timer);
   }, [result?.limit]);
 
-  const pick = (v: View) => {
-    setView(v);
-    localStorage.setItem(VIEW_KEY(kind), v);
-    preview.stop();
-  };
-  const search = async (words: string, opts: { page?: number; source?: LibrarySource; length?: LibraryLength | undefined; license?: LibraryLicense | undefined; songs?: boolean } = {}) => {
-    const q = words.trim();
-    if (!q || !online) return;
+  const moods = kind === "music" ? MUSIC_GENRES : SFX_CATEGORIES;
+  const moodQuery = (id: string | undefined) => moods.find((m) => m.id === id)?.query ?? "";
+  const words = (q: string, m: string | undefined) => [q.trim(), kind === "music" || !q.trim() ? moodQuery(m) : ""].filter(Boolean).join(" ");
+  const needsKey = (s: BrowserSource) => (s === "jamendo" || s === "freesound") && !keyed.includes(s);
+
+  const search = async (text: string, opts: { page?: number; source?: BrowserSource } = {}) => {
+    const s = opts.source ?? source;
+    const q = text.trim();
+    if (!q || !online || !isOnline(s) || needsKey(s)) return;
     const n = ++seq.current;
     setBusy(true);
     setError(undefined);
     const page = opts.page ?? 1;
-    const reply = await actions.searchLibrary({ kind, query: q, source: opts.source ?? source, length: "length" in opts ? opts.length : length, license: "license" in opts ? opts.license : license, songs: opts.songs ?? songs, page });
+    const reply = await actions.searchLibrary({ kind, query: q, source: s, page });
     if (n !== seq.current) return;
     setBusy(false);
     if ("error" in reply) return setError(reply.error);
     setResult((before) => (page > 1 && before && before.words === q && !reply.limit ? { ...reply, hits: [...before.hits, ...reply.hits], words: q } : { ...reply, words: q }));
   };
-  const rerun = (opts: Parameters<typeof search>[1]) => {
-    if (result) void search(result.words, opts);
+  const pick = (s: BrowserSource) => {
+    if (s === "epidemic") return;
+    setSource(s);
+    try {
+      localStorage.setItem(SOURCE_KEY(kind), s);
+    } catch {}
+    preview.stop();
+    setResult(undefined);
+    setError(undefined);
+    if (isOnline(s) && (query.trim() || mood)) void search(words(query, mood), { source: s });
   };
 
-  const chips = kind === "music" ? MUSIC_GENRES : SFX_CATEGORIES;
   const label = kind === "music" ? "music" : "sound effects";
   const searchId = kind === "music" ? "music-search" : "sfx-search";
+  const placeholder = source === "pack" ? "Search Uncut's sounds" : source === "folders" ? "Search your folders" : source === "music-app" ? "Search your Music library" : `Search ${label} on ${SOURCE_LABEL[source]}`;
+  const showMood = source === "pack" || isOnline(source);
   const hits = result?.hits ?? [];
   const limit = result?.limit;
+  const options = SOURCES[kind].filter((s) => s !== "freesound" || keyed.includes("freesound"));
 
   return (
-    <div className="lib-section sound-browser" data-testid={`${kind}-browser`} data-view={view}>
+    <div className="lib-section sound-browser" data-testid={`${kind}-browser`} data-view={source}>
       <div className="lib-search">
         <Search />
         <input
           className="field input"
           data-testid={searchId}
-          placeholder={view === "online" ? `Search ${label} online` : view === "folders" ? "Search your folders" : `Search included ${label}`}
+          placeholder={placeholder}
           value={query}
           spellCheck={false}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || view !== "online") return;
-            setChip(undefined);
-            void search(query);
+            if (e.key === "Enter") void search(words(query, mood));
           }}
         />
       </div>
-      <div className="seg lib-views" role="tablist">
-        {VIEWS.map((v) => (
-          <button key={v.id} role="tab" aria-selected={view === v.id} className={view === v.id ? "active" : ""} data-testid={`library-view-${v.id}`} onClick={() => pick(v.id)}>
-            {v.name}
-          </button>
-        ))}
-      </div>
-
-      {view === "online" ? (
-        <>
-          <div className="music-chips" data-testid="library-chips">
-            {chips.map((c) => (
-              <button
-                key={c.id}
-                className={`music-chip${chip === c.id ? " active" : ""}`}
-                data-testid={kind === "music" ? "music-genre" : "sfx-chip"}
-                data-chip={c.id}
-                aria-pressed={chip === c.id}
-                disabled={!online}
-                onClick={() => {
-                  setChip(c.id);
-                  setMeme(undefined);
-                  setQuery(c.query);
-                  void search(c.query);
-                }}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-          {kind === "sfx" && chip === "meme" && (
-            <div className="music-chips" data-testid="meme-chips">
-              {MEME_SOUNDS.map((m) => (
-                <button
-                  key={m.id}
-                  className={`music-chip${meme === m.id ? " active" : ""}`}
-                  data-testid="meme-chip"
-                  data-chip={m.id}
-                  aria-pressed={meme === m.id}
-                  disabled={!online}
-                  onClick={() => {
-                    // By its name: the server searches for what finds it and says when it's a clip (D208).
-                    setMeme(m.id);
-                    setQuery(m.name);
-                    void search(m.name);
-                  }}
-                >
+      <div className="lib-selects">
+        <select className="field input" data-testid="library-source" aria-label="Source" value={source} onChange={(e) => pick(e.target.value as BrowserSource)}>
+          {options.map((s) => (
+            <option key={s} value={s} disabled={s === "epidemic"} data-testid={`library-source-${s}`}>
+              {SOURCE_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        {showMood && (
+          <select
+            className="field input"
+            data-testid="library-mood"
+            aria-label={kind === "music" ? "Mood" : "Kind of sound"}
+            value={mood ?? ""}
+            onChange={(e) => {
+              const m = e.target.value || undefined;
+              setMood(m);
+              if (isOnline(source) && (query.trim() || m)) void search(words(query, m));
+            }}
+          >
+            <option value="">{kind === "music" ? "Any mood" : "Any kind"}</option>
+            {moods
+              .filter((m) => kind === "music" || m.id !== "meme" || source === "pack")
+              .map((m) => (
+                <option key={m.id} value={m.id}>
                   {m.name}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="lib-filters">
-            {sources.length > 1 && (
-              <select
-                className="field input"
-                data-testid="library-source"
-                value={source}
-                onChange={(e) => {
-                  const s = e.target.value as LibrarySource;
-                  setSource(s);
-                  rerun({ source: s });
-                }}
-              >
-                {sources.map((s) => (
-                  <option key={s} value={s}>
-                    {LIBRARY_SOURCE_NAMES[s]}
-                  </option>
-                ))}
-              </select>
-            )}
-            <select
-              className="field input"
-              data-testid="library-length"
-              value={length ?? ""}
-              onChange={(e) => {
-                const l = (e.target.value || undefined) as LibraryLength | undefined;
-                setLength(l);
-                rerun({ length: l });
-              }}
-            >
-              <option value="">Any length</option>
-              {LIBRARY_LENGTHS.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
                 </option>
               ))}
-            </select>
-            <select
-              className="field input"
-              data-testid="library-license"
-              value={license ?? ""}
-              onChange={(e) => {
-                const l = (e.target.value || undefined) as LibraryLicense | undefined;
-                setLicense(l);
-                rerun({ license: l });
-              }}
-            >
-              <option value="">CC0 and CC BY</option>
-              <option value="cc0">CC0 only</option>
-            </select>
-            {kind === "music" && (
-              <button
-                className={`music-chip${songs ? " active" : ""}`}
-                data-testid="library-songs"
-                aria-pressed={songs}
-                onClick={() => {
-                  setSongs(!songs);
-                  rerun({ songs: !songs });
-                }}
-              >
-                Songs only
-              </button>
-            )}
-          </div>
+          </select>
+        )}
+      </div>
+
+      {kind === "sfx" && <GenerateSfx project={project} online={online} query={query} />}
+
+      {source === "pack" ? (
+        <IncludedSfx project={project} online={online} query={query} category={mood} preview={preview} />
+      ) : source === "folders" || source === "music-app" ? (
+        <FolderSounds kind={kind} mode={source === "music-app" ? "music" : "folders"} project={project} online={online} query={query} preview={preview} />
+      ) : (source === "jamendo" || source === "freesound") && needsKey(source) ? (
+        <KeyRow
+          provider={source}
+          text={source === "jamendo" ? "Jamendo needs a client ID: create a free app at devportal.jamendo.com and paste its client ID here." : "Freesound needs your API key."}
+          placeholder={source === "jamendo" ? "Jamendo client ID" : "Freesound API key"}
+          link={source === "jamendo" ? { href: "https://devportal.jamendo.com", label: "devportal.jamendo.com" } : undefined}
+        />
+      ) : isOnline(source) ? (
+        <>
           <div className="lib-results" data-testid="library-results" data-busy={busy}>
             {limit && (
               <div className="lib-limit" data-testid="library-limit" data-scope={limit.scope}>
@@ -235,9 +188,14 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
                 {result.note && result.searched ? ` Searched for "${result.searched}".` : ""}
               </div>
             )}
+            {!result && !busy && !error && (
+              <div className="muted small" data-testid="library-idle">
+                Type what you're looking for and press Enter{kind === "music" ? ", or pick a mood" : ""}.
+              </div>
+            )}
             {result && !limit && !error && hits.length === 0 && (
               <div className="muted small" data-testid="library-empty">
-                Nothing found for "{result.words}". Try another word, or add a folder of your own sounds (Folders).
+                Nothing found for "{result.words}". Try another word, or add a folder of your own sounds (Your folders).
               </div>
             )}
             {hits.map((h) => (
@@ -259,6 +217,14 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
                 </a>
                 , not endorsed by Openverse
               </>
+            ) : source === "jamendo" ? (
+              <>
+                Music from{" "}
+                <a href="https://www.jamendo.com" target="_blank" rel="noreferrer">
+                  Jamendo
+                </a>
+                : only CC0 and CC BY tracks are shown
+              </>
             ) : (
               <>
                 Sounds from{" "}
@@ -269,12 +235,12 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
             )}
           </div>
         </>
-      ) : view === "folders" ? (
-        <FolderSounds kind={kind} project={project} online={online} query={query} preview={preview} />
-      ) : kind === "music" ? (
-        <MusicLibrary project={project} online={online} query={query} />
-      ) : (
-        <IncludedSfx project={project} online={online} query={query} preview={preview} />
+      ) : null}
+      {kind === "music" && (
+        <button className="lib-soon" data-testid="epidemic-soon" disabled title="Sign in with your Epidemic Sound subscription: coming soon">
+          <span>Epidemic Sound</span>
+          <span className="lib-soon-tag">Coming soon</span>
+        </button>
       )}
     </div>
   );

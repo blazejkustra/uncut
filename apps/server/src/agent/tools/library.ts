@@ -202,10 +202,10 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         });
       }
       if (!query) return textResult("query must say what to search for, e.g. whoosh, bass boom, upbeat piano.", true);
-      if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound") return textResult('source must be "openverse", "freesound" or "included".', true);
+      if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound" && args.source !== "jamendo") return textResult('source must be "openverse", "freesound", "jamendo" or "included".', true);
       const length = args.length === "short" || args.length === "medium" || args.length === "long" ? args.length : undefined;
       const outcome = yield* sounds
-        .search({ kind, query, ...(args.source ? { source: args.source as "openverse" | "freesound" } : {}), ...(args.license === "cc0" ? { license: "cc0" as const } : {}), ...(length ? { length } : {}), ...(args.songs === true ? { songs: true } : {}), ...(typeof args.page === "number" ? { page: args.page } : {}) })
+        .search({ kind, query, ...(args.source ? { source: args.source as "openverse" | "freesound" | "jamendo" } : {}), ...(args.license === "cc0" ? { license: "cc0" as const } : {}), ...(length ? { length } : {}), ...(args.songs === true ? { songs: true } : {}), ...(typeof args.page === "number" ? { page: args.page } : {}) })
         .pipe(
           Effect.map((result) => ({ ok: true as const, result })),
           Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
@@ -229,7 +229,7 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
   const libraryAdd = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
       const id = typeof args.id === "string" ? args.id.trim() : "";
-      if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…), a bundled sound (sfx:…) or one of the user's (folder:…).", true);
+      if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…, jamendo:…), a bundled sound (sfx:…) or one of the user's (folder:…).", true);
       const fps = v.session.project.canvas.fps;
       const already = libraryMediaOf(v.session.project, id);
       if (already) return textResult({ media: already.id, frames: already.probe?.frames, revision: v.session.revision, note: `It's already in the project as ${already.id}: put it on an audio track with timeline_edit.` });

@@ -143,3 +143,70 @@ export function freesoundHit(r: Record<string, unknown>): { hit: LibraryHit; fil
     },
   };
 }
+
+// ---- Jamendo (D249) ----
+
+export const jamendoBase = () => providerBase("UNCUT_JAMENDO_BASE", "https://api.jamendo.com");
+const JAMENDO_LENGTH = { short: [0, 30], medium: [30, 120], long: [120, 3600] } as const;
+
+/**
+ * The search URL (the client ID is a query parameter: Jamendo's read API takes it only there).
+ * Licences are not filtered in the request (its ccnc / ccnd flags only ask for those terms); each
+ * track's licence_ccurl is read instead and only CC0 and CC BY come back (jamendoHit).
+ */
+export function jamendoUrl(q: LibraryQuery, clientId: string): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    format: "json",
+    limit: String(PAGE_SIZE),
+    offset: String((Math.max(1, Math.floor(q.page ?? 1)) - 1) * PAGE_SIZE),
+    search: q.query.trim(),
+    include: "licenses musicinfo",
+    audioformat: "mp32",
+    audiodlformat: "mp32",
+    fullcount: "true",
+  });
+  if (q.length) params.set("durationbetween", `${JAMENDO_LENGTH[q.length][0]}_${JAMENDO_LENGTH[q.length][1]}`);
+  return `${jamendoBase()}/v3.0/tracks/?${params}`;
+}
+
+export const jamendoDetailUrl = (id: string, clientId: string) => `${jamendoBase()}/v3.0/tracks/?${new URLSearchParams({ client_id: clientId, format: "json", id, include: "licenses musicinfo", audioformat: "mp32", audiodlformat: "mp32" })}`;
+
+/** Jamendo's licence URL as ours: CC0 or CC BY (no NC, ND or SA: a video is an adaptation). */
+export function jamendoLicense(raw: unknown): { license: LibraryLicense; version: string } | undefined {
+  if (typeof raw !== "string") return undefined;
+  if (/creativecommons\.org\/publicdomain\/zero\/1\.0/.test(raw)) return { license: "cc0", version: "1.0" };
+  const by = /creativecommons\.org\/licenses\/by\/(\d\.\d)\/?$/.exec(raw.trim());
+  return by ? { license: "by", version: by[1]! } : undefined;
+}
+
+export function jamendoHit(r: Record<string, unknown>): { hit: LibraryHit; fileUrl: string } | undefined {
+  const lic = jamendoLicense(r.license_ccurl);
+  const id = typeof r.id === "string" || typeof r.id === "number" ? String(r.id) : "";
+  // A download only where Jamendo allows the app to offer one; else the stream (same mp3).
+  const fileUrl = (r.audiodownload_allowed === true ? fetchableUrl(r.audiodownload) : undefined) ?? fetchableUrl(r.audio);
+  const landing = fetchableUrl(r.shareurl) ?? fetchableUrl(r.shorturl);
+  if (!lic || !fileUrl || !/^[0-9]{1,20}$/.test(id) || !landing) return undefined;
+  const creator = text(r.artist_name, 120) || "Unknown";
+  const base = { title: text(r.name, 200) || "Untitled", creator, license: lic.license, licenseVersion: lic.version, licenseUrl: licenseUrl(lic.license, lic.version) };
+  const duration = typeof r.duration === "number" && r.duration > 0 ? r.duration : Number(r.duration) > 0 ? Number(r.duration) : undefined;
+  const info = (r.musicinfo ?? {}) as { tags?: { genres?: unknown; vartags?: unknown; instruments?: unknown } };
+  const list = (v: unknown) => (Array.isArray(v) ? v.map((t) => text(t, 40)).filter(Boolean) : []);
+  const tags = [...list(info.tags?.genres), ...list(info.tags?.vartags), ...list(info.tags?.instruments)].slice(0, 12);
+  const artistId = typeof r.artist_id === "string" || typeof r.artist_id === "number" ? String(r.artist_id) : "";
+  return {
+    fileUrl,
+    hit: {
+      source: "jamendo",
+      id,
+      ...base,
+      ...(/^[0-9]{1,20}$/.test(artistId) ? { creatorUrl: `https://www.jamendo.com/artist/${artistId}` } : {}),
+      landingUrl: landing,
+      provider: "jamendo",
+      attribution: attributionLine(base),
+      ...(duration ? { seconds: Math.round(duration * 100) / 100 } : {}),
+      tags,
+      filetype: "mp3",
+    },
+  };
+}

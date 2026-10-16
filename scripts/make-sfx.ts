@@ -1,11 +1,15 @@
-// Makes the bundled CC0 sound-effects pack (D134, D208):
+// Makes the bundled CC0 sound-effects pack (D134, D208, D250):
 //   node scripts/make-sfx.ts [source dir]
-// Two sources, both CC0 1.0, each licence checked again on every run:
+//   node scripts/make-sfx.ts --only-synth   (remake only Uncut's own sounds; the rest kept as they are)
+// Three sources, all CC0 1.0, each licence checked again on every run:
 // - Freesound: the sound's own page must link the CC0 deed (else the run stops); its preview
 //   (cdn.freesound.org, no key needed) is the source file. With a source dir, <freesound id>.mp3
 //   is read from it instead (the page is still checked).
 // - Kenney (kenney.nl): the pack's zip, whose License.txt must say "Creative Commons Zero"; the
 //   file inside the pack is the source.
+// - Uncut's own synthesiser (scripts/sfx-synth.ts, D250): sounds made from oscillators and seeded
+//   noise, no recording or sample in them, released by Uncut as CC0. The meme sound-alikes live
+//   here: original sounds tagged with the names people search for, never the clips themselves.
 // Each sound is trimmed when long (with a fade out), levelled (integrated loudness to TARGET_LUFS,
 // never louder than CEILING_DB sample peak), encoded AAC into assets/sfx/<id>.m4a, and described in
 // assets/sfx/library.json (title, category, tags, length, 48 waveform peaks, author, provider,
@@ -14,6 +18,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+import { RATE, SYNTH_SOUNDS, type SynthSound } from "./sfx-synth.ts";
 
 const OUT = resolve("assets/sfx");
 /** Loudness each sound is brought to (EBU R128 integrated, measured with 0.5 s of silence around it). */
@@ -39,7 +45,27 @@ interface Kenney extends Omit<Freesound, "page" | "author"> {
   readonly pack: "interface-sounds" | "ui-audio" | "digital-audio" | "impact-sounds" | "sci-fi-sounds";
   readonly file: string;
 }
-type Sound = Freesound | Kenney;
+type Sound = Freesound | Kenney | SynthSound;
+const SYNTH_SOURCE = "https://github.com/blazejkustra/uncut/blob/main/scripts/sfx-synth.ts";
+
+/** Mono float samples as a 32-bit float WAV file. */
+function writeWav(path: string, samples: Float32Array) {
+  const data = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
+  const head = Buffer.alloc(44);
+  head.write("RIFF", 0);
+  head.writeUInt32LE(36 + data.length, 4);
+  head.write("WAVEfmt ", 8);
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(3, 20); // IEEE float
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(RATE, 24);
+  head.writeUInt32LE(RATE * 4, 28);
+  head.writeUInt16LE(4, 32);
+  head.writeUInt16LE(32, 34);
+  head.write("data", 36);
+  head.writeUInt32LE(data.length, 40);
+  writeFileSync(path, Buffer.concat([head, data]));
+}
 const fs = (id: string, title: string, category: Category, author: string, page: string, tags: Array<string>, max?: number): Freesound => ({ id, title, category, author, page, tags, ...(max ? { max } : {}) });
 const kenney = (id: string, title: string, category: Category, pack: Kenney["pack"], file: string, tags: Array<string>, max?: number): Kenney => ({ id, title, category, pack, file, tags, ...(max ? { max } : {}) });
 const page = (user: string, n: number) => `https://freesound.org/people/${user}/sounds/${n}/`;
@@ -135,6 +161,9 @@ const SOUNDS: ReadonlyArray<Sound> = [
   fs("drum-roll", "Drum roll", "meme", "owowowwo", page("owowowwo", 197763), ["drum roll", "drumroll", "reveal", "suspense"]),
   fs("boing", "Boing", "meme", "magnuswaker", page("magnuswaker", 540790), ["boing", "cartoon", "bounce", "spring"]),
   fs("bass-drop", "Bass drop", "meme", "qubodup", page("qubodup", 212768), ["bass drop", "drop", "bass", "wub"], 4),
+
+  // D250: Uncut's own synthesised sounds (scripts/sfx-synth.ts).
+  ...SYNTH_SOUNDS,
 ];
 
 const KENNEY_PAGES: Readonly<Record<Kenney["pack"], string>> = {
@@ -213,7 +242,9 @@ function peaksOf(path: string): Array<number> {
   return out.map((v) => Math.round((v / top) * 100));
 }
 
-const given = process.argv[2];
+const onlySynth = process.argv.includes("--only-synth");
+const given = process.argv.slice(2).find((a) => !a.startsWith("--"));
+const kept = onlySynth ? new Map((JSON.parse(readFileSync(join(OUT, "library.json"), "utf8")) as { sounds: Array<{ id: string; file: string }> }).sounds.map((x) => [x.id, x])) : new Map<string, { id: string; file: string }>();
 const temp = mkdtempSync(join(tmpdir(), "uncut-sfx-"));
 mkdirSync(OUT, { recursive: true });
 if (new Set(SOUNDS.map((s) => s.id)).size !== SOUNDS.length) throw new Error("duplicate ids");
@@ -221,8 +252,18 @@ const sounds = [];
 try {
   for (const s of SOUNDS) {
     let src: string;
-    let meta: { author: string; provider: "freesound" | "kenney"; source: string; sourceFile?: string; licenseProof: string };
-    if ("page" in s) {
+    let meta: { author: string; provider: "freesound" | "kenney" | "uncut"; source: string; sourceFile?: string; licenseProof: string };
+    if (onlySynth && !("make" in s)) {
+      const before = kept.get(s.id);
+      if (!before) throw new Error(`${s.id}: not in library.json yet; run without --only-synth`);
+      sounds.push(before);
+      continue;
+    }
+    if ("make" in s) {
+      src = join(temp, `${s.id}.wav`);
+      writeWav(src, s.make());
+      meta = { author: "Uncut", provider: "uncut", source: SYNTH_SOURCE, licenseProof: "Synthesised by scripts/sfx-synth.ts from oscillators and seeded noise (no recording or sample in it); made by Uncut and released as CC0 1.0" };
+    } else if ("page" in s) {
       const preview = await checkFreesound(s);
       src = given ? join(given, `${freesoundId(s.page)}.mp3`) : join(temp, `${freesoundId(s.page)}.mp3`);
       if (!given) writeFileSync(src, Buffer.from(await (await get(preview)).arrayBuffer()));
@@ -234,7 +275,7 @@ try {
     }
     const length = seconds(src);
     if (!(length >= 0.05)) throw new Error(`${s.id}: ${length} s is too short to use`);
-    const max = Math.min(s.max ?? LONGEST, LONGEST);
+    const max = Math.min(("max" in s ? s.max : undefined) ?? LONGEST, LONGEST);
     const trimmed = length > max + 0.5;
     const trim = trimmed ? `atrim=0:${max},afade=t=out:st=${max - 1}:d=1,` : "";
     const peak = Number(/max_volume: (-?[\d.]+) dB/.exec(ffmpeg(["-i", src, "-af", `${trim}volumedetect`, "-f", "null", "-"]))![1]);
@@ -256,7 +297,7 @@ try {
       peaks: peaksOf(out),
       ...meta,
       license: "CC0-1.0",
-      licenseChecked: CHECKED,
+      licenseChecked: "make" in s ? "2026-10-16" : CHECKED,
     });
     console.log(`${s.id}: ${length.toFixed(2)} s, ${lufs.toFixed(1)} LUFS / peak ${peak} dB, gain ${gain.toFixed(1)} dB`);
     if (!given && "page" in s) await new Promise((r) => setTimeout(r, 400));
@@ -269,7 +310,7 @@ writeFileSync(
   join(OUT, "library.json"),
   `${JSON.stringify(
     {
-      description: `Uncut's bundled sound effects (D134, D208): CC0 1.0 (public domain) sounds from Freesound and Kenney, each licence checked when the pack is made (the Freesound page's licence link, the Kenney pack's License.txt). Levelled to ${TARGET_LUFS} LUFS integrated, sample peak at most ${CEILING_DB} dBFS, AAC ${BITRATE}. Made by scripts/make-sfx.ts.`,
+      description: `Uncut's bundled sound effects (D134, D208, D250): CC0 1.0 (public domain) sounds from Freesound and Kenney, each licence checked when the pack is made (the Freesound page's licence link, the Kenney pack's License.txt), and Uncut's own synthesised sounds (scripts/sfx-synth.ts). Levelled to ${TARGET_LUFS} LUFS integrated, sample peak at most ${CEILING_DB} dBFS, AAC ${BITRATE}. Made by scripts/make-sfx.ts.`,
       sounds,
     },
     null,

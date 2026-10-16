@@ -14,12 +14,13 @@ import { planAddLibrarySound } from "../../apps/web/src/state/project.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 
-test("the bundled sound-effects pack: every sound a CC0 file from a Freesound page or a Kenney pack, in a known category", () => {
+test("the bundled sound-effects pack: every sound a CC0 file from a Freesound page, a Kenney pack or Uncut's synthesiser, in a known category", () => {
   assert.ok(SFX_SOUNDS.length >= 12, String(SFX_SOUNDS.length));
   const categories = new Set(SFX_CATEGORIES.map((c) => c.id));
   for (const s of SFX_SOUNDS) {
     assert.equal(s.license, "CC0-1.0", s.id);
     if (s.provider === "kenney") assert.match(s.source, /^https:\/\/kenney\.nl\/assets\/[a-z-]+$/, s.id);
+    else if (s.provider === "uncut") assert.equal(s.source, "https://github.com/blazejkustra/uncut/blob/main/scripts/sfx-synth.ts", s.id);
     else assert.match(s.source, /^https:\/\/freesound\.org\/people\/[^/]+\/sounds\/\d+\/$/, s.id);
     assert.ok(categories.has(s.category), `${s.id}: ${s.category}`);
     const path = resolve("assets/sfx", s.file);
@@ -29,7 +30,7 @@ test("the bundled sound-effects pack: every sound a CC0 file from a Freesound pa
   }
   assert.equal(new Set(SFX_SOUNDS.map((s) => s.id)).size, SFX_SOUNDS.length);
   for (const id of ["whoosh", "ui", "impact", "riser", "notification", "crowd", "meme"]) assert.ok(filterSfx({ category: id }).length > 0, id);
-  assert.deepEqual(filterSfx({ query: "trombone" }).map((s) => s.id), ["sad-trombone"]);
+  assert.deepEqual(filterSfx({ query: "trombone" }).map((s) => s.id), ["sad-trombone", "womp-womp"]);
   assert.deepEqual(filterSfx({ query: "laughs" }).map((s) => s.id).sort(), ["applause", "crowd-laugh"], "by the category's name too");
   // Quick searches that return results on Openverse ("vine boom" and "meme" return none or junk).
   for (const q of [...SFX_CATEGORIES, ...MEME_SOUNDS, ...MUSIC_GENRES]) assert.doesNotMatch(q.query, /vine|meme/, q.id);
@@ -40,7 +41,8 @@ test("the bundled sound-effects pack: every sound a CC0 file from a Freesound pa
 test("hit ids round-trip and junk is refused; lengths and limits in words", () => {
   assert.equal(hitKey({ source: "openverse", id: "eab8a6e2-0ac8" }), "openverse:eab8a6e2-0ac8");
   assert.deepEqual(parseHitKey("freesound:534387"), { source: "freesound", id: "534387" });
-  for (const bad of ["jamendo:1", "openverse:", "openverse:../x", "sfx:boom", "freesound:1/2"]) assert.equal(parseHitKey(bad), undefined, bad);
+  assert.deepEqual(parseHitKey("jamendo:1204669"), { source: "jamendo", id: "1204669" });
+  for (const bad of ["pixabay:1", "openverse:", "openverse:../x", "sfx:boom", "freesound:1/2"]) assert.equal(parseHitKey(bad), undefined, bad);
   assert.equal(lengthLabel(0.72), "0.7 s");
   assert.equal(lengthLabel(115.8), "1:56");
   const now = Date.parse("2026-10-14T10:00:00Z");

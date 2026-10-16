@@ -54,7 +54,7 @@ const undo = async () => {
   await page.waitForFunction((was) => Number(/revision (\d+)/.exec((document.querySelector("[data-testid=saved]") as HTMLElement | null)?.title ?? "")?.[1] ?? -1) !== was, { timeout: 10000 }, r);
 };
 const previewFrame = () => page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.frame));
-const playing = () => page.$eval("[data-testid=play]", (el) => (el as HTMLElement).title.startsWith("Pause"));
+const playing = () => page.$eval("[data-testid=play]", (el) => (el.getAttribute("aria-label") ?? "").startsWith("Pause"));
 const tileOrder = () => page.$$eval("[data-testid=media-grid] [data-testid=media-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.id!));
 
 const LONG = "DJI_20261013182112_0042_D_harbour_sunset_wide.mp4";
@@ -238,8 +238,8 @@ test("Fable QA round 2, media and audio: remove from project, list and sort, fit
 
   // ---- F28: a sound with the timeline from the playhead; stop stops both ----
   await page.$eval("[data-testid=rail-sfx]", (el) => (el as HTMLElement).click());
-  await waitFor("[data-testid=library-view-included]");
-  await page.click("[data-testid=library-view-included]");
+  await waitFor("[data-testid=library-source]");
+  await page.select("[data-testid=library-source]", "pack");
   await waitFor("[data-testid=sfx-row] [data-testid=sound-with-timeline]");
   await key("Escape");
   await page.$eval("[data-testid=to-start]", (el) => (el as HTMLButtonElement).click());

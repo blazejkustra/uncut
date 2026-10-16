@@ -131,7 +131,8 @@ export function render(): string {
   s += "Shipped in Resources/sfx (D134, D208): sounds from Freesound (each sound's page links the CC0 1.0\n";
   s += "deed) and from Kenney's packs (kenney.nl; each pack's License.txt says Creative Commons Zero, CC0),\n";
   s += "checked when the pack was made by scripts/make-sfx.ts. Credit isn't required; thanks to every author.\n\n";
-  for (const t of sfx.sounds) {
+  // Uncut's own synthesised sounds (D250, provider "uncut") are Uncut's, not third-party: not listed.
+  for (const t of sfx.sounds.filter((x) => x.provider !== "uncut")) {
     s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}${t.sourceFile ? ` (${t.sourceFile} in the pack)` : ""}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
   }
 
