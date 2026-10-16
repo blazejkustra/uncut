@@ -376,7 +376,7 @@ function writeProject(dir: string, tracks: Array<unknown>) {
   );
 }
 
-test("no dropouts: a hard cut between split clips, hiding and showing a track while playing and paused", { skip, timeout: 180000 }, async () => {
+test("no dropouts: a hard cut between split clips, hiding and showing a track while playing and paused", { skip: skip || NO_REAL_AUDIO, timeout: 180000 }, async () => {
   const dir = join(root, "Cuts.uncut");
   writeProject(dir, [
     { id: "text", kind: "text", name: "Text", items: [] },
