@@ -134,6 +134,42 @@ export const setStyle = (el: HTMLElement, key: "left" | "top" | "width" | "heigh
   if (el.style[key] !== value) el.style[key] = value;
 };
 
+/** A picture's content rect (core's, its fit worked out) in its box wrapper's own px. */
+export function placeContent(el: HTMLElement, box: ClipBox, fit: string = box.fit) {
+  if (el.style.transform) el.style.transform = "";
+  delete el.dataset.scale;
+  setStyle(el, "left", px(box.content.x - box.x));
+  setStyle(el, "top", px(box.content.y - box.y));
+  setStyle(el, "width", px(box.content.w));
+  setStyle(el, "height", px(box.content.h));
+  setStyle(el, "objectFit", fit);
+}
+
+/**
+ * Issue #12 (D265): a <video> (or its scrub canvas) at its natural size, moved and scaled onto the
+ * content rect by a transform. Laid out at the content rect, the browser snaps a video's layer in
+ * ways that move the picture up to a third of a canvas pixel depending on where the box sits; the
+ * transform places it exactly where core's maths (and the export, and the GPU compositor) put it.
+ * Anything else, or a picture whose shape isn't the content rect's (a probe that disagrees with the
+ * file), is laid out at the content rect with its object-fit as before.
+ */
+export function placePicture(el: HTMLElement, box: ClipBox) {
+  const n = el instanceof HTMLVideoElement ? { w: el.videoWidth, h: el.videoHeight } : el instanceof HTMLCanvasElement && el.classList.contains("pv-scrub") ? { w: el.width, h: el.height } : { w: 0, h: 0 };
+  const c = box.content;
+  const fits = n.w > 0 && n.h > 0 && c.w > 0 && c.h > 0 && (box.fit === "fill" || Math.abs((c.w / c.h) * (n.h / n.w) - 1) < 2e-3);
+  if (!fits) return placeContent(el, box);
+  setStyle(el, "left", "0px");
+  setStyle(el, "top", "0px");
+  setStyle(el, "width", `${n.w}px`);
+  setStyle(el, "height", `${n.h}px`);
+  setStyle(el, "objectFit", "fill");
+  if (el.style.transformOrigin !== "0px 0px") el.style.transformOrigin = "0 0";
+  const t = `translate(${px(c.x - box.x)}, ${px(c.y - box.y)}) scale(${Math.round((c.w / n.w) * 1e6) / 1e6}, ${Math.round((c.h / n.h) * 1e6) / 1e6})`;
+  // A CSS filter (an effect's blur) works in the element's own px, before this scale: drawFx divides by it.
+  el.dataset.scale = String(Math.sqrt((c.w / n.w) * (c.h / n.h)));
+  if (el.style.transform !== t) el.style.transform = t;
+}
+
 /**
  * A clip's box (D75): the wrapper at core's box in canvas pixels (it clips the picture and rounds
  * its corners), the picture inside at core's content rect (fit and zoom; a push or zoom transition
@@ -146,11 +182,7 @@ export function placeBox(wrap: HTMLElement, el: HTMLElement, box: ClipBox, canva
   setStyle(wrap, "width", px(box.w));
   setStyle(wrap, "height", px(box.h));
   setStyle(wrap, "borderRadius", box.radius > 0 ? px(box.radius) : "");
-  setStyle(el, "left", px(box.content.x - box.x));
-  setStyle(el, "top", px(box.content.y - box.y));
-  setStyle(el, "width", px(box.content.w));
-  setStyle(el, "height", px(box.content.h));
-  setStyle(el, "objectFit", box.fit);
+  placePicture(el, box);
   const hidden = shown === undefined ? 0 : Math.min(box.w, Math.max(0, box.x + box.w - canvas.width * shown));
   const clip = hidden > 0 ? `inset(0 ${px(hidden)} 0 0)` : iris !== undefined ? irisClip(iris, canvas, box.x, box.y) : mask ? maskClipPath(mask.shape, mask.p, canvas, (x, y) => [x - box.x, y - box.y]) : "";
   if (wrap.style.clipPath !== clip) wrap.style.clipPath = clip;

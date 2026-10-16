@@ -132,6 +132,7 @@ async function play(label: string, from: number, ms: number) {
   const origin = await page.evaluate(() => performance.timeOrigin);
   // D241: renders where the GPU compositor kept the last frame up (a layer had nothing to draw yet).
   const held = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.gpuHeld ?? 0));
+  const heldBy = await page.evaluate(() => document.querySelector<HTMLElement>("canvas[data-gpu-compositor]")?.dataset.heldBy ?? "");
   const rect = await page.$eval("[data-testid=preview-frame]", (el) => {
     const r = el.getBoundingClientRect();
     return { x: r.x / innerWidth, y: r.y / innerHeight, w: r.width / innerWidth, h: r.height / innerHeight };
@@ -181,7 +182,7 @@ async function play(label: string, from: number, ms: number) {
     .map((b) => ({ ...b, frame: b.sample!.frame, cut: cuts.reduce((best, c) => (Math.abs(c - b.sample!.frame) < Math.abs(best - b.sample!.frame) ? c : best), cuts[0]!) }));
   const playingShots = shots.filter((s) => frameAt(s.at)?.playing).length;
   const c = countGlitches(probe.samples, layers, { fps: FPS, lateMs: 1000, longMs: 150 });
-  console.log(`# issue82 ${label}: ${shots.length} screen frames (${playingShots} while playing), black ${blacks.length}${blacks.length ? ` at playhead frames [${blacks.map((b) => `${b.frame} (cut ${b.cut}${b.frame >= b.cut ? "+" : ""}${b.frame - b.cut})`).join(", ")}]` : ""}; probe: flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, worst frame ${c.worstFrameMs.toFixed(0)} ms; gpu held renders so far ${held}; stats ${JSON.stringify(probe.stats)}`);
+  console.log(`# issue82 ${label}: ${shots.length} screen frames (${playingShots} while playing), black ${blacks.length}${blacks.length ? ` at playhead frames [${blacks.map((b) => `${b.frame} (cut ${b.cut}${b.frame >= b.cut ? "+" : ""}${b.frame - b.cut})`).join(", ")}]` : ""}; probe: flash ${c.flash}, late ${c.late}, look flash ${c.lookFlash}, stale ${c.stale}, frozen ${c.frozen}, worst frame ${c.worstFrameMs.toFixed(0)} ms; gpu held renders so far ${held}${heldBy ? ` (last by ${heldBy})` : ""}; stats ${JSON.stringify(probe.stats)}`);
   // Each black frame: what the probe saw of the layers around it (drawn, seeking, media time, frames presented).
   for (const b of blacks.slice(0, 3)) console.log(`# issue82 ${label} black f${b.frame}: ${JSON.stringify(b.sample?.layers)}`);
   if (c.details.length) console.log(`# issue82 ${label} details: ${c.details.slice(0, 40).join("; ")}`);
