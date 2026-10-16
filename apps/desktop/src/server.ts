@@ -35,8 +35,6 @@ export function startServer(options: {
   serverEntry: string;
   mediaBin: string;
   modulesDir: string;
-  // The bundled music library (D91).
-  musicDir: string;
   // The bundled sound-effects pack (D134).
   sfxDir: string;
   // The libraries graphics load with uncut:lib/ markers (D193).
@@ -63,7 +61,6 @@ export function startServer(options: {
     UNCUT_PORT: "0",
     UNCUT_MEDIA_BIN: options.mediaBin,
     UNCUT_MODULES_DIR: options.modulesDir,
-    UNCUT_MUSIC_DIR: options.musicDir,
     UNCUT_SFX_DIR: options.sfxDir,
     UNCUT_GRAPHIC_LIBS_DIR: options.graphicLibsDir,
     UNCUT_FONTS_DIR: options.fontsDir,

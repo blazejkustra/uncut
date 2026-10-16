@@ -1,5 +1,4 @@
 // How each tool call reads in a turn card: step labels and the now line (D182).
-import { musicTrack } from "@uncut/core";
 import { shortName } from "../agentFootage.ts";
 import { shownPath, shellSegments } from "../agentPermissions.ts";
 
@@ -108,14 +107,6 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       return typeof args.query === "string" && args.query.trim() ? `Searched other projects for "${args.query.trim().slice(0, 60)}"` : "Looked through other projects' media";
     case "project_check":
       return "Checked the video against the taste checks";
-    case "music_list": {
-      const what = [typeof args.mood === "string" ? args.mood : "", typeof args.tempo === "string" ? args.tempo : "", typeof args.query === "string" ? `"${args.query}"` : ""].filter(Boolean).join(" ");
-      return what ? `Looked for ${what} music in the library` : "Looked through the music library";
-    }
-    case "music_add": {
-      const track = typeof args.id === "string" ? musicTrack(args.id) : undefined;
-      return track ? `Added ${track.title} from the music library` : "Added a library track";
-    }
     case "library_search": {
       const what = typeof args.query === "string" ? `"${args.query}"` : "";
       return `Searched the ${args.kind === "sfx" ? "sound effects" : "music"} library${what ? ` for ${what}` : ""}`;

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
-import { MUSIC_TRACKS, projectChecks, type Project } from "../../packages/core/src/index.ts";
+import { projectChecks, type Project } from "../../packages/core/src/index.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -77,7 +77,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("no Checks tab or export checks line (K1); the music library adds a track in one edit", { skip, timeout: 300000 }, async () => {
+test("no Checks tab or export checks line (K1)", { skip, timeout: 300000 }, async () => {
   const dir = join(root, "Taste.uncut");
   const app = await launchApp({
     command: APP,
@@ -104,9 +104,6 @@ test("no Checks tab or export checks line (K1); the music library adds a track i
     assert.equal(await page.$eval("[data-testid=export-start]", (el) => (el as HTMLButtonElement).disabled), false);
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => !document.querySelector("[data-testid=export-modal]"), { timeout: 5000 });
-
-    // The bundled music's own browser left the Audio tab (D249: Folders, Music library, Jamendo and
-    // Openverse); the agent still adds those tracks (music.add), covered by test/core and agent tests.
   } finally {
     await app.close();
     apps.delete(app);

@@ -187,7 +187,7 @@ test("a 429 from Openverse: the limit as a sentence, the bundled sounds suggeste
   assert.equal(r.result.isError, true);
   const body = JSON.parse(r.result.content[0].text);
   assert.match(body.limit, /^Openverse's search limit is reached\. Try again in (2\d|30) s\.$/);
-  assert.match(body.note, /bundled sounds/);
+  assert.match(body.note, /bundled sound effects or the user.s own music/);
 });
 
 test("the tools, labels and the system prompt's library note", { skip }, () => {
@@ -197,5 +197,5 @@ test("the tools, labels and the system prompt's library note", { skip }, () => {
   }
   assert.equal(stepLabel("library_search", { kind: "music", query: "lofi" }), 'Searched the music library for "lofi"');
   assert.equal(stepLabel("library_add", { id: "sfx:pop" }), "Added a bundled sound effect");
-  assert.match(AGENT_TEXT, /library_search finds royalty-free music and sound effects online/);
+  assert.match(AGENT_TEXT, /library_search also finds royalty-free sound effects online/);
 });

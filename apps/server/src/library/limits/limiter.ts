@@ -7,9 +7,6 @@ export const OPENVERSE_PER_DAY = 200;
 /** Freesound's documented API limits. */
 export const FREESOUND_PER_MINUTE = 60;
 export const FREESOUND_PER_DAY = 2000;
-/** Jamendo publishes no per-minute limit (only a review past 500,000 calls): Uncut keeps well under (D249). */
-export const JAMENDO_PER_MINUTE = 30;
-export const JAMENDO_PER_DAY = 1000;
 
 /** Requests per minute and per day: what's been sent, and when a source said stop. */
 export class Limiter {

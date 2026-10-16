@@ -87,7 +87,6 @@ function stageContext(ctx: string) {
   copy("apps/server/dist/mcp.mjs");
   copy("apps/desktop/dist/main.cjs");
   copy("spec/modules/builtin");
-  copy("assets/music");
   copy("plugins");
   copy("packages/plugin-sdk/package.json");
   copy("packages/plugin-sdk/src");

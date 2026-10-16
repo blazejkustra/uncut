@@ -164,3 +164,27 @@ test("Elements sections: every drawn element has one, the dev-promo ones apart; 
   assert.equal(elementCategory("plugin.x.y").category, "More");
   assert.ok(elementCategory("component.follow").keywords.includes("instagram"), "found by the platform people search for");
 });
+
+test("D275: the follow handle draws each brand's own mark in its colour (Simple Icons); generic kinds stay", async () => {
+  const { BRAND_ICONS } = await import("../../packages/core/src/visual/brandIcons.ts");
+  const { FOLLOW_PLATFORM_NAMES } = await import("../../packages/core/src/visual/elementsMore.ts");
+  const schema = componentInfo("component.follow")!.manifest.params as { properties: { platform: { enum: Array<string> } } };
+  const ids = schema.properties.platform.enum;
+  for (const want of ["youtube", "instagram", "tiktok", "x", "linkedin", "facebook", "twitch", "github", "threads", "bluesky", "discord", "spotify", "web", "mail", "video"]) assert.ok(ids.includes(want), want);
+  for (const id of ids) assert.ok(FOLLOW_PLATFORM_NAMES[id], `${id} has a name in the inspector`);
+  assert.equal(componentDefaults("component.follow").platform, "youtube");
+  const at = (platform: string, style = "pill") => html(item("component.follow", { handle: "@me", platform, style }), 60);
+  for (const [id, b] of Object.entries(BRAND_ICONS)) {
+    const out = at(id);
+    assert.ok(out.includes(b.path), `${id} draws its mark`);
+    assert.ok(out.includes(`background:${b.hex}`), `${id} in ${b.hex}`);
+  }
+  assert.ok(at("youtube").includes("#FF0000"));
+  // A light brand colour gets dark ink on its circle, in the pill and the solid style.
+  assert.match(at("snapchat"), /fill="#0A0A0B" d="/);
+  assert.match(at("snapchat", "solid"), /fill="#0A0A0B" d="/);
+  // LinkedIn (not in Simple Icons) and the generic kinds draw Uncut's own glyphs.
+  assert.ok(at("linkedin").includes("background:#0A66C2"));
+  for (const g of ["web", "mail", "video", "linkedin"]) assert.ok(!Object.values(BRAND_ICONS).some((b) => at(g).includes(b.path)), `${g} draws no brand mark`);
+  assert.ok(elementCategory("component.follow").keywords.includes("bluesky"));
+});

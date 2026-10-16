@@ -55,9 +55,10 @@ test("#81: no decision ids in anything the model reads", () => {
   assert.equal(withoutDecisionIds("D215: cut this item"), "Cut this item");
 });
 
-test("#81 follow-up: library_search offers jamendo", () => {
+test("D274: library_search no longer offers jamendo; music_list and music_add are gone", () => {
   const tool = mcpTools().find((t) => t.name === "library_search")!;
-  assert.ok((tool.inputSchema as any).properties.source.enum.includes("jamendo"));
+  assert.ok(!(tool.inputSchema as any).properties.source.enum.includes("jamendo"));
+  for (const gone of ["music_list", "music_add"]) assert.ok(!mcpTools().some((t) => t.name === gone), gone);
 });
 
 test("#81: <brand> and <plan> whole only when they changed; unchanged ones are a line each", () => {

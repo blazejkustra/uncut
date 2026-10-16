@@ -32,8 +32,8 @@ import { withoutApiKey } from "../app/shellEnv.ts";
 import { copyBundledFile, copyIntoProject, serialisedFor } from "../media/music.ts";
 import { FolderError, soundFolders } from "./folders.ts";
 import { musicLibraryRoot } from "./musicApp.ts";
-import { freesoundDetailUrl, freesoundHit, freesoundUrl, jamendoDetailUrl, jamendoHit, jamendoUrl, openverseDetailUrl, openverseHit, openverseUrl, PAGE_SIZE } from "./sources.ts";
-import { Limiter, OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, FREESOUND_PER_MINUTE, FREESOUND_PER_DAY, JAMENDO_PER_MINUTE, JAMENDO_PER_DAY } from "./limits/limiter.ts";
+import { freesoundDetailUrl, freesoundHit, freesoundUrl, openverseDetailUrl, openverseHit, openverseUrl, PAGE_SIZE } from "./sources.ts";
+import { Limiter, OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, FREESOUND_PER_MINUTE, FREESOUND_PER_DAY } from "./limits/limiter.ts";
 export { OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, FREESOUND_PER_MINUTE, FREESOUND_PER_DAY, Limiter } from "./limits/limiter.ts";
 /** How long a search's results are reused. */
 export const CACHE_MS = 30 * 60 * 1000;
@@ -49,14 +49,12 @@ export const API_MS = 30_000;
 export const TOTAL_MS = 5 * 60_000;
 /** The most a preview streams. */
 export const MAX_PREVIEW_BYTES = 50 * 1024 * 1024;
-const SOURCE_NAME: Record<LibrarySource, string> = { openverse: "Openverse", freesound: "Freesound", jamendo: "Jamendo" };
+const SOURCE_NAME: Record<LibrarySource, string> = { openverse: "Openverse", freesound: "Freesound" };
 
 export interface LibraryOptions {
   readonly sfxDir: string;
   /** The Freesound key, read right before a request (undefined: none stored). */
   readonly freesoundKey: () => Promise<string | undefined>;
-  /** Jamendo's client ID (D249), read right before a request (undefined: none stored). */
-  readonly jamendoKey?: () => Promise<string | undefined>;
   /** Where the Music app's library is looked for (D249; default ~/Music, none in a test run without one). */
   readonly musicRoot?: string | undefined;
   /** A downloaded file's length in seconds (the media core / ffprobe). */
@@ -111,8 +109,7 @@ export function extensionOf(hit: Pick<LibraryHit, "filetype">, url: string) {
 
 export function soundLibrary(options: LibraryOptions) {
   const now = options.now ?? Date.now;
-  const limiters: Record<LibrarySource, Limiter> = { openverse: new Limiter(OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, now), freesound: new Limiter(FREESOUND_PER_MINUTE, FREESOUND_PER_DAY, now), jamendo: new Limiter(JAMENDO_PER_MINUTE, JAMENDO_PER_DAY, now) };
-  const jamendoKey = options.jamendoKey ?? (async () => undefined);
+  const limiters: Record<LibrarySource, Limiter> = { openverse: new Limiter(OPENVERSE_PER_MINUTE, OPENVERSE_PER_DAY, now), freesound: new Limiter(FREESOUND_PER_MINUTE, FREESOUND_PER_DAY, now) };
   const cache = new Map<string, { readonly at: number; readonly result: LibrarySearchResult }>();
   const known = new Map<string, { readonly hit: LibraryHit; readonly fileUrl: string }>();
   let lastLeft: Partial<Record<LibrarySource, { minute?: number; day?: number }>> = {};
@@ -126,22 +123,17 @@ export function soundLibrary(options: LibraryOptions) {
     while (known.size > MAX_KNOWN_HITS) known.delete(known.keys().next().value!);
   };
 
-  /** A source's key: Freesound's (sent in a header), Jamendo's client ID (in the URL); none for Openverse. */
+  /** A source's key: Freesound's (sent in a header); none for Openverse. */
   async function keyOf(source: LibrarySource): Promise<string | undefined> {
     if (source === "freesound") {
       const key = await options.freesoundKey();
       if (!key) throw fail("no-key", "Add your Freesound key in Settings to search Freesound.");
       return key;
     }
-    if (source === "jamendo") {
-      const key = await jamendoKey();
-      if (!key) throw fail("no-key", "Add your Jamendo client ID (from devportal.jamendo.com) to search Jamendo.");
-      return key;
-    }
     return undefined;
   }
 
-  /** One API GET as JSON, counted against the source's limit; the key (Freesound) only in its header, Jamendo's client ID only in its URL and never in an error. */
+  /** One API GET as JSON, counted against the source's limit; the key (Freesound) only in its header and never in an error. */
   async function getJson(source: LibrarySource, url: string, signal?: AbortSignal, given?: string): Promise<{ json: unknown } | { limit: LibraryLimit }> {
     const headers: Record<string, string> = { accept: "application/json", "user-agent": "Uncut (https://github.com/blazejkustra/uncut)" };
     const key = given ?? (source === "freesound" ? await keyOf(source) : undefined);
@@ -168,7 +160,7 @@ export function soundLibrary(options: LibraryOptions) {
     }
     if (res.status === 401 || res.status === 403) {
       await res.body?.cancel().catch(() => {});
-      throw fail("refused", source === "freesound" ? "Freesound didn't accept your key. Check it in Settings." : source === "jamendo" ? "Jamendo didn't accept your client ID. Check it in Settings." : `${SOURCE_NAME[source]} refused the search (${res.status}).`);
+      throw fail("refused", source === "freesound" ? "Freesound didn't accept your key. Check it in Settings." : `${SOURCE_NAME[source]} refused the search (${res.status}).`);
     }
     if (!res.ok) {
       await res.body?.cancel().catch(() => {});
@@ -182,18 +174,12 @@ export function soundLibrary(options: LibraryOptions) {
     } catch {
       throw fail("refused", `${SOURCE_NAME[source]} answered with something that isn't JSON.`);
     }
-    if (source === "jamendo") {
-      // Jamendo answers 200 with headers.status "failed" (code 5: a client ID it doesn't know).
-      const h = ((json ?? {}) as { headers?: { status?: unknown; code?: unknown; error_message?: unknown } }).headers;
-      if (h && h.status !== "success") throw fail("refused", h.code === 5 || /client/i.test(String(h.error_message ?? "")) ? "Jamendo didn't accept your client ID. Check it in Settings." : `Jamendo refused the search: ${redact(String(h.error_message ?? h.code ?? "unknown error")).slice(0, 200)}`);
-    }
     return { json };
   }
 
   async function sources(): Promise<Array<LibrarySource>> {
     const out: Array<LibrarySource> = ["openverse"];
     if (await options.freesoundKey().catch(() => undefined)) out.push("freesound");
-    if (await jamendoKey().catch(() => undefined)) out.push("jamendo");
     return out;
   }
 
@@ -203,15 +189,14 @@ export function soundLibrary(options: LibraryOptions) {
     const hit = cache.get(cacheKey);
     if (hit && now() - hit.at < CACHE_MS) return { ...hit.result, cached: true, ...(limiters[source].limit() ? { limit: limiters[source].limit()! } : {}) };
     const key = await keyOf(source);
-    const url = source === "openverse" ? openverseUrl(q) : source === "jamendo" ? jamendoUrl(q, key!) : freesoundUrl(q, tag);
+    const url = source === "openverse" ? openverseUrl(q) : freesoundUrl(q, tag);
     const reply = await getJson(source, url, undefined, key);
     if ("limit" in reply) return { hits: [], total: 0, page: q.page!, pages: 0, source, cached: false, limit: reply.limit };
-    const body = (reply.json ?? {}) as { results?: unknown; result_count?: unknown; page_count?: unknown; count?: unknown; headers?: { results_fullcount?: unknown } };
+    const body = (reply.json ?? {}) as { results?: unknown; result_count?: unknown; page_count?: unknown; count?: unknown };
     const rows = Array.isArray(body.results) ? (body.results as Array<Record<string, unknown>>) : [];
-    const parsed = rows.map((r) => (source === "openverse" ? openverseHit(r) : source === "jamendo" ? jamendoHit(r) : freesoundHit(r))).filter((e): e is NonNullable<typeof e> => !!e);
+    const parsed = rows.map((r) => (source === "openverse" ? openverseHit(r) : freesoundHit(r))).filter((e): e is NonNullable<typeof e> => !!e);
     remember(parsed);
-    const fullcount = Number(body.headers?.results_fullcount);
-    const total = typeof body.result_count === "number" ? body.result_count : typeof body.count === "number" ? body.count : source === "jamendo" && fullcount >= 0 ? fullcount : parsed.length;
+    const total = typeof body.result_count === "number" ? body.result_count : typeof body.count === "number" ? body.count : parsed.length;
     const pages = typeof body.page_count === "number" ? body.page_count : Math.ceil(total / PAGE_SIZE);
     const left = lastLeft[source];
     const result: LibrarySearchResult = { hits: parsed.map((e) => e.hit), total, page: q.page!, pages, source, cached: false, ...(left && (left.minute !== undefined || left.day !== undefined) ? { left } : {}) };
@@ -256,13 +241,12 @@ export function soundLibrary(options: LibraryOptions) {
     const known1 = known.get(key);
     if (known1) return known1;
     const parsed = parseHitKey(key);
-    if (!parsed) throw fail("bad-request", `"${key}" isn't a library id (openverse:<id>, freesound:<id>, jamendo:<id> or sfx:<id>).`);
+    if (!parsed) throw fail("bad-request", `"${key}" isn't a library id (openverse:<id>, freesound:<id> or sfx:<id>).`);
     const k = await keyOf(parsed.source);
-    const reply = await getJson(parsed.source, parsed.source === "openverse" ? openverseDetailUrl(parsed.id) : parsed.source === "jamendo" ? jamendoDetailUrl(parsed.id, k!) : freesoundDetailUrl(parsed.id), signal, k);
+    const reply = await getJson(parsed.source, parsed.source === "openverse" ? openverseDetailUrl(parsed.id) : freesoundDetailUrl(parsed.id), signal, k);
     if ("limit" in reply) throw fail("limit", limitSentence(parsed.source, reply.limit, now()));
-    const json = (reply.json ?? {}) as Record<string, unknown>;
-    const row = parsed.source === "jamendo" ? (((json.results as Array<Record<string, unknown>> | undefined) ?? [])[0] ?? {}) : json;
-    const entry = parsed.source === "openverse" ? openverseHit(row) : parsed.source === "jamendo" ? jamendoHit(row) : freesoundHit(row);
+    const row = (reply.json ?? {}) as Record<string, unknown>;
+    const entry = parsed.source === "openverse" ? openverseHit(row) : freesoundHit(row);
     if (!entry || entry.hit.id !== parsed.id) throw fail("refused", `${SOURCE_NAME[parsed.source]} has no CC0 or CC BY sound ${parsed.id}.`);
     remember([entry]);
     return entry;
@@ -374,8 +358,7 @@ export function soundLibrary(options: LibraryOptions) {
       }
       throw fail("io", `The project's media folder already holds 99 files named like ${stem}.${ext}.`);
       function done(path: string): Added {
-        // Jamendo's file URLs name the app's client ID: never written into a project (D249).
-        return { path, seconds: Math.round(seconds! * 1000) / 1000, name: hit.title, source: creditOf(hit, { ...(hit.source === "jamendo" ? {} : { fileUrl }), sha256, downloaded: new Date(now()).toISOString() }) };
+        return { path, seconds: Math.round(seconds! * 1000) / 1000, name: hit.title, source: creditOf(hit, { fileUrl, sha256, downloaded: new Date(now()).toISOString() }) };
       }
     } finally {
       await rm(part, { force: true });
@@ -456,7 +439,6 @@ export const layer = Layer.effect(
       sfxDir: config.sfxDir,
       dataDir: config.dataDir,
       freesoundKey: () => Effect.runPromise(keys.get("freesound").pipe(Effect.catch(() => Effect.succeed(undefined)))),
-      jamendoKey: () => Effect.runPromise(keys.get("jamendo").pipe(Effect.catch(() => Effect.succeed(undefined)))),
       musicRoot: musicLibraryRoot(),
       probeSeconds: async (path) => {
         const [outcome] = await Effect.runPromise(mediaCore.probeMany([path]).pipe(Effect.catch(() => Effect.succeed([]))));

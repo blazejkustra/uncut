@@ -1,13 +1,12 @@
-// The agent's library tools: media_rank, graphic_write, music_add, library_search, library_add.
+// The agent's library tools: media_rank, graphic_write, library_search, library_add.
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, sep } from "node:path";
-import { familyKey, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, graphicLibsUsed, GRAPHIC_LIBS, musicInProject, type Project, musicMedia, musicTrack, projectIds, describeOp, type Op, GRAPHIC_SRC, MAX_GRAPHIC_BYTES } from "@uncut/core";
+import { familyKey, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, graphicLibsUsed, GRAPHIC_LIBS, type Project, projectIds, describeOp, type Op, GRAPHIC_SRC, MAX_GRAPHIC_BYTES } from "@uncut/core";
 import { aliasOf, clipNote, filterFolderSounds, filterSfx, hitKey, libraryMediaOf, limitSentence, onlyWhenAsked } from "@uncut/core/library";
-import { mediaIdFor } from "@uncut/core/music";
+import { mediaIdFor } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
 import { targetOf } from "../../analysis/analysis.ts";
 import { framesFor, MAX_RANKED, rankEntry, VIDEO_NOTE } from "../agentVideo.ts";
-import { copyLibraryTrack } from "../../media/music.ts";
 import { projectFonts } from "../../export/fonts.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { VideoResult } from "../../analysis/videoAnalysis.ts";
@@ -134,50 +133,9 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
     });
 
   /**
-   * music_add (D91): a library track copied into the project's media/ (copyLibraryTrack) and
-   * added as audio media, an edit on the turn (Undo turn removes the media; the copy stays, and a
-   * later add reuses it). A track already in the project answers with its media id.
-   */
-  const musicAdd = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
-    Effect.gen(function* () {
-      const track = typeof args.id === "string" ? musicTrack(args.id) : undefined;
-      if (!track) return textResult(`id must be a library track id from music_list${typeof args.id === "string" ? ` ("${args.id}" isn't one)` : ""}.`, true);
-      const fps = v.session.project.canvas.fps;
-      const already = musicInProject(v.session.project, track);
-      if (already) return textResult({ media: already.id, frames: already.probe?.frames, seconds: Number(((already.probe?.frames ?? 0) / fps).toFixed(2)), revision: v.session.revision, note: `${track.title} is already in the project as ${already.id}: put it on an audio track with timeline_edit.` });
-      const copied = yield* Effect.promise(() => copyLibraryTrack(config.musicDir, v.dir, track.id));
-      if ("problem" in copied) return textResult(copied.problem, true);
-      const fresh = view();
-      if (!fresh || fresh.openId !== r.openId) return textResult("The project was closed.", true);
-      const media = musicMedia(track, copied.path, fps, projectIds(fresh.session.project));
-      const summary = `Added ${track.title} from the music library`;
-      const outcome = yield* projects.agentEdit(r.openId, { turnId: r.turn.id, ops: [{ op: "add_media", media }], baseRevision: fresh.session.revision, summary }).pipe(
-        Effect.map((snapshot) => ({ ok: true as const, snapshot })),
-        Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
-      );
-      if (!outcome.ok) return textResult({ refused: outcome.error.message, details: outcome.error.details }, true);
-      const { snapshot } = outcome;
-      pushEdit(r, { revision: snapshot.revision, summary, lines: [describeOp({ op: "add_media", media }, snapshot.project as Project)], media: [media.id] });
-      persist(r.owner);
-      publish();
-      r.owner.seen.add(snapshot.revision);
-      const now = view();
-      const userChanges = now ? noteFor(now, r.owner.agentSeen) : "";
-      const frames = media.probe!.frames!;
-      return textResult({
-        media: media.id,
-        path: media.path,
-        frames,
-        seconds: track.seconds,
-        revision: snapshot.revision,
-        next: `Put it on an audio track that is free for that stretch with timeline_edit (when a voice is on the only audio track, add one first: {"op":"add_track","track":{"id":"music","kind":"audio","name":"Music"}}), e.g. {"op":"insert_item","track":"music","item":{"id":"music-1","type":"audio","media":"${media.id}","in":0,"start":0,"duration":<from start to the video's end, at most ${frames}>,"fadeIn":${fps},"fadeOut":${2 * fps}}}, then duck it under the voice.`,
-        ...(userChanges ? { userChanges, userNote: "The user changed the project since your read; the revision above includes their changes. Keep them." } : {}),
-      });
-    });
-
-  /**
    * library_search (D134): the online library (Openverse; Freesound with the user's key), CC0 and
-   * CC BY only, or with source "included" the bundled sound effects. Same cache and limits as the
+   * CC BY only, or with source "included" the bundled sound effects (sfx) or the user's own folders
+   * and Music library (music, D274). Same cache and limits as the
    * panel's searches.
    */
   const librarySearch = (args: Record<string, unknown>) =>
@@ -186,8 +144,20 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
       if (!kind) return textResult('kind must be "music" or "sfx".', true);
       const query = typeof args.query === "string" ? args.query.trim() : "";
       const fps = view()?.session.project.canvas.fps ?? 30;
+      if (args.source === "included" && kind === "music") {
+        // D274: no bundled music; the user's own folders and their Music library are the music here.
+        const folders = yield* sounds.folders.list().pipe(Effect.catch(() => Effect.succeed([])));
+        const all = filterFolderSounds(folders, query);
+        const yours = all.slice(0, 30);
+        return textResult({
+          yours: yours.map((f) => ({ id: `folder:${f.id}`, title: f.name, folder: f.folderName, file: f.rel })),
+          total: all.length,
+          note: folders.length
+            ? "Files from the user's own sound folders and Music library (theirs to use). Uncut ships no music. library_add copies one into the project; beat_grid then gives its tempo."
+            : "The user hasn't added a sound folder or their Music library (the Audio tab's Your folders or Music library). Uncut ships no music: ask the user for a song or a folder of their music, or search online (library_search kind music, no source).",
+        });
+      }
       if (args.source === "included") {
-        if (kind !== "sfx") return textResult('The bundled music is music_list; source "included" is for sound effects.', true);
         const category = typeof args.category === "string" ? args.category : undefined;
         const sfx = filterSfx({ query, category });
         // D208: the user's own sound folders too (their files, referenced until added).
@@ -202,17 +172,17 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         });
       }
       if (!query) return textResult("query must say what to search for, e.g. whoosh, bass boom, upbeat piano.", true);
-      if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound" && args.source !== "jamendo") return textResult('source must be "openverse", "freesound", "jamendo" or "included".', true);
+      if (args.source !== undefined && args.source !== "openverse" && args.source !== "freesound") return textResult('source must be "openverse", "freesound" or "included".', true);
       const length = args.length === "short" || args.length === "medium" || args.length === "long" ? args.length : undefined;
       const outcome = yield* sounds
-        .search({ kind, query, ...(args.source ? { source: args.source as "openverse" | "freesound" | "jamendo" } : {}), ...(args.license === "cc0" ? { license: "cc0" as const } : {}), ...(length ? { length } : {}), ...(args.songs === true ? { songs: true } : {}), ...(typeof args.page === "number" ? { page: args.page } : {}) })
+        .search({ kind, query, ...(args.source ? { source: args.source as "openverse" | "freesound" } : {}), ...(args.license === "cc0" ? { license: "cc0" as const } : {}), ...(length ? { length } : {}), ...(args.songs === true ? { songs: true } : {}), ...(typeof args.page === "number" ? { page: args.page } : {}) })
         .pipe(
           Effect.map((result) => ({ ok: true as const, result })),
           Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
         );
       if (!outcome.ok) return textResult(outcome.error.message, true);
       const { result } = outcome;
-      if (result.limit) return textResult({ hits: [], limit: limitSentence(result.source, result.limit), note: "Use the bundled sounds meanwhile (music_list, or library_search with source included)." }, true);
+      if (result.limit) return textResult({ hits: [], limit: limitSentence(result.source, result.limit), note: "Use the bundled sound effects or the user's own music meanwhile (library_search with source included)." }, true);
       return textResult({
         source: result.source,
         total: result.total,
@@ -229,7 +199,7 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
   const libraryAdd = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
       const id = typeof args.id === "string" ? args.id.trim() : "";
-      if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…, jamendo:…), a bundled sound (sfx:…) or one of the user's (folder:…).", true);
+      if (!id) return textResult("id must be a library_search hit id (openverse:…, freesound:…), a bundled sound (sfx:…) or one of the user's (folder:…).", true);
       const fps = v.session.project.canvas.fps;
       const already = libraryMediaOf(v.session.project, id);
       if (already) return textResult({ media: already.id, frames: already.probe?.frames, revision: v.session.revision, note: `It's already in the project as ${already.id}: put it on an audio track with timeline_edit.` });
@@ -264,7 +234,7 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
       });
     });
 
-  return { musicAdd, librarySearch, libraryAdd, graphicWrite, mediaRank };
+  return { librarySearch, libraryAdd, graphicWrite, mediaRank };
 };
 
 export type LibraryCtx = BrandCtx & ReturnType<typeof makeLibraryTools>;

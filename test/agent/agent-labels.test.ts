@@ -33,7 +33,7 @@ test("partialFields: string fields once their closing quote arrived, escapes dec
 
 test("access: Look only tools read and look; Ask first asks about removals, project changes, many ops and transcript cuts", () => {
   for (const t of LOOK_TOOLS) assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes(t), t);
-  for (const t of ["timeline_edit", "transcript_edit", "graphic_write", "media_import", "generate_media", "screen_record", "music_add", "captions_make"]) assert.ok(!(LOOK_TOOLS as ReadonlyArray<string>).includes(t), t);
+  for (const t of ["timeline_edit", "transcript_edit", "graphic_write", "media_import", "generate_media", "screen_record", "library_add", "captions_make"]) assert.ok(!(LOOK_TOOLS as ReadonlyArray<string>).includes(t), t);
   assert.equal(bigChange("timeline_edit", { summary: "Add", ops: [{ op: "insert_item", track: "text", item: { id: "a", type: "text", start: 0, duration: 9, text: "a" } }] }, project), undefined);
   const del = bigChange("timeline_edit", { summary: "Remove the title", ops: [{ op: "delete_item", item: "title-1" }] }, project);
   assert.equal(del?.text, 'Apply "Remove the title" (1 change)');

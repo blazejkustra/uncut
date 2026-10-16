@@ -1,5 +1,5 @@
 // project_check's findings (D90) and the music list as the agent reads them.
-import { type Check, type Project, type CheckRule, type SoundProfile, disabledChecks, projectChecks, soundProfileText, type MusicTempo, filterMusic, musicInProject, musicTempo } from "@uncut/core";
+import { type Check, type Project, type CheckRule, type SoundProfile, disabledChecks, projectChecks, soundProfileText } from "@uncut/core";
 import { type IntendedRef, isIntended } from "@uncut/core/skills";
 
 /** One finding as project_check returns it (D90): frames are the edit's. */
@@ -53,29 +53,5 @@ export function checksOut(
       : picked.length
       ? "Fix each warning (a fix's ops go into timeline_edit as they are, with your baseRevision) or tell the user why it's right as it is. Info notes are suggestions. Checks never block the export."
       : "Nothing to fix.",
-  };
-}
-
-/** music_list's answer (D91): the library tracks matching the filters, in the project's frames. */
-export function musicOut(project: Project, filter: { readonly mood?: string | undefined; readonly tempo?: MusicTempo | undefined; readonly query?: string | undefined }) {
-  const fps = project.canvas.fps;
-  return {
-    tracks: filterMusic(filter).map((t) => {
-      const inProject = musicInProject(project, t);
-      return {
-        id: t.id,
-        title: t.title,
-        moods: t.moods,
-        bpm: t.bpm,
-        tempo: musicTempo(t.bpm),
-        seconds: t.seconds,
-        frames: Math.max(1, Math.floor(t.seconds * fps)),
-        lufs: t.lufs,
-        author: t.author,
-        license: t.license,
-        ...(inProject ? { media: inProject.id } : {}),
-      };
-    }),
-    note: "All CC0 (public domain, no credit needed) and normalised to about -16 LUFS. music_add copies one into the project; then add it on an audio track with fades and, under a voice, an audio.duck.",
   };
 }

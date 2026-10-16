@@ -1,4 +1,4 @@
-import { TOKEN_QUERY_PARAM, BRAND_FILE_PATH, AGENT_IMAGE_PATH, THUMB_PATH, RECENT_THUMB_PATH, MEDIA_FILE_PATH, PROXY_PATH, MUSIC_FILE_PATH, SFX_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, WAVEFORM_PATH, FILMSTRIP_PATH, GRAPHIC_PATH } from "@uncut/contracts";
+import { TOKEN_QUERY_PARAM, BRAND_FILE_PATH, AGENT_IMAGE_PATH, THUMB_PATH, RECENT_THUMB_PATH, MEDIA_FILE_PATH, PROXY_PATH, SFX_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, WAVEFORM_PATH, FILMSTRIP_PATH, GRAPHIC_PATH } from "@uncut/contracts";
 import { serverConnection } from "./server.ts";
 import type { AppStateShape } from "./types.ts";
 import { state } from "./core.ts";
@@ -38,7 +38,6 @@ export const proxyUrl = (id: string, key: string) => {
 /** D212: a media item's proxy state in the open project. */
 export const proxyOf = (s: AppStateShape, mediaId: string) => s.proxies.find((p) => p.mediaId === mediaId);
 /** A track of the bundled music library (D91), for the Audio tab's preview. */
-export const musicUrl = (file: string) => serverUrl(MUSIC_FILE_PATH, file);
 /** A sound of the bundled sound-effects pack (D134), for the Sound effects tab's preview. */
 export const sfxUrl = (file: string) => serverUrl(SFX_FILE_PATH, file);
 /** A file of the user's sound folders (D208), by its id (the server knows its path). */

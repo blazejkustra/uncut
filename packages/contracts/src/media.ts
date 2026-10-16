@@ -86,9 +86,6 @@ export const AGENT_IMAGE_PATH = "/media/agent-image";
 export const BRAND_FILE_PATH = "/media/brand";
 /** An attached image's file name in .cache/agent-images/: <turn id>-<n>.<ext>. */
 export const AGENT_IMAGE_NAME = /^turn-[a-z0-9]+-[a-f0-9]{6}-\d\.(png|jpg|gif|webp)$/;
-// GET /media/library/<file>?token=…: a track of the bundled music library (D91), for the Audio
-// tab's preview; only the files core MUSIC_TRACKS lists.
-export const MUSIC_FILE_PATH = "/media/library";
 // GET /media/sfx/<file>?token=…: a sound of the bundled sound-effects pack (D134), for the Sound
 // effects tab's preview; only the files core SFX_SOUNDS lists.
 export const SFX_FILE_PATH = "/media/sfx";

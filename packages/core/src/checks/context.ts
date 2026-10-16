@@ -1,6 +1,5 @@
 import { trackAudible } from "../audio/audio.ts";
 import { duckEntry } from "../audio/ducking.ts";
-import { libraryTrackOf } from "../audio/music.ts";
 import { textLook } from "../text/looks.ts";
 import { wordCount, textPlacement } from "../visual/render.ts";
 import { layout } from "../timeline/timeline.ts";
@@ -184,7 +183,7 @@ export const isMusicTrack = (ctx: CheckContext, track: Track) =>
     track.items.some((i) => {
       const m = mediaOf(ctx, i);
       // The file's name, not the display name (G4: renaming a media item doesn't change what it is).
-      return !!m && (MUSIC_NAME.test(m.path.replace(/\\/g, "/").split("/").pop() ?? "") || !!libraryTrackOf(m));
+      return !!m && MUSIC_NAME.test(m.path.replace(/\\/g, "/").split("/").pop() ?? "");
     }));
 /** soundMedia (audio.ts) through the context's media map. */
 export function soundOf(ctx: CheckContext, item: Item) {

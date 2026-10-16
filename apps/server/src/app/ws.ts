@@ -20,7 +20,6 @@ import { graphicToken } from "../export/graphicToken.ts";
 import { MediaLibrary } from "../media/media.ts";
 import { importablePath, MediaIndex, shownEntry } from "../media/mediaIndex.ts";
 import { MediaCore } from "../media/mediaCore.ts";
-import { copyLibraryTrack } from "../media/music.ts";
 import { Plugins } from "../plugins/plugins.ts";
 import { copyComponent } from "../plugins/contributions.ts";
 import { Capture } from "../capture/capture.ts";
@@ -90,14 +89,6 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.mediaJobs]: () => library.jobs,
     [RPC_METHODS.mediaThumbnails]: () => library.thumbnails,
     [RPC_METHODS.mediaProxies]: () => proxies.states,
-    [RPC_METHODS.musicAdd]: ({ track }) =>
-      Effect.gen(function* () {
-        const open = yield* projects.current;
-        if (!open) return yield* new ProjectError({ reason: "no-project", message: "No project is open", details: [] });
-        const copied = yield* Effect.promise(() => copyLibraryTrack(config.musicDir, open.dir, track));
-        if ("problem" in copied) return yield* new ProjectError({ reason: "io", message: copied.problem, details: [] });
-        return { path: copied.path };
-      }),
     // The sound library (D134): online search (Openverse, Freesound with the user's key) and add.
     [RPC_METHODS.librarySearch]: (query) => sounds.search(query),
     [RPC_METHODS.libraryState]: () => sounds.state,
