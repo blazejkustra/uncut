@@ -119,7 +119,10 @@ export function musicItems(ctx: CheckContext) {
     for (const item of track.items) {
       const m = soundOf(ctx, item);
       if (!m || item.type !== "audio" || bundledSfxOf(m)) continue;
-      if (MUSIC_NAME.test(fileName(m)) || (musicTrack && item.duration > 6 * ctx.fps)) out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: bpmInName(m) });
+      // D296: a long sound on a plain audio track ("Audio", a file named after its song) is music too,
+      // unless it's named like an effect (and anything over 15 s: no effect is that long); before, a song not called "music" was neither music nor an effect.
+      const effectNamed = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
+      if (MUSIC_NAME.test(fileName(m)) || ((musicTrack || !effectNamed) && item.duration > 6 * ctx.fps) || item.duration > 15 * ctx.fps) out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: bpmInName(m) });
     }
   }
   return out;

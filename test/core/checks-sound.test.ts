@@ -106,3 +106,15 @@ test("the sound sheet: music with its tempo and level, each effect with its kind
   assert.equal(sheet.at(-1), "Sound profile strict: at most 4 effects in any 10 s, 6 dB under the music; too many or too loud fails a review.");
   assert.ok(!/[·•]/.test(sheet.join("\n")));
 });
+
+test("D296: a song on a plain \"Audio\" track, its file named after the song, is music on the sheet (not \"No music\")", () => {
+  const p = make({ music: "2-electro-dreams_arulo_mixkit-190_cut28.mp3" });
+  const music = p.tracks.find((t) => t.id === "music")!;
+  const plain = { ...p, tracks: p.tracks.map((t) => (t === music ? { ...t, name: "Audio" } : t)).filter((t) => t.id !== "sfx") };
+  const sheet = soundSheet(plain);
+  assert.match(sheet[0]!, /^music 0\.0 s to 21\.5 s: Music, at 0 dB/);
+  assert.ok(!sheet.includes("No music and no sound effects."), sheet.join("\n"));
+  // A long sound named like an effect is still music past 15 s; a short one stays an effect.
+  const swish = make({ music: "3-swish-swed_arulo_mixkit-201_cut28.mp3" });
+  assert.match(soundSheet({ ...swish, tracks: swish.tracks.map((t) => (t.id === "music" ? { ...t, name: "Audio" } : t)) })[0]!, /^music 0\.0 s/);
+});
