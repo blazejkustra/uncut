@@ -6,12 +6,12 @@ import HeroFx from "../components/HeroFx.tsx";
 import { ClaudeMark, CodexMark } from "../components/Icons.tsx";
 import SiteFooter from "../components/SiteFooter.tsx";
 import SiteHeader from "../components/SiteHeader.tsx";
-import { SITE_URL } from "../lib/site.ts";
+import { alternates, SITE_URL } from "../lib/site.ts";
 
 export const metadata: Metadata = {
   title: { absolute: "Uncut: edit videos by talking to an agent" },
   description: "Uncut is an AI-first video editor for the Mac. It runs your installed Claude Code, which edits with you on a real timeline. Free and open source.",
-  alternates: { canonical: "/" },
+  alternates: alternates("/"),
   openGraph: {
     type: "website",
     title: "Uncut",

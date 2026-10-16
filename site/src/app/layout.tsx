@@ -12,7 +12,6 @@ export const metadata: Metadata = {
     icon: [{ url: "/assets/favicon-32.png", sizes: "32x32", type: "image/png" }],
     apple: "/assets/apple-touch-icon.png",
   },
-  alternates: { types: { "application/rss+xml": [{ url: "/blog/rss.xml", title: "Uncut blog" }] } },
 };
 
 export const viewport: Viewport = {
