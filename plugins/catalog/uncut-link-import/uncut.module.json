@@ -1,0 +1,18 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "uncut.link-import",
+  "kind": "importer",
+  "name": "Import from link",
+  "version": "0.1.0",
+  "description": "Import a video or audio file from a link using your own yt-dlp. Uncut doesn't include yt-dlp: install it yourself (brew install yt-dlp). You need the rights to what you import; Uncut doesn't check.",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
+  "requires": {
+    "binary": "yt-dlp",
+    "install": "brew install yt-dlp",
+    "platforms": ["macos-arm64"]
+  },
+  "capabilities": ["network", "process:spawn", "media:write"]
+}

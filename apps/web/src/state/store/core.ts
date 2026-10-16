@@ -8,6 +8,7 @@ import type { AppStateShape, Project } from "./types.ts";
 import { actions } from "./actions.ts";
 import { environmentsUsable, flagOn, subscribeFlags } from "../../settings/labs.ts";
 import { panels, panelShown, subscribePanels } from "../../editor/layout.ts";
+import { linkImportReady } from "../../panels/library/linkImport.ts";
 
 export let state: AppStateShape = {
   ready: false,
@@ -47,7 +48,8 @@ export const set = (patch: Partial<AppStateShape>) => {
   // An Analyze refusal belongs to the project it was about.
   if (state.analysisError && before.snapshot?.dir !== state.snapshot?.dir) state = { ...state, analysisError: undefined };
   for (const listener of listeners) listener();
-  if (before.snapshot !== state.snapshot || before.recents !== state.recents || before.environment !== state.environment) syncShell();
+  // D280: and the plugins (File › Import from Link… follows its plugin being installed and allowed).
+  if (before.snapshot !== state.snapshot || before.recents !== state.recents || before.environment !== state.environment || before.plugins !== state.plugins) syncShell();
   // Plugins allowed, removed or installed: their looks, components and rules follow (D103).
   if (before.plugins !== state.plugins && state.connection === "connected") void actions.loadContributions();
 };
@@ -112,8 +114,8 @@ function syncShell() {
     // D245: the menu's Environments… is disabled while the Labs flag is off (and a remote isn't active).
     environments: environmentsUsable(flagOn("environments"), state.environment.kind),
     panels: { lib: panelShown(panels.get(), "lib"), side: panelShown(panels.get(), "side"), bottom: panelShown(panels.get(), "bottom"), focus: panels.get().focus },
-    // #94 (D263): File › Import from Link… only while its Labs flag is on.
-    importLink: flagOn("importFromLink"),
+    // #94 (D263, D280): File › Import from Link… only while its plugin is installed and allowed.
+    importLink: linkImportReady(state.plugins),
   });
   document.title = state.snapshot ? projectOf(state.snapshot).name : "Uncut";
 }

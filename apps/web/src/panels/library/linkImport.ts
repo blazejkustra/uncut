@@ -1,8 +1,9 @@
 // D259 (#94): Import from link's renderer state, kept here (not in the app store): whether the
-// dialog is open (with a link and a timeline drop when it came from one), the server's link jobs
-// (link.jobs, subscribed while connected by the host), and the rights notice's acknowledgement,
-// remembered on this Mac like Labs (localStorage).
-import type { LinkJob } from "@uncut/contracts";
+// dialog is open (with a link and a timeline drop when it came from one) and the server's link jobs
+// (link.jobs, subscribed while connected by the host). D280: the feature is a catalog plugin, so
+// every entry point (Media's + menu, File › Import from Link…, link drops) shows only while that
+// plugin is installed and allowed; the rights notice is shown on every import (nothing remembered).
+import { LINK_PLUGIN_ID, type LinkJob, type PluginInfo } from "@uncut/contracts";
 import { useSyncExternalStore } from "react";
 
 export interface LinkDialogRequest {
@@ -35,19 +36,8 @@ export const setLinkJobs = (next: ReadonlyArray<LinkJob>) => {
 export const useLinkJobs = () => useSyncExternalStore(subscribe, () => jobs);
 export const liveLinkJob = (j: LinkJob) => j.phase === "running" || j.phase === "importing";
 
-const ACK_KEY = "uncut.linkImport.rightsAck";
-export const rightsAcknowledged = () => {
-  try {
-    return localStorage.getItem(ACK_KEY) === "yes";
-  } catch {
-    return false;
-  }
-};
-export const acknowledgeRights = () => {
-  try {
-    localStorage.setItem(ACK_KEY, "yes");
-  } catch {}
-};
+/** D280: Import from link is usable: its plugin is installed and allowed on the server this window shows. */
+export const linkImportReady = (plugins: ReadonlyArray<PluginInfo> | undefined) => !!plugins?.some((p) => p.id === LINK_PLUGIN_ID && p.status === "ready");
 
 /** An http(s) link in a drag's data (a link dragged from a browser), if any. */
 export function linkFromDrag(data: DataTransfer): string | undefined {

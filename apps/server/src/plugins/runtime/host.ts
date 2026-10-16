@@ -11,7 +11,7 @@ const backoffMs = (recent: number) => (recent ? Math.min(8000, 250 * 2 ** (recen
 /** Per call (Uncut's own calls, D100): its own time limit instead of the manifest's, and MCP progress. */
 export interface CallExtra {
   readonly timeoutMs?: number | undefined;
-  readonly onProgress?: ((progress: number, total: number | undefined) => void) | undefined;
+  readonly onProgress?: ((progress: number, total: number | undefined, message?: string) => void) | undefined;
 }
 
 interface Slot {

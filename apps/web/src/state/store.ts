@@ -78,6 +78,8 @@ export async function start() {
       if (state.connection === "server-exited") return;
       set({ connection: "connected", environmentProblem: undefined, notice: state.notice?.transport ? undefined : state.notice });
       void actions.loadContributions();
+      // D280: which plugins are installed and allowed (Import from link's entry points follow its plugin).
+      void actions.listPlugins();
       // D252: a .uncut project double-clicked in Finder before the window was ready opens now (Local only).
       if (!askedPendingOpen && !isRemote()) {
         askedPendingOpen = true;

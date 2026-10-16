@@ -8,10 +8,9 @@ import { useMediaView, sortMedia, setMediaSort, type MediaSort, MEDIA_SORTS, set
 import { generatedMedia, GeneratedSection } from "../Generate.tsx";
 import { RecentSection } from "../RecentMedia.tsx";
 import { Empty, MediaTile } from "./MediaTile.tsx";
-import { useFlag } from "../../settings/labs.ts";
 import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { call } from "../../state/store/server.ts";
-import { dragMayHoldLink, linkFromDrag, liveLinkJob, openLinkImport, useLinkJobs } from "./linkImport.ts";
+import { dragMayHoldLink, linkFromDrag, linkImportReady, liveLinkJob, openLinkImport, useLinkJobs } from "./linkImport.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 import { ImportReport } from "./ImportReport.tsx";
 
@@ -22,8 +21,9 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
   const importing = running.length > 0 || uploading !== undefined;
   const [dragging, setDragging] = useState(false);
   const online = connection === "connected";
-  // D259 (#94): with the Labs flag, + is a menu with Import from link…, and a dropped link opens it.
-  const linkImport = useFlag("importFromLink");
+  // D259 (#94), D280: with the Import from link plugin installed and allowed, + is a menu with
+  // Import from link…, and a dropped link opens it; without it, + is the plain file import.
+  const linkImport = linkImportReady(app.plugins);
   const linkJobs = useLinkJobs().filter((j) => liveLinkJob(j) && j.projectDir === app.snapshot?.dir);
   // Generated media (D99) are listed under Generated, with their prompts.
   const generated = new Set(generatedMedia(project).map((m) => m.id));

@@ -1,15 +1,17 @@
-// Issue #94 (D259) on the packaged app (background window): Import from link through the user's
-// own yt-dlp, here the fake one (test/helpers/fake-yt-dlp.ts) on PATH: never the network, never a
-// real yt-dlp (UNCUT_SHELL_ENV=off keeps the login shell's PATH and the Homebrew folders out).
-// - Labs flag off: Media's + is the plain file import (no menu), a dropped link does nothing.
-// - On (Settings › Labs): + is a menu with Import from link…; the first time, the rights notice;
-//   then a link (Video, up to 1080p) is downloaded with progress into media/links/, named after the
-//   title, and lands in Media with its source URL; the notice isn't shown again.
+// Issue #94 (D259), D280 on the packaged app (background window): Import from link through the
+// user's own yt-dlp, here the fake one (test/helpers/fake-yt-dlp.ts) on PATH: never the network,
+// never a real yt-dlp (UNCUT_SHELL_ENV=off keeps the login shell's PATH and the Homebrew folders
+// out). It's a catalog plugin (uncut.link-import), not bundled and not a Labs flag.
+// - Not installed: Media's + is the plain file import (no menu), a dropped link does nothing.
+// - Installed and allowed (Settings › Plugins): + is a menu with Import from link…; every time, the
+//   rights notice; then a link (Video, up to 1080p) is downloaded with progress into media/links/,
+//   named after the title, and lands in Media with its source URL.
 // - A slow one (Audio only) shows progress and Cancel kills yt-dlp (and the child it started) and
 //   leaves no files; one hidden from the dialog shows in Media with its own Cancel; an unsupported
 //   link's error is in plain words.
 // - A link dropped on the timeline opens the dialog and its media goes there too.
 // - Without yt-dlp on PATH: the brew install hint with Copy; Check again finds it once it's there.
+// - A second launch (same data folder): still installed and allowed, the menu is there.
 // Screenshots: test-output/issue94-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -23,6 +25,7 @@ import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } fro
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-yt-dlp.ts");
+const CARD = "[data-testid=market-card][data-id='uncut.link-import']";
 const which = (bin: string) => spawnSync("/usr/bin/which", [bin], { encoding: "utf8" }).stdout.trim() || undefined;
 const FFMPEG = which("ffmpeg");
 const FFPROBE = which("ffprobe");
@@ -81,6 +84,10 @@ const openFromMenu = async (page: Page) => {
   await page.click("[data-testid=menu-import-link]");
   await waitFor(page, "[data-testid=link-import]");
 };
+const ackNotice = async (page: Page) => {
+  await waitFor(page, "[data-testid=link-notice-ok]");
+  await page.click("[data-testid=link-notice-ok]");
+};
 const typeLink = async (page: Page, url: string) => {
   await waitFor(page, "[data-testid=link-url]");
   await page.click("[data-testid=link-url]", { clickCount: 3 });
@@ -129,39 +136,51 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("#94: Import from link through the user's own yt-dlp (Labs)", { skip, timeout: 300000 }, async () => {
+test("#94, D280: Import from link through the user's own yt-dlp (a catalog plugin)", { skip, timeout: 300000 }, async () => {
   let app = await launch(shim);
   let { page } = app;
 
-  // Flag off: + imports files (the test dialog answers nothing), no menu; a dropped link does nothing.
+  // Not installed: + imports files (the test dialog answers nothing), no menu; a dropped link does nothing.
   await page.click("[data-testid=import-plus]");
   await sleep(500);
-  assert.equal(await page.$("[data-testid=context-menu]"), null, "no menu while the flag is off");
+  assert.equal(await page.$("[data-testid=context-menu]"), null, "no menu while the plugin isn't installed");
   await dropLink(page, "[data-testid=library]", "https://example.com/watch?v=off");
   await sleep(400);
-  assert.equal(await page.$("[data-testid=link-import]"), null, "a dropped link does nothing while the flag is off");
+  assert.equal(await page.$("[data-testid=link-import]"), null, "a dropped link does nothing while the plugin isn't installed");
   assert.ok(!(await page.$eval("body", (b) => (b as HTMLElement).innerText)).includes("Import from link"));
 
-  // Turn it on in Settings › Labs.
+  // No Labs flag for it any more.
   await meta(page, "Comma");
   await waitFor(page, "[data-testid=settings-nav-labs]");
   await page.click("[data-testid=settings-nav-labs]");
-  await waitFor(page, "[data-testid=lab-importFromLink]");
-  assert.equal(await page.$eval("[data-testid=lab-importFromLink-toggle]", (el) => (el as HTMLInputElement).checked), false, "off by default");
-  await page.click("[data-testid=lab-importFromLink-toggle]");
-  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=lab-importFromLink-toggle]")!.checked);
-  await shot(page, "labs");
-  await page.keyboard.press("Escape");
-  await page.waitForFunction(() => !document.querySelector("[data-testid=labs-settings]"));
+  await waitFor(page, "[data-testid=labs-settings]");
+  assert.equal(await page.$("[data-testid=lab-importFromLink]"), null, "not a Labs flag");
 
-  // + is a menu now; the first time, the rights notice.
+  // Install and allow it from Settings › Plugins (the catalog, off until the user does).
+  await page.click("[data-testid=settings-nav-plugins]");
+  await waitFor(page, "[data-testid=plugins-market]");
+  await waitFor(page, `[data-testid=market-available] ${CARD}[data-state=available]`, 20000);
+  const card = await page.$eval(CARD, (el) => (el as HTMLElement).innerText);
+  assert.match(card, /Import a video or audio file from a link using your own yt-dlp/);
+  assert.doesNotMatch(card, /youtube|instagram|tiktok|vimeo/i, "no site named");
+  await shot(page, "plugin-card");
+  await page.click("[data-testid='market-install-uncut.link-import']");
+  await waitFor(page, "[data-testid=plugin-dialog]", 20000);
+  await shot(page, "plugin-allow");
+  await page.click("[data-testid=plugin-dialog-allow]");
+  await waitFor(page, `[data-testid=market-installed] ${CARD}[data-state=enabled]`, 20000);
+  await page.click("[data-testid=settings-close]");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=plugins-market]"));
+
+  // + is a menu now; the rights notice first.
   await openFromMenu(page);
   await waitFor(page, "[data-testid=link-notice]");
   assert.match(await page.$eval("[data-testid=link-notice]", (el) => (el as HTMLElement).innerText), /You need the rights to what you import\. Uncut doesn't check\./);
   await shot(page, "notice");
-  await page.click("[data-testid=link-notice-ok]");
+  await ackNotice(page);
   await waitFor(page, "[data-testid=link-form]");
-  assert.equal(await page.evaluate(() => localStorage.getItem("uncut.linkImport.rightsAck")), "yes", "remembered on this Mac");
+  assert.equal(await page.evaluate(() => localStorage.getItem("uncut.linkImport.rightsAck")), null, "nothing remembered: it's shown on every import");
+  assert.match(await page.$eval("[data-testid=link-rights]", (el) => el.textContent ?? ""), /You need the rights to what you import/);
   assert.match(await page.$eval("[data-testid=link-tool]", (el) => el.textContent ?? ""), /yt-dlp 2026\.07\.04/);
   assert.equal(await page.$eval("[data-testid=link-quality]", (el) => (el as HTMLSelectElement).value), "1080", "best up to 1080p by default");
 
@@ -189,14 +208,16 @@ test("#94: Import from link through the user's own yt-dlp (Labs)", { skip, timeo
   const runs = () => readFileSync(join(root, "ytdlp.log"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { argv: Array<string>; uncutEnv: number });
   const first = runs()[0]!;
   assert.ok(first.argv.includes("--ignore-config") && first.argv.includes("--no-playlist"), "no config files, no playlist");
+  assert.ok(first.argv.includes("--no-cookies") && first.argv.includes("--no-cookies-from-browser"), "nothing signed in");
   assert.deepEqual(first.argv.slice(-2), ["--", "https://example.com/watch?v=sunset&list=PL1"]);
   assert.ok(first.argv.includes("res:1080,vcodec:h264,acodec:aac,ext:mp4:m4a"));
   assert.equal(first.uncutEnv, 0, "yt-dlp gets none of Uncut's own variables");
 
-  // A slow one, Audio only: no notice this time; progress; Cancel kills it and its child, leaves nothing.
+  // A slow one, Audio only: the notice again; progress; Cancel kills it and its child, leaves nothing.
   await openFromMenu(page);
+  await waitFor(page, "[data-testid=link-notice]");
+  await ackNotice(page);
   await waitFor(page, "[data-testid=link-form]");
-  assert.equal(await page.$("[data-testid=link-notice]"), null, "the notice is shown once");
   await typeLink(page, "https://example.com/slow-audio");
   await page.click("[data-testid=link-kind-audio]");
   assert.equal(await page.$("[data-testid=link-quality]"), null, "no quality for audio");
@@ -232,6 +253,7 @@ test("#94: Import from link through the user's own yt-dlp (Labs)", { skip, timeo
 
   // An unsupported link: the error in plain words; Try again goes back to the form.
   await openFromMenu(page);
+  await ackNotice(page);
   await typeLink(page, "https://example.com/unsupported");
   await page.click("[data-testid=link-start]");
   await waitFor(page, "[data-testid=link-job][data-phase=failed]");
@@ -242,6 +264,7 @@ test("#94: Import from link through the user's own yt-dlp (Labs)", { skip, timeo
   // Not a link: refused before yt-dlp runs.
   const before = runs().length;
   await openFromMenu(page);
+  await ackNotice(page);
   await typeLink(page, "ftp://example.com/file.mp4");
   await page.$eval("[data-testid=link-form]", (f) => (f as HTMLFormElement).requestSubmit());
   await waitFor(page, "[data-testid=link-form] [data-testid=link-error]");
@@ -251,6 +274,8 @@ test("#94: Import from link through the user's own yt-dlp (Labs)", { skip, timeo
 
   // A link dropped on the timeline: the dialog (prefilled), and the media goes on the timeline too.
   await dropLink(page, "[data-testid=lanes]", "https://example.com/watch?v=drop", { x: 300, y: 40 });
+  await waitFor(page, "[data-testid=link-notice]");
+  await ackNotice(page);
   await waitFor(page, "[data-testid=link-form]");
   assert.equal(await page.$eval("[data-testid=link-url]", (el) => (el as HTMLInputElement).value), "https://example.com/watch?v=drop");
   assert.match(await page.$eval("[data-testid=link-form]", (el) => (el as HTMLElement).innerText), /on the timeline where you dropped/);
@@ -282,6 +307,6 @@ test("#94: Import from link through the user's own yt-dlp (Labs)", { skip, timeo
   writeFileSync(join(bare, "yt-dlp"), `#!/bin/sh\nexec "${process.execPath}" "${FAKE}" "$@"\n`);
   chmodSync(join(bare, "yt-dlp"), 0o755);
   await page.click("[data-testid=link-check-again]");
-  await waitFor(page, "[data-testid=link-form]");
-  assert.equal(await page.$("[data-testid=link-notice]"), null, "the acknowledgement is remembered on this Mac");
+  await waitFor(page, "[data-testid=link-notice]");
+  await shot(page, "notice-again");
 });

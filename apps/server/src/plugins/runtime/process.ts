@@ -19,7 +19,7 @@ interface Pending {
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
   /** MCP progress for this request (its progressToken is the request id). */
-  readonly onProgress?: ((progress: number, total: number | undefined) => void) | undefined;
+  readonly onProgress?: ((progress: number, total: number | undefined, message?: string) => void) | undefined;
 }
 
 /** Thrown when a call ran out of time (the process is then stopped). */
@@ -150,9 +150,11 @@ export class PluginProcess {
       if (typeof m.method === "string") {
         // MCP progress for a call that asked for it (D100: a transcript's progress).
         if (m.method === "notifications/progress" && (m.id === undefined || m.id === null)) {
-          const params = (msg as { params?: { progressToken?: unknown; progress?: unknown; total?: unknown } }).params;
+          const params = (msg as { params?: { progressToken?: unknown; progress?: unknown; total?: unknown; message?: unknown } }).params;
           const p = typeof params?.progressToken === "number" ? this.pending.get(params.progressToken) : undefined;
-          if (p?.onProgress && typeof params!.progress === "number" && Number.isFinite(params!.progress)) p.onProgress(params!.progress, typeof params!.total === "number" && params!.total > 0 ? params!.total : undefined);
+          // D280: the optional message (a step in words, e.g. Import from link's), at most 200 characters.
+          const message = typeof params?.message === "string" && params.message.trim() ? params.message.trim().slice(0, 200) : undefined;
+          if (p?.onProgress && typeof params!.progress === "number" && Number.isFinite(params!.progress)) p.onProgress(params!.progress, typeof params!.total === "number" && params!.total > 0 ? params!.total : undefined, message);
           return;
         }
         // A request from the plugin: ping is answered, nothing else is offered. Notifications need no answer.
@@ -220,7 +222,7 @@ export class PluginProcess {
    * With `onProgress`, the request carries `_meta.progressToken` (its id) and the plugin's
    * notifications/progress for it are passed on.
    */
-  request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal, onProgress?: (progress: number, total: number | undefined) => void): Promise<unknown> {
+  request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal, onProgress?: (progress: number, total: number | undefined, message?: string) => void): Promise<unknown> {
     if (!this.alive) return Promise.reject(new Error(`${this.spec.name} isn't running`));
     // A turn that ended before the call got here (during a cold start or a backoff wait).
     if (signal?.aborted) return Promise.reject(new PluginCancelled("The call was cancelled: the agent turn ended."));

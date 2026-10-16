@@ -19,8 +19,8 @@
       "description": "Namespaced id used in project.json, e.g. transition.crossfade or argent.capture."
     },
     "kind": {
-      "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source", "pack"],
-      "description": "pack (D103): a plugin that only adds data (contributes: text looks, components, check rules); nothing of it runs in Uncut's process or the renderer."
+      "enum": ["transition", "move", "text-style", "component", "effect", "audio-processor", "analyzer", "generator", "capture-source", "importer", "pack"],
+      "description": "pack (D103): a plugin that only adds data (contributes: text looks, components, check rules); nothing of it runs in Uncut's process or the renderer. importer (D280): a process plugin Uncut itself calls to bring a file into Media (Import from link); it has no agent tools."
     },
     "name": { "type": "string", "minLength": 1 },
     "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.+-]*)?$" },
