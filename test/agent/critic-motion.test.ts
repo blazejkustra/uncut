@@ -6,7 +6,8 @@
 // <motion> block and the rubric line, and pops becoming review defects. With the desktop built: a
 // synthetic graphic (uncut:lib/motion.js springs, one white flash frame, one hard jump) rendered
 // like review_submit renders it, decoded by ffmpeg, scanned: the flash is the pop, the jump is the
-// jump; a strip draws as one small image.
+// jump; a strip draws as one small image. The render order and the time budget (a stubbed slow
+// renderer on a fake clock): strips and scene-change windows first, the scan cut short and saying so.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -14,9 +15,9 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionIntent, motionLines, motionScan, SCAN_BUDGET, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
-import { renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
+import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
 import { resolveGraphicLibs, type Project } from "../../packages/core/src/index.ts";
 
@@ -150,6 +151,62 @@ window.render = (t, info) => {
 };
 </script>`;
 
+test("render order: the strips' frames and the scene changes' windows first, then the rest of the scan, each once", () => {
+  const fps = 60;
+  const duration = 30 * fps;
+  const anchors = motionAnchors([{ start: 0 }, { start: 10 }, { start: 20 }], fps, duration);
+  const strips = stripPlan(anchors, fps, duration);
+  const scanList = scanPlan(anchors, fps, duration);
+  const order = motionRenderOrder(strips, scanList, anchors, duration);
+  assert.equal(new Set(order).size, order.length, "each frame once");
+  const want = new Set([...strips.flatMap((s) => s.frames), ...scanList]);
+  assert.deepEqual([...order].sort((a, b) => a - b), [...want].sort((a, b) => a - b), "the union of both");
+  const firstPart = order.slice(0, order.findIndex((f, i) => i > 0 && f < order[i - 1]!));
+  for (const a of anchors) for (let d = -SCAN_WINDOW; d <= SCAN_WINDOW; d++) if (a.frame + d >= 0) assert.ok(firstPart.includes(a.frame + d), `f ${a.frame + d} near ${a.label} comes first`);
+  for (const s of strips) for (const f of s.frames) assert.ok(firstPart.includes(f));
+  assert.ok(firstPart.includes(duration - 1) && firstPart.includes(duration - 2), "the seam's frames come first");
+});
+
+test("the time budget: a slow renderer is stopped, the scan runs on what was rendered and says how much", async () => {
+  const fps = 60;
+  const duration = 30 * fps;
+  const anchors = motionAnchors([{ start: 0 }, { start: 10 }, { start: 20 }], fps, duration);
+  const strips = stripPlan(anchors, fps, duration);
+  const scanList = scanPlan(anchors, fps, duration);
+  // A fake clock and a renderer that takes 300 ms a frame and asks `until` before each.
+  let clock = 1000;
+  const render = async (frames: ReadonlyArray<number>, until: () => boolean) => {
+    {
+      const out: Array<{ frame: number; jpeg: Buffer }> = [];
+      for (const frame of frames) {
+        if (until()) break;
+        clock += 300;
+        out.push({ frame, jpeg: Buffer.from([frame & 255]) });
+      }
+      return out;
+    }
+  };
+  const got = await motionFrames({ strips, scanList, anchors, duration, render, budgetMs: 15_000, now: () => clock });
+  assert.equal(got.cut, true);
+  assert.equal(got.byFrame.size, 51, "frames until 15 s had gone by: 51 at 300 ms (the 51st starts at exactly 15 s)");
+  assert.equal(got.planned, scanList.length);
+  assert.ok(got.scanned.length < scanList.length && got.scanned.length > 0);
+  for (const a of anchors) assert.ok(got.scanned.includes(a.frame) && got.scanned.includes(Math.min(duration - 1, a.frame + 1)), `the scene change at f ${a.frame} is covered`);
+  for (const s of strips) for (const f of s.frames) assert.ok(got.byFrame.has(f), `strip frame ${f} rendered`);
+  // The scan on those frames says it was cut short, with the words the tool result uses.
+  const scan = motionScan(got.scanned.map((f) => ({ frame: f, gray: new Uint8Array(16).fill(f % 7) })), fps);
+  const lines = motionLines(scan, fps, { consecutive: false, planned: got.planned });
+  assert.equal(lines[0], budgetLine(got.scanned.length, got.planned));
+  assert.match(lines[0]!, new RegExp(`frame-difference scan covered ${got.scanned.length} of ${scanList.length} frames: time budget`, "i"));
+  // A fast renderer isn't cut: every frame, no budget line.
+  clock = 0;
+  const fast = await motionFrames({ strips, scanList, anchors, duration, render: async (frames, until) => frames.flatMap((frame) => (until() ? [] : [{ frame, jpeg: Buffer.alloc(1) }])), budgetMs: 15_000, now: () => clock });
+  assert.equal(fast.cut, false);
+  assert.equal(fast.scanned.length, scanList.length);
+  const full = motionScan(fast.scanned.map((f) => ({ frame: f, gray: new Uint8Array(16) })), fps);
+  assert.ok(!motionLines(full, fps, { consecutive: false, planned: fast.planned }).some((l) => /time budget/.test(l)));
+});
+
 test("a synthetic graphic rendered like review_submit renders it: the flash frame is the pop, the jump the jump; a strip is one small image", { skip, timeout: 180000 }, async () => {
   const libs = await loadGraphicLibs(resolve("assets/graphic-libs"));
   const project = {
@@ -161,8 +218,28 @@ test("a synthetic graphic rendered like review_submit renders it: the flash fram
   } as unknown as Project;
   const graphics = new Map([["graphics/pop.html", resolveGraphicLibs(POP_GRAPHIC, libs)]]);
   const frames = Array.from({ length: 36 }, (_, i) => i);
-  const rendered = await renderFramesWith("ffmpeg", project, () => "", graphics, frames, 96, new AbortController().signal);
+  // As review_submit renders them (D292): one session, the capture shrunk by the rasteriser, at the strips' width.
+  const session = await openFrameSession("ffmpeg", project, () => "", graphics, new AbortController().signal, undefined, { downscale: true });
+  let rendered: Awaited<ReturnType<typeof session.render>>;
+  let sessionSheet: Buffer;
+  try {
+    rendered = await session.render(frames, STRIP_CELL);
+    sessionSheet = await session.sheet(rendered.slice(0, 3).map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}` })), stripLayout(3, 400 / 500));
+    // `until` stops it: frames after it says true aren't rendered.
+    let n = 0;
+    assert.equal((await session.render(frames, STRIP_CELL, { until: () => n++ >= 4 })).length, 4);
+  } finally {
+    await session.close();
+  }
   assert.equal(rendered.length, 36);
+  const sized = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "-i", "-"], { input: rendered[0]!.jpeg, encoding: "utf8" });
+  assert.equal(sized.stdout.trim(), "200,250");
+  assert.equal(sessionSheet[1], 0xd8, "the session's sheet is a JPEG");
+  // The plain path (render_frames, full-size captures) finds the same.
+  const plain = await renderFramesWith("ffmpeg", project, () => "", graphics, frames, 96, new AbortController().signal);
+  const plainGrays = await grayFrames("ffmpeg", plain.map((f) => f.jpeg), 64, 80);
+  const plainScan = motionScan(plain.map((f, i) => ({ frame: f.frame, gray: plainGrays[i]! })), 30);
+  assert.deepEqual([plainScan.pops.map((p) => p.frame), plainScan.jumps.map((j) => j.frame)], [[12], [24]]);
   const { w, h } = scanSize(project.canvas);
   assert.deepEqual([w, h], [64, 80]);
   const grays = await grayFrames("ffmpeg", rendered.map((f) => f.jpeg), w, h);
