@@ -46,6 +46,12 @@ export interface PermissionContext {
   readonly project: string;
   /** Folders the user confirmed on a card (a mentioned folder): Read, Write and Edit there are like the project's. */
   readonly roots: ReadonlyArray<string>;
+  /**
+   * D296: folders Uncut itself points the agent at, read without a card (never written): the
+   * project's active brand kit (the sanctioned source of the product's look and screenshots) and
+   * the bundled graphic libraries. Real paths.
+   */
+  readonly sanctioned?: ReadonlyArray<string>;
   /** Folders the user pasted in this chat and hasn't confirmed yet (a card offers them). */
   readonly candidates?: ReadonlyArray<string>;
   /** "Always for this session" answers so far (grant keys). */
@@ -58,7 +64,7 @@ export interface PermissionContext {
   readonly realpath?: (p: string) => string;
 }
 
-type Zone = "cache" | "project" | "root" | "outside";
+type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered. */
 const FILE_TOOLS = new Set(["ffmpeg", "ffprobe", "ffplay", "file", "wc", "tar", "zip", "unzip", "cp", "mv", "ln", "rsync", "curl", "wget", "tee", "dd", "install", "sips", "convert", "magick"]);
 const WRAPPERS = new Set(["env", "time", "command", "exec", "nice", "nohup", "timeout", "builtin", "xargs", "sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "source", ".", "eval", "python", "python3", "node", "perl", "ruby", "php", "osascript", "open", "deno", "bun", "npx", "pnpm", "npm", "yarn", "make", "awk", "sed", "find", "git", "sudo", "su", "doas", "watch", "parallel", "script", "expect", "tclsh", "lua", "swift", "java"]);
@@ -70,7 +76,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   const real = (p: string, base = ctx.project) => realPath(p, base, home, ctx.realpath);
   const project = ctx.project;
   const zone = (r: string): Zone =>
-    inside(r, join(project, ".cache")) ? "cache" : inside(r, project) ? "project" : ctx.roots.some((d) => r !== d && inside(r, d)) ? "root" : "outside";
+    inside(r, join(project, ".cache")) ? "cache" : inside(r, project) ? "project" : ctx.roots.some((d) => r !== d && inside(r, d)) ? "root" : (ctx.sanctioned ?? []).some((d) => inside(r, d)) ? "sanctioned" : "outside";
   const mode = ACCESS_NAME[ctx.access];
   // D214 (user): the web taint (after WebSearch/WebFetch, confirmed folders and every command ask)
   // is Ask first's and Look only's; in Auto, Claude Code's auto mode handles those actions.
@@ -116,7 +122,8 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       const r = raw === p || raw === "." ? real(raw) : real(raw, base);
       const z = zone(r);
       if (z === "cache" || z === "project") continue;
-      if (z === "root" && !webUsed) continue;
+      // A confirmed folder or the active kit (and the bundled libraries): like the project, until the turn reads the web.
+      if ((z === "root" || z === "sanctioned") && !webUsed) continue;
       if (ctx.grants.has(`Read:${r}`)) continue;
       return outsideCard(tool === "Read" ? "Read a file" : "Look in a folder", r, `Read:${r}`);
     }
