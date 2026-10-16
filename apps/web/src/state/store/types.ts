@@ -164,4 +164,4 @@ export interface GenerateDraft {
  * A field where keys type text (text-like inputs, textareas, contenteditable). A focused checkbox,
  * colour picker or slider is not one: ⌘Z there undoes the project, not typing.
  */
-export type SettingsSection = "project" | "app" | "labs" | "shortcuts";
+export type SettingsSection = "project" | "app" | "plugins" | "labs" | "shortcuts";

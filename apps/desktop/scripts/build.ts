@@ -37,3 +37,9 @@ await build({
 const renderer = dir("../web/dist");
 if (existsSync(renderer)) await cp(renderer, dir("dist/renderer"), { recursive: true });
 else console.warn("apps/web/dist not built yet; only the dev server URL will work");
+
+// D258: the plugins the app ships, laid out from plugins/bundled.json (bundled ones in plugins/, the
+// rest in plugins/catalog/); electron-builder.yml's extraResources take stage/plugins.
+const { stagePlugins } = await import("../../../scripts/plugin-bundle.ts");
+const staged = stagePlugins(undefined, dir("stage/plugins"));
+console.log(`plugins: ${staged.bundled.length} bundled, ${staged.catalog.length} in the catalog`);
