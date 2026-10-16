@@ -24,3 +24,22 @@ export const APP_PERMISSIONS: ReadonlySet<string> = new Set([
 
 /** Whether a permission is granted: one the app uses, asked by the app's own top-level page. */
 export const allowPermission = (permission: string, fromAppPage: boolean): boolean => fromAppPage && APP_PERMISSIONS.has(permission);
+
+/** Contracts' GRAPHIC_PATH (the desktop doesn't bundle contracts' values; a test keeps them equal). */
+export const GRAPHIC_PATH = "/media/graphic";
+
+/**
+ * Whether a frame inside the app's page may navigate to `url` (D290 review): only to a graphic's
+ * document on the server the page is connected to (`server`, its http origin; GRAPHIC_PATH). A
+ * graphic's sandboxed iframe may otherwise navigate itself, e.g. to a remote URL carrying a frame
+ * of the project's media it was given, so everything else is refused. No server known yet: nothing.
+ */
+export const allowFrameNavigation = (url: string, server: string | undefined, graphicPath = GRAPHIC_PATH): boolean => {
+  if (!server) return false;
+  try {
+    const u = new URL(url);
+    return u.origin === new URL(server).origin && u.pathname.startsWith(`${graphicPath}/`) && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+};

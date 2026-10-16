@@ -6,6 +6,13 @@
 //   stays open per file and size and reads forward, so a graphic drawing consecutive frames (the
 //   export, playback) costs one decode per frame, not one seek; a jump back or far ahead starts a
 //   new one at that frame. Untagged files get the colours the export gives their clips.
+//   The frame for t is picked by timestamp as a clip's is (plan/video.ts sourceFramePick: the last
+//   frame that starts at or before t): on a constant-rate file that's frame floor(t × fps); a
+//   variable-rate one (its r_frame_rate and avg_frame_rate differ) has its frames' times read once
+//   with ffprobe, and the frame is found among them, so a fresh seek and a run read on agree.
+//   Requests for one file and size take turns (one queue each); at most DECODERS decoders are open,
+//   and only an idle one is ever stopped for another (a busy one is waited for), so many graphics
+//   or sizes at once queue rather than evict each other. Nothing starts once the source is closed.
 // - An image: decoded once at that size as a PNG (its alpha kept). An SVG is sent as it is.
 // Pictures are kept in a small cache (by bytes), so the same frame asked again (another graphic,
 // a re-render, the preview after the export) isn't decoded twice.
@@ -33,7 +40,10 @@ export interface GraphicMediaPicture {
 export interface GraphicMediaSource {
   /** The picture a graphic asked for; rejects with a sentence for the graphic (unknown id, audio, unreadable file). */
   readonly picture: (req: GraphicMediaRequest) => Promise<GraphicMediaPicture>;
-  /** The same, written to a file for the rasteriser (a ring of files in a folder of its own). */
+  /**
+   * The same, written to a file for the rasteriser: a new file each time (in a folder of its own),
+   * which the reader removes once it has read it (apps/desktop renderMedia.ts); close() removes the rest.
+   */
   readonly file: (req: GraphicMediaRequest) => Promise<{ readonly file: string; readonly type: string }>;
   /** Stops every decoder and removes its files. */
   readonly close: () => void;
@@ -48,7 +58,30 @@ interface VideoInfo {
   readonly frames?: number;
   /** Untagged colour (exportPlan untaggedFilter): its height, else undefined. */
   readonly untagged?: number;
+  /** A variable-rate file: each frame's start (s from the file's start, ascending), from ffprobe. */
+  readonly times?: ReadonlyArray<number>;
 }
+
+/** How late a frame may start and still be the one at t (s): sourceFramePick's 0.0001. */
+const PICK_SLACK = 0.0001;
+
+/** The frame on screen at t (s of the media): by its frames' times when it's variable-rate, else on its grid (core graphicMediaFrame). */
+export function frameAt(info: Pick<VideoInfo, "fps" | "frames" | "times">, t: number): number {
+  const times = info.times;
+  if (!times?.length) return graphicMediaFrame(t, info.fps, info.frames);
+  // The last frame starting at or before t (the first when t is before it).
+  let lo = 0;
+  let hi = times.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (times[mid]! <= t + PICK_SLACK) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/** Where to seek so that ffmpeg's exact seek gives frame n first: half a frame before it. */
+const seekTo = (info: VideoInfo, n: number) => (info.times?.length ? (info.times[n - 1]! + info.times[n]!) / 2 : (n - 0.5) / info.fps);
 
 /** A 24-bit top-down BMP of `raw` (bgr24 rows, no padding). */
 export function bmpOf(raw: Buffer, width: number, height: number): Buffer {
@@ -80,9 +113,9 @@ const rate = (s: string | undefined) => {
 /** A video's upright size, frame rate, frame count and colour tags, from ffprobe. */
 async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
   const ffprobe = join(dirname(bin), "ffprobe");
-  const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration,color_space:stream_side_data=rotation:stream_tags=rotate:format=duration", "-of", "json", path], undefined);
+  const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration,color_space:stream_side_data=rotation:stream_tags=rotate:format=duration,start_time", "-of", "json", path], undefined);
   type Stream = { width?: number; height?: number; r_frame_rate?: string; avg_frame_rate?: string; nb_frames?: string; duration?: string; color_space?: string; side_data_list?: Array<{ rotation?: number }>; tags?: { rotate?: string } };
-  let parsed: { streams?: Array<Stream>; format?: { duration?: string } } = {};
+  let parsed: { streams?: Array<Stream>; format?: { duration?: string; start_time?: string } } = {};
   try {
     parsed = JSON.parse(r.stdout);
   } catch {}
@@ -94,7 +127,27 @@ async function probeVideo(bin: string, path: string): Promise<VideoInfo> {
   const duration = Number(s.duration ?? parsed.format?.duration);
   const counted = Number(s.nb_frames);
   const frames = Number.isInteger(counted) && counted > 0 ? counted : Number.isFinite(duration) && duration > 0 ? Math.max(1, Math.round(duration * fps)) : undefined;
-  return { width: turned ? s.height : s.width, height: turned ? s.width : s.height, fps, ...(frames ? { frames } : {}), ...(!s.color_space || s.color_space === "unknown" ? { untagged: s.height } : {}) };
+  const base = { width: turned ? s.height : s.width, height: turned ? s.width : s.height, fps, ...(frames ? { frames } : {}), ...(!s.color_space || s.color_space === "unknown" ? { untagged: s.height } : {}) };
+  // Variable rate (its nominal and average rates differ): the frames' own times.
+  const nominal = rate(s.r_frame_rate);
+  const average = rate(s.avg_frame_rate);
+  if (!nominal || !average || Math.abs(nominal - average) <= 1e-3 * nominal) return base;
+  const times = await frameTimes(ffprobe, path, Number(parsed.format?.start_time) || 0);
+  return times.length ? { ...base, frames: times.length, times } : base;
+}
+
+/** A video's frames' start times (s from the file's start, as ffmpeg's -ss counts), ascending: its packets' pts without decoding. */
+async function frameTimes(ffprobe: string, path: string, start: number): Promise<Array<number>> {
+  const r = await run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", path], undefined);
+  if (r.code !== 0) return [];
+  const times: Array<number> = [];
+  for (const line of r.stdout.split("\n")) {
+    const [pts, flags = ""] = line.trim().split(",");
+    const t = Number(pts);
+    // A packet the demuxer drops (an edit list's discard flag) is never shown.
+    if (pts && Number.isFinite(t) && !flags.includes("D")) times.push(t - start);
+  }
+  return times.sort((a, b) => a - b);
 }
 
 /** One open decoder of a file at one size: frame `next` comes next on its stdout. */
@@ -103,7 +156,6 @@ interface Decoder {
   next: number;
   last?: { readonly n: number; readonly raw: Buffer };
   readonly read: () => Promise<Buffer | undefined>;
-  busy: Promise<unknown>;
   idle?: NodeJS.Timeout;
 }
 
@@ -148,7 +200,6 @@ const READ_AHEAD_S = 3;
 const DECODERS = 4;
 const IDLE_MS = 20_000;
 const CACHE_BYTES = 192 * 1024 * 1024;
-const RING = 64;
 
 /**
  * The source of media pictures for graphics. `media` gives the project's media as they are now
@@ -158,6 +209,10 @@ const RING = 64;
 export function graphicMediaSource(opts: { readonly bin: string; readonly media: () => ReadonlyArray<Media>; readonly mediaPath: (m: Media) => string; readonly videotoolbox?: boolean }): GraphicMediaSource {
   const infos = new Map<string, Promise<VideoInfo>>();
   const decoders = new Map<string, Decoder>();
+  // One queue per file and size: its requests take turns, so only one ever reads or restarts its decoder.
+  const queues = new Map<string, { tail: Promise<void>; users: number }>();
+  // Requests waiting for a decoder to go idle (every open one busy).
+  const waiting: Array<() => void> = [];
   const cache = new Map<string, Promise<GraphicMediaPicture>>();
   const sizes = new Map<string, number>();
   // The last frame asked of each file at each size (for reading ahead).
@@ -166,7 +221,8 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
   let started = 0;
   let closed = false;
   let folder: string | undefined;
-  let slot = 0;
+  let written = 0;
+  const closedError = () => new Error("closed");
 
   const remember = (key: string, picture: Promise<GraphicMediaPicture>) => {
     cache.set(key, picture);
@@ -188,6 +244,10 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     return picture;
   };
 
+  const wake = () => {
+    for (const go of waiting.splice(0)) go();
+  };
+
   const stop = (key: string) => {
     const d = decoders.get(key);
     if (!d) return;
@@ -195,14 +255,40 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     clearTimeout(d.idle);
     d.child.stdout?.removeAllListeners("data");
     d.child.kill("SIGKILL");
+    wake();
+  };
+
+  /** Run `job` in `key`'s queue, after the requests before it. */
+  const inTurn = <T>(key: string, job: () => Promise<T>): Promise<T> => {
+    let q = queues.get(key);
+    if (!q) queues.set(key, (q = { tail: Promise.resolve(), users: 0 }));
+    const queue = q;
+    queue.users++;
+    const done = queue.tail.then(job);
+    queue.tail = done.then(
+      () => {},
+      () => {},
+    ).then(() => {
+      if (--queue.users > 0) return;
+      queues.delete(key);
+      wake();
+    });
+    return done;
+  };
+
+  /** Room for one more decoder: the least recently used idle one stopped, else wait until one is idle. Never a busy one. */
+  const room = async () => {
+    while (decoders.size >= DECODERS) {
+      if (closed) throw closedError();
+      const idle = [...decoders.keys()].find((k) => !queues.has(k));
+      if (idle !== undefined) return stop(idle);
+      await new Promise<void>((go) => waiting.push(go));
+    }
   };
 
   const startDecoder = (key: string, path: string, info: VideoInfo, width: number, height: number, from: number): Decoder => {
-    stop(key);
-    // The oldest decoder goes when there are too many (Map order: least recently used first).
-    while (decoders.size >= DECODERS) stop(decoders.keys().next().value!);
     // Seek half a frame early: ffmpeg's exact seek gives the first frame at or after it, frame `from`.
-    const seek = from > 0 ? ["-ss", ((from - 0.5) / info.fps).toFixed(6)] : [];
+    const seek = from > 0 ? ["-ss", seekTo(info, from).toFixed(6)] : [];
     const args = [
       "-hide_banner",
       "-nostdin",
@@ -230,58 +316,59 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     const child = spawn(opts.bin, localInputs(opts.bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "ignore"] });
     child.on("error", () => {});
     started++;
-    const d: Decoder = { child, next: from, read: frameReader(child.stdout!, width * height * 3), busy: Promise.resolve() };
+    const d: Decoder = { child, next: from, read: frameReader(child.stdout!, width * height * 3) };
     decoders.set(key, d);
     return d;
   };
 
-  /** Frame n of a video at width × height, raw bgr24: read on from an open decoder when it's just ahead, else from a new one. */
-  const videoFrame = async (path: string, info: VideoInfo, width: number, height: number, n: number, readAhead = false): Promise<{ raw: Buffer; n: number }> => {
+  /**
+   * Frame n of a video at width × height, raw bgr24: read on from its open decoder when it's just
+   * ahead, else from a new one; undefined past the stream's real end. A read-ahead never starts a decoder.
+   */
+  const videoFrame = (path: string, info: VideoInfo, width: number, height: number, n: number, readAhead = false): Promise<{ raw: Buffer; n: number }> => {
     const key = `${path}|${width}x${height}`;
-    let d = decoders.get(key);
-    const ahead = Math.max(30, Math.ceil(READ_AHEAD_S * info.fps));
-    if (d && d.last?.n === n) return { raw: d.last.raw, n };
-    if (!d || n < d.next || n - d.next > ahead) {
-      // A read-ahead gives up rather than start a decoder.
-      if (readAhead) throw new Error("superseded");
-      d = startDecoder(key, path, info, width, height, n);
-    }
-    else {
-      // Most recently used goes to the end.
-      decoders.delete(key);
-      decoders.set(key, d);
-    }
-    const decoder = d;
-    const work = decoder.busy.then(async () => {
+    return inTurn(key, async () => {
+      if (closed) throw closedError();
+      let d = decoders.get(key);
+      if (d && d.last?.n === n) return { raw: d.last.raw, n };
+      const ahead = Math.max(30, Math.ceil(READ_AHEAD_S * info.fps));
+      if (!d || n < d.next || n - d.next > ahead) {
+        if (readAhead) throw new Error("superseded");
+        stop(key);
+        await room();
+        if (closed) throw closedError();
+        d = startDecoder(key, path, info, width, height, n);
+      } else {
+        // Most recently used goes to the end.
+        decoders.delete(key);
+        decoders.set(key, d);
+      }
+      const decoder = d;
       clearTimeout(decoder.idle);
-      // Another request moved it past n while this one waited: start again at n.
-      if (decoder.last?.n === n) return decoder.last;
-      if (n < decoder.next || decoders.get(key) !== decoder) return "again" as const;
       while (decoder.next <= n) {
         const raw = await decoder.read();
-        // Stopped under it (another request started a decoder here): not the stream's end.
-        if (!raw && decoders.get(key) !== decoder) return "again" as const;
         if (!raw) break;
         decoder.last = { n: decoder.next, raw: Buffer.from(raw) };
         decoder.next++;
       }
-      decoder.idle = setTimeout(() => decoders.get(key) === decoder && stop(key), IDLE_MS);
-      decoder.idle.unref?.();
-      return decoder.last;
+      // Only close() stops a decoder while its queue is busy.
+      if (decoders.get(key) !== decoder) throw closedError();
+      if (decoder.last && decoder.last.n <= n) {
+        decoder.idle = setTimeout(() => decoders.get(key) === decoder && !queues.has(key) && stop(key), IDLE_MS);
+        decoder.idle.unref?.();
+        return { raw: decoder.last.raw, n: decoder.last.n };
+      }
+      // Nothing at or before n (a seek past the stream's real end).
+      stop(key);
+      return undefined;
+    }).then((got) => {
+      if (got) return got;
+      if (readAhead) throw new Error("past the end");
+      // The last frame, from a little earlier.
+      const back = Math.max(0, n - Math.ceil(info.fps));
+      if (n > 0) return videoFrame(path, { ...info, frames: Math.max(1, back) }, width, height, back);
+      throw new Error("its video has no frames ffmpeg can read");
     });
-    decoder.busy = work.catch(() => {});
-    const got = await work;
-    if (got === "again") {
-      // A read-ahead gives up rather than start a decoder; a request asks again (a decoder at n).
-      if (readAhead) throw new Error("superseded");
-      return videoFrame(path, info, width, height, n, readAhead);
-    }
-    if (got && got.n <= n) return { raw: got.raw, n: got.n };
-    // Nothing at or before n (a seek past the stream's real end): the last frame, from a little earlier.
-    if (readAhead) throw new Error("past the end");
-    stop(key);
-    if (n > 0) return videoFrame(path, { ...info, frames: Math.max(1, n - Math.ceil(info.fps)) }, width, height, Math.max(0, n - Math.ceil(info.fps)));
-    throw new Error("its video has no frames ffmpeg can read");
   };
 
   const imagePicture = async (path: string, ask: GraphicMediaRequest): Promise<GraphicMediaPicture> => {
@@ -321,7 +408,7 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
         }
         const v = await info;
         const { width, height } = graphicMediaSize(v.width, v.height, req);
-        const n = graphicMediaFrame(req.t, v.fps, v.frames);
+        const n = frameAt(v, req.t);
         const decode = (k: number, ahead = false) => videoFrame(path, v, width, height, k, ahead).then(({ raw, n: shown }) => ({ bytes: bmpOf(raw, width, height), type: "image/bmp" as const, width, height, frame: shown }));
         const frameKey = (k: number) => `${path}|${width}x${height}|${k}`;
         const key = frameKey(n);
@@ -342,7 +429,8 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
               // Only by reading on: a read-ahead never starts a decoder (a cache hit far back would).
               const d = decoders.get(run);
               const reads = !!d && ahead >= d.next && ahead - d.next <= Math.max(30, Math.ceil(READ_AHEAD_S * v.fps));
-              if (!closed && reads && !cache.has(frameKey(ahead))) remember(frameKey(ahead), decode(ahead, true)).catch(() => {});
+              // Not while a request waits for a decoder to go idle (this one would keep it busy).
+              if (!closed && reads && !waiting.length && !cache.has(frameKey(ahead))) remember(frameKey(ahead), decode(ahead, true)).catch(() => {});
             },
             () => {},
           );
@@ -355,15 +443,18 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     picture,
     file: async (req) => {
       const p = await picture(req);
+      // Asked before close, answered after: no new folder.
+      if (closed) throw closedError();
       folder ??= mkdtempSync(join(tmpdir(), "uncut-graphic-media-"));
-      // A ring of files: the rasteriser reads each as soon as it's told, long before the ring comes round.
-      const file = join(folder, `m${slot++ % RING}${p.type === "image/bmp" ? ".bmp" : p.type === "image/png" ? ".png" : ".svg"}`);
+      // A new file each time: the reader removes it once read, so none is rewritten while it's read.
+      const file = join(folder, `m${written++}${p.type === "image/bmp" ? ".bmp" : p.type === "image/png" ? ".png" : ".svg"}`);
       await writeFile(file, p.bytes);
       return { file, type: p.type };
     },
     close: () => {
       closed = true;
       for (const key of [...decoders.keys()]) stop(key);
+      wake();
       cache.clear();
       if (folder) rmSync(folder, { recursive: true, force: true });
     },

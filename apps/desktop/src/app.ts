@@ -9,7 +9,7 @@ import { setAppMenu, setUpdateMenu } from "./menu.ts";
 import { disabledLabel } from "./updater/policy.ts";
 import { startUpdater, type Updater } from "./updater/updater.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
-import { allowPermission } from "./permissions.ts";
+import { allowFrameNavigation, allowPermission } from "./permissions.ts";
 import { textMenu } from "./textMenu.ts";
 import { LOCAL_NAME, makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
 import { pingServer } from "./relay.ts";
@@ -63,6 +63,9 @@ const isAppUrl = (raw: string) => {
     return false;
   }
 };
+
+/** The http origin of the server the page was last given (SERVER_CONNECTION_CHANNEL), for allowFrameNavigation. */
+let connectedServer: string | undefined;
 
 const openIfWeb = (raw: string) => {
   if (/^https?:\/\//i.test(raw)) void shell.openExternal(raw);
@@ -201,6 +204,12 @@ function createWindow() {
     if (isAppUrl(url)) return;
     event.preventDefault();
     openIfWeb(url);
+  });
+  // A frame in the page (a graphic's sandboxed iframe, D78) may only load a graphic's document from
+  // Uncut's server: never navigate itself elsewhere (a remote URL carrying a media frame, D290 review).
+  contents.on("will-frame-navigate", (event) => {
+    if (event.isMainFrame || allowFrameNavigation(event.url, connectedServer)) return;
+    event.preventDefault();
   });
   contents.setWindowOpenHandler(({ url }) => {
     openIfWeb(url);
@@ -349,7 +358,13 @@ app.whenReady().then(() => {
       if (!fromAppWindow(event)) throw new Error("not allowed");
       return fn(...(args as A));
     });
-  handle(SERVER_CONNECTION_CHANNEL, () => activeConnection());
+  handle(SERVER_CONNECTION_CHANNEL, () =>
+    activeConnection().then((c) => {
+      // The server the page talks to (local or the relay, both on 127.0.0.1): its graphics' documents load in frames.
+      connectedServer = c.url.replace(/^ws/, "http");
+      return c;
+    }),
+  );
   handle(ENVIRONMENTS_CHANNEL, () => environments!.list());
   handle(ENVIRONMENT_ADD_CHANNEL, (input: { name?: unknown; url?: unknown; token?: unknown }) => {
     if (typeof input?.url !== "string" || typeof input.token !== "string" || typeof input.name !== "string") throw new Error("not an environment");
