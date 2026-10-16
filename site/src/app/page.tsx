@@ -34,7 +34,7 @@ export default function Home() {
             <h1>Edit videos by talking to an agent</h1>
             <p className="lede">
               Uncut is a video editor for the Mac with an agent built in. It runs your installed{" "}
-              <span className="who"><ClaudeMark />Claude{" "}Code</span>, with{" "}
+              <span className="who"><ClaudeMark />Claude{"\u00a0"}Code</span>, with{" "}
               <span className="who"><CodexMark />Codex</span> coming soon. The agent plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.
             </p>
             <DownloadButtons />
