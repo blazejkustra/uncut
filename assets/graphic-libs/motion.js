@@ -35,6 +35,11 @@
                                                          // eased; to: "bleed" is the whole frame past every edge. The button grows into
                                                          // the next scene's full shape; never shrink a scene to a dot
      uncutMotion.coverage(s, width, height)              // 0..1: the share of the frame inside shape s (keep it at 0.7 or more on every frame)
+   DOM, CSS and SVG are first class (backdrop-filter, SVG filters, masks, variable-font axes all export):
+     uncutMotion.cameraCSS(cam, width, height)           // "matrix(...)" for a world div (transform-origin: 0 0)
+     uncutMotion.shapeCSS(s)                             // { left, top, width, height, borderRadius } in px for a div
+     uncutMotion.riseCSS(t, { at, out, size })           // { height, transform, visible }: a mask div of that height
+                                                         // (overflow: hidden) around a span with that transform
      uncutMotion.swap(t, at, { out: 0.1, in: 0.14, gap: 0.03, blur: 6, lift: 14 })
                                                          // { out: { alpha, blur, dy, visible }, in: {...} }: the content inside a morphing
                                                          // shape swaps on its own timing: the old content leaves (up, a few px of blur),
@@ -346,6 +351,21 @@
     out.full = out.x - out.w / 2 <= 0 && out.y - out.h / 2 <= 0 && out.x + out.w / 2 >= W && out.y + out.h / 2 >= H;
     return out;
   }
+  // DOM twins of apply, shapePath and riseText.
+  function cameraCSS(cam, W, H) {
+    var z = cam.zoom;
+    return "matrix(" + z + ", 0, 0, " + z + ", " + (W / 2 - cam.x * z) + ", " + (H / 2 - cam.y * z) + ")";
+  }
+  function shapeCSS(s) {
+    var r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2);
+    return { left: s.x - s.w / 2, top: s.y - s.h / 2, width: s.w, height: s.h, borderRadius: r };
+  }
+  function riseCSS(t, o) {
+    var size = o.size || 96;
+    var h = size * 1.4;
+    var r = rise(t, { at: o.at, out: o.out, height: h, spring: o.spring || "spring.snap", outSpring: o.outSpring || "spring.snap" });
+    return { height: h, transform: "translateY(" + Math.round(r.y * 100) / 100 + "px)", visible: r.visible };
+  }
   // Content swapping inside a morphing shape: the old content leaves first (alpha down, lifting,
   // a short blur), the new one arrives after a gap; both quick, so the swap reads as one change.
   function swap(t, at, o) {
@@ -420,6 +440,9 @@
     morph: morph,
     coverage: coverage,
     swap: swap,
+    cameraCSS: cameraCSS,
+    shapeCSS: shapeCSS,
+    riseCSS: riseCSS,
     beat: beat,
     loop: loop,
     ease: { inOut: easeInOut, out: easeOut, in: easeIn },

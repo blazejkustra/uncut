@@ -10,7 +10,7 @@ import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts"
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
 import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "../agentCritic.ts";
 import { activeBrand, readBrand, readPlan, writeBrief, writeReview, writeStoryboard, normBrief, normBeats } from "../../brand/store.ts";
-import { guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
+import { BUILTIN_IDS, guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
 import { FONT_ERRORS } from "../agentTools.ts";
 import { readGraphics, type FrameSessionShape } from "../../export/exporter.ts";
 import { projectFonts } from "../../export/fonts.ts";
@@ -18,10 +18,32 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
+
+/**
+ * This run's facts for the critic: a film that shows the app making itself may only show true
+ * numbers and statuses (the storyboard's beats, the review rounds so far and what each found).
+ */
+export function runFacts(beats: number | undefined, reviews: ReadonlyArray<{ readonly round: number; readonly blockers?: ReadonlyArray<unknown> }>): string {
+  const rounds = reviews.map((x) => `round ${x.round}: ${x.blockers?.length ? `${x.blockers.length} blocker${x.blockers.length === 1 ? "" : "s"}, not passed` : "no blockers"}`);
+  return `This run's facts, for any number or status the film shows about its own making: the storyboard has ${beats ?? "no"} beat${beats === 1 ? "" : "s"}; this is review ${reviews.length + 1}${rounds.length ? ` (before it: ${rounds.join("; ")})` : ", the first"}. A beat count, review result, round or timing on screen that differs from these is invented: a defect.`;
+}
+
+/**
+ * The skills whose checklists the critic checks. D297: with the motion film on, it wins: launch
+ * promo's held end card, motion craft's one thing at a time and sound design's few effects contradict
+ * it, so only the film's checklist and the brand's go to the critic.
+ */
+export function criticSkills<S extends { readonly name: string }>(skills: ReadonlyArray<S>): ReadonlyArray<S> {
+  if (!skills.some((x) => x.name === BUILTIN_IDS.film)) return skills;
+  return skills.filter((x) => x.name === BUILTIN_IDS.film || x.name === BUILTIN_IDS.brand);
+}
+
+/** D297: what the critic hears when the scan couldn't run (rehearsal 3 marked motion down for it). */
+export const UNMEASURED = "That's Uncut's problem, not the video's: don't mark anything down for what the scan would have measured (pops, holds, the seam); judge timing only from the strips and frames you have, and say what you couldn't check.";
 
 /** D295: storyboard_propose renders at most this many stills, this wide. */
 export const MAX_STILLS = 4;
@@ -301,6 +323,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                   stripImages.push({ label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`, jpeg });
                 }
                 let scan: MotionScan | undefined;
+                let drop: string | undefined;
                 const flat: Array<FlatStrip> = [];
                 const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
                 // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
@@ -308,18 +331,24 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 if (ffmpeg && got.scanned.length > 2) {
                   const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, got.scanned.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
                   scan = motionScan(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), fps);
+                  // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
+                  const di = dropBeat(sb?.beats);
+                  if (di !== undefined) drop = dropLine(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), clampF(sb!.beats[di]!.start * fps), fps);
                 }
                 // D296: how much of each strip's frames is flat background (the median of its frames).
                 const stripFrames = [...new Set(strips.flatMap((st) => st.frames.filter((f) => got.byFrame.has(f))))];
                 if (ffmpeg && stripFrames.length) {
                   const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, stripFrames.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
                   const share = new Map(stripFrames.map((f, i) => [f, flatFraction(grays[i]!, w, h)]));
+                  const canvas = new Map(stripFrames.map((f, i) => [f, canvasShare(grays[i]!, w, h)]));
                   for (const st of strips) {
                     const xs = st.frames.flatMap((f) => (share.has(f) ? [share.get(f)!] : [])).sort((a, b) => a - b);
-                    if (xs.length) flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]! });
+                    const cs = st.frames.flatMap((f) => (canvas.has(f) ? [canvas.get(f)!] : [])).sort((a, b) => a.share - b.share);
+                    const mid = cs[cs.length >> 1];
+                    if (xs.length) flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
                   }
                 }
-                return { images: stripImages, scan, flat, planned: got.planned, cut: got.cut };
+                return { images: stripImages, scan, flat, drop, planned: got.planned, cut: got.cut };
               }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
               return { mine, evidence, motion };
             }),
@@ -367,14 +396,17 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       // D292: the time budget left some of the scan's frames out.
       const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
       const motionFacts = [
-        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : ["problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."]),
+        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : [`${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."} ${UNMEASURED}`]),
         ...flatLines(flatStrips, fps, intent.footage),
+        ...("drop" in motion && motion.drop ? [motion.drop] : []),
         ...beatWordLines(sb?.beats),
+        // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
+        ...(intent.oneTake ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
       ];
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
-      const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: brand.skills.map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended, motion: { lines: motionFacts, strips: motion.images.length } };
+      const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: criticSkills(brand.skills).map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended, motion: { lines: motionFacts, strips: motion.images.length } };
       const bin = yield* Effect.promise(() => findClaude());
       if (!bin) return textResult("Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.", true);
       const answer = yield* Effect.tryPromise({ try: (signal) => runCritic({ bin, env: sessionEnv(process.env), model: r.session.model, message: criticMessage(input), signal: AbortSignal.any([signal, r.abort.signal]) }), catch: (e) => e as Error }).pipe(
@@ -400,7 +432,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         blockers: review.blockers,
         defects: review.defects,
         ...(review.fixes ? { fixes: review.fixes } : {}),
-        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
+        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : "ffmpeg isn't on PATH" } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
         next: reviewNext(review, round),
       });

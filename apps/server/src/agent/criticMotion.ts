@@ -58,9 +58,11 @@ const clampTo = (duration: number) => (f: number) => Math.max(0, Math.min(durati
  * The moments the strips and the scan look around: each storyboard beat's start (its scene change),
  * else one every 2 s; never more than `max`, picked evenly, frame 0 first.
  */
-export function motionAnchors(beats: ReadonlyArray<{ readonly start: number; readonly title?: string }> | undefined, fps: number, duration: number, max = MAX_STRIPS): Array<MotionAnchor> {
+export function motionAnchors(beats: ReadonlyArray<StoryBeat> | undefined, fps: number, duration: number, max = MAX_STRIPS): Array<MotionAnchor> {
   const clamp = clampTo(duration);
   let all: Array<MotionAnchor> = (beats ?? []).map((b, i) => ({ frame: clamp(b.start * fps), label: `beat ${i + 1}${b.title ? ` ${b.title}` : ""}` }));
+  const drop = dropBeat(beats);
+  const dropFrame = drop === undefined ? undefined : clamp(beats![drop]!.start * fps);
   if (!all.length) {
     const every = Math.max(1, Math.round(2 * fps));
     for (let f = 0; f < duration; f += every) all.push({ frame: f, label: `${(f / fps).toFixed(1)} s` });
@@ -68,7 +70,44 @@ export function motionAnchors(beats: ReadonlyArray<{ readonly start: number; rea
   const seen = new Set<number>();
   all = all.filter((a) => (seen.has(a.frame) ? false : (seen.add(a.frame), true))).sort((a, b) => a.frame - b.frame);
   if (all.length <= max) return all;
-  return Array.from({ length: max }, (_, i) => all[Math.round((i * (all.length - 1)) / (max - 1))]!);
+  const picked = Array.from({ length: max }, (_, i) => all[Math.round((i * (all.length - 1)) / (max - 1))]!);
+  // The drop always gets its strip (rehearsal 3: 6 of 12 beats picked evenly skipped it): it takes
+  // the place of the nearest picked beat that isn't frame 0 or the last.
+  if (dropFrame !== undefined && !picked.some((a) => a.frame === dropFrame)) {
+    const inner = picked.map((a, i) => ({ i, d: Math.abs(a.frame - dropFrame) })).filter((x) => x.i > 0 && x.i < picked.length - 1).sort((a, b) => a.d - b.d)[0];
+    if (inner) picked[inner.i] = all.find((a) => a.frame === dropFrame)!;
+    picked.sort((a, b) => a.frame - b.frame);
+  }
+  return picked;
+}
+
+/** A storyboard beat as the motion facts read it. */
+export interface StoryBeat {
+  readonly start: number;
+  readonly end?: number;
+  readonly title?: string;
+  readonly entry?: string;
+  readonly sound?: string;
+}
+
+/** The storyboard beat that lands on the drop: the first whose title or sound names it, or none. */
+export function dropBeat(beats: ReadonlyArray<StoryBeat> | undefined): number | undefined {
+  const i = (beats ?? []).findIndex((b) => /\bdrop\b/i.test(`${b.title ?? ""}\n${b.sound ?? ""}`));
+  return i < 0 ? undefined : i;
+}
+
+/**
+ * What happens around the drop, from the scan's consecutive frames there (SCAN_WINDOW each side): how
+ * much the picture changes over the frames before the drop frame and over those from it. A reveal
+ * that lands on the drop changes most from it; one that already happened changes little there.
+ */
+export function dropLine(frames: ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>, drop: number, fps: number): string | undefined {
+  const at = new Map(frames.map((x) => [x.frame, x.gray]));
+  const a = at.get(drop - SCAN_WINDOW), b = at.get(drop - 1), c = at.get(drop + SCAN_WINDOW);
+  if (!a || !b || !c) return undefined;
+  const before = frameDiff(a, b), from = frameDiff(b, c);
+  const verdict = from >= 2 * before && from >= POP_MIN ? "the big change lands on it" : before >= 2 * from && before >= POP_MIN ? "the big change came before it, the drop itself changes little" : from < POP_MIN && before < POP_MIN ? "little changes on either side of it" : "the change is spread across it";
+  return `Around the drop (f ${drop}, ${secs(drop, fps)}): the picture changes ${(before * 100).toFixed(1)} % over the ${SCAN_WINDOW} frames before it and ${(from * 100).toFixed(1)} % over the ${SCAN_WINDOW} frames from it: ${verdict}. Look at its strip: the preview should sit inset until the drop and flood past the corners on it.`;
 }
 
 /** A strip per anchor: STRIP_FRAMES frames 1/12 s apart, two before the anchor and the rest after (clamped, distinct). */
@@ -324,12 +363,17 @@ export function stripLayout(count: number, aspect: number): SheetLayout {
  * the brief's words. D296: and whether it is footage first (the brief's words name footage, or the
  * timeline has video or pictures), where the footage should fill the frame.
  */
+/** Words that make a film UI first: it shows an app's interface (the motion-film skill's main path). */
+const UI_WORDS = /\b(app|UI|interface|screens?|composer|timeline|cursor|software|the program)\b/i;
+
 export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean }): { oneTake: boolean; loop: boolean; footage: boolean } {
   const film = o.skills.includes("motion-film");
   return {
     oneTake: film || /one[- ]take|never cut|no cuts|one continuous (shot|take)/i.test(o.words),
     loop: film || /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
-    footage: !!o.hasFootage || /\b(footage|drone|b-?roll|clips?|travel|photos?|aerials?)\b/i.test(o.words),
+    // Rehearsal 3: a UI-first film names its footage too (the preview plays it), but its frames are a
+    // calm canvas around one UI element by design, so its words naming the app's UI keep it UI first.
+    footage: !!o.hasFootage || (/\b(footage|drone|b-?roll|clips?|travel|photos?|aerials?)\b/i.test(o.words) && !UI_WORDS.test(o.words)),
   };
 }
 
@@ -384,6 +428,53 @@ export interface FlatStrip {
   readonly at: number;
   /** The median flat share of the strip's frames. */
   readonly flat: number;
+  /** The median share of flat canvas reaching the frame's edge (canvasShare), and its grey level. */
+  readonly canvas?: number;
+  readonly level?: number;
+}
+
+/**
+ * The canvas around the picture: from the frame's edge, the pixels of the edge's most common flat
+ * level (± FLAT_LEVELS, each within FLAT_GRADIENT of the one it was reached from), and that level.
+ * A dark panel on near-black with no visible edge counts as canvas (it reads as one), a full-bleed
+ * picture is about 0, a hero element on a calm canvas is the canvas's share. 0..1, level 0..255.
+ */
+export function canvasShare(gray: Uint8Array, w: number, h: number): { share: number; level: number } {
+  const n = w * h;
+  if (!n || gray.length < n) return { share: 0, level: 0 };
+  const edge: Array<number> = [];
+  for (let x = 0; x < w; x++) edge.push(x, (h - 1) * w + x);
+  for (let y = 1; y < h - 1; y++) edge.push(y * w, y * w + w - 1);
+  const hist = new Uint32Array(256);
+  for (const i of edge) hist[gray[i]!]!++;
+  let best = 0;
+  let level = 0;
+  for (let v = 0; v < 256; v++) {
+    let c = 0;
+    for (let u = Math.max(0, v - FLAT_LEVELS); u <= Math.min(255, v + FLAT_LEVELS); u++) c += hist[u]!;
+    if (c > best) {
+      best = c;
+      level = v;
+    }
+  }
+  // The most common single level inside that window (a tie in the window sum leans to its low end).
+  let peak = level;
+  for (let u = Math.max(0, level - FLAT_LEVELS); u <= Math.min(255, level + FLAT_LEVELS); u++) if (hist[u]! > hist[peak]!) peak = u;
+  level = peak;
+  const seen = new Uint8Array(n);
+  const queue: Array<number> = [];
+  for (const i of edge) if (!seen[i] && Math.abs(gray[i]! - level) <= FLAT_LEVELS) (seen[i] = 1), queue.push(i);
+  let count = 0;
+  while (queue.length) {
+    const i = queue.pop()!;
+    count++;
+    const x = i % w;
+    for (const j of [x + 1 < w ? i + 1 : -1, x > 0 ? i - 1 : -1, i + w < n ? i + w : -1, i - w >= 0 ? i - w : -1]) {
+      if (j < 0 || seen[j]) continue;
+      if (Math.abs(gray[j]! - level) <= FLAT_LEVELS && Math.abs(gray[j]! - gray[i]!) <= FLAT_GRADIENT) (seen[j] = 1), queue.push(j);
+    }
+  }
+  return { share: count / n, level };
 }
 
 /** The scale facts for the critic: each strip's flat share, and whether most are over FLAT_MAX. */
@@ -392,6 +483,9 @@ export function flatLines(strips: ReadonlyArray<FlatStrip>, fps: number, footage
   const over = strips.filter((x) => x.flat > FLAT_MAX);
   return [
     `Flat background (one flat colour, no footage, picture or type) per frame strip, the median of its frames: ${strips.map((x) => `${x.label} (${secs(x.at, fps)}) ${Math.round(x.flat * 100)} %`).join(", ")}.`,
+    strips.some((x) => x.canvas !== undefined)
+      ? `Canvas around the picture (flat colour reaching the frame's edge; grey 0 black to 255 white) per strip: ${strips.flatMap((x) => (x.canvas === undefined ? [] : [`${x.label} ${Math.round(x.canvas * 100)} % at grey ${x.level ?? 0}`])).join(", ")}. A calm canvas around one hero element is fine; a dark canvas (grey under 40) around dark panels reads muddy.`
+      : "",
     footage
       ? over.length * 2 > strips.length
         ? `Over ${Math.round(FLAT_MAX * 100)} % at ${over.length} of ${strips.length} strips: in a footage-first film the footage sits small on an empty canvas there.`

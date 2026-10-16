@@ -175,10 +175,11 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         const alias = query ? aliasOf(query) : undefined;
         return textResult({
           ...(sfx.length > SOUNDS_SHOWN ? { more: `${sfx.length - SOUNDS_SHOWN} more of ${sfx.length}: narrow it with query or category.` } : {}),
-          sounds: sfx.slice(0, SOUNDS_SHOWN).map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0", ...(onlyWhenAsked(s) ? { onlyWhenAsked: true } : {}) })),
+          // D297: peakFrame, frames from the file's start to its loudest moment: start it that many frames before its event.
+          sounds: sfx.slice(0, SOUNDS_SHOWN).map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), ...(s.peaks.length ? { peakFrame: Math.round(((s.peaks.indexOf(Math.max(...s.peaks)) + 0.5) * s.seconds * fps) / s.peaks.length) } : {}), author: s.author, license: "CC0", ...(onlyWhenAsked(s) ? { onlyWhenAsked: true } : {}) })),
           ...(yours.length ? { yours: yours.map((f) => ({ id: `folder:${f.id}`, title: f.name, folder: f.folderName, file: f.rel })) } : {}),
           ...(alias?.clip ? { clip: clipNote(alias) } : {}),
-          note: "Bundled CC0 sounds (no credit needed); `yours` are files from the user's own sound folders (theirs to use). library_add copies one into the project. Sound effects go only on real visual events, at most 4 in any 10 s, 6 to 12 dB under the music; onlyWhenAsked ones (memes, crowds) only when the user asked for that joke (D207).",
+          note: "Bundled CC0 sounds (no credit needed); `yours` are files from the user's own sound folders (theirs to use). library_add copies one into the project; start one peakFrame frames before its event so its loudest moment lands on it. Sound effects go only on real visual events (project_check's sound profile sets how many), 6 to 12 dB under the music; onlyWhenAsked ones (memes, crowds) only when the user asked for that joke (D207).",
         });
       }
       if (!query) return textResult("query must say what to search for, e.g. whoosh, bass boom, upbeat piano.", true);

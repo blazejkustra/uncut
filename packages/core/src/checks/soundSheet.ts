@@ -34,10 +34,12 @@ export const FAST_CUT_S = 2;
  * (core skills soundProfileFor). strict: a promo or product video, or one that asks for subtle sound:
  * the numbers above, and density and level fail a critic round; standard: the same numbers as
  * findings; loose: a meme, gaming, social or music edit that may want dense, loud effects (much looser
- * numbers, still findings; no click or meme notes); off: no sound-effect limits at all.
+ * numbers, still findings; no click or meme notes); ui (D297): a motion film, one soft effect per real
+ * cursor press, drag or morph, on every beat if the picture changes on every beat, the same click
+ * as often as it's pressed, under the music, never a blocker; off: no sound-effect limits at all.
  */
-export type SoundProfile = "strict" | "standard" | "loose" | "off";
-export const SOUND_PROFILES: ReadonlyArray<SoundProfile> = ["strict", "standard", "loose", "off"];
+export type SoundProfile = "strict" | "standard" | "loose" | "ui" | "off";
+export const SOUND_PROFILES: ReadonlyArray<SoundProfile> = ["strict", "standard", "loose", "ui", "off"];
 export interface SoundLimits {
   /** Effects starting in any 10 s. */
   readonly per10s: number;
@@ -54,12 +56,14 @@ export const SOUND_LIMITS: Readonly<Record<Exclude<SoundProfile, "off">, SoundLi
   strict: { per10s: SFX_PER_10S, repeatMax: SFX_REPEAT_MAX, hitsPer15s: SFX_HITS_PER_15S, underDb: SFX_UNDER_MUSIC_DB, taste: true },
   standard: { per10s: SFX_PER_10S, repeatMax: SFX_REPEAT_MAX, hitsPer15s: SFX_HITS_PER_15S, underDb: SFX_UNDER_MUSIC_DB, taste: true },
   loose: { per10s: 12, repeatMax: 8, hitsPer15s: 4, underDb: -3, taste: false },
+  ui: { per10s: 24, repeatMax: 1000, hitsPer15s: 2, underDb: SFX_UNDER_MUSIC_DB, taste: true },
 };
 /** The profile in a few words (the Brief card, project_check, the critic's sheet). */
 export function soundProfileText(p: SoundProfile): string {
   if (p === "off") return "off: no limits on sound effects";
   const l = SOUND_LIMITS[p];
   const level = l.underDb > 0 ? `${l.underDb} dB under the music` : `up to ${-l.underDb} dB over the music`;
+  if (p === "ui") return `ui: one soft effect per real cursor press, drag or morph (at most ${l.per10s} in any 10 s), ${level}, no meme sounds; a finding, never a blocker`;
   return `${p}: at most ${l.per10s} effects in any 10 s, ${level}${p === "strict" ? "; too many or too loud fails a review" : "; too many or too loud is a finding"}`;
 }
 

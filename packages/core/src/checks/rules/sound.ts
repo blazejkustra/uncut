@@ -155,9 +155,11 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
             ...(ok ? { fix: { summary: lim.underDb > 0 ? `Put ${s.label} ${SFX_FIX_UNDER_DB} dB under the music` : `Put ${s.label} at the music's level`, ops: [{ op: "update_item" as const, item: s.item.id, set: { gainDb: target } }] } } : { hint: "Turn it down in the Inspector." }),
           });
         }
-        // What it lands on.
+        // What it lands on. D297: under the ui profile a press inside a graphic (a motion film's one
+        // item) lands on a change the timeline can't see: the critic judges it on the frames.
         const on = hitsOf(ctx, s, events);
-        if (!on.length) {
+        const inGraphic = ctx.sound === "ui" && ctx.project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic" && (ctx.starts.get(i.id) ?? 0) <= s.start && s.start < (ctx.starts.get(i.id) ?? 0) + i.duration));
+        if (!on.length && !inGraphic) {
           const near = events.reduce<VisualEvent | undefined>((best, e) => (!best || Math.abs(e.frame - s.start) < Math.abs(best.frame - s.start) ? e : best), undefined);
           out.push({
             key: `sound:sync:${s.item.id}`,
@@ -166,7 +168,7 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
             frame: s.start,
             hint: s.kind === "whoosh" ? "Start a whoosh 1 to 2 frames before the cut or move it carries, or delete it." : s.kind === "riser" ? "End a riser on the reveal it builds to, or delete it." : "Move it onto the frame its event happens (1 to 2 frames early), or delete it.",
           });
-        } else if (lim.taste && s.kind === "ui" && on.every((e) => e.text)) {
+        } else if (on.length && lim.taste && s.kind === "ui" && on.every((e) => e.text)) {
           out.push({
             key: `sound:click-text:${s.item.id}`,
             message: `${s.label} at ${secs(s.start, fps)} clicks on a text (${on[0]!.what}); a click belongs on a click the viewer sees, and a text arriving or typing isn't one.`,
