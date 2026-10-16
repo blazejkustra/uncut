@@ -1,23 +1,24 @@
-// Writes THIRD_PARTY_NOTICES (plain text, D112): what Uncut ships that others made, and what it
-// relies on but doesn't ship.
+// Writes THIRD_PARTY_NOTICES (plain text, D112; derived from the bundles since #103, D278): what
+// Uncut ships that others made, and what it relies on but doesn't ship.
 //   node scripts/notices.ts           write THIRD_PARTY_NOTICES
 //   node scripts/notices.ts --check   exit 1 if the file is out of date, or a shipped npm package
 //                                     has a copyleft (GPL, AGPL, LGPL) or unknown licence
-// npm: the production dependencies of the workspace packages whose code ships (bundled into
-// server.mjs, the renderer or the plugin SDK), followed through node_modules the way Node resolves
-// them; licences from each package.json. Rust: the crates in native/media/Cargo.lock, licences
-// from the local cargo registry when it's there. Sound effects from assets/sfx/library.json; fonts from
-// assets/fonts/OFL.txt; three.js from assets/graphic-libs (D193). No author fields (they carry
-// email addresses).
+// npm: exactly the packages that end up in the app's bundles. Each bundle the build makes (the
+// server and its MCP entry, the desktop's main and preload, the shader runner, the editor) is
+// bundled again here in memory with esbuild's metafile, and every node_modules input names a
+// package, devDependencies included when they are bundled (electron-updater and its deps); plus
+// the plugin SDK's runtime dependencies (shipped as source). Each package's licence file (and its
+// NOTICE, as Apache 2.0 asks) is copied in full, identical texts once. Rust: the crates in
+// native/media/Cargo.lock, licences from the local cargo registry when it's there. Sound effects
+// from assets/sfx/library.json; fonts from assets/fonts/OFL.txt; three.js from assets/graphic-libs
+// (D193). No author fields (they carry email addresses).
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const OUT = join(ROOT, "THIRD_PARTY_NOTICES");
-/** Workspace packages whose production dependencies end up in the app. */
-const SHIPPED = ["apps/server", "apps/web", "apps/desktop", "packages/core", "packages/contracts", "packages/plugin-sdk"];
-
 type Pkg = { name: string; version: string; license: string; repository: string; dir: string };
 
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
@@ -45,38 +46,86 @@ function findPackage(name: string, from: string): string | undefined {
   }
 }
 
-export function npmPackages(): Array<Pkg> {
+type Build = { build: (options: Record<string, unknown>) => Promise<{ metafile?: { inputs: Record<string, unknown> } }> };
+/** The desktop's esbuild (the one the build uses). */
+const esbuild = () => createRequire(join(ROOT, "apps/desktop/package.json"))("esbuild") as Build;
+const at = (p: string) => join(ROOT, p);
+/** Vite's `?inline`, `?url` and `?worker&url` imports: the file itself (code is followed, assets are not packages). */
+const viteQueries = {
+  name: "vite-queries",
+  setup(b: { onResolve: Function; onLoad: Function }) {
+    b.onResolve({ filter: /\?/ }, (a: { path: string; resolveDir: string }) => ({ path: resolve(a.resolveDir, a.path.replace(/\?.*$/, "")), namespace: "query" }));
+    b.onLoad({ filter: /.*/, namespace: "query" }, (a: { path: string }) => ({ contents: `${/\.[cm]?[jt]sx?$/.test(a.path) ? `import ${JSON.stringify(a.path)};` : ""}export default "";`, loader: "js", resolveDir: ROOT }));
+  },
+};
+
+/** The bundles the build makes (apps/server/scripts/build.ts, apps/desktop/scripts/build.ts, apps/web's vite build), as esbuild metafiles. */
+async function bundledInputs(): Promise<Array<string>> {
+  const { build } = esbuild();
+  const common = { bundle: true, write: false, metafile: true, outdir: join(ROOT, "dist-notices"), logLevel: "silent", absWorkingDir: ROOT };
+  const results = await Promise.all([
+    build({ ...common, entryPoints: [at("apps/server/src/app/bin.ts"), at("apps/server/src/agent/mcp.ts")], platform: "node", format: "esm", external: ["bufferutil", "utf-8-validate"] }),
+    build({ ...common, entryPoints: { main: at("apps/desktop/src/main.ts"), preload: at("apps/desktop/src/preload.ts") }, platform: "node", format: "cjs", external: ["electron"], loader: { ".woff2": "dataurl" } }),
+    build({ ...common, entryPoints: [at("apps/web/src/preview/shaderRunner.ts")], platform: "browser", format: "iife" }),
+    build({ ...common, entryPoints: [at("apps/web/src/main.tsx")], platform: "browser", format: "esm", jsx: "automatic", loader: { ".woff2": "dataurl", ".svg": "file", ".png": "file" }, plugins: [viteQueries] }),
+  ]);
+  return results.flatMap((r) => Object.keys(r.metafile?.inputs ?? {}));
+}
+
+const pkgAt = (dir: string): Pkg => {
+  const json = readJson(join(dir, "package.json"));
+  return { name: String(json.name), version: String(json.version), license: licenceOf(json), repository: repositoryOf(json), dir };
+};
+
+/** The package directory an input file belongs to: the path up to its last node_modules/<name>. */
+export function packageDirOf(input: string): string | undefined {
+  const i = input.lastIndexOf("node_modules/");
+  if (i < 0) return undefined;
+  const rest = input.slice(i + "node_modules/".length).split("/");
+  const name = rest[0]!.startsWith("@") ? `${rest[0]}/${rest[1]}` : rest[0]!;
+  return resolve(ROOT, input.slice(0, i) + "node_modules/" + name);
+}
+
+/** The npm packages in the app: what the bundles contain, and the plugin SDK's runtime dependencies. */
+export async function npmPackages(): Promise<Array<Pkg>> {
   const seen = new Map<string, Pkg>();
-  const walk = (dir: string, deps: Record<string, string>, optional: Record<string, string>) => {
-    for (const name of [...Object.keys(deps), ...Object.keys(optional)]) {
-      const found = findPackage(name, dir);
-      if (!found) {
-        if (name in optional) continue;
-        throw new Error(`${name} (needed by ${dir}) isn't in node_modules: run pnpm install`);
-      }
+  const add = (dir: string) => {
+    const p = pkgAt(realpathSync(dir));
+    if (!p.name.startsWith("@uncut/")) seen.set(`${p.name}@${p.version}`, p);
+  };
+  for (const input of await bundledInputs()) {
+    const dir = packageDirOf(input);
+    if (dir && existsSync(join(dir, "package.json"))) add(dir);
+  }
+  // The plugin SDK ships as source (Resources/plugin-sdk) and plugins import it at runtime.
+  const walk = (from: string, deps: Record<string, string>) => {
+    for (const name of Object.keys(deps)) {
+      const found = findPackage(name, from);
+      if (!found) throw new Error(`${name} (needed by ${from}) isn't in node_modules: run pnpm install`);
       const json = readJson(join(found, "package.json"));
-      const key = `${String(json.name)}@${String(json.version)}`;
-      if (seen.has(key)) continue;
-      // Workspace packages are Uncut itself.
-      if (String(json.name).startsWith("@uncut/")) {
-        seen.set(key, { name: String(json.name), version: "", license: "", repository: "", dir: "" });
-      } else {
-        seen.set(key, { name: String(json.name), version: String(json.version), license: licenceOf(json), repository: repositoryOf(json), dir: found });
-      }
-      walk(found, (json.dependencies ?? {}) as Record<string, string>, (json.optionalDependencies ?? {}) as Record<string, string>);
+      if (seen.has(`${String(json.name)}@${String(json.version)}`)) continue;
+      add(found);
+      walk(found, (json.dependencies ?? {}) as Record<string, string>);
     }
   };
-  for (const ws of SHIPPED) {
-    const json = readJson(join(ROOT, ws, "package.json"));
-    walk(join(ROOT, ws), (json.dependencies ?? {}) as Record<string, string>, (json.optionalDependencies ?? {}) as Record<string, string>);
-  }
-  return [...seen.values()].filter((p) => p.version !== "").sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+  walk(at("packages/plugin-sdk"), (readJson(at("packages/plugin-sdk/package.json")).dependencies ?? {}) as Record<string, string>);
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+}
+
+const LICENCE_FILE = /^(licen[cs]e|copying|notice)([.-].*)?$/i;
+/** A package's licence and NOTICE files, each as [file name, text]. */
+export function licenceFiles(dir: string): Array<[string, string]> {
+  return readdirSync(dir)
+    .filter((f) => LICENCE_FILE.test(f))
+    .sort((a, b) => Number(/^notice/i.test(a)) - Number(/^notice/i.test(b)) || a.localeCompare(b))
+    .map((f) => [f, readFileSync(join(dir, f), "utf8").replace(/\r\n?/g, "\n").trimEnd()] as [string, string])
+    .filter(([, text]) => text.length > 0);
 }
 
 /** Licences that would put conditions on Uncut's own code or that nobody stated. */
 export const isConcerning = (licence: string) => /GPL|UNKNOWN|UNLICENSED|SEE LICENSE/i.test(licence) && !/\bOR\b.*\b(MIT|Apache|BSD|ISC)\b|\b(MIT|Apache|BSD|ISC)\b.*\bOR\b/i.test(licence);
 
-type Crate = { name: string; version: string; license: string; buildOnly: boolean };
+type Crate = { name: string; version: string; license: string; buildOnly: boolean; dir?: string };
 /** Procedural-macro crates run while compiling and leave no code in the binary. */
 const BUILD_ONLY = new Set(["proc-macro2", "quote", "syn", "serde_derive", "unicode-ident"]);
 
@@ -90,14 +139,16 @@ export function crates(): Array<Crate> {
     const version = /version = "([^"]+)"/.exec(block)?.[1];
     if (!name || !version || name === "uncut-media") continue;
     let license = "see crates.io";
+    let dir: string | undefined;
     for (const index of indexes) {
       const toml = join(index, `${name}-${version}`, "Cargo.toml");
       if (!existsSync(toml)) continue;
       const m = /^license\s*=\s*"([^"]+)"/m.exec(readFileSync(toml, "utf8"));
       if (m) license = m[1]!.replace(/\//g, " OR ");
+      dir = dirname(toml);
       break;
     }
-    out.push({ name, version, license, buildOnly: BUILD_ONLY.has(name) });
+    out.push({ name, version, license, buildOnly: BUILD_ONLY.has(name), ...(dir ? { dir } : {}) });
   }
   return out;
 }
@@ -105,9 +156,36 @@ export function crates(): Array<Crate> {
 const rule = "=".repeat(78);
 const section = (title: string) => `\n${rule}\n${title}\n${rule}\n\n`;
 
-export function render(): string {
+const MIT_T3 = [
+  "MIT License", "", "Copyright (c) 2026 T3 Tools Inc.", "",
+  "Permission is hereby granted, free of charge, to any person obtaining a copy",
+  "of this software and associated documentation files (the \"Software\"), to deal",
+  "in the Software without restriction, including without limitation the rights",
+  "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell",
+  "copies of the Software, and to permit persons to whom the Software is",
+  "furnished to do so, subject to the following conditions:", "",
+  "The above copyright notice and this permission notice shall be included in all",
+  "copies or substantial portions of the Software.", "",
+  "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR",
+  "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,",
+  "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE",
+  "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER",
+  "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,",
+  "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE",
+  "SOFTWARE.",
+].join("\n") + "\n";
+
+/** Files that port t3code's patterns (issue #103): each must still name t3code, so the list stays true. */
+const T3CODE_PORTS: ReadonlyArray<readonly [string, string]> = [
+  ["apps/server/src/agent/agentLimits.ts", "Claude Code's usage-limit, rate-limit and sign-in results in words (ClaudeAdapterV2)"],
+  ["apps/server/src/app/ws.ts", "the WebSocket RPC endpoint's shape"],
+  ["apps/server/src/app/shellEnv.ts", "reading the login shell's environment (DesktopShellEnvironment)"],
+  ["apps/desktop/src/server.ts", "running the server as a child process (DesktopBackendManager)"],
+];
+
+export async function render(): Promise<string> {
   const electron = readJson(join(ROOT, "node_modules/electron/package.json"));
-  const npm = npmPackages();
+  const npm = await npmPackages();
   const rust = crates();
   let s = "";
   s += "Uncut: third-party notices\n\n";
@@ -148,56 +226,36 @@ export function render(): string {
   s += "released under CC0 1.0 Universal (public domain). As Simple Icons' disclaimer says, the logos\n";
   s += "remain trademarks of their owners; Uncut shows one only to name the platform a handle is on and\n";
   s += "isn't made by or affiliated with any of them. Included: " + brands.join(", ") + ".\n";
+  s += "Each mark is drawn only in its brand's own colour or in plain white or black (D278).\n";
+  s += "\nAll product names, logos and brands named in this file are trademarks of their respective owners.\n";
+  s += "Uncut isn't made by, endorsed by or affiliated with any of them.\n";
 
-  // Issue #50: the providers' marks in the composer, embedded the way t3code does.
-  s += section("Provider marks: from t3code (MIT)");
-  s += "The Claude and OpenAI marks in the Agent tab's model picker (apps/web/src/panels/composer/\n";
-  s += "providerMarks.tsx) are the SVGs t3code embeds (https://github.com/pingdotgg/t3code,\n";
-  s += "apps/web/src/components/Icons.tsx). The marks are trademarks of Anthropic and OpenAI, shown only\n";
-  s += "to name the agent a model runs on; Uncut isn't made by or affiliated with either. t3code's licence:\n\n";
-  s += "MIT License\n\nCopyright (c) 2026 T3 Tools Inc.\n\n";
-  s += "Permission is hereby granted, free of charge, to any person obtaining a copy\n";
-  s += "of this software and associated documentation files (the \"Software\"), to deal\n";
-  s += "in the Software without restriction, including without limitation the rights\n";
-  s += "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n";
-  s += "copies of the Software, and to permit persons to whom the Software is\n";
-  s += "furnished to do so, subject to the following conditions:\n\n";
-  s += "The above copyright notice and this permission notice shall be included in all\n";
-  s += "copies or substantial portions of the Software.\n\n";
-  s += "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n";
-  s += "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n";
-  s += "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n";
-  s += "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n";
-  s += "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n";
-  s += "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n";
-  s += "SOFTWARE.\n";
+  // Issue #103 (D278): t3code's code patterns that Uncut ports, and (while the files exist) its embedded marks.
+  for (const [file] of T3CODE_PORTS) if (!readFileSync(join(ROOT, file), "utf8").includes("t3code")) throw new Error(`${file} no longer names t3code: update T3CODE_PORTS in scripts/notices.ts`);
+  const providerMarks = join(ROOT, "apps/web/src/panels/composer/providerMarks.tsx");
+  const t3Marks = existsSync(providerMarks) && /<path/.test(readFileSync(providerMarks, "utf8"));
+  s += section("t3code (MIT)");
+  s += "Parts of Uncut follow code from t3code (https://github.com/pingdotgg/t3code), adapted and\n";
+  s += "rewritten in Uncut's own words:\n\n";
+  for (const [file, what] of T3CODE_PORTS) s += `${file}: ${what}\n`;
+  if (t3Marks) {
+    s += "\nThe Claude and OpenAI marks in the model pickers (apps/web/src/panels/composer/providerMarks.tsx)\n";
+    s += "are the SVGs t3code embeds (apps/web/src/components/Icons.tsx); they are trademarks of Anthropic\n";
+    s += "and OpenAI, shown only to name who makes a model.\n";
+  }
+  s += "\nt3code's licence:\n\n" + MIT_T3;
 
-  // Issue #63 (D234): the labs' marks in the Generate tab.
-  s += section("Provider marks: Simple Icons (CC0 1.0) and lobe-icons (MIT)");
-  s += "The Generate tab's model list (apps/web/src/panels/generate/marks.tsx) shows each lab's mark.\n";
-  s += "Claude and OpenAI are t3code's (above). Google, ByteDance and ElevenLabs are the paths of\n";
-  s += "Simple Icons 16.35.0 (https://simpleicons.org, icons google, bytedance and elevenlabs), released\n";
-  s += "under CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/); no credit is\n";
-  s += "required. xAI's is from lobe-icons (https://github.com/lobehub/lobe-icons, @lobehub/icons-static-svg\n";
-  s += "1.95.1, icon xai). Higgsfield has no mark under a permissive licence and is shown as a monogram.\n";
-  s += "The marks are trademarks of their owners (Google, ByteDance, ElevenLabs, xAI), shown only to say\n";
-  s += "who makes a model; Uncut isn't made by or affiliated with any of them. lobe-icons' licence:\n\n";
-  s += "MIT License\n\nCopyright (c) 2023 LobeHub\n\n";
-  s += "Permission is hereby granted, free of charge, to any person obtaining a copy\n";
-  s += "of this software and associated documentation files (the \"Software\"), to deal\n";
-  s += "in the Software without restriction, including without limitation the rights\n";
-  s += "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n";
-  s += "copies of the Software, and to permit persons to whom the Software is\n";
-  s += "furnished to do so, subject to the following conditions:\n\n";
-  s += "The above copyright notice and this permission notice shall be included in all\n";
-  s += "copies or substantial portions of the Software.\n\n";
-  s += "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n";
-  s += "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n";
-  s += "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n";
-  s += "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n";
-  s += "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n";
-  s += "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n";
-  s += "SOFTWARE.\n";
+  // Issue #63 (D234): the labs' marks in the Generate tab, while it has any.
+  const marksFile = join(ROOT, "apps/web/src/panels/generate/marks.tsx");
+  const marks = existsSync(marksFile) ? readFileSync(marksFile, "utf8") : "";
+  const simpleSlugs = [...new Set([...marks.matchAll(/Simple Icons "([a-z0-9]+)"/g)].map((m) => m[1]!))];
+  if (simpleSlugs.length) {
+    s += section("Provider marks: Simple Icons (CC0 1.0)");
+    s += "The Generate tab's model list (apps/web/src/panels/generate/marks.tsx) shows the labs' marks from\n";
+    s += `Simple Icons ${iconsVersion} (https://simpleicons.org, icons ${simpleSlugs.join(", ")}), released under CC0 1.0\n`;
+    s += "Universal (https://creativecommons.org/publicdomain/zero/1.0/). The marks remain trademarks of their\n";
+    s += "respective owners, shown only to say who makes a model; Uncut isn't made by or affiliated with any of them.\n";
+  }
 
   s += section("Electron and Chromium");
   s += `Uncut runs on Electron ${String(electron.version)} (MIT, https://github.com/electron/electron).\n`;
@@ -215,22 +273,57 @@ export function render(): string {
   s += "folder and checks its SHA-256. The Whisper model weights are OpenAI's, released under MIT.\n\n";
   s += "Argent (the capture plugin's recorder): not bundled. The user installs it with npx\n";
   s += "@swmansion/argent; Uncut talks to it as a separate program.\n\n";
-  s += "Claude Code (the agent): not bundled. Uncut runs the user's own claude command, signed in with\n";
-  s += "their own subscription; its terms are Anthropic's.\n";
+  s += "Claude Code (the agent): not bundled. Uncut runs the user's own claude command, with\n";
+  s += "whatever sign-in it uses; its terms are Anthropic's.\n";
 
   s += section("npm packages shipped in the app");
-  s += "Production dependencies of Uncut's server, editor, core, contracts and plugin SDK, bundled into\n";
-  s += "the app. Each package's licence text is in its source repository and npm tarball.\n\n";
+  s += "Every package bundled into the app's code (the server, the desktop shell, the editor and the\n";
+  s += "shader runner, found from the bundles themselves) and the plugin SDK's runtime dependencies.\n";
+  s += "Their licence texts follow below.\n\n";
   for (const p of npm) s += `${p.name}@${p.version}: ${p.license}${p.repository ? `\n  ${p.repository}` : ""}\n`;
+
+  // The full texts, each identical text once with the packages it covers.
+  const texts = new Map<string, Array<string>>();
+  const without: Array<string> = [];
+  for (const p of npm) {
+    const files = licenceFiles(p.dir);
+    if (!files.length) without.push(`${p.name}@${p.version} (${p.license})`);
+    for (const [file, text] of files) {
+      const key = `${/^notice/i.test(file) ? "NOTICE" : "LICENSE"}\n${text}`;
+      texts.set(key, [...(texts.get(key) ?? []), `${p.name}@${p.version}`]);
+    }
+  }
+  s += section("Licence texts of the npm packages");
+  for (const [key, names] of texts) {
+    const [kind, ...body] = key.split("\n");
+    s += `${"-".repeat(78)}\n${kind === "NOTICE" ? "NOTICE file of" : "Licence of"}: ${names.join(", ")}\n${"-".repeat(78)}\n\n${body.join("\n")}\n\n`;
+  }
+  if (without.length) s += `These packages ship no licence file; their package.json names the licence: ${without.join(", ")}.\n`;
 
   s += section("Rust crates in the media core (uncut-media)");
   for (const c of rust) s += `${c.name}@${c.version}: ${c.license}${c.buildOnly ? " (used while compiling only)" : ""}\n  https://crates.io/crates/${c.name}\n`;
+  // The crates compiled into the binary: their licence texts (from the local cargo registry), each identical text once.
+  const crateTexts = new Map<string, Array<string>>();
+  for (const c of rust) {
+    if (c.buildOnly || !c.dir) continue;
+    for (const [file, text] of licenceFiles(c.dir)) {
+      const key = `${/^notice/i.test(file) ? "NOTICE" : "LICENSE"}\n${text}`;
+      crateTexts.set(key, [...(crateTexts.get(key) ?? []), `${c.name}@${c.version} (${file})`]);
+    }
+  }
+  if (crateTexts.size) {
+    s += section("Licence texts of the Rust crates");
+    for (const [key, names] of crateTexts) {
+      const [kind, ...body] = key.split("\n");
+      s += `${"-".repeat(78)}\n${kind === "NOTICE" ? "NOTICE file of" : "Licence of"}: ${names.join(", ")}\n${"-".repeat(78)}\n\n${body.join("\n")}\n\n`;
+    }
+  }
   return s;
 }
 
 if (import.meta.main) {
-  const text = render();
-  const concerning = npmPackages().filter((p) => isConcerning(p.license));
+  const text = await render();
+  const concerning = (await npmPackages()).filter((p) => isConcerning(p.license));
   for (const p of concerning) console.error(`Check the licence of ${p.name}@${p.version}: ${p.license}`);
   if (process.argv.includes("--check")) {
     const current = existsSync(OUT) ? readFileSync(OUT, "utf8") : "";
