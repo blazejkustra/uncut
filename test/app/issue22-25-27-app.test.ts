@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { until } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -170,8 +171,13 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     assert.equal(await page.$eval("[data-testid=agent-edits-toggle]", (el) => (el as HTMLElement).innerText.trim()), "3 edits", "the import and two scenes");
     assert.ok(await page.$("[data-testid=agent-undo-turn]"), "Undo turn is in the footer");
     assert.match(await page.$eval(".turn-status", (el) => (el as HTMLElement).innerText), /^Claude Code, \d+ s$/);
-    await (await page.$$("[data-testid=agent-edit-row] [data-testid=agent-step]")).at(-1)!.click();
-    await waitFor("[data-testid=agent-edit-lines]");
+    // The stream may still re-render as the turn settles, so a click can land on a row that's being
+    // replaced (#89, a slow runner): click the last edit until its lines are open.
+    await until(async () => {
+      if (await page.$("[data-testid=agent-edit-lines]")) return true;
+      await page.$$eval("[data-testid=agent-edit-row] [data-testid=agent-step]", (els) => (els.at(-1) as HTMLElement | undefined)?.click());
+      return page.waitForSelector("[data-testid=agent-edit-lines]", { timeout: 2000 }).then(() => true, () => false);
+    }, "the last edit's lines to open");
     await page.screenshot({ path: shot("issue25-stream") });
     await page.click("[data-testid=agent-edits-toggle]");
     await waitFor(".turn-edits-pop");
