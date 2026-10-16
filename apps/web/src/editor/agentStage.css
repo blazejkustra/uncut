@@ -1,0 +1,50 @@
+/* #75 (D255): the agent centre stage. The backdrop dims and blurs the editor but takes no pointer
+   events (a click on the editor lands there and sends the stage away); only the card does. */
+.agent-stage {
+  grid-area: 2 / 1 / 4 / 5; z-index: 30; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; padding: 28px 24px;
+  background: rgb(0 0 0 / 46%); backdrop-filter: blur(7px) saturate(0.85);
+  animation: agent-stage-in 0.22s ease-out;
+}
+.agent-stage-card {
+  pointer-events: auto; position: relative;
+  width: min(720px, 100%); height: min(620px, 100%);
+  display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--border-strong); border-radius: 16px; background: var(--panel);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 3%) inset;
+  animation: agent-stage-card-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.agent-stage-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0 18px; }
+.agent-stage-kicker { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.agent-stage-head .grow, .agent-stage-foot .grow { flex: 1; }
+.agent-stage-card .agent { min-height: 0; }
+/* Room to read: the suggestions sit side by side, the composer is bigger. */
+.agent-stage-card .agent-thread { padding: 8px 28px 12px; }
+.agent-stage-card .agent-empty .empty-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.agent-stage-card .agent-empty-sub { max-width: 460px; font-size: 13px; }
+.agent-stage-card .agent-examples { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 600px; margin-inline: auto; }
+.agent-stage-card .agent-example { padding: 10px 12px; font-size: 12.5px; }
+.agent-stage-card .composer { margin: 0 24px 10px; border-radius: 12px; }
+.agent-stage-card .composer-box > textarea, .agent-stage-card .composer-hl { min-height: 76px; font-size: 14px; }
+.agent-stage-foot { display: flex; align-items: center; gap: 6px; padding: 0 26px 14px; font-size: 11.5px; color: var(--muted); }
+.agent-stage-foot svg.lucide { width: 13px; height: 13px; }
+.agent-stage-foot kbd { font-size: 10px; padding: 0 5px; }
+.agent-stage-drop {
+  position: absolute; inset: 8px; border: 2px dashed var(--select); border-radius: 12px; background: rgb(17 17 17 / 88%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; pointer-events: none; z-index: 5;
+}
+.agent-stage-drop svg.lucide { width: 22px; height: 22px; color: var(--select); }
+@keyframes agent-stage-in { from { opacity: 0; } }
+@keyframes agent-stage-card-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .agent-stage, .agent-stage-card { animation: none; } }
+
+/* Docking: the Agent tab's chat slides in from the middle of the window (agentStage.ts markDocked). */
+.side:has(> .side-body.docking) { position: relative; z-index: 25; }
+.side-body.docking { overflow: visible; }
+.side-body.docking .agent { animation: agent-dock-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes agent-dock-in { from { opacity: 0; transform: translateX(calc(-0.5 * (100vw - var(--side-col, 320px)))) scale(1.04); } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .side-body.docking .agent { animation: none; } }
+
+/* Bringing it back from the Agent tab's empty state; the side panel while the stage has the chat. */
+.agent-stage-back { align-self: center; margin-top: 4px; }
+.side-staged { margin: auto; padding: 24px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--muted); font-size: 12px; }

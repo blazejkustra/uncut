@@ -2,7 +2,7 @@
 // reply and edit list, "Undo turn", the note about edits made by hand, and the composer. Live: text
 // and thinking stream in, a line says what it's doing now. Names, never ids (AG5). Everything shown
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
-import { ChevronDown, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, Maximize2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Composer } from "./Composer.tsx";
@@ -11,9 +11,14 @@ import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ProjectContext } from "./agent/context.ts";
 import { ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
 import { TurnCard } from "./agent/TurnCard.tsx";
+import { projectEmpty, stage, useStageDismissed } from "../editor/agentStage.ts";
+import { panels } from "../editor/layout.ts";
 
 export function AgentPanel({ project, online }: { project: Project; online: boolean }) {
-  const { agent, setupChecks, setupChecking, agentError } = useApp();
+  const { agent, setupChecks, setupChecking, agentError, snapshot } = useApp();
+  // #75 (D255): sent to the editor while still empty: the empty state can bring the stage back.
+  const dir = snapshot?.dir;
+  const canRestage = useStageDismissed().some((d) => d === dir) && projectEmpty(project);
   const thread = useRef<HTMLDivElement>(null);
 
   // Is Claude Code there and signed in? Onboarding may have checked already; otherwise check once.
@@ -88,7 +93,23 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
       <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
         {turns.length === 0 ? (
-          <AgentEmpty onPick={pick} disabled={blocked || !online} />
+          <>
+            <AgentEmpty onPick={pick} disabled={blocked || !online} />
+            {canRestage && dir && (
+              <button
+                className="link-btn agent-stage-back"
+                data-testid="agent-stage-reopen"
+                title="Show the agent in the middle of the window"
+                onClick={() => {
+                  panels.focus(false);
+                  stage.reopen(dir);
+                }}
+              >
+                <Maximize2 />
+                Open in the middle
+              </button>
+            )}
+          </>
         ) : (
           turns.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={agent?.approval?.turnId === t.id ? agent.approval : undefined} latest={latest} live={live} />)
         )}

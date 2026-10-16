@@ -128,3 +128,76 @@ export function rememberSideTab(dir: string, tab: SideTab) {
   // The editor may already show the project (its snapshot can arrive before the call that made it).
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("uncut:side-tab", { detail: { dir, tab } }));
 }
+
+// ---- hideable panels and focus mode (#76, D256) ----
+
+/** The parts of the editor that hide: the rail with the left panel, the side panel, the timeline. */
+export type Hideable = "lib" | "side" | "bottom";
+export interface Panels {
+  readonly lib: boolean;
+  readonly side: boolean;
+  readonly bottom: boolean;
+  /** Focus mode: only the preview and the agent under it (the three flags are kept for after). */
+  readonly focus: boolean;
+}
+export const PANELS_KEY = "uncut.layout.hidden";
+const NOTHING_HIDDEN: Panels = { lib: false, side: false, bottom: false, focus: false };
+
+const readPanels = (): Panels => {
+  try {
+    if (typeof localStorage === "undefined") return NOTHING_HIDDEN;
+    const raw = JSON.parse(localStorage.getItem(PANELS_KEY) ?? "{}") as Record<string, unknown>;
+    return { lib: raw.lib === true, side: raw.side === true, bottom: raw.bottom === true, focus: raw.focus === true };
+  } catch {
+    return NOTHING_HIDDEN;
+  }
+};
+
+let hidden: Panels = readPanels();
+const panelListeners = new Set<() => void>();
+const savePanels = (next: Panels) => {
+  hidden = next;
+  try {
+    localStorage.setItem(PANELS_KEY, JSON.stringify(next));
+  } catch {}
+  panelListeners.forEach((l) => l());
+};
+
+/** Whether a part shows now (focus mode hides all three). */
+export const panelShown = (p: Panels, panel: Hideable) => !p.focus && !p[panel];
+
+export const panels = {
+  get: () => hidden,
+  /** Hides a shown part, shows a hidden one; from focus mode it leaves focus with that part shown. */
+  toggle(panel: Hideable) {
+    if (hidden.focus) return savePanels({ ...hidden, focus: false, [panel]: false });
+    savePanels({ ...hidden, [panel]: !hidden[panel] });
+  },
+  show(panel: Hideable) {
+    if (panelShown(hidden, panel)) return;
+    savePanels({ ...hidden, focus: false, [panel]: false });
+  },
+  focus(on = !hidden.focus) {
+    if (on !== hidden.focus) savePanels({ ...hidden, focus: on });
+  },
+  /** Everything back (the top bar's way out). */
+  showAll: () => savePanels(NOTHING_HIDDEN),
+};
+
+export const subscribePanels = (l: () => void) => (panelListeners.add(l), () => void panelListeners.delete(l));
+export const usePanels = () => useSyncExternalStore(subscribePanels, () => hidden);
+
+/**
+ * The grid's tracks with parts hidden (none hidden: the CSS default). The rail and the left panel
+ * go together; in focus mode the bottom row holds the agent (--focus-row).
+ */
+export function panelsStyle(p: Panels): Record<string, string> {
+  if (!p.focus && !p.lib && !p.side && !p.bottom) return {};
+  const lib = panelShown(p, "lib");
+  const side = panelShown(p, "side");
+  const bottom = p.focus ? "minmax(0, var(--focus-row))" : p.bottom ? "0px" : "minmax(0, var(--bottom-row))";
+  return {
+    gridTemplateColumns: `${lib ? "56px" : "0px"} ${lib ? "var(--lib-col)" : "0px"} minmax(0, 1fr) ${side ? "var(--side-col)" : "0px"}`,
+    gridTemplateRows: `40px minmax(0, 1fr) ${bottom}`,
+  };
+}

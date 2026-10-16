@@ -29,8 +29,10 @@ import { actions, useApp, type Project } from "../state/store.ts";
 import { isBoxed } from "../timeline/clip.ts";
 import { findItem } from "../timeline/edit.ts";
 import { rememberedSideTab, rememberSideTab, type SideTab } from "./layout.ts";
+import { useDocking } from "./agentStage.ts";
 
-export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot; project: Project; online: boolean }) {
+/** `staged` (#75, D255): the agent is centre stage; the Agent tab says so (one AgentPanel at a time). */
+export function Side({ snapshot, project, online, staged = false, onDock }: { snapshot: ProjectSnapshot; project: Project; online: boolean; staged?: boolean; onDock?: () => void }) {
   // U14 (D180): each project keeps the tab it was left on; a new project starts on the Agent.
   const [tab, setTabState] = useState<SideTab>(() => rememberedSideTab(snapshot.dir) ?? "inspector");
   const [tabDir, setTabDir] = useState(snapshot.dir);
@@ -69,6 +71,7 @@ export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot;
   }, [cutId, cutPlaced]);
   // ...or a side tab.
   const { panelRequest } = useApp();
+  const docking = useDocking();
   useEffect(() => {
     const panel = panelRequest?.panel;
     // The Checks tab is gone (K1, D121): a request for it is a no-op.
@@ -87,7 +90,7 @@ export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot;
           History
         </button>
       </div>
-      <div className="side-body">
+      <div className={`side-body ${docking ? "docking" : ""}`}>
         {tab === "inspector" && cutPlaced ? (
           <TransitionInspector key={cutPlaced.item.id} project={project} placed={cutPlaced} online={online} />
         ) : tab === "inspector" && many.length > 1 ? (
@@ -97,6 +100,13 @@ export function Side({ snapshot, project, online }: { snapshot: ProjectSnapshot;
         ) : tab === "inspector" ? (
           // Keyed on the folder: switching projects drops any half-typed value with the old Inspector.
           <ProjectInspector key={snapshot.dir} snapshot={snapshot} project={project} online={online} />
+        ) : tab === "agent" && staged ? (
+          <div className="side-staged" data-testid="side-staged">
+            The chat is open in the middle of the window.
+            <button className="btn" data-testid="side-dock" onClick={onDock}>
+              Move it here
+            </button>
+          </div>
         ) : tab === "agent" ? (
           <AgentPanel project={project} online={online} />
         ) : (

@@ -42,6 +42,8 @@ export interface AppState {
   readonly recents: ReadonlyArray<{ readonly name: string; readonly dir: string }>;
   /** D245: Environments can be opened (the Labs flag is on, or a remote is active). */
   readonly environments: boolean;
+  /** #76 (D256): which parts of the editor show (the View menu's checkmarks). */
+  readonly panels?: { readonly lib: boolean; readonly side: boolean; readonly bottom: boolean; readonly focus: boolean };
 }
 
 export interface EnvironmentInfo {
@@ -55,7 +57,10 @@ export type EnvironmentTest = { readonly ok: true; readonly version: string; rea
 
 export type MenuCommand =
   | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "open-settings" | "shortcuts" | "export" | "open-environments" }
-  | { readonly type: "open-recent"; readonly dir: string };
+  | { readonly type: "open-recent"; readonly dir: string }
+  // #76 (D256): View › hide or show a part of the editor, focus mode.
+  | { readonly type: "toggle-panel"; readonly panel: "lib" | "side" | "bottom" }
+  | { readonly type: "focus-mode" };
 
 // Recording on this Mac (D114): permission states, asking, System Settings, screen and window sources.
 export const MEDIA_ACCESS_CHANNEL = "uncut:media-access";
