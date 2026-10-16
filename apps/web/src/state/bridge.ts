@@ -13,6 +13,8 @@ export interface AppState {
   readonly environments: boolean;
   /** #76 (D256): which parts of the editor show (the View menu's checkmarks). */
   readonly panels?: { readonly lib: boolean; readonly side: boolean; readonly bottom: boolean; readonly focus: boolean };
+  /** #94 (D263): File › Import from Link… shows (the Labs flag is on). */
+  readonly importLink?: boolean;
 }
 
 /** An environment (Phase 9, D106): Local, or a remote uncut-server. */
@@ -25,7 +27,7 @@ export interface EnvironmentInfo {
 export type EnvironmentTest = { readonly ok: true; readonly version: string; readonly hostname: string } | { readonly ok: false; readonly message: string };
 
 export type MenuCommand =
-  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "open-settings" | "shortcuts" | "export" | "open-environments" }
+  | { readonly type: "new-project" | "open-project" | "close-project" | "undo" | "redo" | "open-setup" | "open-settings" | "shortcuts" | "export" | "open-environments" | "import-link" }
   | { readonly type: "open-recent"; readonly dir: string }
   // #76 (D256): View › hide or show a part of the editor, focus mode.
   | { readonly type: "toggle-panel"; readonly panel: "lib" | "side" | "bottom" }
