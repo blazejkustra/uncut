@@ -141,6 +141,7 @@ export const RESERVED: ReadonlyMap<string, string> = new Map([
   ["⌘H", "Hide Uncut"],
   ["⌥⌘H", "Hide Others"],
   ["⌘M", "Minimize"],
+  ["⌃⌘F", "Enter Full Screen"],
 ]);
 
 export type PresetId = "uncut" | "premiere" | "resolve" | "finalcut";
@@ -397,7 +398,12 @@ export function parseKeymap(raw: string | null): KeymapState {
     const overrides: Partial<Record<ActionId, ReadonlyArray<string>>> = {};
     if (data.overrides && typeof data.overrides === "object")
       for (const [id, keys] of Object.entries(data.overrides as Record<string, unknown>))
-        if (isActionId(id) && Array.isArray(keys) && keys.every((k) => typeof k === "string" && k !== "")) overrides[id] = [...new Set(keys as Array<string>)];
+        if (isActionId(id) && Array.isArray(keys) && keys.every((k) => typeof k === "string" && k !== "")) {
+          // A key reserved after the override was saved (the menu's, macOS's) is dropped, so one
+          // press never runs two commands; an override left with no keys falls back to the preset.
+          const kept = [...new Set(keys as Array<string>)].filter((k) => !RESERVED.has(k));
+          if (kept.length > 0 || keys.length === 0) overrides[id] = kept;
+        }
     return { preset, overrides };
   } catch {
     return DEFAULT_KEYMAP;

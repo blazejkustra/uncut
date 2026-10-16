@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { plainError, useApp } from "../../state/store.ts";
 import { call, connection } from "../../state/store/server.ts";
 import { acknowledgeRights, closeLinkImport, rightsAcknowledged, setLinkJobs, useLinkDialog, useLinkJobs, type LinkDialogRequest } from "./linkImport.ts";
+import { flagOn } from "../../settings/labs.ts";
 import "./importLink.css";
 
 export const BREW_COMMAND = "brew install yt-dlp";
@@ -69,7 +70,7 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
   const start = async () => {
     setProblem(undefined);
     setStarting(true);
-    const r = await call((c) => c["link.start"]({ url: url.trim(), kind, ...(kind === "video" ? { quality } : {}), ...(request.drop ? { drop: request.drop } : {}) }));
+    const r = await call((c) => c["link.start"]({ url: url.trim(), kind, labs: flagOn("importFromLink"), ...(kind === "video" ? { quality } : {}), ...(request.drop ? { drop: request.drop } : {}) }));
     setStarting(false);
     if (!r.ok) {
       if (r.error.reason === "no-tool") {
@@ -91,7 +92,7 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
       onPointerDown={(e) => e.target === e.currentTarget && close()}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === "Escape") close();
+        if (e.key === "Escape") (e.preventDefault(), close());
       }}
     >
       <div className="modal link-modal" role="dialog" aria-label="Import from link" data-step={step.kind}>

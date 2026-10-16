@@ -9,7 +9,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { checkLink, formatArgs, linkFileStem, linkMediaName, parseLine, plainYtDlpError, ytDlpArgs } from "../../apps/server/src/media/linkArgs.ts";
+import { checkLink, formatArgs, labsRefusal, linkFileStem, linkMediaName, parseLine, plainYtDlpError, ytDlpArgs } from "../../apps/server/src/media/linkArgs.ts";
 import { runYtDlp, ytDlpSearchPath } from "../../apps/server/src/media/linkImport.ts";
 
 const FAKE = resolve("test/helpers/fake-yt-dlp.ts");
@@ -24,18 +24,20 @@ test("checkLink: http(s) with a host only; no password; trimmed and normalised",
 });
 
 test("ytDlpArgs: no config, no playlist, our output name, prints with markers, the link last after --", () => {
-  const args = ytDlpArgs({ url: "https://example.com/v?x=1&y=2", kind: "video", quality: "1080", outBase: "/p/media/links/link-abc", ffmpeg: "/opt/homebrew/bin/ffmpeg" });
+  const args = ytDlpArgs({ url: "https://example.com/v?x=1&y=2", kind: "video", quality: "1080", stem: "link-abc", ffmpeg: "/opt/homebrew/bin/ffmpeg" });
   assert.ok(args.includes("--ignore-config"));
   assert.ok(args.includes("--no-playlist"));
   assert.ok(args.includes("--no-overwrites"));
   assert.equal(args.at(-2), "--");
   assert.equal(args.at(-1), "https://example.com/v?x=1&y=2");
-  assert.equal(args[args.indexOf("-o") + 1], "/p/media/links/link-abc.%(ext)s", "the title never becomes a path");
+  assert.equal(args[args.indexOf("-o") + 1], "link-abc.%(ext)s", "the title never becomes a path; no project path (D266: yt-dlp expands $VARS in it)");
+  assert.ok(!args.includes("-P") && !args.includes("--paths"));
+  assert.throws(() => ytDlpArgs({ url: "https://e.com", kind: "video", quality: "best", stem: "$HOME/x" }));
   assert.equal(args[args.indexOf("--ffmpeg-location") + 1], "/opt/homebrew/bin/ffmpeg");
   assert.ok(args.includes("before_dl:UNCUT_TITLE %(title)s") && args.includes("after_move:UNCUT_FILE %(filepath)s"));
   assert.ok(!args.some((a) => /--exec|--config-location|--batch-file|--load-info|--cookies/.test(a)), "nothing that runs or reads other files");
   assert.equal(args.filter((a) => a === "--").length, 1);
-  assert.ok(!ytDlpArgs({ url: "https://e.com", kind: "video", quality: "best", outBase: "/x" }).includes("--ffmpeg-location"));
+  assert.ok(!ytDlpArgs({ url: "https://e.com", kind: "video", quality: "best", stem: "x" }).includes("--ffmpeg-location"));
 });
 
 test("formatArgs: video capped by height preferring MP4/H.264; best uncapped; audio as m4a", () => {
@@ -122,12 +124,12 @@ test("the fake yt-dlp with these arguments: title, progress and the file come ba
     Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_AUDIO: join(root, "audio.m4a"), FAKE_YTDLP_TITLE: "Sunset: over/the sea", FAKE_YTDLP_LOG: join(root, "log") });
     for (const kind of ["video", "audio"] as const) {
       const lines: Array<ReturnType<typeof parseLine>> = [];
-      const args = ytDlpArgs({ url: "https://example.com/v", kind, quality: "720", outBase: join(root, "out", `link-${kind}`) });
-      const r = await runYtDlp(join(root, "bin", "yt-dlp"), args, (l) => lines.push(parseLine(l)), new AbortController().signal);
+      const args = ytDlpArgs({ url: "https://example.com/v", kind, quality: "720", stem: `link-${kind}` });
+      const r = await runYtDlp(join(root, "bin", "yt-dlp"), args, (l) => lines.push(parseLine(l)), new AbortController().signal, join(root, "out"));
       assert.equal(r.code, 0, r.stderr);
       const ext = kind === "audio" ? "m4a" : "mp4";
       assert.deepEqual(lines.find((l) => l && "title" in l), { title: "Sunset: over/the sea" });
-      assert.deepEqual(lines.find((l) => l && "file" in l), { file: join(root, "out", `link-${kind}.${ext}`) });
+      assert.deepEqual(lines.find((l) => l && "file" in l), { file: `link-${kind}.${ext}` }, "relative to the folder it ran in");
       const progress = lines.flatMap((l) => (l && "progress" in l ? [l.progress] : []));
       assert.equal(progress.length, 10);
       assert.equal(progress.at(-1), 1);
@@ -151,14 +153,14 @@ test("cancel kills yt-dlp's whole process group (the child it started too)", asy
   const saved = { ...process.env };
   try {
     const pidFile = join(root, "child.pid");
-    Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_SLEEP_MS: "20000", FAKE_YTDLP_PID_FILE: pidFile });
+    Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_SLEEP_MS: "20000", FAKE_YTDLP_PID_FILE: pidFile, FAKE_YTDLP_TEMP_ON_TERM: "1" });
     const controller = new AbortController();
-    const args = ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", outBase: join(root, "out", "link-c") });
+    const args = ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "link-c" });
     const seen: Array<number> = [];
     const done = runYtDlp(join(root, "bin", "yt-dlp"), args, (l) => {
       const p = parseLine(l);
       if (p && "progress" in p) seen.push(p.progress);
-    }, controller.signal);
+    }, controller.signal, join(root, "out"));
     const start = Date.now();
     while (!existsSync(pidFile) || seen.length === 0) {
       if (Date.now() - start > 10000) throw new Error("the fake never started");
@@ -169,8 +171,10 @@ test("cancel kills yt-dlp's whole process group (the child it started too)", asy
     controller.abort();
     const r = await done;
     assert.notEqual(r.code, 0);
-    for (let i = 0; i < 40 && alive(child); i++) await new Promise((res) => setTimeout(res, 100));
-    assert.ok(!alive(child), "the child yt-dlp started is gone too");
+    // D266: it resolves only once the whole group is gone, so the child's late .temp is already
+    // there for the cleanup (removePartials) to take, never written after it.
+    assert.ok(!alive(child), "the child yt-dlp started is gone too, before runYtDlp resolves");
+    assert.ok(existsSync(join(root, "out", "link-c.mp4.temp")), "the child's last write landed before the resolve");
     assert.ok(!readdirSync(join(root, "out")).some((f) => f === "link-c.mp4"), "no finished file");
   } finally {
     process.env = saved;
@@ -183,11 +187,39 @@ test("a yt-dlp error comes back with its stderr, for plainYtDlpError", async () 
   const saved = { ...process.env };
   try {
     process.env.FAKE_YTDLP_ERROR = "ERROR: Unsupported URL: https://example.com/v";
-    const r = await runYtDlp(join(root, "bin", "yt-dlp"), ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", outBase: join(root, "out", "x") }), () => {}, new AbortController().signal);
+    const r = await runYtDlp(join(root, "bin", "yt-dlp"), ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "x" }), () => {}, new AbortController().signal, join(root, "out"));
     assert.equal(r.code, 1);
     assert.match(plainYtDlpError(r.stderr, r.code), /doesn't know how to import from that site/);
   } finally {
     process.env = saved;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("D266: a project folder with $HOME in its name: the download stays in its media/links", async () => {
+  const root = fakeDir();
+  const saved = { ...process.env };
+  try {
+    const links = join(root, "$HOME Launch.uncut", "media", "links");
+    mkdirSync(links, { recursive: true });
+    Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), HOME: join(root, "home") });
+    mkdirSync(join(root, "home"));
+    const lines: Array<ReturnType<typeof parseLine>> = [];
+    const r = await runYtDlp(join(root, "bin", "yt-dlp"), ytDlpArgs({ url: "https://example.com/v", kind: "video", quality: "1080", stem: "link-home" }), (l) => lines.push(parseLine(l)), new AbortController().signal, links);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(readdirSync(links), ["link-home.mp4"]);
+    assert.deepEqual(readdirSync(join(root, "home")), [], "nothing written where $HOME points");
+    // The old absolute template would have been expanded by yt-dlp (and the fake does the same).
+    await runYtDlp(join(root, "bin", "yt-dlp"), ["-o", `${links}/link-old.%(ext)s`, "--", "https://example.com/v"], () => {}, new AbortController().signal);
+    assert.ok(!existsSync(join(links, "link-old.mp4")), "the fake expands $HOME like yt-dlp, so this test can tell");
+  } finally {
+    process.env = saved;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D266: link.start needs the Labs flag (the renderer sends it); the server refuses without", () => {
+  assert.equal(labsRefusal({ labs: true }), undefined);
+  assert.match(labsRefusal({}) ?? "", /Labs/);
+  assert.match(labsRefusal({ labs: false }) ?? "", /Settings › Labs/);
 });

@@ -4,8 +4,8 @@ import { brandColourRule, LAYOUT_RULES, MUSIC_TEMPOS, type Project, describeOp, 
 import { friendlyText } from "@uncut/core/mentions";
 import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
-import { gateOf, gateRefusal } from "../agentPlan.ts";
-import { activeBrand } from "../../brand/store.ts";
+import { gateOf, gateRefusal, planOnly } from "../agentPlan.ts";
+import { activeBrand, readPlan } from "../../brand/store.ts";
 import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_FRAMES, modulesList, musicOut, projectSummary, docsRead } from "../agentTools.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
 import { writeProjectShader } from "../agentShaders.ts";
@@ -92,6 +92,13 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* reviewSubmit(r, v, args);
         case "brand_read":
           return yield* brandRead(v, args);
+        case "plan_read": {
+          // D266: the brief, storyboard and last review with its defect ids, read back (a message
+          // says "Unchanged" for them, and a compacted conversation may have lost them).
+          const plan = yield* Effect.promise(() => readPlan(v.dir).catch(() => r.owner.plan));
+          r.owner.plan = plan;
+          return textResult(planOnly(plan, gateOf(plan, r.skipStoryboard, r.planned)) || "Nothing is planned: no brief, storyboard or review yet.");
+        }
         case "skill_read":
           return yield* skillRead(v, args);
         case "docs_read": {

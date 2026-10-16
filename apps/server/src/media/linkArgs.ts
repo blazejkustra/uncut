@@ -28,6 +28,10 @@ export function checkLink(raw: unknown): { readonly url: string } | { readonly p
   return { url: url.href };
 }
 
+/** D266: link.start runs only with the Labs flag on (the renderer sends it); else why not. */
+export const labsRefusal = (request: { readonly labs?: boolean | undefined }): string | undefined =>
+  request.labs === true ? undefined : "Import from link is a Labs feature: turn it on in Settings › Labs.";
+
 /** The format choice: best ≤ the height cap, preferring MP4/H.264/AAC (what every part of Uncut reads); audio as m4a. */
 export function formatArgs(kind: LinkKind, quality: LinkQuality): Array<string> {
   if (kind === "audio") return ["-f", "ba[ext=m4a]/ba/b", "-x", "--audio-format", "m4a"];
@@ -36,11 +40,14 @@ export function formatArgs(kind: LinkKind, quality: LinkQuality): Array<string> 
 }
 
 /**
- * yt-dlp's arguments: no config files, one video (never a playlist), our own output name in the
- * project's folder (the title never becomes a path), title and final file printed with markers,
- * progress as lines, and the link last, after `--`.
+ * yt-dlp's arguments: no config files, one video (never a playlist), our own output name (the
+ * title never becomes a path), title and final file printed with markers, progress as lines, and
+ * the link last, after `--`. D266: the output template is only `<stem>.%(ext)s`, relative: yt-dlp
+ * runs in the project's media/links folder (runYtDlp's cwd). yt-dlp expands $VARS and ~ in -o and
+ * -P, so the project's path (a folder named "$HOME x") must never be in them.
  */
-export function ytDlpArgs(o: { readonly url: string; readonly kind: LinkKind; readonly quality: LinkQuality; readonly outBase: string; readonly ffmpeg?: string | undefined }): Array<string> {
+export function ytDlpArgs(o: { readonly url: string; readonly kind: LinkKind; readonly quality: LinkQuality; readonly stem: string; readonly ffmpeg?: string | undefined }): Array<string> {
+  if (!/^[A-Za-z0-9_-]+$/.test(o.stem)) throw new Error(`not a safe output stem: ${o.stem}`);
   return [
     "--ignore-config",
     "--no-playlist",
@@ -59,7 +66,7 @@ export function ytDlpArgs(o: { readonly url: string; readonly kind: LinkKind; re
     ...formatArgs(o.kind, o.quality),
     ...(o.ffmpeg ? ["--ffmpeg-location", o.ffmpeg] : []),
     "-o",
-    `${o.outBase}.%(ext)s`,
+    `${o.stem}.%(ext)s`,
     "--",
     o.url,
   ];

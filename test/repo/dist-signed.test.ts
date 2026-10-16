@@ -116,6 +116,8 @@ test("telemetry token: the environment wins, else the keychain item, else inert;
   for (const r of [env, kc]) assert.doesNotMatch(r.line, /secret/, "the token never printed");
   const script = readFileSync("apps/desktop/scripts/dist-signed.ts", "utf8");
   assert.match(script, /spawnSync\("security", \["find-generic-password", "-s", TELEMETRY_KEYCHAIN_SERVICE, "-w"\], \{ encoding: "utf8", stdio: \["ignore", "pipe", "ignore"\] \}\)/, "read piped, never on the terminal");
+  // D266: --skip-build still stages the plugins from the repo (never a stale stage).
+  assert.match(script, /if \(skipBuild\) \{[^]*stagePlugins\(undefined, join\(desktop, "stage\/plugins"\)\)[^]*\} else \{/);
   assert.match(script, /spawnSync\("pnpm", \["build"\], \{ stdio: "inherit", cwd: root, env: \{ \.\.\.process\.env, UNCUT_TELEMETRY_TOKEN: t\.token \?\? "" \} \}\)/, "only in the build's environment");
 });
 

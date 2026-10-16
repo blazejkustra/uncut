@@ -150,6 +150,13 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
   // prompt lists every installed skill, and skill_read gives one's instructions (progressive disclosure).
   if (brand.skills.length) b.push(`Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow every rule in them (skill_read gives one's instructions again); the critic checks their review checklists.`);
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
+  const block = planOnly(plan, gate);
+  if (block) parts.push(block);
+  return parts.join("\n\n");
+}
+
+/** The <plan> block alone (the brief, the storyboard, the last review); "" when nothing is planned. Also plan_read's answer (D266). */
+export function planOnly(plan: AgentPlan, gate: BuildGate): string {
   const p: Array<string> = [];
   if (plan.brief) {
     const br = plan.brief;
@@ -173,8 +180,7 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
     p.push(`Last review (${last.by === "critic" ? "Uncut's critic" : "your own, before the critic"}): round ${last.round}, ${REVIEW_SCORES.filter((k) => last.scores[k] !== undefined).map((k) => `${k} ${last.scores[k]}`).join(", ")}${last.passed ? " (passed)" : " (not passed)"}${last.error ? `, ${last.error}` : ""}.${open.length && !last.passed ? `\n${open.join("\n")}` : ""}`);
   }
   // Nothing planned yet: no block (a small edit needs none).
-  if (p.length) parts.push(`<plan>\n${p.join("\n")}\n</plan>`);
-  return parts.join("\n\n");
+  return p.length ? `<plan>\n${p.join("\n")}\n</plan>` : "";
 }
 
 /** ask_user's question from its arguments, or why it isn't one. */

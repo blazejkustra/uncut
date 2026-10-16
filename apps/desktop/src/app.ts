@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, Menu, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
+import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, Menu, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 
 import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_SOURCES_CHANNEL, CHOOSE_DISPLAY_SOURCE_CHANNEL, SYSTEM_AUDIO_CHANNEL, CHOOSE_FOLDER_CHANNEL, CHOOSE_MEDIA_CHANNEL, CHOOSE_SAVE_PATH_CHANNEL, CLOSE_ANSWER_CHANNEL, CLOSE_REQUEST_CHANNEL, COPY_TEXT_CHANNEL, CLIPBOARD_PATHS_CHANNEL, DOWNLOAD_EXPORT_CHANNEL, ENVIRONMENT_ADD_CHANNEL, ENVIRONMENT_REMOVE_CHANNEL, ENVIRONMENT_RENAME_CHANNEL, ENVIRONMENT_STATUS_CHANNEL, ENVIRONMENT_SWITCH_CHANNEL, ENVIRONMENT_TEST_CHANNEL, ENVIRONMENTS_CHANNEL, MEDIA_ACCESS_CHANNEL, MENU_COMMAND_CHANNEL, OPEN_PRIVACY_SETTINGS_CHANNEL, SERVER_CONNECTION_CHANNEL, SERVER_EXIT_CHANNEL, SHOW_IN_FOLDER_CHANNEL, SILENT_AUDIO_CHANNEL, type AppInfo, type AppState, type CloseAnswer, type EnvironmentTest, type FolderPurpose, type MenuCommand, WINDOW_MODE_CHANNEL, MINI_RECORDER_ACTION_CHANNEL, MINI_RECORDER_CHANNEL, type MiniRecorderAction, type MiniRecorderState } from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
@@ -9,7 +9,7 @@ import { setAppMenu } from "./menu.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { allowPermission } from "./permissions.ts";
 import { textMenu } from "./textMenu.ts";
-import { makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
+import { LOCAL_NAME, makeEnvironmentStore, normalizeServerUrl, parsePairing } from "./environments.ts";
 import { pingServer } from "./relay.ts";
 import { startServer } from "./server.ts";
 import { installCrashReports, reportServerExit } from "./crashReports.ts";
@@ -205,6 +205,10 @@ function createWindow() {
     return { action: "deny" };
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
+  // D266: a reload (an environment switch) or navigation makes the new page ask for a Finder open again.
+  contents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame && !details.isSameDocument) openFile.rendererReloaded();
+  });
   // Issue #49: Cut, Copy, Paste and Select All on selected text and in text fields. Tests log the
   // menu instead of opening it (a native menu would wait for a click nobody makes).
   contents.on("context-menu", (_event, params) => {
@@ -284,7 +288,24 @@ const fromAppWindow = (event: IpcMainInvokeEvent | IpcMainEvent) => {
 const fromAppFrame = (frame: WebFrameMain) => win !== undefined && frame.parent === null && frame === win.webContents.mainFrame && isAppUrl(frame.url);
 
 // D252: a .uncut project opened from Finder or the Dock (before ready, so the first open-file isn't missed).
-installOpenFile({ isAppWindow: fromAppWindow, send: sendMenuCommand, show: () => { if (testBackground) return; win?.show(); win?.focus(); } });
+// D266: only on Local; on a remote it's dropped with a notice, never opened later by surprise.
+const openFile = installOpenFile({
+  isAppWindow: fromAppWindow,
+  send: sendMenuCommand,
+  show: () => { if (testBackground) return; win?.show(); win?.focus(); },
+  isLocal: () => (environments ? environments.active().kind === "local" : undefined),
+  notifyRemote: (dir) => {
+    const name = path.basename(dir);
+    if (testBackground || process.env.UNCUT_CDP) return void console.log(`[test] open-file on a remote: ${name}`);
+    const options = {
+      type: "info" as const,
+      message: `Switch to ${LOCAL_NAME} to open this project`,
+      detail: `“${name}” is on this Mac, and Uncut is connected to ${environments?.active().name ?? "a remote environment"}. Switch to ${LOCAL_NAME} in Environments, then open it again.`,
+      buttons: ["OK"],
+    };
+    void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+  },
+});
 
 // ---- recording on this Mac (D114) ----
 
@@ -307,6 +328,7 @@ app.whenReady().then(() => {
   // D223: main's crashes go to the server's telemetry spool.
   installCrashReports(process.env.UNCUT_DATA_DIR || app.getPath("userData"));
   setEnvironments(makeEnvironmentStore(process.env.UNCUT_DATA_DIR || app.getPath("userData"), crypt));
+  openFile.environmentsReady();
   setServer(startServer({
     ...resources,
     // Tests point this at a temp dir so they never touch the real recents.

@@ -1178,6 +1178,12 @@
       "returns": "the topic's reference text"
     },
     {
+      "name": "plan_read",
+      "description": "The project's plan as it is now: the brief, the storyboard with its beats, and the last review with its defect ids (the ids review_submit's fixes name). A message's <plan> says \"Unchanged\" when it hasn't changed; read it here when you no longer have it.",
+      "inputSchema": { "type": "object", "additionalProperties": false, "properties": {} },
+      "returns": "the <plan> block, or that nothing is planned"
+    },
+    {
       "name": "skill_read",
       "description": "Read an installed skill's instructions: a recipe from a plugin (Uncut's own: launch promo, product demo, motion craft, sound design, brand application, make a brand kit and more). The system prompt's Skills list has every skill by name and when it fits; read one before you start a task it fits, then follow every rule in it. The project then uses it: the critic checks its review checklist.",
       "inputSchema": {

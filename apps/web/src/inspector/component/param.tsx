@@ -81,7 +81,8 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 /** One param's control in its row, from its schema. */
 export function Param({ project, item, info, name, schema, disabled }: { project: ProjectModel; item: Item; info: ComponentInfo; name: string; schema: Schema; disabled: boolean }) {
   const props = (item.props ?? {}) as Record<string, unknown>;
-  const value = props[name];
+  // D266: a sticker saved before `enter` with the older pop: false renders with no way in: show "none".
+  const value = info.id === "component.sticker" && name === "enter" && props.enter === undefined && props.pop === false ? "none" : props[name];
   const noun = info.name.toLowerCase();
   const required = info.params.required?.includes(name) ?? false;
   const label = labelOf(name);
