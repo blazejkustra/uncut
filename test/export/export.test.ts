@@ -27,6 +27,7 @@ import { sweepStaleTemp } from "../../apps/server/src/export/exporter.ts";
 import { demoProject, FOOTAGE, skipDemo } from "../helpers/demo.ts";
 import { exportProject, FPS, makeExportFixture, writeProject } from "../helpers/export-fixture.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { until } from "../helpers/wait.ts";
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -698,7 +699,17 @@ test("export: quitting mid-render stops ffmpeg and removes the temp files before
     assert.ok(readdirSync(quitTemp).length >= 1, "temp files while rendering");
     c.close();
     await other.stop();
-    for (const pid of kids) assert.throws(() => process.kill(Number(pid), 0), `pid ${pid} is gone`);
+    // A child the server killed can still answer kill(pid, 0) for a moment: a zombie until
+    // launchd reaps it once its parent is gone (#89). Stopped is what counts: gone or a zombie.
+    const stopped = (pid: string) => {
+      try {
+        process.kill(Number(pid), 0);
+      } catch {
+        return true;
+      }
+      return spawnSync("ps", ["-o", "stat=", "-p", pid], { encoding: "utf8" }).stdout.trim().startsWith("Z");
+    };
+    await until(() => kids.every(stopped), `the server's children ${kids.join(", ")} to stop`, { timeout: 5000 });
     assert.deepEqual(readdirSync(quitTemp), [], "temp files removed before exit");
     assert.ok(!existsSync(join(root, "out", "Quit.mp4")));
   } finally {
