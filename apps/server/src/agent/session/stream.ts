@@ -8,6 +8,7 @@ import { STREAM_PUBLISH_MS, idleMs, canonical } from "./config.ts";
 import type { RunCtx } from "../tools/run.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import { agentFailCode } from "../../telemetry/events.ts";
+import { assistantUsage, contextOf, messageContextEstimate, resultWindow, systemToolsEstimate, windowFor } from "./usage.ts";
 
 export const makeStream = (ctx: RunCtx) => {
   const { publish, closeSession, view, st, persist, trackPending, plugins } = ctx;
@@ -153,8 +154,28 @@ export const makeStream = (ctx: RunCtx) => {
     }
   };
 
+  /**
+   * D261: the context window's use, from a top-level assistant message's usage (its last API
+   * call's context) or the window a result reports (modelUsage). Published with the message.
+   */
+  const noteContext = (r: Running, msg: Record<string, any>) => {
+    const owner = r.owner;
+    const s = r.session;
+    const last = owner.context;
+    const usage = assistantUsage(msg);
+    if (usage) {
+      const model = usage.model ?? s.initModel ?? s.model;
+      const window = last && last.model === model ? last.window : windowFor(model ?? s.model);
+      owner.context = contextOf({ used: usage.used, window, systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0), message: messageContextEstimate(r.message, r.turn.prompt), model });
+      return;
+    }
+    const window = last ? resultWindow(msg, last.model ?? s.initModel ?? s.model) : undefined;
+    if (last && window) owner.context = { ...last, window };
+  };
+
   /** A full assistant message: replaces what was streamed of it, adds what wasn't (a block this turn already shows word for word isn't added twice). */
   const onAssistant = (r: Running, msg: Record<string, any>) => {
+    noteContext(r, msg);
     const items = r.turn.items;
     const id = isString(msg.message?.id) ? msg.message.id : undefined;
     const slots = id ? r.streamed.get(id) : undefined;
@@ -213,7 +234,7 @@ export const makeStream = (ctx: RunCtx) => {
     }
   };
 
-  return { publishNow, watchData, delivered, onStream, onAssistant, finish };
+  return { publishNow, watchData, delivered, onStream, onAssistant, finish, noteContext };
 };
 
 export type StreamCtx = RunCtx & ReturnType<typeof makeStream>;

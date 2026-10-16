@@ -19,6 +19,7 @@ import { bridge } from "../state/bridge.ts";
 import { isAttachable, quotePaths, sortPasted } from "./pasted.ts";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ComposerChoices } from "./composer/Choices.tsx";
+import { TokenMeter } from "./TokenMeter.tsx";
 import "./skills/skills.css";
 export { ACCESS_INFO, ProviderMark } from "./composer/Choices.tsx";
 
@@ -474,6 +475,7 @@ function ContextLine({ project }: { project: Project }) {
         Playhead {frameTimecode(frame, project.canvas.fps)}
         {item ? `, selected ${itemLabel(project, item)}` : ""}
       </span>
+      <TokenMeter />
     </div>
   );
 }

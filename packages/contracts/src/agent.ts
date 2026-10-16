@@ -206,7 +206,7 @@ export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "can
  * Something the user pointed at in the composer (D140): an @mention or an "Add to chat" chip. The
  * prompt holds "@label"; the agent gets the label with the real id in a <context> block.
  */
-export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker", "moment", "range"]);
+export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker", "moment", "range", "effect", "transition"]);
 export const AgentMention = Schema.Struct({
   kind: AgentMentionKind,
   id: Schema.String,
@@ -314,6 +314,23 @@ export const AgentApproval = Schema.Struct({
 });
 export type AgentApproval = typeof AgentApproval.Type;
 
+/**
+ * D261 (issue #93): how full the agent's context window is after its last answer, in tokens.
+ * used and window are what claude reported (its last API call's input, cache read, cache creation
+ * and output; modelUsage's contextWindow, else the model id's); systemTools and message are
+ * estimates (Uncut's prompt and tools at ~4 and ~2.4 characters a token, plus about 20k for Claude
+ * Code's own), conversation the rest.
+ */
+export const AgentContext = Schema.Struct({
+  used: Schema.Number,
+  window: Schema.Number,
+  systemTools: Schema.Number,
+  conversation: Schema.Number,
+  message: Schema.Number,
+  model: Schema.optional(Schema.String),
+});
+export type AgentContext = typeof AgentContext.Type;
+
 /** The open project's agent: its turns (oldest first) and the one running, if any. */
 export const AgentState = Schema.Struct({
   dir: Schema.String,
@@ -329,6 +346,8 @@ export const AgentState = Schema.Struct({
   plan: Schema.optional(AgentPlan),
   // D194: something wrong with the agent's setup the user should know (claude didn't answer initialize).
   warning: Schema.optional(Schema.String),
+  // D261: the context window's use after the last answer (absent until claude reported one).
+  context: Schema.optional(AgentContext),
 });
 export type AgentState = typeof AgentState.Type;
 
