@@ -1,0 +1,8 @@
+/* #102 (D276): the update toast, bottom right over every screen, above the overlay scrollbars like
+   the banners (D239: 2147483500 > the scrollbar layer's 2147483000). */
+.update-toasts { position: fixed; right: 16px; bottom: 44px; width: min(420px, calc(100vw - 32px)); z-index: 2147483500; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.update-toast .banner-text { display: flex; flex-direction: column; gap: 2px; position: relative; }
+.update-toast strong { font-weight: 600; color: var(--fg); }
+.update-toast .update-sub { color: var(--muted); }
+.update-toast .update-progress { position: absolute; left: 0; bottom: -8px; height: 2px; background: currentColor; opacity: 0.35; transition: width 0.2s linear; }
+.update-toast[data-kind="downloading"] { overflow: hidden; }
