@@ -8,9 +8,9 @@ import { useSyncExternalStore } from "react";
 export type Tool = "select" | "blade" | "hand";
 
 export const TOOLS: ReadonlyArray<{ readonly id: Tool; readonly key: string; readonly label: string }> = [
-  { id: "select", key: "v", label: "Select: click to select, drag to move or trim (V)" },
-  { id: "blade", key: "c", label: "Blade: click an item to cut it there (C)" },
-  { id: "hand", key: "h", label: "Hand: drag to scroll the timeline (H)" },
+  { id: "select", key: "v", label: "Select: click to select, drag to move or trim" },
+  { id: "blade", key: "c", label: "Blade: click an item to cut it there" },
+  { id: "hand", key: "h", label: "Hand: drag to scroll the timeline" },
 ];
 
 /** The tool a key (e.key, any case) picks, if any. */

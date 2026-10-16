@@ -12,34 +12,39 @@ import { installFocusRules, isTyping } from "./focus.ts";
 import { copyItems, nextEditPoint, planDeleteMany, planPaste, type Clip } from "../timeline/clipboard.ts";
 import { nearbyKey } from "../timeline/clip.ts";
 import { findItem, withGroups } from "../timeline/edit.ts";
-import { toolForKey, toolKeys } from "../timeline/tools.ts";
+import { TOOLS, toolForKey, toolKeys } from "../timeline/tools.ts";
+
+/** Rows other UI reads its keys from (#86, D239: tooltips), so a key shown there can't drift from this table. */
+export type ShortcutId = "play" | "frame" | "jump" | "split" | "delete" | "zoom" | "fit" | "tools" | "exitFull";
 
 export interface Shortcut {
   readonly keys: ReadonlyArray<string>;
   readonly does: string;
   readonly group: "Playback" | "Edit" | "Timeline" | "App";
+  readonly id?: ShortcutId;
 }
 
 export const SHORTCUTS: ReadonlyArray<Shortcut> = [
-  { group: "Playback", keys: ["Space"], does: "Play or pause" },
+  { group: "Playback", id: "play", keys: ["Space"], does: "Play or pause" },
   { group: "Playback", keys: ["J", "K", "L"], does: "Play backwards, pause, play forwards (press again to go faster)" },
-  { group: "Playback", keys: ["←", "→"], does: "One frame back or forward" },
+  { group: "Playback", id: "frame", keys: ["←", "→"], does: "One frame back or forward" },
   { group: "Playback", keys: ["⇧←", "⇧→"], does: "One second back or forward" },
-  { group: "Playback", keys: ["Home", "End"], does: "Go to the start or the end" },
+  { group: "Playback", id: "jump", keys: ["Home", "End"], does: "Go to the start or the end" },
+  { group: "Playback", id: "exitFull", keys: ["Esc"], does: "Leave the full-screen preview" },
   { group: "Playback", keys: ["↑", "↓"], does: "Previous or next edit" },
   { group: "Playback", keys: ["[", "]"], does: "Previous or next keyframe (of the selection, else of any item)" },
   { group: "Playback", keys: ["I", "O"], does: "Mark in or out at the playhead" },
-  { group: "Edit", keys: ["S", "⌘B"], does: "Split at the playhead" },
-  { group: "Edit", keys: ["⌫", "Delete"], does: "Delete the selection" },
+  { group: "Edit", id: "split", keys: ["S", "⌘B"], does: "Split at the playhead" },
+  { group: "Edit", id: "delete", keys: ["⌫", "Delete"], does: "Delete the selection" },
   { group: "Edit", keys: ["⇧⌫", "⇧Delete"], does: "Ripple delete: delete and close the gap" },
   { group: "Edit", keys: ["⌘A"], does: "Select everything on the timeline" },
   { group: "Edit", keys: ["⌘C", "⌘X", "⌘V"], does: "Copy, cut, paste at the playhead" },
   { group: "Edit", keys: ["⌘D"], does: "Duplicate the selection" },
   { group: "Edit", keys: ["⌘Z", "⇧⌘Z"], does: "Undo, redo" },
   { group: "Edit", keys: ["Esc"], does: "Deselect" },
-  { group: "Timeline", keys: ["+", "−"], does: "Zoom the timeline in or out (also ⌘= and ⌘−)" },
-  { group: "Timeline", keys: ["⌘0"], does: "Fit the project in the timeline" },
-  { group: "Timeline", keys: ["V", "C", "H"], does: "Select, Blade (a click cuts there) or Hand tool; held down, only until you let go" },
+  { group: "Timeline", id: "zoom", keys: ["+", "−"], does: "Zoom the timeline in or out (also ⌘= and ⌘−)" },
+  { group: "Timeline", id: "fit", keys: ["⌘0"], does: "Fit the project in the timeline" },
+  { group: "Timeline", id: "tools", keys: TOOLS.map((t) => t.key.toUpperCase()), does: "Select, Blade (a click cuts there) or Hand tool; held down, only until you let go" },
   { group: "Timeline", keys: ["⌘ scroll", "Pinch"], does: "Zoom the timeline around the pointer" },
   { group: "Timeline", keys: ["⇧ scroll"], does: "Scroll the timeline sideways" },
   { group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item" },
@@ -48,6 +53,15 @@ export const SHORTCUTS: ReadonlyArray<Shortcut> = [
   { group: "App", keys: ["?"], does: "Keyboard shortcuts" },
   { group: "App", keys: ["⌘W"], does: "Close the project" },
 ];
+
+/**
+ * The keys of a SHORTCUTS row: all of them, or the one at `index` for a row that pairs two actions
+ * (["Home", "End"]: 0 is start, 1 is end).
+ */
+export function shortcutKeys(id: ShortcutId, index?: number): ReadonlyArray<string> {
+  const keys = SHORTCUTS.find((s) => s.id === id)?.keys ?? [];
+  return index === undefined ? keys : keys[index] === undefined ? [] : [keys[index]!];
+}
 
 // Keys belong to the control while typing, picking from a list or moving a slider.
 export const isEditable = (el: EventTarget | null) => isTextEntry(el) || el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && el.type === "range");
