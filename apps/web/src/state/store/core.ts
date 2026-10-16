@@ -7,6 +7,7 @@ import { type TextPreset, TEXT_PRESETS } from "../project.ts";
 import type { AppStateShape, Project } from "./types.ts";
 import { actions } from "./actions.ts";
 import { environmentsUsable, flagOn, subscribeFlags } from "../../settings/labs.ts";
+import { panels, panelShown, subscribePanels } from "../../editor/layout.ts";
 
 export let state: AppStateShape = {
   ready: false,
@@ -100,6 +101,8 @@ export const isRemote = (s: AppStateShape = state) => s.environment.kind === "re
 
 // A Labs flag turned on or off (D245) changes the menu too.
 subscribeFlags(() => syncShell());
+// #76 (D256): so do hidden panels and focus mode (the View menu's checkmarks).
+subscribePanels(() => syncShell());
 
 /** Keep the native menu (Open Recent, ⌘W) and the window title in step with the screen. */
 function syncShell() {
@@ -108,6 +111,7 @@ function syncShell() {
     recents: state.recents.map(({ name, dir }) => ({ name, dir })),
     // D245: the menu's Environments… is disabled while the Labs flag is off (and a remote isn't active).
     environments: environmentsUsable(flagOn("environments"), state.environment.kind),
+    panels: { lib: panelShown(panels.get(), "lib"), side: panelShown(panels.get(), "side"), bottom: panelShown(panels.get(), "bottom"), focus: panels.get().focus },
   });
   document.title = state.snapshot ? projectOf(state.snapshot).name : "Uncut";
 }
