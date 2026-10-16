@@ -28,6 +28,7 @@ export const makeCore = (ctx: AgentServices) => {
       turns: owner.turns.map((t) => ({ ...t, items: [...t.items], edits: [...t.edits], undo: undoState(t, v, owner.openId, format.validate) })),
       ...(owner.ui ? { ui: owner.ui } : {}),
       plan: owner.plan,
+      ...(owner.context ? { context: owner.context } : {}),
       ...(st.initWarning || st.limitWarning ? { warning: [st.initWarning, st.limitWarning].filter(Boolean).join(" ") } : {}),
       ...(st.approval && st.running && st.running.owner === owner && st.running.turn.id === st.approval.card.turnId ? { approval: st.approval.card } : {}),
       ...(() => {

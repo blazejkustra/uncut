@@ -28,7 +28,7 @@ const thinkingDisplay = () => {
 };
 
 export const makeSpawn = (ctx: StreamCtx) => {
-  const { persist, closeSession, canUseTool, st, publishNow, watchData, delivered, onStream, onAssistant, finish, turnCleanup, publish, config, bridgeUrl, sessions } = ctx;
+  const { persist, closeSession, canUseTool, st, publishNow, watchData, delivered, onStream, onAssistant, finish, noteContext, turnCleanup, publish, config, bridgeUrl, sessions } = ctx;
 
   /** One stream-json line from a session's claude. */
   const onLine = (s: ClaudeSession, line: string) => {
@@ -40,6 +40,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     }
     if (msg.type === "system" && msg.subtype === "init") {
       s.gotInit = true;
+      if (isString(msg.model)) s.initModel = msg.model;
       if (isString(msg.session_id) && msg.session_id !== s.owner.sessionId) {
         s.owner.sessionId = msg.session_id;
         persist(s.owner);
@@ -110,6 +111,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       }
       publishNow();
     } else if (msg.type === "result") {
+      // D261: the window the result reports, before finish publishes the turn's end.
+      noteContext(r, msg);
       // A Stop that crossed a successful result doesn't relabel the finished turn.
       if (r.cancelled && msg.is_error) return finish(r, { status: "cancelled", ...(r.stopReason ? { error: r.stopReason } : {}) });
       if (r.turn.error) return finish(r, { status: "error" });
@@ -198,7 +201,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     // D232: every installed skill's name and description go in the system prompt (send's toolsKey has their names).
     const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
     const initId = `init-${randomBytes(4).toString("hex")}`;
-    const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0 };
+    const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
     try {
       writeFileSync(
         cfg,
@@ -277,6 +280,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       // A stored session can be gone (another Mac, a cleaned ~/.claude): start a fresh one, once.
       if (s.resumed && !s.gotInit && /no conversation found/i.test(s.stderr)) {
         s.owner.sessionId = undefined;
+        // D261: a new conversation: the last one's context doesn't apply.
+        s.owner.context = undefined;
         persist(s.owner);
         const fresh = spawnSession(s.owner, bin, s.toolsKey, false, { model: s.model, effort: s.effort, access: s.access });
         if (typeof fresh === "string") return finish(r, { status: "error", error: fresh });

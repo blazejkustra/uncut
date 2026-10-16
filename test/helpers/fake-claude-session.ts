@@ -17,6 +17,9 @@
 //   { raw: {...} }      D218: one stream-json line as given (a rate_limit_event, an assistant message with `error`)
 //   { result: {...} }   D218: end the turn with this result line (session_id added), e.g. a 429 or blocking_limit
 //   { tool, args, slowInput: ms } the call's input streams in pieces, ms apart (input_json_delta)
+//   { usage: {...}, model?, contextWindow? } D261: the turn's closing assistant message carries this
+//     message.usage (input_tokens, cache_read_input_tokens, ...) and model, and its result
+//     modelUsage { [model]: { contextWindow } } (only when contextWindow is given)
 //   { builtin: "Bash", args, result?, prompt? } D194: a built-in tool call (WebSearch, WebFetch, Bash,
 //     Write, ...): the tool_use shows, then (unless prompt is false: claude's own auto-allow) a
 //     can_use_tool control_request goes to Uncut (--permission-prompt-tool stdio) and the step waits
@@ -49,7 +52,8 @@ type Step =
   | { raw: Record<string, unknown> }
   | { result: Record<string, unknown> }
   | { crash: true }
-  | { exit: true };
+  | { exit: true }
+  | { usage: Record<string, number>; model?: string; contextWindow?: number };
 interface RpcReply {
   id: number;
   result?: any;
@@ -190,6 +194,7 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
   let rev = 0;
   let steps = 0;
   let exitAfter = false;
+  let usage: { usage: Record<string, number>; model?: string; contextWindow?: number } | undefined;
   const started = Date.now();
   for (let k = 0; k < plan.length; k++) {
     const step = plan[k]!;
@@ -213,6 +218,10 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
     }
     if ("exit" in step) {
       exitAfter = true;
+      continue;
+    }
+    if ("usage" in step) {
+      usage = step;
       continue;
     }
     if ("raw" in step) {
@@ -302,8 +311,9 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
   }
   const said = `Done: ${steps} step${steps === 1 ? "" : "s"}.`;
   const id = await assistant({ type: "text", text: said });
-  out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "text", text: said }] }, parent_tool_use_id: null, session_id: sessionId });
-  out({ type: "result", subtype: "success", is_error: false, result: said, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId });
+  const model = usage?.model ?? "fake";
+  out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "text", text: said }], ...(usage ? { model, usage: usage.usage } : {}) }, parent_tool_use_id: null, session_id: sessionId });
+  out({ type: "result", subtype: "success", is_error: false, result: said, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId, ...(usage?.contextWindow ? { modelUsage: { [model]: { inputTokens: 1, contextWindow: usage.contextWindow } } } : {}) });
   if (exitAfter) await new Promise<void>((r) => process.stdout.write("", () => r())).then(() => quit(0));
 }
 

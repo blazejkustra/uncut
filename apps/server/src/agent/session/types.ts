@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import type { AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess } from "@uncut/contracts";
+import type { AgentTurn, AgentCard, AgentEdit, AgentUi, AgentPlan, AgentAccess, AgentContext } from "@uncut/contracts";
 import type { Access } from "../agentPermissions.ts";
 import type { TurnLimits } from "../agentLimits.ts";
 
@@ -47,6 +47,9 @@ export interface Loaded {
   webUsed: boolean;
   // D194: secret-looking strings from tool results in this chat (a web search or address carrying one asks). Not saved.
   readonly tainted: Set<string>;
+  // D261: the context window's use after the agent's last answer (the composer's meter). Kept
+  // across claude sessions of the conversation (a --resume carries on from it); not saved.
+  context?: AgentContext | undefined;
 }
 
 /**
@@ -94,6 +97,11 @@ export interface ClaudeSession {
   killTimer: NodeJS.Timeout | undefined;
   // Turns written to it so far.
   gens: number;
+  // D261: the model claude said it runs (system/init), the length of the system prompt Uncut
+  // appended, and of the tool list claude got from tools/list (JSON), for the meter's estimate.
+  initModel: string | undefined;
+  readonly systemChars: number;
+  toolsChars: number | undefined;
 }
 
 /** D203: an edit of the turn, tied to the step (the running Uncut tool call) that made it, so the thread shows it there. */

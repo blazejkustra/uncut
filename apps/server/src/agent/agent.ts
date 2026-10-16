@@ -283,7 +283,15 @@ export const layer = Layer.effect(
       tools: (token) =>
         Effect.suspend(() => {
           if (!sessionTokenOk(token)) return Effect.succeed(undefined);
-          return Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => [...mcpTools(), ...extra]));
+          return Effect.andThen(
+            plugins.refresh,
+            Effect.map(plugins.tools, (extra) => {
+              const list = [...mcpTools(), ...extra];
+              // D261: the tool list claude got, for the context meter's system + tools estimate.
+              if (st.session) st.session.toolsChars = JSON.stringify(list).length;
+              return list;
+            }),
+          );
         }),
       authorized: (token) => Effect.sync(() => tokenOk(token, st.running)),
       // A call goes to the running turn only: none while idle, none while a stopped turn's result
