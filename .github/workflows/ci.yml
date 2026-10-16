@@ -1,4 +1,4 @@
-# Every push to main and every PR (#89, D290): typecheck + the fast tests (everything but test/app),
+# Every push to main and every PR (#89, D254): typecheck + the fast tests (everything but test/app),
 # and the packaged-app tests (test/app) split over 4 parallel jobs, each building the app itself.
 # Tests that need what GitHub's macOS VM doesn't have (a real GPU for preview = export pixel parity,
 # a real audio device, a big screen, the footage, the real claude/argent) skip with their reason

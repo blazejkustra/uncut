@@ -1,4 +1,4 @@
-// Runs one shard of the packaged-app tests (test/app) for CI (#89, D290): the files are split over
+// Runs one shard of the packaged-app tests (test/app) for CI (#89, D254): the files are split over
 // `--of` shards by their recorded durations (test/app/durations.json; a file not in it counts as the
 // median), longest first onto the lightest shard. The files run one after another (the Electron
 // tests take turns on one machine anyway, test/helpers/app.ts), each its own `node --test`, so every

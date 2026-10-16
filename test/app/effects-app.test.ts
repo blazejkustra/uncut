@@ -26,6 +26,7 @@ import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { audioGraph, planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { cachedFor, targetOf, type LoudnessResult } from "../../apps/server/src/analysis/analysis.ts";
 import { biquadResponseDb, compressorCurveDb, decodeEnvelope, type Project, type Stage } from "../../packages/core/src/index.ts";
+import { NO_REAL_AUDIO, notChecked } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -256,6 +257,11 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
     console.log(`preview nodes: EQ worst ${worstEq.toFixed(4)} dB vs core; compressor under ${unity.toFixed(3)} dB, over ${dB(over.peak).toFixed(2)} vs curve ${curve.toFixed(2)}; limiter ${dB(lim.peak).toFixed(2)} dBFS`);
 
     // Preview ≈ export, the hot mix with EQ, ducking and the limiter (the compressor bypassed).
+    if (NO_REAL_AUDIO) {
+      notChecked(NO_REAL_AUDIO, "the preview's mix ≈ the export's, with and without the compressor (recorded while playing)");
+      assert.deepEqual(app.errors, []);
+      return;
+    }
     const voice = onDisk().media.find((m) => m.id === "m-voice")!;
     const loud = (await cachedFor(targetOf(dir, voice, 30), "loudness")) as LoudnessResult | undefined;
     assert.ok(loud?.hasAudio && loud.envelope, "the voice's loudness was measured for the ducking");

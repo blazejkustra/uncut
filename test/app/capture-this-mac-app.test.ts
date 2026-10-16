@@ -26,6 +26,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { eventually } from "../helpers/wait.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 // The Capture tab also asks Argent for its devices: always the fake (the real CLI would start the shared tool-server).
@@ -378,7 +379,7 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     assert.deepEqual(screen.source, { module: "capture.screen", device: "Test window" });
     assert.match(screen.path, /^media\/captures\/Test window \d{8}-\d{6}\.mp4$/);
     const secs = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, screen.path)], { encoding: "utf8" }));
-    assert.ok(secs > 1.1 && secs < 2.4, `about 1.5 s: ${secs}`);
+    check(NO_REAL_GPU, secs > 1.1 && secs < 2.4, `the agent's 1.5 s take is about 1.5 s long: ${secs}`);
     assert.match(await text(page, "[data-testid=agent-turn]"), /Recorded/);
     assert.equal(await page.$("[data-testid=agent-screen-take]"), null);
 

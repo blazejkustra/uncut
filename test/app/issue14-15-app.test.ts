@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { smallScreen } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -138,8 +139,11 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     await shot(page, "issue14-editor");
 
     // Each size is the user's: the editor at 1360×760, then back to Welcome (its own size), 700×600.
-    await page.evaluate(() => window.resizeTo(1360, 760));
-    await waitViewport(page, 1360, 760);
+    // window.resizeTo stays within the screen: on a small one (GitHub's runner: 1024×768, #89) the
+    // editor's own size is 1024×660 instead, still not the 1280×800 default.
+    const [ew, eh] = (await smallScreen(page, 1360, 760)) ? [1024, 660] : [1360, 760];
+    await page.evaluate((w, h) => window.resizeTo(w, h), ew, eh);
+    await waitViewport(page, ew, eh);
     await sleep(800);
     await page.click("[data-testid=close-project]");
     await waitForWelcome(page);
@@ -148,7 +152,7 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     await waitViewport(page, 700, 600);
     await sleep(800);
     // Below the welcome minimum it stops at 600×520 (the editor's 1024×640 doesn't apply here).
-    assert.equal(JSON.parse(readFileSync(join(data, "window.json"), "utf8")).editor.width, 1360);
+    assert.equal(JSON.parse(readFileSync(join(data, "window.json"), "utf8")).editor.width, ew);
     await app.close();
     apps.delete(app);
 
@@ -179,7 +183,7 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
     await page.waitForSelector("[data-testid=editor]", { timeout: 20000 });
-    assert.deepEqual(await viewport(page), [1360, 760], "the editor's own size, remembered");
+    assert.deepEqual(await viewport(page), [ew, eh], "the editor's own size, remembered");
     const dir = join(projects, "Matched.uncut");
     assert.ok(existsSync(join(dir, ".cache", "match-first-clip")));
     assert.deepEqual(JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).canvas, { width: 1080, height: 1350, fps: 60 });
