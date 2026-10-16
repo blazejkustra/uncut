@@ -47,7 +47,6 @@ import { makeScrubMarquee } from "./gestures/scrubMarquee.ts";
 import { makeLaneDrop } from "./gestures/laneDrop.ts";
 import { type BladeHover, makeToolPress } from "./gestures/toolPress.ts";
 import { setTool, TOOLS, useTool, type Tool } from "./tools.ts";
-import { shortcutKeys } from "../editor/keys.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 
 const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand };
@@ -213,7 +212,7 @@ export function Timeline({ project }: { project: ProjectModel }) {
           {TOOLS.map((t) => {
             const Icon = TOOL_ICONS[t.id];
             return (
-              <Tooltip key={t.id} label={t.label} keys={[t.key.toUpperCase()]}>
+              <Tooltip key={t.id} label={t.label} shortcut={t.action}>
                 <button className={`icon-btn ${tool === t.id ? "on" : ""}`} role="radio" aria-checked={tool === t.id} aria-pressed={tool === t.id} data-testid={`tool-${t.id}`} onClick={() => setTool(t.id)}>
                   <Icon />
                 </button>
@@ -223,12 +222,12 @@ export function Timeline({ project }: { project: ProjectModel }) {
         </div>
         <div className="toolbar-sep" />
         {/* #86 (D239): each icon's tooltip names it and shows its key, read from the keymap. */}
-        <Tooltip label="Split at the playhead" keys={shortcutKeys("split")}>
+        <Tooltip label="Split at the playhead" shortcut="split">
           <button className="icon-btn" data-testid="split" disabled={!online || empty} onClick={() => void actions.split()}>
             <Scissors />
           </button>
         </Tooltip>
-        <Tooltip label={selectedCut ? "Remove the selected transition" : "Delete the selected item"} keys={shortcutKeys("delete", 0)}>
+        <Tooltip label={selectedCut ? "Remove the selected transition" : "Delete the selected item"} shortcut="delete">
           <button
             className="icon-btn"
             data-testid="delete-item"
@@ -249,17 +248,17 @@ export function Timeline({ project }: { project: ProjectModel }) {
           </button>
         </Tooltip>
         <div className="toolbar-sep" />
-        <Tooltip label="Zoom out" keys={shortcutKeys("zoom", 1)}>
+        <Tooltip label="Zoom out" shortcut="zoomOut">
           <button className="icon-btn" data-testid="zoom-out" onClick={playback.zoomOut}>
             <ZoomOut />
           </button>
         </Tooltip>
-        <Tooltip label="Zoom in" keys={shortcutKeys("zoom", 0)}>
+        <Tooltip label="Zoom in" shortcut="zoomIn">
           <button className="icon-btn" data-testid="zoom-in" onClick={playback.zoomIn}>
             <ZoomIn />
           </button>
         </Tooltip>
-        <Tooltip label="Fit the project" keys={shortcutKeys("fit")}>
+        <Tooltip label="Fit the project" shortcut="fit">
           <button className="icon-btn" data-testid="zoom-fit" onClick={playback.zoomFit}>
             <ChevronsLeftRight />
           </button>

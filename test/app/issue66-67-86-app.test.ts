@@ -170,17 +170,17 @@ test("issue #66: an overlay scrollbar under the error toast is drawn below it", 
 });
 
 test("issue #86: toolbar and transport icons show the tooltip with the name and the keymap's keys", { skip, timeout: 120000 }, async () => {
-  // Keys as editor/keys.ts SHORTCUTS and timeline/tools.ts TOOLS list them.
+  // Keys as the keymap (editor/keymap.ts, Uncut preset) lists them: an action's first two (#78).
   const expected: Array<[string, RegExp, string[]]> = [
     ["tool-select", /^Select/, ["V"]],
     ["tool-blade", /^Blade/, ["C"]],
     ["tool-hand", /^Hand/, ["H"]],
     ["split", /^Split at the playhead$/, ["S", "⌘B"]],
-    ["delete-item", /^Delete the selected item$/, ["⌫"]],
+    ["delete-item", /^Delete the selected item$/, ["⌫", "Delete"]],
     ["snap-toggle", /^Snapping/, []],
     ["link-overlays", /linked/i, []],
-    ["zoom-out", /^Zoom out$/, ["−"]],
-    ["zoom-in", /^Zoom in$/, ["+"]],
+    ["zoom-out", /^Zoom out$/, ["−", "⌘−"]],
+    ["zoom-in", /^Zoom in$/, ["+", "⌘="]],
     ["zoom-fit", /^Fit the project$/, ["⌘0"]],
     ["to-start", /^Go to start$/, ["Home"]],
     ["step-back", /^Back one frame$/, ["←"]],
