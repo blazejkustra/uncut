@@ -70,6 +70,8 @@ export interface ClaudeSession {
   readonly effort: string | undefined;
   // It was started with --thinking-display (D181).
   readonly thinking: string | undefined;
+  // It was started with --system-prompt-snapshot off (D260 amended).
+  readonly snapshotOff: boolean;
   // The --resume it was started with.
   readonly resumed: string | undefined;
   // D194: the --add-dir folders it was started with (sorted, joined): more folders need another session.

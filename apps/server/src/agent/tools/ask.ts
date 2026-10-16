@@ -102,7 +102,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       const first = out.content[0];
       if (out.isError || first?.type !== "text") return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify({ downloaded: source }) }] };
       try {
-        return { ...out, content: [{ type: "text" as const, text: JSON.stringify({ ...JSON.parse(first.text), source }, null, 1) }, ...out.content.slice(1)] };
+        return { ...out, content: [{ type: "text" as const, text: JSON.stringify({ ...JSON.parse(first.text), source }) }, ...out.content.slice(1)] };
       } catch {
         return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify({ source }) }] };
       }

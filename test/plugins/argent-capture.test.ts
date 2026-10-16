@@ -405,7 +405,7 @@ test("on the server: the Capture tab records into the Library (one ⌘Z), the ag
     assert.match(resultText("argent_list_devices"), /SIM-IPHONE-16/);
     const recordedText = resultText("argent_record");
     assert.match(recordedText, /"imported"/);
-    assert.match(recordedText, /"id": "m-login"/);
+    assert.match(recordedText, /"id":"m-login"/);
     assert.ok(recordTurn.edits.some((e: any) => e.summary === "Recorded login"), JSON.stringify(recordTurn.edits));
     await project.until((p) => p?.project.tracks.some((t: any) => t.items.some((i: any) => i.id === "clip-login")));
     let now = project.values.at(-1).project;

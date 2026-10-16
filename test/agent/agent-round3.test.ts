@@ -99,6 +99,8 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     assert.equal(flagValue(argv, "--permission-mode"), "auto", "D214: no access sent is Auto, Claude Code's own auto mode");
     assert.equal(flagValue(argv, "--permission-prompt-tool"), "stdio");
     assert.equal(flagValue(argv, "--thinking-display"), "summarized", "thinking summaries in print mode");
+    // D260 amended: the current system prompt on every request, a resumed conversation included.
+    assert.equal(flagValue(argv, "--system-prompt-snapshot"), "off");
     // D218: as the Agent SDK passes t3code's thinking: { type: "adaptive", display: "summarized" }.
     assert.equal(flagValue(argv, "--thinking"), "adaptive");
     assert.ok(!argv.includes("--bare"), "no --bare: it would skip the keychain login");
@@ -138,6 +140,23 @@ test("U1: a claude that refuses --thinking-display is started again without it, 
     assert.equal(t2.status, "done", t2.error);
     assert.equal(s.lines().filter((l) => l.refused).length, 1, "refused once only");
     assert.ok(!s.runs()[1]!.argv.includes("--thinking-display"));
+  } finally {
+    await s.stop();
+  }
+});
+
+test("D260: a claude that refuses --system-prompt-snapshot is started again without it, the message goes through, and it isn't passed again", { skip, timeout: 60000 }, async () => {
+  const s = await setup("nosnapshot", { FAKE_NO_PROMPT_SNAPSHOT: "1" });
+  try {
+    const t = await s.ask("first", [{ tool: "project_read" }]);
+    assert.equal(t.status, "done", t.error);
+    assert.equal(s.lines()[0]!.refused, "--system-prompt-snapshot", "the first start was refused");
+    assert.ok(!s.runs()[0]!.argv.includes("--system-prompt-snapshot"), "started again without it");
+    assert.ok(s.runs()[0]!.argv.includes("--append-system-prompt"), "still with the prompt");
+    const t2 = await s.ask("second", [{ text: "ok" }], { effort: "low" });
+    assert.equal(t2.status, "done", t2.error);
+    assert.equal(s.lines().filter((l) => l.refused).length, 1, "refused once only");
+    assert.ok(!s.runs()[1]!.argv.includes("--system-prompt-snapshot"));
   } finally {
     await s.stop();
   }

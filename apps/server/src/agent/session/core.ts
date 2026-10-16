@@ -205,7 +205,7 @@ export const makeCore = (ctx: AgentServices) => {
   };
 
   const textResult = (value: unknown, isError = false): McpResult => ({
-    content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 1) }],
+    content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }],
     ...(isError ? { isError: true } : {}),
   });
 
