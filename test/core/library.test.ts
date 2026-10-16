@@ -41,8 +41,7 @@ test("the bundled sound-effects pack: every sound a CC0 file from a Freesound pa
 test("hit ids round-trip and junk is refused; lengths and limits in words", () => {
   assert.equal(hitKey({ source: "openverse", id: "eab8a6e2-0ac8" }), "openverse:eab8a6e2-0ac8");
   assert.deepEqual(parseHitKey("freesound:534387"), { source: "freesound", id: "534387" });
-  assert.deepEqual(parseHitKey("jamendo:1204669"), { source: "jamendo", id: "1204669" });
-  for (const bad of ["pixabay:1", "openverse:", "openverse:../x", "sfx:boom", "freesound:1/2"]) assert.equal(parseHitKey(bad), undefined, bad);
+  for (const bad of ["jamendo:1204669", "pixabay:1", "openverse:", "openverse:../x", "sfx:boom", "freesound:1/2"]) assert.equal(parseHitKey(bad), undefined, bad);
   assert.equal(lengthLabel(0.72), "0.7 s");
   assert.equal(lengthLabel(115.8), "1:56");
   const now = Date.parse("2026-10-14T10:00:00Z");
@@ -66,7 +65,7 @@ const BY: LibraryHit = {
   tags: [],
 };
 
-test("credits: CC BY lines to paste, CC0 thanks, bundled music by its file, Openverse named (D135)", () => {
+test("credits: CC BY lines to paste, CC0 thanks, Openverse named (D135); an old bundled-music copy has none (D274)", () => {
   const base: Project = { format: "uncut/0", name: "Launch", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [] };
   assert.equal(creditsText(base), "");
   assert.deepEqual(creditsOf(base), { attribution: [], publicDomain: [], openverse: false });
@@ -83,7 +82,7 @@ test("credits: CC BY lines to paste, CC0 thanks, bundled music by its file, Open
   };
   const c = creditsOf(project);
   assert.deepEqual(c.attribution.map((a) => a.title), ["Ambient Dance"], "one line per sound, even used twice");
-  assert.deepEqual(c.publicDomain.map((a) => a.libraryId), ["sfx:bass-boom", "music:cozy-2"]);
+  assert.deepEqual(c.publicDomain.map((a) => a.libraryId), ["sfx:bass-boom"]);
   assert.equal(c.openverse, true);
   assert.equal(
     creditsText(project),
@@ -93,7 +92,6 @@ test("credits: CC BY lines to paste, CC0 thanks, bundled music by its file, Open
       "",
       "Public domain (CC0)",
       '"Bass boom" by LordHannes (https://freesound.org/people/LordHannes/sounds/268084/)',
-      '"Dusty rhodes neo soul loop" by modcam.music (https://freesound.org/people/modcam.music/sounds/676586/)',
       "",
       "Found with Openverse (openverse.org)",
       "",

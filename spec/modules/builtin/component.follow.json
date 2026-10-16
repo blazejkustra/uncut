@@ -3,7 +3,7 @@
   "id": "component.follow",
   "kind": "component",
   "name": "Follow handle",
-  "description": "Your handle on a platform, with a generic glyph for the kind of platform (no logos): the glyph pops, the pill opens, the handle slides in.",
+  "description": "Your handle on a platform with its logo in the brand's colour (YouTube, Instagram, TikTok, X, LinkedIn and more), or a generic glyph for a website or email: the logo pops, the pill opens, the handle slides in.",
   "version": "0.1.0",
   "author": "Uncut",
   "license": "MIT",
@@ -29,6 +29,31 @@
       },
       "platform": {
         "enum": [
+          "youtube",
+          "instagram",
+          "tiktok",
+          "x",
+          "facebook",
+          "threads",
+          "bluesky",
+          "mastodon",
+          "reddit",
+          "snapchat",
+          "pinterest",
+          "twitch",
+          "kick",
+          "discord",
+          "whatsapp",
+          "telegram",
+          "github",
+          "spotify",
+          "soundcloud",
+          "applepodcasts",
+          "vimeo",
+          "patreon",
+          "substack",
+          "medium",
+          "linkedin",
           "video",
           "photos",
           "shorts",
@@ -40,7 +65,7 @@
           "podcast"
         ],
         "x-group": "Content",
-        "description": "Which glyph: video (play), photos (camera), shorts (note), social (@), pro (briefcase), live (broadcast), web (globe), mail, podcast (microphone)."
+        "description": "The platform: a brand id draws that platform's own logo in its colour (youtube, instagram, tiktok, x, facebook, threads, bluesky, mastodon, reddit, snapchat, pinterest, twitch, kick, discord, whatsapp, telegram, github, spotify, soundcloud, applepodcasts, vimeo, patreon, substack, medium; linkedin draws a briefcase in LinkedIn blue). Or a generic glyph: web (globe), mail, video (play), photos (camera), shorts (note), social (@), pro (briefcase), live (broadcast), podcast (microphone)."
       },
       "style": {
         "enum": [
@@ -56,7 +81,7 @@
         "minLength": 1,
         "x-control": "color",
         "x-group": "Style",
-        "description": "The glyph's circle (or the solid pill); empty = the platform's tint."
+        "description": "The logo's circle (or the solid pill); empty = the brand's colour."
       },
       "background": {
         "type": "string",
@@ -83,7 +108,7 @@
     "defaults": {
       "handle": "@yourname",
       "label": "Follow",
-      "platform": "video",
+      "platform": "youtube",
       "style": "pill"
     }
   },

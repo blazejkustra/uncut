@@ -191,7 +191,7 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
             message: `${slow.media.name} is ${slow.bpm} BPM under something new every ${avg.toFixed(1)} s; a slow loop under fast cutting feels sluggish.`,
             itemIds: [slow.item.id],
             frame: slow.start,
-            hint: "Pick music whose tempo fits the cutting (music_list tempo fast, 110 to 130 BPM for a punchy promo) and cut on its beats (beat_grid), or slow the cutting down.",
+            hint: "Pick music whose tempo fits the cutting (110 to 130 BPM for a punchy promo) and cut on its beats (beat_grid), or slow the cutting down.",
           });
         }
       }

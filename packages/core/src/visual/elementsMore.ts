@@ -3,7 +3,8 @@
 // after labels. Like the other elements (D130), each is a pure function of its props, its box size
 // (canvas px) and the local frame: the preview and the export draw the same HTML. Every motion
 // settles to a still within about a second, or loops in whole frames, so the export's capped looks
-// (MAX_RASTER_STATES) hold. Glyphs are our own SVG (no platform logos); user text is escaped.
+// (MAX_RASTER_STATES) hold. Glyphs are our own SVG, except the follow handle's brand marks (D275,
+// brandIcons.ts, from Simple Icons); user text is escaped.
 import followJson from "../../../../spec/modules/builtin/component.follow.json" with { type: "json" };
 import socialButtonJson from "../../../../spec/modules/builtin/component.social-button.json" with { type: "json" };
 import checklistJson from "../../../../spec/modules/builtin/component.checklist.json" with { type: "json" };
@@ -13,6 +14,7 @@ import priceTagJson from "../../../../spec/modules/builtin/component.price-tag.j
 import mapPinJson from "../../../../spec/modules/builtin/component.map-pin.json" with { type: "json" };
 import beforeAfterJson from "../../../../spec/modules/builtin/component.before-after.json" with { type: "json" };
 
+import { BRAND_ICONS } from "./brandIcons.ts";
 import { DEFAULT_THEME, DM_SANS, esc, num, resolveColor, type RenderTarget } from "./render.ts";
 import type { Draw } from "./components.ts";
 
@@ -57,7 +59,7 @@ export function inkOn(fill: string): string {
 // ---- glyphs (24 × 24, our own drawings) ----
 
 const glyph = (inner: string, size: number, c: string, extra = "") => `<svg width="${num(size)}" height="${num(size)}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;display:block${extra}">${inner}</svg>`;
-/** A follow handle's platform glyphs: generic pictures, never a platform's logo. */
+/** A follow handle's generic glyphs (D251): for a kind of platform, or a platform without a brand mark. */
 const PLATFORM_GLYPH: Readonly<Record<string, (c: string) => string>> = {
   video: (c) => `<path d="M8.5 6.5v11l9-5.5z" fill="${c}"/>`,
   photos: () => `<rect x="3" y="6.5" width="18" height="13" rx="3.5"/><circle cx="12" cy="13" r="3.6"/><path d="M8.5 6.5l1.5-2.5h4l1.5 2.5"/>`,
@@ -70,7 +72,30 @@ const PLATFORM_GLYPH: Readonly<Record<string, (c: string) => string>> = {
   podcast: () => `<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>`,
 };
 /** Tints that suggest a kind of platform without being anyone's brand colour. */
-const PLATFORM_TINT: Readonly<Record<string, string>> = { video: "#F0433A", photos: "#E0457B", shorts: "#14B8A6", social: "#3B82F6", pro: "#2563EB", live: "#8B5CF6", web: "#10B981", mail: "#F59E0B", podcast: "#A855F7" };
+const GENERIC_TINT: Readonly<Record<string, string>> = { video: "#F0433A", photos: "#E0457B", shorts: "#14B8A6", social: "#3B82F6", pro: "#2563EB", live: "#8B5CF6", web: "#10B981", mail: "#F59E0B", podcast: "#A855F7" };
+/** LinkedIn has no mark in Simple Icons (removed at its request): the briefcase in its blue. */
+const LINKEDIN = { title: "LinkedIn", hex: "#0A66C2" };
+
+/**
+ * A follow handle's platforms (D275): the brands (their own mark and colour, Simple Icons), LinkedIn,
+ * then the generic kinds (D251) as the fallback, with the names the inspector shows.
+ */
+export const FOLLOW_PLATFORM_NAMES: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(Object.entries(BRAND_ICONS).map(([id, b]) => [id, b.title])),
+  linkedin: LINKEDIN.title,
+  video: "Video (generic)",
+  photos: "Photos (generic)",
+  shorts: "Shorts (generic)",
+  social: "Social (generic)",
+  pro: "Work (generic)",
+  live: "Live (generic)",
+  web: "Website",
+  mail: "Email",
+  podcast: "Podcast (generic)",
+};
+const PLATFORM_TINT: Readonly<Record<string, string>> = { ...GENERIC_TINT, ...Object.fromEntries(Object.entries(BRAND_ICONS).map(([id, b]) => [id, b.hex])), linkedin: LINKEDIN.hex };
+/** A brand mark: one filled path (not the stroked style of the generic glyphs). */
+const brandGlyph = (path: string, size: number, c: string) => `<svg width="${num(size)}" height="${num(size)}" viewBox="0 0 24 24" style="flex:none;display:block"><path fill="${c}" d="${path}"/></svg>`;
 
 /** A social button's glyphs: outline (before the press) and filled (after). */
 const BUTTON_GLYPH: Readonly<Record<string, (c: string, filled: boolean) => string>> = {
@@ -106,7 +131,8 @@ export function pointerAt(local: number, at: number, fps: number, w: number, h: 
 // ---- follow handle ----
 
 export function drawFollow({ props, w, h, target, local, fps }: Draw) {
-  const platform = PLATFORM_GLYPH[str(props.platform)] ? str(props.platform) : "video";
+  const platform = PLATFORM_TINT[str(props.platform)] ? str(props.platform) : "youtube";
+  const brand = BRAND_ICONS[platform];
   const style = ["pill", "solid", "minimal"].includes(str(props.style)) ? str(props.style) : "pill";
   const tint = color(target, props.color, PLATFORM_TINT[platform]!);
   const handle = str(props.handle);
@@ -124,11 +150,12 @@ export function drawFollow({ props, w, h, target, local, fps }: Draw) {
   const small = fitSize(label, pillH * 0.2, textW, 0.6);
   const bg = style === "solid" ? tint : style === "minimal" ? "transparent" : color(target, props.background, "#FFFFFF");
   const ink = style === "pill" ? color(target, props.text, "#0A0A0B") : style === "solid" ? inkOn(tint) : "#FFFFFF";
+  // A light brand colour (Snapchat's yellow, Kick's green) gets dark ink, like the solid pill's words.
   const iconBg = style === "solid" ? "#FFFFFF" : tint;
-  const iconInk = style === "solid" ? tint : "#FFFFFF";
+  const iconInk = style === "solid" ? (inkOn(tint) === "#FFFFFF" ? tint : "#0A0A0B") : inkOn(tint);
   const shadow = style === "minimal" ? `text-shadow:${TEXT_SHADOW};` : "";
   const panel = style === "minimal" ? "" : `<div style="position:absolute;left:0;top:${px((h - pillH) / 2)};width:${px(w)};height:${px(pillH)};background:${bg};border-radius:${px(pillH / 2)};box-shadow:0 ${px(pillH * 0.08)} ${px(pillH * 0.3)} rgb(0 0 0 / 22%);clip-path:inset(0 ${num((1 - open) * (1 - pillH / w) * 100)}% 0 0 round ${px(pillH / 2)})"></div>`;
-  const glyphHtml = `<div style="position:absolute;left:${px(pad)};top:${px((h - icon) / 2)};width:${px(icon)};height:${px(icon)};border-radius:50%;background:${iconBg};display:flex;align-items:center;justify-content:center;transform:scale(${num(Math.max(0, pop))})">${glyph(PLATFORM_GLYPH[platform]!(iconInk), icon * 0.56, iconInk)}</div>`;
+  const glyphHtml = `<div style="position:absolute;left:${px(pad)};top:${px((h - icon) / 2)};width:${px(icon)};height:${px(icon)};border-radius:50%;background:${iconBg};display:flex;align-items:center;justify-content:center;transform:scale(${num(Math.max(0, pop))})">${brand ? brandGlyph(brand.path, icon * 0.54, iconInk) : glyph(PLATFORM_GLYPH[platform === "linkedin" ? "pro" : platform]!(iconInk), icon * 0.56, iconInk)}</div>`;
   const text = `<div style="position:absolute;left:${px(textX)};top:0;bottom:0;width:${px(textW)};display:flex;flex-direction:column;justify-content:center;gap:${px(pillH * 0.02)};font-family:${DM_SANS};color:${ink};${shadow}opacity:${num(words)};transform:translateX(${px((1 - words) * -pillH * 0.3)})">${label ? `<div style="font-weight:600;font-size:${px(small)};line-height:1.1;letter-spacing:0.06em;text-transform:uppercase;opacity:0.7;white-space:nowrap">${esc(label)}</div>` : ""}<div style="font-weight:700;font-size:${px(big)};line-height:1.1;letter-spacing:-0.01em;white-space:nowrap">${esc(handle)}</div></div>`;
   return box(panel + glyphHtml + text);
 }

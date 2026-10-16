@@ -1,6 +1,6 @@
 // The sound library (D134): online royalty-free music and sound effects (Openverse without a key,
-// Freesound with the user's own key) next to Uncut's bundled CC0 files (the music of D91 and the
-// sound-effects pack in assets/sfx). Browser-safe: the Audio and Sound effects tabs, the server's
+// Freesound with the user's own key) next to Uncut's bundled CC0 sound-effects pack in assets/sfx
+// (no bundled music since D274). Browser-safe: the Audio and Sound effects tabs, the server's
 // library.* calls and the agent's library_search / library_add all read it.
 //
 // Whatever is added from the library is downloaded (or copied) into the project's media/ folder
@@ -9,16 +9,15 @@
 // line CC BY asks for (D135: creditsOf / creditsText list them for the video's description).
 import sfxJson from "../../../../assets/sfx/library.json" with { type: "json" };
 import type { Media, Project } from "../timeline/types.ts";
-import { libraryTrackOf, MUSIC_TRACKS } from "./music.ts";
 import { expandQuery, matchesQuery, scoreSound, SOUND_ALIASES } from "./search.ts";
 
 export { aliasOf, clipNote, expandQuery, matchesQuery, normalizeText, rankSounds, scoreSound, SOUND_ALIASES, squash, synonymsOf, wordsOf, type ExpandedQuery, type Rankable, type SoundAlias } from "./search.ts";
 
 export type LibraryKind = "music" | "sfx";
-/** Online sources (D134; Jamendo with the user's own client ID, D249). */
-export type LibrarySource = "openverse" | "freesound" | "jamendo";
-export const LIBRARY_SOURCES: ReadonlyArray<LibrarySource> = ["openverse", "freesound", "jamendo"];
-export const LIBRARY_SOURCE_NAMES: Readonly<Record<LibrarySource, string>> = { openverse: "Openverse", freesound: "Freesound", jamendo: "Jamendo" };
+/** Online sources (D134). */
+export type LibrarySource = "openverse" | "freesound";
+export const LIBRARY_SOURCES: ReadonlyArray<LibrarySource> = ["openverse", "freesound"];
+export const LIBRARY_SOURCE_NAMES: Readonly<Record<LibrarySource, string>> = { openverse: "Openverse", freesound: "Freesound" };
 
 /** Licences the library offers: both allow commercial use and changes. */
 export type LibraryLicense = "cc0" | "by";
@@ -52,9 +51,9 @@ export interface LibraryHit {
   readonly title: string;
   readonly creator: string;
   readonly creatorUrl?: string | undefined;
-  /** The sound's page (Freesound, Jamendo, ...). */
+  /** The sound's page (Freesound, ...). */
   readonly landingUrl: string;
-  /** Where the file comes from (Openverse: the provider that hosts it, e.g. freesound or jamendo). */
+  /** Where the file comes from (Openverse: the provider that hosts it, e.g. freesound). */
   readonly provider?: string | undefined;
   readonly license: LibraryLicense;
   readonly licenseVersion: string;
@@ -70,7 +69,7 @@ export interface LibraryHit {
 /** A hit's id across sources, as the agent and the renderer name it: openverse:<uuid>, freesound:<n>. */
 export const hitKey = (hit: Pick<LibraryHit, "source" | "id">) => `${hit.source}:${hit.id}`;
 export function parseHitKey(key: string): { readonly source: LibrarySource; readonly id: string } | undefined {
-  const m = /^(openverse|freesound|jamendo):([A-Za-z0-9-]{1,64})$/.exec(key);
+  const m = /^(openverse|freesound):([A-Za-z0-9-]{1,64})$/.exec(key);
   return m ? { source: m[1] as LibrarySource, id: m[2]! } : undefined;
 }
 
@@ -158,7 +157,7 @@ export function filterSfx({ query, category }: { readonly query?: string | undef
 }
 
 /** The modules a library media's source carries. */
-export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", jamendo: "library.jamendo", bundled: "library.bundled", folder: "library.folder" } as const;
+export const LIBRARY_MODULES = { openverse: "library.openverse", freesound: "library.freesound", bundled: "library.bundled", folder: "library.folder" } as const;
 
 /** What a media item added from the library records about itself (its `source`). */
 export interface LibraryCredit {
@@ -221,15 +220,24 @@ export function sfxCredit(s: SfxSound): LibraryCredit {
 /** The media in a project that came from the library entry `libraryId` (re-adding it reuses it). */
 export const libraryMediaOf = (project: Pick<Project, "media">, libraryId: string) => project.media.find((m) => m.source?.libraryId === libraryId);
 
-/** A media item's credits: its library source, or a bundled music track's (D91: no source, found by its file). */
+/** A media item's credits: its library source. (A D91 music track copied in before D274 has none: CC0, no credit needed.) */
 export function mediaCredit(media: Pick<Media, "path" | "source">): LibraryCredit | undefined {
   const s = media.source as Partial<LibraryCredit> | undefined;
   if (s && typeof s.module === "string" && s.module.startsWith("library.") && typeof s.title === "string" && (s.license === "cc0" || s.license === "by")) return s as LibraryCredit;
-  const track = libraryTrackOf(media);
-  if (!track) return undefined;
-  const hit = { title: track.title, creator: track.author, license: "cc0" as const, licenseVersion: "1.0", licenseUrl: licenseUrl("cc0", "1.0") };
-  return { module: LIBRARY_MODULES.bundled, libraryId: `music:${track.id}`, ...hit, landingUrl: track.source, provider: "freesound", attribution: attributionLine(hit) };
+  return undefined;
 }
+
+/** A media id from a name, like the import's ("m-" + lowercase words), unique against `taken`. */
+export function mediaIdFor(name: string, taken: ReadonlySet<string>) {
+  const stem = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "music";
+  let id = `m-${stem}`;
+  for (let n = 2; taken.has(id); n++) id = `m-${stem}-${n}`;
+  return id;
+}
+
+/** Every id the validator requires to be unique. */
+export const projectIds = (project: Pick<Project, "media" | "tracks" | "scenes">) =>
+  new Set([...project.media.map((m) => m.id), ...project.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]), ...(project.scenes ?? []).map((s) => s.id)]);
 
 export interface Credits {
   /** CC BY: the credit each one needs, in the order they were added. */
@@ -274,7 +282,7 @@ export function creditsText(project: Pick<Project, "media" | "name">): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** Every bundled file a media path can be (media/<file> or a numbered copy), for the music and the sfx pack. */
+/** The bundled sound effect a media path is (media/<file> or a numbered copy). */
 export function bundledSfxOf(media: Pick<Media, "path">): SfxSound | undefined {
   const path = media.path.replace(/\\/g, "/");
   if (!path.startsWith("media/")) return undefined;
@@ -282,8 +290,8 @@ export function bundledSfxOf(media: Pick<Media, "path">): SfxSound | undefined {
   return SFX_SOUNDS.find((s) => s.file === name) ?? SFX_SOUNDS.find((s) => new RegExp(`^${s.file.replace(/\.m4a$/, "")}-\\d+\\.m4a$`).test(name));
 }
 
-/** All bundled audio files (music then sound effects), for the install check and notices. */
-export const BUNDLED_AUDIO_FILES = [...MUSIC_TRACKS.map((t) => `music/${t.file}`), ...SFX_SOUNDS.map((s) => `sfx/${s.file}`)];
+/** All bundled audio files (the sound effects), for the install check and notices. */
+export const BUNDLED_AUDIO_FILES = SFX_SOUNDS.map((s) => `sfx/${s.file}`);
 
 /** "Openverse's search limit is reached. Try again in 40 s." (a limit: its scope and until when, ISO 8601). */
 export function limitSentence(source: LibrarySource, limit: { readonly scope: "minute" | "day"; readonly until: string }, now = Date.now()) {

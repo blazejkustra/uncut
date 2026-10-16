@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 // ---- sound library (D134) ----
 
 export const LibraryHitSchema = Schema.Struct({
-  source: Schema.Literals(["openverse", "freesound", "jamendo"]),
+  source: Schema.Literals(["openverse", "freesound"]),
   id: Schema.String,
   title: Schema.String,
   creator: Schema.String,
@@ -32,7 +32,7 @@ export const LibrarySearchResult = Schema.Struct({
   total: Schema.Number,
   page: Schema.Number,
   pages: Schema.Number,
-  source: Schema.Literals(["openverse", "freesound", "jamendo"]),
+  source: Schema.Literals(["openverse", "freesound"]),
   // Answered from Uncut's cache of recent searches (no request went out).
   cached: Schema.Boolean,
   limit: Schema.optional(LibraryLimit),
@@ -47,8 +47,8 @@ export const LibrarySearchResult = Schema.Struct({
 export type LibrarySearchResult = typeof LibrarySearchResult.Type;
 
 export const LibraryState = Schema.Struct({
-  // The sources that can search now: Openverse always, Freesound and Jamendo with the user's key or client ID.
-  sources: Schema.Array(Schema.Literals(["openverse", "freesound", "jamendo"])),
+  // The sources that can search now: Openverse always, Freesound with the user's key.
+  sources: Schema.Array(Schema.Literals(["openverse", "freesound"])),
   limit: Schema.optional(LibraryLimit),
 });
 export type LibraryState = typeof LibraryState.Type;

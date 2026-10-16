@@ -6,8 +6,7 @@ import { open as openFile, type FileHandle } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { extname, isAbsolute, join, resolve } from "node:path";
 
-import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, MUSIC_FILE_PATH, PROXY_PATH, SFX_FILE_PATH } from "@uncut/contracts";
-import { MUSIC_TRACKS } from "@uncut/core/music";
+import { AGENT_IMAGE_NAME, AGENT_IMAGE_PATH, BRAND_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, MEDIA_FILE_PATH, PROXY_PATH, SFX_FILE_PATH } from "@uncut/contracts";
 import { SFX_SOUNDS } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -217,20 +216,6 @@ export const layer = Layer.unwrap(
           return yield* serveFile(request, path);
         }),
       ),
-      // The bundled music library (D91), for the Audio tab's preview: only the files it lists.
-      HttpRouter.add(
-        "GET",
-        `${MUSIC_FILE_PATH}/*`,
-        Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          const url = authorised(request);
-          if (!url) return unauthorized();
-          const file = decode(url.pathname.slice(MUSIC_FILE_PATH.length + 1));
-          const track = MUSIC_TRACKS.find((t) => t.file === file);
-          if (!track) return notFound();
-          return yield* serveFile(request, join(config.musicDir, track.file));
-        }),
-      ),
       // The bundled sound-effects pack (D134), for the Sound effects tab's preview: only its files.
       HttpRouter.add(
         "GET",
@@ -270,7 +255,7 @@ export const layer = Layer.unwrap(
           const url = authorised(request);
           if (!url) return unauthorized();
           const [source, id] = (decode(url.pathname.slice(LIBRARY_PREVIEW_PATH.length + 1)) ?? "").split("/");
-          if ((source !== "openverse" && source !== "freesound" && source !== "jamendo") || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return notFound();
+          if ((source !== "openverse" && source !== "freesound") || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) return notFound();
           const controller = new AbortController();
           const res = yield* Effect.promise(() => sounds.preview(`${source}:${id}`, request.headers["range"], controller.signal).catch(() => "failed" as const));
           if (res === undefined) return notFound();

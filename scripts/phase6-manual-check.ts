@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { projectChecks, type Project } from "../packages/core/src/index.ts";
-import { buildTurn, END_URL, fixTurn, loudness, makeBrandFolder, probe, REF, REF_DIR, referenceMissing, sceneOf, signature, stampReference, TOTAL } from "../test/helpers/phase6-fixture.ts";
+import { buildTurn, END_URL, fixTurn, loudness, makeBrandFolder, MUSIC, probe, REF, REF_DIR, referenceMissing, sceneOf, signature, stampReference, TOTAL } from "../test/helpers/phase6-fixture.ts";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
@@ -50,7 +50,7 @@ const prompt =
     `Files: the sky background ${REF.sky}, the two sped-up recordings ${REF.h45} (Haiku 4.5) and ${REF.h55} (Haiku 5.5), and a dark Argent logo ${brand.logo}.`,
     `The reference's copy, the agent logs (model, clock, tokens and lines per run) and the comparison table's numbers are in ${REF.project}: read them from there, don't make any up.`,
     "Structure: a white title card over the sky (about 3 s); the race: both recordings side by side in phone frames, each next to its agent log, the Argent wordmark and the task line on top and the footnote at the bottom, recordings that end early hold their last frame (about 22 s); the dark comparison table over the sky (about 10 s); the white Argent end card with the install command and github.com/blazejkustra as the URL (about 4 s). 1920×1080, 39.5 s in all.",
-    "Music: a cozy lo-fi track from the library under all of it with short fades, export target −16 LUFS. Run project_check before you're done and fix every warning.",
+    `Music: the lo-fi track ${MUSIC} under all of it with short fades, export target −16 LUFS. Run project_check before you're done and fix every warning.`,
   ].join(" ");
 
 if (!flag("--run")) {
@@ -61,7 +61,7 @@ Manual check in the app (pnpm dev, or dist/mac-arm64/Uncut.app):
 
 ${prompt}
 
-  3. Expect: media_import (by path: nothing copied but the music), music_list/music_add, a few timeline_edits
+  3. Expect: media_import (by path, the music too), a few timeline_edits
      (device frames with hold, agent logs, compare table, end card), project_check with no warnings left.
   4. Check in the preview: the title card, both phones playing beside their logs (the clocks stop at 2:50
      and 2:41, "Stuck in the table, $0.48" and "All 10 steps pass, $0.34"), the phones hold their last

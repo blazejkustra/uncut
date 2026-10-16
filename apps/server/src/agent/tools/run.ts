@@ -1,12 +1,12 @@
 // runTool: one Uncut tool call of the running turn; allowed: what the turn's access lets it do.
 import type { BrandKit } from "@uncut/contracts";
-import { brandColourRule, LAYOUT_RULES, MUSIC_TEMPOS, type Project, describeOp, type Op, pluginCheckRules, type MusicTempo, type Problem } from "@uncut/core";
+import { brandColourRule, LAYOUT_RULES, type Project, describeOp, type Op, pluginCheckRules, type Problem } from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
 import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPlace";
 import * as Effect from "effect/Effect";
 import { gateOf, gateRefusal, planOnly } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
-import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_FRAMES, modulesList, musicOut, projectSummary, docsRead } from "../agentTools.ts";
+import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_FRAMES, modulesList, projectSummary, docsRead } from "../agentTools.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
 import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
@@ -18,7 +18,7 @@ import type { McpResult } from "../agent.ts";
 import type { LibraryCtx } from "./library.ts";
 
 export const makeRunTool = (ctx: LibraryCtx) => {
-  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, musicAdd, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser } = ctx;
+  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser } = ctx;
 
   const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
     Effect.gen(function* () {
@@ -142,12 +142,6 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const rubric = yield* rubricOf(v);
           return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts], found: asked.checks, notes: asked.notes, errors: FONT_ERRORS, sound: rubric.sound, intended: r.owner.plan.intended ?? [] }));
         }
-        case "music_list": {
-          if (args.tempo !== undefined && !(MUSIC_TEMPOS as ReadonlyArray<unknown>).includes(args.tempo)) return textResult(`tempo must be one of ${MUSIC_TEMPOS.join(", ")}.`, true);
-          return textResult(musicOut(v.session.project as Project, { mood: typeof args.mood === "string" ? args.mood : undefined, tempo: args.tempo as MusicTempo | undefined, query: typeof args.query === "string" ? args.query : undefined }));
-        }
-        case "music_add":
-          return yield* musicAdd(r, v, args);
         case "library_search":
           return yield* librarySearch(args);
         case "library_add":

@@ -92,10 +92,10 @@ test("LICENSE is MIT and every package says so", () => {
   assert.match(readFileSync("native/media/Cargo.toml", "utf8"), /^license = "MIT"$/m);
 });
 
-test("THIRD_PARTY_NOTICES names the fonts, every music track and the programs Uncut doesn't ship", () => {
+test("THIRD_PARTY_NOTICES names the fonts, Simple Icons, no bundled music and the programs Uncut doesn't ship", () => {
   const notices = readFileSync("THIRD_PARTY_NOTICES", "utf8");
   assert.match(notices, /SIL OPEN FONT LICENSE Version 1\.1/);
-  const library = JSON.parse(readFileSync("assets/music/library.json", "utf8")) as { tracks: Array<{ file: string; title: string; source: string }> };
-  for (const t of library.tracks) assert.ok(notices.includes(t.file) && notices.includes(t.title) && notices.includes(t.source), t.file);
+  assert.doesNotMatch(notices, /Music library|cozy-\d\.m4a/, "no bundled music (D274)");
+  assert.match(notices, /Simple Icons \(CC0 1\.0\)[\s\S]*simple-icons@16\.33\.0/);
   for (const name of ["ffmpeg", "whisper.cpp", "Electron", "LICENSES.chromium.html", "effect@", "react@", "serde@"]) assert.ok(notices.includes(name), name);
 });

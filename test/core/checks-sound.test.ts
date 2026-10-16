@@ -9,8 +9,8 @@ import { applyEdit, createSession, loadModules, projectChecks, SFX_PER_10S, SOUN
 const modules = await loadModules("spec/modules/builtin", "spec/examples/plugins");
 const FPS = 30;
 
-/** 21.5 s 1080×1350: main cuts every `cut` frames, texts, music (a bundled track) and effects. */
-function make({ cut = 60, music = "cozy-1.m4a", musicGain = 0, sfx = [], texts = [] }: { cut?: number; music?: string; musicGain?: number; sfx?: Array<{ file: string; at: number; gainDb?: number; duration?: number }>; texts?: Array<{ start: number; text: string }> } = {}): Project {
+/** 21.5 s 1080×1350: main cuts every `cut` frames, texts, music (its tempo in the file name) and effects. */
+function make({ cut = 60, music = "lofi-loop-75bpm.m4a", musicGain = 0, sfx = [], texts = [] }: { cut?: number; music?: string; musicGain?: number; sfx?: Array<{ file: string; at: number; gainDb?: number; duration?: number }>; texts?: Array<{ start: number; text: string }> } = {}): Project {
   const length = 645;
   const clips: Array<Item> = [];
   for (let f = 0, i = 0; f < length; f += cut, i++) clips.push({ id: `c${i}`, type: "clip", media: "m-clip", in: 0, duration: Math.min(cut, length - f) } as Item);
@@ -65,13 +65,13 @@ test("the evidence project (16 effects in 21.5 s) trips density, repeats, hits, 
 });
 
 test("a tasteful mix is clean: 3 effects on real events, 9 dB under a fast track", () => {
-  const p = make({ cut: 60, music: "cozy-3.m4a", sfx: [{ file: "whoosh-short.m4a", at: 119, gainDb: -9 }, { file: "ui-click.m4a", at: 300, gainDb: -10 }, { file: "impact-boom.m4a", at: 480, gainDb: -8 }] });
+  const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "whoosh-short.m4a", at: 119, gainDb: -9 }, { file: "ui-click.m4a", at: 300, gainDb: -10 }, { file: "impact-boom.m4a", at: 480, gainDb: -8 }] });
   assert.deepEqual(sound(p), [], JSON.stringify(sound(p)));
   assert.ok(SFX_PER_10S >= 3);
 });
 
 test("level: an effect at the music's gain is loud (hard); its fix puts it 9 dB under and clears it", () => {
-  const p = make({ cut: 60, music: "cozy-3.m4a", musicGain: -2, sfx: [{ file: "whoosh-short.m4a", at: 119 }] });
+  const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", musicGain: -2, sfx: [{ file: "whoosh-short.m4a", at: 119 }] });
   const loud = sound(p).find((c) => c.key === "sound:loud:s0")!;
   assert.match(loud.message, /whoosh-short at 4\.0 s is at 0 dB over music at −2 dB; effects sit 6 to 12 dB under the music/);
   assert.ok(SOUND_HARD.test(loud.key));
@@ -81,7 +81,7 @@ test("level: an effect at the music's gain is loud (hard); its fix puts it 9 dB 
   assert.equal(next.tracks.find((t) => t.id === "sfx")!.items[0]!.gainDb, -11);
   assert.deepEqual(sound(next), []);
   // A file that isn't from the pack: its loudness is unknown, so a soft note, never a hard finding.
-  const other = make({ cut: 60, music: "cozy-3.m4a", sfx: [{ file: "my-whoosh.wav", at: 119 }] });
+  const other = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "my-whoosh.wav", at: 119 }] });
   const level = sound(other).find((c) => c.key === "sound:level:s0")!;
   assert.equal(level.severity, "info");
   assert.ok(!SOUND_HARD.test(level.key));
@@ -89,14 +89,14 @@ test("level: an effect at the music's gain is loud (hard); its fix puts it 9 dB 
 });
 
 test("a short video gets a pro-rata limit; a riser lands on what it builds to; sounds named like effects count", () => {
-  const p = make({ cut: 60, music: "cozy-3.m4a", sfx: [{ file: "riser.m4a", at: 60, duration: 60, gainDb: -10 }] });
+  const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "riser.m4a", at: 60, duration: 60, gainDb: -10 }] });
   assert.deepEqual(sound(p), [], "a riser ending on the cut at 4 s lands");
-  const off = make({ cut: 60, music: "cozy-3.m4a", sfx: [{ file: "riser.m4a", at: 85, duration: 60, gainDb: -10 }] });
+  const off = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "riser.m4a", at: 85, duration: 60, gainDb: -10 }] });
   assert.ok(sound(off).some((c) => c.key === "sound:sync:s0"), "a riser ending between cuts lands on nothing");
 });
 
 test("the sound sheet: music with its tempo and level, each effect with its kind, level against the music and what it lands on", () => {
-  const p = make({ cut: 60, music: "cozy-3.m4a", sfx: [{ file: "whoosh-short.m4a", at: 119, gainDb: -9 }, { file: "ding.m4a", at: 455 }] });
+  const p = make({ cut: 60, music: "lofi-loop-95bpm.m4a", sfx: [{ file: "whoosh-short.m4a", at: 119, gainDb: -9 }, { file: "ding.m4a", at: 455 }] });
   const sheet = soundSheet(p);
   assert.match(sheet[0]!, /^music 0\.0 s to 21\.5 s: Music, 95 BPM, at 0 dB, fades in, fades out$/);
   assert.match(sheet[1]!, /^sound effect 4\.0 s \(f 119\): whoosh-short \(whoosh\), 0\.4 s, at −9 dB \(−9 dB against the music\); lands on the cut to c2 \(f 120\)/);
