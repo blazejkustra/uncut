@@ -4,6 +4,7 @@ import { online, state } from "./core.ts";
 import { justClosedProject } from "./actions/project.ts";
 import { environmentsUsable, flagOn } from "../../settings/labs.ts";
 import { panels } from "../../editor/layout.ts";
+import { openLinkImport } from "../../panels/library/linkImport.ts";
 
 export function runCommand(command: MenuCommand) {
   // The way to another environment works while this one is away.
@@ -19,6 +20,8 @@ export function runCommand(command: MenuCommand) {
   if (!online()) return;
   if (command.type === "open-setup") return actions.openSetup();
   if (command.type === "export") return actions.openExport();
+  // #94 (D263): File › Import from Link… opens Media's dialog (behind its Labs flag, with a project open).
+  if (command.type === "import-link") return void (state.snapshot && flagOn("importFromLink") && openLinkImport());
   switch (command.type) {
     case "new-project":
       // Over the editor if one is open; the current project only closes once the new one exists.
