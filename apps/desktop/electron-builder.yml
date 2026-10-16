@@ -59,6 +59,26 @@ extraResources:
   # The .uncut project icon (D252), named by Info.plist's CFBundleTypeIconFile and UTTypeIconFile below.
   - from: build/project.icns
     to: project.icns
+# The DMG's installer window (D288), for `pnpm dist` and for `pnpm dist:signed` (which runs this target
+# on the already signed and stapled app with --prepackaged). electron-builder writes it with dmgbuild
+# (.DS_Store and alias records written directly, no Finder or AppleScript, so it works on CI): a
+# window the size of the background (660×400; background@2x.png beside it makes it a retina TIFF),
+# no toolbar, sidebar or path bar, the app on the left and an Applications link on the right at the
+# arrow's height (scripts/make-dmg-background.ts draws both from the same positions), the app icon
+# as the volume icon (the default), volume name "Uncut".
+dmg:
+  title: Uncut
+  background: build/background.png
+  iconSize: 128
+  iconTextSize: 13
+  contents:
+    - x: 180
+      y: 172
+      type: file
+    - x: 480
+      y: 172
+      type: link
+      path: /Applications
 # Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
 afterSign: scripts/after-sign.ts
 mac:

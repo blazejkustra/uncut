@@ -15,15 +15,17 @@
 // It never prints credentials: notarytool reads them from the keychain profile, the token goes only
 // into the build's environment.
 // Flags: --sign-only (sign, check and make the DMG, no notarization: nothing goes to Apple);
-// --skip-build (package the apps/*/dist already built).
+// --skip-build (package the apps/*/dist already built); --dmg-only (D288: only remake and sign the
+// local DMG from the app already signed in dist/signed/mac-arm64, to check the installer window).
 import { execFileSync, spawnSync } from "node:child_process";
-import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  dmgCreateArgs,
+  BUILT_DMG_NAME,
+  dmgBuilderArgs,
   dmgSignArgs,
   isMachO,
   isMissingProfile,
@@ -75,9 +77,10 @@ function run(cmd: string, args: ReadonlyArray<string>, what: string, cwd?: strin
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const argv = process.argv.slice(2);
-const unknown = argv.filter((a) => a !== "--sign-only" && a !== "--skip-build");
-if (unknown.length) fail(`Unknown argument ${unknown.join(" ")} (only --sign-only and --skip-build).`);
-const signOnly = argv.includes("--sign-only");
+const unknown = argv.filter((a) => a !== "--sign-only" && a !== "--skip-build" && a !== "--dmg-only");
+if (unknown.length) fail(`Unknown argument ${unknown.join(" ")} (only --sign-only, --skip-build and --dmg-only).`);
+const dmgOnly = argv.includes("--dmg-only");
+const signOnly = argv.includes("--sign-only") || dmgOnly;
 const skipBuild = argv.includes("--skip-build");
 
 // 1. Identity.
@@ -89,6 +92,14 @@ const shareable = developerId && !signOnly;
 if (developerId && signOnly) console.warn("\n⚠ --sign-only: signed and checked, NOT notarized (nothing is sent to Apple); not copied to release/.");
 const teamId = /\(([A-Z0-9]{10})\)$/.exec(identity.name)?.[1];
 console.log(`Signing with ${identity.name} (${identity.hash}), hardened runtime, secure timestamp${shareable ? ", notarized" : ", NOT notarized"}.`);
+
+if (dmgOnly) {
+  if (!existsSync(appPath)) fail(`--dmg-only: no signed app at ${relative(root, appPath)}; run pnpm dist:signed --sign-only first.`);
+  const dmg = join(signedDir, "Uncut-local-arm64.dmg");
+  makeDmg(appPath, dmg);
+  console.log(`\nSigned DMG (not notarized) from the existing app: ${dmg}`);
+  process.exit(0);
+}
 
 // 2. The notary profile, before spending minutes on a build.
 const auth = notaryAuth(process.env);
@@ -220,17 +231,19 @@ function machOFiles(dir: string): Array<string> {
   return found;
 }
 
-/** A compressed DMG of the app with an Applications link, signed with the identity and a timestamp. */
+/**
+ * The installer DMG of the app (D288: electron-builder's dmg target on the signed app, the window
+ * laid out from electron-builder.yml's `dmg` block), signed with the identity and a timestamp.
+ */
 function makeDmg(app: string, dmg: string) {
-  step("Making the DMG");
-  const staging = mkdtempSync(join(tmpdir(), "uncut-dmg-"));
+  step("Making the DMG (electron-builder's dmg target on the signed app)");
+  const out = mkdtempSync(join(tmpdir(), "uncut-dmg-"));
   try {
-    run("ditto", [app, join(staging, "Uncut.app")], "copying the app");
-    symlinkSync("/Applications", join(staging, "Applications"));
+    run(join(desktop, "node_modules", ".bin", "electron-builder"), dmgBuilderArgs(app, out), "electron-builder (dmg)", desktop);
     rmSync(dmg, { force: true });
-    run("hdiutil", dmgCreateArgs(staging, dmg), "hdiutil create");
+    copyFileSync(join(out, BUILT_DMG_NAME), dmg); // the temp folder may be on another volume
   } finally {
-    rmSync(staging, { recursive: true, force: true });
+    rmSync(out, { recursive: true, force: true });
   }
   run("codesign", dmgSignArgs(identity.hash, dmg), "signing the DMG");
   run("codesign", ["--verify", "--strict", "--verbose=2", dmg], "codesign --verify (DMG)");

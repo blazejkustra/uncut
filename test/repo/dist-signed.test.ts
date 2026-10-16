@@ -3,11 +3,14 @@
 // Nothing here calls codesign, notarytool or the keychain.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 
+import { DMG_ICONS, DMG_WINDOW } from "../../apps/desktop/scripts/make-dmg-background.ts";
 import {
+  BUILT_DMG_NAME,
   DEFAULT_NOTARY_PROFILE,
-  dmgCreateArgs,
+  dmgBuilderArgs,
   dmgSignArgs,
   isMachO,
   isMissingProfile,
@@ -94,7 +97,10 @@ test("Mach-O detection: thin, fat, either byte order; not scripts or text", () =
 });
 
 test("the DMG: compressed HFS+, signed with the identity and a secure timestamp; release name with version and UTC date", () => {
-  assert.deepEqual(dmgCreateArgs("/s", "/o.dmg"), ["create", "-volname", "Uncut", "-srcfolder", "/s", "-fs", "HFS+", "-format", "UDZO", "-ov", "/o.dmg"]);
+  const args = dmgBuilderArgs("/s/Uncut.app", "/tmp/out");
+  assert.deepEqual(args.slice(0, 7), ["--config", "electron-builder.yml", "--mac", "dmg", "--arm64", "--prepackaged", "/s/Uncut.app"], "the dmg target on the signed app, not a new build");
+  for (const a of ["-c.dmg.sign=false", "-c.dmg.writeUpdateInfo=false", "-c.dmg.format=UDZO", "-c.dmg.filesystem=HFS+", `-c.dmg.artifactName=${BUILT_DMG_NAME}`, "-c.directories.output=/tmp/out"]) assert.ok(args.includes(a), a);
+  assert.ok(!args.some((a) => a.startsWith("-c.mac.identity") || a.startsWith("-c.mac.hardenedRuntime")), "nothing that would re-sign the stapled app");
   assert.deepEqual(dmgSignArgs("CC8D", "/o.dmg"), ["--force", "--sign", "CC8D", "--timestamp", "/o.dmg"]);
   assert.equal(releaseDmgName("0.1.0", new Date("2026-10-16T23:30:00Z")), "Uncut-0.1.0-20261016-arm64.dmg");
   assert.equal(releaseDmgName("1.2.3", new Date("2027-01-02T00:00:00Z")), "Uncut-1.2.3-20270102-arm64.dmg");
@@ -130,4 +136,36 @@ test("release.yml runs pnpm dist:signed with a temporary keychain and the notary
   assert.match(yml, /UNCUT_TELEMETRY_TOKEN: \$\{\{ secrets\.UNCUT_TELEMETRY_TOKEN \}\}/);
   assert.match(yml, /gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg [^\n]*--draft/);
   assert.doesNotMatch(yml, /CSC_LINK|CSC_KEY_PASSWORD/, "electron-builder's own keychain would hide the identity from the script's checks");
+});
+
+// D288: the installer window. dist-signed.ts's makeDmg runs electron-builder's dmg target (dmgBuilderArgs)
+// with electron-builder.yml's `dmg` block, so the staging is the app, the Applications link, the
+// background (a retina pair), the window layout and the volume name and icon from there.
+test("the DMG's installer window: background pair, icon layout, volume name, no Finder scripting", () => {
+  const fromBuilder = createRequire(realpathSync("apps/desktop/node_modules/electron-builder/package.json"));
+  const yaml = createRequire(realpathSync(fromBuilder.resolve("app-builder-lib")))("js-yaml") as { load: (s: string) => any };
+  const dmg = yaml.load(readFileSync("apps/desktop/electron-builder.yml", "utf8")).dmg;
+  assert.equal(dmg.title, "Uncut", "volume name");
+  assert.equal(dmg.icon, undefined, "volume icon defaults to the app icon (mac.icon)");
+  assert.equal(dmg.background, "build/background.png");
+  assert.equal(dmg.backgroundColor, undefined, "electron-builder refuses both");
+  assert.equal(dmg.iconSize, 128);
+  const [app, link] = dmg.contents;
+  assert.deepEqual({ x: app.x, y: app.y, type: app.type }, { ...DMG_ICONS.app, type: "file" }, "the app on the left, where the background expects it");
+  assert.equal(app.path, undefined, "the app is the packaged (or --prepackaged) one");
+  assert.deepEqual(link, { ...DMG_ICONS.applications, type: "link", path: "/Applications" }, "Applications on the right, same height");
+  assert.equal(app.y, link.y);
+  assert.ok(app.x < link.x);
+  // The window takes the background's size: 1x and 2x PNGs (electron-builder joins them into a TIFF).
+  const size = (file: string) => {
+    const png = readFileSync(file);
+    assert.equal(png.subarray(1, 4).toString(), "PNG", file);
+    return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+  };
+  assert.deepEqual(size("apps/desktop/build/background.png"), DMG_WINDOW);
+  assert.deepEqual(size("apps/desktop/build/background@2x.png"), { width: DMG_WINDOW.width * 2, height: DMG_WINDOW.height * 2 });
+  const script = readFileSync("apps/desktop/scripts/dist-signed.ts", "utf8");
+  assert.match(script, /dmgBuilderArgs\(app, out\)/, "makeDmg lays out the DMG with electron-builder");
+  assert.doesNotMatch(script, /osascript|"Finder"|hdiutil", \["create"/, "no Finder scripting (hangs on CI) and no plain hdiutil DMG");
+  assert.match(script, /makeDmg\(appPath, dmg\);\s*await notarize\(dmg, "the DMG", auth\);/, "the DMG notarized is the one laid out");
 });
