@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 
-import { backgroundSvg, DMG_FOOTER, DMG_HEADING, DMG_ICONS, DMG_WINDOW } from "../../apps/desktop/scripts/make-dmg-background.ts";
+import { arrowPath, backgroundSvg, DMG_FOOTER, DMG_HEADING, DMG_ICONS, DMG_WINDOW } from "../../apps/desktop/scripts/make-dmg-background.ts";
 import {
   BUILT_DMG_NAME,
   DEFAULT_NOTARY_PROFILE,
@@ -173,4 +173,18 @@ test("the DMG's installer window: background pair, icon layout, volume name, no 
   assert.match(script, /dmgBuilderArgs\(app, out\)/, "makeDmg lays out the DMG with electron-builder");
   assert.doesNotMatch(script, /osascript|"Finder"|hdiutil", \["create"/, "no Finder scripting (hangs on CI) and no plain hdiutil DMG");
   assert.match(script, /makeDmg\(appPath, dmg\);\s*await notarize\(dmg, "the DMG", auth\);/, "the DMG notarized is the one laid out");
+});
+
+test("the DMG arrow: one curve between the icons, its head on the curve's end and symmetric about the end tangent", () => {
+  const n = arrowPath().match(/-?\d+(\.\d+)?/g)!.map(Number);
+  const [x0, , , , c2x, c2y, x1, y1, b1x, b1y, ax, ay, b2x, b2y] = n as [number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+  assert.deepEqual([ax, ay], [x1, y1], "the head's apex is the curve's end");
+  assert.ok(x0 - (DMG_ICONS.app.x + 64) >= 24 && DMG_ICONS.applications.x - 64 - x1 >= 24, "clear of both icons");
+  assert.ok(Math.abs(x0 + x1 - (DMG_ICONS.app.x + DMG_ICONS.applications.x)) < 1, "centred between them");
+  const t = Math.atan2(y1 - c2y, x1 - c2x);
+  const angle = (bx: number, by: number) => Math.atan2(y1 - by, x1 - bx) - t;
+  const a1 = angle(b1x, b1y), a2 = angle(b2x, b2y);
+  assert.ok(Math.abs(a1 + a2) < 0.01, "barbs symmetric about the tangent");
+  assert.ok(Math.abs(a1) > (28 * Math.PI) / 180 && Math.abs(a1) < (36 * Math.PI) / 180, "30–35° from the line");
+  for (const [bx, by] of [[b1x, b1y], [b2x, b2y]] as const) assert.ok(Math.abs(Math.hypot(x1 - bx, y1 - by) - 11) < 0.05, "11 pt barbs");
 });
