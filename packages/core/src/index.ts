@@ -13,7 +13,7 @@ export { itemMotionBlur, MOTION_BLUR_DEFAULTS, MOTION_BLUR_SAMPLES, motionBlurDe
 export type { MotionBlur } from "./visual/motionBlur.ts";
 export { GRAPHIC_MEDIA_MAX_EDGE, GRAPHIC_MEDIA_SCHEME, graphicMediaFrame, graphicMediaSize, graphicMediaUsed, parseGraphicMediaRequest } from "./visual/graphicMedia.ts";
 export type { GraphicMediaRequest } from "./visual/graphicMedia.ts";
-export { familiesOf, familyKey, FONT_FORMATS, FONT_MIME, fontFaceRules, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicFontFamilies, graphicFontStacks, MAX_GRAPHIC_FONT_BYTES, resolveGraphicFonts, textFamily } from "./visual/fonts.ts";
+export { familiesOf, familyKey, FONT_FORMATS, FONT_MIME, fontFaceRules, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicDeclaredFamilies, graphicFontFamilies, graphicFontStacks, MAX_GRAPHIC_FONT_BYTES, resolveGraphicFonts, textFamily } from "./visual/fonts.ts";
 export type { FontSource } from "./visual/fonts.ts";
 export { baseBox, canvasBox, clipBox, DEFAULT_KEY_FPS, EASES, fitRect, FITS, hasKeys, hasSpringKeys, isPlainBox, keyAt, keysOf, KEY_PROPS, moveBox } from "./visual/box.ts";
 export type { ClipBox, Ease, Fit, KeyEase, KeyProp, Rect } from "./visual/box.ts";

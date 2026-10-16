@@ -138,6 +138,9 @@ test("#35 + #34: a kit in the library from ~/ files and a folder, picked by anot
       { tool: "brand_write", args: { kit: "argent", colors: [{ hex: "#0b1d3a", role: "background" }, { hex: "#ffffff", role: "text" }] } },
       { tool: "brand_write", args: { kit: "argent", fonts: [{ family: "Uncut Kit Mono", role: "headline", file: "~/Downloads/KitMono.woff2" }] } },
       { tool: "graphic_write", args: { name: "kit.html", html: kitFont } },
+      // Edit mode: only the change travels; a new revision; an old that isn't there writes nothing.
+      { tool: "graphic_write", args: { from: "kit.html", edits: [{ old: 'fillText("Argent"', new: 'fillText("Argent 2"' }] } },
+      { tool: "graphic_write", args: { from: "graphics/kit.html", edits: [{ old: "not in the file", new: "x" }] } },
       { tool: "project_read" },
       { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Kit font title", ops: [{ op: "update_item", item: "g-1", set: { src: "graphics/kit.html" } }] } },
       { tool: "project_check" },
@@ -196,6 +199,14 @@ test("#35 + #34: a kit in the library from ~/ files and a folder, picked by anot
     // The font file came in from ~/; the graphic in the kit's font passes the check.
     assert.deepEqual(after.fonts, [{ family: "Uncut Kit Mono", role: "headline", file: "KitMono.woff2" }]);
     assert.equal(json(by("graphic_write")[1]!).fonts, undefined);
+    const edited = json(by("graphic_write")[2]!);
+    assert.equal(edited.src, "graphics/kit-2.html", JSON.stringify(edited));
+    assert.equal(edited.editedFrom, "graphics/kit.html");
+    assert.equal(readFileSync(join(s.dir, "graphics", "kit-2.html"), "utf8"), kitFont.replace('fillText("Argent"', 'fillText("Argent 2"'));
+    assert.equal(readFileSync(join(s.dir, "graphics", "kit.html"), "utf8"), kitFont, "the original is never overwritten");
+    assert.equal(by("graphic_write")[3]!.result.isError, true);
+    assert.match(by("graphic_write")[3]!.result.content[0]!.text!, /isn't in graphics\/kit\.html.*Nothing was written/);
+    assert.ok(!existsSync(join(s.dir, "graphics", "kit-3.html")));
     const clean = json(by("project_check")[1]!);
     assert.equal(clean.errors, undefined, JSON.stringify(clean));
 

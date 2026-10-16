@@ -91,6 +91,7 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       return typeof args.path === "string" ? `Saved the subtitles as ${shortName(args.path)}` : `Saved the subtitles as ${format}`;
     }
     case "graphic_write":
+      if (typeof args.from === "string") return `Edited the graphic ${args.from.replace(/^graphics\//, "")}`;
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
     case "shader_write":
       return typeof args.name === "string" ? `Wrote the shader effect ${args.name}` : "Wrote a shader effect";
@@ -274,6 +275,7 @@ const PRESENT: ReadonlyArray<[string, string]> = [
 export function doingLabel(tool: string, input: unknown, plugin?: string, project?: string): string {
   const args = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   if (tool === "timeline_edit" && args.dryRun !== true) return typeof args.summary === "string" && args.summary.trim() ? `Editing the timeline: ${args.summary.trim()}` : "Editing the timeline";
+  if (tool === "graphic_write" && typeof args.from === "string") return `Editing graphic ${args.from.replace(/^graphics\//, "")}`;
   if (tool === "graphic_write") return typeof args.name === "string" && args.name.trim() ? `Writing graphic ${args.name.trim()}` : "Writing a graphic";
   if (tool === "shader_write") return typeof args.name === "string" && args.name.trim() ? `Writing shader effect ${args.name.trim()}` : "Writing a shader effect";
   const past = stepLabel(tool, input, plugin, project);
