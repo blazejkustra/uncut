@@ -27,3 +27,6 @@ apps/desktop/stage/
 
 # Finder aliases (one held a home path)
 * alias
+
+# wrangler pages dev (site/DEPLOY.txt) state
+.wrangler/
