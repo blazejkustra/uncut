@@ -211,8 +211,9 @@ test("at the minimum window size a tall step scrolls from its top; a failed chec
   await waitFor(page, "[data-testid=api-key-warning]");
   assert.match(await text(page, "api-key-warning"), /in your environment/);
 
-  // Taller than the window: it starts at the card's top (brand visible) and scrolls to the buttons.
-  const layer = "[data-testid=onboarding]";
+  // Taller than the window: it starts at the top (brand visible) and the step scrolls to the buttons
+  // (#104: the wizard fills the window; the header stays, the step's panel scrolls).
+  const layer = "[data-testid=onboarding] .wiz-panel";
   const metrics = await page.$eval(layer, (el) => ({ scrollTop: el.scrollTop, overflow: el.scrollHeight > el.clientHeight }));
   assert.equal(metrics.scrollTop, 0);
   assert.ok(metrics.overflow, "this step should be taller than 520 px");
