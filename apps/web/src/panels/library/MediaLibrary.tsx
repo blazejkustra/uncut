@@ -8,6 +8,10 @@ import { useMediaView, sortMedia, setMediaSort, type MediaSort, MEDIA_SORTS, set
 import { generatedMedia, GeneratedSection } from "../Generate.tsx";
 import { RecentSection } from "../RecentMedia.tsx";
 import { Empty, MediaTile } from "./MediaTile.tsx";
+import { useFlag } from "../../settings/labs.ts";
+import { openMenu } from "../../timeline/ContextMenu.tsx";
+import { call } from "../../state/store/server.ts";
+import { dragMayHoldLink, linkFromDrag, liveLinkJob, openLinkImport, useLinkJobs } from "./linkImport.ts";
 
 export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => void }) {
   const app = useApp();
@@ -16,6 +20,9 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
   const importing = running.length > 0 || uploading !== undefined;
   const [dragging, setDragging] = useState(false);
   const online = connection === "connected";
+  // D259 (#94): with the Labs flag, + is a menu with Import from link…, and a dropped link opens it.
+  const linkImport = useFlag("importFromLink");
+  const linkJobs = useLinkJobs().filter((j) => liveLinkJob(j) && j.projectDir === app.snapshot?.dir);
   // Generated media (D99) are listed under Generated, with their prompts.
   const generated = new Set(generatedMedia(project).map((m) => m.id));
   const view = useMediaView();
@@ -36,6 +43,11 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
+    if (linkImport && !e.dataTransfer.files.length) {
+      const url = linkFromDrag(e.dataTransfer);
+      if (url && online) openLinkImport({ url });
+      return;
+    }
     // Only files from disk have a path; anything else (a dragged link, text) is ignored. A drop
     // while an import runs is queued behind it on the server.
     // On a remote environment this Mac's paths mean nothing to the server: the files go up instead (D108).
@@ -51,7 +63,7 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
       className={`library ${dragging ? "dragging" : ""}`}
       data-testid="library"
       onDragOver={(e) => {
-        if (![...e.dataTransfer.types].includes("Files")) return;
+        if (![...e.dataTransfer.types].includes("Files") && !(linkImport && dragMayHoldLink(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
         setDragging(true);
@@ -63,8 +75,21 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
     >
       <div className="lib-head">
         Media
-        <button className="icon-btn" data-testid="import-plus" disabled={!online} title="Import media" onClick={() => void actions.importMedia()}>
-          {importing ? <RefreshCw className="spin" /> : <Plus />}
+        <button
+          className="icon-btn"
+          data-testid="import-plus"
+          disabled={!online}
+          title="Import media"
+          onClick={(e) => {
+            if (!linkImport) return void actions.importMedia();
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu(r.left, r.bottom + 4, [
+              { id: "import-files", label: "Import files…", run: () => void actions.importMedia() },
+              { id: "import-link", label: "Import from link…", run: () => openLinkImport() },
+            ], "Import");
+          }}
+        >
+          {importing || linkJobs.length ? <RefreshCw className="spin" /> : <Plus />}
         </button>
       </div>
       {uploading && (
@@ -83,6 +108,23 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
           <div className="bar">
             <span style={{ width: `${Math.round(progressFraction(job) * 100)}%` }} />
           </div>
+        </div>
+      ))}
+      {linkJobs.map((job) => (
+        <div key={job.id} className="import-progress link-progress" data-testid="link-progress">
+          <RefreshCw className="spin" />
+          <span className="ellipsis" title={job.url}>
+            {job.title ? `${job.title}: ` : ""}
+            {job.status ?? "Starting…"}
+          </span>
+          <div className="bar">
+            <span style={{ width: `${Math.round((job.progress ?? 0) * 100)}%` }} />
+          </div>
+          {job.phase === "running" && (
+            <button className="link-btn link-cancel" data-testid="link-progress-cancel" disabled={!online} onClick={() => void call((c) => c["link.cancel"]({ jobId: job.id }))}>
+              Cancel
+            </button>
+          )}
         </div>
       ))}
       {app.analysisError && (

@@ -7,6 +7,8 @@ import { COMPONENT_DRAG_TYPE, draggedComponent, secondsFor, setDraggedComponent,
 import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../dnd.ts";
 import { HEAD_WIDTH } from "./dragView.ts";
 import type { LaneGeometry } from "./lanes.ts";
+import { flagOn } from "../../settings/labs.ts";
+import { dragMayHoldLink, linkFromDrag, openLinkImport } from "../../panels/library/linkImport.ts";
 
 export interface LaneDropCtx {
   readonly fps: number;
@@ -57,11 +59,13 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
       if (over !== dropCut) setDropCut(over);
       return;
     }
-    if (!online || ![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => types.includes(t)) && !hasFiles(types)) return;
+    // D259: a link dragged from a browser (Labs › Import from link) is imported and put here.
+    const link = flagOn("importFromLink") && dragMayHoldLink(e.dataTransfer);
+    if (!online || ![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => types.includes(t)) && !hasFiles(types) && !link) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDropping(true);
-    const lane = types.includes(MEDIA_DRAG_TYPE) || hasFiles(types) ? laneHit(e.clientY).track?.id : undefined;
+    const lane = types.includes(MEDIA_DRAG_TYPE) || hasFiles(types) || link ? laneHit(e.clientY).track?.id : undefined;
     if (lane !== dropLane) setDropLane(lane);
     const tile = types.includes(TEXT_DRAG_TYPE) ? 3 : types.includes(COMPONENT_DRAG_TYPE) ? secondsFor(draggedComponent() ?? "") : undefined;
     const span = tile === undefined ? undefined : { frame: Math.max(0, Math.round(frameAt(e.clientX))), frames: tile * fps };
@@ -123,6 +127,13 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
         const paths = files.map((f) => bridge.pathForFile(f)).filter((p) => p.startsWith("/"));
         void actions.importMedia(paths, { frame, track });
       }
+      return;
+    }
+    // D259: a link: the Import from link dialog, and what it imports lands here.
+    const url = flagOn("importFromLink") ? linkFromDrag(e.dataTransfer) : undefined;
+    if (url) {
+      e.preventDefault();
+      openLinkImport({ url, drop: { frame, ...(track ? { track } : {}) } });
     }
   };
   return { cutNear, overLanes, itemAt, onDragOver, onDrop };

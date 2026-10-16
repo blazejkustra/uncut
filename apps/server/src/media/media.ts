@@ -368,7 +368,7 @@ export const layer = Layer.effect(
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
 
-    const importCapture = ({ openId, dir, path, name, source, turnId, place }: CaptureImportInput) =>
+    const importCapture = ({ openId, dir, path, name, source, turnId, place, drop }: CaptureImportInput) =>
       Effect.gen(function* () {
         const added = yield* Deferred.make<AgentImport, string>();
         yield* queueJob({ openId, dir }, [path], {
@@ -379,6 +379,7 @@ export const layer = Layer.effect(
           sources: new Map([[path, source]]),
           added,
           place,
+          drop,
         });
         return yield* Deferred.await(added).pipe(Effect.mapError((message) => new ProjectError({ reason: "io", message, details: [] })));
       });
