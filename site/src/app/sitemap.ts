@@ -1,11 +1,11 @@
 import type { MetadataRoute } from "next";
-import { getAllPosts } from "../lib/posts.ts";
+import { getPublishedPosts } from "../lib/posts.ts";
 import { SITE_URL } from "../lib/site.ts";
 
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const posts = getAllPosts();
+  const posts = getPublishedPosts();
   const latest = posts[0] ? new Date(posts[0].updated ?? posts[0].date) : undefined;
   return [
     { url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 },

@@ -225,6 +225,8 @@ footer a:hover { color: var(--fg); }
 .post { max-width: 720px; padding: 56px 0 0; }
 .post .back { font-size: 14px; margin-bottom: 28px; }
 .post .meta { margin-bottom: 12px; }
+.draft-tag { display: inline-block; margin-right: 10px; padding: 1px 8px; border-radius: var(--radius-sm); background: var(--select-soft); color: var(--select); font: 500 12px/1.6 var(--mono); text-transform: uppercase; letter-spacing: 0.04em; }
+.draft-note { margin-bottom: 20px; padding: 12px 14px; border: 1px solid var(--select-soft); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; }
 .post .lead { margin-top: 16px; color: var(--muted); font-size: 18px; }
 .post .lead-img { margin-top: 36px; width: 100%; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); }
 .prose { margin-top: 12px; font-size: 17px; }

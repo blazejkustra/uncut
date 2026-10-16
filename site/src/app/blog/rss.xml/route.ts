@@ -1,5 +1,5 @@
 // The blog's RSS 2.0 feed, written to out/blog/rss.xml at build time.
-import { getAllPosts } from "../../../lib/posts.ts";
+import { getPublishedPosts } from "../../../lib/posts.ts";
 import { SITE_URL } from "../../../lib/site.ts";
 
 export const dynamic = "force-static";
@@ -8,7 +8,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const rfc822 = (date: string) => new Date(`${date}T12:00:00Z`).toUTCString();
 
 export function GET(): Response {
-  const posts = getAllPosts();
+  const posts = getPublishedPosts();
   const items = posts
     .map((p) => {
       const url = `${SITE_URL}/blog/${p.slug}/`;
