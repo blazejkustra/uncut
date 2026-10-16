@@ -122,6 +122,8 @@ test("issue #60: the Skills tab lists the bundled skills; / in the composer auto
     await page.keyboard.type("for acme.dev");
     await page.click("[data-testid=brand-make-from-reference]");
     await page.waitForFunction(() => document.querySelector<HTMLTextAreaElement>("[data-testid=agent-input]")?.value === "/make-brand-kit for acme.dev", { timeout: 10000 });
+    // Focus follows the prefill (a frame later on a slow runner, #89).
+    await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "agent-input", { timeout: 5000 }).catch(() => {});
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-testid")), "agent-input");
     const turns = await page.$$eval("[data-testid=agent-turn]", (els) => els.length);
     assert.equal(turns, 1, "nothing sent");

@@ -23,6 +23,7 @@ import { audioGraph, planExport } from "../../apps/server/src/export/exportPlan.
 import { dbWords } from "../../packages/core/src/timeline/edit-log.ts";
 import { levelY } from "../../apps/web/src/audio/sound.ts";
 import type { Project } from "../../packages/core/src/timeline/types.ts";
+import { NO_REAL_AUDIO, notChecked } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -276,6 +277,11 @@ test("Mixer: faders, pan, solo, meters, volume keys on the timeline, undo, Histo
     }
 
     // Preview ≈ export: record the master output while the whole mix plays from the start.
+    if (NO_REAL_AUDIO) {
+      notChecked(NO_REAL_AUDIO, "the preview's mix ≈ the export's (the master output recorded while playing)");
+      assert.deepEqual(app.errors, []);
+      return;
+    }
     const project = onDisk();
     assert.ok(project.master?.gainDb && project.tracks.find((t) => t.id === "music")!.mixer?.pan && project.tracks.find((t) => t.id === "voice")!.mixer?.gainDb, "the mix has a master volume, a pan and a track volume");
     await page.keyboard.press("Home");

@@ -206,7 +206,9 @@ const frameOf = (file: string, n: number, out: string) => (execFileSync("ffmpeg"
 const rgbFrames = (file: string) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { maxBuffer: 1024 * 1024 * 1024 });
 const ssim = (a: string, b: string) => {
   const r = spawnSync("ffmpeg", ["-hide_banner", "-i", a, "-i", b, "-lavfi", "[0]format=gray[a];[1]format=gray[b];[a][b]ssim", "-f", "null", "-"], { encoding: "utf8" });
-  return Number(/All:([\d.]+)/.exec(r.stderr)![1]);
+  const m = /All:([\d.]+)/.exec(r.stderr);
+  if (!m) throw new Error(`ssim of ${a} and ${b} failed: ${r.stderr.slice(-400)}`);
+  return Number(m[1]);
 };
 /** In the lower band: near-white pixels (caption text) and light-blue ones (the accent, #99DAFF). */
 function band(all: Buffer, f: number) {

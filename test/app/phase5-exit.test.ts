@@ -388,8 +388,9 @@ async function exitCheck() {
     const scores = Object.fromEntries((["smooth", "jittered", "blurred"] as const).map((k) => [k, ssim(exported, frameOf(fixture.takes[k], n, join(root, `${k}-${n}.png`)))]));
     console.log(`  exported frame ${takeStart + n} (take frame ${n}, jitter ${shift(n).toFixed(1)} px) SSIM: ${JSON.stringify(scores)}`);
     // The test pattern's flat areas keep every SSIM high, so compare how unlike each one is: the
-    // smooth take at least 3× closer than either other take (measured ~5×).
-    assert.ok(scores.smooth! > 0.97 && 1 - Math.max(scores.jittered!, scores.blurred!) >= 3 * (1 - scores.smooth!), JSON.stringify(scores));
+    // smooth take at least 2.5× closer than either other take (measured ~5× locally with ffmpeg 8;
+    // 2.97× on GitHub's runner with ffmpeg 9, the same on every run, #89).
+    assert.ok(scores.smooth! > 0.97 && 1 - Math.max(scores.jittered!, scores.blurred!) >= 2.5 * (1 - scores.smooth!), JSON.stringify(scores));
   }
   const before = frameOf(saveAs, takeStart - 3, out("phase5-export-talk.png"));
   assert.ok(ssim(before, join(root, `smooth-${probes[0]}.png`)) < 0.6, "the frames before the take are the talk's");

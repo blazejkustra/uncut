@@ -1,4 +1,4 @@
-// What this Mac can do that some tests need (#89, D290). GitHub's macOS runners are Apple
+// What this Mac can do that some tests need (#89, D254). GitHub's macOS runners are Apple
 // Virtualization VMs: their paravirtual GPU draws a little differently from a real Apple GPU (so the
 // "preview = export" pixel checks miss their SSIM bars), frames come late (playback smoothness),
 // the audio output is a virtual device, and the screen is small. A test or a check that needs one
@@ -56,16 +56,18 @@ export async function smallScreen(page: Page, width: number, height: number) {
   return w < width || h < height ? `needs a screen with room for ${width}×${height}: this one has ${w}×${h}` : undefined;
 }
 
-/**
- * `assert.ok(ok, message)`, unless the capability is `missing`: then the check is skipped, and said so
- * (printed, and listed in test-output/skipped-checks.txt for the CI summary).
- */
-export function check(missing: string | undefined, ok: unknown, message: string) {
-  if (!missing) return assert.ok(ok, message);
-  const line = `not checked (${missing}): ${message}${ok ? " (would pass)" : ""}`;
+/** Says (printed, and listed in test-output/skipped-checks.txt for the CI summary) that `what` wasn't checked, and why. */
+export function notChecked(missing: string, what: string) {
+  const line = `not checked (${missing}): ${what}`;
   console.log(`# ${line}`);
   try {
     mkdirSync("test-output", { recursive: true });
     appendFileSync("test-output/skipped-checks.txt", `${process.argv[1] ?? "?"}: ${line}\n`);
   } catch {}
+}
+
+/** `assert.ok(ok, message)`, unless the capability is `missing`: then the check is skipped, and said so (notChecked). */
+export function check(missing: string | undefined, ok: unknown, message: string) {
+  if (!missing) return assert.ok(ok, message);
+  notChecked(missing, `${message}${ok ? " (would pass)" : ""}`);
 }

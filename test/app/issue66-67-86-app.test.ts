@@ -90,6 +90,9 @@ const centre = async (selector: string) => {
 
 test("issue #67: the error toast closes itself, stays while hovered, keeps its close button", { skip, timeout: 120000 }, async () => {
   const text = await refuse();
+  // The toast's countdown runs from when it showed: time it from here, not after the checks and
+  // the screenshot below (seconds on a slow runner, #89).
+  const t0 = Date.now();
   const ms = toastMs(text);
   assert.equal(await page.$eval(TOAST, (el) => Number((el as HTMLElement).dataset.autoClose)), ms, "the toast's time comes from its text");
   assert.ok(ms > 5000, `a full sentence stays more than the minimum (${ms} ms)`);
@@ -97,7 +100,6 @@ test("issue #67: the error toast closes itself, stays while hovered, keeps its c
   await page.screenshot({ path: out("toast") });
 
   // Left alone, it closes after about `ms`, not long before.
-  const t0 = Date.now();
   await gone(ms + 3000);
   const took = Date.now() - t0;
   assert.ok(took > ms - 1500, `closed after ${took} ms, expected about ${ms}`);

@@ -159,6 +159,8 @@ test("issue #28/#36: inline brief, storyboard and review cards; the critic's blo
     await lastDone();
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-card][data-type=review]").length === 2, { timeout: 30000 });
     const passed = "[data-testid=agent-card][data-type=review][data-passed=true]";
+    // The second card comes with the turn, its verdict with the critic's result (#89: a beat later on a slow runner).
+    await page.waitForSelector(passed, { timeout: 30000 }).catch(() => {});
     assert.equal(await page.$$eval("[data-testid=agent-card][data-type=review]", (els) => els.map((e) => e.getAttribute("data-passed")).join()), "false,true");
     assert.deepEqual(await page.$$eval(`${passed} [data-testid=agent-review-fix]`, (els) => els.map((e) => e.getAttribute("data-verified"))), ["true", "true"]);
     await page.$eval(passed, (el) => el.scrollIntoView({ block: "start" }));

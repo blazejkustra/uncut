@@ -16,6 +16,7 @@ import type { Page } from "puppeteer-core";
 import type { Item, Project } from "../../packages/core/src/timeline/types.ts";
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -228,7 +229,9 @@ test("issue #62: the transport fits a tiny preview panel: shown controls inside 
   await page.setViewport({ width: 1280, height: 800 });
   await page.evaluate(() => localStorage.removeItem("uncut.layout"));
   for (const p of ["lib", "side", "bottom"] as const) await page.click(`[data-testid=resize-${p}]`, { clickCount: 2 });
-  await sleep(400);
+  // The panels animate back to their sizes: poll until the bar has room again (#89: 400 ms wasn't
+  // enough on a slow runner), then check it.
+  await eventually(async () => (await checkTransport("1280×800 again")).ids.length === CONTROLS.length);
   const back = await checkTransport("1280×800 again");
   assert.equal(back.ids.length, CONTROLS.length, `all controls back: ${back.ids.join(", ")}`);
 });
