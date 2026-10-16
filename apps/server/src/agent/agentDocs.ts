@@ -83,8 +83,30 @@ export const DOCS = {
 export type DocTopic = keyof typeof DOCS;
 export const DOC_TOPICS = Object.keys(DOCS) as ReadonlyArray<DocTopic>;
 
-/** docs_read's answer: one topic's text, or the topics there are. */
-export function docsRead(topic: unknown): { text: string; isError: boolean } {
+/** A bundled library's own API reference: its leading block comment (the library file is the one source of it). */
+export function libraryHeader(source: string): string | undefined {
+  const m = /^\s*\/\*([\s\S]*?)\*\//.exec(source);
+  return m?.[1]?.replace(/^\s*\n/, "").replace(/\s+$/, "") || undefined;
+}
+
+/**
+ * The graphics topic's appendix: each bundled library's header (its whole API, as the library
+ * file says it; three.js is its own documented library), from `libs` (name → source, the server's
+ * loadGraphicLibs), so the agent never has to look for the files.
+ */
+export function libraryReference(libs: Readonly<Record<string, string>>): string {
+  const parts = Object.entries(libs)
+    .filter(([name]) => name !== "three.js")
+    .flatMap(([name, source]) => {
+      const header = libraryHeader(source);
+      return header ? [`uncut:lib/${name}\n${header}`] : [];
+    });
+  return parts.length ? `\n\nThe bundled libraries' full API, from each library's own header (everything each one has; their files are inlined by Uncut, so there is nothing on disk to look up):\n\n${parts.join("\n\n")}` : "";
+}
+
+/** docs_read's answer: one topic's text, or the topics there are. With `libs`, the graphics topic carries the libraries' own API references (libraryReference). */
+export function docsRead(topic: unknown, libs?: Readonly<Record<string, string>>): { text: string; isError: boolean } {
+  if (topic === "graphics" && libs) return { text: DOCS.graphics.body + libraryReference(libs), isError: false };
   if (typeof topic === "string" && topic in DOCS) return { text: DOCS[topic as DocTopic].body, isError: false };
   return { text: `topic must be one of: ${DOC_TOPICS.map((t) => `${t} (${DOCS[t].summary})`).join("; ")}.`, isError: true };
 }
