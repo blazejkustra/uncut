@@ -23,6 +23,7 @@ import { resolveGraphicLibs, type Project } from "../../packages/core/src/index.
 import { criticSkills, runFacts, UNMEASURED } from "../../apps/server/src/agent/tools/cards.ts";
 import { reviewRubric as rubricOf, soundProfileFor, suggestSkills as suggestOf } from "../../packages/core/src/skills/skills.ts";
 import { soundProfileText } from "../../packages/core/src/checks/soundSheet.ts";
+import { skillOfPlugin } from "../../apps/server/src/brand/store.ts";
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -360,9 +361,10 @@ test("D297: the drop's strip and fact, UI-first intent, the canvas around the pi
 // critic, motion craft isn't suggested with it, its sound profile is ui (an effect per press, never a
 // blocker), and a scan that couldn't run is Uncut's problem, not the video's.
 test("D297: the film's checklist wins, no motion craft with it, the ui sound profile, an unmeasured scan isn't marked down", () => {
-  const skills = ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"].map((name) => ({ name }));
-  assert.deepEqual(criticSkills(skills).map((x) => x.name), ["brand-application", "motion-film"]);
-  assert.deepEqual(criticSkills(skills.slice(0, 3)).map((x) => x.name), ["launch-promo", "motion-craft", "sound-design"]);
+  // Built the way the brand state lists them: a plugin skill's name is its id, its title the name shown.
+  const skills = ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"].map((name) => skillOfPlugin({ name, title: `The ${name} skill`, description: "", instructions: "", plugin: "uncut-skills", pluginName: "Uncut skills", bundled: true }));
+  assert.deepEqual(criticSkills(skills).map((x) => x.id), ["brand-application", "motion-film"]);
+  assert.deepEqual(criticSkills(skills.slice(0, 3)).map((x) => x.id), ["launch-promo", "motion-craft", "sound-design"]);
   const film = suggestOf({ film: "Our launch film: one take, never cut, a single shape morphing on the beat", type: "launch-promo" });
   assert.ok(film.includes("motion-film") && !film.includes("motion-craft"), film.join(", "));
   assert.ok(suggestOf({ film: "Our launch film", type: "launch-promo" }).includes("motion-craft"));
