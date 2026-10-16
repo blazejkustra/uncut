@@ -22,6 +22,6 @@ simple = { limit = 60, period = 60 }
 # secret that lives longer. Create it with `wrangler kv namespace create VISITOR_SALTS` and put the
 # printed id below, then uncomment (an id isn't a credential). Without this binding the Worker runs
 # as before and adds no visitor_day.
-# [[kv_namespaces]]
-# binding = "VISITOR_SALTS"
-# id = "<the id printed by wrangler kv namespace create>"
+[[kv_namespaces]]
+binding = "VISITOR_SALTS"
+id = "22ab73abe15c44fe89cab31848600ac5"
