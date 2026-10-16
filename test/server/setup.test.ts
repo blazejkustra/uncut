@@ -107,7 +107,8 @@ test("D277: an API key goes to claude (any sign-in Claude Code supports), to no 
   const r = await check({ PATH: `${dir}:/usr/bin:/bin`, ANTHROPIC_API_KEY: SECRET });
   assert.equal(r.byId.claude.version, "2.1.296-keyseen", "claude gets the key");
   assert.equal(r.byId.claude.status, "ready");
-  assert.match(r.byId.claude.detail, /API key/);
+  // D277 review: a key in the environment wins over a Claude login, so the row says where it came from.
+  assert.equal(r.byId.claude.detail, "Signed in with an API key. Using ANTHROPIC_API_KEY from your shell environment; agent usage is billed to that API account. Unset it to use your Claude login.");
   assert.equal(r.byId.argent.version, "0.28.0", "argent doesn't");
   assert.equal(r.byId["api-key"], undefined, "no separate key row");
   for (const part of [SECRET, "SECRETVALUE", "sk-ant"]) assert.ok(!r.raw.includes(part), `response contains ${part}`);
@@ -252,6 +253,17 @@ test("D277: a key exported by the login shell reaches claude, and its value neve
   const { byId, raw } = await checkClean({ ...launchdEnv({ SHELL: shell }), ...baseEnv(), UNCUT_CLAUDE: claude });
   assert.equal(byId.claude.version, "2.1.296-keyseen");
   assert.equal(byId.claude.status, "ready");
+  assert.match(byId.claude.detail, /Using ANTHROPIC_API_KEY from your shell environment/);
   assert.equal(byId["api-key"], undefined);
   assert.ok(!raw.includes(SECRET) && !raw.includes("sk-ant"));
+});
+
+test("D277 review: day-job AWS keys in the login shell don't reach a claude that isn't set to use Bedrock", T, async () => {
+  const shell = script(join(root, "shells"), "aws", `export AWS_SECRET_ACCESS_KEY=${SECRET}\nexport AWS_PROFILE=work\nexec /bin/sh -c "$2"`);
+  const claude = script(join(root, "aws-claude"), "claude", `case "$1" in --version) echo "2.1.296\${AWS_PROFILE:+-awsseen} (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`);
+  const { byId } = await checkClean({ ...launchdEnv({ SHELL: shell }), ...baseEnv(), UNCUT_CLAUDE: claude });
+  assert.equal(byId.claude.version, "2.1.296", "no AWS variable reached claude");
+  const bedrock = script(join(root, "shells"), "aws-bedrock", `export AWS_PROFILE=work\nexport CLAUDE_CODE_USE_BEDROCK=1\nexec /bin/sh -c "$2"`);
+  const on = await checkClean({ ...launchdEnv({ SHELL: bedrock }), ...baseEnv(), UNCUT_CLAUDE: claude });
+  assert.equal(on.byId.claude.version, "2.1.296-awsseen", "with Bedrock on, the AWS profile goes");
 });

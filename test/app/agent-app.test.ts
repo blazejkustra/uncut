@@ -71,6 +71,8 @@ test("the agent on an empty project: a title appears live, the manual-edit note 
       FAKE_PLAN: plan(),
       FAKE_PROMPT_LOG: promptLog(),
       ANTHROPIC_API_KEY: "sk-ant-test-not-a-key",
+      OPENAI_API_KEY: "sk-openai-test",
+      AWS_SECRET_ACCESS_KEY: "aws-test",
     },
   });
   apps.add(app);
@@ -169,7 +171,9 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   assert.equal(prompts[1].prompt.split("\n\n<brand>")[0], "add an end card\nthat thanks people");
   assert.match(prompts[1].prompt, /by hand/);
   assert.equal(prompts[1].resume, "fake-session");
-  assert.ok(!prompts[0].env.includes("ANTHROPIC_API_KEY"), "D41 in the packaged app too");
+  // D277: Claude Code's own sign-in reaches claude in the packaged app too; a generator key and cloud keys without Bedrock don't.
+  assert.ok(prompts[0].env.includes("ANTHROPIC_API_KEY"), "D277: the API key reaches claude");
+  for (const k of ["OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"]) assert.ok(!prompts[0].env.includes(k), `${k} reached claude`);
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=timeline-item]").length === 3);
   await page.screenshot({ path: "test-output/agent-note.png" });
 

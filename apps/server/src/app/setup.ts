@@ -14,7 +14,7 @@ import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "./config.ts";
 import { runProbe, type ProbeResult } from "../media/probe.ts";
-import { claudeEnv, userAuthSettings, withoutApiKey } from "./shellEnv.ts";
+import { apiKeySource, claudeEnv, withoutApiKey } from "./shellEnv.ts";
 
 // Generous: a cold CLI start (first run after an update, a busy machine, macOS scanning a new
 // binary) can take seconds; a hung one still gives up quickly enough to show an error.
@@ -43,13 +43,13 @@ export const which = async (name: string, path: string) => {
 /** A version number out of whatever `--version` printed ("2.1.296 (Claude Code)" → "2.1.296"). Never raw output. */
 export const versionToken = (output: string): string | undefined => /\d+(?:\.\d+)+[\w.-]*/.exec(output)?.[0]?.slice(0, 32);
 
-// The other tools' probes get no API key (D41).
+// The other tools' probes get no sign-in variable or other secret (toolEnv, D277 review).
 const run = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) =>
   runProbe(command, args, { timeoutMs, env: withoutApiKey(process.env) });
 // D218, D277: Claude Code's probes get the environment the agent's claude gets (as sessionEnv:
 // claudeEnv, whatever Claude Code signs in with, plus the sign-in variables of its user settings),
 // so the sign-in row is the agent's.
-const runClaude = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) => runProbe(command, args, { timeoutMs, env: { ...claudeEnv(process.env), ...userAuthSettings(process.env).env } });
+const runClaude = (command: string, args: ReadonlyArray<string>, timeoutMs = PROBE_TIMEOUT_MS) => runProbe(command, args, { timeoutMs, env: claudeEnv(process.env) });
 
 /** Why a found tool couldn't answer, in words. */
 const problem = (path: string, result: ProbeResult): string =>
@@ -74,14 +74,17 @@ const capitalize = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
 
 // D277: Uncut runs Claude Code with whatever sign-in it uses (a Claude account, an API key, a
 // cloud provider); every one is ready. Only the plan or provider is shown, never the account.
-const claudeSignIn = (status: { authMethod?: unknown; apiProvider?: unknown; subscriptionType?: unknown }) => {
+// D277 review: an ANTHROPIC_API_KEY in the environment wins over a Claude login in claude -p, so a
+// stale one exported in a shell profile would silently bill an API account; say so (presence only).
+const ENV_KEY_NOTE = "Using ANTHROPIC_API_KEY from your shell environment; agent usage is billed to that API account. Unset it to use your Claude login.";
+const claudeSignIn = (status: { authMethod?: unknown; apiProvider?: unknown; subscriptionType?: unknown }, keySource: ReturnType<typeof apiKeySource>) => {
   switch (status.authMethod) {
     case "claude.ai": {
       const plan = typeof status.subscriptionType === "string" && status.subscriptionType ? `, ${capitalize(status.subscriptionType)} plan` : "";
       return { status: "ready" as const, detail: `Signed in with a Claude account${plan}` };
     }
     case "api_key":
-      return { status: "ready" as const, detail: "Signed in with an API key. Agent usage is billed to that API account." };
+      return { status: "ready" as const, detail: keySource === "environment" ? `Signed in with an API key. ${ENV_KEY_NOTE}` : "Signed in with an API key. Agent usage is billed to that API account." };
     // D219: CLAUDE_CODE_OAUTH_TOKEN, the long-lived token `claude setup-token` makes from a Claude account.
     case "oauth_token":
       return { status: "ready" as const, detail: "Signed in with a Claude account (a long-lived token from claude setup-token)" };
@@ -140,7 +143,7 @@ export const layer = Layer.effect(
         return { ...found, status: "needs-login", detail: "Installed, but not signed in.", fix: { text: "Sign in (or set up the API key or cloud provider you use with Claude Code):", command: "claude auth login" } };
       }
       // Only the plan is shown; the account's email and organisation stay out of the app.
-      return { ...found, ...claudeSignIn(status) };
+      return { ...found, ...claudeSignIn(status, apiKeySource(process.env)) };
     });
 
     const codex = isolated({ id: "codex", name: "Codex", optional: true }, async () => {

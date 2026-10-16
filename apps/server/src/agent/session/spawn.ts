@@ -5,7 +5,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
-import type { Access } from "../agentPermissions.ts";
+import { type Access, sessionSettings } from "../agentPermissions.ts";
+import { settingsArg, userAuthSettings } from "../../app/shellEnv.ts";
 import { onRateLimit, resultError, resultFailed } from "../agentLimits.ts";
 import { besideServer } from "../../paths.ts";
 import type { Loaded, Running, ClaudeSession } from "./types.ts";
@@ -210,7 +211,15 @@ export const makeSpawn = (ctx: StreamCtx) => {
     } catch {}
     // D232: every installed skill's name and description go in the system prompt (send's toolsKey has their names).
     const snapshotOff = !promptSnapshotRefused;
-    const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, promptSnapshot: snapshotOff ? "off" : undefined, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
+    // D277 review: the user's sign-in commands go in a 0600 file in the session's folder, not on argv.
+    let settings: string;
+    try {
+      settings = settingsArg(dir, JSON.parse(sessionSettings({ access, projects, dataDir: config.dataDir })), userAuthSettings(process.env).settings);
+    } catch (error) {
+      rmSync(dir, { recursive: true, force: true });
+      return `Can't prepare the agent's settings: ${(error as Error).message}`;
+    }
+    const args = sessionArgs({ cfg, settings, model: choice.model, effort: choice.effort, resume: resumed, thinking, promptSnapshot: snapshotOff ? "off" : undefined, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
     const initId = `init-${randomBytes(4).toString("hex")}`;
     const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, snapshotOff, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
     try {

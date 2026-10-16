@@ -16,6 +16,7 @@ import { turnLimits } from "../agentLimits.ts";
 import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
 import { capNote, joinNotes, noteFor } from "../turns/notes.ts";
 import { findClaude, modelFor, IMAGE_EXT } from "./config.ts";
+import { shellAuthReady } from "../../app/shellEnv.ts";
 import type { AgentShape } from "../agent.ts";
 import type { SpawnCtx } from "./spawn.ts";
 
@@ -168,6 +169,8 @@ export const makeSend = (ctx: SpawnCtx) => {
         s = undefined;
       }
       if (!s) {
+        // D277 review: a claude started right after launch waits (bounded) for the login shell's sign-in variables.
+        yield* Effect.promise(() => shellAuthReady());
         const started = spawnSession(owner, bin, toolsKey, true, { model, effort, access });
         if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
         s = st.session = started;

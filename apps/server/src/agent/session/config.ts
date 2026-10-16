@@ -3,7 +3,7 @@ import { type Access, permissionMode, sessionSettings, LOOK_DISALLOWED } from ".
 import { SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
 import type { PluginSkill } from "@uncut/core";
 import { which } from "../../app/setup.ts";
-import { claudeEnv, userAuthSettings } from "../../app/shellEnv.ts";
+import { claudeEnv } from "../../app/shellEnv.ts";
 
 // How the agent runs claude: its command line, environment and timings.
 export const PROVIDER = "Claude Code";
@@ -45,10 +45,10 @@ export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = { "
  * per the turn's access (agentPermissions.ts). Uncut's own tools are pre-allowed and gated in
  * `allowed`. `addDirs`: folders the user mentioned in this chat. `projects`: the project folder (as
  * opened and its real path) for Auto's deny rules. `dataDir`: Uncut's data folder (D219's deny rules).
- * `authSettings` (D277): Claude Code's sign-in settings (apiKeyHelper and the cloud refresh commands),
- * by default the user's (userAuthSettings), which --setting-sources "" would otherwise drop.
+ * `settings` (D277): the --settings value when it isn't just Uncut's own rules (settingsArg: a 0600
+ * file that adds the user's sign-in commands, which --setting-sources "" would otherwise drop).
  */
-export function sessionArgs(o: { readonly cfg: string; readonly authSettings?: Readonly<Record<string, string>> | undefined; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly promptSnapshot?: "off" | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined }) {
+export function sessionArgs(o: { readonly cfg: string; readonly settings?: string | undefined; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly promptSnapshot?: "off" | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined }) {
   const access = o.access ?? "auto";
   const args = [
     "-p",
@@ -65,7 +65,7 @@ export function sessionArgs(o: { readonly cfg: string; readonly authSettings?: R
     "--permission-prompt-tool", "stdio",
     // Secrets stay out whatever the access, before claude's own read-only auto-allow and its classifier.
     // D219: Uncut's data folder (and other apps' data) too.
-    "--settings", JSON.stringify({ ...(o.authSettings ?? userAuthSettings(process.env).settings), ...JSON.parse(sessionSettings({ access, projects: o.projects, dataDir: o.dataDir })) }),
+    "--settings", o.settings ?? sessionSettings({ access, projects: o.projects, dataDir: o.dataDir }),
     // D232 (issue #60): every installed skill by name and description; skill_read loads one.
     "--append-system-prompt", `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
   ];
@@ -93,9 +93,8 @@ export function sessionArgs(o: { readonly cfg: string; readonly authSettings?: R
  */
 export const sessionEnv = (env: NodeJS.ProcessEnv): Record<string, string> => ({
   // D218: claudeEnv adds Uncut's honest client id (CLAUDE_AGENT_SDK_CLIENT_APP) and drops NODE_OPTIONS/DEBUG.
+  // D277: including the sign-in variables of Claude Code's settings.json env (claudeEnv).
   ...claudeEnv(env),
-  // Claude Code applies its settings' env over the environment it was started with; so does this.
-  ...userAuthSettings(env).env,
   ENABLE_TOOL_SEARCH: "false",
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
   CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
