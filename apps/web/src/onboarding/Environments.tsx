@@ -3,7 +3,7 @@
 // prints), tested before it's saved. Switching reloads the window into the other environment, so
 // one environment's projects never show in another. "Connect over SSH" only shows commands (D111).
 import { Check, CircleAlert, Copy, Laptop, Pencil, Plus, RefreshCw, Server, SquareTerminal, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
 import type { EnvironmentInfo, EnvironmentTest } from "../state/bridge.ts";
 import { NOT_ENCRYPTED, notEncrypted } from "../state/remoteUrl.ts";
@@ -20,7 +20,7 @@ export function useEnvironmentsUsable() {
 }
 
 /** The hint on a disabled Environments entry point (D245). */
-export const ENVIRONMENTS_LABS_HINT = `Environments is in Labs. ${LABS_HINT}.`;
+export const ENVIRONMENTS_LABS_HINT = `Environments is a Labs feature, off by default. ${LABS_HINT}.`;
 
 export function Environments() {
   const { environments, environment, connection, environmentProblem } = useApp();
@@ -322,19 +322,32 @@ export function EnvironmentChip() {
   const { environment, connection, environmentProblem } = useApp();
   const state = connection === "connected" ? "connected" : connection === "failed" || connection === "server-exited" || environmentProblem ? "error" : "connecting";
   const usable = useEnvironmentsUsable();
-  return (
+  const chip = (
     <button
       className="env-chip"
       data-testid="env-chip"
       data-kind={environment.kind}
       data-state={state}
       disabled={!usable}
-      title={!usable ? ENVIRONMENTS_LABS_HINT : (environmentProblem ?? (environment.kind === "remote" ? `On ${environment.url ?? environment.name}. Click for Environments.` : "Environments"))}
+      title={usable ? (environmentProblem ?? (environment.kind === "remote" ? `On ${environment.url ?? environment.name}. Click for Environments.` : "Environments")) : undefined}
       onClick={() => void actions.openEnvironments()}
     >
       <span className="dot" />
       {environment.kind === "remote" ? <Server /> : <Laptop />}
       {environment.name}
     </button>
+  );
+  // A disabled button gets no hover, so the Labs hint sits on a wrapper (LabsTip).
+  return usable ? chip : <LabsTip>{chip}</LabsTip>;
+}
+
+/** The Labs hint on a control that's disabled because Environments is off in Settings › Labs. */
+export function LabsTip({ children }: { children: ReactElement }) {
+  return (
+    <Tooltip label={ENVIRONMENTS_LABS_HINT}>
+      <span className="labs-tip" data-testid="labs-tip">
+        {children}
+      </span>
+    </Tooltip>
   );
 }
