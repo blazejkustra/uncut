@@ -3,7 +3,7 @@
 // it. Uncut's dark greyscale, a faint top light and a subtle arrow from the app (left) to the
 // Applications link (right), at the icon positions in electron-builder.yml's `dmg.contents`.
 // Finder draws icon labels black over a background picture, in dark mode too (no setting changes
-// it), so each label sits on a light pill; without them the names vanish into the dark.
+// it), so each label sits on a small light-grey plate (4 pt corners); without them the names vanish into the dark.
 // The window is 660×400 with its title bar, so the visible area is ~660×368: the icons sit centred
 // in that, and the bottom of the picture only shows under a taller window.
 // Run: node apps/desktop/scripts/make-dmg-background.ts (the outputs are committed; rerun to change).
@@ -27,7 +27,7 @@ const ARROW: Rgb = [242, 241, 238];
 const y = DMG_ICONS.app.y;
 const x0 = DMG_ICONS.app.x + 88, x1 = DMG_ICONS.applications.x - 88;
 const HEAD = 11, HALF = 1.25;
-const PILL: Rgb = [226, 225, 221];
+const PLATE: Rgb = [206, 205, 202]; // light grey, not white: readable black text, quiet on the dark
 
 function colour(px: number, py: number): Rgb {
   const { width: w, height: h } = DMG_WINDOW;
@@ -35,7 +35,7 @@ function colour(px: number, py: number): Rgb {
   const glow = clamp(1 - Math.hypot((px - w / 2) / (w * 0.75), (py + h * 0.15) / (h * 1.05)), 0, 1);
   let c = mix(BG, LIGHT, glow ** 1.6);
   for (const icon of Object.values(DMG_ICONS)) {
-    if (roundRect(px, py, icon.x, icon.y + LABEL_DY, 54, 12, 12) <= 0) return PILL;
+    if (roundRect(px, py, icon.x, icon.y + LABEL_DY, 54, 12, 4) <= 0) return PLATE;
   }
   const d = Math.min(segment(px, py, x0, y, x1, y), segment(px, py, x1 - HEAD, y - HEAD, x1, y), segment(px, py, x1 - HEAD, y + HEAD, x1, y));
   const cover = d <= HALF ? 1 : 0; // the rasteriser supersamples the edge
