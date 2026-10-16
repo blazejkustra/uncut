@@ -35,3 +35,15 @@ const UNMEASURED = new Set([13, 8, 16, 18]);
 export function liftsTone(c: StreamColour | undefined, height: number): boolean {
   return height >= 360 && !(c?.transfer !== undefined && UNMEASURED.has(c.transfer));
 }
+
+/**
+ * Issue #12 (D265): whether Chromium shows this <video> with SMPTE 170M (or BT.470BG) primaries
+ * converted to BT.709's, as the export does for untagged SD (server untaggedFilter): its primaries
+ * when tagged, else what its matrix implies, else BT.601 below 720 lines (decoderColour's reading).
+ * The GPU compositor uploads a <video>'s values without that conversion, so it makes it itself.
+ */
+export function convertsPrimaries(c: StreamColour | undefined, height: number): boolean {
+  if (c?.primaries !== undefined) return c.primaries === 5 || c.primaries === 6;
+  if (c?.matrix !== undefined) return c.matrix === 5 || c.matrix === 6;
+  return height > 0 && height < 720;
+}

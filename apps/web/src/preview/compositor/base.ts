@@ -5,14 +5,14 @@ import { Mix, setCurrentMix } from "../../audio/audio.ts";
 import { playback, getPlayback } from "../playback.ts";
 import { type ProjectModel, type Item } from "../../state/project.ts";
 import { scrubCacheOn } from "../../settings/scrub.ts";
-import { ScrubCache, liftsTone } from "../scrub.ts";
+import { ScrubCache, liftsTone, convertsPrimaries } from "../scrub.ts";
 import { VIDEO_UNTONE_FILTER, ensureUntoneFilter } from "../tone.ts";
 import { GpuCompositor, plainColour } from "../gpu.ts";
 import { type ClipFx, clipFx, fxSkips, needsPicturePass, fxPictureSize, hasOverlay, fxOverlayInner, visibleRect } from "@uncut/core/fx";
 import { FxRenderer, frameKeyOf, presentedFrames } from "../fx.ts";
 import { type ShaderUse, clipShader, shaderTime } from "@uncut/core/shaders";
 import { ShaderCanvas, whenRunner, shaderProblem } from "../shader.ts";
-import { type MediaEl, type ScrubView, type PictureEl, pictureReady, FX_POOL, FX_CONTEXTS, setStyle, px, previewSrc, wanted, reachable, SCRUB_SETTLE_MS, renderTimes, previewStats, playSeek } from "./media.ts";
+import { type MediaEl, type ScrubView, type PictureEl, pictureReady, FX_POOL, FX_CONTEXTS, setStyle, placeContent, px, previewSrc, wanted, reachable, SCRUB_SETTLE_MS, renderTimes, previewStats, playSeek } from "./media.ts";
 
 /**
  * Issue #55: a clip's effects drawn by the shared renderer (past FX_CONTEXTS), copied into its own
@@ -339,10 +339,7 @@ export abstract class CompositorBase {
     const shaded = this.drawShader(item, el, wrap, use, fxPictureSize(box, media?.probe), shaderTime(frame, start, fps));
     const shaderCanvas = this.shaderCanvas.get(item.id)?.canvas;
     if (shaderCanvas) {
-      setStyle(shaderCanvas, "left", el.style.left);
-      setStyle(shaderCanvas, "top", el.style.top);
-      setStyle(shaderCanvas, "width", el.style.width);
-      setStyle(shaderCanvas, "height", el.style.height);
+      placeContent(shaderCanvas, box, shaderCanvas.style.objectFit);
       shaderCanvas.style.opacity = el.style.opacity;
       shaderCanvas.style.visibility = shaded && !picture ? "" : "hidden";
     }
@@ -384,10 +381,7 @@ export abstract class CompositorBase {
         }
       }
       const c = r ? r.canvas : copy!.canvas;
-      setStyle(c, "left", el.style.left);
-      setStyle(c, "top", el.style.top);
-      setStyle(c, "width", el.style.width);
-      setStyle(c, "height", el.style.height);
+      placeContent(c, box, c.style.objectFit);
       c.style.opacity = el.style.opacity;
       const size = fxPictureSize(box, media?.probe);
       const t = (Math.floor(frame) - start) / fps;
@@ -404,7 +398,8 @@ export abstract class CompositorBase {
       el.style.visibility = shaded ? "hidden" : "";
     }
     // Blur (an effect) on what's shown, as the export blurs the picture before its box.
-    const blur = fx?.blur ? `blur(${px(fx.blur)})` : "";
+    // D265: in the shown element's own px (a <video> placed by a transform is scaled to its box).
+    const blur = fx?.blur ? `blur(${px(fx.blur / (Number(shown.dataset.scale) || 1))})` : "";
     // D222: a <video> macOS lifts is shown through the inverse table first, so it shows its values
     // as the export, its effects canvas and its scrub canvas do.
     const untone = shown === el && el instanceof HTMLVideoElement && this.liftsVideo(el);
@@ -598,6 +593,12 @@ export abstract class CompositorBase {
   protected liftsVideo(el: HTMLVideoElement): boolean {
     const src = el.dataset.src ? this.scrub.peek(el.dataset.src) : undefined;
     return liftsTone(src?.index?.colour, el.videoHeight);
+  }
+
+  /** Issue #12 (D265): whether this <video> is shown with SMPTE 170M primaries converted to BT.709's (scrub/colour.ts). */
+  protected gamutVideo(el: HTMLVideoElement): boolean {
+    const src = el.dataset.src ? this.scrub.peek(el.dataset.src) : undefined;
+    return convertsPrimaries(src?.index?.colour, el.videoHeight);
   }
 
   /**
