@@ -391,12 +391,14 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         .map((c) => ({ rule: c.id, key: c.key, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), ...(c.range ? { range: c.range } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)) }));
       images.push(...motion.images);
       const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
+      // Why there's no scan without an error: no ffmpeg, or too few frames rendered to compare.
+      const scanMissing = yield* Effect.promise(async () => ((await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH"));
       const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, intent) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
       // D292: the time budget left some of the scan's frames out.
       const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
       const motionFacts = [
-        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : [`${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."} ${UNMEASURED}`]),
+        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : [`${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : `No frame-difference scan (${scanMissing}).`} ${UNMEASURED}`]),
         ...flatLines(flatStrips, fps, intent.footage),
         ...("drop" in motion && motion.drop ? [motion.drop] : []),
         ...beatWordLines(sb?.beats),
@@ -432,7 +434,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         blockers: review.blockers,
         defects: review.defects,
         ...(review.fixes ? { fixes: review.fixes } : {}),
-        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : "ffmpeg isn't on PATH" } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
+        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
         next: reviewNext(review, round),
       });

@@ -118,3 +118,17 @@ test("D296: a song on a plain \"Audio\" track, its file named after the song, is
   const swish = make({ music: "3-swish-swed_arulo_mixkit-201_cut28.mp3" });
   assert.match(soundSheet({ ...swish, tracks: swish.tracks.map((t) => (t.id === "music" ? { ...t, name: "Audio" } : t)) })[0]!, /^music 0\.0 s/);
 });
+
+// D297: the ui sound profile (a motion film): a click on every beat inside the film's one graphic is
+// neither too dense nor a repeat nor "on nothing" (the change is inside the graphic); a meme still is noted.
+test("ui profile: one soft click per press inside a graphic is fine; outside a graphic it still has to land on something", () => {
+  const clicks = Array.from({ length: 20 }, (_, i) => ({ file: "click-soft.m4a", at: 15 + i * 15, gainDb: -12 }));
+  const base = make({ cut: 645, music: "electro-120bpm.m4a", sfx: [...clicks, { file: "airhorn.m4a", at: 400, gainDb: -12 }] });
+  const withGraphic = { ...base, tracks: [...base.tracks, { id: "gfx", kind: "video", name: "Graphics", items: [{ id: "film", type: "graphic", src: "graphics/film.html", start: 0, duration: 645 } as Item] }] } as Project;
+  const ui = projectChecks(withGraphic, { sound: "ui" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  assert.deepEqual([...new Set(ui)].sort(), ["meme"]);
+  const strict = projectChecks(withGraphic, { sound: "strict" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  assert.ok(strict.includes("density") && strict.includes("repeat"), strict.join(", "));
+  const bare = projectChecks(base as Project, { sound: "ui" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  assert.ok(bare.includes("sync"), "no graphic: a click on nothing is still a finding");
+});
