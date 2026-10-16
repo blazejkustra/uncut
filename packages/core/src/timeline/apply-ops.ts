@@ -89,6 +89,8 @@ function editable(project: Draft, itemId: Id) {
 
 /** Clips and audio play from a time in their media; still images and items without media don't. */
 function hasSourceTime(project: Draft, item: DraftItem) {
+  // A graphic's time runs from its own start (D78): a trimmed start or a split's second half goes on from where it was.
+  if (item.type === "graphic") return true;
   if (!item.media) return item.in !== undefined;
   return project.media.find((m) => m.id === item.media)?.kind !== "image";
 }
