@@ -4,6 +4,7 @@
   "id": "taste.extra",
   "kind": "pack",
   "name": "Taste extra",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "An example data-only plugin: a soft card look, a corner sticker and two house-style checks. Nothing in it runs as a program.",
   "author": "Uncut",

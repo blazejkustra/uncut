@@ -4,6 +4,7 @@
   "id": "typegpu.effects",
   "kind": "pack",
   "name": "TypeGPU effects",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "GPU video effects written with TypeGPU: water ripples, an RGB shift, halftone dots and an old CRT. Drawn with WebGPU; nothing in it runs as a program.",
   "author": "Uncut",

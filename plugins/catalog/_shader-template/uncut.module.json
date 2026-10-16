@@ -4,6 +4,7 @@
   "id": "example.shader",
   "kind": "pack",
   "name": "Example shader",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "A shader effect plugin: one TypeGPU effect, drawn with WebGPU. Nothing in it runs as a program.",
   "author": "",

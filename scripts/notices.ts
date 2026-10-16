@@ -257,6 +257,29 @@ export async function render(): Promise<string> {
     s += "respective owners, shown only to say who makes a model; Uncut isn't made by or affiliated with any of them.\n";
   }
 
+  // D281: the tools' marks on the setup and Settings rows, and the plugins' own icons.
+  const toolMarks = readFileSync(join(ROOT, "apps/web/src/onboarding/toolMarks.tsx"), "utf8");
+  for (const needle of ['Simple Icons "ffmpeg"', "software-mansion/argent", "36aa14a"]) if (!toolMarks.includes(needle)) throw new Error(`apps/web/src/onboarding/toolMarks.tsx no longer names ${needle}: update scripts/notices.ts`);
+  const typegpuIcon = readFileSync(join(ROOT, "plugins/catalog/typegpu-effects/icon.svg"), "utf8");
+  if (!typegpuIcon.includes("software-mansion/TypeGPU")) throw new Error("plugins/catalog/typegpu-effects/icon.svg no longer names its source: update scripts/notices.ts");
+  s += section("Tool and plugin marks");
+  s += "The setup wizard's and Settings' rows (apps/web/src/onboarding/toolMarks.tsx) and the plugins'\n";
+  s += "icons (icon.svg in each plugin folder) are drawn in one colour, the row's text colour:\n\n";
+  s += `FFmpeg: Simple Icons ${iconsVersion} (https://simpleicons.org, icon ffmpeg), CC0 1.0 Universal.\n`;
+  s += "Argent: the mark from Argent's logo, https://github.com/software-mansion/argent,\n";
+  s += "  packages/docs/static/img/logo.svg at commit 36aa14a, Apache License 2.0 (the repository's\n";
+  s += "  licence, whose full text is among the npm packages' licence texts below); its outline is\n";
+  s += "  drawn thicker. Also plugins/argent-capture/icon.svg.\n";
+  s += "TypeGPU: its logomark, https://github.com/software-mansion/TypeGPU,\n";
+  s += "  apps/typegpu-docs/public/typegpu-logomark-monodark.svg at commit 425afd3, MIT (the\n";
+  s += "  repository's licence, Copyright (c) 2025 Software Mansion, the same text as the typegpu npm\n";
+  s += "  package's below); in plugins/catalog/typegpu-effects/icon.svg.\n";
+  s += "whisper.cpp has no logo of its own, so its row and the Whisper plugin show Uncut's own mark;\n";
+  s += "the other plugin icons are Uncut's own drawings too.\n\n";
+  s += "These marks are trademarks of their respective owners (FFmpeg of Fabrice Bellard, Argent and\n";
+  s += "TypeGPU of Software Mansion), shown only to name the program a row or plugin is about. Uncut\n";
+  s += "isn't made by, endorsed by or affiliated with any of them.\n";
+
   s += section("Electron and Chromium");
   s += `Uncut runs on Electron ${String(electron.version)} (MIT, https://github.com/electron/electron).\n`;
   s += "Electron includes Chromium, Node.js and their dependencies under their own licences (BSD-style\n";

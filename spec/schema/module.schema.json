@@ -27,6 +27,11 @@
     "description": { "type": "string" },
     "author": { "type": "string" },
     "license": { "type": "string" },
+    "icon": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*\\.svg$",
+      "description": "D281: the plugin's icon, an .svg file at the top of its folder (icon.svg). Settings and the setup show its shape in the text colour; plain shapes only (no scripts, links, images, text or styles), at most 32 KB, with xmlns=\"http://www.w3.org/2000/svg\". Without one (or with one Uncut refuses) the plugin gets the generic icon."
+    },
     "builtin": { "type": "boolean" },
     "runtime": {
       "type": "object",

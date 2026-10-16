@@ -328,6 +328,7 @@ export const layer = Layer.effect(
             capabilities: [...p.capabilities],
             tools: p.tools.map((t) => t.name),
             runs: p.runs,
+            ...(p.icon ? { icon: p.icon } : {}),
             ...(contributesOf(p.contributions) ? { contributes: contributesOf(p.contributions)! } : {}),
             enabled: fromCatalog(p.id),
             // D258: what the marketplace card shows: who made it, what allowing it means, and whether the copy in use is allowed.

@@ -2,7 +2,7 @@
 // in <out>/<folder> (Resources/plugins: installed and allowed from the start); every other plugin
 // folder of the repo, at the top of plugins/ or under catalog/, goes in <out>/catalog/<folder>
 // (Resources/plugins/catalog: the marketplace, install-only). Only what a plugin is made of is copied:
-// its top-level .json and .ts files, not tests or notes. Templates ("_" folders) never ship.
+// its top-level .json and .ts files and (D281) its .svg icon, not tests or notes. Templates ("_" folders) never ship.
 // The desktop build (apps/desktop/scripts/build.ts) runs it; electron-builder.yml ships the result.
 import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -12,10 +12,10 @@ import { pluginLayout, BUNDLED_LIST_FILE } from "../apps/server/src/plugins/disc
 
 export const REPO_PLUGINS = fileURLToPath(new URL("../plugins", import.meta.url));
 
-/** The files of a plugin folder that ship: top-level .json and .ts, no tests. */
+/** The files of a plugin folder that ship: top-level .json, .ts and .svg (its icon, D281), no tests. */
 export const shippedFiles = (dir: string) =>
   readdirSync(dir)
-    .filter((n) => !n.startsWith(".") && /\.(json|ts)$/.test(n) && !n.endsWith(".test.ts") && statSync(join(dir, n)).isFile())
+    .filter((n) => !n.startsWith(".") && /\.(json|ts|svg)$/.test(n) && !n.endsWith(".test.ts") && statSync(join(dir, n)).isFile())
     .sort();
 
 /** Writes the packaged layout into `out` (emptied first) and returns what went where, by folder name. */

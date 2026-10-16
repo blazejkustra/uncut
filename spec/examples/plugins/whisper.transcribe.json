@@ -4,6 +4,7 @@
   "id": "whisper.transcribe",
   "kind": "analyzer",
   "name": "Whisper (on this Mac)",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "Transcribes speech locally with word timings, with whisper.cpp. No network, no API key: Uncut downloads the speech model once (Settings, Speech model).",
   "author": "Uncut",

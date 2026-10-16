@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Uncut's own mark: a link coming in. -->
+  <path d="M9.5 14.5l5-5"/>
+  <path d="M11 6.5l1.8-1.8a4.2 4.2 0 0 1 6 6L17 12.5"/>
+  <path d="M13 17.5l-1.8 1.8a4.2 4.2 0 0 1-6-6L7 11.5"/>
+</svg>

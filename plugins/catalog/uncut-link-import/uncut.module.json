@@ -4,6 +4,7 @@
   "id": "uncut.link-import",
   "kind": "importer",
   "name": "Import from link",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "Import a video or audio file from a link using your own yt-dlp. Uncut doesn't include yt-dlp: install it yourself (brew install yt-dlp). You need the rights to what you import; Uncut doesn't check.",
   "author": "Uncut",

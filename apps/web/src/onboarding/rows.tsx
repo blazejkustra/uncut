@@ -1,16 +1,17 @@
 import type { SetupCheck, KeyInfo } from "@uncut/contracts";
-import { Film, Terminal, CircleDot, Captions, Check, CircleAlert, Copy, AudioLines, X, Download, TriangleAlert, KeyRound, RefreshCw } from "lucide-react";
+import { Terminal, Check, CircleAlert, Copy, AudioLines, X, Download, TriangleAlert, KeyRound, RefreshCw } from "lucide-react";
 import { useEffect, useState, useRef, type ReactElement, type SVGProps } from "react";
 import { actions, useApp } from "../state/store.ts";
 import { ClaudeMark, OpenAIMark } from "../panels/composer/providerMarks.tsx";
 import { ElevenLabsMark, GoogleMark } from "../panels/generate/marks.tsx";
+import { ArgentMark, FFmpegMark, WhisperCppMark } from "./toolMarks.tsx";
 import "./rowMarks.css";
 
-const ICONS: Record<string, typeof Film> = { argent: CircleDot, ffmpeg: Film, whisper: Captions };
 // D277 (user's call): the agents and the keyed providers show their real marks (the composer's and
-// the Generate tab's); Freesound has none, so it keeps the key icon.
+// the Generate tab's); Freesound has none, so it keeps the key icon. D281: so do the tools (Argent,
+// FFmpeg, and whisper.cpp's neutral mark); a check without one gets the terminal icon.
 type Mark = (props: SVGProps<SVGSVGElement>) => ReactElement;
-const CHECK_MARKS: Record<string, Mark> = { claude: ClaudeMark, codex: OpenAIMark };
+const CHECK_MARKS: Record<string, Mark> = { claude: ClaudeMark, codex: OpenAIMark, argent: ArgentMark, ffmpeg: FFmpegMark, whisper: WhisperCppMark };
 const KEY_MARKS: Partial<Record<KeyInfo["provider"], Mark>> = { openai: OpenAIMark, google: GoogleMark, elevenlabs: ElevenLabsMark };
 const RowMark = ({ mark: M, id }: { mark: Mark; id: string }) => <M className="wiz-mark" data-testid={`row-mark-${id}`} aria-hidden focusable="false" />;
 
@@ -23,7 +24,6 @@ const CHIP: Record<SetupCheck["status"], { label: string; className: string; ico
 };
 
 export function CheckRow({ check }: { check: SetupCheck }) {
-  const Icon = ICONS[check.id] ?? Terminal;
   const mark = CHECK_MARKS[check.id];
   const chip = CHIP[check.status];
   const ChipIcon = chip.icon;
@@ -33,7 +33,7 @@ export function CheckRow({ check }: { check: SetupCheck }) {
   return (
     <div className="wiz-check" data-testid={`check-${check.id}`} data-status={check.status}>
       <div className="wiz-row">
-        {mark ? <RowMark mark={mark} id={check.id} /> : <Icon />}
+        {mark ? <RowMark mark={mark} id={check.id} /> : <Terminal />}
         <div className="grow">
           <div className="wiz-name">
             {check.name}

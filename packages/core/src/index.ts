@@ -51,6 +51,8 @@ export type { Credits, LibraryCredit, LibraryHit, LibraryKind, LibraryLength, Li
 export { planReshoot } from "./timeline/reshoot.ts";
 export { fitFadeOut, mediaUses, planFitToVideo, planRemoveMedia, usedMediaIds, videoEnd } from "./timeline/mediaPlan.ts";
 export type { Overrun, ReshootPlan } from "./timeline/reshoot.ts";
+export { checkPluginIcon, MAX_ICON_BYTES } from "./plugins/icon.ts";
+export type { IconCheck } from "./plugins/icon.ts";
 export { BUILTIN_CONTRIBUTION_IDS, componentGraphicHtml, componentGraphicName, componentProblem, mergeContributions, mergeSkills, NO_CONTRIBUTIONS, pluginCheckRules, pluginRuleEntries, readContributions } from "./plugins/contributions.ts";
 export type { Contributions, FromPlugin, PluginComponent, PluginFilter, PluginLook, PluginRule, PluginShader, PluginSkill, RuleSpec } from "./plugins/contributions.ts";
 export { canvasForClip, nearestCanvasFps } from "./timeline/canvasMatch.ts";

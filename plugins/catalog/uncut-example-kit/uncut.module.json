@@ -4,6 +4,7 @@
   "id": "uncut.example-kit",
   "kind": "pack",
   "name": "Example kit",
+  "icon": "icon.svg",
   "version": "1.0.0",
   "description": "The worked example from Settings, Plugins, Make a plugin: a text look, a component, a skill and a shader effect in one data plugin. Nothing in it runs as a program. Start your own with pnpm plugin:new <id> --from uncut.example-kit.",
   "author": "Uncut",

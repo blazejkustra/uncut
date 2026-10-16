@@ -32,6 +32,8 @@ export const PluginInfo = Schema.Struct({
   // D258 (the marketplace cards): who made it, and whether it runs a program.
   author: Schema.optional(Schema.String),
   runs: Schema.optional(Schema.Boolean),
+  // D281: its icon.svg, checked, as a data:image/svg+xml URL (drawn as a mask in the text colour).
+  icon: Schema.optional(Schema.String),
 });
 export type PluginInfo = typeof PluginInfo.Type;
 
@@ -73,6 +75,8 @@ export const CatalogEntry = Schema.Struct({
   author: Schema.optional(Schema.String),
   asks: Schema.optional(Schema.Array(Schema.String)),
   status: Schema.optional(Schema.Literals(["ready", "needs-approval"])),
+  // D281: as PluginInfo.icon.
+  icon: Schema.optional(Schema.String),
 });
 export type CatalogEntry = typeof CatalogEntry.Type;
 

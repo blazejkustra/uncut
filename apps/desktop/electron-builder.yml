@@ -48,10 +48,10 @@ extraResources:
   # Plugins (D97, D103, D258), laid out by the desktop build (scripts/build.ts → scripts/plugin-bundle.ts)
   # from plugins/bundled.json: the listed ones in Resources/plugins (installed and allowed from the start),
   # every other repo plugin in Resources/plugins/catalog (the marketplace in Settings › Plugins, install-only).
-  # Only manifests and their code; never the _template or _shader-template (D104, D213).
+  # Only manifests, their code and (D281) their .svg icons; never the _template or _shader-template (D104, D213).
   - from: stage/plugins
     to: plugins
-    filter: ["*/uncut.module.json", "*/*.ts", "catalog/*/uncut.module.json", "catalog/*/*.ts", "!catalog/_*/**", "!**/*.test.ts", "!**/*.md"]
+    filter: ["*/uncut.module.json", "*/*.ts", "*/*.svg", "catalog/*/uncut.module.json", "catalog/*/*.ts", "catalog/*/*.svg", "!catalog/_*/**", "!**/*.test.ts", "!**/*.md"]
   # The plugin SDK (D102): plugins on the app's Node import "@uncut/plugin-sdk" from here.
   - from: ../../packages/plugin-sdk/src
     to: plugin-sdk

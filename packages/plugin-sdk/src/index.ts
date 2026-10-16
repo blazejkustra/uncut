@@ -182,6 +182,8 @@ export interface PluginManifest {
   readonly runtime: { readonly type: "process"; readonly command: string; readonly args?: ReadonlyArray<string>; readonly timeoutSeconds?: number };
   readonly capabilities?: ReadonlyArray<string>;
   readonly agentTools?: ReadonlyArray<AgentTool>;
+  /** D281: an .svg file at the top of the plugin's folder, its icon in Settings (plain shapes only). */
+  readonly icon?: string;
   readonly [key: string]: unknown;
 }
 

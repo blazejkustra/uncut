@@ -4,6 +4,7 @@
   "id": "argent.capture",
   "kind": "capture-source",
   "name": "Argent",
+  "icon": "icon.svg",
   "version": "0.1.0",
   "description": "Records iOS simulators and Android emulators and devices with Argent, on a timer or while replaying a saved flow, and re-shoots a flow's take when the app changes. The Capture tab can boot a simulator or emulator when you ask it to.",
   "author": "Uncut",

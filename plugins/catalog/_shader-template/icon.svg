@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2">
+  <!-- Your effect's icon (D281): plain shapes, drawn in the row's text colour (only the shape counts, not the colours). -->
+  <circle cx="12" cy="12" r="9"/>
+  <circle cx="12" cy="12" r="4.5"/>
+  <circle cx="12" cy="12" r="1" fill="#000"/>
+</svg>

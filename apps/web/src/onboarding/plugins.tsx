@@ -1,9 +1,11 @@
 import type { PluginInfo } from "@uncut/contracts";
-import { Search, Plus, TriangleAlert, Blocks, FolderOpen, GitBranch, Check, CircleAlert, ChevronDown } from "lucide-react";
+import { Search, Plus, TriangleAlert, FolderOpen, GitBranch, Check, CircleAlert, ChevronDown } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useApp, actions } from "../state/store.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import { PluginIcon } from "./PluginIcon.tsx";
+import "./rowMarks.css";
 import "./plugins.css";
 
 /**
@@ -79,7 +81,7 @@ function BrowsePlugins({ offline, onClose }: { offline: boolean; onClose: () => 
       {pluginCatalog && !all.length && <div className="wiz-sub">No plugins in the catalog yet.</div>}
       {shown.map((e) => (
         <div className="plugin-browse-row" key={e.id} data-testid="plugin-catalog-entry" data-id={e.id} data-enabled={e.enabled ? "true" : "false"}>
-          <Blocks />
+          <PluginIcon icon={e.icon} id={e.id} />
           <div className="grow">
             <div className="wiz-name">{e.name}</div>
             {e.description && <div className="wiz-sub">{e.description}</div>}
@@ -283,7 +285,7 @@ function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolea
   return (
     <div className="wiz-check plugin-row" data-testid={broken ? `plugin-skipped-${p.id}` : `plugin-${p.id}`} data-status={p.status}>
       <div className="wiz-row">
-        <Blocks />
+        <PluginIcon icon={broken ? undefined : p.icon} id={p.id} />
         <div className="grow">
           <div className="wiz-name">
             {p.name}

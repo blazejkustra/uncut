@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { realpath, readdir, stat, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { readContributions } from "@uncut/core";
+import { dirname, join, resolve } from "node:path";
+import { checkPluginIcon, MAX_ICON_BYTES, readContributions } from "@uncut/core";
 import { BUILTIN_IDS } from "@uncut/core/skills";
 import type { McpTool } from "../../agent/agentTools.ts";
 import { type PluginSource, type Discovery, type FoundPlugin, type BrokenPlugin, messageOf, MANIFEST_FILE, checkManifest, TOOL_NAME, str, DEFAULT_TIMEOUT_S } from "./manifest.ts";
@@ -93,6 +93,7 @@ export async function discoverPlugins(
         toolOwner.set(tool.name, manifest.id);
         tools.push({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema });
       }
+      const icon = typeof manifest.icon === "string" ? await readIcon(dir, manifest.icon, warnings) : undefined;
       const runs = runtime.type === "process";
       // Ids are checked per plugin here; across plugins only allowed ones claim ids (mergeContributions).
       // D248: only a plugin that ships with Uncut may have Uncut's own skill names, and its skills say so.
@@ -127,8 +128,32 @@ export async function discoverPlugins(
         },
         runs,
         contributions: read.contributions,
+        ...(icon ? { icon } : {}),
       });
     }
   }
   return { plugins, broken };
+}
+
+/**
+ * D281: a plugin's icon file (the schema allows only a file name at the top of its folder), checked
+ * by checkPluginIcon. A missing, linked-out, oversized or refused icon is a warning and the generic
+ * icon, never a reason to skip the plugin.
+ */
+async function readIcon(dir: string, name: string, warnings: Array<string>): Promise<string | undefined> {
+  const leftOut = (why: string) => {
+    warnings.push(`Its icon ${name} is left out: ${why}.`);
+    return undefined;
+  };
+  try {
+    const file = await realpath(join(dir, name));
+    if (dirname(file) !== dir) return leftOut("it links outside the plugin's folder");
+    const info = await stat(file);
+    if (!info.isFile()) return leftOut("it isn't a file");
+    if (info.size > MAX_ICON_BYTES) return leftOut(`it's bigger than ${MAX_ICON_BYTES / 1024} KB`);
+    const checked = checkPluginIcon(await readFile(file, "utf8"));
+    return "dataUrl" in checked ? checked.dataUrl : leftOut(checked.problem);
+  } catch {
+    return leftOut("Uncut can't read it");
+  }
 }

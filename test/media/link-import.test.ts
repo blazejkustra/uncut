@@ -257,7 +257,7 @@ test("D280: a catalog plugin, not bundled; Uncut calls it, the agent can't; no s
     assert.doesNotMatch(readFileSync(file, "utf8"), SITES, `no site named in ${file}`);
   }
   assert.doesNotMatch(readFileSync("README.md", "utf8"), /yt-dlp|import from (a )?link/i, "the README doesn't mention it");
-  assert.equal(readdirSync(PLUGIN_DIR).filter((f) => !/\.(ts|json)$/.test(f)).length, 0, "top-level .ts and .json only (what the app ships of a plugin)");
+  assert.equal(readdirSync(PLUGIN_DIR).filter((f) => !/\.(ts|json)$/.test(f) && f !== "icon.svg").length, 0, "top-level .ts and .json only, and its icon (what the app ships of a plugin)");
 });
 
 test("D280: the plugin's download through the plugin host: progress with steps, the file, and a cancel that leaves nothing", async () => {
