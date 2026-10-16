@@ -14,6 +14,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import { MAX_MUSIC_SONGS, parseLibraryXml, readMusicLibrary, scanLibraryXml } from "../../apps/server/src/library/musicApp.ts";
 import { soundFolders } from "../../apps/server/src/library/folders.ts";
 import { MUSIC_LIBRARY_PATH } from "../../packages/core/src/audio/library.ts";
+import { budget } from "../helpers/timing.ts";
 
 let root = "";
 before(() => {
@@ -74,9 +75,11 @@ test("a large Library.xml streams without blocking the event loop for long", { t
   // work itself is judged by the typical slice and the 95th percentile, with only a handful allowed long.
   const sorted = [...slices].sort((a, b) => a - b);
   const p95 = sorted[Math.floor(sorted.length * 0.95)]!;
-  const long = slices.filter((ms) => ms >= 50).length;
-  assert.ok(p95 < 50, `95% of the slices held the event loop under ${p95.toFixed(1)} ms`);
-  assert.ok(long <= Math.max(3, slices.length * 0.02), `${long} of ${slices.length} slices held the event loop 50 ms or more`);
+  // 50 ms on an Apple-silicon Mac, scaled on a slower one (a CI runner's virtual cores, #89).
+  const LONG_MS = budget(50);
+  const long = slices.filter((ms) => ms >= LONG_MS).length;
+  assert.ok(p95 < LONG_MS, `95% of the slices held the event loop under ${p95.toFixed(1)} ms (budget ${LONG_MS.toFixed(0)} ms)`);
+  assert.ok(long <= Math.max(3, slices.length * 0.02), `${long} of ${slices.length} slices held the event loop ${LONG_MS.toFixed(0)} ms or more`);
 });
 
 test("the scan stops at the song cap; deleted songs are left out and counted", { timeout: 60000 }, async () => {

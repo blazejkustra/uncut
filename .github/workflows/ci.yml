@@ -74,6 +74,9 @@ jobs:
     env:
       # 3 vCPUs: a launch or the first screen can take longer than on a laptop.
       UNCUT_TEST_LAUNCH_MS: "120000"
+      # electron-builder skips signing on PRs; the app is only ad-hoc signed ("-", no certificate in
+      # this workflow) and Apple silicon won't run it unsigned, nor verify a half-signed bundle.
+      CSC_FOR_PULL_REQUEST: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

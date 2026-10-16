@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { planInsertText, type Op } from "../../packages/core/src/index.ts";
 import { applyEdit, CHECK_IDS, CHECK_RULES, checkRule, createSession, loadModules, planDisableCheck, projectChecks, validateOps, validateProject, type Check, type CheckRule, type Item, type Project, type Track } from "../../packages/core/src/index.ts";
+import { budget, slowdown } from "../helpers/timing.ts";
 
 const modules = await loadModules("spec/modules/builtin", "spec/examples/plugins");
 const FPS = 30;
@@ -370,5 +371,7 @@ test("fast with many tracks and media: 40 audio tracks, 500 media, 1,000 texts (
     ms = Math.min(ms, (used.user + used.system) / 1000);
   }
   assert.ok(checks.length > 1000);
-  assert.ok(ms < 100, `${ms.toFixed(1)} ms`);
+  // 100 ms on an Apple-silicon Mac, scaled on a slower machine (a CI runner): it guards against
+  // a slow algorithm, not a few percent.
+  assert.ok(ms < budget(100), `${ms.toFixed(1)} ms (budget ${budget(100).toFixed(0)} ms, ${slowdown().toFixed(2)}× the reference machine)`);
 });
