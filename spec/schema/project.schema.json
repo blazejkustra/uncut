@@ -131,7 +131,10 @@
             "licenseUrl": { "type": "string" },
             "attribution": { "type": "string", "description": "Sound library: the credit line." },
             "sha256": { "type": "string", "description": "Sound library: the downloaded file's SHA-256." },
-            "downloaded": { "type": "string", "description": "Sound library: when it was downloaded (ISO 8601)." }
+            "downloaded": { "type": "string", "description": "Sound library: when it was downloaded (ISO 8601)." },
+            "url": { "type": "string", "description": "D259, Import from link (module import.link): the link it was imported from (with title, kind, quality and tool yt-dlp)." },
+            "quality": { "type": "string", "description": "Import from link: the video's height cap asked for (best, 2160, 1440, 1080, 720, 480)." },
+            "tool": { "type": "string", "description": "Import from link: what downloaded it (yt-dlp, the user's own)." }
           }
         },
         "probe": {

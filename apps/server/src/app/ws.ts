@@ -2,7 +2,7 @@
 // then run an RpcServer for that one socket.
 import { homedir, hostname } from "node:os";
 
-import { LibraryError, PluginError, ProjectError, RPC_METHODS, WS_PATH, WsRpcGroup } from "@uncut/contracts";
+import { LibraryError, LINK_METHODS, PluginError, ProjectError, RPC_METHODS, WS_PATH, WsRpcGroup } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -27,6 +27,7 @@ import { Capture } from "../capture/capture.ts";
 import { Generator } from "../generate/generate.ts";
 import { Keys } from "../generate/keys.ts";
 import { Library } from "../library/library.ts";
+import { LinkImport } from "../media/linkImport.ts";
 import { Projects } from "../project/projects.ts";
 import { Proxies } from "../media/proxies.ts";
 import { Recents } from "../project/recents.ts";
@@ -56,10 +57,11 @@ interface Services {
   readonly sounds: typeof Library.Service;
   readonly mediaIndex: typeof MediaIndex.Service;
   readonly proxies: typeof Proxies.Service;
+  readonly links: typeof LinkImport.Service;
 }
 
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
-const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies }: Services) => {
+const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies, links }: Services) => {
   const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
@@ -212,6 +214,11 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.keysList]: () => keys.list,
     [RPC_METHODS.keysSet]: ({ provider, key }) => keys.set(provider, key),
     [RPC_METHODS.keysRemove]: ({ provider }) => keys.remove(provider),
+    // D259: Import from link through the user's own yt-dlp.
+    [LINK_METHODS.check]: () => links.check,
+    [LINK_METHODS.start]: (input) => links.start(input),
+    [LINK_METHODS.jobs]: () => links.jobs,
+    [LINK_METHODS.cancel]: ({ jobId }) => links.cancel(jobId),
   });
 };
 
@@ -235,7 +242,8 @@ export const layer = Layer.unwrap(
     const sounds = yield* Library;
     const mediaIndex = yield* MediaIndex;
     const proxies = yield* Proxies;
-    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies }).pipe(
+    const links = yield* LinkImport;
+    const rpcLayer = handlersLayer({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies, links }).pipe(
       Layer.provideMerge(RpcSerialization.layerJson),
     );
 

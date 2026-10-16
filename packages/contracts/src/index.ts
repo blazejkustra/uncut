@@ -11,5 +11,6 @@ export { ExportQuality, ExportLoudness, ExportRange, ExportCodec, ExportEncoder,
 export { ANALYZERS, Analyzer, AnalysisJob, AnalysisError, WhisperModel, ModelDownload, TranscriptionState, TranscriptionError } from "./analysis.ts";
 export { LibraryHitSchema, LibraryLimit, LibrarySearchResult, LibraryState, LibraryError, FolderSoundSchema, SoundFolderSchema } from "./library.ts";
 export type { SoundFolderInfo } from "./library.ts";
+export { LINK_METHODS, LinkKind, LINK_QUALITIES, LinkQuality, DEFAULT_LINK_QUALITY, LinkTool, LinkRequest, LinkJob, LinkError } from "./link.ts";
 export { WsRpcGroup } from "./rpc/group.ts";
 export type { ServerConnection } from "./rpc/group.ts";
