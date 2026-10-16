@@ -6,7 +6,7 @@
   "name": "Argent",
   "version": "0.1.0",
   "description": "Records iOS simulators and Android emulators and devices with Argent, on a timer or while replaying a saved flow, and re-shoots a flow's take when the app changes. The Capture tab can boot a simulator or emulator when you ask it to.",
-  "author": "Software Mansion",
+  "author": "Uncut",
   "license": "MIT",
   "runtime": { "type": "process", "command": "node", "args": ["server.ts"], "timeoutSeconds": 1800 },
   "requires": {

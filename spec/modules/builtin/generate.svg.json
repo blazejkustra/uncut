@@ -4,7 +4,7 @@
   "kind": "generator",
   "name": "SVG and HTML",
   "version": "0.1.0",
-  "description": "Pictures and short animations drawn from SVG or HTML: the agent writes the markup (or Claude does, from the Generate tab) and Uncut draws it in its sandboxed rasteriser. Works on the Claude subscription alone, no API key.",
+  "description": "Pictures and short animations drawn from SVG or HTML: the agent writes the markup (or Claude Code does, from the Generate tab) and Uncut draws it in its sandboxed rasteriser. Runs on the user's Claude Code, no extra key.",
   "author": "Uncut",
   "license": "MIT",
   "builtin": true,

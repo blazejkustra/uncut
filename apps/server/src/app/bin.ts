@@ -10,7 +10,7 @@ import { isLoopbackHost } from "./auth.ts";
 import { dataDirOf, readConfig, readLaunchOptions, type LaunchOptions } from "./config.ts";
 import { loadOrCreateToken } from "./pairing.ts";
 import { makeServerLayer, openSockets } from "./server.ts";
-import { fallbackPathDirs, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
+import { fallbackPathDirs, holdClaudeAuth, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
 import { initTelemetry, shutdownTelemetry, trackCrash } from "../telemetry/telemetry.ts";
 import { crashOf, spoolCrash } from "../telemetry/spool.ts";
 
@@ -32,11 +32,14 @@ if (headless && process.versions.electron && !process.env.UNCUT_RENDER_BIN) {
   process.env.UNCUT_RENDER_ENTRY = "";
 }
 // Child processes (the media core, agent CLIs) must not inherit the token, nor run as Node
-// because the desktop started us with ELECTRON_RUN_AS_NODE, nor see an API key (D41).
+// because the desktop started us with ELECTRON_RUN_AS_NODE. D277: Claude Code's API key and auth
+// token are held for claude alone (claudeEnv) and taken out of process.env, so no other child
+// inherits them by accident.
 delete process.env.UNCUT_TOKEN;
 delete process.env.ELECTRON_RUN_AS_NODE;
-const apiKeyInEnv = Boolean(process.env.ANTHROPIC_API_KEY);
+holdClaudeAuth("launch", { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN });
 delete process.env.ANTHROPIC_API_KEY;
+delete process.env.ANTHROPIC_AUTH_TOKEN;
 
 // A Finder-launched app has launchd's bare PATH. Asking the login shell for the real one takes
 // a second or more with a heavy rc file, so don't wait for it: start with the usual install
@@ -53,6 +56,7 @@ const shellReady =
         return resolveShellEnvironment(original)
           .then((shell) => {
             process.env.PATH = shell.path;
+            holdClaudeAuth("shell", shell.auth);
             return shell;
           })
           .catch(() => undefined);
@@ -77,7 +81,7 @@ if (!isLoopbackHost(host) && (!token || token.length < 24)) {
   console.error(`[uncut] refusing to listen on ${host} without a pairing token (at least 24 characters): use --data-dir, or set UNCUT_TOKEN`);
   process.exit(1);
 }
-const config = readConfig(process.env, token, { apiKeyInEnv, shellReady }, launch.keysFd, headless ? { host, tokenFile } : undefined);
+const config = readConfig(process.env, token, { shellReady }, launch.keysFd, headless ? { host, tokenFile } : undefined);
 
 // Telemetry (D223): inert without the build's token; never delays startup.
 initTelemetry({ dataDir: config.dataDir, version: config.version, headless });

@@ -144,7 +144,7 @@ export const layer = Layer.effect(
       billing: g.billing,
     });
     const list = Effect.gen(function* () {
-      const out: Array<GeneratorInfo> = [{ id: SVG_GENERATOR, name: "SVG and HTML", kinds: ["image", "video"], ready: true, sizes: [...SVG_SIZES], seconds: [...SVG_SECONDS], billing: "On your Claude subscription, no key needed" }];
+      const out: Array<GeneratorInfo> = [{ id: SVG_GENERATOR, name: "SVG and HTML", kinds: ["image", "video"], ready: true, sizes: [...SVG_SIZES], seconds: [...SVG_SECONDS], billing: "Uses your Claude Code, no key needed" }];
       for (const g of KEYED) out.push(info(g, yield* keys.has(g.provider)));
       return out;
     });
@@ -233,7 +233,7 @@ export const layer = Layer.effect(
             const seconds = Math.min(SVG_MAX_SECONDS, spec.seconds ?? 5);
             let markup = spec.content;
             if (!markup) {
-              status("Claude is drawing it…");
+              status("Drawing it…");
               markup = await askClaude({ prompt: spec.prompt, kind: spec.kind === "video" ? "video" : "image", ...size, seconds }, target.signal);
             }
             const out = await renderMarkup(markup, { kind: spec.kind === "video" ? "video" : "image", ...size, seconds, outBase, signal: target.signal, status });

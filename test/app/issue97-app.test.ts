@@ -54,7 +54,8 @@ test("issue #97: no 'Title card by Claude' in the Generate tab", { skip, timeout
   assert.deepEqual(ids, ["generate.svg", "generate.gpt-image"]);
   const panel = await page.$eval("[data-testid=generate-library]", (el) => (el as HTMLElement).innerText);
   assert.doesNotMatch(panel, /title card/i);
-  assert.match(panel, /Drawn by Claude/);
+  assert.match(panel, /SVG drawing/);
+  assert.doesNotMatch(panel, /by Claude|Anthropic/, "D277: no Claude or Anthropic in a feature name");
   await page.screenshot({ path: resolve("test-output", "issue97-generate.png") });
   assert.deepEqual(app.errors, []);
 });

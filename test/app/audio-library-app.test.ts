@@ -212,10 +212,10 @@ test("the sound library: online music and sound effects, previews, adds with cre
   const copied = app.output().slice(app.output().lastIndexOf("[test] copied ") + "[test] copied ".length);
   assert.ok(copied.startsWith('Music and sound\n"Lofi Morning" by Some Artist (https://www.jamendo.com/track/000a), licensed under CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)\n\nFound with Openverse (openverse.org)\n'), copied);
 
-  // The sources (D249, D274): Folders, the Music library, Openverse; Epidemic Sound shown, disabled, coming soon.
+  // The sources (D249, D274): Folders, the Music library, Openverse; D277: no Epidemic Sound "coming soon".
   const sources = await page.$$eval("[data-testid=library-source] option", (els) => els.map((e) => [(e as HTMLOptionElement).value, (e as HTMLOptionElement).disabled]));
-  assert.deepEqual(sources, [["folders", false], ["music-app", false], ["openverse", false], ["epidemic", true]]);
-  assert.equal(await page.$eval("[data-testid=epidemic-soon]", (el) => (el as HTMLButtonElement).disabled), true);
+  assert.deepEqual(sources, [["folders", false], ["music-app", false], ["openverse", false]]);
+  assert.equal(await page.$("[data-testid=epidemic-soon]"), null);
 
   // Sound effects: the pack first (D250); Openverse searches a meme name's sound-alike.
   await page.click("[data-testid=rail-sfx]");

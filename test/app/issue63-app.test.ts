@@ -88,27 +88,27 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
       await page.screenshot({ path: `test-output/issue63-${id === "image" ? "picture" : id === "audio" ? "sound" : "video"}.png` });
     }
     const ids = (t: string, soon: boolean) => seen[t]!.models.filter((m) => m.soon === soon).map((m) => m.id);
-    assert.deepEqual(ids("image", false), ["generate.svg", "title-card", "generate.gpt-image"]);
+    assert.deepEqual(ids("image", false), ["generate.svg", "generate.gpt-image"]);
     assert.deepEqual(ids("video", false), ["generate.svg", "generate.veo"]);
     assert.deepEqual(ids("audio", false), ["generate.sound"]);
-    for (const id of ["soon.grok-video", "soon.seedance", "soon.higgsfield"]) assert.ok(ids("video", true).includes(id), `${id} in Video`);
-    assert.ok(ids("image", true).length >= 2 && ids("audio", true).length >= 2, "several coming-soon models for Picture and Sound too");
-    assert.ok(!ids("image", true).some((id) => ids("video", true).includes(id)), "each type its own list");
+    // D277 (#103): no brand-named coming-soon models; only Sound's generic ElevenLabs ones remain.
+    assert.deepEqual([ids("image", true), ids("video", true), ids("audio", true)], [[], [], ["soon.music", "soon.voice"]]);
     assert.notEqual(seen.image!.placeholder, seen.video!.placeholder);
     assert.deepEqual([seen.image!.button, seen.video!.button, seen.audio!.button].map((b) => b.replace(/\s*⌘↩$/, "")), ["Generate picture", "Generate video", "Generate sound"]);
     const brand = (id: string) => seen.video!.models.find((m) => m.id === id)!.brand;
-    assert.deepEqual([brand("generate.svg"), brand("generate.veo"), brand("soon.grok-video"), brand("soon.seedance"), brand("soon.higgsfield")], ["claude", "google", "xai", "bytedance", "higgsfield"]);
-
-    // Coming soon: Grok Imagine's real options show, every one disabled, and Generate can't run it.
+    assert.deepEqual([brand("generate.svg"), brand("generate.veo")], ["claude", "google"]);
     await page.click("[data-testid=generate-type-video]");
-    await waitFor(page, "[data-testid=generator][data-id='soon.grok-video']");
-    assert.ok(await page.$("[data-testid=generator][data-id='soon.grok-video'] [data-testid=generator-mark] svg"), "xAI's mark is an SVG");
-    assert.match(await text(page, "[data-testid=generator][data-id='soon.higgsfield'] [data-testid=generator-mark]"), /^H$/, "Higgsfield: a monogram");
-    await page.click("[data-testid=generator][data-id='soon.grok-video']");
-    await waitFor(page, "[data-testid=generate-options][data-model='soon.grok-video'] [data-testid=generate-option]");
-    await page.type("[data-testid=generate-prompt]", "a drone over a lake at dawn");
+    await waitFor(page, "[data-testid=generator][data-id='generate.veo']");
+    assert.ok(await page.$("[data-testid=generator][data-id='generate.veo'] [data-testid=generator-mark] svg"), "Google's mark is an SVG");
+
+    // Coming soon: Voiceover's real options show, every one disabled, and Generate can't run it.
+    await page.click("[data-testid=generate-type-audio]");
+    await waitFor(page, "[data-testid=generator][data-id='soon.voice']");
+    await page.click("[data-testid=generator][data-id='soon.voice']");
+    await waitFor(page, "[data-testid=generate-options][data-model='soon.voice'] [data-testid=generate-option]");
+    await page.type("[data-testid=generate-prompt]", "a calm narrator");
     const grok = await page.evaluate(() => {
-      const row = document.querySelector<HTMLElement>("[data-testid=generator][data-id='soon.grok-video']")!;
+      const row = document.querySelector<HTMLElement>("[data-testid=generator][data-id='soon.voice']")!;
       const options = document.querySelector<HTMLElement>("[data-testid=generate-options]")!;
       return {
         disabled: row.getAttribute("aria-disabled"),
@@ -123,12 +123,11 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     });
     assert.equal(grok.disabled, "true");
     assert.equal(grok.tag, "Coming soon");
-    assert.equal(grok.lab, "xAI");
-    assert.deepEqual(grok.labels, ["Frames", "Length", "Aspect", "Resolution"]);
-    assert.match(grok.text, /First frame[\s\S]*Last frame/);
-    assert.ok(grok.controls.length >= 5 && grok.controls.every(Boolean), `every option disabled (${grok.controls})`);
+    assert.equal(grok.lab, "ElevenLabs");
+    assert.deepEqual(grok.labels, ["Model", "Voice", "Speed"]);
+    assert.ok(grok.controls.length >= 3 && grok.controls.every(Boolean), `every option disabled (${grok.controls})`);
     assert.equal(grok.run, true, "Generate is disabled for a coming-soon model");
-    assert.equal(grok.estimate, "Grok Imagine is coming soon");
+    assert.equal(grok.estimate, "Voiceover is coming soon");
     // D263: the options (selects, not chips) fit the panel: nothing scrolls sideways.
     const wide = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generate-library], [data-testid=generate-library] *"), ...(() => { const up: Array<HTMLElement> = []; for (let el = document.querySelector<HTMLElement>("[data-testid=generate-library]")?.parentElement; el && el !== document.body; el = el.parentElement) up.push(el); return up; })()].filter((el) => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1).map((el) => el.className));
     assert.deepEqual(wide, [], "no sideways scrolling in the Generate panel");
@@ -154,7 +153,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     for (const t of ["image", "video", "audio"]) assert.ok(!FREE.test(seen[t]!.all), `no "free" in ${t}: ${seen[t]!.all.match(/.{0,30}\bfree\b.{0,30}/i)?.[0]}`);
     await page.click("[data-testid=generate-type-image]");
     await page.click("[data-testid=generator][data-id='generate.svg']");
-    assert.equal(await text(page, "[data-testid=generate-estimate]"), "Uses your Claude subscription");
+    assert.equal(await text(page, "[data-testid=generate-estimate]"), "Uses your Claude Code");
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=generate-library]")), "no dots or stars between words");
 
     // A (fake) generation lands in Media, marked Generated; the tab has no results list of its own.
@@ -173,7 +172,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
       const el = document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated-item]")!;
       return { badge: !!el.querySelector("[data-testid=generated-badge]"), prompt: el.title.split("\n")[1], by: el.querySelector<HTMLElement>(".gen-by")!.innerText.trim(), section: document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated] .lib-label")!.innerText.trim() };
     });
-    assert.deepEqual(item, { badge: true, prompt: "A red kite on a pale sky", by: "Drawn by Claude, Anthropic", section: "Generated" });
+    assert.deepEqual(item, { badge: true, prompt: "A red kite on a pale sky", by: "Made with Claude Code", section: "Generated" });
     assert.ok(!FREE.test(await text(page, "[data-testid=library]")), "no free wording in Media");
     await page.screenshot({ path: "test-output/issue63-media.png" });
     const dir = join(root, "projects", readdirSync(join(root, "projects")).find((f) => f.endsWith(".uncut"))!);

@@ -46,8 +46,6 @@ export interface ServerConfigShape {
   readonly pluginCatalogDir: string;
   /** D258: the catalog's plugin folders when the bundled folder has a bundled.json (development: every repo plugin it doesn't list); else pluginCatalogDir's subfolders. */
   readonly pluginCatalogFolders?: ReadonlyArray<string>;
-  // ANTHROPIC_API_KEY was in our environment at startup (D41: it is removed and never passed on).
-  readonly apiKeyInEnv: boolean;
   // The login shell's environment, once resolved (undefined when UNCUT_SHELL_ENV=off).
   readonly shellReady: Promise<ShellEnvironment | undefined>;
   // Test-only fault injection (UNCUT_TEST_FAULT), e.g. "create-after-mkdir".
@@ -129,7 +127,7 @@ export const dataDirOf = (env: NodeJS.ProcessEnv = process.env) => env.UNCUT_DAT
 export const readConfig = (
   env: NodeJS.ProcessEnv = process.env,
   bootstrapToken?: string,
-  shell: { readonly apiKeyInEnv: boolean; readonly shellReady: Promise<ShellEnvironment | undefined> } = { apiKeyInEnv: false, shellReady: Promise.resolve(undefined) },
+  shell: { readonly shellReady: Promise<ShellEnvironment | undefined> } = { shellReady: Promise.resolve(undefined) },
   keysFd?: number,
   headless?: { readonly host?: string | undefined; readonly tokenFile?: string | undefined },
 ): ServerConfigShape => {
@@ -170,7 +168,6 @@ export const readConfig = (
     ...(layout && !env.UNCUT_PLUGIN_CATALOG_DIR ? { pluginCatalogFolders: layout.catalog } : {}),
     testFault: env.UNCUT_TEST_FAULT || undefined,
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
-    apiKeyInEnv: shell.apiKeyInEnv,
     shellReady: shell.shellReady,
     keysFd,
   };

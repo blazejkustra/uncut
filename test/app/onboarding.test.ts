@@ -208,8 +208,8 @@ test("at the minimum window size a tall step scrolls from its top; a failed chec
   // D209: with no project open the window is the compact one: it stops at 600×520.
   assert.deepEqual(await page.evaluate(() => [innerWidth, innerHeight]), [800, 520]);
   await waitFor(page, "[data-testid=check-claude][data-status=needs-login]");
-  await waitFor(page, "[data-testid=api-key-warning]");
-  assert.match(await text(page, "api-key-warning"), /in your environment/);
+  // D277: an API key is one of Claude Code's own sign-ins, not something to warn about.
+  assert.equal(await page.$("[data-testid=api-key-warning]"), null);
 
   // Taller than the window: it starts at the top (brand visible) and the step scrolls to the buttons
   // (#104: the wizard fills the window; the header stays, the step's panel scrolls).

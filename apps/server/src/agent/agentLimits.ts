@@ -80,7 +80,7 @@ export const onRateLimit = (limits: TurnLimits, info: RateLimitInfo, nowMs: numb
 
 /** Claude Code isn't signed in (t3code's claudeSignedOutMessage, in Uncut's words). */
 export const signedOutMessage = (configDir: string | undefined) =>
-  `Claude Code isn't signed in${configDir ? ` (CLAUDE_CONFIG_DIR is ${JSON.stringify(configDir)})` : ""}. Run \`claude auth login\` in Terminal to sign in with your Claude subscription, then send the message again.`;
+  `Claude Code isn't signed in${configDir ? ` (CLAUDE_CONFIG_DIR is ${JSON.stringify(configDir)})` : ""}. Run \`claude auth login\` in Terminal to sign in (or set up the API key or cloud provider you use with Claude Code), then send the message again.`;
 
 /** A result's terminal_reason in words (t3code's terminalResultError). */
 const TERMINAL: Record<string, string> = {

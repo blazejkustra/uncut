@@ -1,0 +1,2 @@
+/* D277: the agents' and keyed providers' marks on the setup wizard and Settings rows, the size of the lucide icons beside them. */
+.wiz-row > svg.wiz-mark { flex: none; width: 20px; height: 20px; color: var(--fg); }

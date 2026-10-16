@@ -226,7 +226,7 @@ test("D218: signed out, overloaded and rate-limited results say so in words", { 
       { result: { subtype: "success", is_error: true, result: "Invalid API key · Please run /login" } },
     ]);
     assert.equal(signedOut.status, "error");
-    assert.match(signedOut.error, /^Claude Code isn't signed in\b.*Run `claude auth login` in Terminal to sign in with your Claude subscription, then send the message again\.$/);
+    assert.match(signedOut.error, /^Claude Code isn't signed in\b.*Run `claude auth login` in Terminal to sign in \(or set up the API key or cloud provider you use with Claude Code\), then send the message again\.$/);
     const overloaded = await s.ask("two", [{ result: { subtype: "success", is_error: false, api_error_status: 529, result: "" } }]);
     assert.equal(overloaded.status, "error", "a 529 labelled success still failed");
     assert.equal(overloaded.error, "Claude API is overloaded (529). Try again shortly.");

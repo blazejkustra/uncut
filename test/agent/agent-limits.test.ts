@@ -2,9 +2,12 @@
 // modelled on t3code's ClaudeAdapterV2), and the environment every claude gets (claudeEnv).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { formatWait, onRateLimit, resultError, resultFailed, signedOutMessage, turnLimits } from "../../apps/server/src/agent/agentLimits.ts";
-import { agentEnv, claudeEnv, pluginEnv } from "../../apps/server/src/app/shellEnv.ts";
+import { agentEnv, claudeEnv, pluginEnv, userAuthSettings } from "../../apps/server/src/app/shellEnv.ts";
 import { sessionArgs, sessionEnv } from "../../apps/server/src/agent/agent.ts";
 import { criticArgs } from "../../apps/server/src/agent/agentCritic.ts";
 
@@ -65,19 +68,54 @@ test("resultFailed: a success result that still failed", () => {
   assert.equal(resultFailed({ subtype: "success", is_error: false, terminal_reason: "blocking_limit" }), true);
 });
 
-test("claudeEnv: no keys, no inherited entrypoint or SDK identity, Node switches out, Uncut's client id in", () => {
+test("D277 claudeEnv: Claude Code's own sign-in passes through, other keys don't, no inherited entrypoint or SDK identity, Uncut's client id in", () => {
   const env = claudeEnv(
-    { HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", ANTHROPIC_API_KEY: "k", ANTHROPIC_AUTH_TOKEN: "t", CLAUDE_CODE_OAUTH_TOKEN: "o", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDECODE: "1", CLAUDE_AGENT_SDK_VERSION: "0.3.276", CLAUDE_AGENT_SDK_CLIENT_APP: "x/1", NODE_OPTIONS: "--inspect", DEBUG: "*" },
+    {
+      HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", ANTHROPIC_API_KEY: "k", ANTHROPIC_AUTH_TOKEN: "t", ANTHROPIC_BASE_URL: "https://gw", CLAUDE_CODE_OAUTH_TOKEN: "o",
+      CLAUDE_CODE_USE_BEDROCK: "1", AWS_PROFILE: "dev", AWS_SECRET_ACCESS_KEY: "s", CLOUD_ML_REGION: "global", GOOGLE_APPLICATION_CREDENTIALS: "/h/g.json", AZURE_TENANT_ID: "az",
+      OPENAI_API_KEY: "x", GOOGLE_API_KEY: "x", ELEVENLABS_API_KEY: "x", GH_TOKEN: "x", NPM_TOKEN: "x",
+      CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDECODE: "1", CLAUDE_AGENT_SDK_VERSION: "0.3.276", CLAUDE_AGENT_SDK_CLIENT_APP: "x/1", NODE_OPTIONS: "--inspect", DEBUG: "*",
+    },
     "1.2.3",
   );
-  // D219: the setup-token login (CLAUDE_CODE_OAUTH_TOKEN) is the user's subscription and goes to claude.
-  assert.deepEqual(env, { HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", CLAUDE_CODE_OAUTH_TOKEN: "o", CLAUDE_AGENT_SDK_CLIENT_APP: "uncut/1.2.3" });
+  assert.deepEqual(env, {
+    HOME: "/h", PATH: "/bin", CLAUDE_CONFIG_DIR: "/h/.c", ANTHROPIC_API_KEY: "k", ANTHROPIC_AUTH_TOKEN: "t", ANTHROPIC_BASE_URL: "https://gw", CLAUDE_CODE_OAUTH_TOKEN: "o",
+    CLAUDE_CODE_USE_BEDROCK: "1", AWS_PROFILE: "dev", AWS_SECRET_ACCESS_KEY: "s", CLOUD_ML_REGION: "global", GOOGLE_APPLICATION_CREDENTIALS: "/h/g.json", AZURE_TENANT_ID: "az",
+    CLAUDE_AGENT_SDK_CLIENT_APP: "uncut/1.2.3",
+  });
   // ...and to no other process Uncut starts.
-  assert.equal(agentEnv({ CLAUDE_CODE_OAUTH_TOKEN: "o" }).CLAUDE_CODE_OAUTH_TOKEN, undefined);
-  assert.equal(pluginEnv({ CLAUDE_CODE_OAUTH_TOKEN: "o" }).CLAUDE_CODE_OAUTH_TOKEN, undefined);
-  const session = sessionEnv({ HOME: "/h", CLAUDE_CODE_ENTRYPOINT: "cli" });
+  for (const k of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "AWS_SECRET_ACCESS_KEY", "CLAUDE_CODE_USE_BEDROCK"]) {
+    assert.equal(agentEnv({ [k]: "v" })[k], undefined, k);
+    assert.equal(pluginEnv({ [k]: "v" })[k], undefined, k);
+  }
+  const session = sessionEnv({ HOME: "/h", CLAUDE_CODE_ENTRYPOINT: "cli", ANTHROPIC_API_KEY: "k" });
   assert.equal(session.CLAUDE_CODE_ENTRYPOINT, undefined);
+  assert.equal(session.ANTHROPIC_API_KEY, "k");
   assert.match(session.CLAUDE_AGENT_SDK_CLIENT_APP!, /^uncut\//);
+});
+
+test("D277: a sign-in set up in Claude Code's user settings reaches the session and the critic despite --setting-sources \"\"", () => {
+  const dir = mkdtempSync(join(tmpdir(), "uncut-cc-settings-"));
+  try {
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ apiKeyHelper: "~/bin/key.sh", awsAuthRefresh: "aws sso login", hooks: { Stop: [] }, permissions: { allow: ["Bash"] }, env: { CLAUDE_CODE_USE_BEDROCK: "1", AWS_REGION: "eu-west-1", OPENAI_API_KEY: "x", FOO: "bar" } }));
+    const read = userAuthSettings({ CLAUDE_CONFIG_DIR: dir });
+    assert.deepEqual(read, { env: { CLAUDE_CODE_USE_BEDROCK: "1", AWS_REGION: "eu-west-1" }, settings: { apiKeyHelper: "~/bin/key.sh", awsAuthRefresh: "aws sso login" } });
+    const session = sessionEnv({ HOME: "/h", CLAUDE_CONFIG_DIR: dir });
+    assert.equal(session.CLAUDE_CODE_USE_BEDROCK, "1");
+    assert.equal(session.OPENAI_API_KEY, undefined);
+    const argv = sessionArgs({ cfg: "/tmp/m.json", authSettings: read.settings });
+    const settings = JSON.parse(argv[argv.indexOf("--settings") + 1]!);
+    assert.equal(settings.apiKeyHelper, "~/bin/key.sh");
+    assert.ok(settings.permissions.deny.length > 0, "Uncut's deny rules still apply");
+    assert.equal(settings.hooks, undefined, "no hooks of the user's");
+    assert.ok(!argv.join(" ").includes("eu-west-1"), "env values never go on the command line");
+    const critic = criticArgs(undefined, read.settings);
+    assert.equal(JSON.parse(critic[critic.indexOf("--settings") + 1]!).awsAuthRefresh, "aws sso login");
+    assert.equal(criticArgs(undefined, {}).includes("--settings"), false);
+    assert.deepEqual(userAuthSettings({ CLAUDE_CONFIG_DIR: join(dir, "missing") }), { env: {}, settings: {} });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("D219 argv: the session's --settings keep Uncut's data folder out", () => {

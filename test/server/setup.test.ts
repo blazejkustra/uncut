@@ -54,7 +54,7 @@ after(() => {
 test("everything installed: ready, with versions and paths, and no account details", T, async () => {
   const dir = stubs("all", { claude: CLAUDE_READY, argent: `echo 0.28.0`, ...FFMPEG, "whisper-cli": `echo "whisper.cpp version: 1.9.5"` });
   const { byId, raw } = await check({ PATH: `${dir}:/usr/bin:/bin` });
-  assert.deepEqual(byId.claude, { id: "claude", name: "Claude Code", status: "ready", optional: false, version: "2.1.296", path: join(dir, "claude"), detail: "Signed in with Claude, Max plan" });
+  assert.deepEqual(byId.claude, { id: "claude", name: "Claude Code", status: "ready", optional: false, version: "2.1.296", path: join(dir, "claude"), detail: "Signed in with a Claude account, Max plan" });
   assert.equal(byId.argent.status, "ready");
   assert.equal(byId.argent.version, "0.28.0");
   assert.deepEqual([byId.ffmpeg.status, byId.ffmpeg.version], ["ready", "8.1.1"]);
@@ -97,13 +97,19 @@ test("a tool that hangs is an error within seconds, and the server keeps answeri
   assert.equal(r.byId.ffmpeg.status, "ready");
 });
 
-test("an API key is reported as present, never shown, and never passed to the tools", T, async () => {
-  // This claude prints LEAK in its version if it can see the key.
-  const dir = stubs("key", { claude: `case "$1" in --version) echo "2.1.296\${ANTHROPIC_API_KEY:+-LEAK} (Claude Code)";; auth) echo '{"loggedIn":true}';; esac`, ...FFMPEG });
+test("D277: an API key goes to claude (any sign-in Claude Code supports), to no other tool, and never into a reply", T, async () => {
+  // Each stub shows in its version whether it can see the key.
+  const dir = stubs("key", {
+    claude: `case "$1" in --version) echo "2.1.296\${ANTHROPIC_API_KEY:+-keyseen} (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"api_key"}';; esac`,
+    argent: `echo "0.28.0\${ANTHROPIC_API_KEY:+-leak}"`,
+    ...FFMPEG,
+  });
   const r = await check({ PATH: `${dir}:/usr/bin:/bin`, ANTHROPIC_API_KEY: SECRET });
-  assert.equal(r.byId["api-key"].status, "warning");
-  assert.equal(r.byId["api-key"].detail, "Found ANTHROPIC_API_KEY in your environment. Uncut uses your Claude subscription and ignores the key.");
-  assert.equal(r.byId.claude.version, "2.1.296");
+  assert.equal(r.byId.claude.version, "2.1.296-keyseen", "claude gets the key");
+  assert.equal(r.byId.claude.status, "ready");
+  assert.match(r.byId.claude.detail, /API key/);
+  assert.equal(r.byId.argent.version, "0.28.0", "argent doesn't");
+  assert.equal(r.byId["api-key"], undefined, "no separate key row");
   for (const part of [SECRET, "SECRETVALUE", "sk-ant"]) assert.ok(!r.raw.includes(part), `response contains ${part}`);
 });
 
@@ -151,34 +157,34 @@ test("versions are a version number or nothing, never raw tool output", T, async
   assert.ok(!r.raw.includes("<b>") && !r.raw.includes("hello there"));
 });
 
-test("a claude.ai login and a setup-token login count as Ready; API keys and cloud providers say who's billed", T, async () => {
-  // D219: CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) is the user's subscription, not an API account.
+test("D277: every sign-in Claude Code supports is Ready; API keys and cloud providers say who's billed", T, async () => {
   {
     const dir = stubs("auth-oauth_token", { claude: `case "$1" in --version) echo "2.1.296 (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"oauth_token"}';; esac` });
     const { byId } = await check({ PATH: `${dir}:/usr/bin:/bin` });
     assert.equal(byId.claude.status, "ready", byId.claude.detail);
-    assert.match(byId.claude.detail, /Claude subscription.*setup-token/);
-    assert.doesNotMatch(byId.claude.detail, /billed|API key/);
+    assert.match(byId.claude.detail, /Claude account.*setup-token/);
     assert.equal(byId.claude.fix, undefined);
   }
-  const cases = { api_key: /API key/, third_party: /Using bedrock/, something_new: /not with a Claude login \(something_new\)/ };
+  const cases = { api_key: /API key.*billed/, third_party: /Using bedrock.*billed/, something_new: /Signed in \(something_new\)/ };
   for (const [method, pattern] of Object.entries(cases)) {
     const dir = stubs(`auth-${method}`, { claude: `case "$1" in --version) echo "2.1.296 (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"${method}","apiProvider":"bedrock"}';; esac` });
     const { byId } = await check({ PATH: `${dir}:/usr/bin:/bin` });
-    assert.equal(byId.claude.status, "warning", method);
+    assert.equal(byId.claude.status, "ready", method);
     assert.match(byId.claude.detail, pattern, method);
-    if (method !== "something_new") assert.match(byId.claude.detail, /billed/, method);
-    assert.equal(byId.claude.fix.command, "claude auth login", method);
+    assert.doesNotMatch(byId.claude.detail, /subscription/, method);
+    assert.equal(byId.claude.fix, undefined, method);
   }
 });
 
 // ---- PATH from the login shell ----
 
 test("parsing the shell's output: markers, junk around them, and nonsense PATHs", () => {
-  assert.deepEqual(parseShellOutput("motd\n__UNCUT_PATH_START__/a:/b\n__UNCUT_PATH_END__\n"), { path: "/a:/b", apiKeySet: false });
-  assert.deepEqual(parseShellOutput("__UNCUT_PATH_START__relative:junk__UNCUT_PATH_END__"), { path: undefined, apiKeySet: false });
-  assert.deepEqual(parseShellOutput("garbage"), { path: undefined, apiKeySet: false });
-  assert.equal(parseShellOutput("__UNCUT_PATH_START__/a__UNCUT_PATH_END__\n__UNCUT_ANTHROPIC_KEY_SET__").apiKeySet, true);
+  assert.deepEqual(parseShellOutput("motd\n__UNCUT_PATH_START__/a:/b\n__UNCUT_PATH_END__\n"), { path: "/a:/b", auth: {} });
+  assert.deepEqual(parseShellOutput("__UNCUT_PATH_START__relative:junk__UNCUT_PATH_END__"), { path: undefined, auth: {} });
+  assert.deepEqual(parseShellOutput("garbage"), { path: undefined, auth: {} });
+  // D277: only Claude Code's sign-in variables are kept from the shell's environment (values may hold "=" and newlines).
+  const env = ["HOME=/h", "ANTHROPIC_API_KEY=k=1", "OPENAI_API_KEY=o", "CLAUDE_CODE_USE_BEDROCK=1", "AWS_PROFILE=dev\nx", "GH_TOKEN=g", "EMPTY_THING="].join("\0");
+  assert.deepEqual(parseShellOutput(`__UNCUT_PATH_START__/a__UNCUT_PATH_END__\n__UNCUT_AUTH_START__${env}\0__UNCUT_AUTH_END__\n`).auth, { ANTHROPIC_API_KEY: "k=1", CLAUDE_CODE_USE_BEDROCK: "1", AWS_PROFILE: "dev\nx" });
   assert.equal(mergePath("/a:/b", "/b:/c", "rel:/d"), "/a:/b:/c:/d");
   assert.ok(fallbackPathDirs("/Users/x").includes("/opt/homebrew/bin") && fallbackPathDirs("/Users/x").includes("/Users/x/.local/bin"));
 });
@@ -240,10 +246,12 @@ test("a login shell that can't start or floods its output can't take the server 
   }
 });
 
-test("a key exported by the login shell is reported, and its value never appears", T, async () => {
+test("D277: a key exported by the login shell reaches claude, and its value never appears", T, async () => {
   const shell = script(join(root, "shells"), "keyed", `export ANTHROPIC_API_KEY=${SECRET}\nexec /bin/sh -c "$2"`);
-  const { byId, raw } = await checkClean({ ...launchdEnv({ SHELL: shell }), ...baseEnv() });
-  assert.equal(byId["api-key"]?.status, "warning");
-  assert.match(byId["api-key"].detail, /in your shell/);
+  const claude = script(join(root, "shell-claude"), "claude", `case "$1" in --version) echo "2.1.296\${ANTHROPIC_API_KEY:+-keyseen} (Claude Code)";; auth) echo '{"loggedIn":true,"authMethod":"api_key"}';; esac`);
+  const { byId, raw } = await checkClean({ ...launchdEnv({ SHELL: shell }), ...baseEnv(), UNCUT_CLAUDE: claude });
+  assert.equal(byId.claude.version, "2.1.296-keyseen");
+  assert.equal(byId.claude.status, "ready");
+  assert.equal(byId["api-key"], undefined);
   assert.ok(!raw.includes(SECRET) && !raw.includes("sk-ant"));
 });
