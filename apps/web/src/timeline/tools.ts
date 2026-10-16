@@ -5,16 +5,19 @@
 // tool before it comes back. Not remembered between launches: the app always opens on Select.
 import { useSyncExternalStore } from "react";
 
+import { keysOf, type ActionId } from "../editor/keymap.ts";
+
 export type Tool = "select" | "blade" | "hand";
 
-export const TOOLS: ReadonlyArray<{ readonly id: Tool; readonly key: string; readonly label: string }> = [
-  { id: "select", key: "v", label: "Select: click to select, drag to move or trim" },
-  { id: "blade", key: "c", label: "Blade: click an item to cut it there" },
-  { id: "hand", key: "h", label: "Hand: drag to scroll the timeline" },
+// Their keys are the keymap's (#78, D257: V, C, H by default; a preset or the user can change them).
+export const TOOLS: ReadonlyArray<{ readonly id: Tool; readonly action: ActionId; readonly label: string }> = [
+  { id: "select", action: "toolSelect", label: "Select: click to select, drag to move or trim" },
+  { id: "blade", action: "toolBlade", label: "Blade: click an item to cut it there" },
+  { id: "hand", action: "toolHand", label: "Hand: drag to scroll the timeline" },
 ];
 
-/** The tool a key (e.key, any case) picks, if any. */
-export const toolForKey = (key: string): Tool | undefined => TOOLS.find((t) => t.key === key.toLowerCase())?.id;
+/** The tool a single key (e.key, any case) picks under the current keymap, if any. */
+export const toolForKey = (key: string): Tool | undefined => TOOLS.find((t) => keysOf(t.action).includes(key.toUpperCase()))?.id;
 
 let tool: Tool = "select";
 const listeners = new Set<() => void>();
