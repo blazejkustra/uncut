@@ -8,7 +8,7 @@ import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChe
 import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
-import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "../agentCritic.ts";
+import { criticMessage, criticReview, mayReviewAgain, parseCritic, reviewNext, REVIEW_ROUNDS, REVIEW_ROUNDS_MAX, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "../agentCritic.ts";
 import { activeBrand, readBrand, readPlan, writeBrief, writeReview, writeStoryboard, normBrief, normBeats } from "../../brand/store.ts";
 import { BUILTIN_IDS, guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
 import { FONT_ERRORS } from "../agentTools.ts";
@@ -18,7 +18,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, refineJumps, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, refineEmpty, refineJumps, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
@@ -282,7 +282,9 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         const missing = [!r.looked.sheet ? "a contact_sheet of the edit (no media)" : "", !r.looked.phone ? "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)" : ""].filter(Boolean).join(" and ");
         return textResult(`Look before you ask for a review: ${missing}${r.reviewRounds ? " since the last round" : ""}, then review_submit.`, true);
       }
-      if (r.reviewRounds >= REVIEW_ROUNDS) return textResult(`That was the last review round in this turn (${REVIEW_ROUNDS}): stop fixing and tell the user what the critic still found.`, true);
+      // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while the blockers shrink.
+      const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
+      if (r.reviewRounds >= REVIEW_ROUNDS && !mayReviewAgain(turnReviews())) return textResult(`That was the last review round in this turn (${r.reviewRounds}; past ${REVIEW_ROUNDS} a turn goes on only while the blockers shrink, up to ${REVIEW_ROUNDS_MAX}): stop fixing and tell the user what the critic still found.`, true);
       const project = v.session.project as Project;
       const fps = project.canvas.fps;
       const { starts, duration } = layout(project);
@@ -370,24 +372,23 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                   const sampled = got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! }));
                   // A1: a cut between two sampled frames, narrowed down to the frame it happens on.
                   const refineUntil = Date.now() + REFINE_BUDGET_MS;
+                  // Rehearsal 4: and each nearly empty stretch's exact edges.
                   const refined = scanList.length === duration ? [] : yield* Effect.tryPromise({
-                    try: (signal) => {
+                    try: async (signal) => {
                       const sig = AbortSignal.any([signal, r.abort.signal]);
-                      return refineJumps({
-                        frames: sampled,
-                        fps,
-                        duration,
-                        until: () => Date.now() > refineUntil || sig.aborted,
-                        render: async (frames) => {
-                          const shot = await Effect.runPromise(session.render(frames, STRIP_CELL, { until: () => Date.now() > refineUntil }), { signal: sig });
-                          const gs = await grayFrames(ffmpeg, shot.map((x) => x.jpeg), w, h, sig);
-                          return shot.map((x, i) => ({ frame: x.frame, gray: gs[i]! }));
-                        },
-                      });
+                      const until = () => Date.now() > refineUntil || sig.aborted;
+                      const render = async (frames: ReadonlyArray<number>) => {
+                        const shot = await Effect.runPromise(session.render(frames, STRIP_CELL, { until: () => Date.now() > refineUntil }), { signal: sig });
+                        const gs = await grayFrames(ffmpeg, shot.map((x) => x.jpeg), w, h, sig);
+                        return shot.map((x, i) => ({ frame: x.frame, gray: gs[i]! }));
+                      };
+                      const jumps = await refineJumps({ frames: sampled, fps, duration, until, render });
+                      const edges = await refineEmpty({ frames: [...sampled, ...jumps], fps, size: { w, h }, until, render });
+                      return [...jumps, ...edges];
                     },
                     catch: (e) => e as Error,
                   }).pipe(Effect.catch(() => Effect.succeed([] as Array<{ frame: number; gray: Uint8Array }>)));
-                  scan = motionScan([...sampled, ...refined], fps);
+                  scan = motionScan([...sampled, ...refined], fps, { size: { w, h } });
                   // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
                   const di = dropBeat(sb?.beats);
                   if (di !== undefined) drop = dropLine(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), clampF(sb!.beats[di]!.start * fps), fps);
@@ -492,9 +493,9 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         blockers: review.blockers,
         defects: review.defects,
         ...(review.fixes ? { fixes: review.fixes } : {}),
-        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
+        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds, empty: emptyRuns(motion.scan, fps) } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
-        next: reviewNext(review, round),
+        next: reviewNext(review, round, mayReviewAgain(turnReviews())),
       });
     });
 

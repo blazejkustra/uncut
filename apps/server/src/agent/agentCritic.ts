@@ -23,6 +23,21 @@ import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCatego
 export const REVIEW_PASS = 8;
 /** At most this many review rounds in a turn. */
 export const REVIEW_ROUNDS = 3;
+/** Rehearsal 4: past REVIEW_ROUNDS a turn keeps reviewing while its blockers shrink, up to this many rounds. */
+export const REVIEW_ROUNDS_MAX = 6;
+
+/**
+ * Whether a turn may run another review round after these (its rounds, in order): always under
+ * REVIEW_ROUNDS; then, up to REVIEW_ROUNDS_MAX, only while the last round still has blockers and
+ * fewer than the round before it (it is converging). A pass, a stall or more blockers stop it.
+ */
+export function mayReviewAgain(rounds: ReadonlyArray<{ readonly passed?: boolean; readonly blockers?: ReadonlyArray<unknown> }>): boolean {
+  if (rounds.length < REVIEW_ROUNDS) return true;
+  if (rounds.length >= REVIEW_ROUNDS_MAX) return false;
+  const last = rounds.at(-1)!, before = rounds.at(-2);
+  const n = (x: { readonly blockers?: ReadonlyArray<unknown> } | undefined) => x?.blockers?.length ?? 0;
+  return !last.passed && n(last) > 0 && !!before && n(last) < n(before);
+}
 /** A score whose category has a blocker is at most this. */
 export const BLOCKER_CAP = 5;
 /** A score with no frames cited is at most this (it can't pass). */
@@ -73,7 +88,7 @@ Blockers are real defects, and they fail the video whatever the scores. The <rub
 - illegible: text meant to be read (a title, caption, headline, a quoted storyboard word, the line the moment is about) too small, too thin or too low in contrast to read at 360 px wide; small labels and chrome inside a rebuilt interface are texture, never this
 - brand-colour: colours outside the kit where the kit should rule (backgrounds, text, accents), only when the rubric lists it
 - invented: a logo, product UI, screen, metric, quote or customer that the brief and kit don't provide, or a number or status about the film's own making that differs from this run's facts in <motion>
-- blank: a black or blank frame, or one that shows nothing for longer than a beat (a calm canvas around a small element on its way to the next state is not blank)
+- blank: a black or blank frame, or a nearly empty one (bare canvas with at most a cursor or a speck) for 0.2 s or more; Uncut measures these in <motion> ("Nearly empty frames"). A small element on a calm canvas is fine only while it fills a fair share of the frame and the next shape is already growing out of it
 - off-centre: an element meant to be centred (a button glyph, a title, a logo) visibly off its centre
 - sound: from the <sound> sheet, only when the rubric lists it: sound effects past the sound profile's limits, landing on nothing, a meme sound or a click on text the brief didn't ask for
 Style rules (pacing, a hook, transitions, motion style, the sound's density or level) are defects, not blockers, unless the rubric lists them. Give every defect a kind: the category it belongs to (hook, readability, motion, variety, sound, brand) or a blocker kind.
@@ -82,7 +97,7 @@ Sound, blindfold first: read the <sound> sheet alone before looking at the frame
 The editor follows the skills in <skill-checklists>: check every line on the frames; a line the video fails is a defect (or a blocker when it is one of the kinds above), quoting the line.
 Uncut's layout checks are listed as facts about the project: confirm what you see.
 Motion over time: stills can't show timing, so you also get frame strips (a row of consecutive moments 1/12 s apart around each scene change, left to right) and Uncut's frame-difference scan in <motion>. From the strips judge whether each change lands on its beat (the storyboard's and the sound sheet's times), whether moves ease in and settle or snap, and whether text swapping inside a moving shape overlaps. The scan's pops (a frame unlike both its neighbours), one-frame jumps, holds over 1 s and the loop seam are measured, not guessed: confirm them on the strips and frames, and judge them as motion defects (a pop is always one; a cut or a hold is one only when the brief or the skills ask for one take with no holds).
-Scale and words (in <motion>): Uncut measures how much of each strip's frames is flat background and the canvas around the picture; in a footage-first film, over 35 % at most scene changes means the footage sits small on an empty canvas: mark motion down for a card of footage on flat black with a caption under it. A UI-first film is one hero element at a time on a calm canvas: mark it down when the hero is muddy (dark panels on a near-black canvas, edges lost), cluttered (several panels at once), or the line it's about is cut mid-word at the frame's edge. Judge scale and sizes by the film's own direction (the brief, the storyboard, the skills), not by fixed numbers. Text ghosting into stacked copies (motion blur over a big jump in one frame) is a motion defect. Around the drop, check its strip: the reveal lands on the drop, not before. The storyboard's words are each beat's approved text: read them in that beat's frames; missing, cut or different words are a readability defect quoting both. Numbers and statuses a film shows about its own making (beat counts, review results, timings) must match this run's facts in <motion>: honesty first. One that states something false is an invented blocker, even when the brief scripted it. When the brief explicitly asks for such a fact and this run didn't produce it, say so in these words: "the brief asks for X, but this run shows Y", and give the true version to show instead (the real count or result, or the step without a result); a true text that differs from the brief's script is a brand defect with that wording, never a blocker.
+Scale and words (in <motion>): Uncut measures how much of each strip's frames is flat background and the canvas around the picture; in a footage-first film, over 35 % at most scene changes means the footage sits small on an empty canvas: mark motion down for a card of footage on flat black with a caption under it. A wide shot of a whole app window (the full editor, every panel at once) where nothing the moment is about reads at 360 px is a readability defect with its time range ("f a to f b: the whole editor, nothing key reads"), not a blocker: the camera should push in on the part that matters (the timeline track that's filling, the preview, the line being typed). A UI-first film is one hero element at a time on a calm canvas: mark it down when the hero is muddy (dark panels on a near-black canvas, edges lost), cluttered (several panels at once), or the line it's about is cut mid-word at the frame's edge. Judge scale and sizes by the film's own direction (the brief, the storyboard, the skills), not by fixed numbers. Text ghosting into stacked copies (motion blur over a big jump in one frame) is a motion defect. Around the drop, check its strip: the reveal lands on the drop, not before. The storyboard's words are each beat's approved text: read them in that beat's frames; missing, cut or different words are a readability defect quoting both. Numbers and statuses a film shows about its own making (beat counts, review results, timings) must match this run's facts in <motion>: honesty first. One that states something false is an invented blocker, even when the brief scripted it. When the brief explicitly asks for such a fact and this run didn't produce it, say so in these words: "the brief asks for X, but this run shows Y", and give the true version to show instead (the real count or result, or the step without a result); a true text that differs from the brief's script is a brand defect with that wording, never a blocker.
 From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim. A fix you mark false fails the round like a blocker: your summary must agree (never "no blockers" while a claimed fix is unverified).
 Answer with one JSON object and nothing else:
 {"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...}},
@@ -287,7 +302,7 @@ export function parseCritic(text: string, scored: ReadonlyArray<Category> = REVI
 /** D217: the check findings that become review findings when they don't block (they can't be seen on frames). */
 const CHECK_FINDING = /^sound:(density|loud|level):/;
 /** D292: the motion scan's findings (pops; jumps, holds and the seam when asked for) are defects from the check, with or without a rubric. */
-const MOTION_FINDING = /^motion:(pop|jump|hold|seam):/;
+const MOTION_FINDING = /^motion:(pop|jump|hold|seam|empty|fast):/;
 
 /**
  * The round as saved (D195, D196, D217): the critic's scores (only the categories the rubric scores)
@@ -389,7 +404,7 @@ export function agreeingNotes(summary: string, blockers: ReadonlyArray<{ readonl
 const levelsOf = (review: Review) => (review.rubric ? { levels: review.rubric as Record<Category, "required" | "optional" | "na"> } : undefined);
 
 /** What the builder does next after a round. */
-export function reviewNext(review: Review, turnRound: number = review.round): string {
+export function reviewNext(review: Review, turnRound: number = review.round, more: boolean = turnRound < REVIEW_ROUNDS): string {
   const rb = levelsOf(review);
   const scored = scoredOf(rb);
   const low = scored.filter((k) => (review.scores[k] ?? 0) < (barOf(rb, k) ?? 0));
@@ -400,8 +415,9 @@ export function reviewNext(review: Review, turnRound: number = review.round): st
   const naText = na.length ? ` Not scored for this video: ${na.join(", ")}.` : "";
   if (review.passed) return `Uncut's critic passed it (${scores}).${naText} Run project_check, fix its warnings, then tell the user in a line or two; the scores are the critic's, not yours.`;
   const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${det}`.trim();
-  if (turnRound >= REVIEW_ROUNDS) return `That was round ${turnRound} in this turn, the last one: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
-  return `Not passed. ${open} Fix every blocker first, then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
+  if (!more) return `That was round ${turnRound} in this turn, the last one${turnRound >= REVIEW_ROUNDS ? ` (past ${REVIEW_ROUNDS} rounds a turn goes on only while the blockers shrink, up to ${REVIEW_ROUNDS_MAX})` : ""}: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
+  const extra = turnRound >= REVIEW_ROUNDS ? `Round ${turnRound}: the blockers went down, so you get another round (at most ${REVIEW_ROUNDS_MAX}, and only while they keep going down). ` : "";
+  return `Not passed. ${extra}${open} Fix every blocker first, then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
 }
 
 /**
