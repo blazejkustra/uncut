@@ -42,7 +42,7 @@ pnpm test:app    # the packaged-app tests (run pnpm dist first)
 
 ## Privacy
 
-Uncut is made by Błażej Kustra, who is the controller for the usage data below. Contact: <contact>.
+Uncut is made by Błażej Kustra, who is the controller for the usage data below. Contact: kustrablazej@gmail.com.
 
 **Usage data is off unless you turn it on.** The first time you open Uncut, the setup asks (an unticked checkbox; skipping the setup is a no), and an install that never answered is asked once. Nothing is sent before you say yes, not even the app starting. Change your answer any time in Settings › App › Usage data; `DO_NOT_TRACK=1` or `UNCUT_TELEMETRY=off` also keeps it off. Builds made from source send nothing either way.
 
