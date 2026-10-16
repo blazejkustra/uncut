@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 import { FPS, makeExportFixture, writeProject } from "../helpers/export-fixture.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -75,7 +76,7 @@ function toSrgb(png: string) {
   return outPath;
 }
 const logged = async (app: LaunchedApp, line: string) => {
-  for (let i = 0; i < 50 && !app.output().includes(line); i++) await sleep(100);
+  await eventually(() => app.output().includes(line));
   return app.output().includes(line);
 };
 
@@ -162,7 +163,7 @@ test("export dialog: ⌘E, quality, file and folder, progress, shown in Finder; 
   assert.ok(await logged(app, `[test] showItemInFolder ${saveAs}`), "shown in Finder when done");
   const before = app.output().split(`[test] showItemInFolder ${saveAs}`).length;
   await page.click("[data-testid=export-reveal]");
-  for (let i = 0; i < 30 && app.output().split(`[test] showItemInFolder ${saveAs}`).length === before; i++) await sleep(100);
+  await eventually(() => app.output().split(`[test] showItemInFolder ${saveAs}`).length !== before);
   assert.equal(app.output().split(`[test] showItemInFolder ${saveAs}`).length, before + 1, "Show in Finder");
   await page.screenshot({ path: out("export-done.png") });
 

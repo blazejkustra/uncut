@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -82,7 +83,7 @@ const cmd = async (page: Page, key: string, command: string) => {
   await page.keyboard.up("Meta");
 };
 const logged = async (line: string) => {
-  for (let i = 0; i < 50 && !app!.output().includes(line); i++) await sleep(100);
+  await eventually(() => app!.output().includes(line));
   return app!.output().includes(line);
 };
 
@@ -131,7 +132,7 @@ test("issue #49: the Agent tab's text selects and copies (⌘C, the text menu, C
   });
   assert.equal(prevented, false, "the timeline's ⌘C doesn't take a text selection");
   await cmd(page, "KeyC", "copy");
-  for (let i = 0; i < 20 && pbpaste() === "before #49"; i++) await sleep(100);
+  await eventually(() => pbpaste() !== "before #49");
   assert.equal(pbpaste().trim(), "I shortened the intro to five seconds.", "⌘C put the selected reply on the clipboard");
   await page.screenshot({ path: out("selected-reply") });
 
@@ -162,7 +163,7 @@ test("issue #49: the Agent tab's text selects and copies (⌘C, the text menu, C
     return t.value.slice(t.selectionStart, t.selectionEnd);
   }), "Keep the title as is", "⌘A selects the composer's text");
   await cmd(page, "KeyC", "copy");
-  for (let i = 0; i < 20 && pbpaste() === "before composer"; i++) await sleep(100);
+  await eventually(() => pbpaste() !== "before composer");
   assert.equal(pbpaste(), "Keep the title as is", "⌘C copied the composer's text");
   const box = await page.$eval("[data-testid=agent-input]", (el) => el.getBoundingClientRect().toJSON() as DOMRect);
   await page.mouse.click(box.left + 30, box.top + 12, { button: "right" });
