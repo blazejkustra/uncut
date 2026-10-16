@@ -4,7 +4,7 @@ import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
-import { CHECK_IDS, fontRule, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout } from "@uncut/core";
+import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
@@ -134,19 +134,53 @@ export const makeCardTools = (ctx: GenerateCtx) => {
     });
 
   /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
+  /** A still asked for: a timeline frame, or a graphic file and a moment of it (seconds). */
+  const stillOf = (f: unknown): { readonly frame: number } | { readonly graphic: string; readonly t: number } | undefined => {
+    if (typeof f === "number") return Number.isInteger(f) && f >= 0 ? { frame: f } : undefined;
+    const o = f as { graphic?: unknown; t?: unknown } | null;
+    if (!o || typeof o !== "object" || typeof o.graphic !== "string") return undefined;
+    const src = o.graphic.startsWith("graphics/") ? o.graphic : `graphics/${o.graphic}`;
+    const t = typeof o.t === "number" && Number.isFinite(o.t) && o.t >= 0 ? o.t : 0;
+    return GRAPHIC_SRC.test(src) ? { graphic: src, t } : undefined;
+  };
+  /**
+   * The stills in the order asked: timeline frames from the project as it is; a graphic's moment
+   * from the project with that graphic alone on one track (its canvas and media, nothing placed).
+   */
+  const renderStills = (project: Project, stills: ReadonlyArray<{ readonly frame: number } | { readonly graphic: string; readonly t: number }>, width: number) =>
+    Effect.gen(function* () {
+      const out: Array<{ jpeg: Buffer }> = new Array(stills.length);
+      const frames = stills.flatMap((s, k) => ("frame" in s ? [[k, s.frame] as const] : []));
+      if (frames.length) (yield* exporter.renderFrames(frames.map(([, f]) => f), width)).forEach((r, j) => (out[frames[j]![0]] = r));
+      const fps = project.canvas.fps;
+      for (const [k, s] of stills.entries()) {
+        if ("frame" in s) continue;
+        const at = Math.round(s.t * fps);
+        const alone = { ...project, tracks: [{ id: "still", kind: "video", name: "Still", items: [{ id: "still-graphic", type: "graphic", src: s.graphic, start: 0, duration: at + 1 }] }] } as unknown as Project;
+        const got = yield* exporter.renderFrames([at], width, alone);
+        if (!got[0]) return yield* Effect.fail(new Error(`${s.graphic} at ${s.t} s drew nothing`));
+        out[k] = got[0];
+      }
+      return out;
+    });
+
   const storyboardPropose = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
       const raw = Array.isArray(args.beats) ? args.beats : [];
       // D295: a beat's still is a timeline frame; Uncut renders it and the card shows it with the beat.
+      // Or a graphic file and a moment of it ({ graphic, t }), drawn alone without placing it, so
+      // the user sees the look before the film is built.
       const asked = raw.map((b) => (b && typeof b === "object" ? (b as Record<string, unknown>).still : undefined));
       const beats = normBeats(raw.map((b) => (b && typeof b === "object" ? { ...(b as Record<string, unknown>), still: undefined } : b)));
       if (!beats.length) return textResult("beats is the shot list: each {start, end (seconds), title, entry, exit, purpose, assets, sound}.", true);
       const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 600) : "";
-      const wanted = asked.flatMap((f, i) => (f === undefined ? [] : [[i, f] as const]));
-      if (wanted.length > MAX_STILLS || wanted.some(([, f]) => !Number.isInteger(f) || (f as number) < 0)) {
-        const many = wanted.length > MAX_STILLS ? ` You gave ${wanted.length} (beats ${wanted.map(([i]) => i + 1).join(", ")}): keep ${MAX_STILLS}, say the open, the drop, the busiest state and the last frame, and propose again.` : "";
-        return textResult(`still is a timeline frame (an integer from 0) on at most ${MAX_STILLS} beats.${many}`, true);
-      }
+      const all = asked.flatMap((f, i) => (f === undefined ? [] : [[i, f] as const]));
+      const bad = all.find(([, f]) => !stillOf(f));
+      if (bad) return textResult(`beats[${bad[0]}].still must be a timeline frame (an integer from 0) or a graphic and a moment of it: {"graphic":"film.html","t":12.5} (drawn alone, not placed).`, true);
+      // More than MAX_STILLS: the first ones are drawn and the rest left out, said in the answer (a note, not a refusal).
+      const wanted = all.slice(0, MAX_STILLS);
+      const skipped = all.slice(MAX_STILLS).map(([i]) => i + 1);
+      const stillNote = skipped.length ? { stills: `Drew the first ${MAX_STILLS} stills; beat${skipped.length === 1 ? "" : "s"} ${skipped.join(", ")} asked for one too and ${skipped.length === 1 ? "was" : "were"} left out (${MAX_STILLS} at most: the open, the drop, the busiest state and the last frame).` } : {};
       // D296: from here the proposal locks the edit (run.ts): the stills render from this state and
       // the user approves what they see. Set before rendering, so a parallel edit can't slip in.
       r.planned = true;
@@ -154,9 +188,9 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       if (wanted.length) {
         const canvas = v.session.project.canvas;
         const width = Math.min(canvas.width, STILL_WIDTH);
-        const rendered = yield* exporter.renderFrames(wanted.map(([, f]) => f as number), width).pipe(
+        const rendered = yield* renderStills(v.session.project, wanted.map(([, f]) => stillOf(f)!), width).pipe(
           Effect.map((list) => ({ ok: true as const, list })),
-          Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, message: (error as Error).message })),
         );
         if (!rendered.ok) {
           r.proposing = false;
@@ -191,7 +225,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
         yield* refreshPlan(r, v);
         addCard(r, { type: "storyboard", storyboard: sb, outcome: "auto" }, summary || "Storyboard");
-        return textResult({ approved: true, by: "setting", message: "Approved by the user's setting (Auto skips the storyboard approval). Build it scene by scene." });
+        return textResult({ ...stillNote, approved: true, by: "setting", message: "Approved by the user's setting (Auto skips the storyboard approval). Build it scene by scene." });
       }
       const proposed = yield* write({ summary, beats, status: "proposed" });
       yield* refreshPlan(r, v);
@@ -206,14 +240,14 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         const final = yield* write({ summary, beats: edited.length ? edited : beats, status: "approved", approvedBy: "user" });
         yield* refreshPlan(r, v);
         addCard(r, { type: "storyboard", storyboard: final, outcome: "approved" }, summary || "Storyboard");
-        return textResult({ approved: true, ...(edited.length ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." } : { message: "Approved as the stills show it. Build it scene by scene to match them; keep the copy, logo and end card they show (to change those, propose again)." }) });
+        return textResult({ ...stillNote, approved: true, ...(edited.length ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." } : { message: "Approved as the stills show it. Build it scene by scene to match them; keep the copy, logo and end card they show (to change those, propose again)." }) });
       }
       if (a === "deny") {
         const note = extra?.note?.trim().slice(0, 2000) ?? "";
         const final = yield* write({ summary, beats, status: "declined", ...(note ? { note } : {}) });
         yield* refreshPlan(r, v);
         addCard(r, { type: "storyboard", storyboard: final, outcome: "declined" }, summary || "Storyboard");
-        return textResult({ approved: false, ...(note ? { change: note } : {}), next: note ? "Change the storyboard as asked and propose it again; don't build until it's approved." : "The user didn't approve it and said nothing: ask what to change (ask_user); don't build." });
+        return textResult({ ...stillNote, approved: false, ...(note ? { change: note } : {}), next: note ? "Change the storyboard as asked and propose it again; don't build until it's approved." : "The user didn't approve it and said nothing: ask what to change (ask_user); don't build." });
       }
       addCard(r, { type: "storyboard", storyboard: proposed, outcome: "skipped" }, summary || "Storyboard");
       return textResult({ approved: false, message: a === "stopped" ? "The turn was stopped." : "Nobody answered in 15 minutes.", next: "Don't build or edit (timeline_edit, graphic_write and shader_write are refused for the rest of this turn). End the turn now saying the storyboard waits for approval on the Plan card." }, a !== "timeout");

@@ -82,7 +82,8 @@ export interface ExporterShape {
   /** Whether an export is queued, preparing or rendering, now (analysis yields to it, D66). */
   readonly busy: () => boolean;
   /** Frames of the open project as JPEGs, `width` px wide (the agent's render_frames). */
-  readonly renderFrames: (frames: ReadonlyArray<number>, width: number) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  /** `project`: draw this project (the open one's folder and media) instead of the open one as it is: a storyboard still of a graphic not placed yet. */
+  readonly renderFrames: (frames: ReadonlyArray<number>, width: number, project?: Project) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
   /**
    * D292: `use` with one frame session of the open project (one rasteriser, one temp folder, the
    * plan once per width), closed when it ends: many renders without a rasteriser start each.
@@ -265,9 +266,11 @@ export const layer = Layer.effect(
 
     // ---- the agent's frames ----
 
-    const renderFrames = (frames: ReadonlyArray<number>, width: number) =>
+    const renderFrames = (frames: ReadonlyArray<number>, width: number, instead?: Project) =>
       Effect.gen(function* () {
-        const { dir, project, mediaPath } = yield* current;
+        const open = yield* current;
+        const { dir, mediaPath } = open;
+        const project = instead ?? open.project;
         const bin = yield* Effect.promise(ffmpegBin);
         if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
         return yield* Effect.tryPromise({
