@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { RATE, SYNTH_SOUNDS, type SynthSound } from "./sfx-synth.ts";
+import { RATE, SYNTH_SOUNDS, type SynthOut, type SynthSound } from "./sfx-synth.ts";
 
 const OUT = resolve("assets/sfx");
 /** Loudness each sound is brought to (EBU R128 integrated, measured with 0.5 s of silence around it). */
@@ -48,8 +48,12 @@ interface Kenney extends Omit<Freesound, "page" | "author"> {
 type Sound = Freesound | Kenney | SynthSound;
 const SYNTH_SOURCE = "https://github.com/blazejkustra/uncut/blob/main/scripts/sfx-synth.ts";
 
-/** Mono float samples as a 32-bit float WAV file. */
-function writeWav(path: string, samples: Float32Array) {
+/** Mono or stereo float samples as a 32-bit float WAV file. */
+function writeWav(path: string, out: SynthOut) {
+  const chs = Array.isArray(out) ? [out[0], out[1]] : [out as Float32Array];
+  const frames = Math.min(...chs.map((c) => c.length));
+  const samples = new Float32Array(frames * chs.length);
+  for (let i = 0; i < frames; i++) for (let c = 0; c < chs.length; c++) samples[i * chs.length + c] = chs[c]![i]!;
   const data = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
   const head = Buffer.alloc(44);
   head.write("RIFF", 0);
@@ -57,10 +61,10 @@ function writeWav(path: string, samples: Float32Array) {
   head.write("WAVEfmt ", 8);
   head.writeUInt32LE(16, 16);
   head.writeUInt16LE(3, 20); // IEEE float
-  head.writeUInt16LE(1, 22);
+  head.writeUInt16LE(chs.length, 22);
   head.writeUInt32LE(RATE, 24);
-  head.writeUInt32LE(RATE * 4, 28);
-  head.writeUInt16LE(4, 32);
+  head.writeUInt32LE(RATE * 4 * chs.length, 28);
+  head.writeUInt16LE(4 * chs.length, 32);
   head.writeUInt16LE(32, 34);
   head.write("data", 36);
   head.writeUInt32LE(data.length, 40);
