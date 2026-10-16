@@ -1,0 +1,31 @@
+/* D244 (#87): the title bar's wordmark. The letters are a gradient clipped to the text; the
+   gradient is three times wider than them and holds one band of light, cut at the icon's angle
+   (118deg), that moves across them by background-position alone. */
+.wordmark { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wordmark-name { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+.wordmark-mark { width: 11px; height: 13px; flex: none; color: var(--fg); }
+.wordmark-text {
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  background-image: linear-gradient(118deg, var(--fg) 0 40%, #ffffff 45%, #a9bcff 50%, #ffffff 55%, var(--fg) 60% 100%);
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: wordmark-sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) 0.25s 1 both;
+}
+/* While the agent works the light keeps passing, slower, and the mark takes the accent. */
+.wordmark[data-busy="true"] .wordmark-text { animation: wordmark-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.wordmark[data-busy="true"] .wordmark-mark { color: var(--select); transition: color 0.4s; }
+@keyframes wordmark-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+/* A thin slash at the icon's cut angle between the brand and the project. */
+.wordmark-slash { flex: none; width: 1px; height: 14px; background: var(--border-strong); transform: rotate(28deg); }
+.wordmark .project-title { padding: 4px 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-text, .wordmark[data-busy="true"] .wordmark-text { animation: none; }
+  .wordmark[data-busy="true"] .wordmark-mark { transition: none; }
+}

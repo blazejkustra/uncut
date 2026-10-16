@@ -145,6 +145,19 @@ async function enter(name: string) {
   await page.waitForFunction((b: string) => document.querySelector("[data-testid=remote-browser-dir]")?.textContent?.trim() !== b, {}, before);
 }
 
+/** Environments is behind a Labs flag, off by default (D245): on, through Settings › Labs. */
+async function turnOnEnvironments() {
+  await page.keyboard.down("Meta");
+  await page.keyboard.press("Comma");
+  await page.keyboard.up("Meta");
+  await waitFor("[data-testid=settings-nav-labs]");
+  await page.click("[data-testid=settings-nav-labs]");
+  await page.click("[data-testid=lab-environments-toggle]");
+  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=lab-environments-toggle]")?.checked === true);
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=labs-settings]"));
+}
+
 async function openEnvironments() {
   await page.click("[data-testid=env-chip]");
   await waitFor("[data-testid=environments]");
@@ -173,6 +186,7 @@ async function exitCheck() {
   const download = join(root, "downloads", "Remote cut.mp4");
   await launch([join(root, "local-projects"), download]);
   await waitForWelcome(page);
+  await turnOnEnvironments();
   assert.equal(await page.$eval("[data-testid=env-chip]", (el) => (el as HTMLElement).dataset.kind), "local");
   await page.click("[data-testid=new-project]");
   await waitFor("[data-testid=new-project-form]");

@@ -20,6 +20,7 @@ import { layoutStyle, useLayout } from "./layout.ts";
 import { Rail } from "./Rail.tsx";
 import { Resizer } from "./Resizer.tsx";
 import { Side } from "./Side.tsx";
+import { Wordmark } from "./Wordmark.tsx";
 
 export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const project = projectOf(snapshot);
@@ -128,12 +129,9 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
   const running = exportRunning(job);
   return (
     <header className="topbar">
-      <div className="brand">Uncut</div>
-      {/* A remote environment says so where the project's name is (D106). */}
+      <Wordmark dir={snapshot.dir} name={project.name} />
+      {/* A remote environment says so next to the project's name (D106). */}
       {remote && <EnvironmentChip />}
-      <div className="project-title" data-testid="project-title" title={snapshot.dir}>
-        {project.name}
-      </div>
       <div className="topbar-spacer" />
       <div
         className={`saved ${unsaved ? "warn" : ""}`}

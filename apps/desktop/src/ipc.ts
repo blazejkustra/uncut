@@ -40,6 +40,8 @@ export interface AppInfo {
 export interface AppState {
   readonly projectOpen: boolean;
   readonly recents: ReadonlyArray<{ readonly name: string; readonly dir: string }>;
+  /** D245: Environments can be opened (the Labs flag is on, or a remote is active). */
+  readonly environments: boolean;
 }
 
 export interface EnvironmentInfo {

@@ -9,6 +9,17 @@ import type { EnvironmentInfo, EnvironmentTest } from "../state/bridge.ts";
 import { NOT_ENCRYPTED, notEncrypted } from "../state/remoteUrl.ts";
 import { sshCommands, validSshTarget } from "../state/ssh.ts";
 import { actions, useApp } from "../state/store.ts";
+import { environmentsUsable, LABS_HINT, useFlag } from "../settings/labs.ts";
+import "../settings/labs.css";
+
+/** D245: Environments can be opened (the Labs flag is on, or a remote is active: the way back). */
+export function useEnvironmentsUsable() {
+  const { environment } = useApp();
+  return environmentsUsable(useFlag("environments"), environment.kind);
+}
+
+/** The hint on a disabled Environments entry point (D245). */
+export const ENVIRONMENTS_LABS_HINT = `Environments is in Labs. ${LABS_HINT}.`;
 
 export function Environments() {
   const { environments, environment, connection, environmentProblem } = useApp();
@@ -25,6 +36,8 @@ export function Environments() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
   const list = environments ?? [environment];
+  // D245: with the Labs flag off (opened only to leave an active remote) nothing new is added.
+  const flag = useFlag("environments");
   return (
     <div className="modal-layer" data-testid="environments">
       <div className="modal wiz">
@@ -54,11 +67,16 @@ export function Environments() {
             />
           ) : (
             <div className="wiz-btns env-actions">
-              <button className="btn" data-testid="env-add" onClick={() => setAdding(true)}>
+              {!flag && (
+                <span className="muted small" data-testid="env-labs-note">
+                  {ENVIRONMENTS_LABS_HINT}
+                </span>
+              )}
+              <button className="btn" data-testid="env-add" disabled={!flag} title={flag ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => setAdding(true)}>
                 <Plus />
                 Add environment…
               </button>
-              <button className="btn ghost" data-testid="env-ssh" onClick={() => setSsh(true)}>
+              <button className="btn ghost" data-testid="env-ssh" disabled={!flag} title={flag ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => setSsh(true)}>
                 <SquareTerminal />
                 Connect over SSH…
               </button>
@@ -296,13 +314,15 @@ function Command({ id, text }: { id: string; text: string }) {
 export function EnvironmentChip() {
   const { environment, connection, environmentProblem } = useApp();
   const state = connection === "connected" ? "connected" : connection === "failed" || connection === "server-exited" || environmentProblem ? "error" : "connecting";
+  const usable = useEnvironmentsUsable();
   return (
     <button
       className="env-chip"
       data-testid="env-chip"
       data-kind={environment.kind}
       data-state={state}
-      title={environmentProblem ?? (environment.kind === "remote" ? `On ${environment.url ?? environment.name}. Click for Environments.` : "Environments")}
+      disabled={!usable}
+      title={!usable ? ENVIRONMENTS_LABS_HINT : (environmentProblem ?? (environment.kind === "remote" ? `On ${environment.url ?? environment.name}. Click for Environments.` : "Environments"))}
       onClick={() => void actions.openEnvironments()}
     >
       <span className="dot" />
