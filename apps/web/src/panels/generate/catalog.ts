@@ -16,9 +16,9 @@ export type ModelOption =
   | { readonly kind: "text"; readonly label: string; readonly placeholder: string };
 
 export interface Model {
-  /** The server's generator id, "title-card" (generate.svg with the title prefix) or "soon.*". */
+  /** The server's generator id, or "soon.*". */
   readonly id: string;
-  /** What runs it on the server (generate.svg for the title card); undefined when coming soon. */
+  /** What runs it on the server; undefined when coming soon. */
   readonly generator?: string;
   readonly name: string;
   /** The lab, as a word under the name: "Anthropic", "xAI". */
@@ -30,9 +30,6 @@ export interface Model {
   readonly options?: ReadonlyArray<ModelOption>;
   readonly soon: boolean;
 }
-
-export const TITLE_PREFIX = "Title card: ";
-export const TITLE_CARD = "title-card";
 
 /** How each wired generator is shown, per type (Claude's generator makes stills and animations). */
 const WIRED: Record<string, { name: Partial<Record<GenType, string>>; lab: string; brand: Brand }> = {
@@ -181,12 +178,10 @@ export function modelsFor(generators: ReadonlyArray<GeneratorInfo>, type: GenTyp
   const wired = generators
     .filter((g) => g.kinds.includes(type))
     .sort((a, b) => Number(!!a.provider) - Number(!!b.provider))
-    .flatMap((g): Array<Model> => {
+    .map((g): Model => {
+      // D268 (#97): no separate "Title card by Claude" row; titles are text items the agent makes.
       const look = WIRED[g.id];
-      const row: Model = { id: g.id, generator: g.id, name: look?.name[type] ?? g.name, lab: look?.lab ?? g.provider ?? "Plugin", brand: look?.brand ?? "other", info: g, soon: false };
-      // Claude's generator also makes title cards (a still with the title prefix).
-      if (g.id === "generate.svg" && type === "image") return [row, { ...row, id: TITLE_CARD, name: "Title card by Claude" }];
-      return [row];
+      return { id: g.id, generator: g.id, name: look?.name[type] ?? g.name, lab: look?.lab ?? g.provider ?? "Plugin", brand: look?.brand ?? "other", info: g, soon: false };
     });
   return [...wired, ...SOON[type].map((m) => ({ ...m, soon: true }))];
 }

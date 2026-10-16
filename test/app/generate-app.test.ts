@@ -4,7 +4,7 @@
 // it on the timeline. A keyed generator without its key says "Needs your OpenAI key" with a link
 // that opens Settings at Keys. No provider is called and no key is stored.
 // D145, D234 (issue #63): the type switch (Picture, Video, Sound) first, the models for each (price
-// per item, key set or not; the title card is a Picture model), a key field right there for a
+// per item, key set or not; no title card model since D268), a key field right there for a
 // missing key, a size select and length choices (no chips, D263); results go to Media › Generated.
 // Screenshots: test-output/generate-tab.png, generate-video.png, generate-needs-key.png.
 import { test, before, after } from "node:test";
@@ -82,10 +82,9 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     assert.deepEqual(firsts, ["generate-types", "generators"]);
     const models = () => page.$$eval("[data-testid=generator][data-soon=false]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id, ready: (e as HTMLElement).dataset.ready, text: (e as HTMLElement).innerText })));
     let rows = await models();
-    assert.deepEqual(rows.map((r) => [r.id, r.ready]), [["generate.svg", "true"], ["title-card", "true"], ["generate.gpt-image", "false"]]);
+    assert.deepEqual(rows.map((r) => [r.id, r.ready]), [["generate.svg", "true"], ["generate.gpt-image", "false"]]);
     assert.match(rows[0]!.text, /Drawn by Claude\s*Uses your Claude subscription/);
-    assert.match(rows[1]!.text, /Title card by Claude/);
-    assert.match(rows[2]!.text, /\$0\.05 each, needs your OpenAI key/);
+    assert.match(rows[1]!.text, /\$0\.05 each, needs your OpenAI key/);
     await page.click("[data-testid=generate-type-video]");
     await page.waitForFunction(() => !!document.querySelector("[data-testid=generator][data-id='generate.veo']"));
     rows = await models();
