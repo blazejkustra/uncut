@@ -45,11 +45,11 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
   writeFileSync(
     plan,
     JSON.stringify([
-      // Turn 1: a 20 s timeline to watch.
+      // Turn 1: two titles over the first 10 s (turn 2 adds lines at 0:15 and 0:17 on the same track).
       [
         { tool: "project_read" },
-        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Two titles", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, 300, "First") }, { op: "insert_item", track: "text", item: text("title-2", 300, 300, "Second") }] } },
-        { tool: "ui_show", args: { frame: 300, select: ["title-2"] } },
+        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Two titles", ops: [{ op: "insert_item", track: "text", item: text("title-1", 0, 150, "First") }, { op: "insert_item", track: "text", item: text("title-2", 150, 150, "Second") }] } },
+        { tool: "ui_show", args: { frame: 150, select: ["title-2"] } },
         { text: "Two titles are in." },
       ],
       // Turn 2: edits at 0:15 and points there, keeps working, edits again at 0:17 and points there.
@@ -94,7 +94,7 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
     await waitFor("[data-testid=agent-change]");
     assert.equal(await frame(), 0, "the agent didn't move the playhead");
     assert.equal(await page.$('[data-testid=timeline-item][data-item="title-2"].selected'), null, "nor select");
-    assert.equal(await page.$eval("[data-testid=agent-change-jump]", (el) => (el as HTMLElement).innerText.trim()), "Agent changed 0:10–0:20");
+    assert.equal(await page.$eval("[data-testid=agent-change-jump]", (el) => (el as HTMLElement).innerText.trim()), "Agent changed 0:05–0:10");
     assert.equal(await page.$("[data-testid=agent-follow]"), null);
     await page.screenshot({ path: shot("issue64-agent-tab") });
     await page.click("[data-testid=agent-change-dismiss]");
@@ -133,12 +133,12 @@ test("issues 64, 85: no Follow agent; Space mid-turn plays from where the user i
     assert.ok(sawSecond, "the agent pointed at 0:17 while the user played");
     assert.ok(frames[0]! >= 60 && frames[0]! < 80, `playback started where the user was: ${frames.join(", ")}`);
     for (let i = 1; i < frames.length; i++) assert.ok(frames[i]! >= frames[i - 1]!, `the playhead only moved forward: ${frames.join(", ")}`);
-    assert.ok(frames.every((f) => f < 300), `never jumped to the agent's frames: ${frames.join(", ")}`);
+    assert.ok(frames.every((f) => f < 450), `never jumped to the agent's frames: ${frames.join(", ")}`);
     await page.screenshot({ path: shot("issue85-playing") });
     await page.keyboard.press("Space");
     await page.waitForFunction(() => !document.querySelector<HTMLElement>("[data-testid=play]")!.getAttribute("aria-label")!.startsWith("Pause"), { timeout: 5000 });
     const paused = await frame();
-    assert.ok(paused >= frames.at(-1)! && paused < 300, `paused where playback got to: ${paused}`);
+    assert.ok(paused >= frames.at(-1)! && paused < 450, `paused where playback got to: ${paused}`);
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]")[1]?.getAttribute("data-status") === "done", { timeout: 30000 });
     assert.equal(await frame(), paused, "the end of the turn doesn't move it either");
     assert.deepEqual(app.errors, []);
