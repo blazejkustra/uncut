@@ -37,6 +37,9 @@ interface Motion {
   toScreen: (cam: { x: number; y: number; zoom: number }, x: number, y: number, w: number, h: number) => [number, number];
   morph: (t: number, from: Record<string, number> | string, to: Record<string, number> | string, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; p: number; full: boolean };
   coverage: (s: { x: number; y: number; w: number; h: number; r: number }, w: number, h: number) => number;
+  cameraCSS: (cam: { x: number; y: number; zoom: number }, w: number, h: number) => string;
+  shapeCSS: (s: { x: number; y: number; w: number; h: number; r: number }) => { left: number; top: number; width: number; height: number; borderRadius: number };
+  riseCSS: (t: number, o: Record<string, number>) => { height: number; transform: string; visible: boolean };
   swap: (t: number, at: number, o?: Record<string, number>) => Record<"out" | "in", { alpha: number; blur: number; dy: number; visible: boolean }>;
 }
 
@@ -247,7 +250,7 @@ test("frameRect covers the frame with a UI rect; apply and toScreen agree; camer
   assert.ok(near(a! * 200 + e!, l, 1e-6) && near(d! * 100 + f!, tp, 1e-6));
   // Zoom rides the spring in log space: halfway in time the log zoom is about halfway (1x to 4x passes 2x, not 2.5x),
   // and a key without x/y/zoom keeps the previous key's.
-  const keys = [{ at: 0, x: 540, y: 675, zoom: 1 }, { at: 1, zoom: 4 }];
+  const keys: Array<Record<string, number>> = [{ at: 0, x: 540, y: 675, zoom: 1 }, { at: 1, zoom: 4 }];
   const z = M.camera(1.15, keys, "spring.settle");
   const lin = 1 + 3 * M.spring(0.15, "spring.settle");
   assert.ok(near(Math.log(z.zoom), Math.log(4) * M.spring(0.15, "spring.settle"), 1e-9) && z.zoom < lin, `${z.zoom} vs linear ${lin}`);
@@ -288,4 +291,14 @@ test("swap: the old content leaves first, then the new arrives, each quick and w
   assert.ok(arriving.in.visible && arriving.in.alpha < 1 && arriving.in.blur > 0 && arriving.in.dy > 0);
   const done = M.swap(1.3, 1);
   assert.ok(done.in.alpha === 1 && done.in.blur === 0 && done.in.dy === 0);
+});
+
+test("DOM twins: cameraCSS is apply's matrix, shapeCSS the shape's box, riseCSS the rise in a mask", () => {
+  const cam = { x: 300, y: 200, zoom: 2 };
+  assert.equal(M.cameraCSS(cam, 1080, 1350), `matrix(2, 0, 0, 2, ${540 - 600}, ${675 - 400})`);
+  assert.deepEqual({ ...M.shapeCSS({ x: 540, y: 675, w: 200, h: 100, r: 80 }) }, { left: 440, top: 625, width: 200, height: 100, borderRadius: 50 });
+  const before = M.riseCSS(0.4, { at: 0.5, size: 100 });
+  const rest = M.riseCSS(2, { at: 0.5, size: 100 });
+  assert.ok(!before.visible && rest.visible && near(rest.height, 140, 1e-9));
+  assert.match(rest.transform, /^translateY\(-?0(\.\d+)?(e-\d+)?px\)$/);
 });

@@ -15,11 +15,14 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { beatWordLines, beatWords, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
 import { resolveGraphicLibs, type Project } from "../../packages/core/src/index.ts";
+import { criticSkills, runFacts, UNMEASURED } from "../../apps/server/src/agent/tools/cards.ts";
+import { reviewRubric as rubricOf, soundProfileFor, suggestSkills as suggestOf } from "../../packages/core/src/skills/skills.ts";
+import { soundProfileText } from "../../packages/core/src/checks/soundSheet.ts";
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -305,4 +308,64 @@ test("a synthetic graphic rendered like review_submit renders it: the flash fram
   assert.equal(sheet[1], 0xd8, "a JPEG");
   const probe = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "-i", "-"], { input: sheet, encoding: "utf8" });
   assert.equal(probe.stdout.trim(), `${layout.width},${layout.height}`);
+});
+
+// Rehearsal 3 (D297): the drop always gets a strip and a fact; a UI-first film naming its footage
+// isn't judged footage first; the canvas around the picture; this run's true facts.
+test("D297: the drop's strip and fact, UI-first intent, the canvas around the picture, the run's facts", () => {
+  const fps = 60;
+  const beats = Array.from({ length: 12 }, (_, i) => ({ start: i * 2, end: i * 2 + 2, title: i === 6 ? "6. Drop: the preview floods" : `${i + 1}. beat`, sound: i === 6 ? "Drop, downbeat 12.0 s" : "beat" }));
+  assert.equal(dropBeat(beats), 6);
+  assert.equal(dropBeat([{ start: 0, title: "dropdown menu" }]), undefined, "a word, not the drop");
+  const anchors = motionAnchors(beats, fps, 24 * fps);
+  assert.equal(anchors.length, MAX_STRIPS);
+  assert.ok(anchors.some((a) => a.frame === 720), anchors.map((a) => a.frame).join(", "));
+  assert.equal(anchors[0]!.frame, 0);
+  assert.equal(anchors.at(-1)!.frame, 22 * fps);
+  // Around the drop: a flood that already happened vs one landing on it.
+  const flat = (v: number) => new Uint8Array(64 * 80).fill(v);
+  const frames = (before: number, after: number) => [{ frame: 720 - SCAN_WINDOW, gray: flat(before) }, { frame: 719, gray: flat(after) }, { frame: 720 + SCAN_WINDOW, gray: flat(after) }];
+  assert.match(dropLine(frames(20, 200), 720, fps)!, /came before it/);
+  const landing = [{ frame: 720 - SCAN_WINDOW, gray: flat(20) }, { frame: 719, gray: flat(20) }, { frame: 720 + SCAN_WINDOW, gray: flat(200) }];
+  assert.match(dropLine(landing, 720, fps)!, /lands on it/);
+  assert.equal(dropLine([], 720, fps), undefined);
+  // Footage words in a UI-first brief don't make it footage first.
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "You type into the composer, the agent builds the timeline, the drone footage floods on the drop" }).footage, false);
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "A travel film from my drone footage" }).footage, true);
+  // Canvas: a framed card on black, a full-bleed noisy picture, a borderless dark panel on black.
+  const w = 64, h = 80;
+  const card = flat(10);
+  for (let y = 10; y < 70; y++) for (let x = 8; x < 56; x++) card[y * w + x] = y === 10 || y === 69 || x === 8 || x === 55 ? 60 : 12;
+  const c = canvasShare(card, w, h);
+  assert.ok(Math.abs(c.share - (1 - (60 * 48) / (w * h))) < 0.02 && c.level <= 16, JSON.stringify(c));
+  let seed = 7;
+  const noisy = Uint8Array.from({ length: w * h }, () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), 40 + (seed % 160)));
+  assert.ok(canvasShare(noisy, w, h).share < 0.05);
+  const borderless = flat(10);
+  for (let y = 10; y < 70; y++) for (let x = 8; x < 56; x++) borderless[y * w + x] = 13;
+  assert.ok(canvasShare(borderless, w, h).share > 0.95, "dark on dark reads as one canvas");
+  const lines = flatLines([{ label: "beat 1", at: 0, flat: 0.5, canvas: 0.3, level: 241 }], fps, false).join("\n");
+  assert.match(lines, /beat 1 30 % at grey 241/);
+  // The run's facts.
+  assert.match(runFacts(12, [{ round: 1, blockers: [1, 2] }, { round: 2, blockers: [] }]), /12 beats; this is review 3 \(before it: round 1: 2 blockers, not passed; round 2: no blockers\)/);
+  assert.match(runFacts(undefined, []), /no beats; this is review 1, the first/);
+  assert.match(CRITIC_SYSTEM, /one hero element at a time on a calm canvas[\s\S]*this run's facts/);
+});
+
+// D297 (the audit): with the motion film on it wins: only its checklist and the brand's reach the
+// critic, motion craft isn't suggested with it, its sound profile is ui (an effect per press, never a
+// blocker), and a scan that couldn't run is Uncut's problem, not the video's.
+test("D297: the film's checklist wins, no motion craft with it, the ui sound profile, an unmeasured scan isn't marked down", () => {
+  const skills = ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"].map((name) => ({ name }));
+  assert.deepEqual(criticSkills(skills).map((x) => x.name), ["brand-application", "motion-film"]);
+  assert.deepEqual(criticSkills(skills.slice(0, 3)).map((x) => x.name), ["launch-promo", "motion-craft", "sound-design"]);
+  const film = suggestOf({ film: "Our launch film: one take, never cut, a single shape morphing on the beat", type: "launch-promo" });
+  assert.ok(film.includes("motion-film") && !film.includes("motion-craft"), film.join(", "));
+  assert.ok(suggestOf({ film: "Our launch film", type: "launch-promo" }).includes("motion-craft"));
+  assert.equal(soundProfileFor({ film: "x", type: "launch-promo" }, ["sound-design", "motion-film"]), "ui");
+  assert.equal(soundProfileFor({ film: "a silent film", type: "launch-promo" }, ["motion-film"]), "off");
+  const rubric = rubricOf({ film: "x", type: "launch-promo" }, { skills: ["motion-film"] });
+  assert.ok(!rubric.hardKinds.includes("sound"), "never a blocker");
+  assert.match(soundProfileText("ui"), /one soft effect per real cursor press, drag or morph/);
+  assert.match(UNMEASURED, /don't mark anything down/);
 });

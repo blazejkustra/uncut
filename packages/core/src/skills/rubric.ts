@@ -117,6 +117,8 @@ export function soundProfileFor(brief: RubricBrief | undefined, skills: Readonly
   if (/\bno (music|sound|audio)\b|\bsilent\b|\bmuted\b/i.test(w)) return "off";
   if (/\bsubtle sound|quiet sound|minimal sound|few sound effects|sound,? subtle/i.test(w)) return "strict";
   if (/\b(dense|loud|lots of|heavy) (sound|sfx|effects)|meme sounds|sound ?effects? everywhere/i.test(w)) return "loose";
+  // D297: a motion film carries an effect on every real press, drag or morph (the references do).
+  if (skills.includes("motion-film")) return "ui";
   if (skills.includes("sound-design")) return "strict";
   return isVideoType(brief?.type) ? SOUND_BY_TYPE[brief.type] : "strict";
 }

@@ -105,7 +105,8 @@ const BRAND_TYPES: ReadonlySet<string> = new Set(["launch-promo", "product-demo"
  * brief with no type and nothing found: Launch promo); Motion craft only for videos with motion
  * graphics (a promo, an explainer, a social cut, a music video, titles), Sound design for a promo or
  * a product video, Brand application with a kit for a branded type; Motion film (D292) after the kinds
- * when the brief asks for one take, no cuts, a morph or a seamless loop. In the order they're listed in.
+ * when the brief asks for one take, no cuts, a morph or a seamless loop (D297: then not Motion craft,
+ * whose one-thing-at-a-time rules contradict it). In the order they're listed in.
  */
 export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: { readonly hasKit?: boolean } = {}): Array<string> {
   const type = isVideoType(brief.type) ? brief.type : undefined;
@@ -134,7 +135,7 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   const motion = type ? MOTION_TYPES.has(type) || kindsPicked.some((k) => k === BUILTIN_IDS.launch || k === BUILTIN_IDS.titles) : true;
   const sound = type ? SOUND_TYPES.has(type) || kindsPicked.includes(BUILTIN_IDS.launch) : true;
   const brand = !!o.hasKit && (!type || BRAND_TYPES.has(type));
-  const out = [...kindsPicked, ...(oneTake ? [BUILTIN_IDS.film] : []), ...(motion ? [BUILTIN_IDS.motion] : []), ...(sound ? [BUILTIN_IDS.sound] : []), ...(brand ? [BUILTIN_IDS.brand] : [])];
+  const out = [...kindsPicked, ...(oneTake ? [BUILTIN_IDS.film] : []), ...(motion && !oneTake ? [BUILTIN_IDS.motion] : []), ...(sound ? [BUILTIN_IDS.sound] : []), ...(brand ? [BUILTIN_IDS.brand] : [])];
   if (multi && !out.includes(BUILTIN_IDS.social)) out.splice(kindsPicked.length, 0, BUILTIN_IDS.social);
   return out;
 }
