@@ -411,8 +411,10 @@ test("the agent: modules_list shows components with params and placement, truthf
   // The MCP schema offers the op; graphic_write is listed with its label.
   const tools = mcpTools();
   const edit = tools.find((t) => t.name === "timeline_edit")!;
-  assert.deepEqual((edit.inputSchema.properties as { ops: { items: unknown } }).ops.items, { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/insertDeviceFrame" }, { $ref: "#/$defs/insertText" }, { $ref: "#/$defs/editCaptions" }, { $ref: "#/$defs/detachAudio" }, { $ref: "#/$defs/setSpeed" }, { $ref: "#/$defs/placeItem" }, { $ref: "#/$defs/setTransitionTrim" }, { $ref: "#/$defs/putOnMain" }] }, "insert_text joined in D80, edit_captions in D82, detach_audio D123, set_speed D125, place_item and allowTrim D206, put_on_main D215");
-  assert.ok((edit.inputSchema.$defs as Record<string, unknown>).insertDeviceFrame);
+  // D285: the edit ops strict, the convenience ops (insert_device_frame among them) as one branch the server checks.
+  assert.deepEqual((edit.inputSchema.properties as { ops: { items: unknown } }).ops.items, { anyOf: [{ $ref: "#/$defs/op" }, { $ref: "#/$defs/convenienceOp" }] });
+  assert.ok(((edit.inputSchema.$defs as any).convenienceOp.properties.op.enum as Array<string>).includes("insert_device_frame"));
+  assert.match(edit.description, /"op":"insert_device_frame", media\?, device\?: "phone"\|"android"\|"browser", start, duration/);
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("graphic_write") && tools.some((t) => t.name === "graphic_write"));
   assert.equal(stepLabel("graphic_write", { name: "counter.html" }), "Wrote the graphic counter.html");
   // The prompt says what draws (and what doesn't).
