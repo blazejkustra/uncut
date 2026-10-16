@@ -146,7 +146,7 @@ test("pure parts: question, gate, verdict, context and the beat grid", () => {
   // D295: 4 quiet bars, then every beat hits hard: the drop is the first loud downbeat (beat 16, 8.2 s).
   const long = Array.from({ length: 32 }, (_, i) => 0.2 + i * 0.5);
   const build = long.map((t, i) => ({ t, strength: i < 16 ? (i % 4 === 0 ? 0.5 : 0.1) : 1 }));
-  assert.deepEqual(dropOf(long, 0, build), { seconds: 8.2, rise: 5 });
+  assert.deepEqual(dropOf(long, 0, build), { seconds: 8.2, rise: 5, beat: 16 });
   const d = beatGrid({ hasAudio: true, bpm: 120, confidence: 0.9, beats: long, onsets: build }, { id: "music-1", media: "m", start: 0, in: 0, duration: 600, speed: 1 }, 30);
   assert.deepEqual(d.drop, { frame: 246, rise: 5 });
   assert.ok(d.downbeats.includes(246));
