@@ -122,6 +122,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 600) : "";
       const wanted = asked.flatMap((f, i) => (f === undefined ? [] : [[i, f] as const]));
       if (wanted.length > MAX_STILLS || wanted.some(([, f]) => !Number.isInteger(f) || (f as number) < 0)) return textResult(`still is a timeline frame (an integer from 0) on at most ${MAX_STILLS} beats.`, true);
+      // D296: from here the proposal locks the edit (run.ts): the stills render from this state and
+      // the user approves what they see. Set before rendering, so a parallel edit can't slip in.
+      r.planned = true;
+      r.proposing = true;
       if (wanted.length) {
         const canvas = v.session.project.canvas;
         const width = Math.min(canvas.width, STILL_WIDTH);
@@ -129,7 +133,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           Effect.map((list) => ({ ok: true as const, list })),
           Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
         );
-        if (!rendered.ok) return textResult(`Couldn't render the stills: ${rendered.message}. Fix that, or propose without still.`, true);
+        if (!rendered.ok) {
+          r.proposing = false;
+          return textResult(`Couldn't render the stills: ${rendered.message}. Fix that, or propose without still.`, true);
+        }
         r.stills = (r.stills ?? 0) + 1;
         const folder = join(v.dir, ".cache", "agent-images");
         const names = yield* Effect.promise(async () => {
@@ -155,6 +162,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const write = (sb: Storyboard) => Effect.promise(() => writeStoryboard(v.dir, sb).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), sb)));
       r.planned = true;
       if (r.skipStoryboard) {
+        r.proposing = false;
         const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
         yield* refreshPlan(r, v);
         addCard(r, { type: "storyboard", storyboard: sb, outcome: "auto" }, summary || "Storyboard");
@@ -166,12 +174,14 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const a = yield* askUser(r, summary || "Storyboard", 0, undefined, (_card, _a, _s, x) => {
         extra = x;
       }, undefined, { storyboard: proposed });
+      // D296: approved or sent back, the edit is free again; unanswered, it stays locked for the turn.
+      if (a === "allow" || a === "deny") r.proposing = false;
       if (a === "allow") {
         const edited = extra?.beats ? normBeats(extra.beats) : [];
         const final = yield* write({ summary, beats: edited.length ? edited : beats, status: "approved", approvedBy: "user" });
         yield* refreshPlan(r, v);
         addCard(r, { type: "storyboard", storyboard: final, outcome: "approved" }, summary || "Storyboard");
-        return textResult({ approved: true, ...(edited.length ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." } : { message: "Approved. Build it scene by scene." }) });
+        return textResult({ approved: true, ...(edited.length ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." } : { message: "Approved as the stills show it. Build it scene by scene to match them; keep the copy, logo and end card they show (to change those, propose again)." }) });
       }
       if (a === "deny") {
         const note = extra?.note?.trim().slice(0, 2000) ?? "";
@@ -181,7 +191,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         return textResult({ approved: false, ...(note ? { change: note } : {}), next: note ? "Change the storyboard as asked and propose it again; don't build until it's approved." : "The user didn't approve it and said nothing: ask what to change (ask_user); don't build." });
       }
       addCard(r, { type: "storyboard", storyboard: proposed, outcome: "skipped" }, summary || "Storyboard");
-      return textResult({ approved: false, message: a === "stopped" ? "The turn was stopped." : "Nobody answered in 15 minutes.", next: "Don't build. End the turn saying the storyboard waits for approval on the Plan card." }, a !== "timeout");
+      return textResult({ approved: false, message: a === "stopped" ? "The turn was stopped." : "Nobody answered in 15 minutes.", next: "Don't build or edit (timeline_edit, graphic_write and shader_write are refused for the rest of this turn). End the turn now saying the storyboard waits for approval on the Plan card." }, a !== "timeout");
     });
 
   /**

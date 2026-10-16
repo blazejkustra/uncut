@@ -256,6 +256,47 @@ test("D295: storyboard_propose renders a still per beat for the card, kept throu
   }
 });
 
+test("D296: while a proposed storyboard waits, timeline_edit, graphic_write and shader_write are refused; an answer frees them", { skip, timeout: 120000 }, async () => {
+  const s = await setup("propose-lock");
+  try {
+    const html = "<!doctype html><body style=margin:0;background:#123><script>window.render=()=>{}</script>";
+    // Unanswered (the test's 8 s card timeout): every edit after it in the turn is refused, a dry run isn't.
+    const t1 = await s.ask("storyboard", [
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
+      { tool: "graphic_write", args: { name: "late.html", html } },
+      { tool: "project_read" },
+      { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Late", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
+      { tool: "timeline_edit", args: { baseRevision: "$rev", dryRun: true, summary: "Check", ops: [{ op: "insert_item", track: "text", item: TITLE }] } },
+    ]);
+    assert.equal(t1.edits.length, 0);
+    const r1 = s.results();
+    const [propose, gw, , te, dry] = r1;
+    assert.match(JSON.stringify(jsonOf(propose!.result)), /refused for the rest of this turn/);
+    for (const x of [gw!, te!]) {
+      assert.equal(x.result.isError, true, x.tool);
+      assert.match(textOf(x.result), /storyboard you proposed is waiting for the user's answer[\s\S]*end your turn/, x.tool);
+    }
+    assert.notEqual(dry!.result.isError, true, "a dry run changes nothing, so it isn't refused");
+    // Asked for changes: the edit is free again in the same turn.
+    const id = await s.start("storyboard again", [
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
+      { tool: "graphic_write", args: { name: "after.html", html } },
+    ]);
+    await s.client.ok("agent.approve", { id: (await s.card(id)).id, allow: false, note: "Bigger type" });
+    await s.done(id);
+    const [, after] = s.results();
+    assert.notEqual(after!.result.isError, true, textOf(after!.result));
+    // Approved: the answer says to keep what the stills show.
+    const id2 = await s.start("storyboard once more", [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } }]);
+    await s.client.ok("agent.approve", { id: (await s.card(id2)).id, allow: true });
+    await s.done(id2);
+    const [ok] = s.results();
+    assert.match(jsonOf(ok!.result).message, /keep the copy, logo and end card they show/);
+  } finally {
+    await s.stop();
+  }
+});
+
 test("U15: a storyboard sent back with a note keeps the build waiting; the Plan card approves it; the setting approves by itself", { skip, timeout: 120000 }, async () => {
   const s = await setup("gate");
   try {
