@@ -29,13 +29,13 @@ jobs:
       - name: Find the pnpm store
         run: echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
       - name: Cache pnpm store
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
