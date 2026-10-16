@@ -9,12 +9,12 @@
 //   overlaid at the box's position; per-frame sizes (keyed scale) and positions (keyed x / y) are
 //   lookups on the frame number, and keyed opacity is sent to colorchannelmixer frame by frame
 //   (sendcmd), all from core's boxes. A looped clip is one layer per pass through its media. Text and backgrounds are PNGs Chromium drew from core's textHtml / solidHtml with
-//   RENDER_CSS; a text whose look moves (rise, slide, wipe, word by word, zoom: D81) gets one PNG per distinct state, capped like a component's.
+//   RENDER_CSS; a text whose look moves (rise, slide, wipe, word by word, zoom: D81) gets one PNG per distinct state.
 //   Components (D76) are PNGs of core's componentHtml, one per distinct look (an animated one, a
-//   terminal typing, gets one per frame its look changes; past MAX_RASTER_STATES looks it holds
-//   frames, with a warning), their box's opacity baked into the HTML. SVG images are drawn by
+//   terminal typing, gets one per frame its look changes; D291: never held, the rasteriser streams
+//   them raw to ffmpeg), their box's opacity baked into the HTML. SVG images are drawn by
 //   Chromium at their box's size (ffmpeg can't decode SVG). A graphic item (D78) is its document
-//   drawn frame by frame (render(t) called), capped the same way. Captions (D82) are one raster
+//   drawn frame by frame (render(t) called), every frame, with motion blur's sub-frames when on (D291). Captions (D82) are one raster
 //   layer per captions item from its first card to its last: core captionAt's text item at each
 //   frame drawn by textHtml (an empty state between cards), one PNG per distinct card / speaking
 //   word. Not capped: each card has at most its words + 1 looks, so a long talk is many small sets.

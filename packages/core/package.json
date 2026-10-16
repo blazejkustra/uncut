@@ -31,6 +31,7 @@
     "./stickers": "./src/visual/stickers.ts",
     "./elementsMore": "./src/visual/elementsMore.ts",
     "./graphics": "./src/visual/graphics.ts",
+    "./motionBlur": "./src/visual/motionBlur.ts",
     "./fonts": "./src/visual/fonts.ts",
     "./looks": "./src/text/looks.ts",
     "./textPlan": "./src/text/textPlan.ts",

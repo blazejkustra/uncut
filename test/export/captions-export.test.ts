@@ -1,7 +1,7 @@
 // Phase 6 chunk 5 (D82) through the export:
 // - the plan: a captions item is one raster layer from its first card to its last, each frame the
 //   text item core captionAt gives drawn by textHtml (an empty state between cards); word mode is
-//   one look per speaking word and isn't capped at MAX_RASTER_STATES on a long talk (no warning);
+//   one look per speaking word on a long talk (no warning);
 // - on the bundled server: captions over a clip with a cut in the middle show in the lower band
 //   exactly on their cards' frames (the cut word never shows), and a word-mode frame matches
 //   Chromium's PNG of the same HTML (SSIM ≥ 0.98) with the speaking word in the accent colour.

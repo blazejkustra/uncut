@@ -15,7 +15,7 @@ export const AgentScreenTakeRpc = Rpc.make(RPC_METHODS.agentScreenTake, { payloa
 // Starts an export of the open project (as it is now) to `output`, an absolute .mp4 path; returns
 // the job id at once. An existing file is replaced only with `overwrite`.
 export const ExportStartRpc = Rpc.make(RPC_METHODS.exportStart, {
-  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean), range: Schema.optional(ExportRange), video: Schema.optional(ExportVideo) }),
+  payload: Schema.Struct({ output: Schema.String, quality: ExportQuality, loudness: ExportLoudness, targetLufs: Schema.optional(Schema.Number), overwrite: Schema.optional(Schema.Boolean), subtitles: Schema.optional(ExportSubtitles), burnCaptions: Schema.optional(Schema.Boolean), range: Schema.optional(ExportRange), video: Schema.optional(ExportVideo), motionBlur: Schema.optional(Schema.Boolean) }),
   success: Schema.Struct({ jobId: Schema.String }),
   error: ExportError,
 });

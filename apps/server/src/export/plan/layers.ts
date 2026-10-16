@@ -1,4 +1,4 @@
-import { type Item, type Span, fadesIn, moveFades, type ClipBox, type Rect, type Project, sourceAt, MAX_RASTER_STATES } from "@uncut/core";
+import { type Item, type Span, fadesIn, moveFades, type ClipBox, type Rect, type Project, sourceAt } from "@uncut/core";
 import type { Ramp, LayerBase, Placement, VisualLayer, ExportPlan } from "./types.ts";
 import { n } from "./num.ts";
 
@@ -81,7 +81,7 @@ function sliceLayer(layer: VisualLayer, from: number, to: number, fps: number, s
   const b = to - layer.f0;
   const common = { f0: from, f1: to, ...(layer.alpha ? { alpha: layer.alpha.slice(a, b) } : {}), ...(layer.blur ? { blur: layer.blur.slice(a, b) } : {}), ...(layer.geometry ? { geometry: { frames: layer.geometry.frames.slice(a, b) } } : {}) };
   if (layer.kind === "raster") return { ...layer, ...common, ...compactStates(layer.states, layer.frames.slice(a, b)) };
-  if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b) };
+  if (layer.kind === "graphic") return { ...layer, ...common, frames: layer.frames.slice(a, b), ...(layer.motion ? { motion: { ...layer.motion, ts: layer.motion.ts.slice(a, b) } } : {}) };
   if (layer.kind === "video" && layer.cycle) return { ...layer, ...common, cycle: { ...layer.cycle, offset: (layer.cycle.offset + a) % layer.cycle.length }, source: (((layer.cycle.offset + a) % layer.cycle.length) / fps) };
   if (layer.kind === "video") return { ...layer, ...common, source: Math.min(source ?? layer.source + (a * layer.speed) / fps, layer.last ?? Infinity) };
   return { ...layer, ...common };
@@ -203,9 +203,10 @@ export function splitLoop(layer: VisualLayer, project: Project, start: number, s
 /**
  * Looks per frame, at most `cap` distinct: when there are more, frames are held (every k-th
  * frame's look is shown for k frames, the smallest k that fits). Returns the looks, each frame's
- * index and the hold (1 = every frame drawn).
+ * index and the hold (1 = every frame drawn). The export no longer caps (D291: the rasteriser
+ * streams every frame), so by default every look is kept.
  */
-export function capStates(looks: ReadonlyArray<string>, cap = MAX_RASTER_STATES): { states: Array<string>; frames: Array<number>; hold: number } {
+export function capStates(looks: ReadonlyArray<string>, cap = Infinity): { states: Array<string>; frames: Array<number>; hold: number } {
   for (let hold = 1; ; hold++) {
     const states: Array<string> = [];
     const index = new Map<string, number>();

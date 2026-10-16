@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { agentLogState, audibleAt, componentDefaults, componentHtml, heldPast, loadModules, MAX_RASTER_STATES, planDeviceFrame, sourceAt, timelineProblems, validateProject, visualsAt, layout, type Item, type Project } from "../../packages/core/src/index.ts";
+import { agentLogState, audibleAt, componentDefaults, componentHtml, heldPast, loadModules, planDeviceFrame, sourceAt, timelineProblems, validateProject, visualsAt, layout, type Item, type Project } from "../../packages/core/src/index.ts";
 import { describeOp } from "../../packages/core/src/timeline/edit-log.ts";
 import { exportCommand, planExport, silentFailure } from "../../apps/server/src/export/exportPlan.ts";
 import { planTrim } from "../../apps/web/src/timeline/edit.ts";
@@ -111,11 +111,11 @@ test("agent log: the clock runs from runStart at the recording's speed and stops
   assert.doesNotMatch(html(1), /Passed/);
   assert.match(html(13), /Passed/);
   assert.match(html(13), /read the screen/);
-  // A 25 s race of a 170 s run at 8×, a line every 2 s and tokens every 5 s: its distinct looks stay under the export's cap.
+  // A 25 s race of a 170 s run at 8×, a line every 2 s and tokens every 5 s: few distinct looks (cheap to draw, D291 draws them all anyway).
   const long = { ...componentDefaults("component.agent-log"), speed: 8, srcAt: 2, runStart: 4, durationMs: 169660, lines: Array.from({ length: 85 }, (_, i) => ({ t: 6 + 2 * i, text: `line ${i}` })), tokens: Array.from({ length: 34 }, (_, i) => ({ t: 6 + 5 * i, cum: 30000 + 3000 * i })) };
   const looks = new Set(Array.from({ length: 769 }, (_, f) => componentHtml({ id: "l", type: "component", component: "component.agent-log", duration: 769, props: long }, target, f)));
-  console.log(`  agent log: ${looks.size} distinct looks over 769 frames (cap ${MAX_RASTER_STATES})`);
-  assert.ok(looks.size < MAX_RASTER_STATES, `${looks.size} looks`);
+  console.log(`  agent log: ${looks.size} distinct looks over 769 frames`);
+  assert.ok(looks.size < 360, `${looks.size} looks`);
 });
 
 test("compare table: rows come in one by one, bars grow to value ÷ the row's largest, values appear as the bars finish", () => {

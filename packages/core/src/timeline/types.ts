@@ -151,6 +151,8 @@ export interface Item {
   readonly props?: { readonly [key: string]: unknown };
   // graphic
   readonly src?: string;
+  /** D291: false keeps this item sharp in an export with motion blur on (graphics, for now). */
+  readonly motionBlur?: boolean;
   // text
   readonly text?: string;
   // text: TextStyle (the schema lists its fields); captions: a free-form object in the schema,
@@ -227,6 +229,12 @@ export interface Project {
   readonly markers?: ReadonlyArray<Marker>;
   /** D83: gainDb is the master volume (−60…+12 dB, after the tracks are summed). */
   readonly master?: { readonly gainDb?: number; readonly loudness?: { readonly targetLufs: number }; readonly effects?: ReadonlyArray<ModuleUse> };
+  /**
+   * D291: motion blur in the export (graphics): `on` its default (absent: on for Standard and High,
+   * off for Draft; the Export dialog's switch decides in the end), `samples` sub-frames averaged per
+   * frame (2–16, default 4) over `shutter` degrees of the frame interval (1–360, default 180).
+   */
+  readonly motionBlur?: { readonly on?: boolean; readonly samples?: number; readonly shutter?: number };
   /** D90: taste checks the project turned off (rule ids from core checks.ts). */
   readonly checks?: { readonly disabled?: ReadonlyArray<string>; readonly [key: string]: unknown };
 }

@@ -15,8 +15,8 @@ const CAPTION_LOOKS_PER_S = 25;
  * a card with one speaking word), so textHtml runs once per look, not per frame. Touching segments
  * form a run (one layer: a still when it has one look, else a sequence of its looks); the gaps
  * between runs draw nothing and cost nothing. Past MAX_CAPTION_LAYERS runs, those with the shortest
- * gaps between them are merged (the gap is an empty look). Not capped at MAX_RASTER_STATES: each
- * card has at most its words + 1 looks.
+ * gaps between them are merged (the gap is an empty look). Each card has at most its words + 1
+ * looks.
  */
 export function captionLayers(project: Project, item: Item, track: Track, duration: number, warnings: Array<string>): Array<VisualLayer> {
   return segmentLayers(project, item, track, captionSegments(project, item), duration, warnings);

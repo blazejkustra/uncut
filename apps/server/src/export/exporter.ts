@@ -15,7 +15,7 @@ import { access, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
 import { ExportError, type ExportJob, type ExportLoudness, type ExportQuality, type ExportSubtitles, type ExportVideo } from "@uncut/contracts";
-import { subtitleCues, subtitleLanguageTag, targetOfChoice, type SpeechEnvelope } from "@uncut/core";
+import { motionBlurDefault, subtitleCues, subtitleLanguageTag, targetOfChoice, type SpeechEnvelope } from "@uncut/core";
 import { type Media, type Project } from "@uncut/core";
 import { clampRange, sliceProject } from "@uncut/core/slice";
 import * as Context from "effect/Context";
@@ -61,6 +61,8 @@ export interface ExportInput {
   readonly range?: { readonly from: number; readonly to: number } | undefined;
   /** F4 (D171): the Advanced row: codec, bitrate, size by the shorter side, frame rate. */
   readonly video?: ExportVideo | undefined;
+  /** D291: motion blur on graphics; absent = the project's default (core motionBlurDefault: on unless Draft). */
+  readonly motionBlur?: boolean | undefined;
 }
 
 export interface ExporterShape {
@@ -187,7 +189,8 @@ export const layer = Layer.effect(
         // the cached ones now; the job measures the rest before rendering (one quick ffmpeg pass each).
         const envelopes = yield* Effect.promise(() => duckEnvelopes(bin, dir, sized, false));
         const burnCaptions = input.burnCaptions !== false;
-        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) => planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions });
+        const motionBlur = input.motionBlur ?? motionBlurDefault(project, input.quality);
+        const replan = (all: ReadonlyMap<string, SpeechEnvelope | null>) => planExport(sized, { mediaPath, ...size, graphic: (src) => graphics.get(src), envelopes: all, burnCaptions, motionBlur });
         const plan = replan(envelopes);
         if ("problem" in plan) return yield* new ExportError({ reason: "empty", message: plan.problem });
         const missing = yield* Effect.promise(() => missingMedia(plan));
@@ -217,6 +220,7 @@ export const layer = Layer.effect(
           ...(input.subtitles?.track ? { subtitleTrack: subtitleLanguageTag(input.subtitles.language) } : {}),
           ...(burnCaptions ? {} : { burnCaptions: false }),
           ...(range ? { range } : {}),
+          motionBlur,
         };
         const controller = new AbortController();
         controllers.set(id, controller);

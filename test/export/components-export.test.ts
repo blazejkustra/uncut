@@ -1,7 +1,7 @@
 // Phase 6 chunk 2 (D76, D77, D78) through the export and the agent's frames:
 // - the plan: a static component is one PNG, a terminal one PNG per distinct look (N looks, N PNGs;
-//   past MAX_RASTER_STATES it holds frames and warns), an SVG clip is a raster at its box, a
-//   graphic one frame per drawn frame (capped the same way), media references become placeholders;
+//   never held, D291), an SVG clip is a raster at its box, a graphic one frame per drawn frame
+//   (every one), media references become placeholders;
 // - on the bundled server (ffmpeg-made media): a device frame's footage shows in its screen hole
 //   and its bezel is the asset's colour, the end card matches Chromium's PNG of the same HTML
 //   (SSIM ≥ 0.99), a terminal types frame by frame, an SVG logo fills its box, a graphic moves
@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { applyEdit, componentBox, componentHtml, createSession, MAX_RASTER_STATES, planDeviceFrame, RENDER_CSS, screenRect, solidHtml, type Item, type Project } from "../../packages/core/src/index.ts";
+import { applyEdit, componentBox, componentHtml, createSession, planDeviceFrame, RENDER_CSS, screenRect, solidHtml, type Item, type Project } from "../../packages/core/src/index.ts";
 import { exportCommand, MEDIA_TOKEN, planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { readGraphics } from "../../apps/server/src/export/exporter.ts";
 import { rasterizerCommand, startRasterizer } from "../../apps/server/src/export/rasterizer.ts";
@@ -95,20 +95,18 @@ test("plan: a static component is one PNG; a terminal one per distinct look, cap
   assert.deepEqual(move.frames, Array.from({ length: 60 }, (_, i) => i));
   assert.match(move.doc, /window\.render = \(t, info\)/);
   assert.deepEqual(plan.warnings, []);
-  // Past the cap: a terminal typing 400 characters, a graphic of 420 frames: frames are held, with a warning each.
+  // D291: a terminal typing 400 characters, a graphic of 420 frames: every look and frame drawn, nothing held, no warning.
   const long = structuredClone(project) as unknown as { tracks: Array<{ id: string; items: Array<Item & { duration: number }> }> };
   const cards = long.tracks.find((t) => t.id === "cards")!;
   cards.items = cards.items.map((i) => (i.id === "term" ? { ...i, duration: 420, props: { ...i.props, lines: [{ text: "x".repeat(400), kind: "input" }], speed: 30 } } : i.id === "move" ? { ...i, start: 600, duration: 420 } : i));
   long.tracks.find((t) => t.id === "main")!.items[0]!.duration = 1100;
-  const capped = planExport(long as unknown as Project, { mediaPath: (m) => m.path, width: 1280, height: 720, graphic: () => GRAPHIC });
-  assert.ok(!("problem" in capped));
-  const t2 = capped.visuals.find((l) => l.item.id === "term")!;
-  const g2 = capped.visuals.find((l) => l.item.id === "move")!;
-  assert.ok(t2.kind === "raster" && t2.states.length <= MAX_RASTER_STATES, `terminal: ${t2.kind === "raster" && t2.states.length} PNGs`);
-  assert.ok(g2.kind === "graphic" && new Set(g2.frames).size <= MAX_RASTER_STATES && g2.frames[1] === g2.frames[0], "graphic frames held in pairs");
-  assert.equal(capped.warnings.length, 2);
-  assert.match(capped.warnings[0]!, /"term" changes its look on more than 360 frames; the export draws every 2nd frame of it/);
-  assert.match(capped.warnings[1]!, /"move" is drawn on more than 360 frames/);
+  const uncapped = planExport(long as unknown as Project, { mediaPath: (m) => m.path, width: 1280, height: 720, graphic: () => GRAPHIC });
+  assert.ok(!("problem" in uncapped));
+  const t2 = uncapped.visuals.find((l) => l.item.id === "term")!;
+  const g2 = uncapped.visuals.find((l) => l.item.id === "move")!;
+  assert.ok(t2.kind === "raster" && t2.states.length > 360, `terminal: ${t2.kind === "raster" && t2.states.length} looks`);
+  assert.ok(g2.kind === "graphic" && g2.frames.length === 420 && g2.frames.every((f, i) => f === i), "every graphic frame drawn");
+  assert.deepEqual(uncapped.warnings, []);
   // A graphic whose file can't be read isn't drawn, and the export says so.
   const missing = planExport(project, { mediaPath: (m) => m.path, width: 1280, height: 720 });
   assert.ok(!("problem" in missing));
@@ -148,7 +146,7 @@ test("plan (review): a keyed component's box moves on every frame however long i
   const frameLayer = plan.visuals.find((l) => l.item.id === "phone")!;
   const clipLayer = plan.visuals.find((l) => l.item.id === "screen")!;
   assert.ok(frameLayer.kind === "raster" && clipLayer.kind === "video" && clipLayer.geometry);
-  assert.ok(frameLayer.states.length > MAX_RASTER_STATES, `${frameLayer.states.length} positions, past the cap`);
+  assert.ok(frameLayer.states.length > 360, `${frameLayer.states.length} positions`);
   const left = (f: number) => Number(/left:([\d.-]+)px/.exec(frameLayer.states[frameLayer.frames[f]!]!)![1]);
   for (let f = 0; f < 600; f++) {
     const clipX = clipLayer.geometry.frames[f]!.x;

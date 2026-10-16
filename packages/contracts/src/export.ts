@@ -57,7 +57,7 @@ export const ExportJob = Schema.Struct({
   finishedAt: Schema.optional(Schema.String),
   elapsedSeconds: Schema.optional(Schema.Number),
   error: Schema.optional(Schema.String),
-  /** What the export draws differently from the preview (an animation past the frame cap, a graphic it couldn't read), as sentences (D76). */
+  /** What the export draws differently from the preview (a graphic it couldn't read, a hardware encoder that fell back), as sentences (D76). */
   warnings: Schema.optional(Schema.Array(Schema.String)),
   /** D105: the subtitles file written next to the video (.srt or .vtt). */
   subtitlesFile: Schema.optional(Schema.String),
@@ -67,6 +67,8 @@ export const ExportJob = Schema.Struct({
   burnCaptions: Schema.optional(Schema.Boolean),
   /** G7 (D127): only this part of the timeline, frames [from, to). */
   range: Schema.optional(Schema.Struct({ from: Schema.Number, to: Schema.Number })),
+  /** D291: graphics drawn with motion blur (sub-frames averaged); absent on jobs from before (none). */
+  motionBlur: Schema.optional(Schema.Boolean),
 });
 export type ExportJob = typeof ExportJob.Type;
 

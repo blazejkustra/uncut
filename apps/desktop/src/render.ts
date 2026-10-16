@@ -15,13 +15,22 @@
 //                                                    of its own, read back; `out` .rgba (raw) or .png.
 //                                                    No WebGPU here: fails with "no-webgpu: <why>".
 //   stdin  ← { id, kind: "shader-probe" }            fails with "no-webgpu: <why>" when there's no WebGPU
+//   stdin  ← { id, kind: "seq-open", width, height, out }   a frame sequence (D291): every frame after it
+//                                                    is written to `out` (a FIFO an ffmpeg reads) as raw
+//                                                    width×height BGRA, straight alpha, no PNG between
+//   stdin  ← { id, kind: "seq-graphic", doc, ts, info, name? }   one frame of a graphic: render(t, info)
+//                                                    at each t of `ts` (motion blur's sub-frames: their
+//                                                    pictures averaged, premultiplied, into the frame written)
+//   stdin  ← { id, kind: "seq-html", css, html }     one frame drawn from HTML, as a plain request draws it
+//   stdin  ← { id, kind: "seq-hold", count }         the last frame written again `count` times
+//   stdin  ← { id, kind: "seq-close" }               the sequence's end: `out` closed once all is written
 // It knows nothing about projects: the server builds the HTML with core's textHtml / solidHtml /
 // componentHtml and RENDER_CSS (D39, D53, D76). The bundled DM Sans and DM Mono (D77) are loaded
 // once with the page, from data: URLs, with the preview's @font-face rules; the brand kit's fonts
 // (D198) come in a request's css. Nothing may load from
 // the network: every request that isn't a data: URL is cancelled. It quits when stdin closes,
 // i.e. when the server is done with it or gone. Its Chromium profile is a temp folder (see below).
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as readline from "node:readline";
@@ -41,6 +50,38 @@ const GRAPHIC_FRAME_MS = 5000;
 const CAPTURE_ATTEMPTS = 6;
 /** How long a capture waits for the frame it asked for (see nextPaint). */
 const PAINT_WAIT_MS = 1000;
+/**
+ * The offscreen windows' frame rate (D291): a capture waits for the page's next frames (two
+ * animation frames, then a paint), so at Chromium's default 60 that wait alone is ~33 ms a frame;
+ * at 240 it is ~8. What is drawn doesn't change, only how soon it's there to copy.
+ */
+const FRAME_RATE = 240;
+/**
+ * The sentinel (D291): every capture is one row taller than the picture, and that row is a colour
+ * the page sets once what was asked for is drawn (after render(t) and its frames, or the HTML's
+ * fonts, images and frames). A capture whose row isn't that colour copied an older frame (a busy
+ * machine: Chromium's compositor a frame or two behind, #88), so it's taken again; the row is cut
+ * off. The windows are one pixel taller than the canvas: the HTML page's frame stays canvas-sized,
+ * a graphic's innerHeight (and 100vh) is one more (its size comes from info.width and info.height).
+ */
+const SENTINEL_ID = "__uncut_sentinel";
+/** How long a capture may wait for the sentinel before the frame fails (ms). */
+const SENTINEL_WAIT_MS = 4000;
+/** JS that sets the sentinel row (at y = `height`) to mark `mark` (1–7: three channels on or off). */
+const setSentinel = (height: number, mark: number) =>
+  `(() => { let s = document.getElementById("${SENTINEL_ID}"); if (!s) { s = document.createElement("div"); s.id = "${SENTINEL_ID}"; s.style.cssText = "position:fixed;left:0;right:0;height:1px;margin:0;padding:0;border:0;z-index:2147483647;pointer-events:none;opacity:1;transform:none;filter:none"; document.documentElement.appendChild(s); }
+    s.style.top = "${height}px"; s.style.background = "rgb(${mark & 4 ? 255 : 0},${mark & 2 ? 255 : 0},${mark & 1 ? 255 : 0})"; })()`;
+/** Straight alpha from Chromium's premultiplied BGRA, in place (the PNG path's toPNG does the same). */
+function unpremultiply(px: Uint8Array) {
+  for (let i = 3; i < px.length; i += 4) {
+    const a = px[i]!;
+    if (a === 255 || a === 0) continue;
+    const k = 255 / a;
+    px[i - 3] = Math.min(255, px[i - 3]! * k + 0.5);
+    px[i - 2] = Math.min(255, px[i - 2]! * k + 0.5);
+    px[i - 1] = Math.min(255, px[i - 1]! * k + 0.5);
+  }
+}
 
 interface HtmlRequest {
   readonly id: number;
@@ -83,7 +124,36 @@ interface ProbeRequest {
   readonly id: number;
   readonly kind: "shader-probe";
 }
-type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest;
+/** A frame sequence (D291), see the header: open, frames (graphic, html, hold), close. */
+type SeqRequest =
+  | { readonly id: number; readonly kind: "seq-open"; readonly width: number; readonly height: number; readonly out: string }
+  | { readonly id: number; readonly kind: "seq-graphic"; readonly doc: string; readonly ts: ReadonlyArray<number>; readonly info: unknown; readonly name?: string }
+  | { readonly id: number; readonly kind: "seq-html"; readonly css: string; readonly html: string }
+  | { readonly id: number; readonly kind: "seq-hold"; readonly count: number }
+  | { readonly id: number; readonly kind: "seq-close" };
+type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | SeqRequest;
+/** The most sub-frames one sequence frame may average (motion blur). */
+const MAX_SUBFRAMES = 64;
+
+const isSeqRequest = (v: unknown): v is SeqRequest => {
+  const r = v as { id?: unknown; kind?: unknown; width?: unknown; height?: unknown; out?: unknown; doc?: unknown; ts?: unknown; name?: unknown; css?: unknown; html?: unknown; count?: unknown };
+  if (typeof r !== "object" || r === null || !Number.isInteger(r.id) || typeof r.kind !== "string" || !r.kind.startsWith("seq-")) return false;
+  const size = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= 8192;
+  switch (r.kind) {
+    case "seq-open":
+      return size(r.width) && size(r.height) && typeof r.out === "string";
+    case "seq-graphic":
+      return typeof r.doc === "string" && Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t)) && (r.name === undefined || typeof r.name === "string");
+    case "seq-html":
+      return typeof r.css === "string" && typeof r.html === "string";
+    case "seq-hold":
+      return Number.isInteger(r.count) && (r.count as number) >= 1;
+    case "seq-close":
+      return true;
+    default:
+      return false;
+  }
+};
 
 const reply = (msg: Record<string, unknown>) => process.stdout.write(`${JSON.stringify({ uncut: "render", ...msg })}\n`);
 
@@ -118,10 +188,11 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
 <style>${fontFaceCss((f) => FONT_URLS[f])}</style>
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}
-.frame{position:absolute;inset:0;overflow:hidden;container-type:size}</style>
+.frame{position:absolute;inset:0 0 1px 0;overflow:hidden;container-type:size}</style>
 <style id="css"></style></head><body><div class="frame" id="frame"></div></body></html>`;
 
 const isRequest = (v: unknown): v is Request => {
+  if (isSeqRequest(v)) return true;
   if (typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "shader-probe") return Number.isInteger((v as { id?: unknown }).id);
   const r = v as Partial<HtmlRequest> & Partial<Omit<GraphicRequest, "kind">> & { kind?: unknown };
   const sized =
@@ -185,6 +256,7 @@ async function main() {
     return new Response("", { status: 404 });
   });
   const win = new BrowserWindow(windowOptions);
+  win.webContents.setFrameRate(FRAME_RATE);
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(PAGE)}`);
@@ -227,15 +299,28 @@ async function main() {
       target.webContents.on("paint", finish);
       target.webContents.invalidate();
     });
-  const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest) => {
-    await nextPaint(target);
-    let image = await capturePage(target, { x: 0, y: 0, width: r.width, height: r.height });
-    const size = image.getSize();
-    if (size.width !== r.width || size.height !== r.height) image = image.resize({ width: r.width, height: r.height, quality: "best" });
-    writeFileSync(r.out, /\.jpe?g$/i.test(r.out) ? image.toJPEG(85) : image.toPNG());
+  // The sentinel's mark for the next frame (1–7, never the one before it).
+  let mark = 0;
+  const nextMark = () => (mark = (mark % 7) + 1);
+  /** The page as it is drawn now, width × height, once its sentinel row shows `expected` (see SENTINEL_ID). */
+  const grab = async (target: BrowserWindow, width: number, height: number, expected: number) => {
+    const until = Date.now() + SENTINEL_WAIT_MS;
+    for (;;) {
+      await nextPaint(target);
+      let image = await capturePage(target, { x: 0, y: 0, width, height: height + 1 });
+      const size = image.getSize();
+      if (size.width !== width || size.height !== height + 1) image = image.resize({ width, height: height + 1, quality: "best" });
+      const row = image.crop({ x: 0, y: height, width: 1, height: 1 }).toBitmap();
+      const seen = (row[2]! > 127 ? 4 : 0) + (row[1]! > 127 ? 2 : 0) + (row[0]! > 127 ? 1 : 0);
+      if (seen === expected) return image.crop({ x: 0, y: 0, width, height });
+      if (Date.now() > until) throw new Error("the frame drawn never reached the capture (the machine too busy?)");
+    }
   };
+  const save = (out: string) => (image: Electron.NativeImage) => writeFileSync(out, /\.jpe?g$/i.test(out) ? image.toJPEG(85) : image.toPNG());
+  const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest, expected: number) => save(r.out)(await grab(target, r.width, r.height, expected));
   const newGraphicWindow = () => {
     const gw = new BrowserWindow(windowOptions);
+    gw.webContents.setFrameRate(FRAME_RATE);
     gw.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     // A graphic can't navigate away (its document is all it gets) nor reach anyone over WebRTC
     // (CSP has no webrtc directive Chromium honours; without a proxy this keeps UDP off).
@@ -246,7 +331,9 @@ async function main() {
   // The whole frame (load, size, render(t), capture) is under one deadline: a document whose
   // top-level script never ends stalls its load, not just render. On expiry the window goes and
   // the next frame starts from a fresh one.
-  const renderGraphic = async (r: GraphicRequest) => {
+  // `ts`: the times drawn (a sequence frame's sub-frames, D291), each picture handed to `take`; a
+  // time equal to the one before it is not drawn again. The deadline grows with them.
+  const renderGraphic = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, take: (image: Electron.NativeImage) => void | Promise<void>) => {
     if (!graphicWin || graphicWin.isDestroyed()) {
       graphicWin = newGraphicWindow();
       graphicDoc = "";
@@ -255,19 +342,26 @@ async function main() {
     const name = r.name ? `${r.name}: ` : "";
     const work = (async () => {
       const [w, h] = gw.getContentSize();
-      if (w !== r.width || h !== r.height) gw.setContentSize(r.width, r.height);
+      if (w !== r.width || h !== r.height + 1) gw.setContentSize(r.width, r.height + 1);
       if (graphicDoc !== r.doc) {
         graphicDoc = "";
         await gw.loadURL(`data:text/html;base64,${Buffer.from(r.doc).toString("base64")}`);
         gw.webContents.setZoomFactor(1);
         graphicDoc = r.doc;
       }
-      await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(r.t)}, ${JSON.stringify(r.info ?? {})})`);
-      await capture(gw, r);
+      let image: Electron.NativeImage | undefined;
+      for (const [i, t] of ts.entries()) {
+        if (!image || t !== ts[i - 1]) {
+          const expected = nextMark();
+          await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}).then(() => ${setSentinel(r.height, expected)})`);
+          image = await grab(gw, r.width, r.height, expected);
+        }
+        await take(image);
+      }
     })();
     let timer: NodeJS.Timeout | undefined;
     try {
-      await Promise.race([work, new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${name}the graphic took longer than ${GRAPHIC_FRAME_MS / 1000} s to load and draw a frame (a script that never ends?)`)), GRAPHIC_FRAME_MS)))]);
+      await Promise.race([work, new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${name}the graphic took longer than ${GRAPHIC_FRAME_MS / 1000} s to load and draw a frame (a script that never ends?)`)), GRAPHIC_FRAME_MS * ts.length)))]);
     } catch (error) {
       // Stuck or broken: the next frame starts from a fresh window.
       work.catch(() => {});
@@ -353,14 +447,45 @@ async function main() {
   // The CSS of the last request: set again only when it changes (D198: it may carry the brand
   // kit's fonts as data: URLs, which shouldn't be parsed and loaded again for every frame).
   let lastCss: string | undefined;
-  const render = async (r: Request) => {
-    if (r.kind === "graphic") return renderGraphic(r);
-    if (r.kind === "shader") return renderShader(r);
-    if (r.kind === "shader-probe") return probeShader().catch((error: Error) => {
-      throw new Error((error.message.match(/no-webgpu: .*/) ?? [`no-webgpu: ${error.message}`])[0]);
+  // A frame sequence (D291): raw frames into the open sequence's file, waiting while its reader
+  // (an ffmpeg) catches up, so at most a frame or two is held here however long the sequence.
+  let seq: { readonly width: number; readonly height: number; readonly stream: WriteStream; failed?: Error; last?: Buffer; sum?: Uint16Array } | undefined;
+  const seqWrite = async (frame: Buffer) => {
+    const s = seq;
+    if (!s) throw new Error("no frame sequence is open");
+    if (s.failed) throw s.failed;
+    s.last = frame;
+    if (s.stream.write(frame)) return;
+    await new Promise<void>((done, fail) => {
+      const drained = () => {
+        s.stream.off("error", failed);
+        done();
+      };
+      const failed = (error: Error) => {
+        s.stream.off("drain", drained);
+        fail(error);
+      };
+      s.stream.once("drain", drained);
+      s.stream.once("error", failed);
     });
+  };
+  const seqClose = async () => {
+    const s = seq;
+    seq = undefined;
+    if (!s) return;
+    if (!s.failed) await new Promise<void>((done) => s.stream.end(done));
+    if (s.failed) throw s.failed;
+  };
+  const bitmapOf = (image: Electron.NativeImage, s: { width: number; height: number }) => {
+    const bitmap = image.toBitmap();
+    if (bitmap.length !== s.width * s.height * 4) throw new Error(`the frame is ${bitmap.length} bytes, not ${s.width}×${s.height} BGRA`);
+    return bitmap;
+  };
+  /** The page as `html` (with `css`) draws it: content set, fonts, images and two frames waited for; the sentinel's mark. */
+  const drawHtml = async (r: { width: number; height: number; css: string; html: string }) => {
     const [w, h] = win.getContentSize();
-    if (w !== r.width || h !== r.height) win.setContentSize(r.width, r.height);
+    if (w !== r.width || h !== r.height + 1) win.setContentSize(r.width, r.height + 1);
+    const expected = nextMark();
     const css = lastCss === r.css ? "" : `document.getElementById("css").textContent = ${JSON.stringify(r.css)};`;
     lastCss = r.css;
     // Set the content, then wait for fonts, images and two frames so what's captured is what was set.
@@ -369,9 +494,68 @@ async function main() {
         const images = Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
         const settled = Promise.all([document.fonts.ready, images]).then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(innerWidth + "x" + innerHeight)))));
         // A frame that never comes (a busy machine) mustn't hang the request: capture after 5 s regardless.
-        return Promise.race([settled, new Promise((done) => setTimeout(done, 5000))]); })()`,
+        return Promise.race([settled, new Promise((done) => setTimeout(done, 5000))]).then(() => ${setSentinel(r.height, expected)}); })()`,
     );
-    await capture(win, r);
+    return expected;
+  };
+  const renderSeq = async (r: SeqRequest) => {
+    if (r.kind === "seq-open") {
+      if (seq) await seqClose().catch(() => {});
+      const stream = createWriteStream(r.out);
+      const s: NonNullable<typeof seq> = { width: r.width, height: r.height, stream };
+      // A reader gone (its ffmpeg failed or was stopped) fails the next frame instead of hanging it.
+      stream.on("error", (error) => (s.failed ??= error));
+      await new Promise<void>((done, fail) => {
+        stream.once("open", () => done());
+        stream.once("error", fail);
+      });
+      seq = s;
+      return;
+    }
+    if (r.kind === "seq-close") return seqClose();
+    const s = seq;
+    if (!s) throw new Error("no frame sequence is open");
+    if (r.kind === "seq-hold") {
+      if (!s.last) throw new Error("no frame to hold yet");
+      for (let i = 0; i < r.count; i++) await seqWrite(s.last);
+      return;
+    }
+    if (r.kind === "seq-html") {
+      const expected = await drawHtml({ width: s.width, height: s.height, css: r.css, html: r.html });
+      const frame = bitmapOf(await grab(win, s.width, s.height, expected), s);
+      unpremultiply(frame);
+      return seqWrite(frame);
+    }
+    // A graphic's frame: its picture, or motion blur's sub-frames averaged on premultiplied colour
+    // (the right mean where it's transparent), then made straight like the PNG path's.
+    if (r.ts.length === 1) {
+      let frame: Buffer | undefined;
+      await renderGraphic({ width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts, (image) => void (frame = bitmapOf(image, s)));
+      unpremultiply(frame!);
+      return seqWrite(frame!);
+    }
+    const sum = (s.sum ??= new Uint16Array(s.width * s.height * 4));
+    sum.fill(0);
+    await renderGraphic({ width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts, (image) => {
+      const px = bitmapOf(image, s);
+      for (let i = 0; i < px.length; i++) sum[i]! += px[i]!;
+    });
+    const n = r.ts.length;
+    const half = n >> 1;
+    const frame = Buffer.allocUnsafe(sum.length);
+    for (let i = 0; i < sum.length; i++) frame[i] = (sum[i]! + half) / n;
+    unpremultiply(frame);
+    return seqWrite(frame);
+  };
+
+  const render = async (r: Request) => {
+    if (r.kind !== undefined && r.kind !== "graphic" && r.kind !== "shader" && r.kind !== "shader-probe") return renderSeq(r);
+    if (r.kind === "graphic") return renderGraphic(r, [r.t], save(r.out));
+    if (r.kind === "shader") return renderShader(r);
+    if (r.kind === "shader-probe") return probeShader().catch((error: Error) => {
+      throw new Error((error.message.match(/no-webgpu: .*/) ?? [`no-webgpu: ${error.message}`])[0]);
+    });
+    await capture(win, r, await drawHtml(r));
   };
 
   // One request at a time, in order.
