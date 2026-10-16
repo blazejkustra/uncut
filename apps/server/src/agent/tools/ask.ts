@@ -26,7 +26,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       const { duration } = layout(project);
       const end = project.tracks.some((t) => t.items.length) ? duration : 0;
       frame = Math.min(args.frame as number, end);
-      said.push(frame === args.frame ? `the playhead is at frame ${frame}` : `the project ends at frame ${end}, so the playhead went there`);
+      said.push(frame === args.frame ? `frame ${frame}` : `frame ${end}, where the project ends`);
     }
     let select: string | undefined;
     if (args.select !== undefined) {
@@ -35,18 +35,19 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       const id = ids[0];
       if (!project.tracks.some((t) => t.items.some((i) => i.id === id))) return textResult(`There's no timeline item "${id}". project_read lists the items.`, true);
       select = id;
-      said.push(`${id} is selected`);
+      said.push(id);
     }
     let panel: AgentUiPanel | undefined;
     if (args.panel !== undefined) {
       if (!(AGENT_UI_PANELS as ReadonlyArray<unknown>).includes(args.panel)) return textResult(`panel must be one of ${AGENT_UI_PANELS.join(", ")}.`, true);
       panel = args.panel as AgentUiPanel;
-      said.push(`the ${panel} panel is open`);
     }
-    if (!said.length) return textResult("Pass frame, select or panel.", true);
+    if (!said.length && !panel) return textResult("Pass frame, select or panel.", true);
     r.owner.ui = { id: `${r.turn.id}-${++uiCount}`, revision: v.session.revision, ...(frame !== undefined ? { frame } : {}), ...(select ? { select } : {}), ...(panel ? { panel } : {}) };
     publish();
-    return textResult(`Shown: ${said.join(", ")}.`);
+    // D235 (issue #64): the editor never moves the user's playhead or selection for the agent.
+    const shown = [...(said.length ? [`a pill over the preview points the user at ${said.join(" and ")} (a click jumps there; their playhead and selection stay put)`] : []), ...(panel ? [`the ${panel} panel is open`] : [])];
+    return textResult(`Shown: ${shown.join(", ")}.`);
   };
 
   /** Waits for the user's Allow / Don't on a card in the Agent tab; no answer in time or a stopped turn is no. */

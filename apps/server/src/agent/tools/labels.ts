@@ -124,9 +124,10 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       return typeof args.id === "string" && args.id.startsWith("sfx:") ? "Added a bundled sound effect" : "Added a sound from the library";
     case "ui_show": {
       const parts: Array<string> = [];
-      if (typeof args.frame === "number") parts.push(`moved the playhead to frame ${args.frame}`);
+      // D235: a pill the user clicks; the agent never moves the playhead or selects.
       const select = Array.isArray(args.select) ? args.select.find((s): s is string => typeof s === "string") : undefined;
-      if (select) parts.push(`selected ${select}`);
+      const at = [...(typeof args.frame === "number" ? [`frame ${args.frame}`] : []), ...(select ? [select] : [])];
+      if (at.length) parts.push(`pointed at ${at.join(" and ")}`);
       if (typeof args.panel === "string") parts.push(`opened ${args.panel === "agent" ? "the Agent tab" : `the ${args.panel[0]!.toUpperCase()}${args.panel.slice(1)} panel`}`);
       const text = parts.join(", ") || "pointed at the editor";
       return `${text[0]!.toUpperCase()}${text.slice(1)}`;

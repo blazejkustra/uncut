@@ -220,7 +220,7 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   assert.deepEqual(app.errors, []);
 }
 
-test("ui_show moves the playhead, selects and opens a panel in the editor, once per request (D65)", { skip, timeout: 120000 }, async () => {
+test("ui_show opens a panel and offers a jump (never moving the playhead or selecting), once per request (D65, D235)", { skip, timeout: 120000 }, async () => {
   const app = await launchApp({
     command: APP,
     env: {
@@ -246,9 +246,15 @@ test("ui_show moves the playhead, selects and opens a panel in the editor, once 
   await page.click("[data-testid=agent-input]");
   await page.type("[data-testid=agent-input]", "add a title and an end card, then show me the end card");
   await page.keyboard.press("Enter");
-  // The side switched to the Inspector (the Agent tab is hidden), showing the selected item.
-  await waitFor(page, '[data-testid=inspector-item][data-item="end-1"]', 30000);
+  // The side switched to the Inspector; the playhead and the selection stay with the user (D235):
+  // the frame and the item become the pill, whose click jumps there and selects it.
+  await waitFor(page, "[data-testid=agent-change]", 30000);
   assert.equal(await page.$eval("[data-testid=tab-inspector]", (el) => el.classList.contains("active")), true);
+  assert.match(await text(page, "[data-testid=timecode]"), /^00:00:00:00/, "the agent didn't move the playhead");
+  assert.equal(await page.$('[data-testid=timeline-item][data-item="end-1"].selected'), null, "nor select");
+  assert.equal(await text(page, "[data-testid=agent-change-jump]"), "Agent changed 0:06–0:08");
+  await page.click("[data-testid=agent-change-jump]");
+  await waitFor(page, '[data-testid=inspector-item][data-item="end-1"]');
   await page.waitForFunction(() => document.querySelector("[data-testid=timecode]")!.textContent!.startsWith("00:00:06:20"));
   assert.equal(await text(page, "[data-testid=timecode]"), "00:00:06:20 / 00:00:08:00");
   assert.equal(await page.$eval('[data-testid=timeline-item][data-item="end-1"]', (el) => el.classList.contains("selected")), true);
@@ -269,6 +275,7 @@ test("ui_show moves the playhead, selects and opens a panel in the editor, once 
   assert.equal(await page.$eval("[data-testid=tab-agent]", (el) => el.classList.contains("active")), true, "still on the Agent tab");
   assert.match(await text(page, "[data-testid=timecode]"), /^00:00:00:00/, "the playhead stayed where the user put it");
   assert.equal(await page.$('[data-testid=timeline-item][data-item="end-1"].selected'), null, "and nothing was selected again");
+  assert.equal(await page.$("[data-testid=agent-change]"), null, "no pill again for the old request");
 
   // A request for a library panel opens that tab of the rail.
   nextTurn([{ tool: "ui_show", args: { panel: "text" } }]);
@@ -384,7 +391,7 @@ test("the composer (D140-D142): @ picks media, Add to chat from the timeline, th
   assert.match(await text(page, "[data-testid=agent-worklog-toggle]"), /, and 2 more/);
   await page.click("[data-testid=agent-worklog-toggle]");
   await waitFor(page, ".worklog-steps [data-testid=agent-step]");
-  assert.deepEqual(await page.$$eval(".worklog-steps [data-testid=agent-step]", (els) => els.map((e) => e.textContent)), ["Read the timeline", "Selected Harbour.mp4", "Moved the playhead to frame 30"]);
+  assert.deepEqual(await page.$$eval(".worklog-steps [data-testid=agent-step]", (els) => els.map((e) => e.textContent)), ["Read the timeline", "Pointed at Harbour.mp4", "Pointed at frame 30"]);
   // The card's prompt shows the chips; claude got the labels plus a <context> block with real ids.
   assert.equal((await page.$$("[data-testid=agent-prompt] [data-testid=agent-chip]")).length, 3);
   const sent = JSON.parse(readFileSync(log, "utf8").trim().split("\n")[0]!).prompt as string;

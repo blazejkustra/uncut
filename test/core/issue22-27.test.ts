@@ -3,14 +3,14 @@
 //   as its path; Finder's copy (a File with no path, the folder's icon as a TIFF) is matched to the
 //   clipboard's file list by name; PNG, JPEG, GIF and WebP pictures still attach. The desktop reads
 //   Finder's pasteboard (file URLs and the NSFilenamesPboardType plist).
-// - #27 (D202): the agent's ui_show only steers an idle user with "Follow agent" on; otherwise its
-//   stretch becomes the pill's "Agent changed 0:12–0:18".
+// - #27 (D202, D235): the agent's ui_show never steers the user; its stretch becomes the pill's
+//   "Agent changed 0:12–0:18".
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { quotePaths, sortPasted } from "../../apps/web/src/panels/pasted.ts";
 import { clipboardPaths, pastedPaths } from "../../apps/desktop/src/clipboardPaths.ts";
-import { changeLabel, changeRange, followShown, IDLE_MS, mayFollow } from "../../apps/web/src/state/agentFollow.ts";
+import { changeLabel, changeRange } from "../../apps/web/src/state/agentChange.ts";
 
 test("pasted files from disk: images attach, everything else is a path", () => {
   const files = [
@@ -42,19 +42,6 @@ test("the desktop reads Finder's pasteboard: file URLs and the filenames plist, 
   const raw = (f: string) => `electron application/osclipboard;format="${f}"`;
   assert.deepEqual(await clipboardPaths([entry({ [raw("public.file-url")]: "file:///Users/me/argent-marketing/" }), entry({ "text/uri-list": "file:///Users/me/b.ttf" })]), ["/Users/me/argent-marketing", "/Users/me/b.ttf"]);
   assert.deepEqual(await clipboardPaths([entry({ "text/plain": "hello" })]), []);
-});
-
-test("the agent steers only an idle user with Follow agent on", () => {
-  const idle = { saved: undefined, playing: false, pointerDown: false, sinceInput: IDLE_MS + 1 };
-  assert.equal(mayFollow(idle), true);
-  assert.equal(mayFollow({ ...idle, playing: true }), false, "never while playing");
-  assert.equal(mayFollow({ ...idle, saved: true, playing: true }), false, "not even with Follow on");
-  assert.equal(mayFollow({ ...idle, pointerDown: true }), false, "nor while scrubbing");
-  assert.equal(mayFollow({ ...idle, sinceInput: 500 }), false, "nor right after an input");
-  assert.equal(mayFollow({ ...idle, saved: false }), false, "Follow off: never");
-  assert.equal(followShown(undefined, true), false, "the toggle shows off while playing until it's flipped");
-  assert.equal(followShown(undefined, false), true);
-  assert.equal(followShown(true, true), true);
 });
 
 test("the pill's stretch: the selected item, else the items starting at the frame", () => {

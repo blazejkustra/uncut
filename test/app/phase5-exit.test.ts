@@ -330,7 +330,9 @@ async function exitCheck() {
     assert.ok(removed >= ((sentence.end - sentence.start) * FPS + longPauses) * 0.7 && removed <= expectedRemoved * 1.4, `removed ${removed}, expected about ${expectedRemoved}`);
   }
 
-  // The turn: three edits as one, Undo turn available, ui_show moved the playhead and selected the take.
+  // The turn: three edits as one, Undo turn available, ui_show's pill (D235) jumps to the take and selects it.
+  await page.waitForSelector(`[data-testid=agent-change][data-from="${takeStart}"] [data-testid=agent-change-jump]`, { timeout: 10000 });
+  await page.click("[data-testid=agent-change-jump]");
   await page.waitForFunction((f) => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame) === f, { timeout: 10000 }, takeStart);
   await page.waitForFunction(() => document.querySelector("[data-testid=timeline-item][data-item=take-1]")?.classList.contains("selected"), { timeout: 10000 });
   const card = await turnCard(t2);

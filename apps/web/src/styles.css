@@ -1682,13 +1682,6 @@ div.card-head { cursor: default; }
 .agent-strip { align-items: center; gap: 8px; }
 .agent-strip .spacer { flex: 1; }
 .plan-chip-wrap { display: flex; }
-.follow-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--muted); font: inherit; font-size: 11.5px; cursor: pointer; }
-.follow-toggle:hover { color: var(--fg); }
-.follow-dot { width: 18px; height: 10px; border-radius: 5px; background: var(--border-strong); position: relative; flex: none; transition: background 0.15s; }
-.follow-dot::after { content: ""; position: absolute; top: 1px; left: 1px; width: 8px; height: 8px; border-radius: 50%; background: var(--fg); transition: transform 0.15s; }
-.follow-toggle.on { color: var(--fg); }
-.follow-toggle.on .follow-dot { background: var(--select); }
-.follow-toggle.on .follow-dot::after { transform: translateX(8px); }
 /* D203: a call that edited, an import row with its thumbnails, the "Latest" button. */
 .edit-step, .media-step { cursor: pointer; color: var(--fg); }
 .edit-step svg.lucide:first-child, .media-step svg.lucide:first-child { color: var(--select); }

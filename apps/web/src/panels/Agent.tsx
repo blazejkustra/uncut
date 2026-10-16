@@ -9,7 +9,7 @@ import { Composer } from "./Composer.tsx";
 import { PlanChip, type CardLive } from "./AgentCards.tsx";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ProjectContext } from "./agent/context.ts";
-import { FollowToggle, ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
+import { ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
 import { TurnCard } from "./agent/TurnCard.tsx";
 
 export function AgentPanel({ project, online }: { project: Project; online: boolean }) {
@@ -79,11 +79,12 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           {agent.warning}
         </p>
       )}
-      <div className="plan-strip agent-strip">
-        <FollowToggle />
-        <span className="spacer" />
-        {agent?.plan && <PlanChip plan={agent.plan} />}
-      </div>
+      {agent?.plan && (
+        <div className="plan-strip agent-strip">
+          <span className="spacer" />
+          <PlanChip plan={agent.plan} />
+        </div>
+      )}
       <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
         {turns.length === 0 ? (

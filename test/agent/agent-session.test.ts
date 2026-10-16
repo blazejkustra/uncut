@@ -290,7 +290,7 @@ test("@mentions: claude gets the labels with a <context> block of real ids; the 
     assert.equal(t.prompt, "trim @Drone take clip and select @Drone take");
     assert.deepEqual(t.mentions, [{ kind: "media", label: "Drone take" }, { kind: "item", label: "Drone take clip" }]);
     const steps = t.items.filter((i: any) => i.kind === "step").map((i: any) => i.text);
-    assert.deepEqual(steps, ["Selected Drone take"]);
+    assert.deepEqual(steps, ["Pointed at Drone take"]);
     assert.ok(steps.every((x: string) => !/\bm-/.test(x)), "no m- id in a step");
   } finally {
     await s.stop();

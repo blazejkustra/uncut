@@ -5,7 +5,7 @@
 //   card), with a compact footer (3 edits, Undo turn); scrolled up, the thread keeps its place while
 //   the agent goes on, and the question is answered from there;
 // - #27: playing while the agent edits and calls ui_show: playback goes on and the playhead isn't
-//   moved; a pill "Agent changed 0:12–0:18" jumps there; "Follow agent" off keeps an idle playhead too;
+//   moved; a pill "Agent changed 0:12–0:18" jumps there; an idle user's playhead stays too (D235);
 // - #22: pasting Finder's copied folder (its icon File, the clipboard's path) and files from disk
 //   (SVG, video, font: path chips; a PNG: attached), no "isn't a PNG" error.
 // Screenshots: test-output/issue25-*.png, issue27-*.png, issue22-*.png.
@@ -107,7 +107,7 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
         { sleep: 800 },
         { text: "Added a middle line at 0:15." },
       ],
-      // #27: Follow agent off, the user idle: still a pill.
+      // #27: the user idle: still a pill (D235: the agent never steers).
       [{ tool: "ui_show", args: { frame: 300, select: ["end-1"] } }, { text: "Here's the end line." }],
     ]),
   );
@@ -119,7 +119,7 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
   const { page } = app;
   const waitFor = (selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
   const frame = () => page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.frame));
-  const playing = () => page.$eval("[data-testid=play]", (el) => (el as HTMLElement).title.startsWith("Pause"));
+  const playing = () => page.$eval("[data-testid=play]", (el) => (el.getAttribute("aria-label") ?? "").startsWith("Pause"));
   try {
     await waitForWelcome(page);
     await page.click("[data-testid=new-project]");
@@ -180,14 +180,13 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     await page.waitForFunction(() => !document.querySelector(".turn-edits-pop"));
 
     // ---- #27 ----
-    // The toggle: on while paused (never flipped), off while playing.
-    assert.equal(await page.$eval("[data-testid=agent-follow]", (el) => (el as HTMLElement).dataset.on), "true");
+    // D235: no Follow agent toggle any more.
+    assert.equal(await page.$("[data-testid=agent-follow]"), null);
     await page.click("[data-testid=agent-input]");
     await page.keyboard.type("Add a middle line");
     await page.keyboard.press("Enter");
     await page.click("[data-testid=play]");
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=play]")!.title.startsWith("Pause"));
-    assert.equal(await page.$eval("[data-testid=agent-follow]", (el) => (el as HTMLElement).dataset.on), "false");
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=play]")!.getAttribute("aria-label")!.startsWith("Pause"));
     const frames: Array<number> = [];
     let turnDone = false;
     for (let i = 0; i < 40 && !(turnDone && frames.length > 4); i++) {
@@ -211,10 +210,7 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     assert.equal(await page.$("[data-testid=agent-change]"), null);
     await page.click("[data-testid=play]");
 
-    // Follow agent off (remembered), the user idle: a ui_show is a pill too, the playhead stays.
-    await page.click("[data-testid=agent-follow]");
-    assert.equal(await page.$eval("[data-testid=agent-follow]", (el) => (el as HTMLElement).dataset.on), "false");
-    assert.equal(await page.evaluate(() => localStorage.getItem("uncut.agent.follow")), "off");
+    // The user idle (D235): a ui_show is a pill too, the playhead stays.
     await sleep(3200);
     const before = await frame();
     await page.click("[data-testid=agent-input]");
@@ -222,10 +218,10 @@ test("issues 25, 27, 22: the turn as a stream, playback the agent doesn't interr
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]")[2]?.getAttribute("data-status") === "done", { timeout: 30000 });
     await waitFor("[data-testid=agent-change]");
-    assert.equal(await frame(), before, "Follow agent off: the playhead stays");
-    await page.screenshot({ path: shot("issue27-follow-off") });
+    assert.equal(await frame(), before, "idle: the playhead stays");
+    assert.equal(await page.$('[data-testid=timeline-item][data-item="end-1"].selected'), null, "nothing selected");
+    await page.screenshot({ path: shot("issue27-idle-pill") });
     await page.click("[data-testid=agent-change-dismiss]");
-    await page.click("[data-testid=agent-follow]");
 
     // ---- #22 ----
     await page.click("[data-testid=agent-input]");
