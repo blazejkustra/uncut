@@ -7,6 +7,7 @@ import agentLogJson from "../../../../../spec/modules/builtin/component.agent-lo
 import compareTableJson from "../../../../../spec/modules/builtin/component.compare-table.json" with { type: "json" };
 import { shapeJson, drawShape, lowerThirdJson, drawLowerThird, calloutJson, drawCallout, progressBarJson, drawProgressBar, countdownJson, drawCountdown, subscribeJson, drawSubscribe, stickerJson, drawSticker, imageFrameJson, drawImageFrame } from "../elements.ts";
 import { followJson, drawFollow, socialButtonJson, drawSocialButton, checklistJson, drawChecklist, quoteJson, drawQuote, ratingJson, drawRating, priceTagJson, drawPriceTag, mapPinJson, drawMapPin, beforeAfterJson, drawBeforeAfter } from "../elementsMore.ts";
+import { followCardJson, drawFollowCard, stepsJson, drawSteps } from "../elementsCards.ts";
 import { stickerArt } from "../stickers.ts";
 import { type ClipBox, clipBox, type Rect, baseBox } from "../box.ts";
 import { SOLID, type RenderTarget, safeMargin, type Motion, num, esc } from "../render.ts";
@@ -38,7 +39,10 @@ export const COMPONENTS: ReadonlyArray<ComponentInfo> = [
   info(beforeAfterJson, drawBeforeAfter),
   info(socialButtonJson, drawSocialButton),
   info(followJson, drawFollow),
+  // The follow card and the steps (issue #109, D287).
+  info(followCardJson, drawFollowCard),
   info(checklistJson, drawChecklist),
+  info(stepsJson, drawSteps),
   info(ratingJson, drawRating),
   info(priceTagJson, drawPriceTag),
   info(mapPinJson, drawMapPin),
@@ -69,9 +73,11 @@ const CATEGORY: Readonly<Record<string, readonly [ElementCategory, string]>> = {
   "component.subscribe": ["Social", "subscribe youtube channel button bell"],
   "component.social-button": ["Social", "like bell follow share comment save button heart"],
   "component.follow": ["Social", "follow handle username account logo youtube instagram tiktok x twitter linkedin facebook threads bluesky mastodon reddit snapchat pinterest twitch kick discord whatsapp telegram github spotify soundcloud podcast vimeo patreon substack medium website email"],
+  "component.follow-card": ["Social", "follow card handle end outro logo avatar channel account profile youtube instagram tiktok x twitter linkedin twitch github"],
   "component.progress-bar": ["Info", "progress bar loading timer percent"],
   "component.countdown": ["Info", "countdown timer clock seconds"],
   "component.checklist": ["Info", "checklist list todo steps tick tasks"],
+  "component.steps": ["Info", "steps numbered list how to tutorial guide process instructions sequence recipe"],
   "component.rating": ["Info", "rating stars review score"],
   "component.price-tag": ["Info", "price tag sale cost discount shop deal"],
   "component.map-pin": ["Info", "map pin location place travel city"],
@@ -99,8 +105,6 @@ export const DRAWN_COMPONENTS: ReadonlyArray<string> = [SOLID, ...COMPONENTS.map
  * isn't): saved, shown to the agent with showsInPreview false, not offered in the panel.
  */
 export const UNDRAWN_COMPONENTS: Readonly<Record<string, string>> = {
-  "component.follow-card": "not drawn yet",
-  "component.steps": "not drawn yet",
   "component.zoom-pan": "not drawn: zoom and pan a clip with its scale and x / y keys instead (D75)",
 };
 

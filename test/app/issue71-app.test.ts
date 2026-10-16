@@ -126,7 +126,7 @@ test("issue 71: Elements sections, chips and search; stickers dropped on the can
   await page.waitForSelector("[data-testid=elements-category]");
   assert.deepEqual(await categories(), ["Titles & text", "Social", "Info", "Shapes & media", "Stickers"]);
   const inSection = (cat: string) => page.$$eval(`[data-testid=elements-category][data-category="${cat}"] [data-testid=component-tile]`, (els) => els.map((e) => (e as HTMLElement).dataset.component));
-  assert.deepEqual(await inSection("Social"), ["component.subscribe", "component.social-button", "component.follow"]);
+  assert.deepEqual(await inSection("Social"), ["component.subscribe", "component.social-button", "component.follow", "component.follow-card"]);
   assert.ok((await inSection("Info")).includes("component.price-tag") && (await inSection("Info")).includes("component.map-pin") && (await inSection("Info")).includes("component.checklist"));
   assert.ok((await inSection("Titles & text")).includes("component.quote") && (await inSection("Titles & text")).includes("component.before-after"));
   const groups = await page.$$eval("[data-testid=sticker-group]", (els) => els.map((e) => (e as HTMLElement).dataset.group));
