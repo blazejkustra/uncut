@@ -1,11 +1,13 @@
 import type { PluginInfo } from "@uncut/contracts";
-import { Search, Plus, TriangleAlert, Blocks, FolderOpen, GitBranch, Check, CircleAlert } from "lucide-react";
+import { Search, Plus, TriangleAlert, Blocks, FolderOpen, GitBranch, Check, CircleAlert, ChevronDown } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useApp, actions } from "../state/store.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
+import "./plugins.css";
 
 /**
- * Settings › Plugins (D97, D102): every plugin found, its status, Allow (through the approval
+ * The setup wizard's Plugins (D97, D102; Settings › Plugins has its own cards): every plugin found, its status, Allow (through the approval
  * dialog) and, for one Uncut installed, Remove; plus Add plugin… from a folder or a git URL.
  */
 export function PluginRows() {
@@ -15,8 +17,8 @@ export function PluginRows() {
   const offline = connection !== "connected";
   const dialog = pluginDialog ? plugins?.find((p) => p.id === pluginDialog && p.status !== "broken") : undefined;
   return (
-    <div className="wiz-plugins" data-testid="plugins">
-      <div className="wiz-section-row">
+    <div className="wiz-plugins plugin-list" data-testid="plugins">
+      <div className="wiz-section-row plugin-head">
         <div className="wiz-section">Plugins</div>
         <div className="wiz-btns">
           {!browsing && (
@@ -245,36 +247,104 @@ export function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; off
   );
 }
 
+/**
+ * A plugin's one-line summary (#100, D272): a short sentence, not every tool and skill. Skills are
+ * counted ("10 editing skills"); otherwise the description's first sentence, cut at a clause when
+ * it runs long; otherwise what it adds, counted. The full lists are in the row's details.
+ */
+export const pluginSummary = (p: Pick<PluginInfo, "description" | "tools" | "contributes">): string => {
+  const skills = p.contributes?.skills?.length ?? 0;
+  if (skills && !p.tools.length) return `${skills} editing skill${skills === 1 ? "" : "s"}. Type / in the composer to use one`;
+  const first = p.description?.trim().split(/(?<=[.!?])\s/)[0]?.replace(/[.!?]$/, "");
+  if (first) {
+    if (first.length <= 72) return first;
+    const cut = first.lastIndexOf(", ", 72);
+    return cut > 24 ? first.slice(0, cut) : first;
+  }
+  const c = p.contributes;
+  const n = (k: number, one: string, many = `${one}s`) => (k ? `${k} ${k === 1 ? one : many}` : "");
+  const parts = [n(p.tools.length, "agent tool"), n(c?.looks.length ?? 0, "text look"), n(c?.components.length ?? 0, "component"), n(c?.rules.length ?? 0, "check"), n(c?.filters?.length ?? 0, "filter"), n(c?.shaders?.length ?? 0, "shader effect"), n(skills, "skill")].filter(Boolean);
+  return parts.length ? `Adds ${parts.join(", ")}` : "No agent tools";
+};
+
+/** "Launch promo (/launch-promo)" as its title and command. */
+const skillParts = (s: string): [string, string] => {
+  const m = /^(.*) \((\/[^)]+)\)$/.exec(s);
+  return m ? [m[1]!, m[2]!] : [s, ""];
+};
+
 function PluginRow({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
-  const tools = p.tools.length ? `Gives the agent ${p.tools.join(", ")}` : p.contributes ? addsLine(p.contributes) : "No agent tools";
-  const from = p.source === "bundled" ? "Ships with Uncut." : p.origin?.kind === "git" ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}` : p.origin?.kind === "catalog" ? "From Uncut's catalog." : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
-  const sub = p.status === "broken" ? "Skipped" : `${p.version ? `Version ${p.version}. ` : ""}${tools}. ${from}`;
+  const [open, setOpen] = useState(false);
+  const from = p.source === "bundled" ? "Ships with Uncut" : p.origin?.kind === "git" ? `From ${p.origin.source}${p.origin.commit ? ` at ${p.origin.commit.slice(0, 7)}` : ""}` : p.origin?.kind === "catalog" ? "From Uncut's catalog" : p.origin ? `Copied from ${p.origin.source}` : `From ${p.dir}`;
+  const broken = p.status === "broken";
+  const summary = broken ? "Skipped" : pluginSummary(p);
+  const skills = p.contributes?.skills ?? [];
+  const adds = p.contributes ? addsLine({ ...p.contributes, skills: [] }) : "";
   return (
-    <div className="wiz-check" data-testid={p.status === "broken" ? `plugin-skipped-${p.id}` : `plugin-${p.id}`} data-status={p.status}>
+    <div className="wiz-check plugin-row" data-testid={broken ? `plugin-skipped-${p.id}` : `plugin-${p.id}`} data-status={p.status}>
       <div className="wiz-row">
         <Blocks />
         <div className="grow">
-          <div className="wiz-name">{p.name}</div>
-          <div className="wiz-sub" title={p.dir}>
-            {sub}
+          <div className="wiz-name">
+            {p.name}
+            {p.version && <span className="plugin-version">{p.version}</span>}
+          </div>
+          <div className="wiz-sub plugin-summary" data-testid={`plugin-summary-${p.id}`} title={summary}>
+            {summary}
           </div>
         </div>
-        {p.status === "ready" ? (
-          <span className="wiz-chip ok" data-testid={`plugin-chip-${p.id}`}>
-            <Check />
-            Allowed
-          </span>
-        ) : p.status === "broken" ? (
-          <span className="wiz-chip error" data-testid={`plugin-chip-${p.id}`}>
-            <CircleAlert />
-            Not loaded
-          </span>
-        ) : (
-          <button className="btn primary" data-testid={`plugin-allow-${p.id}`} disabled={offline} onClick={() => actions.openPluginDialog(p.id)}>
-            Allow…
-          </button>
+        <div className="plugin-status">
+          {p.status === "ready" ? (
+            <span className="wiz-chip ok" data-testid={`plugin-chip-${p.id}`}>
+              <Check />
+              Allowed
+            </span>
+          ) : broken ? (
+            <span className="wiz-chip error" data-testid={`plugin-chip-${p.id}`}>
+              <CircleAlert />
+              Not loaded
+            </span>
+          ) : (
+            <button className="btn primary" data-testid={`plugin-allow-${p.id}`} disabled={offline} onClick={() => actions.openPluginDialog(p.id)}>
+              Allow…
+            </button>
+          )}
+        </div>
+        {!broken && (
+          <Tooltip label={open ? "Hide details" : "Show details"}>
+            <button className={`icon-btn plugin-more${open ? " open" : ""}`} data-testid={`plugin-more-${p.id}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              <ChevronDown />
+            </button>
+          </Tooltip>
         )}
       </div>
+      {!broken && (
+        <div className="plugin-details" data-testid={`plugin-details-${p.id}`} hidden={!open}>
+          {p.description && p.description.trim() !== summary && <p>{p.description}</p>}
+          {skills.length > 0 && (
+            <ul className="plugin-skills">
+              {skills.map((s) => {
+                const [title, command] = skillParts(s);
+                return (
+                  <li key={s}>
+                    <span>{title}</span>
+                    {command && <code>{command}</code>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {p.tools.length > 0 && (
+            <div className="plugin-fact-line">
+              <span className="k">Gives the agent</span> <code>{p.tools.join(", ")}</code>
+            </div>
+          )}
+          {adds && <div className="plugin-fact-line">{adds}</div>}
+          <div className="plugin-fact-line" title={p.dir}>
+            {from}
+          </div>
+        </div>
+      )}
       {(p.status === "needs-approval" || p.problem || p.warnings.length > 0) && (
         <div className="wiz-fix" data-testid={`plugin-detail-${p.id}`}>
           {p.problem && <span>{p.problem}</span>}

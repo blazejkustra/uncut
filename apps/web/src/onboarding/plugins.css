@@ -1,0 +1,24 @@
+/* The setup wizard's plugin list (#100, D272): heading and actions on one row, one-line summaries,
+   the status in one column, the full lists behind a details toggle. */
+.wiz-plugins.plugin-list { max-height: none; overflow: visible; }
+.wiz-section-row.plugin-head { align-items: center; min-height: 28px; margin-top: 6px; }
+.plugin-head .wiz-section { margin-top: 0; }
+.plugin-head .wiz-btns { gap: 2px; }
+.plugin-head .btn.ghost { height: 26px; padding: 0 8px; font-size: 12px; }
+.plugin-head .btn.ghost svg.lucide { width: 13px; height: 13px; }
+.plugin-row .wiz-row { gap: 10px; padding-right: 8px; }
+.plugin-row .wiz-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.plugin-version { font-size: 11px; font-weight: 400; color: var(--dim); font-variant-numeric: tabular-nums; }
+.plugin-summary { white-space: nowrap; }
+.plugin-status { flex: none; min-width: 84px; display: flex; justify-content: flex-end; }
+.plugin-more svg.lucide { width: 15px; height: 15px; transition: transform 0.15s; }
+.plugin-more.open svg.lucide { transform: rotate(180deg); }
+.plugin-details { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 12px 46px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.5; color: var(--muted); }
+.plugin-details[hidden] { display: none; }
+.plugin-details p { margin: 0; }
+.plugin-details code { font: 11px var(--mono); color: var(--fg); overflow-wrap: anywhere; }
+.plugin-skills { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; }
+.plugin-skills li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; color: var(--fg); }
+.plugin-skills li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-skills li code { flex: none; color: var(--muted); }
+.plugin-fact-line .k { color: var(--dim); }

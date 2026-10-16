@@ -64,7 +64,9 @@ test("a plugin is allowed in Settings, then the agent calls its tool in the pack
     const row = "[data-testid='plugin-fake.capture']";
     await waitFor(page, `${row}[data-status=needs-approval]`);
     assert.match(await text(page, row), /Fake capture/);
-    assert.match(await text(page, row), /Gives the agent fake_echo, fake_env, fake_crash, fake_sleep/);
+    // D272: the tool names are in the row's details (the chevron), not its one-line summary.
+    await page.click("[data-testid='plugin-more-fake.capture']");
+    assert.match(await text(page, "[data-testid='plugin-details-fake.capture']"), /Gives the agent fake_echo, fake_env, fake_crash, fake_sleep/);
     const detail = await text(page, "[data-testid='plugin-detail-fake.capture']");
     assert.match(detail, /runs as a program on this Mac with your rights: it can do anything you can, including reading and changing your files/);
     assert.match(detail, /It says it will start other programs and add media files/);
