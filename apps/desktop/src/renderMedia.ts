@@ -2,8 +2,10 @@
 // for uncut-media://media/<id>?t=&w=&h= (fetch, from its data: page: a CORS request, answered with
 // access-control-allow-origin: *); the handler asks the server on stdout ({ uncut: "render", media:
 // { sub, id, t, w, h } }), the server answers on stdin ({ mediaReply: sub, file, type } or { error })
-// and the file's bytes are the response. The rasteriser itself knows nothing of projects or ffmpeg.
-import { readFile } from "node:fs/promises";
+// and the file's bytes are the response. Each answer is a new file of the server's that is ours once
+// answered: it's removed as soon as it's read (so none is rewritten while read, and none piles up).
+// The rasteriser itself knows nothing of projects or ffmpeg.
+import { readFile, unlink } from "node:fs/promises";
 import type { Protocol } from "electron";
 
 export const MEDIA_SCHEME = "uncut-media";
@@ -16,7 +18,7 @@ const MEDIA_MS = 20_000;
 let next = 0;
 const pending = new Map<number, { readonly done: (r: { file?: unknown; type?: unknown; error?: unknown }) => void }>();
 
-const answer = (status: number, body: string | Uint8Array, type = "text/plain; charset=utf-8") =>
+const answer = (status: number, body: string | Uint8Array<ArrayBuffer>, type = "text/plain; charset=utf-8") =>
   new Response(body, { status, headers: { "content-type": type, "access-control-allow-origin": "*", "cache-control": "no-store" } });
 
 /** Serve the scheme: each request asked of the server through `send` (a stdout line). */
@@ -34,7 +36,9 @@ export function handleMedia(protocol: Protocol, send: (msg: Record<string, unkno
     const sub = ++next;
     const reply = await new Promise<{ file?: unknown; type?: unknown; error?: unknown }>((done) => {
       const timer = setTimeout(() => {
-        pending.delete(sub);
+        // An answer after this has nobody to read its file: remove it then.
+        pending.set(sub, { done: (late) => void (typeof late.file === "string" && unlink(late.file).catch(() => {})) });
+        setTimeout(() => pending.delete(sub), MEDIA_MS).unref?.();
         done({ error: "the media took too long" });
       }, MEDIA_MS);
       pending.set(sub, {
@@ -46,10 +50,13 @@ export function handleMedia(protocol: Protocol, send: (msg: Record<string, unkno
       send({ media: { sub, id, t: num("t") ?? 0, w: num("w"), h: num("h") } });
     });
     if (typeof reply.file !== "string") return answer(404, typeof reply.error === "string" ? reply.error : "the media couldn't be loaded");
+    const file = reply.file;
     try {
-      return answer(200, new Uint8Array(await readFile(reply.file)), typeof reply.type === "string" ? reply.type : "application/octet-stream");
+      return answer(200, new Uint8Array(await readFile(file)), typeof reply.type === "string" ? reply.type : "application/octet-stream");
     } catch {
       return answer(404, "the media couldn't be read");
+    } finally {
+      void unlink(file).catch(() => {});
     }
   });
 }
