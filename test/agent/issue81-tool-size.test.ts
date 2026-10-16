@@ -44,6 +44,29 @@ test("D285: the edit ops stay strict in the schema; every op's shape is in the d
   assert.equal(OP_SHAPES.set_speed, '{"op":"set_speed", item, speed, keepPitch?}');
 });
 
+test("D285: long tool explanations live in their docs_read topic; the tool keeps a pointer", () => {
+  const tools = mcpTools();
+  const desc = (name: string) => tools.find((t) => t.name === name)!.description;
+  const moved: Array<[string, keyof typeof DOCS, Array<string>]> = [
+    ["library_search", "sound", ["vine boom, fahh, bruh", "answers with free sound-alikes and says so", "Openverse allows 20 searches a minute and 200 a day"]],
+    ["graphic_write", "graphics", ["await uncut.frame(mediaId, seconds) gives a video's exact frame", "the graphic's own @font-face with a data: URL", "pass from (the graphic's file) and edits [{old, new}] instead of html: only the changed lines travel"]],
+    ["media_download", "graphics", ["an OFL font such as Geist, Archivo or Inter", "name it after the family (\"Geist\", or \"Geist-Bold\" for one weight)"]],
+    ["storyboard_propose", "production", ["({graphic, t}: drawn alone, nothing placed", "Up to 4 beats get one (the open, the drop, the busiest state, the last frame)"]],
+    ["review_submit", "production", ["(hook, phone readability, motion, variety, sound, brand; a tutorial has no hook score", "style rules are findings unless the brief asks for them"]],
+    ["project_check", "production", ["text read time (words ÷ 3 s, 2 s minimum", "music not ducked under speech, a canvas other than 4:5 (info)"]],
+    ["shader_write", "picture", ["at most 64 steps, 4 loops, two deep", "nothing named uncut*; 16 KB"]],
+    ["transcript_edit", "footage", ["its group's other parts (a take's camera, screen) get the same cuts", "A media that no main clip plays is cut where it plays."]],
+    ["captions_make", "footage", ["each item at its own start, item picks it from any clip or sound"]],
+  ];
+  for (const [tool, topic, texts] of moved) {
+    assert.match(desc(tool), new RegExp(`docs_read ${topic}`), tool);
+    for (const text of texts) {
+      assert.ok(DOCS[topic].body.includes(text), `${topic}: ${text}`);
+      assert.ok(!desc(tool).includes(text), `${tool} still has: ${text}`);
+    }
+  }
+});
+
 test("D285: an unknown op or a wrong shape names the expected shape", () => {
   assert.match(unknownOp([{ op: "add_text", text: "Hi" }])!, /unknown op "add_text"\. The ops: insert_item, .*insert_text.*docs_read edits/);
   assert.match(unknownOp(["trim_item"])!, /ops\[0\] must be an object/);

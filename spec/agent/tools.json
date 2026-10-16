@@ -263,7 +263,7 @@
     },
     {
       "name": "transcript_edit",
-      "description": "Cut by text: remove words (ranges of transcript_read's word ids), pauses (at least min seconds) and/or hesitation fillers (um, uh, yyy, eee; never the 'maybe' ones) of a media file from every main-track clip that uses it (or whose linked microphone does), as one edit on your turn (Undo turn reverts it). Respects each clip's in, length and speed; the main track closes up, items on other tracks don't move. With item it cuts that item instead, wherever it is: on Main as above (that clip only); a sound linked to a main clip cuts that clip; on another track the item and the pieces of the same file on its track are cut in place and close up, its group's other parts (a take's camera, screen) get the same cuts, and the main track doesn't move. A media that no main clip plays is cut where it plays. Cuts snap to frames and keep a couple of frames next to the words that stay; adjacent cuts merge; words no longer in the edit are skipped with a note. dryRun returns the plan without changing anything. Gets the transcript like transcript_read (it may have to be made first: if it answers running, call again).",
+      "description": "Cut by text: remove words (ranges of transcript_read's word ids), pauses (at least min seconds) and/or hesitation fillers (um, uh, yyy, eee; never the 'maybe' ones) of a media file from every main-track clip that uses it (or whose linked microphone does), as one edit on your turn (Undo turn reverts it). Respects each clip's in, length and speed; the main track closes up, items on other tracks don't move. With item it cuts that item and what belongs to it instead (docs_read footage). Cuts snap to frames and keep a couple of frames next to the words that stay; adjacent cuts merge; words no longer in the edit are skipped with a note. dryRun returns the plan without changing anything. Gets the transcript like transcript_read (it may have to be made first: if it answers running, call again).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -330,7 +330,7 @@
     },
     {
       "name": "captions_make",
-      "description": "Captions from a media file's transcript: a captions item on its own text track that follows the main-track clips using the media (or a main clip's linked microphone: a media no main clip plays is followed wherever it plays, each item at its own start, item picks it from any clip or sound), so later cuts, trims, splits and transcript_edit removals keep it in sync and removed words disappear. Words are grouped into cards (1-2 lines, a new card after a pause, a sentence end or the length limits). mode line shows a card at a time, word also accents the speaking word (karaoke), single shows one word at a time. If the media already has captions they're remade from the transcript (corrections kept when the words are the same). Gets the transcript like transcript_read (if it answers running, call again). Fix words, force card starts or change settings afterwards with timeline_edit's edit_captions op; restyle with update_item style (as on text).",
+      "description": "Captions from a media file's transcript: a captions item on its own text track that follows the main-track clips using the media (or their linked microphone; item: any clip or sound, docs_read footage), so later cuts, trims, splits and transcript_edit removals keep it in sync and removed words disappear. Words are grouped into cards (1-2 lines, a new card after a pause, a sentence end or the length limits). mode line shows a card at a time, word also accents the speaking word (karaoke), single shows one word at a time. If the media already has captions they're remade from the transcript (corrections kept when the words are the same). Gets the transcript like transcript_read (if it answers running, call again). Fix words, force card starts or change settings afterwards with timeline_edit's edit_captions op; restyle with update_item style (as on text).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -455,7 +455,7 @@
     },
     {
       "name": "media_download",
-      "description": "Download a picture, video or sound from the web (a product's logo, a screenshot, a demo video you found with WebSearch or WebFetch) into the project's media/downloads folder and import it into Media. https addresses on the public internet only; redirects are followed; only image, video and audio files (by their type), at most 300 MB. Pass the file's own address, not the page it's on. Undo turn removes the import (the file stays in media/downloads). A font file (WOFF2, WOFF, TTF, OTF; an OFL font such as Geist, Archivo or Inter) goes to the project's fonts folder instead: its family then works by name in graphics and text styles, preview and export alike; name it after the family (\"Geist\", or \"Geist-Bold\" for one weight).",
+      "description": "Download a picture, video or sound from the web (a product's logo, a screenshot, a demo video you found with WebSearch or WebFetch) into the project's media/downloads folder and import it into Media. https addresses on the public internet only; redirects are followed; only image, video and audio files (by their type), at most 300 MB. Pass the file's own address, not the page it's on. Undo turn removes the import (the file stays in media/downloads). A font file (WOFF2, WOFF, TTF, OTF) goes to the project's fonts folder instead, named after its family (docs_read graphics).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -569,7 +569,7 @@
     },
     {
       "name": "graphic_write",
-      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network; fonts: DM Sans, DM Mono, the brand kit's fonts, the project's fonts folder (media_download a font file), installed ones, or the graphic's own @font-face with a data: URL; the project's media by id: await uncut.frame(mediaId, seconds) gives a video's exact frame (or a still) for a canvas, src=\"uncut:media/<id>\" or \"uncut:media/<id>#t=2.5\" in an <img> or CSS url(); render must finish within 5 s a frame. Files are never overwritten: to change a graphic, write a new name and point the item at it; for a fix, pass from (the graphic's file) and edits [{old, new}] instead of html: only the changed lines travel, and the result is a new revision (name, or <file>-2.html, -3, …). Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit. A graphic for the whole film is ONE item spanning it, never several items of one file.",
+      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. render must finish within 5 s a frame. No network; fonts and the project's media (uncut.frame, uncut:media/<id>): docs_read graphics. Files are never overwritten: to change a graphic, write a new name, or pass from (its file) and edits [{old, new}] instead of html for a new revision (<file>-2.html, …). Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit. A graphic for the whole film is ONE item spanning it, never several items of one file.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -610,7 +610,7 @@
     },
     {
       "name": "shader_write",
-      "description": "Write a GPU shader effect for clips into the project's shaders/ folder, for a look no effect gives (modules_list kind \"effect\" lists the ones there are). It's a TypeGPU function: your params (typed, with ranges) and the WGSL body of (uv, t, size, p) -> vec4f, called at every pixel: uv is 0-1 from the top-left, t seconds from the clip's start (the only clock: no randomness), size the picture in px, p the params; frame(uv) reads the clip's picture. Return the pixel's colour (alpha is ignored). Limits: no loop or while; for loops count a var up by one between whole-number literals (at most 64 steps, 4 loops, two deep); no storage, atomics, pointers or attributes; nothing named uncut*; 16 KB. Uncut checks it, compiles it and draws it once on a sample picture (the answer shows it), then saves it as project.<name>, overwriting an earlier one of that name. Apply it with timeline_edit: {\"module\":\"effect.shader\",\"params\":{\"shader\":\"project.<name>\",\"values\":{...}}} in the clip's effects.",
+      "description": "Write a GPU shader effect for clips into the project's shaders/ folder, for a look no effect gives (modules_list kind \"effect\" lists the ones there are). It's a TypeGPU function: your params (typed, with ranges) and the WGSL body of (uv, t, size, p) -> vec4f, called at every pixel: uv is 0-1 from the top-left, t seconds from the clip's start (the only clock: no randomness), size the picture in px, p the params; frame(uv) reads the clip's picture. Return the pixel's colour (alpha is ignored). Limits (no while, bounded for loops, no storage or pointers, 16 KB): docs_read picture. Uncut checks it, compiles it and draws it once on a sample picture (the answer shows it), then saves it as project.<name>, overwriting an earlier one of that name. Apply it with timeline_edit: {\"module\":\"effect.shader\",\"params\":{\"shader\":\"project.<name>\",\"values\":{...}}} in the clip's effects.",
       "inputSchema": {
         "type": "object",
         "required": ["name", "body"],
@@ -682,7 +682,7 @@
     },
     {
       "name": "project_check",
-      "description": "Taste checks on the current project, the same list core projectChecks finds: text read time (words ÷ 3 s, 2 s minimum, after the in move), the last text holding 3 s, no new text in the last 2 s, trailing periods, dots or stars between words, filler phrases, frame 1 empty or fading in from black, more than two texts at once, more than one typeface, text under 28 px (at a 1080 px shorter side), text at the frame's edge, mixed footage speeds, the same entrance on every text, long transitions, blank stretches, no sound, music that starts or stops cold, music not ducked under speech, a canvas other than 4:5 (info). Each finding has the rule id, severity (warn or info), one sentence, the item ids, the frame (and range) to look at, and either fix (ops you can send as they are with timeline_edit, with a summary) or a hint. Checks never block the export; rules the project turned off (checks.disabled) are left out.",
+      "description": "Taste checks on the current project, the same list core projectChecks finds (text timing and size, typefaces, the frame's edges, blank stretches, transitions, music and sound; docs_read production lists every rule). Each finding has the rule id, severity (warn or info), one sentence, the item ids, the frame (and range) to look at, and either fix (ops you can send as they are with timeline_edit, with a summary) or a hint. Checks never block the export; rules the project turned off (checks.disabled) are left out.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -707,7 +707,7 @@
     },
     {
       "name": "library_search",
-      "description": "Search the sound library: royalty-free music or sound effects online (Openverse without a key, Freesound when the user stored that key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\": for sfx Uncut's bundled CC0 sound effects (designed and meme sounds) plus matching files from the user's own sound folders (`yours`, ids folder:…); for music the user's own sound folders and Music library (`yours`; Uncut ships no music, so look there first). Search by what it sounds like or its meme name (spellings and synonyms are understood: whoosh, swipe, ui click, pop, impact, riser, notification, success, glitch, typing, applause, vine boom, fahh, bruh, airhorn, record scratch, sad trombone, rimshot); a meme clip nobody may give away answers with free sound-alikes and says so (`clip`); for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
+      "description": "Search the sound library: royalty-free music or sound effects online (Openverse without a key, Freesound when the user stored that key), CC0 and CC BY only (CC BY needs credit, project_read lists it), or with source \"included\": for sfx Uncut's bundled CC0 sound effects (designed and meme sounds) plus matching files from the user's own sound folders (`yours`, ids folder:…); for music the user's own sound folders and Music library (`yours`; Uncut ships no music, so look there first). Search by what it sounds like, its meme name, or for music a genre or mood: docs_read sound has the search words, meme clips and Openverse's limits.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1001,7 +1001,7 @@
     },
     {
       "name": "storyboard_propose",
-      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (drawn from the timeline as it is now), or a graphic file and a moment of it ({graphic, t}: drawn alone, nothing placed, so the look can be approved before the film is built); up to 4 are drawn. Propose last: the stills are what the user approves. While it waits, edits are refused (unanswered: all turn, so end it). The answer is approved (maybe with edited beats; keep what the stills show), or a change to make (propose again).",
+      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally a still shown with it (up to 4; docs_read production). Propose last: the stills are what the user approves. While it waits, edits are refused (unanswered: all turn, so end it). The answer is approved (maybe with edited beats; keep what the stills show), or a change to make (propose again).",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1073,7 +1073,7 @@
                   "description": "The beat, downbeat or hit it lands on."
                 },
                 "still": {
-                  "description": "This beat's still on the card: a timeline frame (an integer from 0), or a graphic and a moment of it, {\"graphic\": \"film.html\", \"t\": 12.5} (seconds), drawn alone without placing it, so the user sees the look before you build. Up to 4 beats get one (the open, the drop, the busiest state, the last frame); more are left out with a note.",
+                  "description": "A timeline frame (an integer from 0), or {\"graphic\": \"film.html\", \"t\": 12.5} (seconds) drawn alone without placing it.",
                   "oneOf": [
                     { "type": "integer", "minimum": 0 },
                     { "type": "object", "additionalProperties": false, "required": ["graphic"], "properties": { "graphic": { "type": "string" }, "t": { "type": "number", "minimum": 0 } } }
@@ -1088,7 +1088,7 @@
     },
     {
       "name": "review_submit",
-      "description": "Ask Uncut's critic for a review round of the built video. The critic is a separate Claude that sees only frames Uncut renders now (a contact sheet, phone-size frames, each claimed fix's moment), the brief, the brand kit, the storyboard and a rubric for the brief's video type and the active skills; it scores the categories that apply (hook, phone readability, motion, variety, sound, brand; a tutorial has no hook score, no brand without a kit) with evidence and lists blockers, real defects only (any one fails the round); style rules are findings unless the brief asks for them. Findings the user marked Intended on the review card are left out. Needs a contact_sheet of the edit and render_frames with phone true in this turn since the last round. From round 2, claim each fix by the last review's id; a claimed fix needs its moment rendered (render_frames) after your last change, and the critic checks it on fresh frames. You don't score it yourself.",
+      "description": "Ask Uncut's critic for a review round of the built video: a separate Claude that sees only frames Uncut renders now, the brief, the brand kit, the storyboard and a rubric for the brief's type and the active skills; it scores what applies and lists blockers (any one fails the round); docs_read production has the rest. Needs a contact_sheet of the edit and render_frames with phone true in this turn since the last round. From round 2, claim each fix by the last review's id; a claimed fix needs its moment rendered (render_frames) after your last change, and the critic checks it on fresh frames. You don't score it yourself.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -1137,7 +1137,7 @@
     },
     {
       "name": "docs_read",
-      "description": "Uncut's reference for one area: how its items and fields fit together, with exact JSON examples and limits. edits: every timeline_edit op with its fields and rules; production: the brand, brief, storyboard, build, sound and critic steps for a new video, skills, styles from a reference; text: text items, looks, style fields, animations; picture: backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws; sound: volume, fades, mixer, track effects, ducking, limiter, loudness, music; components: end cards, terminals, charts, device frames; graphics: graphic_write, its libraries, generate_media; footage: import, scanning, takes, transcripts, captions, subtitles, recording. Read a topic before you first work in that area in a conversation.",
+      "description": "Uncut's reference for one area: how its items and fields fit together, with exact JSON examples and limits. edits: every timeline_edit op; production: the steps for a new video (brand, brief, storyboard, build, sound, critic, checks), skills, styles; text; picture (also effects, shaders); sound (also music, the sound library); components; graphics (graphic_write, libraries, fonts, generate_media); footage (import, transcripts, captions, subtitles, recording). Read a topic before you first work in that area in a conversation.",
       "inputSchema": {
         "type": "object",
         "required": [
