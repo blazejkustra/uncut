@@ -97,9 +97,7 @@ export interface AppStateShape {
   readonly agentImages: ReadonlyArray<AgentImage>;
   // Bumped to put the caret in the composer (after Add to chat).
   readonly agentFocus: number;
-  // D202: "Follow agent" as saved (undefined: never flipped, on unless playing).
-  readonly agentFollow: boolean | undefined;
-  // D202: an agent ui_show that didn't move the playhead (the user was watching): the pill's stretch, in frames.
+  // D202, D235: an agent ui_show (it never moves the playhead): the pill's stretch, in frames.
   readonly agentChange?: { readonly from: number; readonly to: number; readonly select?: string | undefined; readonly seq: number };
   // A panel the agent's ui_show asked for (D65); the rail and the side tabs follow it once per seq.
   readonly panelRequest?: { readonly panel: AgentUiPanel; readonly seq: number };
