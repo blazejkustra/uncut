@@ -57,6 +57,8 @@ test("Settings › Plugins: browse the catalog, install and allow the example pl
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
     await waitFor(page, "[data-testid=editor]");
+    // A new empty project opens the agent's centre stage; Esc leaves it for the editor.
+    await page.keyboard.press("Escape");
 
     // The marketplace: the example is available, Uncut's skills are built in.
     await openPlugins(page);
