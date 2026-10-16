@@ -6,6 +6,8 @@ import terminalJson from "../../../../../spec/modules/builtin/component.terminal
 import agentLogJson from "../../../../../spec/modules/builtin/component.agent-log.json" with { type: "json" };
 import compareTableJson from "../../../../../spec/modules/builtin/component.compare-table.json" with { type: "json" };
 import { shapeJson, drawShape, lowerThirdJson, drawLowerThird, calloutJson, drawCallout, progressBarJson, drawProgressBar, countdownJson, drawCountdown, subscribeJson, drawSubscribe, stickerJson, drawSticker, imageFrameJson, drawImageFrame } from "../elements.ts";
+import { followJson, drawFollow, socialButtonJson, drawSocialButton, checklistJson, drawChecklist, quoteJson, drawQuote, ratingJson, drawRating, priceTagJson, drawPriceTag, mapPinJson, drawMapPin, beforeAfterJson, drawBeforeAfter } from "../elementsMore.ts";
+import { stickerArt } from "../stickers.ts";
 import { type ClipBox, clipBox, type Rect, baseBox } from "../box.ts";
 import { SOLID, type RenderTarget, safeMargin, type Motion, num, esc } from "../render.ts";
 import type { Item, Canvas } from "../../timeline/types.ts";
@@ -31,6 +33,15 @@ export const COMPONENTS: ReadonlyArray<ComponentInfo> = [
   info(subscribeJson, drawSubscribe),
   info(stickerJson, drawSticker),
   info(imageFrameJson, drawImageFrame),
+  // More general elements (issue #71, D251).
+  info(quoteJson, drawQuote),
+  info(beforeAfterJson, drawBeforeAfter),
+  info(socialButtonJson, drawSocialButton),
+  info(followJson, drawFollow),
+  info(checklistJson, drawChecklist),
+  info(ratingJson, drawRating),
+  info(priceTagJson, drawPriceTag),
+  info(mapPinJson, drawMapPin),
   info(endCardJson, drawEndCard),
   info(deviceFrameJson, drawDeviceFrame),
   info(codeBlockJson, drawCodeBlock),
@@ -41,6 +52,44 @@ export const COMPONENTS: ReadonlyArray<ComponentInfo> = [
 ];
 const BY_ID = new Map(COMPONENTS.map((c) => [c.id, c]));
 export const componentInfo = (id: unknown) => (typeof id === "string" ? BY_ID.get(id) : undefined);
+
+/**
+ * The Elements tab's sections (issue #71, D251), in order, and each drawn component's section and
+ * search words. A component not listed here (a plugin's) goes under "More"; the Background tile
+ * sits with the shapes; stickers have their own section with STICKER_GROUPS inside.
+ */
+export const ELEMENT_CATEGORIES = ["Titles & text", "Social", "Info", "Shapes & media", "Stickers", "Product demos", "More"] as const;
+export type ElementCategory = (typeof ELEMENT_CATEGORIES)[number];
+const CATEGORY: Readonly<Record<string, readonly [ElementCategory, string]>> = {
+  "component.lower-third": ["Titles & text", "name title caption person speaker intro"],
+  "component.callout": ["Titles & text", "label pointer arrow annotation look here"],
+  "component.quote": ["Titles & text", "quote testimonial review saying words"],
+  "component.before-after": ["Titles & text", "before after comparison split side by side"],
+  "component.end-card": ["Titles & text", "end outro logo website ending"],
+  "component.subscribe": ["Social", "subscribe youtube channel button bell"],
+  "component.social-button": ["Social", "like bell follow share comment save button heart"],
+  "component.follow": ["Social", "follow handle username account instagram tiktok youtube x linkedin twitch"],
+  "component.progress-bar": ["Info", "progress bar loading timer percent"],
+  "component.countdown": ["Info", "countdown timer clock seconds"],
+  "component.checklist": ["Info", "checklist list todo steps tick tasks"],
+  "component.rating": ["Info", "rating stars review score"],
+  "component.price-tag": ["Info", "price tag sale cost discount shop deal"],
+  "component.map-pin": ["Info", "map pin location place travel city"],
+  "component.chart": ["Info", "chart bars graph data numbers"],
+  "component.shape": ["Shapes & media", "shape rectangle circle line arrow star triangle box"],
+  "component.image-frame": ["Shapes & media", "image picture photo frame logo"],
+  "component.sticker": ["Stickers", "sticker emoji"],
+  "component.device-frame": ["Product demos", "device phone laptop mockup screen"],
+  "component.code-block": ["Product demos", "code snippet programming"],
+  "component.terminal": ["Product demos", "terminal command line shell"],
+  "component.agent-log": ["Product demos", "agent log ai model"],
+  "component.compare-table": ["Product demos", "compare table benchmark"],
+};
+/** A component's Elements section and search words (plugins and unknown ids: "More"). */
+export const elementCategory = (id: string): { category: ElementCategory; keywords: ReadonlyArray<string> } => {
+  const c = CATEGORY[id];
+  return c ? { category: c[0], keywords: c[1].split(" ") } : { category: "More", keywords: [] };
+};
 
 /** Every component module the preview and export draw: the registry and the background (render.ts solidHtml). */
 export const DRAWN_COMPONENTS: ReadonlyArray<string> = [SOLID, ...COMPONENTS.map((c) => c.id)];
@@ -67,7 +116,9 @@ export function naturalSize(item: Pick<Item, "component" | "props">, canvas: Pic
   if (!c) return { width: canvas.width, height: canvas.height };
   if (c.block.fullFrame) return { width: canvas.width, height: canvas.height };
   const k = componentScale(canvas);
-  const size = c.block.screens ? deviceSpec(deviceOf(item.props ?? {})).size : c.block.size;
+  // A drawn sticker with its own shape (an underline, a hand-drawn circle; D251) has its own size.
+  const art = c.id === "component.sticker" ? stickerArt(item.props?.art)?.size : undefined;
+  const size = c.block.screens ? deviceSpec(deviceOf(item.props ?? {})).size : art ? { width: art[0], height: art[1] } : c.block.size;
   return { width: size.width * k, height: size.height * k };
 }
 
@@ -101,12 +152,12 @@ export function componentRest(item: Pick<Item, "type" | "component" | "props" | 
  * canvas the bottom ones sit a tenth of the height higher, clear of the apps' own captions and
  * buttons. Undefined for full-frame components and device frames (their own planner places them).
  */
-export function defaultComponentBox(id: string, target: Pick<RenderTarget, "canvas" | "theme">): { x: number; y: number; w: number; h: number } | undefined {
+export function defaultComponentBox(id: string, target: Pick<RenderTarget, "canvas" | "theme">, props?: Record<string, unknown>): { x: number; y: number; w: number; h: number } | undefined {
   const c = componentInfo(id);
   if (!c || c.block.fullFrame || c.block.screens) return undefined;
   const { width: W, height: H } = target.canvas;
   const m = safeMargin(target as RenderTarget);
-  const natural = naturalSize({ component: id, props: componentDefaults(id) }, target.canvas);
+  const natural = naturalSize({ component: id, props: props ?? componentDefaults(id) }, target.canvas);
   const k = Math.min(1, (W - 2 * m) / natural.width, (H - 2 * m) / natural.height);
   let w = natural.width * k;
   const h = natural.height * k;
@@ -114,9 +165,11 @@ export function defaultComponentBox(id: string, target: Pick<RenderTarget, "canv
   let x = (W - w) / 2;
   let y = (H - h) / 2;
   if (id === "component.lower-third") [x, y] = [m, H - m - lift - h];
-  else if (id === "component.subscribe") y = H - m - lift - h;
+  else if (id === "component.subscribe" || id === "component.social-button") y = H - m - lift - h;
+  else if (id === "component.follow") [x, y] = [m, H - m - lift - h];
   else if (id === "component.progress-bar") [w, x, y] = [W - 2 * m, m, H - m - lift - h];
-  else if (id === "component.sticker") [x, y] = [W - m - w, m];
+  // A sticker top-right; a mark (it circles or underlines something) in the middle.
+  else if (id === "component.sticker" && !stickerArt(props?.art)?.mark) [x, y] = [W - m - w, m];
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 

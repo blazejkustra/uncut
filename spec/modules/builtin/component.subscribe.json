@@ -46,6 +46,11 @@
         "x-unit": "s",
         "x-group": "Motion",
         "description": "When it's pressed."
+      },
+      "cursor": {
+        "type": "boolean",
+        "x-group": "Motion",
+        "description": "A pointer glides in and clicks it."
       }
     }
   },
@@ -60,7 +65,8 @@
       "done": "Subscribed",
       "color": "#FF0033",
       "bell": true,
-      "pressAt": 1
+      "pressAt": 1,
+      "cursor": true
     }
   },
   "ui": {

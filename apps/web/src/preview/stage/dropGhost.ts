@@ -4,7 +4,7 @@ import { textHtml } from "@uncut/core/render";
 import { getPlayback } from "../playback.ts";
 import { type ProjectModel, planAddText, type Item } from "../../state/project.ts";
 import { textPresets } from "../../state/store.ts";
-import { planAddComponent } from "../components.ts";
+import { draggedComponentProps, planAddComponent } from "../components.ts";
 
 /**
  * What a library tile dragged over the canvas would add at `at` (X2, D132): the element its drop
@@ -21,7 +21,8 @@ export function dropGhostHtml(project: ProjectModel, what: { text?: string | und
     return (plan.ops as ReadonlyArray<Op>).flatMap((op) => (op.op === "insert_item" ? [textHtml(op.item as Item, { ...project, textLooks: project.textLooks ?? 1 }).replace(/ data-item="[^"]*"/, "")] : [])).join("");
   }
   if (!what.component) return undefined;
-  const plan = planAddComponent(project, what.component, frame, { at });
+  const props = draggedComponentProps(what.component);
+  const plan = planAddComponent(project, what.component, frame, { at, ...(props ? { props } : {}) });
   if ("problem" in plan) return undefined;
   const item = (plan.ops as ReadonlyArray<Op>).flatMap((op) => (op.op === "insert_item" && (op.item as Item).type === "component" ? [op.item as Item] : []))[0];
   return item ? componentHtml(item, project, 0, { fps: project.canvas.fps })?.replace(/ data-item="[^"]*"/, "") : undefined;

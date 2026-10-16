@@ -9,7 +9,7 @@ import { planShader, planShaderValues } from "@uncut/core/shaders";
 import { planForAll } from "../../../timeline/multi.ts";
 import { type TextPreset, planAddText, planDropMedia, type ProjectModel, uniqueId } from "../../project.ts";
 import { type BackgroundProps, planAddBackground } from "../../../preview/text.ts";
-import { planAddComponent, planAddGraphic } from "../../../preview/components.ts";
+import { draggedComponentProps, planAddComponent, planAddGraphic } from "../../../preview/components.ts";
 import { planRemoveGainKey } from "../../../audio/sound.ts";
 import { planRemoveMedia, planFitToVideo } from "@uncut/core/mediaPlan";
 import { set, state, online, projectOf } from "../core.ts";
@@ -28,8 +28,11 @@ export const timelineActions = {
   /** A text or background change from the Inspector or the preview (see text.ts). */
   itemEdit,
   /** Elements tab → a component at the playhead, or where it was dropped (see planAddComponent, D76). */
-  addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number; props?: Record<string, unknown> } = {}) =>
-    addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, { ...(opts.at ? { at: opts.at } : {}), ...(opts.props ? { props: opts.props } : {}) })),
+  addComponent: (id: string, opts: { at?: { x: number; y: number }; frame?: number; props?: Record<string, unknown> } = {}) => {
+    // A drop (canvas or timeline) of a tile that carries props (a sticker from the set, D251): read now, before the drag ends.
+    const props = opts.props ?? (opts.at || opts.frame !== undefined ? draggedComponentProps(id) : undefined);
+    return addPlanned((project) => planAddComponent(project, id, opts.frame ?? getPlayback().frame, { ...(opts.at ? { at: opts.at } : {}), ...(props ? { props } : {}) }));
+  },
   /** Elements tab → a plugin's component (D103): the server copies it into graphics/, then a graphic item at the playhead. */
   async addPluginComponent(id: string) {
     if (adding || !state.snapshot || !online()) return;

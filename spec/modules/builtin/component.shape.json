@@ -20,7 +20,9 @@
           "rectangle",
           "circle",
           "line",
-          "arrow"
+          "arrow",
+          "star",
+          "triangle"
         ],
         "x-group": "Content",
         "description": "The shape."

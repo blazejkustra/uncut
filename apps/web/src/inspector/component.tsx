@@ -31,7 +31,8 @@ export function ComponentEditor({ project, item, locked }: { project: ProjectMod
     });
   }, [item.id, main]);
   if (!info) return null;
-  const params = Object.entries(info.params.properties ?? {}) as Array<[string, Schema]>;
+  // A param kept only for older projects (x-control "hidden", e.g. a sticker's pop switch, D251) gets no control.
+  const params = (Object.entries(info.params.properties ?? {}) as Array<[string, Schema]>).filter(([, s]) => s["x-control"] !== "hidden");
   const device = info.id === "component.device-frame";
   const lists = params.filter(([, s]) => s.type === "array" && s.items?.properties);
   const plain = params.filter(([name, s]) => !(s.type === "array" && s.items?.properties) && !(device && name === "device"));

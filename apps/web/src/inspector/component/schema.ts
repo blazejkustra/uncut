@@ -19,7 +19,7 @@ export type Schema = {
   readonly "x-unit"?: string;
 };
 
-const WORDS: Readonly<Record<string, string>> = { url: "URL", typeFrom: "Type from (frame)", speed: "Speed (characters/s)", max: "Full bar at", at: "At frame", code: "Code", kind: "Kind", strokeWidth: "Stroke width", borderWidth: "Border width", pressAt: "Press at" };
+const WORDS: Readonly<Record<string, string>> = { url: "URL", typeFrom: "Type from (frame)", speed: "Speed (characters/s)", max: "Full bar at", at: "At frame", code: "Code", kind: "Kind", strokeWidth: "Stroke width", borderWidth: "Border width", pressAt: "Press at", todo: "Still to do" };
 /** A param's label: "typeFrom" → "Type from (frame)", "title" → "Title". */
 export const labelOf = (key: string) => WORDS[key] ?? `${key[0]!.toUpperCase()}${key.slice(1).replace(/([A-Z])/g, " $1").toLowerCase()}`;
 /** A list's row in words: "bars" → "bar", "lines" → "line". */
