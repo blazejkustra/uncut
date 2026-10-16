@@ -4,7 +4,7 @@
 // - one recorder: four source toggles (Screen, Microphone, Camera, Mac sound), no "Multi"; the
 //   screen or window is chosen in a modal, never listed on the tab;
 // - Argent's 24 devices take one row: a searchable picker (groups, Enter picks the first match)
-//   with Record beside it; the options are a compact grid and chips;
+//   with Record beside it; the options are a compact grid and checkboxes (no chips, D263);
 // - screen, microphone and camera at once: one Record, three files, start-aligned at the playhead,
 //   in one group and one edit (one ⌘Z), the camera a circle bubble over the screen.
 // Screenshots: test-output/issue65-*.png.
@@ -85,6 +85,14 @@ test("issue 65: one recorder with source toggles, a screen picker modal, a compa
     await page.waitForSelector("[data-testid=editor]");
     await page.click("[data-testid=rail-capture]");
     await page.waitForSelector("[data-testid=capture-this-mac]");
+    // D263: no grey overlay scrollbar along the rail's edge while the pointer rests on it.
+    await page.mouse.wheel({ deltaY: 40 });
+    await sleep(150);
+    const railBars = await page.evaluate(() => {
+      const right = document.querySelector("[data-testid=rail]")!.getBoundingClientRect().right;
+      return [...document.querySelectorAll<HTMLElement>("[data-testid=scrollbar][data-visible=true]")].filter((b) => b.getBoundingClientRect().left < right).length;
+    });
+    assert.equal(railBars, 0, "no scrollbar drawn on the rail");
 
     // One recorder: four toggles, no Multi, no screens or windows listed on the tab.
     assert.deepEqual(await page.$$eval("[data-testid=capture-toggles] button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera", "Mac sound"]);
@@ -115,11 +123,11 @@ test("issue 65: one recorder with source toggles, a screen picker modal, a compa
     assert.ok(await page.$("[data-testid=capture-device] [data-testid=capture-record]"));
     const argentHeight = await height(page, "[data-testid=capture-argent]");
     assert.ok(argentHeight < 320, `the Argent section stays compact with 24 devices: ${argentHeight}px`);
-    // Tidy options: a two-column grid of selects, chips no taller than a row.
+    // Tidy options: a two-column grid of selects, checkboxes no taller than a row.
     assert.equal(await page.$$eval("[data-testid=capture-options] .capture-options-grid .capture-opt", (els) => els.length), 4);
     for (const id of ["capture-opt-touches", "capture-opt-trim"]) {
       const h = await page.$eval(`[data-testid=${id}]`, (el) => el.parentElement!.getBoundingClientRect().height);
-      assert.ok(h <= 28, `${id} chip is ${h}px tall`);
+      assert.ok(h <= 28, `${id} option is ${h}px tall`);
     }
     await page.$eval("[data-testid=capture-argent]", (el) => el.scrollIntoView());
     await shot(page, "issue65-argent");
@@ -132,6 +140,10 @@ test("issue 65: one recorder with source toggles, a screen picker modal, a compa
     const menuHeight = await height(page, "[data-testid=capture-device-menu]");
     const windowHeight = await page.evaluate(() => window.innerHeight);
     assert.ok(menuHeight <= windowHeight, `the menu fits the window: ${menuHeight}px of ${windowHeight}px`);
+    // D263: the menu grows rightwards from the picker, so it never covers the rail in the narrow panel.
+    const railRight = await page.$eval("[data-testid=rail]", (el) => el.getBoundingClientRect().right);
+    const menuLeft = await page.$eval("[data-testid=capture-device-menu]", (el) => el.getBoundingClientRect().left);
+    assert.ok(menuLeft >= railRight, `the menu (left ${menuLeft}px) stays off the rail (right ${railRight}px)`);
     await shot(page, "issue65-device-menu");
     await page.type("[data-testid=capture-device-search]", "ipad 7");
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=capture-device-option]").length === 1);

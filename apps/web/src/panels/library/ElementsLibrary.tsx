@@ -10,6 +10,7 @@ import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { canGoBehind } from "../../preview/text.ts";
 import { getPlayback } from "../../preview/playback.ts";
 import { StickerPicker } from "../Stickers.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 import "./elements.css";
 
 /** The frame a component's thumbnail shows (a terminal mid-way, its line typed). */
@@ -82,8 +83,8 @@ const matches = (query: string, words: ReadonlyArray<string>) => query.toLowerCa
 
 /**
  * The Elements tab (D76, E2/E3 in D130/D131, sections and search in D251): one search over every
- * element and sticker, a row of section chips (All, Titles & text, Social, Info, Shapes & media,
- * Stickers, …), and the elements in their sections; a Background (a colour or gradient under the
+ * element and sticker, a section select (All sections, Titles & text, Social, Info, Shapes & media,
+ * Stickers, …; a select, not chips, D263), and the elements under their section headers; a Background (a colour or gradient under the
  * text) sits with the shapes, a plugin's components (D103) under More, and the stickers in their own
  * section with theirs inside. Drag one onto the canvas (it lands there, at the playhead) or the
  * timeline (at that time), or + adds it at the playhead. Any tile can be hidden (its eye, or
@@ -120,20 +121,22 @@ export function ElementsLibrary({ project }: { project: Project }) {
     >
       <ComponentThumb info={c} project={project} />
       {!isHidden && (
-        <button
-          className="tile-add"
-          data-testid="component-add"
-          disabled={!online}
-          title={`Add ${c.name.toLowerCase()} at the playhead`}
-          aria-label={`Add ${c.name.toLowerCase()}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.currentTarget.blur();
-            void actions.addComponent(c.id);
-          }}
-        >
-          <Plus />
-        </button>
+        <Tooltip label={`Add ${c.name.toLowerCase()} at the playhead`}>
+          <button
+            className="tile-add"
+            data-testid="component-add"
+            disabled={!online}
+           
+            aria-label={`Add ${c.name.toLowerCase()}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.currentTarget.blur();
+              void actions.addComponent(c.id);
+            }}
+          >
+            <Plus />
+          </button>
+        </Tooltip>
       )}
       <HideButton id={c.id} name={c.name} hidden={isHidden} />
       <div className="tile-name">{c.name}</div>
@@ -145,20 +148,22 @@ export function ElementsLibrary({ project }: { project: Project }) {
         <Blocks />
       </div>
       {!isHidden && (
-        <button
-          className="tile-add"
-          data-testid="plugin-component-add"
-          disabled={!online}
-          title={`Add ${c.name.toLowerCase()} at the playhead`}
-          aria-label={`Add ${c.name.toLowerCase()}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.currentTarget.blur();
-            void actions.addPluginComponent(c.id);
-          }}
-        >
-          <Plus />
-        </button>
+        <Tooltip label={`Add ${c.name.toLowerCase()} at the playhead`}>
+          <button
+            className="tile-add"
+            data-testid="plugin-component-add"
+            disabled={!online}
+           
+            aria-label={`Add ${c.name.toLowerCase()}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.currentTarget.blur();
+              void actions.addPluginComponent(c.id);
+            }}
+          >
+            <Plus />
+          </button>
+        </Tooltip>
       )}
       <HideButton id={c.id} name={c.name} hidden={isHidden} />
       <div className="tile-name">{c.name}</div>
@@ -172,26 +177,28 @@ export function ElementsLibrary({ project }: { project: Project }) {
     <div key={SOLID} className={`tile comp-tile ${isHidden ? "hidden-tile" : ""}`} data-testid={isHidden ? "hidden-element-tile" : "background-tile"} data-component={SOLID} title="Background" onContextMenu={(e) => menu(e, SOLID, "Background", isHidden)}>
       <div className="thumb bg-thumb" style={{ background: BACKGROUND_THUMB }} />
       {!isHidden && (
-        <button
-          className="tile-add"
-          data-testid="background-add"
-          disabled={!online}
-          title="Add a background at the playhead"
-          aria-label="Add a background"
-          onClick={(e) => {
-            e.stopPropagation();
-            e.currentTarget.blur();
-            // D220: with a picture or text selected, behind it or over the whole edit.
-            if (!canGoBehind(project, getPlayback().selected)) return void actions.addBackground(BACKGROUND_PROPS);
-            const r = e.currentTarget.getBoundingClientRect();
-            openMenu(r.left, r.bottom + 4, [
-              { id: "background-behind", label: "Behind this", run: () => void actions.addBackground(BACKGROUND_PROPS, true) },
-              { id: "background-whole", label: "Whole edit", run: () => void actions.addBackground(BACKGROUND_PROPS) },
-            ], "Add a background");
-          }}
-        >
-          <Plus />
-        </button>
+        <Tooltip label="Add a background at the playhead">
+          <button
+            className="tile-add"
+            data-testid="background-add"
+            disabled={!online}
+           
+            aria-label="Add a background"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.currentTarget.blur();
+              // D220: with a picture or text selected, behind it or over the whole edit.
+              if (!canGoBehind(project, getPlayback().selected)) return void actions.addBackground(BACKGROUND_PROPS);
+              const r = e.currentTarget.getBoundingClientRect();
+              openMenu(r.left, r.bottom + 4, [
+                { id: "background-behind", label: "Behind this", run: () => void actions.addBackground(BACKGROUND_PROPS, true) },
+                { id: "background-whole", label: "Whole edit", run: () => void actions.addBackground(BACKGROUND_PROPS) },
+              ], "Add a background");
+            }}
+          >
+            <Plus />
+          </button>
+        </Tooltip>
       )}
       <HideButton id={SOLID} name="Background" hidden={isHidden} />
       <div className="tile-name">Background</div>
@@ -213,7 +220,20 @@ export function ElementsLibrary({ project }: { project: Project }) {
   const hiddenCount = COMPONENTS.filter((c) => hidden.includes(c.id)).length + plugins.filter((c) => hidden.includes(c.id)).length + (backgroundHidden ? 1 : 0);
   return (
     <aside className="library" data-testid="elements-library">
-      <div className="lib-head">Elements</div>
+      <div className="lib-head">
+        Elements
+        {/* A plain select, not a row of chips (D263): the sections show as headers when it's All. */}
+        {!searching && (
+          <select className="field input elements-section" data-testid="elements-section" aria-label="Section" value={only ?? ""} onChange={(e) => setOnly((e.target.value || undefined) as ElementCategory | undefined)}>
+            <option value="">All sections</option>
+            {sections.map(({ cat }) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
       <div className="elements-top">
         <label className="elements-search">
           <Search aria-hidden />
@@ -225,18 +245,6 @@ export function ElementsLibrary({ project }: { project: Project }) {
             </button>
           )}
         </label>
-        {!searching && (
-          <div className="elements-chips" role="tablist" aria-label="Sections" data-testid="elements-chips">
-            <button className={`chip-btn ${only ? "" : "active"}`} role="tab" aria-selected={!only} data-testid="elements-chip" data-category="All" onClick={() => setOnly(undefined)}>
-              All
-            </button>
-            {sections.map(({ cat }) => (
-              <button key={cat} className={`chip-btn ${only === cat ? "active" : ""}`} role="tab" aria-selected={only === cat} data-testid="elements-chip" data-category={cat} onClick={() => setOnly(only === cat ? undefined : cat)}>
-                {cat}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
       {(searching ? sections : shown).map(({ cat, tiles }) =>
         cat === "Stickers" ? (

@@ -199,18 +199,22 @@ export function Segmented<T extends string>({ options, value, onChange, testId, 
   );
 }
 
-/** A popover anchored under an element, drawn over everything (the Inspector scrolls and would clip it). Outside click or Esc closes it. */
-export function Popover({ anchor, onClose, children, testId, width = 240 }: { anchor: HTMLElement | null; onClose: () => void; children: ReactNode; testId?: string; width?: number }) {
+/**
+ * A popover anchored under an element, drawn over everything (the Inspector scrolls and would clip it). Outside click or Esc closes it.
+ * `align` "end" (the default) lines its right edge up with the anchor's; "start" its left edge, for an anchor near the window's left
+ * (the left panel: growing leftwards would cover the rail, D263). Either way it stays inside the window.
+ */
+export function Popover({ anchor, onClose, children, testId, width = 240, align = "end" }: { anchor: HTMLElement | null; onClose: () => void; children: ReactNode; testId?: string; width?: number; align?: "start" | "end" }) {
   const ref = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ left: number; top: number } | undefined>(undefined);
   useLayoutEffect(() => {
     if (!anchor) return;
     const r = anchor.getBoundingClientRect();
     const h = ref.current?.offsetHeight ?? 0;
-    const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.right - width));
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, align === "start" ? r.left : r.right - width));
     const below = r.bottom + 6;
     setAt({ left, top: below + h > window.innerHeight - 8 ? Math.max(8, r.top - 6 - h) : below });
-  }, [anchor, width]);
+  }, [anchor, width, align]);
   useEffect(() => {
     const down = (e: PointerEvent) => {
       if (ref.current?.contains(e.target as Node) || anchor?.contains(e.target as Node)) return;

@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 
 import { loadSources, useRecorder } from "../../capture/recorder.ts";
 import { SourceTile } from "../thisMac/controls.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export function SourcePicker({ picked, onPick, onClose }: { picked: string; onPick: (id: string) => void; onClose: () => void }) {
   const sources = useRecorder((s) => s.sources);
@@ -26,12 +27,16 @@ export function SourcePicker({ picked, onPick, onClose }: { picked: string; onPi
       <div className="modal capture-picker" role="dialog" aria-label="Choose a screen or window">
         <div className="capture-picker-head">
           <span className="capture-picker-title">Choose a screen or window</span>
-          <button className="icon-btn" data-testid="capture-sources-refresh" disabled={loading} title="List screens and windows again" onClick={() => void loadSources()}>
-            <RefreshCw className={loading ? "spin" : ""} />
-          </button>
-          <button className="icon-btn" data-testid="capture-source-picker-close" title="Close" onClick={onClose}>
-            <X />
-          </button>
+          <Tooltip label="List screens and windows again">
+            <button className="icon-btn" data-testid="capture-sources-refresh" disabled={loading} onClick={() => void loadSources()}>
+              <RefreshCw className={loading ? "spin" : ""} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Close">
+            <button className="icon-btn" data-testid="capture-source-picker-close" onClick={onClose}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
         {(sources?.length ?? 0) > 6 && (
           <label className="capture-search">

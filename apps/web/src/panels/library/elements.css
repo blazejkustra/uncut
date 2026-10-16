@@ -1,13 +1,11 @@
-/* The Elements tab's search, section chips and sticker sections (issue #71, D251). */
+/* The Elements tab's search, section select and sticker sections (issue #71, D251; no chips, D263). */
 .elements-top { padding: 0 14px 6px; display: flex; flex-direction: column; gap: 8px; }
 .elements-search { position: relative; display: flex; align-items: center; }
 .elements-search > svg.lucide { position: absolute; left: 9px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
 .elements-search .input { width: 100%; padding-left: 28px; padding-right: 26px; }
 .elements-search-clear { position: absolute; right: 4px; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
 .elements-search-clear svg.lucide { width: 13px; height: 13px; }
-.elements-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.elements-chips .chip-btn { padding: 2px 9px; font-size: 11px; background: transparent; cursor: pointer; white-space: nowrap; }
-.elements-chips .chip-btn:hover:not(.active) { color: var(--fg); }
+.elements-section { width: auto; max-width: 60%; height: 26px; padding: 0 22px 0 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
 .elements-section-label { text-transform: none; font-weight: 600; color: var(--fg); opacity: 0.8; }
 .sticker-group { margin-top: 12px; }
 .sticker-group:first-child { margin-top: 4px; }

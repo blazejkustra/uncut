@@ -2,6 +2,7 @@ import { Settings2, RefreshCw, Monitor, Mic, Video, CircleDot, Play, Pause, Squa
 import React, { useState, useEffect } from "react";
 import { useRecorder, openPrivacySettings, refreshAccess, loadSources, askAccess, levelDb, takeSeconds, type TakeMode, clock, resumeTake, pauseTake, stopTake, cancelTake, openMonitor, closeMonitor } from "../../capture/recorder.ts";
 import type { MediaAccessKind, CaptureSource } from "../../state/bridge.ts";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 const NAMES: Record<MediaAccessKind, string> = { microphone: "the microphone", camera: "the camera", screen: "screen recording" };
 const PANES: Record<MediaAccessKind, string> = { microphone: "Microphone", camera: "Camera", screen: "Screen & System Audio Recording" };
@@ -157,9 +158,11 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
             Stop
           </button>
         )}
-        <button className="icon-btn record-ctl" data-testid="capture-take-cancel" title="Stop and keep nothing" onClick={() => cancelTake()}>
-          <X />
-        </button>
+        <Tooltip label="Stop and keep nothing">
+          <button className="icon-btn record-ctl" data-testid="capture-take-cancel" onClick={() => cancelTake()}>
+            <X />
+          </button>
+        </Tooltip>
       </div>
       {meter && <LevelMeter testId="capture-bar-level" />}
     </div>
@@ -179,12 +182,12 @@ export function Picker({ icon: Icon, value, onChange, testId, title, disabled, c
   );
 }
 
-/** D209: an option as a compact toggle chip (a real checkbox over it). */
+/** D209: an option as a plain checkbox and its words (a checkbox, not a chip, D263). */
 export function Option({ testId, checked, disabled, onChange, children, title }: { testId: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void; children: React.ReactNode; title?: string }) {
   return (
-    <label className={`opt-chip ${checked ? "on" : ""} ${disabled ? "disabled" : ""}`} title={title}>
+    <label className={`opt-check ${checked ? "on" : ""} ${disabled ? "disabled" : ""}`} title={title}>
       <input type="checkbox" data-testid={testId} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      {children}
+      <span>{children}</span>
     </label>
   );
 }

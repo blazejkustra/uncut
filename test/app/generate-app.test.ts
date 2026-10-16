@@ -5,7 +5,7 @@
 // that opens Settings at Keys. No provider is called and no key is stored.
 // D145, D234 (issue #63): the type switch (Picture, Video, Sound) first, the models for each (price
 // per item, key set or not; the title card is a Picture model), a key field right there for a
-// missing key, size and length chips; results go to Media › Generated.
+// missing key, a size select and length choices (no chips, D263); results go to Media › Generated.
 // Screenshots: test-output/generate-tab.png, generate-video.png, generate-needs-key.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -23,6 +23,16 @@ let root = "";
 const apps = new Set<LaunchedApp>();
 const waitFor = (page: Page, selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
 const text = (page: Page, selector: string) => page.$eval(selector, (el) => ((el as HTMLElement).innerText ?? "").trim());
+// D263: the options (a size select, length choices) fit the panel: nothing in it scrolls sideways.
+const fits = async (page: Page, where: string) => {
+  const wide = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>("[data-testid=generate-library]")!;
+    const up: Array<HTMLElement> = [];
+    for (let el = panel.parentElement; el && el !== document.body; el = el.parentElement) up.push(el);
+    return [panel, ...panel.querySelectorAll<HTMLElement>("*"), ...up].filter((el) => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1).map((el) => el.className);
+  });
+  assert.deepEqual(wide, [], `${where}: no sideways scrolling in the Generate panel`);
+};
 
 before(async () => {
   if (skip) return;
@@ -85,8 +95,9 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     await page.click("[data-testid=generator][data-id='generate.veo']");
     await waitFor(page, "[data-testid=generate-seconds-8]");
     await page.click("[data-testid=generate-seconds-8]");
-    await page.click("[data-testid='generate-size-9:16']");
+    await page.select("[data-testid=generate-size]", "9:16");
     assert.match(await text(page, "[data-testid=generate-estimate]"), /About \$3\.20, billed to your Google key/);
+    await fits(page, "Veo");
     await page.screenshot({ path: "test-output/generate-video.png" });
     await page.click("[data-testid=generate-type-audio]");
     await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generator][data-soon=false]")].map((e) => e.dataset.id).join() === "generate.sound");
@@ -99,9 +110,10 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     assert.match(await text(page, "[data-testid=generate-needs]"), /Needs your OpenAI key\./);
     assert.equal(await page.$eval("[data-testid=generate-key-input]", (el) => (el as HTMLInputElement).type), "password");
     assert.equal(await page.$eval("[data-testid=generate-key-save]", (b) => (b as HTMLButtonElement).disabled), true);
-    assert.deepEqual(await page.$$eval("[data-testid=generate-sizes] button", (els) => els.map((e) => e.textContent)), ["Landscape", "Square", "Portrait"]);
+    assert.deepEqual(await page.$$eval("[data-testid=generate-size] option", (els) => els.map((e) => e.textContent)), ["Landscape", "Square", "Portrait"]);
     await page.type("[data-testid=generate-prompt]", "a phone on a desk");
     assert.equal(await page.$eval("[data-testid=generate-run]", (b) => (b as HTMLButtonElement).disabled), true);
+    await fits(page, "GPT Image");
     await page.screenshot({ path: "test-output/generate-needs-key.png" });
     await page.click("[data-testid=generate-open-keys]");
     await waitFor(page, "[data-testid=onboarding] [data-testid=key-openai][data-set=false]");
@@ -117,6 +129,7 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(el, "");
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
+    await fits(page, "Animation by Claude (five sizes)");
     await page.type("[data-testid=generate-prompt]", "A yellow sun over a navy sea");
     assert.match(await text(page, "[data-testid=generate-estimate]"), /^Uses your Claude subscription$/);
     await page.click("[data-testid=generate-run]");

@@ -26,6 +26,7 @@ import { actions, useApp } from "../state/store.ts";
 import { DevicePicker, deviceIcon, deviceSub } from "./capture/DevicePicker.tsx";
 import { CaptureThisMac } from "./CaptureThisMac.tsx";
 import { Option } from "./thisMac/controls.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -142,15 +143,17 @@ export function CaptureLibrary() {
             Simulators and emulators
             {capture?.version ? ` (Argent ${capture.version})` : ""}
           </span>
-          <button
-            className="icon-btn"
-            data-testid="capture-refresh"
-            disabled={!online || app.captureChecking}
-            title="Look for devices again"
-            onClick={() => void actions.checkCapture()}
-          >
-            <RefreshCw className={app.captureChecking ? "spin" : ""} />
-          </button>
+          <Tooltip label="Look for devices again">
+            <button
+              className="icon-btn"
+              data-testid="capture-refresh"
+              disabled={!online || app.captureChecking}
+             
+              onClick={() => void actions.checkCapture()}
+            >
+              <RefreshCw className={app.captureChecking ? "spin" : ""} />
+            </button>
+          </Tooltip>
         </div>
         {!capture ? (
           <div className="muted small">

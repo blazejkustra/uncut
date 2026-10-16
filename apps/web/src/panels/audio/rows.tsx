@@ -2,6 +2,7 @@ import { type LibraryHit, type LibraryKind, hitKey, libraryMediaOf, lengthLabel,
 import { Square, Play, RefreshCw, Plus } from "lucide-react";
 import { type Project, libraryPreviewUrl, actions, useApp, sfxUrl } from "../../state/store.ts";
 import { type Preview, Wave, TogetherButton } from "./preview.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export function HitRow({ hit, kind, project, online, preview, adding }: { hit: LibraryHit; kind: LibraryKind; project: Project; online: boolean; preview: Preview; adding: boolean }) {
   const key = hitKey(hit);
@@ -76,18 +77,20 @@ function SfxRow({ sound: s, project, online, preview }: { sound: SfxSound; proje
         {peaks && <Wave peaks={peaks} progress={preview.playing === key ? preview.progress : 0} />}
       </span>
       <TogetherButton preview={preview} soundKey={key} url={sfxUrl(s.file)} wave />
-      <button
-        className="icon-btn"
-        data-testid="sfx-add"
-        disabled={!online || app.libraryAdding === key}
-        title="Add to an audio track at the playhead"
-        onClick={(e) => {
-          e.currentTarget.blur();
-          void actions.addLibrarySound(key, false, s.title);
-        }}
-      >
-        <Plus />
-      </button>
+      <Tooltip label="Add to an audio track at the playhead">
+        <button
+          className="icon-btn"
+          data-testid="sfx-add"
+          disabled={!online || app.libraryAdding === key}
+         
+          onClick={(e) => {
+            e.currentTarget.blur();
+            void actions.addLibrarySound(key, false, s.title);
+          }}
+        >
+          <Plus />
+        </button>
+      </Tooltip>
     </div>
   );
 }

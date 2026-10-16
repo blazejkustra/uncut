@@ -26,6 +26,7 @@ import {
   type PresetId,
 } from "../editor/keymap.ts";
 import { actions } from "../state/store.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import "./shortcuts.css";
 
 const GROUPS = [...new Set(ACTIONS.map((a) => a.group))];
@@ -152,9 +153,11 @@ export function ShortcutSettings() {
                   <button className="shortcut-key" data-testid="shortcut-key" data-key={k} title="Click, then press a new key" onClick={() => record(id, i)}>
                     {k}
                   </button>
-                  <button className="shortcut-remove" data-testid="shortcut-remove" title={`Remove ${k}`} aria-label={`Remove ${k}`} onClick={() => (setPending(undefined), keymap.set(removeKey(keymap.get(), id, i)))}>
-                    <X />
-                  </button>
+                  <Tooltip label={`Remove ${k}`}>
+                    <button className="shortcut-remove" data-testid="shortcut-remove" aria-label={`Remove ${k}`} onClick={() => (setPending(undefined), keymap.set(removeKey(keymap.get(), id, i)))}>
+                      <X />
+                    </button>
+                  </Tooltip>
                 </span>
               ),
             )}
@@ -163,16 +166,20 @@ export function ShortcutSettings() {
                 Press a key…
               </span>
             ) : (
-              <button className="icon-btn shortcut-add" data-testid="shortcut-add" title={keys.length ? "Add another key" : "Set a key"} aria-label="Add a key" onClick={() => record(id)}>
-                <Plus />
-              </button>
+              <Tooltip label={keys.length ? "Add another key" : "Set a key"}>
+                <button className="icon-btn shortcut-add" data-testid="shortcut-add" aria-label="Add a key" onClick={() => record(id)}>
+                  <Plus />
+                </button>
+              </Tooltip>
             )}
             <button className="link-btn shortcut-clear" data-testid="shortcut-clear" disabled={!keys.length} onClick={() => (setPending(undefined), keymap.set(clearAction(keymap.get(), id)))}>
               Clear
             </button>
-            <button className="icon-btn shortcut-reset" data-testid="shortcut-reset" disabled={!changed} title={`Back to ${base[id].join(", ") || "no key"}`} aria-label="Reset" onClick={() => (setPending(undefined), keymap.set(resetAction(keymap.get(), id)))}>
-              <RotateCcw />
-            </button>
+            <Tooltip label={`Back to ${base[id].join(", ") || "no key"}`}>
+              <button className="icon-btn shortcut-reset" data-testid="shortcut-reset" disabled={!changed} aria-label="Reset" onClick={() => (setPending(undefined), keymap.set(resetAction(keymap.get(), id)))}>
+                <RotateCcw />
+              </button>
+            </Tooltip>
           </span>
         </div>
         {live && <div className="shortcut-hint">Press the new key (Esc cancels).</div>}
@@ -272,9 +279,11 @@ export function ShortcutsSheet() {
       <div className="modal sheet">
         <div className="sheet-head">
           <span className="grow">Keyboard shortcuts</span>
-          <button className="icon-btn" title="Close (Esc)" data-testid="shortcuts-close" onClick={actions.closeShortcuts}>
-            <X />
-          </button>
+          <Tooltip label="Close" keys={["Esc"]}>
+            <button className="icon-btn" data-testid="shortcuts-close" onClick={actions.closeShortcuts}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
         <ShortcutList />
       </div>

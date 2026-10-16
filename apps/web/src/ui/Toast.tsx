@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { toastMs } from "./toast.ts";
+import { Tooltip } from "./Tooltip.tsx";
 import "./toast.css";
 
 export function ErrorToast({ text, token, onClose, testId, sticky = false }: { text: string; token: unknown; onClose: () => void; testId?: string; sticky?: boolean }) {
@@ -48,9 +49,11 @@ export function ErrorToast({ text, token, onClose, testId, sticky = false }: { t
       onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setFocused(false)}
     >
       <span className="banner-text">{text}</span>
-      <button className="icon-btn" title="Dismiss" onClick={onClose}>
-        <X />
-      </button>
+      <Tooltip label="Dismiss">
+        <button className="icon-btn" onClick={onClose}>
+          <X />
+        </button>
+      </Tooltip>
       {!sticky && <span key={gen.current.n} className="toast-timer" style={{ animationDuration: `${ms}ms` }} />}
     </div>
   );

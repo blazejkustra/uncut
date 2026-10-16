@@ -24,6 +24,7 @@ import { NumberField } from "../inspector/fields.tsx";
 import { effectiveRange, type RangeKind } from "./exportRange.ts";
 import { loudnessCards, fileName, baseName, dirName, folderName, fpsText, eta, ACTIVE, QUALITIES, ENCODER_NAMES, RANGE_KINDS } from "./exportDialog/format.ts";
 import { DownloadButton } from "./exportDialog/DownloadButton.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 export { exportRunning, folderName } from "./exportDialog/format.ts";
 
 export function ExportDialog({ project, dir }: { project: Project; dir: string }) {
@@ -470,9 +471,11 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <div className="wiz-panel">
           <div className="export-head">
             <h1>Export video</h1>
-            <button className="icon-btn" title="Close (Esc)" data-testid="export-close" onClick={actions.closeExport}>
-              <X />
-            </button>
+            <Tooltip label="Close" keys={["Esc"]}>
+              <button className="icon-btn" data-testid="export-close" onClick={actions.closeExport}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
           {body}
         </div>

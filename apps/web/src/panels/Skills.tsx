@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { actions, useApp } from "../state/store.ts";
 import { type View, SCOPE_LABEL } from "./brand/kit.ts";
 import { SkillEditor, SkillView } from "./brand/SkillEditor.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import "./skills/skills.css";
 
 export function SkillsLibrary() {
@@ -50,9 +51,11 @@ export function SkillsLibrary() {
       {app.brandError && (
         <div className="inline-error small brand-error" data-testid="brand-error">
           <span>{app.brandError}</span>
-          <button className="icon-btn" title="Dismiss" data-testid="brand-error-dismiss" onClick={actions.dismissBrandError}>
-            <X />
-          </button>
+          <Tooltip label="Dismiss">
+            <button className="icon-btn" data-testid="brand-error-dismiss" onClick={actions.dismissBrandError}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
       )}
       {!brand ? (

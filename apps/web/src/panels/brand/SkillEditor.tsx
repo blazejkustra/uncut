@@ -4,6 +4,7 @@ import { useState } from "react";
 import { actions } from "../../state/store.ts";
 import { type View, freeId } from "./kit.ts";
 import { EditorFrame, ScopeChoice } from "./parts.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export function SkillEditor({ brand, view, hasProject, online, onDraft, onClose }: { brand: BrandState; view: Extract<View, { kind: "skill" }>; hasProject: boolean; online: boolean; onDraft: (d: Extract<View, { kind: "skill" }>["draft"]) => void; onClose: () => void }) {
   const d = view.draft;
@@ -64,9 +65,11 @@ export function SkillView({ skill, online, hasProject, onUse, onDuplicate, onClo
       }}
     >
       <div className="brand-editor-head">
-        <button className="icon-btn" title="Back" data-testid="brand-back" onClick={onClose}>
-          <ChevronLeft />
-        </button>
+        <Tooltip label="Back">
+          <button className="icon-btn" data-testid="brand-back" onClick={onClose}>
+            <ChevronLeft />
+          </button>
+        </Tooltip>
         <span className="ellipsis">{skill?.name ?? "Skill"}</span>
         <span className="brand-tag">/{skill?.id ?? ""}</span>
       </div>
