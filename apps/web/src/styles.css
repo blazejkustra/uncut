@@ -504,8 +504,13 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .turn-edit-summary { font-size: 12px; font-weight: 500; }
 .turn-edit-line { font-size: 11px; color: var(--muted); line-height: 1.4; padding-left: 10px; overflow-wrap: anywhere; }
 .turn p.err { margin: 2px 4px; color: var(--error); font-size: 12px; line-height: 1.45; }
-.turn-foot { display: flex; align-items: center; gap: 6px; padding: 0 2px 0 4px; font-size: 11px; color: var(--dim); min-height: 24px; }
-.turn-status { display: inline-flex; align-items: center; gap: 5px; }
+.turn-foot { display: flex; align-items: center; gap: 6px; padding: 0 2px 0 4px; font-size: 11px; color: var(--dim); min-height: 24px; flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+/* One line at every panel width: the status (model, time) truncates; edits and Undo never wrap. */
+.turn-status { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.turn-foot > .turn-edits, .turn-foot > .link-btn { flex: none; }
+.turn-foot > .turn-spend { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.turn-wrap { container: turn / inline-size; }
+@container turn (max-width: 280px) { .turn-foot .undo-word { display: none; } .turn-foot > .turn-spend { margin-left: 0; } }
 .turn-status svg.lucide { width: 12px; height: 12px; }
 .turn-foot .spacer { flex: 1; }
 .turn-foot .link-btn svg.lucide { width: 13px; height: 13px; }
@@ -591,13 +596,17 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .composer-choices .choice { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px; border-radius: var(--radius-sm); font-size: 11.5px; color: var(--muted); white-space: nowrap; flex: none; }
 .composer-choices .choice svg.lucide { width: 12px; height: 12px; flex: none; }
 .composer-choices .choice:hover, .composer-choices .choice.open { background: var(--raised); color: var(--fg); }
-.composer-choices .choice.model { flex: 0 1 auto; min-width: 0; }
-.composer-choices .choice.model .choice-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.composer-choices .choice.model { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* The model's name gives way first, then the wordmark, both with an ellipsis; nothing spills onto effort. */
+.composer-choices .choice.model .choice-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 100 auto; }
+.composer-choices .choice.model .provider-wordmark { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 .composer-choices .choice svg.choice-caret { width: 11px; height: 11px; }
 @container (max-width: 340px) { .composer-choices .choice[data-testid=agent-access] .choice-label { display: none; } }
 @container (max-width: 300px) { .composer-choices .choice[data-testid=agent-effort] .choice-label { display: none; } }
+/* Narrowest: the provider mark beside it says Claude; the model button keeps only its caret (and its tooltip). */
 @container (max-width: 250px) {
-  .composer-choices .choice.model .choice-label, .composer-choices .choice.model svg.choice-caret { display: none; }
+  .composer-choices .choice.model { padding: 0 4px; }
+  .composer-choices .choice.model .choice-label, .composer-choices .choice.model .provider-wordmark { display: none; }
 }
 .choice-menu { position: absolute; left: 6px; right: 6px; bottom: calc(100% + 6px); z-index: 30; background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 4px; display: flex; flex-direction: column; gap: 1px; box-shadow: 0 10px 30px rgb(0 0 0 / 50%); max-height: 320px; overflow-y: auto; }
 .choice-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; font-size: 12px; text-align: left; color: var(--fg); min-width: 0; cursor: default; }

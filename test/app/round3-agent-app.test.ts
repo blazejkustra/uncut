@@ -206,7 +206,7 @@ test("round 3 agent: composer choices and images, moments, live status, failed s
 
     // The composer's bottom row is one row at every panel width: labels give way to icons (with
     // tooltips) as it narrows, nothing wraps or is cut off.
-    for (const [name, side] of [["default", undefined], ["wide", 520], ["min", 240]] as const) {
+    for (const [name, side] of [["default", undefined], ["wide", 520], ["mid", 300], ["narrow", 260], ["min", 240]] as const) {
       await page.evaluate((w) => {
         if (w === undefined) localStorage.removeItem("uncut.layout");
         else localStorage.setItem("uncut.layout", JSON.stringify({ side: w }));
@@ -216,12 +216,34 @@ test("round 3 agent: composer choices and images, moments, live status, failed s
       const row = await page.evaluate(() => {
         const foot = document.querySelector(".composer-foot")!.getBoundingClientRect();
         const buttons = [...document.querySelectorAll(".composer-foot button")].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0);
-        const cut = [...document.querySelectorAll(".composer-choices .choice")].some((b) => b.scrollWidth > b.clientWidth + 1 && !b.classList.contains("model"));
-        return { width: foot.width, spread: Math.max(...buttons.map((r) => r.top + r.height / 2)) - Math.min(...buttons.map((r) => r.top + r.height / 2)), right: Math.max(...buttons.map((r) => r.right)), footRight: foot.right, cut, titles: [...document.querySelectorAll(".composer-choices .choice")].map((b) => (b as HTMLElement).title || b.getAttribute("aria-label") || "") };
+        const cut = [...document.querySelectorAll(".composer-choices .choice")].some((b) => b.scrollWidth > b.clientWidth + 1);
+        // No overlap: the buttons sit side by side, and nothing inside a choice (the model's
+        // wordmark and name) reaches past its own button.
+        const shown = [...document.querySelectorAll(".composer-foot button")].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0).sort((a, b) => a.left - b.left);
+        const overlap = shown.some((r, i) => i > 0 && r.left < shown[i - 1]!.right - 0.5);
+        const spill = [...document.querySelectorAll(".composer-choices .choice")].some((b) => {
+          const box = b.getBoundingClientRect();
+          return [...b.querySelectorAll("*")].some((c) => {
+            const r = c.getBoundingClientRect();
+            return r.width > 0 && getComputedStyle(c).display !== "none" && (r.right > box.right + 0.5 || r.left < box.left - 0.5);
+          });
+        });
+        // The turn footers: one line each, nothing past the panel's edge.
+        const feet = [...document.querySelectorAll(".turn-foot")].map((f) => {
+          const box = f.getBoundingClientRect();
+          const kids = [...f.querySelectorAll(":scope > *, .turn-edits-label")].map((k) => k.getBoundingClientRect()).filter((r) => r.width > 0);
+          const lines = [...f.querySelectorAll(".turn-status, .turn-edits-label, .link-btn")].some((k) => k.getBoundingClientRect().height > 26);
+          return { tall: box.height > 26 || lines, past: kids.some((r) => r.right > box.right + 0.5), text: (f as HTMLElement).innerText.replace(/\s+/g, " ") };
+        });
+        return { width: foot.width, spread: Math.max(...buttons.map((r) => r.top + r.height / 2)) - Math.min(...buttons.map((r) => r.top + r.height / 2)), right: Math.max(...buttons.map((r) => r.right)), footRight: foot.right, cut, overlap, spill, feet, titles: [...document.querySelectorAll(".composer-choices .choice")].map((b) => (b as HTMLElement).title || b.getAttribute("aria-label") || "") };
       });
       assert.ok(row.spread <= 3, `${name}: one row (${row.width} px wide, centres ${row.spread} px apart)`);
       assert.ok(row.right <= row.footRight + 0.5, `${name}: nothing past the right edge`);
       assert.ok(!row.cut, `${name}: no clipped label`);
+      assert.ok(!row.overlap, `${name}: no two footer buttons overlap`);
+      assert.ok(!row.spill, `${name}: no choice's label runs past its button`);
+      assert.ok(row.feet.length >= 2, `${name}: the turn footers are there`);
+      for (const f of row.feet) assert.ok(!f.tall && !f.past, `${name}: turn footer on one line (${f.text})`);
       // Icon-only choices (the provider) are on the shared Tooltip, which names them by aria-label
       // instead of a native title (D263); the labelled ones keep their title.
       assert.ok(row.titles.every(Boolean), `every choice has a tooltip (${JSON.stringify(row.titles)})`);

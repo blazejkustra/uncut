@@ -98,7 +98,9 @@ export function TurnCard({ turn: t, busy, online, approval, latest, live }: { tu
       </div>
       <div className={`turn-foot ${undone ? "undone" : ""}`}>
         {t.edits.length > 0 && <EditsFooter edits={t.edits} undone={undone} />}
-        <span className="turn-status">{status}</span>
+        <span className="turn-status" title={status ?? undefined}>
+          {status}
+        </span>
         {spend}
         <span className="spacer" />
         {t.status === "running" && (
@@ -117,7 +119,7 @@ export function TurnCard({ turn: t, busy, online, approval, latest, live }: { tu
             onClick={() => void actions.agentUndoTurn(t.id)}
           >
             <Undo2 />
-            Undo turn
+            Undo<span className="undo-word"> turn</span>
           </button>
         )}
       </div>
