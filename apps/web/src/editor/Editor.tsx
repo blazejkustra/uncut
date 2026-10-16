@@ -120,7 +120,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
           <ErrorToast text={notice.text} token={notice} onClose={actions.dismissNotice} testId="editor-error" sticky={notice.transport === true && !online} />
         )}
       </div>
-      {/* #76 (D256): hidden parts aren't rendered; focus mode is the preview and the agent under it. */}
+      {/* #76 (D256): hidden parts aren't rendered; focus mode is the preview and the agent beside it (D270). */}
       {panelShown(shown, "lib") && <Rail tab={tab} onTab={setTab} />}
       {panelShown(shown, "lib") && <Library project={project} dir={snapshot.dir} tab={tab} onTab={setTab} />}
       <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
@@ -153,7 +153,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
 
 /**
  * #75 (D255): whether the agent centre stage shows. It opens on an empty project whose agent hasn't
- * run (not in focus mode, where the agent is already under the preview), and docks into the side
+ * run (not in focus mode, where the agent is already beside the preview), and docks into the side
  * panel's Agent tab when that stops being so (a turn starts, media lands, the user goes to the
  * editor): the composer glides there in a view transition, and the side panel comes back if hidden.
  */

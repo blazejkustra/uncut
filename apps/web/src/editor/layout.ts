@@ -137,7 +137,7 @@ export interface Panels {
   readonly lib: boolean;
   readonly side: boolean;
   readonly bottom: boolean;
-  /** Focus mode: only the preview and the agent under it (the three flags are kept for after). */
+  /** Focus mode: only the preview and the agent beside it (the three flags are kept for after). */
   readonly focus: boolean;
 }
 export const PANELS_KEY = "uncut.layout.hidden";
@@ -189,15 +189,18 @@ export const usePanels = () => useSyncExternalStore(subscribePanels, () => hidde
 
 /**
  * The grid's tracks with parts hidden (none hidden: the CSS default). The rail and the left panel
- * go together; in focus mode the bottom row holds the agent (--focus-row).
+ * go together. Focus mode (D270): the preview on the left, the agent in the side column at full
+ * height (--focus-col), the timeline's row at 0. Every track keeps the shape of its shown form (a
+ * length, or minmax with a length) so the grid's transition interpolates it (D271: the timeline's
+ * row was `minmax(..)` shown and `0px` hidden, which doesn't interpolate, so it jumped).
  */
 export function panelsStyle(p: Panels): Record<string, string> {
   if (!p.focus && !p.lib && !p.side && !p.bottom) return {};
   const lib = panelShown(p, "lib");
-  const side = panelShown(p, "side");
-  const bottom = p.focus ? "minmax(0, var(--focus-row))" : p.bottom ? "0px" : "minmax(0, var(--bottom-row))";
+  const side = p.focus ? "var(--focus-col)" : panelShown(p, "side") ? "var(--side-col)" : "0px";
+  const bottom = panelShown(p, "bottom") ? "minmax(0, var(--bottom-row))" : "minmax(0, 0px)";
   return {
-    gridTemplateColumns: `${lib ? "56px" : "0px"} ${lib ? "var(--lib-col)" : "0px"} minmax(0, 1fr) ${side ? "var(--side-col)" : "0px"}`,
+    gridTemplateColumns: `${lib ? "56px" : "0px"} ${lib ? "var(--lib-col)" : "0px"} minmax(0, 1fr) ${side}`,
     gridTemplateRows: `40px minmax(0, 1fr) ${bottom}`,
   };
 }

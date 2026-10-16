@@ -5,7 +5,7 @@
 // show it.
 // #76 (D256): ⇧⌘L, ⇧⌘I, ⇧⌘T hide the left rail and panel, the right panel and the timeline (the
 // preview grows into the room) and the top bar's buttons bring them back; ⇧⌘F is focus mode (only
-// the preview and the agent); the choice is remembered across a relaunch.
+// the preview and the agent beside it, D270); the choice is remembered across a relaunch.
 // Screenshots: test-output/issue75-76-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -237,8 +237,11 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   await waitFor(page, "[data-testid=focus-agent] [data-testid=agent-input]");
   const focusAgent = await rect(page, "[data-testid=focus-agent]");
   s = await rect(page, "[data-testid=stage]");
-  assert.ok(Math.abs(s.width - win.w) < 3, "the preview spans the window");
-  assert.ok(focusAgent.y >= s.y + s.height - 1, "the agent is under the preview");
+  // D270 (#98): the preview on the left, the agent a full-height column on the right.
+  assert.ok(s.x < 1, "the preview starts at the window's left edge");
+  assert.ok(Math.abs(s.x + s.width - focusAgent.x) < 2, "the agent is beside the preview, on the right");
+  assert.ok(Math.abs(focusAgent.x + focusAgent.width - win.w) < 3, "up to the window's right edge");
+  assert.ok(Math.abs(focusAgent.y - s.y) < 2 && Math.abs(focusAgent.y + focusAgent.height - win.h) < 3, "full height under the top bar");
   assert.ok(await has(page, "[data-testid=focus-exit]"), "a visible way out");
   await shot(page, "focus");
   await page.click("[data-testid=focus-exit]");
