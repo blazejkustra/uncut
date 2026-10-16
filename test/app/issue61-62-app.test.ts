@@ -17,6 +17,7 @@ import type { Item, Project } from "../../packages/core/src/timeline/types.ts";
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { eventually } from "../helpers/wait.ts";
+import { notChecked, smallScreen } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -228,7 +229,8 @@ test("issue #62: the transport fits a tiny preview panel: shown controls inside 
   // Wider again: the hidden controls come back. Back to the window's own 1280×800 rather than an
   // emulated one: Chromium keeps an emulated viewport within the screen (#89: 1024 wide on the runner).
   await page.setViewport(null);
-  await page.waitForFunction(() => innerWidth === 1280 && innerHeight === 800, { timeout: 10000 });
+  const small = await smallScreen(page, 1280, 800);
+  if (small) return notChecked(small, "the transport's controls all come back at 1280×800");
   await page.evaluate(() => localStorage.removeItem("uncut.layout"));
   for (const p of ["lib", "side", "bottom"] as const) await page.click(`[data-testid=resize-${p}]`, { clickCount: 2 });
   // The panels animate back to their sizes: poll until the bar has room again (#89: 400 ms wasn't
