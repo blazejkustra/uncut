@@ -1,10 +1,13 @@
 import type { MenuCommand } from "../bridge.ts";
 import { actions } from "./actions.ts";
 import { online, state } from "./core.ts";
+import { justClosedProject } from "./actions/project.ts";
+import { environmentsUsable, flagOn } from "../../settings/labs.ts";
 
 export function runCommand(command: MenuCommand) {
   // The way to another environment works while this one is away.
-  if (command.type === "open-environments") return void actions.openEnvironments();
+  // D245: behind the Labs flag (the menu item is disabled too), except to leave an active remote.
+  if (command.type === "open-environments") return void (environmentsUsable(flagOn("environments"), state.environment.kind) && actions.openEnvironments());
   // Settings and the shortcuts sheet are local UI: they open while the server is away too.
   if (command.type === "open-settings") return actions.openSettings();
   if (command.type === "shortcuts") return actions.openShortcuts();
@@ -45,6 +48,10 @@ function undoOrRedo(kind: "undo" | "redo") {
 export function onKeyDown(event: KeyboardEvent) {
   if (!event.metaKey || event.altKey || event.ctrlKey) return;
   const key = event.key.toLowerCase();
+  // D243: with no project ⌘W is the menu's native Close (the window, and the app). A ⌘W held
+  // down, or pressed again, just as a project closes would reach it: kept here, so closing a
+  // project never quits Uncut.
+  if (key === "w" && !event.shiftKey && !state.snapshot && (event.repeat || justClosedProject())) return void event.preventDefault();
   const command: MenuCommand | undefined =
     key === "z"
       ? { type: event.shiftKey ? "redo" : "undo" }

@@ -2,7 +2,7 @@ import { ArrowRight, Check, Clapperboard, RefreshCw, TriangleAlert } from "lucid
 import { useEffect, useState, type ReactNode } from "react";
 
 import { actions, useApp } from "../state/store.ts";
-import { EnvironmentChip } from "./Environments.tsx";
+import { ENVIRONMENTS_LABS_HINT, EnvironmentChip, useEnvironmentsUsable } from "./Environments.tsx";
 import { CheckRow, PendingRow, KeyRows, SpeechModelRow } from "./rows.tsx";
 import { PluginRows } from "./plugins.tsx";
 import { USAGE_DATA_NOTE } from "../settings/telemetry.tsx";
@@ -186,6 +186,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
 /** Settings, Environments (D106): which server this window uses, and the way to the others. */
 function EnvironmentSettings() {
   const { environment } = useApp();
+  const usable = useEnvironmentsUsable();
   return (
     <div className="wiz-plugins" data-testid="settings-environments">
       <div className="wiz-section-row">
@@ -197,7 +198,7 @@ function EnvironmentSettings() {
           <div className="wiz-sub">{environment.kind === "remote" ? "Agents, ffmpeg, Argent and plugins above are that machine's." : "Add another machine to edit and export there instead."}</div>
         </div>
         <EnvironmentChip />
-        <button className="btn" data-testid="settings-environments-manage" onClick={() => void actions.openEnvironments()}>
+        <button className="btn" data-testid="settings-environments-manage" disabled={!usable} title={usable ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => void actions.openEnvironments()}>
           Manage…
         </button>
       </div>

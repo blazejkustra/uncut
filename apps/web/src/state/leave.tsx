@@ -10,6 +10,7 @@ import { cancelTake, getRecorder, stopTake } from "../capture/recorder.ts";
 import { bridge } from "./bridge.ts";
 import { leaveWords, pendingWork, type LeaveReason, type PendingItem } from "./pending.ts";
 import { actions, getState, isTextEntry, pendingSaves, setLeaveGate } from "./store.ts";
+import { justClosedProject } from "./store/actions/project.ts";
 
 // As ExportDialog's exportRunning (not imported: that module pulls in half the app).
 const EXPORT_RUNNING = new Set(["queued", "preparing", "rendering"]);
@@ -202,6 +203,9 @@ export function installLeave() {
   bridge.onCloseRequest((kind) => {
     void (async () => {
       const reason: LeaveReason = kind === "quit" ? "quit" : "window";
+      // D243: a ⌘W that reached the menu's Close just as a project closed (held, or pressed twice)
+      // stays on Welcome instead of quitting.
+      if (kind === "window" && justClosedProject()) return bridge.answerClose("stay");
       if (!pendingNow(reason).length) return bridge.answerClose("close");
       // The dialog is up: the shell stops waiting for an answer and leaves it to the user.
       bridge.answerClose("asking");

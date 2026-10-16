@@ -51,7 +51,10 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         { type: "separator" },
         item("Settings…", "CmdOrCtrl+,", { type: "open-settings" }),
         item("Agents and Setup…", undefined, { type: "open-setup" }),
-        item("Environments…", undefined, { type: "open-environments" }),
+        // D245: behind the Labs flag; disabled (with where to turn it on) while it's off.
+        state.environments
+          ? item("Environments…", undefined, { type: "open-environments" })
+          : { label: "Environments…", sublabel: "Turn it on in Settings › Labs", toolTip: "Environments is in Labs: turn it on in Settings › Labs", enabled: false },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -71,7 +74,8 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         { type: "separator" },
         { ...item("Export…", "CmdOrCtrl+E", { type: "export" }), enabled: state.projectOpen },
         { type: "separator" },
-        // ⌘W closes the project when one is open, otherwise the window (and with it the app).
+        // ⌘W closes the project when one is open (back to Welcome), otherwise the window (and
+        // with it the app). A ⌘W held or pressed twice is kept from reaching the second (D243, keys.ts).
         state.projectOpen ? item("Close Project", "CmdOrCtrl+W", { type: "close-project" }) : { role: "close" },
       ],
     },
