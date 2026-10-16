@@ -1,7 +1,7 @@
 // Draws the DMG window's background (D288): build/background.png (660×420) and background@2x.png
 // (1320×840); electron-builder's dmg target joins them into one retina TIFF and sizes the window from
 // it. A light installer page: Uncut's wordmark top left, "Drag Uncut into Applications." over the two
-// icons, a thin hand-drawn arc from the app (left) to the Applications link (right) at the icon
+// icons, a thin curved arrow from the app (left) to the Applications link (right) at the icon
 // positions in electron-builder.yml's `dmg.contents`, soft lighter waves below them, and a quiet line
 // at the bottom. Finder draws icon labels black over a background picture (dark mode too), which a
 // light page reads well with.
@@ -24,13 +24,33 @@ export const DMG_FOOTER = "Once copied, open it from Applications.";
 const repo = new URL("../../../", import.meta.url).pathname;
 const out = new URL("../build/", import.meta.url).pathname;
 
+/**
+ * The arrow between the icons, as one SVG path: a cubic with a gentle rise (up, then down into the
+ * folder), centred in the gap with clear margins from both 128 pt icons, and an open chevron whose
+ * apex is the curve's end point and whose barbs sit symmetrically about the end tangent.
+ */
+export function arrowPath(): string {
+  const { app, applications: apps } = DMG_ICONS;
+  const gapL = app.x + 64, gapR = apps.x - 64; // the icons' edges
+  const margin = (gapR - gapL - 100) / 2; // a 100 pt arrow, centred
+  const p0 = { x: gapL + margin, y: app.y - 6 };
+  const p1 = { x: gapR - margin, y: app.y - 8 };
+  const c1 = { x: p0.x + 30, y: p0.y - 17 };
+  const c2 = { x: p1.x - 34, y: p1.y - 16 };
+  // End tangent of a cubic: p1 − c2.
+  const t = Math.atan2(p1.y - c2.y, p1.x - c2.x);
+  const HEAD = 11, SPREAD = (32 * Math.PI) / 180;
+  const barb = (a: number) => ({ x: p1.x - HEAD * Math.cos(t + a), y: p1.y - HEAD * Math.sin(t + a) });
+  const b1 = barb(SPREAD), b2 = barb(-SPREAD);
+  const f = (n: number) => n.toFixed(2);
+  return `M${f(p0.x)} ${f(p0.y)} C${f(c1.x)} ${f(c1.y)} ${f(c2.x)} ${f(c2.y)} ${f(p1.x)} ${f(p1.y)} M${f(b1.x)} ${f(b1.y)} L${f(p1.x)} ${f(p1.y)} L${f(b2.x)} ${f(b2.y)}`;
+}
+
 /** The page as one SVG (DMG_WINDOW points), with DM Sans embedded. */
 export function backgroundSvg(fontWoff2Base64: string): string {
   const { width: w, height: h } = DMG_WINDOW;
   const { app, applications: apps } = DMG_ICONS;
-  // The arc: a little above the icons' centres, starting and ending clear of the 128 pt icons.
-  const ax = app.x + 84, bx = apps.x - 86, ay = app.y - 10;
-  const mid = (ax + bx) / 2;
+  const arrow = arrowPath();
   // The Uncut mark: the icon's U with its cut (as apps/web/src/editor/Wordmark.tsx), 1024 grid.
   const mark = `
     <g transform="translate(28 23) scale(0.032) translate(-280 -230)">
@@ -60,11 +80,8 @@ export function backgroundSvg(fontWoff2Base64: string): string {
   ${mark}
   <text x="49" y="37.5" font-size="15" font-weight="700" letter-spacing="-0.3" fill="#1d1d1f">Uncut</text>
   <text x="${w / 2}" y="86" text-anchor="middle" font-size="22" font-weight="700" letter-spacing="-0.4" fill="#1d1d1f">${DMG_HEADING}</text>
-  <!-- A thin hand-drawn arc: a gentle rise, a slightly uneven fall, an open head. -->
-  <g fill="none" stroke="#2c2c2e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M${ax} ${ay + 8} C ${mid - 34} ${ay - 18}, ${mid + 22} ${ay - 20}, ${bx} ${ay + 2}"/>
-    <path d="M${bx - 13} ${ay - 7} L ${bx} ${ay + 2} L ${bx - 14} ${ay + 7}"/>
-  </g>
+  <!-- The arrow: one smooth curve and an open head on its end tangent, one stroke. -->
+  <path d="${arrow}" fill="none" stroke="#2b2b2e" stroke-opacity="0.85" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="${w / 2}" y="344" text-anchor="middle" font-size="12" font-weight="400" fill="#7c7c80">${DMG_FOOTER}</text>
 </svg>`;
 }
