@@ -32,8 +32,9 @@ const shot = (app: LaunchedApp, name: string) => app.page.screenshot({ path: `te
 const text = (page: Page, id: string) => page.$eval(`[data-testid=${id}]`, (el) => el.textContent.trim());
 const waitFor = (page: Page, selector: string, timeout = 10000) => page.waitForSelector(selector, { timeout });
 const onDisk = (name: string) => JSON.parse(readFileSync(join(projects, `${name}.uncut`, "project.json"), "utf8"));
+// Up to 15 s: a 3-core CI runner's server can take a few seconds to save an undo or redo (#89).
 const waitForDisk = async (name: string, check: (project: any) => boolean) => {
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 150; i++) {
     try {
       if (check(onDisk(name))) return;
     } catch {}

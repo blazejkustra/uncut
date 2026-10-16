@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, clickWhenReady } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -42,7 +42,7 @@ test("allowing a plugin with skills says the agent follows them and lists them; 
   const { page } = app;
   try {
     await waitFor(page, "[data-testid=onboarding]");
-    await page.click("[data-testid=wizard-step-1]");
+    await clickWhenReady(page, "[data-testid=wizard-step-1]");
     const row = "[data-testid='plugin-acme.pack']";
     await waitFor(page, `${row}[data-status=needs-approval]`);
     // D272: the row says how many; the details (the chevron) list them with their commands.

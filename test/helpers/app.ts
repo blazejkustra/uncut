@@ -285,6 +285,24 @@ export const WELCOME_TIMEOUT_MS = Number(process.env.UNCUT_TEST_LAUNCH_MS ?? 600
 export const waitForWelcome = (page: Page, timeout = WELCOME_TIMEOUT_MS) => page.waitForSelector("[data-testid=welcome]", { timeout });
 
 /**
+ * Clicks `selector` once it's visible, again if React swapped the element between finding and
+ * clicking it ("detached") or it wasn't laid out yet ("not clickable"): a slow runner (#89) renders
+ * a beat later than the click arrives. Any other error, or the same one after `timeout`, is thrown.
+ */
+export async function clickWhenReady(page: Page, selector: string, timeout = 10000) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    try {
+      await page.waitForSelector(selector, { visible: true, timeout: Math.max(1, end - Date.now()) });
+      return await page.click(selector);
+    } catch (error) {
+      if (Date.now() > end || !/detached|not clickable/i.test(String(error))) throw error;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+}
+
+/**
  * Starts the packaged app and attaches to its window. When it fails, the error says why: the exit
  * code or signal and how soon, or that the DevTools port never opened (and the process is still
  * running), with what it printed. A launch is tried again once, and only when no window ever

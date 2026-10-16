@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
-import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome, clickWhenReady } from "../helpers/app.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -109,7 +109,7 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
     await waitFor(page, "[data-testid=new-project-form]");
     await page.click("[data-testid=choose-folder]");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
-    await page.click("[data-testid=create]");
+    await clickWhenReady(page, "[data-testid=create]");
     await waitFor(page, "[data-testid=editor]");
     await page.keyboard.press("Escape");
     await page.click("[data-testid=open-settings]");
