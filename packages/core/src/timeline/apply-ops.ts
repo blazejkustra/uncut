@@ -125,7 +125,11 @@ function applyOp(project: Draft, op: Op) {
       item.duration -= op.frames;
       if (op.edge === "start") {
         // The source moves with the start, at the clip's speed. A still image has no source time.
-        if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1));
+        if (item.type === "graphic") {
+          // A graphic is lengthened at its start too: its time can't go before its own 0, so it clamps there (not an error).
+          const at = Math.max(0, (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1)));
+          if (at > 0 || item.in !== undefined) item.in = at;
+        } else if (hasSourceTime(project, item)) item.in = (item.in ?? 0) + Math.round(op.frames * (item.speed ?? 1));
         if (item.start !== undefined) item.start += op.frames;
         if (item.in !== undefined && item.in < 0) throw new EditError(`"${item.id}" can't extend before the start of its media`);
         // Keys stay on their moment: they shift with the new start, and ones now before it go.
