@@ -103,6 +103,12 @@ function EffectEditor({ project, track, index, fx, online, onMoved, onRemoved }:
             set(d);
             endPreview(true);
           }}
+          onCancel={() => {
+            // Cancelled or closed mid-drag (D262): no edit, and the scrub preview goes.
+            dragRef.current = undefined;
+            setDrag(undefined);
+            endPreview(false);
+          }}
         />
         <div className="fxp-bands">
           <div className="fxp-band">

@@ -93,7 +93,8 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
         )}
         {notice && !changedOnDisk && (
           // #67 (D239): closes itself after a while; hovering it keeps it.
-          <ErrorToast text={notice.text} token={notice} onClose={actions.dismissNotice} testId="editor-error" />
+          // D262: a transport problem stays while the connection is still down (it goes on reconnect).
+          <ErrorToast text={notice.text} token={notice} onClose={actions.dismissNotice} testId="editor-error" sticky={notice.transport === true && !online} />
         )}
       </div>
       <Rail tab={tab} onTab={setTab} />

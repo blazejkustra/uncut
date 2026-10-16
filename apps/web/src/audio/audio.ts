@@ -30,10 +30,18 @@
 // export's alimiter does, and a clip at the ceiling, so the preview never goes over it either;
 // the meters, level() and the capture read after it.
 //
+// Noise removal's latency (D262): its worklet hands the sound back DENOISE_FFT samples (~21 ms)
+// late, which the export's afftdn doesn't. So a track with noise removal running is heard that much
+// early: its items are looked at `lead` seconds ahead (which item sounds, its gain, its source time),
+// and its clips sound through an <audio> element of the mix's (the Compositor's <video> keeps only
+// the picture), started `lead` ahead. Out of the worklet the sound lands with the picture and the
+// other tracks, as in the export. Every play start, seek and scrub clears the worklets' buffers.
+//
 // The file:// renderer can only hear an element through Web Audio if the media was fetched in
 // CORS mode: elements get crossOrigin="anonymous" before their src, and the server's /media/file
 // route allows it.
 import { audibleAt, audioSpan, itemGain, soundMedia, sourceAt } from "@uncut/core/audio";
+import { trackStages } from "@uncut/core/effects";
 import { duckDbAt } from "@uncut/core/ducking";
 
 import { duckCurvesOf } from "./ducking.ts";
@@ -43,6 +51,7 @@ import { mediaUrl } from "../state/store.ts";
 import { RAMP_S, wanted, reachable, startedAt, WARM_S, PREROLL_S, seek, DRIFT_S } from "./mix/elements.ts";
 import type { MixState } from "./mix/levels.ts";
 import { MixGraph } from "./mix/graph.ts";
+import { stagesLatency } from "./mix/nodes.ts";
 export { setCurrentMix, currentMix } from "./mix/hook.ts";
 export { PREROLL_S, muteOutput } from "./mix/elements.ts";
 export { stageShape, buildStages, buildLimiter } from "./mix/nodes.ts";
@@ -61,6 +70,10 @@ export class Mix extends MixGraph {
   /** Elements ramping to 0 after they stopped sounding, kept until this context time (no click at an end or a cut). */
   private readonly fading = new Map<HTMLMediaElement, number>();
   private last: MixState = { state: "none", items: [] };
+  /** The last render's frame and whether it played: a play start or a jump clears noise removal (D262). */
+  private was: { frame: number; playing: boolean } | undefined;
+  /** The lead (s) each own element was last started with: a change seeks it (D262). */
+  private readonly ledBy = new WeakMap<HTMLMediaElement, number>();
 
   /** Whether an element is still in use: sounding for an item, or ramping down after it. */
   holds(el: HTMLMediaElement | undefined): boolean {
@@ -167,7 +180,19 @@ export class Mix extends MixGraph {
     const { starts } = layoutOf(project);
     const g = playing ? this.graph() : this.ctx ? { ctx: this.ctx } : undefined;
     if (playing && g?.ctx.state === "suspended") void g.ctx.resume().catch(() => {});
-    const audible = audibleAt(project, starts, frame);
+    // D262: tracks whose noise removal delays their sound are looked at that much ahead.
+    const leads = new Map<string, number>();
+    for (const t of project.tracks) {
+      const lead = stagesLatency(trackStages(t), this.ctx);
+      if (lead > 0) leads.set(t.id, lead);
+    }
+    const leadOf = (trackId: string) => leads.get(trackId) ?? 0;
+    let audible = audibleAt(project, starts, frame);
+    if (leads.size) {
+      audible = audible.filter((a) => !leads.has(a.track.id));
+      for (const lead of new Set(leads.values())) audible.push(...audibleAt(project, starts, frame + lead * fps).filter((a) => leads.get(a.track.id) === lead));
+    }
+    this.clearOnJump(frame, playing, fps);
     // Ducking (D85): each ducked track's curve, added to its items' gain like the export's expression.
     const ducks = duckCurvesOf(project);
     const audibleIds = new Set(audible.map((a) => a.item.id));
@@ -189,14 +214,16 @@ export class Mix extends MixGraph {
       const id = a.item.id;
       const index = a.track.items.indexOf(a.item);
       const start = starts.get(id) ?? 0;
-      const local = Math.min(ahead, audioSpan(a.track, index, start).to - 1e-6) - start;
+      const lead = leadOf(a.track.id);
+      const local = Math.min(ahead + lead * fps, audioSpan(a.track, index, start).to - 1e-6) - start;
       const gain = a.muted ? 0 : itemGain(a.track, index, local, duckDbAt(ducks.get(a.track.id)?.keys, start + local));
-      const video = this.shown.get(id);
+      // A led track's clip sounds through an <audio> of ours, started early (D262); its <video> shows the picture.
+      const video = lead > 0 ? undefined : this.shown.get(id);
       const preferred: HTMLMediaElement | undefined = video ?? this.ownElement(a.item, project);
       if (!preferred) continue;
       if (!video) {
         keepOwn.add(id);
-        this.drive(preferred, a.item, a.source, playing);
+        this.drive(preferred, a.item, a.source, playing, lead);
       }
       let cur = this.active.get(id)?.el;
       if (cur && cur !== preferred) {
@@ -214,7 +241,7 @@ export class Mix extends MixGraph {
           // Compositor no longer shows plays on by itself for these few frames.
           if (this.own.get(id) === cur) {
             keepOwn.add(id);
-            this.drive(cur, a.item, a.source, playing);
+            this.drive(cur, a.item, a.source, playing, lead);
           }
           const route = this.route(preferred);
           if (route) this.ramp(route, 0);
@@ -242,18 +269,20 @@ export class Mix extends MixGraph {
     // playing elements instead of waiting for one to start.
     for (const track of project.tracks) {
       track.items.forEach((item, index) => {
-        if (keepOwn.has(item.id) || this.shown.has(item.id) || !soundMedia(project, item)) return;
-        // Clips on a visible track get their <video> from the Compositor, which warms it up.
-        if (item.type === "clip" && !track.hidden) return;
+        const lead = leadOf(track.id);
+        if (keepOwn.has(item.id) || (this.shown.has(item.id) && lead === 0) || !soundMedia(project, item)) return;
+        // Clips on a visible track get their <video> from the Compositor, which warms it up (a led track's: ours, D262).
+        if (item.type === "clip" && !track.hidden && lead === 0) return;
         const start = starts.get(item.id) ?? 0;
         const from = audioSpan(track, index, start).from;
-        if (from <= frame || from - frame > WARM_S * fps) return;
+        const at = frame + lead * fps;
+        if (from <= at || from - at > WARM_S * fps) return;
         const el = this.ownElement(item, project);
         if (!el) return;
         keepOwn.add(item.id);
-        const early = sourceAt(project, item, frame - start);
-        if (playing && from - frame <= PREROLL_S * fps && (item.in ?? 0) + (frame - start) * (item.speed ?? 1) >= 0) {
-          this.drive(el, item, early, true);
+        const early = sourceAt(project, item, at - start);
+        if (playing && from - at <= PREROLL_S * fps && (item.in ?? 0) + (at - start) * (item.speed ?? 1) >= 0) {
+          this.drive(el, item, early, true, lead);
           const route = this.route(el);
           if (route) this.ramp(route, 0);
         } else {
@@ -270,7 +299,7 @@ export class Mix extends MixGraph {
   }
 
   /** Keep an element this mix owns in step with the clock (the Compositor does this for video). */
-  private drive(el: HTMLMediaElement, item: Item, source: number, playing: boolean) {
+  private drive(el: HTMLMediaElement, item: Item, source: number, playing: boolean, lead = 0) {
     const rate = item.speed ?? 1;
     if (el.playbackRate !== rate || el.preservesPitch !== (item.keepPitch !== false)) {
       el.playbackRate = rate;
@@ -278,11 +307,15 @@ export class Mix extends MixGraph {
     }
     el.loop = item.loop === true;
     const target = source + 0.0001;
+    // Noise removal came or went mid-play (D262): its new lead is a seek, too small to count as drift.
+    const relead = (this.ledBy.get(el) ?? 0) !== lead;
+    this.ledBy.set(el, lead);
     if (playing) {
       if (el.paused) {
         seek(el, target);
         el.play().catch(() => {});
-      } else if (Math.abs(el.currentTime - target) > DRIFT_S * Math.max(1, rate)) {
+      } else if (relead) seek(el, target);
+      else if (Math.abs(el.currentTime - target) > DRIFT_S * Math.max(1, rate)) {
         // A looped item wraps by itself; its clock wraps too, a little off from the file's end.
         const length = Number.isFinite(el.duration) ? el.duration : 0;
         if (!(el.loop && length > 0 && Math.abs(Math.abs(el.currentTime - target) - length) < DRIFT_S)) seek(el, target);
@@ -291,6 +324,19 @@ export class Mix extends MixGraph {
       if (!el.paused) el.pause();
       seek(el, target);
     }
+  }
+
+  /**
+   * Clear noise removal's buffers (D262) when the playhead starts, jumps or is scrubbed: what they
+   * hold belongs to the old position. Playing on from one frame to the next keeps them.
+   */
+  private clearOnJump(frame: number, playing: boolean, fps: number) {
+    const was = this.was;
+    this.was = { frame, playing };
+    if (!was) return;
+    const started = playing && !was.playing;
+    const jumped = playing ? frame < was.frame || frame - was.frame > fps / 2 : frame !== was.frame;
+    if (started || jumped) this.resetDenoise();
   }
 
   /** Silence everything (another project, the preview going away). */

@@ -1,5 +1,5 @@
 import type { Stage } from "@uncut/core/effects";
-import { buildStages, buildLimiter, loadDenoise } from "./nodes.ts";
+import { buildStages, buildLimiter, loadDenoise, denoiseStats } from "./nodes.ts";
 import { type CaptureResult, SILENT } from "./levels.ts";
 import type { Mix } from "../audio.ts";
 
@@ -21,6 +21,9 @@ const b64 = (a: Float32Array) => {
   level: () => current?.level() ?? { rms: 0, peak: 0 },
   levels: () => current?.levels() ?? { master: SILENT, tracks: {}, limiter: 0, reduction: {} },
   state: () => current?.state() ?? { state: "none", items: [] },
+  // Test-only (D262): noise removal's processors made on the live context and still running (each chain
+  // thrown away must end its own: toggling noise removal ten times leaves only the current one).
+  denoiseStats: () => denoiseStats(),
   // Test-only (D83): record the master output; stop returns the samples (float32, base64 per
   // channel), the context time of the first one, and the frame drawn at each context time.
   startCapture: () => {

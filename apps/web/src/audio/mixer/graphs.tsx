@@ -62,8 +62,21 @@ const EQ_RANGE = 18;
 const gy = (db: number) => H / 2 - (Math.max(-EQ_RANGE, Math.min(EQ_RANGE, db)) / EQ_RANGE) * (H / 2 - 6);
 
 /** The EQ's response 20 Hz–20 kHz on a log axis, ±18 dB, with a handle per band (drag: frequency sideways, gain up and down). */
-export function EqGraph({ stages, handles, bypassed, onDrag, onDrop, disabled, testId = "fx-eq-graph" }: { stages: ReadonlyArray<Stage>; handles: ReadonlyArray<EqHandle>; bypassed: boolean; onDrag?: (id: string, freq: number, gainDb: number) => void; onDrop?: () => void; disabled?: boolean; testId?: string }) {
+export function EqGraph({ stages, handles, bypassed, onDrag, onDrop, onCancel, disabled, testId = "fx-eq-graph" }: { stages: ReadonlyArray<Stage>; handles: ReadonlyArray<EqHandle>; bypassed: boolean; onDrag?: (id: string, freq: number, gainDb: number) => void; onDrop?: () => void; onCancel?: () => void; disabled?: boolean; testId?: string }) {
   const svg = useRef<SVGSVGElement>(null);
+  // A drag's window listeners, removed when it ends, is cancelled (pointercancel), or the graph goes
+  // away mid-drag (the popover closed: D262), so no listener or scrub preview is left behind.
+  const dragging = useRef<(() => void) | undefined>(undefined);
+  const cancel = useRef(onCancel);
+  cancel.current = onCancel;
+  useEffect(
+    () => () => {
+      if (!dragging.current) return;
+      dragging.current();
+      cancel.current?.();
+    },
+    [],
+  );
   const points: Array<string> = [];
   for (let x = 0; x <= W; x += 2) points.push(`${x},${gy(stagesResponseDb(stages, 48000, xf(x))).toFixed(1)}`);
   const at1k = stagesResponseDb(stages, 48000, 1000);
@@ -81,13 +94,25 @@ export function EqGraph({ stages, handles, bypassed, onDrag, onDrop, disabled, t
       const gain = h.vertical ? Math.round(Math.max(-24, Math.min(24, ((H / 2 - y) / (H / 2 - 6)) * EQ_RANGE)) * 2) / 2 : h.gainDb;
       onDrag(h.id, freq, gain);
     };
-    const up = () => {
+    const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancelled);
+      dragging.current = undefined;
+    };
+    const up = () => {
+      stop();
       onDrop?.();
     };
+    const cancelled = () => {
+      stop();
+      cancel.current?.();
+    };
+    dragging.current?.();
+    dragging.current = stop;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancelled);
   };
   return (
     <svg ref={svg} className={`fxg ${bypassed ? "bypassed" : ""}`} viewBox={`0 0 ${W} ${H}`} data-testid={testId} data-at1k={at1k.toFixed(2)} role="img" aria-label={`EQ response${bypassed ? " (bypassed)" : ""}`}>

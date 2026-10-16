@@ -1,6 +1,7 @@
 // Web Audio node builders for the mix: effect stage chains (D84), noise removal's worklet (D246)
 // and the master limiter (D86).
 import { type Stage, makeupCompensationDb, LIMITER_MARGIN_DB, DENOISE_FLOOR_DB } from "@uncut/core/effects";
+import { DENOISE_FFT } from "@uncut/core/denoise";
 import denoiseWorkletUrl from "./denoiseWorklet.ts?worker&url";
 
 /**
@@ -25,6 +26,28 @@ export function loadDenoise(ctx: BaseAudioContext): Promise<boolean> {
 }
 export const denoiseReady = (ctx: BaseAudioContext) => worklets.get(ctx)?.ready === true;
 
+/**
+ * Denoise worklets made and not yet ended (D262): a node leaves when its processor answers a
+ * dispose with { ended: true }, i.e. its process() has returned false and the render thread let it
+ * go. The app tests read the count (__uncutAudio.denoiseStats) to check that toggling noise removal
+ * leaves none behind.
+ */
+const liveDenoise = new Set<AudioWorkletNode>();
+let madeDenoise = 0;
+export function denoiseStats(): { readonly live: number; readonly made: number } {
+  // A closed context's processors are gone with it.
+  for (const w of liveDenoise) if (w.context.state === "closed") liveDenoise.delete(w);
+  return { live: liveDenoise.size, made: madeDenoise };
+}
+
+/**
+ * How long a track's stages delay its sound on `ctx` (s): DENOISE_FFT samples per noise removal whose
+ * worklet runs there (a pending one passes through), 0 without. The mix starts that track's sound
+ * this much early so it lands with the picture and the other tracks (D262).
+ */
+export const stagesLatency = (stages: ReadonlyArray<Stage>, ctx: BaseAudioContext | undefined) =>
+  ctx && denoiseReady(ctx) ? (stages.filter((s) => s.kind === "denoise").length * DENOISE_FFT) / ctx.sampleRate : 0;
+
 /** dB → linear (no cutoff: for node parameters). */
 const lin = (db: number) => 10 ** (db / 20);
 
@@ -39,6 +62,10 @@ export interface StageChain {
   readonly set: (stages: ReadonlyArray<Stage>, ramp: number) => void;
   /** Compressors' gain reduction now (dB, ≤ 0), the deepest. */
   readonly reduction: () => number;
+  /** Clear noise removal's buffers (a seek or a play start: no stale tail at the new position). */
+  readonly reset: () => void;
+  /** Disconnect every node and end noise removal's processors (D262): call once, when the chain is thrown away. */
+  readonly dispose: () => void;
 }
 /** A chain's shape on `ctx`: a denoise stage reads "denoise…" until its worklet has loaded there. */
 export const stageShape = (stages: ReadonlyArray<Stage>, ctx?: BaseAudioContext) =>
@@ -53,6 +80,7 @@ export const stageShape = (stages: ReadonlyArray<Stage>, ctx?: BaseAudioContext)
 export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>): StageChain {
   type Part = { readonly stage: Stage["kind"]; readonly nodes: ReadonlyArray<AudioNode>; readonly set: (s: Stage, at: (p: AudioParam, v: number) => void) => void };
   const parts: Array<Part> = [];
+  const denoisers: Array<AudioWorkletNode> = [];
   const denoise = denoiseReady(ctx);
   // Parts line up with the stages: a pending denoise stage has no nodes (and is skipped when wiring).
   for (const stage of stages) {
@@ -93,6 +121,18 @@ export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>)
         continue;
       }
       const w = new AudioWorkletNode(ctx, "uncut-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: "explicit", channelInterpretation: "speakers" });
+      denoisers.push(w);
+      // Counted on a live context only (an offline render ends with its context).
+      if (typeof AudioContext !== "undefined" && ctx instanceof AudioContext) {
+        liveDenoise.add(w);
+        madeDenoise++;
+      }
+      w.port.onmessage = (e: MessageEvent<{ ended?: boolean }>) => {
+        if (e.data?.ended) {
+          liveDenoise.delete(w);
+          w.port.onmessage = null;
+        }
+      };
       let last = "";
       parts.push({
         stage: "denoise",
@@ -127,13 +167,24 @@ export function buildStages(ctx: BaseAudioContext, stages: ReadonlyArray<Stage>)
   };
   apply(stages, 0);
   const compressors = parts.filter((p) => p.stage === "compressor").map((p) => p.nodes[0] as DynamicsCompressorNode);
+  const nodes = parts.flatMap((p) => p.nodes);
+  let disposed = false;
   return {
     shape: stageShape(stages, ctx),
     first: wired[0]?.nodes[0],
     last: wired.at(-1)?.nodes.at(-1),
-    nodes: parts.flatMap((p) => p.nodes),
+    nodes,
     set: apply,
     reduction: () => compressors.reduce((m, c) => Math.min(m, c.reduction), 0),
+    reset: () => {
+      if (!disposed) for (const w of denoisers) w.port.postMessage({ reset: true });
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      for (const w of denoisers) w.port.postMessage({ dispose: true });
+      for (const n of nodes) n.disconnect();
+    },
   };
 }
 
