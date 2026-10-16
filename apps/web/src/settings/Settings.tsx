@@ -115,7 +115,7 @@ function AppSettings() {
         </label>
         <label className="check-row">
           <input type="checkbox" data-testid="settings-gpu-compositor" checked={gpu} onChange={(e) => setGpuCompositorOn(e.target.checked)} />
-          Draw videos and images on the GPU (experimental)
+          Draw videos and images on the GPU
         </label>
       </div>
       <div className="group">

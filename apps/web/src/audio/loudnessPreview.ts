@@ -23,11 +23,12 @@ export interface LoudnessPreview {
 }
 
 const STORE_KEY = "uncut.previewAtTarget";
+// D273: At target unless this viewer chose As mixed ("0" stored).
 const readChoice = () => {
   try {
-    return localStorage.getItem(STORE_KEY) === "1";
+    return localStorage.getItem(STORE_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 };
 let state: LoudnessPreview = { atTarget: readChoice(), measuring: false };

@@ -22,6 +22,7 @@ import type { Page } from "puppeteer-core";
 import { EFFECTS, LOOKS } from "../../packages/core/src/index.ts";
 import type { Item, Project } from "../../packages/core/src/timeline/types.ts";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { makeColours } from "../helpers/fx-fixture.ts";
 
@@ -183,6 +184,9 @@ test("D136: every look and effect drawn in the preview matches the export; the E
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir, saveAs]), UNCUT_CLAUDE: resolve("test/helpers/fake-claude.ts") } });
   page = app.page;
   await waitForWelcome(page);
+  // The DOM path's effects canvases are under test (D273 made the GPU compositor the default;
+  // gpu-compositor-app checks its parity).
+  await viewerPrefs(page, { gpu: false });
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
   await page.waitForSelector(`[data-testid=timeline-item][data-item=c${CASES.length - 1}]`);

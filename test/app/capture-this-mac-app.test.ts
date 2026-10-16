@@ -13,7 +13,7 @@
 // - D238: one recorder: sources toggle on and off, the screen or window is picked in a modal; a
 //   camera take alone is picture only (the microphone is its own source).
 // - D144: the agent's screen_record (scripted claude): the card in the Agent tab preselects the
-//   window it named, Record runs the stand-in take for its seconds after a 3-2-1 (kept for the agent, D267) and a status
+//   window it named, Record runs the stand-in take for its seconds at once (no 3-2-1, D273) and a status
 //   line, and the take lands in Media as an edit of the turn.
 // Screenshots: test-output/capture-mic.png, capture-recording-mic.png, capture-camera.png,
 // capture-screen.png, capture-denied.png, capture-agent-card.png, capture-agent-recording.png.
@@ -354,13 +354,21 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     await page.waitForFunction(() => document.querySelector<HTMLSelectElement>("[data-testid=agent-screen-source]")?.value === "standin:window:1", { timeout: 10000 });
     assert.match(await text(page, "[data-testid=agent-approval]"), /^Record "test window" for 1\.5 s\?/);
     assert.ok(!/[·•∙⋅*$]/.test(await text(page, "[data-testid=agent-approval]")), "no price, no dots between words");
+    assert.match(await text(page, "[data-testid=agent-approval]"), /Records 1\.5 s from the moment you click Record/, "no 3-2-1 on the card (D273)");
     assert.equal(onDisk().media.length, 1, "nothing recorded before Record");
     await page.screenshot({ path: "test-output/capture-agent-card.png" });
     await page.click("[data-testid=agent-allow]");
     await waitFor(page, "[data-testid=agent-screen-take]", 10000);
-    // D267: the agent's take keeps its 3-2-1 (the user gets a moment to switch to what's recorded).
-    await page.waitForFunction(() => /Recording in [1-3]/.test(document.querySelector("[data-testid=agent-screen-take]")?.textContent ?? ""), { timeout: 5000 });
-    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-screen-take]")?.dataset.phase === "recording", { timeout: 10000 });
+    // D273: the agent's take starts at once too: recording, never a 3-2-1.
+    const counted: Array<string> = [];
+    for (const end = Date.now() + 10000; ; ) {
+      const take = await page.$eval("[data-testid=agent-screen-take]", (el) => ({ phase: (el as HTMLElement).dataset.phase, text: el.textContent ?? "" })).catch(() => undefined);
+      if (!take || take.phase === "recording" || take.phase === "saving") break;
+      if (take && /Recording in/.test(take.text)) counted.push(take.text);
+      assert.ok(Date.now() < end, `the agent's take started recording (last: ${JSON.stringify(take)})`);
+      await sleep(50);
+    }
+    assert.deepEqual(counted, [], "no 3-2-1 before the agent's take");
     await page.screenshot({ path: "test-output/capture-agent-recording.png" });
     // It stops by itself after 1.5 s; the turn finishes with the take in Media.
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 60000 });

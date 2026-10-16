@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -141,6 +142,8 @@ test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and
   const music = () => onDisk().tracks.find((t: { id: string }) => t.id === "audio").items[0];
   try {
     await waitForWelcome(page);
+    // The mix as it is (D273 made At target the default): levels are measured against it.
+    await viewerPrefs(page, { atTarget: false });
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     // The clip's own sound (660 Hz at half scale: RMS ≈ 0.354), drawn as a compact waveform.
@@ -314,6 +317,8 @@ test("a hidden track's clip still sounds; muting is what silences it", { skip, t
   apps.add(app);
   const { page } = app;
   await waitForWelcome(page);
+  // The mix as it is (D273 made At target the default): levels are measured against it.
+  await viewerPrefs(page, { atTarget: false });
   await page.click("[data-testid=open-project]");
   await waitFor(page, "[data-testid=editor]");
   await page.click("[data-testid=timeline]");
@@ -383,6 +388,8 @@ test("no dropouts: a hard cut between split clips, hiding and showing a track wh
   const steady = 0.354;
   try {
     await waitForWelcome(page);
+    // The mix as it is (D273 made At target the default): levels are measured against it.
+    await viewerPrefs(page, { atTarget: false });
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     await page.click("[data-testid=timeline]");
@@ -453,6 +460,8 @@ test("a clip at 2× speed plays its sound at that rate without re-seeking; a loo
   const { page } = app;
   const steady = 0.354;
   await waitForWelcome(page);
+  // The mix as it is (D273 made At target the default): levels are measured against it.
+  await viewerPrefs(page, { atTarget: false });
   await page.click("[data-testid=open-project]");
   await waitFor(page, "[data-testid=editor]");
   await page.click("[data-testid=timeline]");

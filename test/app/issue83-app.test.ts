@@ -13,7 +13,7 @@
 //   track (hard right), the denoised voice lands within 3 ms of it, as in the export (no ±0.6 s
 //   search: one cross-correlation over ±30 ms); ten On/Off toggles leave one denoise processor
 //   running, not eleven (__uncutAudio.denoiseStats).
-// - The loudness target heard: the master popover's Preview "At target" plays the gain the export's
+// - The loudness target heard: At target by default (D273), As mixed chosen and kept; the master popover's Preview "At target" plays the gain the export's
 //   loudness step measures (export.loudness); the recorded preview lands within 1 LU of the target.
 // - The popovers: one On switch (bypass, ducking, limiter), the EQ curve with a dragged mid handle
 //   (one edit), the compressor's curve and live gain reduction while playing, the duck curve with
@@ -204,6 +204,14 @@ test("issue #83: noise removal heard in the preview ≈ the export, the loudness
     let rev = await revision(page);
     await page.click("[data-testid=bottom-mixer]");
     await waitFor(page, "[data-testid=mixer-panel]");
+    // D273: the preview plays At target by default; this viewer picks As mixed (the levels below are
+    // the mix as it is), and that choice is remembered.
+    await page.click("[data-testid=target-btn]");
+    await waitFor(page, "[data-testid=master-popover]");
+    assert.equal(await page.$eval("[data-testid=preview-loudness-target]", (el) => el.getAttribute("aria-checked")), "true", "At target by default");
+    await page.click("[data-testid=preview-loudness-mixed]");
+    assert.equal(await page.evaluate(() => localStorage.getItem("uncut.previewAtTarget")), "0");
+    await page.keyboard.press("Escape");
 
     // ---- Noise removal: added, no export-only marks, its floor measured ----
     await page.click(`${strip("voice")} [data-testid=fx-add]`);
@@ -357,7 +365,7 @@ test("issue #83: noise removal heard in the preview ≈ the export, the loudness
     await waitFor(page, "[data-testid=master-popover]");
     await page.select("[data-testid=master-popover] [data-testid=target-select]", "-23");
     rev = await savedAfter(page, rev);
-    assert.equal(await page.$eval("[data-testid=preview-loudness-mixed]", (el) => el.getAttribute("aria-checked")), "true", "As mixed by default");
+    assert.equal(await page.$eval("[data-testid=preview-loudness-mixed]", (el) => el.getAttribute("aria-checked")), "true", "As mixed: this viewer's choice wins over the default");
     await page.click("[data-testid=preview-loudness-target]");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-loudness-status]")?.dataset.gain !== "", { timeout: 60000 });
     const gain = Number(await page.$eval("[data-testid=preview-loudness-status]", (el) => (el as HTMLElement).dataset.gain));

@@ -68,7 +68,7 @@ export function AgentTakeLine() {
   if (!agentId || phase === "idle") return null;
   return (
     <div className="agent-take small" data-testid="agent-screen-take" data-phase={phase}>
-      <span className="capture-timer">{phase === "countdown" ? `Recording in ${count ?? ""}` : phase === "recording" ? `Recording ${clock((now - (startedAt ?? now)) / 1000)}` : "Sending the recording…"}</span>
+      <span className="capture-timer">{phase === "countdown" ? (count ? `Recording in ${count}` : "Starting…") : phase === "recording" ? `Recording ${clock((now - (startedAt ?? now)) / 1000)}` : "Sending the recording…"}</span>
       {phase === "recording" && (
         <button className="link-btn" data-testid="agent-screen-stop" onClick={() => void stopTake()}>
           Stop now
