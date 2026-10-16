@@ -27,9 +27,11 @@ interface UpdateView {
   readonly dismissed: UpdateStatus | undefined;
   /** Restart to update was refused: something started meanwhile ("busy"), or the update couldn't be prepared ("not-ready"). */
   readonly refused: false | "busy" | "not-ready";
+  /** Restart to update is under way (the button is disabled; a second click does nothing). */
+  readonly restarting: boolean;
 }
 
-let view: UpdateView = { status: { kind: "idle" }, busy: false, dismissed: undefined, refused: false };
+let view: UpdateView = { status: { kind: "idle" }, busy: false, dismissed: undefined, refused: false, restarting: false };
 const viewListeners = new Set<() => void>();
 const setView = (patch: Partial<UpdateView>) => {
   view = { ...view, ...patch };
@@ -43,10 +45,14 @@ let started = false;
 export function startUpdates() {
   if (started || !bridge.onUpdateStatus) return;
   started = true;
+  // Sent once at start whatever it is (a reloaded page, e.g. an environment switch, must clear a
+  // busy the shell still holds from the page before), then on every change.
+  let sent: boolean | undefined;
   const report = () => {
     const busy = busyNow();
-    if (busy === view.busy) return;
-    setView({ busy, refused: busy ? view.refused : false });
+    if (busy === sent) return;
+    sent = busy;
+    if (busy !== view.busy) setView({ busy, refused: busy ? view.refused : false });
     bridge.setUpdateBusy?.(busy);
   };
   subscribeApp(report);
@@ -60,7 +66,14 @@ export const dismissUpdate = () => setView({ dismissed: view.status, refused: fa
 
 /** Restart to update: asks about pending work as ⌘Q does, then the shell quits and installs. */
 export async function restartToUpdate() {
-  if (!(await confirmLeave("quit"))) return;
-  const result = await bridge.installUpdate?.();
-  if (result === "busy" || result === "not-ready") setView({ refused: result });
+  if (view.restarting) return;
+  setView({ restarting: true, refused: false });
+  try {
+    if (!(await confirmLeave("quit"))) return setView({ restarting: false });
+    const result = await bridge.installUpdate?.();
+    if (result === "installing") return; // the app quits; stays disabled until then
+    setView({ restarting: false, refused: result === "busy" || result === "not-ready" ? result : false });
+  } catch {
+    setView({ restarting: false });
+  }
 }

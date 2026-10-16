@@ -15,7 +15,7 @@ const UP_TO_DATE_MS = 4000;
 
 export function UpdateToast() {
   useEffect(startUpdates, []);
-  const { status, busy, dismissed, refused } = useUpdates();
+  const { status, busy, dismissed, refused, restarting } = useUpdates();
   const closed = dismissed === status;
   useEffect(() => {
     if (status.kind !== "none" || !status.manual || closed) return;
@@ -33,8 +33,8 @@ export function UpdateToast() {
           <strong>Uncut {status.version} is ready</strong>
           <span className="update-sub" data-testid="update-sub">{refused === "busy" ? "Something started meanwhile. Restart once it's done." : refused === "not-ready" ? "Couldn't prepare the update. Download it from GitHub instead." : "Restart to update now, or it installs when you quit."}</span>
         </span>
-        <button className="btn primary" data-testid="update-restart" onClick={() => void restartToUpdate()}>
-          Restart to update
+        <button className="btn primary" data-testid="update-restart" disabled={restarting} onClick={() => void restartToUpdate()}>
+          {restarting ? "Restarting…" : "Restart to update"}
         </button>
         <button className="btn ghost" data-testid="update-later" onClick={dismissUpdate}>
           Later

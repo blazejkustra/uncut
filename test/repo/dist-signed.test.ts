@@ -128,6 +128,6 @@ test("release.yml runs pnpm dist:signed with a temporary keychain and the notary
   assert.match(yml, /UNCUT_NOTARY_KEYCHAIN=\$KC/);
   assert.match(yml, /UNCUT_NOTARY_PROFILE: uncut-notary/);
   assert.match(yml, /UNCUT_TELEMETRY_TOKEN: \$\{\{ secrets\.UNCUT_TELEMETRY_TOKEN \}\}/);
-  assert.match(yml, /gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg --draft/);
+  assert.match(yml, /gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg [^\n]*--draft/);
   assert.doesNotMatch(yml, /CSC_LINK|CSC_KEY_PASSWORD/, "electron-builder's own keychain would hide the identity from the script's checks");
 });

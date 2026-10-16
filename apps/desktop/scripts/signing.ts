@@ -5,6 +5,9 @@
 // is notarized and stapled too, and copied to release/. Pure helpers here (identity, arguments,
 // output parsing); scripts/dist-signed.ts runs them.
 
+import { createRequire } from "node:module";
+import { join } from "node:path";
+
 /** Where the signed build goes, relative to apps/desktop (electron-builder's project dir). */
 export const SIGNED_OUTPUT = "../../dist/signed";
 export const SIGNED_ENTITLEMENTS = "build/signed.entitlements.plist";
@@ -213,6 +216,18 @@ export const updateZipName = (version: string) => `Uncut-${version}-arm64-mac.zi
 
 /** ditto's arguments for the update zip of the stapled app (what electron-builder's mac zip and Apple use). */
 export const updateZipArgs = (app: string, zip: string) => ["-c", "-k", "--sequesterRsrc", "--keepParent", app, zip];
+
+export type BuildBlockMap = (file: string, compression: "gzip", out: string) => Promise<{ size: number; sha512: string }>;
+
+/**
+ * app-builder-lib's blockmap builder (electron-builder's own code; app-builder-lib isn't a direct
+ * dependency). electron-builder is resolved from apps/desktop/package.json, which follows pnpm's
+ * symlink to its real folder, where app-builder-lib sits beside it (D276).
+ */
+export function loadBuildBlockMap(desktopDir: string): BuildBlockMap {
+  const builderPkg = createRequire(join(desktopDir, "package.json")).resolve("electron-builder/package.json");
+  return (createRequire(builderPkg)("app-builder-lib/out/targets/blockmap/blockmap") as { buildBlockMap: BuildBlockMap }).buildBlockMap;
+}
 
 export type FeedFile = { readonly url: string; readonly sha512: string; readonly size: number };
 

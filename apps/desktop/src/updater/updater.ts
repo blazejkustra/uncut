@@ -32,7 +32,7 @@ const bundlePath = () => path.resolve(path.dirname(process.execPath), "../..");
 
 function readSignature(): Promise<BundleSignature | undefined> {
   return new Promise((resolve) => {
-    execFile("codesign", ["-dvv", bundlePath()], { timeout: 5000 }, (_error, stdout, stderr) => {
+    execFile("/usr/bin/codesign", ["-dvv", bundlePath()], { timeout: 5000 }, (_error, stdout, stderr) => {
       const out = `${stdout}${stderr}`;
       resolve(out.trim() ? parseSignature(out) : undefined);
     });
@@ -88,7 +88,9 @@ export async function startUpdater(options: {
 
   // Whether the running check was asked for by the user (shows checking / up to date / progress).
   let manual = false;
+  // The version Squirrel has staged (ready to install), and whether Restart to update is under way.
   let downloaded: string | undefined;
+  let installing = false;
   const versionOf = (info: UpdateInfo) => info.version;
 
   updater.on("checking-for-update", () => {
@@ -107,40 +109,45 @@ export async function startUpdater(options: {
   });
   // Squirrel.Mac's own step after electron-updater's download: it fetches the zip from
   // electron-updater's local proxy, checks the new bundle's signature against this app's and stages
-  // it. Restart to update waits for its answer: quitting before Squirrel is ready would install
-  // nothing (and the server would already be stopped). Its refusal is logged, as any failure.
-  let staged: Promise<boolean> | undefined;
-  const watchSquirrel = () =>
-    new Promise<boolean>((resolve) => {
-      const done = (ok: boolean) => {
-        squirrel.off("update-downloaded", onReady);
-        squirrel.off("error", onError);
-        if (!ok) log("Squirrel.Mac could not stage the update (Restart to update will say so)");
-        resolve(ok);
-      };
-      const onReady = () => done(true);
-      const onError = () => done(false);
-      squirrel.on("update-downloaded", onReady);
-      squirrel.on("error", onError);
-    });
-  updater.on("update-downloaded", (info: UpdateInfo) => {
-    staged ??= watchSquirrel();
-    downloaded = versionOf(info);
+  // it. Only then is the update "ready" (the toast, Restart to update): a refusal is logged, the
+  // toast goes away and a later check tries again. Tests on the ad-hoc build (whose Squirrel must
+  // never stage anything) take electron-updater's download as staged: UNCUT_TEST_UPDATE_STAGED=1.
+  const testStaged = policy.test && process.env.UNCUT_TEST_UPDATE_STAGED === "1";
+  let staging: string | undefined;
+  const onSquirrelReady = () => {
+    if (!staging) return;
+    downloaded = staging;
+    staging = undefined;
     log(`downloaded ${downloaded}; installs on Restart to update or at quit`);
     send({ kind: "downloaded", version: downloaded });
+  };
+  const onSquirrelError = (error: Error) => {
+    if (!staging || testStaged) return;
+    log(`Squirrel.Mac could not stage ${staging} (not shown; a later check tries again): ${error?.message?.split("\n")[0] ?? String(error)}`);
+    staging = undefined;
+    send({ kind: "idle" });
+  };
+  squirrel.on("update-downloaded", onSquirrelReady);
+  squirrel.on("error", onSquirrelError);
+  updater.on("update-downloaded", (info: UpdateInfo) => {
+    staging = versionOf(info);
+    log(`fetched ${staging}; Squirrel.Mac is staging it`);
+    if (testStaged) onSquirrelReady();
   });
   // Every failure (no network, the private repository's 404, Squirrel refusing a bundle) is only
   // logged: the toast goes away as if nothing happened. Without this listener an error would throw.
   updater.on("error", (error: Error) => {
     log(`check failed (not shown): ${error?.message?.split("\n")[0] ?? String(error)}`);
-    if (!downloaded) send({ kind: "idle" });
+    if (!downloaded && !staging) send({ kind: "idle" });
   });
 
   const check = (asked: boolean) => {
-    // A downloaded update is ready: no need to look again (the menu shows the toast again).
+    // A staged update is ready: no need to look again (the menu shows the toast again).
     if (downloaded) return void (asked && send({ kind: "downloaded", version: downloaded }));
+    if (staging) return;
     manual = asked;
-    updater.checkForUpdates().catch(() => {}); // reported through "error"
+    // Both the check and its download report failures through "error".
+    updater.checkForUpdates().then((r) => void r?.downloadPromise?.catch(() => {}), () => {});
   };
   const schedule = new UpdateSchedule(check, policy.test && process.env.UNCUT_UPDATE_FIRST_CHECK_MS ? { firstMs: Number(process.env.UNCUT_UPDATE_FIRST_CHECK_MS) } : {});
   schedule.start();
@@ -151,15 +158,13 @@ export async function startUpdater(options: {
     checkNow: () => schedule.manual(),
     setBusy: (busy) => schedule.setBusy(busy),
     status: () => status,
+    // Restart to update: the renderer has just asked about unsaved work (confirmLeave). Immediate (no
+    // waiting: the toast only shows once Squirrel has staged the update), refused while busy, once.
     install: async () => {
       if (!downloaded) return "not-ready";
       if (!canInstallNow(schedule.isBusy())) return "busy";
-      // Squirrel's answer, if it hasn't come yet (bounded: a stuck Squirrel never holds the click).
-      const ready = await Promise.race([staged ?? Promise.resolve(false), new Promise<boolean>((r) => setTimeout(() => r(false), 120_000))]);
-      if (!ready) {
-        log(`not installing ${downloaded}: Squirrel.Mac has not staged it`);
-        return "not-ready";
-      }
+      if (installing) return "installing";
+      installing = true;
       log(`restarting to install ${downloaded}`);
       if (policy.test) {
         // A test build: Squirrel can't install it; say what would happen and stop there.

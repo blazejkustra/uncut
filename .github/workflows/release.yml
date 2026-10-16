@@ -3,17 +3,18 @@
 # Secrets: MACOS_CERT_P12 (the Developer ID Application certificate and key, .p12, base64),
 # MACOS_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD (app-specific), and
 # UNCUT_TELEMETRY_TOKEN (D223; without it the build's telemetry is inert).
-# Without MACOS_CERT_P12 the job falls back to the old ad-hoc dmg, so a tag never fails for a missing
-# certificate; that dmg warns on other Macs.
-# Auto-update (#102, D276): on the signed path the release also gets the update zip, the blockmaps
-# and latest-mac.yml; installed apps find them once the draft release is published (electron-updater's
-# GitHub provider reads the latest published release, never a draft). The ad-hoc fallback uploads
-# only the dmg: an ad-hoc app never updates itself, and its zip would not install over a signed one.
+# Auto-update (#102, D276): the release also gets the update zip, the blockmaps and latest-mac.yml;
+# installed apps find them once the draft release is published (electron-updater's GitHub provider
+# reads the latest published release, never a draft). So a tag without MACOS_CERT_P12 fails: a
+# dmg-only release would become "latest" and leave signed users without an update feed. Without the
+# certificate, run the workflow by hand (workflow_dispatch) for an ad-hoc dmg artifact, no release.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  # By hand: without MACOS_CERT_P12 an ad-hoc dmg as an artifact (no release); with it, a signed one.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -31,6 +32,12 @@ jobs:
           node-version: 24
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+
+      - name: A tag needs the certificate
+        if: env.HAS_CERT != 'true' && github.ref_type == 'tag'
+        run: |
+          echo "::error::No MACOS_CERT_P12 secret: a release tag must be Developer ID-signed (a dmg-only release would break auto-update, D276). Add the signing secrets and re-run, or run the workflow by hand for an ad-hoc dmg."
+          exit 1
 
       # A temporary keychain with the certificate and the notarytool profile; the script finds both
       # there (find-identity searches the keychain list; notarytool gets UNCUT_NOTARY_KEYCHAIN).
@@ -61,7 +68,7 @@ jobs:
 
       # The app compares the feed's version with its own: the tag must be v<apps/desktop/package.json version>.
       - name: Tag matches the app version
-        if: env.HAS_CERT == 'true'
+        if: env.HAS_CERT == 'true' && github.ref_type == 'tag'
         run: |
           VERSION="$(node -p "require('./apps/desktop/package.json').version")"
           if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
@@ -79,8 +86,8 @@ jobs:
           UNCUT_TELEMETRY_TOKEN: ${{ secrets.UNCUT_TELEMETRY_TOKEN }}
         run: pnpm dist:signed
 
-      - name: Ad-hoc dmg (no MACOS_CERT_P12)
-        if: env.HAS_CERT != 'true'
+      - name: Ad-hoc dmg (no MACOS_CERT_P12; by hand only)
+        if: env.HAS_CERT != 'true' && github.ref_type != 'tag'
         env:
           UNCUT_TELEMETRY_TOKEN: ${{ secrets.UNCUT_TELEMETRY_TOKEN }}
         run: |
@@ -97,16 +104,12 @@ jobs:
             release/*.zip
             release/*.blockmap
             release/latest-mac.yml
-      # Signed: the dmg plus the auto-update feed (zip, blockmaps, latest-mac.yml). Ad-hoc: the dmg only.
+      # A tag: the signed dmg plus the auto-update feed (zip, blockmaps, latest-mac.yml), as a draft.
       - name: Draft release
+        if: env.HAS_CERT == 'true' && github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "$HAS_CERT" = "true" ]; then
-            gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
-          else
-            gh release create "$GITHUB_REF_NAME" release/*.dmg --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
-          fi
+        run: gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
       - name: Remove the signing keychain
         if: always() && env.UNCUT_NOTARY_KEYCHAIN != ''
         run: security delete-keychain "$UNCUT_NOTARY_KEYCHAIN"

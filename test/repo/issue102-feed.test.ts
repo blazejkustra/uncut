@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { latestMacYaml, updateZipArgs, updateZipName } from "../../apps/desktop/scripts/signing.ts";
+import { latestMacYaml, loadBuildBlockMap, updateZipArgs, updateZipName } from "../../apps/desktop/scripts/signing.ts";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 const { load } = createRequire(desktopRequire.resolve("electron-updater"))("js-yaml") as { load: (s: string) => unknown };
@@ -48,9 +48,8 @@ test("electron-updater's MacUpdater picks the zip from it on Apple silicon", () 
   assert.deepEqual(picked.map((f) => f.info.url), ["Uncut-0.0.2-arm64-mac.zip"]);
 });
 
-test("blockmaps: electron-builder's builder (as dist:signed loads it) gives the file's base64 sha512 and size", async () => {
-  const req = createRequire(desktopRequire.resolve("electron-builder/package.json"));
-  const { buildBlockMap } = req("app-builder-lib/out/targets/blockmap/blockmap") as { buildBlockMap: (f: string, c: "gzip", o: string) => Promise<{ size: number; sha512: string }> };
+test("blockmaps: the loader dist:signed uses finds electron-builder's builder; base64 sha512 and size of the file", async () => {
+  const buildBlockMap = loadBuildBlockMap(resolve("apps/desktop"));
   const dir = mkdtempSync(join(tmpdir(), "uncut-blockmap-"));
   try {
     const file = join(dir, "Uncut-0.0.2-arm64-mac.zip");
@@ -71,14 +70,18 @@ test("dist:signed writes the feed after the DMG is stapled, from the stapled app
   const feed = script.indexOf("await updateFeed(version, out)");
   assert.ok(stapleApp > 0 && feed > stapleApp, "the zip is made after the app's ticket is stapled");
   assert.match(script, /run\("ditto", updateZipArgs\(appPath, zip\)/);
+  assert.match(script, /const buildBlockMap = loadBuildBlockMap\(desktop\);/);
   assert.match(script, /buildBlockMap\(file, "gzip", `\$\{file\}\.blockmap`\)/);
   assert.match(script, /writeFileSync\(yml, latestMacYaml\(/);
 });
 
-test("release.yml uploads the feed only on the signed path, and checks the tag against the app version", () => {
+test("release.yml: a tag needs the certificate (no dmg-only release), drafts the dmg plus the feed, tag = app version", () => {
   const yml = readFileSync(".github/workflows/release.yml", "utf8");
-  assert.match(yml, /if \[ "\$HAS_CERT" = "true" \]; then\n\s+gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg release\/\*\.dmg\.blockmap release\/\*-mac\.zip release\/\*-mac\.zip\.blockmap release\/latest-mac\.yml --draft/);
-  assert.match(yml, /else\n\s+gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg --draft/);
+  assert.match(yml, /- name: A tag needs the certificate\n\s+if: env\.HAS_CERT != 'true' && github\.ref_type == 'tag'\n\s+run: \|\n[^\n]*::error::[^\n]*\n\s+exit 1/);
+  assert.match(yml, /- name: Ad-hoc dmg[^\n]*\n\s+if: env\.HAS_CERT != 'true' && github\.ref_type != 'tag'/);
+  assert.match(yml, /- name: Draft release\n\s+if: env\.HAS_CERT == 'true' && github\.ref_type == 'tag'\n[^]*?gh release create "\$GITHUB_REF_NAME" release\/\*\.dmg release\/\*\.dmg\.blockmap release\/\*-mac\.zip release\/\*-mac\.zip\.blockmap release\/latest-mac\.yml --draft/);
+  assert.equal((yml.match(/gh release create/g) ?? []).length, 1, "the only release is the signed one");
+  assert.match(yml, /workflow_dispatch:/);
   assert.match(yml, /"\$GITHUB_REF_NAME" != "v\$VERSION"/);
 });
 
