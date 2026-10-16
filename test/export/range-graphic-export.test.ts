@@ -75,3 +75,13 @@ test("splitting a graphic: the second half goes on from where the first stopped"
   const t = applyEdit(createSession(project), { actor: "user", ops: [{ op: "trim_item", item: "film", edge: "start", frames: 120 }] as ReadonlyArray<Op> });
   assert.equal(find(t.project, "film").in, 120);
 });
+
+test("a graphic still lengthens at its start: a negative start trim clamps its in at 0, never an error", () => {
+  const trim = (item: string, frames: number) => [{ op: "trim_item", item, edge: "start", frames }] as ReadonlyArray<Op>;
+  const s = applyEdit(createSession(project), { actor: "user", ops: trim("late", -60) });
+  assert.deepEqual([find(s.project, "late").start, find(s.project, "late").duration, find(s.project, "late").in], [1140, 360, undefined]);
+  const t = applyEdit(createSession(project), { actor: "user", ops: trim("film", 100) });
+  const u = applyEdit(t, { actor: "user", ops: trim("film", -150) });
+  assert.deepEqual([find(u.project, "film").duration, find(u.project, "film").in], [1730, 0]);
+  assert.deepEqual(validateProject(u.project, modules), []);
+});
