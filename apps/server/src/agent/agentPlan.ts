@@ -61,6 +61,7 @@ export function kitLines(kit: BrandKit, files: Readonly<Record<string, string>>)
   };
   return [
     `Kit "${kit.name}" (${kit.id}, ${kit.scope === "global" ? "the user's" : "this project's"})`,
+    line("What it is", kit.about ?? ""),
     line("Colours", kit.colors.map((c) => `${c.hex} ${c.role}${c.name ? ` (${c.name})` : ""}`)),
     line("Fonts", kit.fonts.map((f) => `${f.family} for ${f.role}${f.weight ? ` ${f.weight}` : ""}${f.file ? ` (file ${f.file}, loaded everywhere)` : ""}`)),
     logo("light", "Logo on light backgrounds"),
@@ -151,7 +152,7 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
   const parts: Array<string> = [];
   const b: Array<string> = [];
   if (brand.kit) b.push(...kitLines(brand.kit, brand.files));
-  else b.push(`No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}.` : " The user has no kits yet."}`);
+  else b.push(`No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}.` : " The user has no kits yet."} A product the request names: its kit (brand_read) if one matches; else ask_user once, don't search the disk or the web for it.`);
   // D232: the skills this project uses (read with skill_read or called with /name) by name; the system
   // prompt lists every installed skill, and skill_read gives one's instructions (progressive disclosure).
   if (brand.skills.length) b.push(`Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow every rule in them (skill_read gives one's instructions again); the critic checks their review checklists.`);
@@ -240,6 +241,11 @@ export function mergeKit(base: BrandKit, args: Record<string, unknown>): BrandKi
     });
   }
   if (typeof args.tone === "string") out.tone = args.tone.slice(0, 4000);
+  if (typeof args.about === "string") {
+    const about = args.about.trim().slice(0, 2000);
+    if (about) out.about = about;
+    else delete out.about;
+  }
   for (const k of ["taglines", "urls", "dos", "donts"] as const) if (Array.isArray(args[k])) out[k] = (args[k] as Array<unknown>).filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 40);
   if (args.style !== undefined) {
     const style = normStyle(args.style);

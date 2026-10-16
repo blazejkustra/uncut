@@ -1270,6 +1270,11 @@
             "type": "string",
             "description": "A file, a folder or an https address to bring logos and font files from: logos fill the empty slots by their names (mark, icon: mark; dark, white: dark; else light), font files are added to fonts."
           },
+          "about": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "What the product is and does, in a paragraph (from its README or site)."
+          },
           "tone": {
             "type": "string"
           },

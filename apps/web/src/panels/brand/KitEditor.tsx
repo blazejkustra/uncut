@@ -88,6 +88,7 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
       logos,
       colors: d.colors.map((c) => ({ hex: c.hex.trim().toLowerCase(), role: c.role, ...(c.name ? { name: c.name } : {}) })),
       fonts: d.fonts.filter((f) => f.family.trim()).map((f) => ({ family: f.family.trim(), role: f.role, ...(f.weight ? { weight: f.weight } : {}), ...(f.file ? { file: fontFiles.get(f.file) ?? f.file } : {}) })),
+      ...(d.about.trim() ? { about: d.about.trim() } : {}),
       tone: d.tone,
       taglines: lines(d.taglines),
       urls: lines(d.urls),
@@ -289,6 +290,8 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
       </div>
 
       <div className="lib-section">
+        <span className="lib-label">What it is</span>
+        <textarea className="gen-prompt brand-text" data-testid="brand-kit-about" rows={3} placeholder="What the product is and does, in a paragraph" value={d.about} onChange={(e) => set({ about: e.target.value })} />
         <span className="lib-label">Tone of voice</span>
         <textarea className="gen-prompt brand-text" data-testid="brand-kit-tone" rows={3} value={d.tone} onChange={(e) => set({ tone: e.target.value })} />
         <span className="lib-label">Taglines, one per line</span>
