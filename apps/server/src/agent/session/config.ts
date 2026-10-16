@@ -46,7 +46,7 @@ export const IMAGE_EXT: Record<(typeof AGENT_IMAGE_TYPES)[number], string> = { "
  * `allowed`. `addDirs`: folders the user mentioned in this chat. `projects`: the project folder (as
  * opened and its real path) for Auto's deny rules. `dataDir`: Uncut's data folder (D219's deny rules).
  */
-export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined }) {
+export function sessionArgs(o: { readonly cfg: string; readonly model?: string | undefined; readonly effort?: string | undefined; readonly resume?: string | undefined; readonly thinking?: string | undefined; readonly promptSnapshot?: "off" | undefined; readonly addDirs?: ReadonlyArray<string> | undefined; readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly skills?: ReadonlyArray<Pick<PluginSkill, "name" | "description">> | undefined }) {
   const access = o.access ?? "auto";
   const args = [
     "-p",
@@ -67,6 +67,10 @@ export function sessionArgs(o: { readonly cfg: string; readonly model?: string |
     // D232 (issue #60): every installed skill by name and description; skill_read loads one.
     "--append-system-prompt", `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
   ];
+  // D260 amended: Claude Code records the system prompt on a conversation's first request and reuses
+  // that record on --resume (until compaction), ignoring the text passed later; off renders the current
+  // prompt (and skills list) on every request, so a respawned session gets this build's prompt.
+  if (o.promptSnapshot) args.push("--system-prompt-snapshot", o.promptSnapshot);
   // Look only: no shell or file-writing tools at all (claude would auto-allow a read-only command).
   if (access === "look") args.push("--disallowedTools", LOOK_DISALLOWED.join(","));
   for (const dir of o.addDirs ?? []) args.push("--add-dir", dir);
