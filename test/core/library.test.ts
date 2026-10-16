@@ -69,20 +69,20 @@ test("credits: CC BY lines to paste, CC0 thanks, Openverse named (D135); an old 
   const base: Project = { format: "uncut/0", name: "Launch", canvas: { width: 1920, height: 1080, fps: 30 }, media: [], tracks: [] };
   assert.equal(creditsText(base), "");
   assert.deepEqual(creditsOf(base), { attribution: [], publicDomain: [], openverse: false });
-  const bass = sfxSound("bass-boom")!;
+  const bass = sfxSound("impact-boom")!;
   const project: Project = {
     ...base,
     media: [
       { id: "m-song", kind: "audio", name: "Ambient Dance", path: "media/ambient-dance.mp3", source: { ...creditOf(BY, { sha256: "ab", downloaded: "2026-10-14T00:00:00Z" }) } },
       { id: "m-song-2", kind: "audio", name: "Ambient Dance", path: "media/ambient-dance-2.mp3", source: { ...creditOf(BY) } },
-      { id: "m-boom", kind: "audio", name: "Bass boom", path: "media/bass-boom.m4a", source: { ...sfxCredit(bass) } },
+      { id: "m-boom", kind: "audio", name: "Boom impact", path: "media/impact-boom.m4a", source: { ...sfxCredit(bass) } },
       { id: "m-cozy", kind: "audio", name: "Dusty rhodes", path: "media/cozy-2.m4a" },
       { id: "m-cam", kind: "video", name: "cam.mp4", path: "/cam.mp4" },
     ],
   };
   const c = creditsOf(project);
   assert.deepEqual(c.attribution.map((a) => a.title), ["Ambient Dance"], "one line per sound, even used twice");
-  assert.deepEqual(c.publicDomain.map((a) => a.libraryId), ["sfx:bass-boom"]);
+  assert.deepEqual(c.publicDomain.map((a) => a.libraryId), ["sfx:impact-boom"]);
   assert.equal(c.openverse, true);
   assert.equal(
     creditsText(project),
@@ -91,7 +91,7 @@ test("credits: CC BY lines to paste, CC0 thanks, Openverse named (D135); an old 
       '"Ambient Dance" by Some Artist (https://www.jamendo.com/track/1), licensed under CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)',
       "",
       "Public domain (CC0)",
-      '"Bass boom" by LordHannes (https://freesound.org/people/LordHannes/sounds/268084/)',
+      '"Boom impact" by XHALE303 (https://freesound.org/people/XHALE303/sounds/535592/)',
       "",
       "Found with Openverse (openverse.org)",
       "",
@@ -128,13 +128,13 @@ test("Audio tab plan: library sound with its credits at the playhead on a free a
   assert.deepEqual(music.next.tracks.find((t) => t.id === "audio")!.items, [{ id: "audio-1", type: "audio", media: media.id, in: 0, duration: 240, start: 60, fadeIn: 30, fadeOut: 60 }]);
   assert.equal(music.plan.summary, "Add Ambient Dance from the music library");
   // A sound effect at the same frame: the Audio track is busy, so a new Sound effects track; whole, no fades.
-  const bass = sfxSound("bass-boom")!;
-  const sfx = apply(music.next, planAddLibrarySound(music.next, { libraryId: "sfx:bass-boom", name: bass.title, path: "media/bass-boom.m4a", seconds: bass.seconds, source: { ...sfxCredit(bass) }, music: false }, 60));
+  const bass = sfxSound("impact-boom")!;
+  const sfx = apply(music.next, planAddLibrarySound(music.next, { libraryId: "sfx:impact-boom", name: bass.title, path: "media/impact-boom.m4a", seconds: bass.seconds, source: { ...sfxCredit(bass) }, music: false }, 60));
   const track = sfx.next.tracks.find((t) => t.name === "Sound effects")!;
   assert.equal(track.id, "sfx-1");
-  assert.deepEqual(track.items, [{ id: "sound-1", type: "audio", media: "m-bass-boom", in: 0, duration: 120, start: 60 }]);
+  assert.deepEqual(track.items, [{ id: "sound-1", type: "audio", media: "m-boom-impact", in: 0, duration: 60, start: 60 }]);
   // Added again (the media is there): only the item, on the next free stretch's track.
-  const again = planAddLibrarySound(sfx.next, { libraryId: "sfx:bass-boom", name: bass.title, seconds: bass.seconds, music: false }, 200);
+  const again = planAddLibrarySound(sfx.next, { libraryId: "sfx:impact-boom", name: bass.title, seconds: bass.seconds, music: false }, 200);
   assert.ok("ops" in again);
   assert.deepEqual((again.ops as Array<{ op: string }>).map((o) => o.op), ["insert_item"]);
   // Music with less than 3 s of video left: a problem, not a blip.

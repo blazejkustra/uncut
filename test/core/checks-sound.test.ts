@@ -40,7 +40,7 @@ test("the evidence project (16 effects in 21.5 s) trips density, repeats, hits, 
   const sfx = [
     ...[6, 84, 150, 240, 330, 420, 500].map((at) => ({ file: "ui-click.m4a", at })),
     { file: "impact-boom.m4a", at: 120 },
-    { file: "bass-boom.m4a", at: 300 },
+    { file: "dramatic-boom.m4a", at: 300 },
     ...[30, 90, 180, 270, 360].map((at) => ({ file: "whoosh-short.m4a", at: at - 1 })),
     { file: "ding.m4a", at: 455 },
     { file: "airhorn.m4a", at: 600 },
@@ -55,7 +55,7 @@ test("the evidence project (16 effects in 21.5 s) trips density, repeats, hits, 
   assert.match(density.message, /sound effects start between .* at most 4 in any 10\.0 s/);
   assert.ok(SOUND_HARD.test(density.key), "density fails a critic round");
   assert.match(found.find((c) => c.key === "sound:repeat:ui-click")!.message, /ui-click plays 7 times/);
-  assert.match(found.find((c) => c.key.startsWith("sound:hits:"))!.message, /2 big hits \(impact-boom at 4\.0 s, bass-boom at 10\.0 s\)/);
+  assert.match(found.find((c) => c.key.startsWith("sound:hits:"))!.message, /2 big hits \(impact-boom at 4\.0 s, dramatic-boom at 10\.0 s\)/);
   assert.match(found.find((c) => c.key === "sound:click-text:s0")?.message ?? "", /clicks on a text/);
   assert.equal(found.find((c) => c.key === "sound:meme:s15")?.severity, "info");
   assert.match(found.find((c) => c.key.startsWith("sound:pace:"))!.message, /75 BPM under something new every 0\.7 s/);

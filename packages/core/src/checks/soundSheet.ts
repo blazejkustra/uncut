@@ -93,7 +93,7 @@ function sfxKind(m: Media): SfxKind {
   const b = bundledSfxOf(m);
   const c = b?.category;
   const name = `${fileName(m)} ${m.name}`;
-  if (c === "meme" || c === "crowd" || MEME_NAME.test(name)) return c === "meme" && b?.id === "bass-boom" ? "hit" : "meme";
+  if (c === "meme" || c === "crowd" || MEME_NAME.test(name)) return c === "meme" && b?.id === "dramatic-boom" ? "hit" : "meme";
   if (c === "whoosh" || c === "transition" || c === "swipe" || c === "glitch" || /whoosh|swoosh|swish|whip|swipe|transition|glitch/i.test(name)) return "whoosh";
   if (c === "riser" || /riser|rise|build/i.test(name)) return "riser";
   if (c === "impact" || HIT_NAME.test(name)) return "hit";

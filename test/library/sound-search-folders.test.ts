@@ -106,7 +106,7 @@ test("nothing found: one variant is tried (held letters written twice), and said
 test("Freesound gets the alias's tag as a filter (with the key, never in the URL)", async () => {
   queries = [];
   answer = () => [];
-  await library().search({ kind: "sfx", query: "vine boom", source: "freesound" });
+  await library().search({ kind: "sfx", query: "dramatic boom", source: "freesound" });
   const filter = queries[0]!.get("filter")!;
   assert.match(filter, /tag:boom/);
   assert.match(filter, /license:"Creative Commons 0"/);

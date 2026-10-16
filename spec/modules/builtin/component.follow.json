@@ -81,7 +81,7 @@
         "minLength": 1,
         "x-control": "color",
         "x-group": "Style",
-        "description": "The logo's circle (or the solid pill); empty = the brand's colour."
+        "description": "The glyph's circle (or the solid pill) for the generic platforms. A brand's logo always keeps its own colour, with the mark in white or black."
       },
       "background": {
         "type": "string",
