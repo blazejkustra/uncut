@@ -110,3 +110,21 @@ test("readGraphics gives the fonts only what's left under the document cap after
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a family a canvas font gets from a constant is declared too (the launch-film rehearsal fell back to Helvetica)", () => {
+  // As launch-film-8.html wrote it: the family only in a constant, ctx.font built in a template literal.
+  const html = `<canvas></canvas><script>
+const SANS = "'DM Sans', sans-serif", MONO = "'DM Mono', monospace";
+function font(w, s, fam) { ctx.font = \`\${w} \${s}px \${fam || SANS}\`; }
+</script>`;
+  assert.deepEqual(graphicFontFamilies(html), [], "no declaration names it");
+  const out = resolveGraphicFonts(html, [face("DM Sans"), face("DM Mono"), face("Kit Sans"), face("Sans")]);
+  assert.match(out, /@font-face\{font-family:"DM Sans"/);
+  assert.match(out, /@font-face\{font-family:"DM Mono"/);
+  assert.ok(!out.includes('font-family:"Kit Sans"'), "a family it never names isn't added");
+  assert.ok(out.endsWith(html));
+  // Named outright goes in first when the budget is tight.
+  const tight = resolveGraphicFonts(`<script>const F = "Kit Sans";</script><style>p{font-family:"DM Mono"}</style>`, [face("Kit Sans", 100), face("DM Mono", 100)], 160);
+  assert.match(tight, /font-family:"DM Mono";font-style/);
+  assert.match(tight, /the font Kit Sans left out/);
+});

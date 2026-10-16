@@ -128,11 +128,17 @@ export const MAX_GRAPHIC_FONT_BYTES = 600_000;
  */
 export function resolveGraphicFonts(html: string, sources: ReadonlyArray<FontSource>, budget = MAX_GRAPHIC_FONT_BYTES): string {
   const named = new Set(graphicFontFamilies(html).map(familyKey));
+  // A family the declarations don't show but the script names (a canvas font built from a
+  // constant: const SANS = "'DM Sans', sans-serif"; ctx.font = `600 ${s}px ${SANS}`): declared too,
+  // after the ones named outright, so canvas text never falls back to another font.
+  for (const s of sources) if (mentionsFamily(html, s.family)) named.add(familyKey(s.family));
   if (!named.size) return html;
+  const direct = new Set(graphicFontFamilies(html).map(familyKey));
+  const ordered = [...sources.filter((s) => direct.has(familyKey(s.family))), ...sources.filter((s) => !direct.has(familyKey(s.family)))];
   const used: Array<FontSource> = [];
   const left: Array<string> = [];
   let bytes = 0;
-  for (const s of sources) {
+  for (const s of ordered) {
     if (!named.has(familyKey(s.family))) continue;
     if (bytes + s.url.length > budget) {
       if (!left.includes(s.family)) left.push(s.family);
@@ -144,6 +150,13 @@ export function resolveGraphicFonts(html: string, sources: ReadonlyArray<FontSou
   if (!used.length && !left.length) return html;
   const note = left.length ? `<!-- uncut: the font${left.length === 1 ? "" : "s"} ${left.map((f) => f.replace(/--/g, "- -")).join(", ")} left out: the graphic's fonts are over ${Math.round(budget / 1000)} KB -->\n` : "";
   return `${used.length ? `<style data-uncut-fonts>${fontFaceRules(used)}</style>\n` : ""}${note}${html}`;
+}
+
+/** Whether the HTML names `family` anywhere as a whole name (any case, any spacing between its words): in a string, a comment or markup. */
+function mentionsFamily(html: string, family: string): boolean {
+  if (!SAFE_FAMILY.test(family)) return false;
+  const words = family.trim().split(/\s+/).map((w) => w.replace(/[.\-]/g, "\\$&"));
+  return new RegExp(`(?<![A-Za-z0-9_-])${words.join("\\s+")}(?![A-Za-z0-9_-])`, "i").test(html);
 }
 
 /** What a text item's font resolves to, as resolveFont does: the theme's family for a name, else the name (sans and mono: the default stacks). */
