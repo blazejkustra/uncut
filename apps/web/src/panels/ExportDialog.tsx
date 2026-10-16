@@ -4,12 +4,15 @@
 // Without ffmpeg there's nothing to export with, so the dialog shows how to install it instead.
 // Subtitles (D105), when the project has captions or a Subtitles track: burn them in (default, as
 // before), a .srt / .vtt next to the video, a soft subtitle track, or just the file.
+// Motion blur (D291), when the project has graphics: on by default unless Draft (or as the project
+// says); the preview draws no blur.
 import type { ExportLoudness, ExportQuality, ExportSubtitles } from "@uncut/contracts";
 import { mixNote, SILENCE_DB } from "@uncut/core/audio";
 import { dbWords } from "@uncut/core/edit-log";
 import { CODEC_NAMES, defaultEncoder, exportFrameRates, exportShortSides, outputSize, presetBitrateMbps, type ExportCodec, type ExportEncoder } from "@uncut/core/export";
 import { choiceOfTarget, masterLimiter, projectTargetLufs } from "@uncut/core/effects";
 import { SUBTITLE_LANGUAGES, subtitleCues, type SubtitleFormat } from "@uncut/core/subtitles";
+import { motionBlurDefault, projectMotionBlur } from "@uncut/core/motionBlur";
 import { Check, ChevronDown, ChevronRight, Copy, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -57,6 +60,11 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const [subFormat, setSubFormat] = useState<SubtitleFormat>("srt");
   const [language, setLanguage] = useState("en");
   const [savedSubs, setSavedSubs] = useState<string | undefined>();
+  // D291: motion blur on graphics; undefined = the default for the quality (and the project's setting).
+  const hasGraphics = useMemo(() => project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic")), [project]);
+  const [blurChoice, setBlurChoice] = useState<boolean | undefined>();
+  const blurOn = blurChoice ?? motionBlurDefault(project, quality);
+  const blurLook = projectMotionBlur(project);
   // A path the native save panel returned: it already asked before replacing a file there.
   const [confirmed, setConfirmed] = useState<string | undefined>();
   // A finished job stays on screen until "Export again" or the dialog closes.
@@ -100,7 +108,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     setError(undefined);
     const subtitles: ExportSubtitles | undefined = cueCount && (subFile || subTrack) ? { ...(subFile ? { file: subFormat } : {}), ...(subTrack ? { track: true, language } : {}) } : undefined;
     const video = { ...(codec !== "h264" ? { codec } : {}), ...(encoder !== undefined ? { encoder } : {}), ...(bitrate !== undefined ? { bitrateMbps: bitrate } : {}), ...(shortSide !== undefined ? { shortSide } : {}), ...(outFps !== undefined ? { fps: outFps } : {}) };
-    const refused = await actions.startExport({ output, quality, loudness, ...(Object.keys(video).length ? { video } : {}), ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}) });
+    const refused = await actions.startExport({ output, quality, loudness, ...(Object.keys(video).length ? { video } : {}), ...(loudness === "target" ? { targetLufs: target } : {}), overwrite: overwrite || output === confirmed, ...(subtitles ? { subtitles } : {}), ...(cueCount && !burn ? { burnCaptions: false } : {}), ...(range ? { range: { from: Math.round(range.from), to: Math.round(range.to) } } : {}), ...(hasGraphics ? { motionBlur: blurOn } : {}) });
     setBusy(false);
     if (refused) {
       setError(refused);
@@ -166,7 +174,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           <b data-testid="export-job-folder" title={dirName(job.output)}>
             {folderName(job.output)}
           </b>
-          , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s
+          , {job.width}×{job.height}, {fpsText(job.fps)}, {CODEC_NAMES[job.codec ?? (job.quality === "high" ? "hevc" : "h264")]}, {job.seconds.toFixed(1)} s{job.motionBlur && hasGraphics ? ", motion blur" : ""}
         </p>
         {(job.subtitlesFile || job.subtitleTrack || job.burnCaptions === false) && (
           <p className="wiz-meta" data-testid="export-job-subtitles">
@@ -385,6 +393,20 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
           <p className="wiz-meta" data-testid="export-master-note">
             The master volume ({dbWords(masterDb)}) is heard in the editor and in As mixed; {look.label} evens the loudness out after it.
           </p>
+        )}
+        {hasGraphics && (
+          <>
+            <div className="group-label export-label">Motion</div>
+            <div className="export-subs" data-testid="export-motion">
+              <label className="export-sub-row">
+                <input type="checkbox" data-testid="export-motion-blur" checked={blurOn} onChange={(e) => setBlurChoice(e.target.checked)} />
+                <span>Motion blur</span>
+                <span className="muted">
+                  Graphics: {blurLook.samples} sub-frames a frame, a {blurLook.shutter}° shutter. The preview shows them sharp.
+                </span>
+              </label>
+            </div>
+          </>
         )}
         {cueCount > 0 && (
           <>

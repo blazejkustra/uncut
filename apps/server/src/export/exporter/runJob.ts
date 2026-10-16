@@ -65,7 +65,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       rasterizer = await startRasterizer(command, undefined, { media: graphicMedia.file });
       const onAbort = () => void rasterizer?.close();
       signal.addEventListener("abort", onAbort, { once: true });
-      const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css);
+      const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css, { bin, major: caps.major });
       // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
       const untagged = await untaggedFiles(bin, plan, signal);
       stage = "shader";

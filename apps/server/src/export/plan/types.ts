@@ -109,6 +109,8 @@ export type VisualLayer =
       readonly doc: string;
       /** For each frame from f0, the frame from the item's start drawn there (held frames repeat one). */
       readonly frames: ReadonlyArray<number>;
+      /** D291: motion blur: each frame the average of motion.samples pictures, drawn at ts[i] (seconds from the item's start, core subFrameTimes). */
+      readonly motion?: { readonly samples: number; readonly shutter: number; readonly ts: ReadonlyArray<ReadonlyArray<number>> };
     });
 
 /** The placeholder a component's media reference becomes in the plan's HTML; the exporter swaps in a data: URL. */

@@ -49,7 +49,18 @@ export type RasterJob =
   /** A shader effect's frame (D213): `input` a width×height RGBA file, `out` .rgba or .png; "no-webgpu: <why>" without WebGPU. */
   | { readonly kind: "shader"; readonly width: number; readonly height: number; readonly code: string; readonly frame: ReadonlyArray<number>; readonly params?: ReadonlyArray<number>; readonly input: string; readonly out: string; readonly name?: string }
   /** Whether WebGPU works there: fails with "no-webgpu: <why>" when it doesn't. */
-  | { readonly kind: "shader-probe" };
+  | { readonly kind: "shader-probe" }
+  /**
+   * A frame sequence (D291): after seq-open every frame is written to `out` (a FIFO an ffmpeg reads)
+   * as raw width×height BGRA, straight alpha: a graphic's frame (the mean of its pictures at the
+   * times in `ts`: motion blur's sub-frames), a frame drawn from HTML, the last frame again
+   * (`count` times); seq-close ends it.
+   */
+  | { readonly kind: "seq-open"; readonly width: number; readonly height: number; readonly out: string }
+  | { readonly kind: "seq-graphic"; readonly doc: string; readonly ts: ReadonlyArray<number>; readonly info: unknown; readonly name?: string }
+  | { readonly kind: "seq-html"; readonly css: string; readonly html: string }
+  | { readonly kind: "seq-hold"; readonly count: number }
+  | { readonly kind: "seq-close" };
 
 export interface Rasterizer {
   /** Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). */

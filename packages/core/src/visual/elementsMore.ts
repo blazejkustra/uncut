@@ -2,8 +2,8 @@
 // share, comment, save), a checklist, a quote card, a rating, a price tag, a map pin and before /
 // after labels. Like the other elements (D130), each is a pure function of its props, its box size
 // (canvas px) and the local frame: the preview and the export draw the same HTML. Every motion
-// settles to a still within about a second, or loops in whole frames, so the export's capped looks
-// (MAX_RASTER_STATES) hold. Glyphs are our own SVG, except the follow handle's brand marks (D275,
+// settles to a still within about a second, or loops in whole frames, so the export has few looks to
+// draw. Glyphs are our own SVG, except the follow handle's brand marks (D275,
 // brandIcons.ts, from Simple Icons); user text is escaped.
 import followJson from "../../../../spec/modules/builtin/component.follow.json" with { type: "json" };
 import socialButtonJson from "../../../../spec/modules/builtin/component.social-button.json" with { type: "json" };

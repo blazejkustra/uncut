@@ -1,6 +1,6 @@
 // Phase 6 chunk 4 (D80, D81) through the export and the agent:
 // - the plan: a word-by-word text is one PNG per distinct look (core textHtml at each frame), a
-//   zoom fades as an alpha ramp, a move longer than MAX_RASTER_STATES looks holds frames and warns;
+//   zoom fades as an alpha ramp, a long move draws every look (D291);
 // - on the bundled server: a stroked title and a boxed label exported vs Chromium's PNG of the same
 //   HTML (SSIM ≥ 0.98), word by word shows the expected number of words at sampled frames (bright
 //   column runs), a zoomed text's width within 2 px of core's scale;
@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { animationAt, layout, MAX_RASTER_STATES, RENDER_CSS, solidHtml, textHtml, visualsAt, zoomScale, type Item, type Project } from "../../packages/core/src/index.ts";
+import { animationAt, layout, RENDER_CSS, solidHtml, textHtml, visualsAt, zoomScale, type Item, type Project } from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { rasterizerCommand, startRasterizer } from "../../apps/server/src/export/rasterizer.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
@@ -71,7 +71,7 @@ function textProject(): Project {
 }
 const itemOf = (p: Project, id: string) => p.tracks.flatMap((t) => t.items).find((i) => i.id === id)!;
 
-test("plan: word by word is one look per frame it changes (core textHtml); a zoom fades by a ramp unless fade is false; a long move is capped with a warning", () => {
+test("plan: word by word is one look per frame it changes (core textHtml); a zoom fades by a ramp unless fade is false; a long move draws every look, no warning", () => {
   const project = textProject();
   const plan = planExport(project, { mediaPath: () => "", width: W, height: H });
   assert.ok(!("problem" in plan), "problem" in plan ? plan.problem : "");
@@ -92,13 +92,13 @@ test("plan: word by word is one look per frame it changes (core textHtml); a zoo
   assert.ok(!("problem" in fading));
   assert.deepEqual(fading.visuals.find((l) => l.item.id === "zoom")!.ramps, [{ type: "in", st: 120, d: 30 }]);
   assert.deepEqual(plan.warnings, []);
-  // A word-by-word move over 400 frames has 400 looks: capped to MAX_RASTER_STATES with a warning.
+  // A word-by-word move over 400 frames: every look drawn (D291), no warning.
   const long: Project = { ...project, tracks: [{ id: "text", kind: "text", name: "Text", items: [{ id: "slow", type: "text", start: 0, duration: 420, text: "one two three four five six seven eight", animation: { in: { module: "move.word-by-word", duration: 400, params: { style: "fade" } } } }] }, project.tracks[2]!] };
-  const capped = planExport(long, { mediaPath: () => "", width: W, height: H });
-  assert.ok(!("problem" in capped));
-  const slow = capped.visuals.find((l) => l.item.id === "slow")!;
-  assert.ok(slow.kind === "raster" && slow.states.length <= MAX_RASTER_STATES);
-  assert.match(capped.warnings.join(" "), /"slow" changes its look on more than 360 frames/);
+  const uncapped = planExport(long, { mediaPath: () => "", width: W, height: H });
+  assert.ok(!("problem" in uncapped));
+  const slow = uncapped.visuals.find((l) => l.item.id === "slow")!;
+  assert.ok(slow.kind === "raster" && slow.states.length > 360, `${slow.kind === "raster" && slow.states.length} looks`);
+  assert.deepEqual(uncapped.warnings, []);
 });
 
 type Server = Awaited<ReturnType<typeof startServer>>;

@@ -1,4 +1,4 @@
-import { type Media, type SpeechEnvelope, type Project, layout, type Item, MAX_RASTER_STATES, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, trackStages, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
+import { type Media, type SpeechEnvelope, type Project, layout, type Item, itemMotionBlur, subFrameTimes, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, trackStages, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
 import { type ExportPlan, mediaToken, type VisualLayer, type LayerFx, type Ramp, type AudioLayer, type GainModel } from "./types.ts";
 import { capStates, opacityRamps, splitAt, placementOf, svgClipHtml, splitLoop } from "./layers.ts";
 import { mergeableCues, captionLayers, subtitleLayers } from "./captions.ts";
@@ -20,10 +20,12 @@ export interface PlanOptions {
   readonly envelopes?: ReadonlyMap<string, SpeechEnvelope | null> | undefined;
   /** Draw captions and Subtitles tracks into the picture (D105; default true). Off: a soft track or a file carries them instead. */
   readonly burnCaptions?: boolean | undefined;
+  /** D291: motion blur on graphics (the project's samples and shutter; an item's motionBlur false opts out). Default off. */
+  readonly motionBlur?: boolean | undefined;
 }
 
 /** Everything the export draws and plays, or why there's nothing to export. */
-export function planExport(project: Project, { mediaPath, width, height, graphic, envelopes, burnCaptions = true }: PlanOptions): ExportPlan | { readonly problem: string } {
+export function planExport(project: Project, { mediaPath, width, height, graphic, envelopes, burnCaptions = true, motionBlur = false }: PlanOptions): ExportPlan | { readonly problem: string } {
   const fps = project.canvas.fps;
   const { starts, duration } = layout(project);
   if (!project.tracks.some((t) => t.items.length)) return { problem: "The timeline is empty: there's nothing to export yet." };
@@ -44,12 +46,6 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
     return mediaToken(id);
   } };
   const name = (item: Item) => `"${item.name ?? item.id}"`;
-  const ordinal = (n: number) => `${n}${n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
-  const capped = (item: Item, looks: ReadonlyArray<string>, what = "changes") => {
-    const out = capStates(looks);
-    if (out.hold > 1) warnings.push(`${name(item)} ${what} on more than ${MAX_RASTER_STATES} frames; the export draws every ${ordinal(out.hold)} frame of it (the preview draws them all).`);
-    return out;
-  };
   const fills = (media: Media) => !!media.probe?.width && !!media.probe?.height && Math.abs(media.probe.width / media.probe.height - aspect) < 0.002;
 
   const visuals: Array<VisualLayer> = [];
@@ -122,10 +118,13 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
           warnings.push(`${name(item)}: ${item.src} couldn't be read, so it isn't drawn.`);
           return;
         }
-        const looks = Array.from({ length: f1 - f0 }, (_, k) => String(Math.max(0, Math.min(item.duration - 1, f0 + k - start))));
-        const { states, frames } = capped(item, looks, "is drawn");
+        // Every frame drawn (D291); before its start and past its end it holds its first and last.
+        const frames = Array.from({ length: f1 - f0 }, (_, k) => Math.max(0, Math.min(item.duration - 1, f0 + k - start)));
+        // Motion blur (D291): each frame's sub-frames; a held frame stays sharp.
+        const blur = itemMotionBlur(item, project, motionBlur);
+        const motion = blur ? { ...blur, ts: frames.map((local, k) => subFrameTimes(local, fps, blur, local !== f0 + k - start)) } : undefined;
         const opacity = typeof item.transform?.opacity === "number" ? Math.min(1, Math.max(0, item.transform.opacity)) : 1;
-        visuals.push(...split({ ...base, ...canvasGeometry, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames: frames.map((k) => Number(states[k])) }, canvasStill));
+        visuals.push(...split({ ...base, ...canvasGeometry, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames, ...(motion ? { motion } : {}) }, canvasStill));
         return;
       }
       if (isMedia) {
@@ -170,15 +169,15 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
         // its opacity, transitions and blur.
         if (effects && hasOverlay(effects)) {
           const looks = boxes.map((b, k) => fxOverlayHtml(effects, b, f0 + k - start));
-          const { states, frames } = capped(item, looks, "has film grain or a moving box");
+          const { states, frames } = capStates(looks);
           visuals.push(...split({ ...base, ...alpha, kind: "raster", states, frames }));
         }
         return;
       }
       // Text moves (rise, slide, wipe) are drawn by Chromium frame by frame; opacity is a ramp.
       // A component's look (a terminal typing), its box (keys) and its box's opacity too.
-      // A component's body (its animation: a terminal typing) is capped; its box (position, size,
-      // opacity, scale, the move's offset) changes on every frame it changes, like text's motion.
+      // A component's body (its animation: a terminal typing) is a look per change; its box (position,
+      // size, opacity, scale, the move's offset) changes on every frame it changes, like text's motion.
       const looks: Array<string> = [];
       const wrappers: Array<string> = [];
       for (let f = f0; f < f1; f++) {
@@ -195,12 +194,11 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
       }
       let html = looks;
       if (isComponent) {
-        const bodies = capped(item, looks, "changes its look");
+        const bodies = capStates(looks);
         html = wrappers.map((w, i) => wrapComponent(w, bodies.states[bodies.frames[i]!]!));
       }
-      // Text's looks (its moves: rise, slide, wipe, word by word, zoom; D81) are capped like a
-      // component's body: past MAX_RASTER_STATES distinct looks, frames are held (with a warning).
-      const { states, frames } = isText ? capped(item, html, "changes its look") : capStates(html, Infinity);
+      // Text's looks (its moves: rise, slide, wipe, word by word, zoom; D81): every one drawn (D291).
+      const { states, frames } = capStates(html);
       visuals.push(...split({ ...base, ...(isComponent ? {} : canvasGeometry), kind: "raster", states, frames }, canvasStill));
     });
     // Dips to black: core's black layer over the main track, fading in to the cut and out after it.

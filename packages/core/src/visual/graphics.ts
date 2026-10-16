@@ -10,8 +10,8 @@
 // Sans and DM Mono, the brand kit's font files (both declared inside the document when it names
 // them, D198, fonts.ts resolveGraphicFonts) and the fonts installed on this Mac; every face is
 // loaded before the first render(t), so canvas text isn't drawn in a fallback; render(t) must draw synchronously or return a promise
-// that settles within GRAPHIC_FRAME_MS; the export draws at most MAX_RASTER_STATES frames of one
-// item (past that it holds frames: every k-th frame is drawn and shown k frames); the file is read
+// that settles within GRAPHIC_FRAME_MS; the export draws every frame (D291: streamed raw to ffmpeg,
+// with motion blur's sub-frames when it's on; the preview draws no blur); the file is read
 // when the export starts or the preview loads it (write a new file to change a graphic: graphic_write
 // never overwrites, so earlier revisions keep their look).
 //
@@ -33,9 +33,6 @@ export const GRAPHIC_SRC = /^graphics\/[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.html$/;
 export const MAX_GRAPHIC_BYTES = 256 * 1024;
 /** How long one render(t) may take before the frame fails (ms). */
 export const GRAPHIC_FRAME_MS = 5000;
-/** The most distinct pictures the export draws for one animated layer (a component or a graphic) before it holds frames. */
-export const MAX_RASTER_STATES = 360;
-
 /** The CSP of a graphic's document: its own inline script and styles, data: images and fonts, nothing else; D290: the project's media through the rasteriser's own scheme (blob: images of them). */
 export const GRAPHIC_CSP = `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src ${GRAPHIC_MEDIA_SCHEME}:`;
 

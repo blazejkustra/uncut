@@ -21,7 +21,7 @@ export const exportActions = {
     return typeof picked === "string" ? picked : null;
   },
   /** Starts an export of the open project; returns the server's refusal (exists, no ffmpeg…) if any. */
-  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number }; video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number } }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
+  async startExport(input: { output: string; quality: ExportQuality; loudness: ExportLoudness; targetLufs?: number; overwrite?: boolean; subtitles?: ExportSubtitles; burnCaptions?: boolean; range?: { from: number; to: number }; video?: { codec?: "h264" | "hevc"; encoder?: "hardware" | "software"; bitrateMbps?: number; shortSide?: number; fps?: number }; motionBlur?: boolean }): Promise<{ readonly reason?: string; readonly message: string } | undefined> {
     const result = await call((c) => c["export.start"](input));
     if (!result.ok) return { reason: (result.error as { reason?: string }).reason, message: plainError(result.error) };
     revealWhenDone.add(result.value.jobId);
