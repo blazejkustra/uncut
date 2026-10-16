@@ -44,9 +44,34 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
 /* Header */
 .top { border-bottom: 1px solid var(--border); }
 .top .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 16px; }
-.top nav { display: flex; gap: 20px; font-size: 14px; }
+.top nav { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .top nav a { color: var(--muted); text-decoration: none; }
 .top nav a:hover { color: var(--fg); }
+/* The stars pill and the compact Download (proportions after t3.codes' nav). The pill has a fixed
+   width so the count replacing "GitHub" (hero.js) doesn't move anything. */
+.top nav .nav-stars {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  width: 98px; height: 34px; padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  background: rgb(255 255 255 / 2%);
+  color: var(--fg); font: 500 13px/1 var(--font); font-variant-numeric: tabular-nums;
+  transition: background 0.15s, border-color 0.15s;
+}
+.top nav .nav-stars:hover { background: rgb(255 255 255 / 6%); border-color: rgb(255 255 255 / 20%); }
+.nav-stars .gh { width: 15px; height: 15px; flex: none; }
+.nav-stars .star { display: none; width: 12px; height: 12px; flex: none; color: #e3b341; margin-right: -3px; }
+.nav-stars.has-stars .star { display: block; }
+.top nav .btn-nav {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 14px 0 12px;
+  border-radius: 10px;
+  background: #f5f5f5; color: #0a0a0a;
+  font: 500 14px/1 var(--font);
+  transition: background 0.15s;
+}
+.top nav .btn-nav:hover { background: #ffffff; color: #0a0a0a; }
+.btn-nav .apple { width: 14px; height: 14px; flex: none; margin-top: -2px; }
+.top nav a:focus-visible { outline: 2px solid var(--select); outline-offset: 3px; }
 
 /* The wordmark: the app icon's cut U and the name with one sweep of light (apps/web/src/editor/wordmark.css). */
 .wordmark { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: var(--fg); }
@@ -65,9 +90,25 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
 }
 @keyframes sweep { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
-/* Hero */
-.hero { padding: 88px 0 40px; text-align: center; }
-.hero .icon { width: 88px; height: 88px; margin: 0 auto 28px; }
+/* Hero. .hero-fx sits behind the copy: a static gradient (the look without WebGPU, and while the
+   shader loads) under a canvas that hero.js draws with WebGPU and fades in after its first frame.
+   Both are absolutely placed, so nothing shifts whether or not the script runs. */
+.hero { position: relative; padding: 104px 0 40px; text-align: center; isolation: isolate; }
+.hero > .wrap { position: relative; z-index: 1; }
+.hero-fx { position: absolute; left: 0; right: 0; top: 0; height: 920px; z-index: 0; pointer-events: none; overflow: hidden; }
+.hero-fx::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(34% 30% at 75% 28%, rgb(92 120 255 / 26%), rgb(92 120 255 / 0) 100%),
+    radial-gradient(30% 28% at 24% 58%, rgb(128 77 250 / 20%), rgb(128 77 250 / 0) 100%),
+    radial-gradient(40% 18% at 50% 9%, rgb(41 51 158 / 30%), rgb(41 51 158 / 0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 58%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 58%, transparent 100%);
+  transition: opacity 1.4s ease;
+}
+.hero-fx canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 1.4s ease; }
+.hero.fx-live .hero-fx canvas { opacity: 1; }
+.hero.fx-live .hero-fx::before { opacity: 0; }
 .hero h1 {
   margin: 0 auto;
   max-width: 14ch;
@@ -76,23 +117,27 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
   font-weight: 650;
   letter-spacing: -0.035em;
 }
-.hero .lede { margin: 22px auto 0; max-width: 560px; color: var(--muted); font-size: clamp(16px, 2.2vw, 19px); }
+.hero .lede { margin: 22px auto 0; max-width: 580px; color: #a3a3a3; font-size: clamp(16px, 2.2vw, 19px); }
+/* The agents' marks before their names, cap-height tall, sitting on the baseline. */
+.lede .who { white-space: nowrap; color: var(--fg); }
+.lede .pmark { display: inline-block; height: 0.78em; width: 0.78em; margin: 0 0.3em 0 0.08em; vertical-align: -0.06em; }
 .actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
 .btn {
-  display: inline-flex; align-items: center; gap: 9px;
-  height: 44px; padding: 0 18px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  font: 550 15px/1 var(--font);
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 54px; padding: 0 26px;
+  border-radius: 16px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  font: 500 16px/1 var(--font);
   text-decoration: none;
   color: var(--fg);
-  background: var(--raised);
+  background: rgb(10 10 10 / 55%);
   transition: background 0.15s, border-color 0.15s;
 }
-.btn:hover { background: #242424; border-color: rgb(255 255 255 / 20%); }
-.btn svg { width: 16px; height: 16px; flex: none; }
-.btn.primary { background: var(--fg); color: #0a0a0a; border-color: var(--fg); }
-.btn.primary:hover { background: #ffffff; }
+.btn:hover { background: rgb(255 255 255 / 6%); border-color: rgb(255 255 255 / 26%); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn .apple { margin-top: -3px; }
+.btn.primary { background: #f5f5f5; color: #0a0a0a; border-color: #f5f5f5; padding: 0 28px 0 24px; }
+.btn.primary:hover { background: #ffffff; border-color: #ffffff; }
 .req { margin-top: 14px; color: var(--dim); font: 400 13px/1.5 var(--mono); }
 
 .shot {
@@ -164,12 +209,11 @@ footer a:hover { color: var(--fg); }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
-  .hero { padding: 56px 0 24px; }
-  .hero .icon { width: 72px; height: 72px; margin-bottom: 22px; }
+  .hero { padding: 64px 0 24px; }
   .shot { margin-top: 40px; border-radius: var(--radius-sm); }
   section { padding: 56px 0; }
   .facts { grid-template-columns: 1fr; }
-  .top nav .hide-sm { display: none; }
+  .top nav { gap: 8px; }
 }
 @media (max-width: 560px) {
   .cards { grid-template-columns: 1fr; }
@@ -181,5 +225,5 @@ footer a:hover { color: var(--fg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .wordmark span { animation: none; background-position: 0 0; }
-  .btn { transition: none; }
+  .btn, .top nav a, .hero-fx::before, .hero-fx canvas { transition: none; }
 }
