@@ -236,8 +236,8 @@ export const SYNTH_SOUNDS: ReadonlyArray<SynthSound> = [
     const ah = env(vowel(1.25, pitch, [[760, 6, 1], [1180, 7, 0.7], [2600, 8, 0.35], [3400, 9, 0.15]], 62, 0.25), (t) => Math.min(1, t / 0.05) * fadeOut(1.25, 0.35)(t));
     return reverb(drive(mix([fric, 0, 0.5], [ah, 0.16, 1.6]), 4), 0.12, 0.8, 0.4);
   }),
-  s("dramatic-boom", "Dramatic boom", "meme", ["boom", "dramatic", "bass", "meme", "reveal", "vine boom"], () => reverb(drive(mix([thump(2.2, 120, 42, 0.07, 0.6)], [thump(2.2, 240, 84, 0.07, 0.3), 0, 0.3], [env(filter(noise(0.1, 63), "lowpass", 1500), decay(0.02)), 0, 0.4]), 2.5), 0.3, 1.6, 1.4)),
-  s("deep-bong", "Deep bong", "meme", ["bong", "bell", "dramatic", "deep", "meme", "taco bell"], () => reverb(bell(196, 3, [[1, 1, 1], [0.5, 0.6, 1.2], [2.0, 0.4, 0.5], [2.76, 0.3, 0.4], [4.07, 0.15, 0.3]]), 0.25, 1.4, 1)),
+  s("dramatic-boom", "Dramatic boom", "meme", ["boom", "dramatic", "bass", "meme", "reveal"], () => reverb(drive(mix([thump(2.2, 120, 42, 0.07, 0.6)], [thump(2.2, 240, 84, 0.07, 0.3), 0, 0.3], [env(filter(noise(0.1, 63), "lowpass", 1500), decay(0.02)), 0, 0.4]), 2.5), 0.3, 1.6, 1.4)),
+  s("deep-bong", "Deep bong", "meme", ["bong", "bell", "dramatic", "deep", "meme"], () => reverb(bell(196, 3, [[1, 1, 1], [0.5, 0.6, 1.2], [2.0, 0.4, 0.5], [2.76, 0.3, 0.4], [4.07, 0.15, 0.3]]), 0.25, 1.4, 1)),
   s("womp-womp", "Womp womp", "meme", ["womp womp", "wah wah", "fail", "sad", "trombone", "lose"], () => {
     const notes: Array<readonly [number, number, number]> = [[58, 0, 0.35], [57, 0.4, 0.35], [56, 0.8, 0.35], [55, 1.2, 1.0]];
     return mix(...notes.map(([m, at, d], i) => {
@@ -245,7 +245,7 @@ export const SYNTH_SOUNDS: ReadonlyArray<SynthSound> = [
       return [env(filter(tone, "lowpass", (t) => 400 + 1400 * bump(0.08, d)(t), 2), (t) => Math.min(1, t / 0.03) * fadeOut(d, 0.08)(t)), at, 0.6] as const;
     }));
   }),
-  s("air-horn-blast", "Air horn blasts", "meme", ["airhorn", "air horn", "horn", "hype", "mlg", "party"], () => {
+  s("air-horn-blast", "Air horn blasts", "meme", ["airhorn", "air horn", "horn", "hype", "party"], () => {
     const blast = (d: number, seed: number) => env(drive(filter(mix(...[0, 4, 7].map((st) => [osc(d, (t) => hz(70 + st) * (1 - 0.06 * Math.exp(-t / 0.04)), "saw"), 0, 0.33] as const), [noise(d, seed), 0, 0.03]), "lowpass", 3500), 3), (t) => Math.min(1, t / 0.01) * fadeOut(d, 0.03)(t));
     return mix([blast(0.18, 64)], [blast(0.18, 65), 0.24], [blast(0.7, 66), 0.48]);
   }),

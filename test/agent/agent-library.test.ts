@@ -146,7 +146,7 @@ test("library_search and library_add: online hits and bundled sounds into media/
   assert.equal(searched.searchParams.get("license"), "cc0,by");
   assert.equal(searched.searchParams.get("license_type"), "commercial,modification");
   const memes = answer(mine[1]).sounds.map((s: any) => s.id);
-  for (const id of ["sfx:bruh", "sfx:airhorn", "sfx:bass-boom"]) assert.ok(memes.includes(id), memes.join(", "));
+  for (const id of ["sfx:bruh", "sfx:airhorn", "sfx:dramatic-boom"]) assert.ok(memes.includes(id), memes.join(", "));
   // The CC BY hit downloaded into media/ with its credits; the bundled airhorn copied.
   const boom = answer(mine[2]);
   assert.equal(boom.path, "media/cinema-boom-someone.mp3");

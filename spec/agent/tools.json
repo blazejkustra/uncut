@@ -752,7 +752,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "A hit id from library_search, e.g. openverse:eab8a6e2-0ac8-4615-9e0d-ebde30523783, freesound:351256, sfx:bass-boom or folder:<id> (the user's own file)."
+            "description": "A hit id from library_search, e.g. openverse:eab8a6e2-0ac8-4615-9e0d-ebde30523783, freesound:351256, sfx:dramatic-boom or folder:<id> (the user's own file)."
           }
         }
       },

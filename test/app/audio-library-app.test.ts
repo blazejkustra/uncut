@@ -224,7 +224,7 @@ test("the sound library: online music and sound effects, previews, adds with cre
   assert.deepEqual(kinds, ["Any kind", "Whoosh", "Transitions", "Swipes", "UI clicks", "Pops", "Impacts", "Risers", "Notifications", "Success", "Glitch", "Typing", "Laughs and applause", "Memes"]);
   await page.select("[data-testid=library-source]", "openverse");
   await waitFor("[data-testid=sfx-browser][data-view=openverse]");
-  await page.type("[data-testid=sfx-search]", "vine boom");
+  await page.type("[data-testid=sfx-search]", "dramatic boom");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
   assert.equal(searches.at(-1)!.get("q"), "bass boom", "a meme name searches for a sound-alike that exists (D208)");
@@ -233,7 +233,7 @@ test("the sound library: online music and sound effects, previews, adds with cre
   await page.keyboard.press("Enter");
   await waitUntil(() => searches.at(-1)!.get("q") === "bruh");
   await page.click("[data-testid=sfx-search]", { clickCount: 3 });
-  await page.type("[data-testid=sfx-search]", "vine boom");
+  await page.type("[data-testid=sfx-search]", "dramatic boom");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
   await sleep(300);
@@ -279,7 +279,7 @@ test("the sound library: online music and sound effects, previews, adds with cre
   await page.screenshot({ path: out("audio-limit.png") });
   const before = searches.length;
   await page.click("[data-testid=sfx-search]", { clickCount: 3 });
-  await page.type("[data-testid=sfx-search]", "vine boom");
+  await page.type("[data-testid=sfx-search]", "dramatic boom");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=library-row]").length === 1, { timeout: 15000 });
   assert.equal(searches.length, before, "answered from the cache");
