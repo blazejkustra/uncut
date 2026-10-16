@@ -6,9 +6,10 @@
 //   half, as a flash's) vs a Standard export (⌘E) of the same frame: SSIM ≥ 0.97 (screenshots converted from
 //   Display P3 to sRGB when the screen is P3), as transitions-moves-app does for D79's.
 //   Screenshots test-output/transitions-all-<name>.png.
-// - The Transitions panel: all 28 tiles, thumbnails animating (their shots' styles change over
-//   time), the search and kind filters narrowing the tiles, the length chips changing what a tile
-//   puts on a cut (one labelled edit). Screenshot test-output/transitions-panel.png (search "wipe").
+// - The Transitions panel: all 28 tiles, thumbnails still until hovered and animating while hovered
+//   (their shots' styles change over time; D240), the search narrowing the tiles, no kind filters or
+//   length chips (D240), a click on a tile putting it on the selected cut at its default length (one
+//   labelled edit). Screenshot test-output/transitions-panel.png (search "wipe").
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -173,42 +174,52 @@ test("D133: every new transition drawn in the preview mid-way matches the export
   assert.deepEqual(low, []);
   await page.keyboard.press("Escape");
 
-  // The panel: all tiles, animated thumbnails.
+  // The panel: all tiles, thumbnails still until hovered (D240).
   await page.click("[data-testid=rail-transitions]");
   await page.waitForSelector("[data-testid=transitions-library]");
   const tiles = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
   assert.deepEqual(tiles, TRANSITIONS.map((t) => t.id));
   const styleNow = () => page.$eval("[data-testid=transition-tile][data-module='transition.clock'] .tr-b", (el) => (el as HTMLElement).style.clipPath + (el as HTMLElement).style.visibility);
+  await page.mouse.move(5, 5);
+  const still = [await styleNow()];
+  for (let i = 0; i < 2; i++) {
+    await sleep(370);
+    still.push(await styleNow());
+  }
+  assert.equal(new Set(still).size, 1, `the clock thumbnail holds still unhovered: ${still.join(" | ")}`);
+  assert.equal(await page.$("[data-testid=transition-thumb][data-playing]"), null);
+  await page.hover("[data-testid=transition-tile][data-module='transition.clock'] .tile-name");
+  await page.waitForSelector("[data-testid=transition-tile][data-module='transition.clock'] [data-testid=transition-thumb][data-playing=true]");
   const s1 = await styleNow();
   await sleep(370);
   const s2 = await styleNow();
   await sleep(370);
   const s3 = await styleNow();
-  assert.ok(s1 !== s2 || s2 !== s3, `the clock thumbnail animates: ${s1} | ${s2} | ${s3}`);
-  // Kinds and search.
-  await page.click("[data-testid=transition-kind][data-kind=move]");
-  const moves = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
-  assert.deepEqual(moves, TRANSITIONS.filter((t) => t.kind === "move").map((t) => t.id));
-  await page.click("[data-testid=transition-kind][data-kind=all]");
+  assert.ok(s1 !== s2 || s2 !== s3, `the clock thumbnail animates while hovered: ${s1} | ${s2} | ${s3}`);
+  await page.mouse.move(5, 5);
+  await page.waitForFunction(() => !document.querySelector("[data-testid=transition-thumb][data-playing]"));
+  // No kind filters or length chips; the search stays.
+  assert.equal(await page.$("[data-testid=transition-kind]"), null);
+  assert.equal(await page.$("[data-testid=transition-length]"), null);
   await page.type("[data-testid=transition-search]", "wipe");
   const wipes = await page.$$eval("[data-testid=transition-tile]", (els) => els.map((e) => (e as HTMLElement).dataset.module));
   assert.deepEqual(wipes, ["transition.wipe", "transition.wipe-left", "transition.wipe-up", "transition.wipe-down", "transition.clock"]);
   await sleep(600);
   await page.screenshot({ path: out("transitions-panel.png") });
   await page.click("[data-testid=transition-search-clear]");
+  await page.click("[data-testid=transition-search]");
   await page.type("[data-testid=transition-search]", "nothing like this");
-  await page.waitForSelector("[data-testid=transition-empty]");
+  await page.waitForSelector("[data-testid=transition-empty]", { timeout: 5000 }).catch(async (e) => {
+    throw new Error(`${(e as Error).message}; search value ${JSON.stringify(await page.$eval("[data-testid=transition-search]", (el) => (el as HTMLInputElement).value))}, active ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 120))}`);
+  });
   await page.click("[data-testid=transition-search-clear]");
 
-  // Length: 0.25 s for all, shown on the tiles and put on the cut (8 frames at 30 fps).
-  await page.click("[data-testid=transition-length][data-seconds='0.25']");
-  assert.equal(await page.$eval("[data-testid=transition-tile][data-module='transition.wipe-up'] [data-testid=transition-default]", (el) => el.textContent), "0.27 s");
+  // A click on a tile puts it on the selected cut; the cut's length (12 frames) is kept on a change of type.
   await page.click('[data-testid=transition-marker][data-item="c1"]');
   await page.waitForSelector("[data-testid=inspector-transition][data-item=c1]");
   const rev = await revision();
   await page.click("[data-testid=transition-tile][data-module='transition.wipe-up']");
   await waitRevision(rev + 1);
-  assert.deepEqual(onDisk().tracks[0]!.items[1]!.transitionIn, { module: "transition.wipe-up", duration: 8 });
-  await page.click("[data-testid=transition-length][data-seconds=default]");
+  assert.deepEqual(onDisk().tracks[0]!.items[1]!.transitionIn, { module: "transition.wipe-up", duration: LENGTH });
   assert.deepEqual(app.errors, []);
 });

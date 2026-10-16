@@ -1,7 +1,9 @@
 // The Transitions tab (D73, D133): every transition the preview and export draw (core TRANSITIONS),
 // each a tile with an animated thumbnail drawn by the same core maths as the preview (incomingFx /
-// outgoingFx, the iris radius, the mask outlines), a search, kind filters and the length new ones
-// get. Drag a tile onto a cut between two main-track clips; or select a cut and click the tile; or
+// outgoingFx, the iris radius, the mask outlines) that plays only while the tile is hovered or
+// focused (a still mid-transition otherwise, D240), and a search. No kind filters or length chips
+// (D240): a transition's length is set on the cut (Inspector, the marker's edges), and the length new
+// ones get is in Settings › App. Drag a tile onto a cut between two main-track clips; or select a cut and click the tile; or
 // + puts it on the cut nearest the playhead.
 import { defaultFrames, incomingFx, irisRadius, maskClipPath, outgoingFx, TRANSITIONS, type TransitionFx, type TransitionInfo, type TransitionKind } from "@uncut/core/transitions";
 import { Plus, X } from "lucide-react";
@@ -11,7 +13,7 @@ import { actions, useApp, type Project } from "../state/store.ts";
 import { dropTransition, setDraggedTransition, setTilePointer } from "../timeline/dnd.ts";
 import { usePlayback } from "../preview/playback.ts";
 import { cutFit, findItem, secondsLabel } from "../timeline/edit.ts";
-import { setTransitionSeconds, TRANSITION_LENGTHS, useTransitionSeconds } from "../timeline/transitionLength.ts";
+import { useTransitionSeconds } from "../timeline/transitionLength.ts";
 
 /** The thumbnail's own canvas (px): the shapes are drawn on it, then it's scaled into the tile. */
 const THUMB = { width: 160, height: 90 } as const;
@@ -19,14 +21,6 @@ const THUMB = { width: 160, height: 90 } as const;
 const HOLD = 500;
 const RUN = 1300;
 const LOOP = 2 * HOLD + RUN;
-
-const KINDS: ReadonlyArray<{ readonly id: TransitionKind | undefined; readonly name: string }> = [
-  { id: undefined, name: "All" },
-  { id: "fade", name: "Fades" },
-  { id: "reveal", name: "Reveals" },
-  { id: "move", name: "Moves" },
-  { id: "dip", name: "Dips" },
-];
 
 // One clock for every tile, so 28 thumbnails share one animation frame.
 const ticks = new Set<(now: number) => void>();
@@ -83,8 +77,8 @@ function drawAt(t: TransitionInfo, ms: number, a: HTMLElement, b: HTMLElement, k
   k.style.opacity = t.color && running ? String(1 - Math.abs(2 * p - 1)) : "0";
 }
 
-/** A tile's animated preview (D133): looping while the panel is open, a still mid-transition with reduced motion. */
-function TransitionThumb({ t }: { t: TransitionInfo }) {
+/** A tile's preview (D133, D240): a still mid-transition, looping from the start while `playing` (the tile hovered or focused); always the still with reduced motion. */
+function TransitionThumb({ t, playing }: { t: TransitionInfo; playing: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const a = useRef<HTMLSpanElement>(null);
@@ -106,12 +100,12 @@ function TransitionThumb({ t }: { t: TransitionInfo }) {
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // The still: the middle of the transition (a dip's colour at its fullest).
     draw(HOLD + RUN * (t.overlaps ? 0.5 : 0.45));
-    if (still) return;
+    if (still || !playing) return;
     const start = performance.now();
     return onTick((now) => draw(now - start));
-  }, [t]);
+  }, [t, playing]);
   return (
-    <div className="thumb tr-thumb" ref={box} data-testid="transition-thumb">
+    <div className="thumb tr-thumb" ref={box} data-testid="transition-thumb" data-playing={playing ? "true" : undefined}>
       <div className="tr-stage" ref={stage} style={{ width: THUMB.width, height: THUMB.height }}>
         {/* Two shots, A then B, and the colour of a dip or flash over them. */}
         <span className="tr-a" ref={a} aria-hidden="true">
@@ -126,8 +120,8 @@ function TransitionThumb({ t }: { t: TransitionInfo }) {
   );
 }
 
-/** The transitions matching a search (name or description words) and a kind. */
-export function filterTransitions(query: string, kind: TransitionKind | undefined): Array<TransitionInfo> {
+/** The transitions matching a search (name or description words) and, optionally, a kind. */
+export function filterTransitions(query: string, kind?: TransitionKind): Array<TransitionInfo> {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return TRANSITIONS.filter((t) => (!kind || t.kind === kind) && words.every((w) => `${t.name} ${t.description}`.toLowerCase().includes(w)));
 }
@@ -212,9 +206,13 @@ export function TransitionsLibrary({ project }: { project: Project }) {
   const online = connection === "connected";
   const fps = project.canvas.fps;
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<TransitionKind | undefined>();
+  // The tile whose thumbnail plays (hovered, else focused).
+  const [hovered, setHovered] = useState<string | undefined>();
+  const [focused, setFocused] = useState<string | undefined>();
+  const playing = hovered ?? focused;
+  // The length new transitions get (Settings › App › New items), else each one's own default.
   const seconds = useTransitionSeconds();
-  const shown = filterTransitions(query, kind);
+  const shown = filterTransitions(query);
   const apply = (t: TransitionInfo, e: React.MouseEvent, nearest: boolean) => {
     e.stopPropagation();
     (e.currentTarget as HTMLElement).blur();
@@ -241,21 +239,6 @@ export function TransitionsLibrary({ project }: { project: Project }) {
               </button>
             )}
           </div>
-          <div className="music-chips" data-testid="transition-kinds">
-            {KINDS.map((k) => (
-              <button key={k.name} className={`music-chip${kind === k.id ? " active" : ""}`} data-testid="transition-kind" data-kind={k.id ?? "all"} aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>
-                {k.name}
-              </button>
-            ))}
-          </div>
-          <div className="tr-length" data-testid="transition-lengths">
-            <span className="muted small">Length</span>
-            {TRANSITION_LENGTHS.map((s) => (
-              <button key={String(s)} className={`music-chip${seconds === s ? " active" : ""}`} data-testid="transition-length" data-seconds={s ?? "default"} aria-pressed={seconds === s} onClick={() => setTransitionSeconds(s)}>
-                {s === undefined ? "Default" : `${s} s`}
-              </button>
-            ))}
-          </div>
         </div>
         {shown.length === 0 && (
           <div className="muted small" data-testid="transition-empty">
@@ -277,6 +260,10 @@ export function TransitionsLibrary({ project }: { project: Project }) {
               aria-disabled={!online || (fit && !fit.fits)}
               draggable={false}
               title={fit && !fit.fits ? fit.problem : `${t.name}: ${t.description}`}
+              onPointerEnter={() => setHovered(t.id)}
+              onPointerLeave={() => setHovered((h) => (h === t.id ? undefined : h))}
+              onFocus={() => setFocused(t.id)}
+              onBlur={() => setFocused((f) => (f === t.id ? undefined : f))}
               onPointerDown={(e) => online && startTileDrag(e, t)}
               onClick={(e) => !dragged && apply(t, e, false)}
               onKeyDown={(e) => {
@@ -287,7 +274,7 @@ export function TransitionsLibrary({ project }: { project: Project }) {
               }}
             >
               <div className="tr-thumb-wrap">
-                <TransitionThumb t={t} />
+                <TransitionThumb t={t} playing={playing === t.id} />
                 <button className="tile-add" data-testid="transition-add" disabled={!online} title={`Put a ${t.name.toLowerCase()} on the cut nearest the playhead`} onClick={(e) => apply(t, e, true)}>
                   <Plus />
                 </button>

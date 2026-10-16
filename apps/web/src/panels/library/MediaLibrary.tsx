@@ -152,7 +152,7 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
           </div>
         </div>
       ) : null}
-      <GeneratedSection project={project} {...(onEdit ? { onEdit } : {})} />
+      <GeneratedSection project={project} {...(onEdit ? { onEdit } : {})} mode={view.mode} used={used} selected={selected} onSelect={setSelected} onRemove={remove} />
       <RecentSection project={project} />
       {dragging && <div className="drop-hint">Drop to import</div>}
       {confirm && (

@@ -129,7 +129,7 @@ test("the Generate tab: an SVG picture into Media › Generated, Add at playhead
     // The result is in Media › Generated, marked Generated.
     await page.click("[data-testid=generate-show]");
     await waitFor(page, "[data-testid=library] [data-testid=generated-item] [data-testid=generated-badge]");
-    assert.match(await text(page, "[data-testid=generated-item] [data-testid=generated-prompt]"), /A yellow sun over a navy sea/);
+    assert.match(await page.$eval("[data-testid=generated-item]", (el) => (el as HTMLElement).title), /A yellow sun over a navy sea/);
     await page.waitForFunction(() => (document.querySelector<HTMLImageElement>("[data-testid=generated-item] img")?.naturalWidth ?? 0) > 0, { timeout: 10000 });
 
     // Add at playhead: on a new video track above the main one, at the playhead, 5 s.
