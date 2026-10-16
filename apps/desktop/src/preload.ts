@@ -41,6 +41,7 @@ import {
   MINI_RECORDER_STATE_CHANNEL,
   WINDOW_MODE_CHANNEL,
 } from "./ipc.ts";
+import { PENDING_OPEN_CHANNEL } from "./projectPath.ts";
 
 const subscribe = <A>(channel: string, listener: (value: A) => void) => {
   const handler = (_event: IpcRendererEvent, value: A) => listener(value);
@@ -71,6 +72,8 @@ contextBridge.exposeInMainWorld("uncut", {
     }
   },
   onMenuCommand: (listener: (command: MenuCommand) => void) => subscribe(MENU_COMMAND_CHANNEL, listener),
+  // D252: a .uncut project Finder opened before the window was ready (null if none).
+  pendingOpen: () => ipcRenderer.invoke(PENDING_OPEN_CHANNEL),
   // U12 (D178): asked before the window closes or the app quits.
   onCloseRequest: (listener: (kind: "window" | "quit") => void) => subscribe(CLOSE_REQUEST_CHANNEL, listener),
   answerClose: (answer: CloseAnswer) => ipcRenderer.send(CLOSE_ANSWER_CHANNEL, answer),

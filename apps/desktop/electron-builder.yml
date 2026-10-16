@@ -57,6 +57,9 @@ extraResources:
   - from: ../../packages/plugin-sdk/src
     to: plugin-sdk
     filter: ["*.ts"]
+  # The .uncut project icon (D252), named by Info.plist's CFBundleTypeIconFile and UTTypeIconFile below.
+  - from: build/project.icns
+    to: project.icns
 # Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
 afterSign: scripts/after-sign.ts
 mac:
@@ -70,6 +73,23 @@ mac:
     NSAudioCaptureUsageDescription: Uncut records the sound this Mac plays when you ask it to.
     # Not read by macOS today (screen recording asks with its own sheet); kept for the record (D247).
     NSScreenCaptureUsageDescription: Uncut records your screen or a window when you start a screen take.
+    # D252: a Name.uncut project folder is a document package: Finder shows it as one item with the
+    # project icon and double-clicking it opens Uncut (app.ts's open-file). Declared here rather than
+    # with fileAssociations, which only knows extensions (no exported UTI conforming to com.apple.package).
+    UTExportedTypeDeclarations:
+      - UTTypeIdentifier: com.blazejkustra.uncut.project
+        UTTypeDescription: Uncut Project
+        UTTypeConformsTo: [com.apple.package, public.composite-content]
+        UTTypeIconFile: project.icns
+        UTTypeTagSpecification:
+          public.filename-extension: [uncut]
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Uncut Project
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Owner
+        LSTypeIsPackage: true
+        LSItemContentTypes: [com.blazejkustra.uncut.project]
+        CFBundleTypeIconFile: project.icns
   # Ad-hoc signed ("-"), not Developer ID: Apple Silicon refuses to run an unsigned bundle,
   # and a real identity + notarization comes later. `pnpm dist:signed` (D114) overrides these
   # three on the command line: a keychain identity, the hardened runtime, build/signed.entitlements.plist.

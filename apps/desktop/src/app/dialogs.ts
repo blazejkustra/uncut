@@ -88,7 +88,11 @@ export async function chooseFolder(purpose: FolderPurpose): Promise<string | nul
           ? "Choose a plugin folder (it has an uncut.module.json). Uncut copies it; you allow it next."
           : "Choose a .uncut project folder.",
     defaultPath: appInfo.defaultParentDir,
-    properties: purpose === "parent" ? ["openDirectory", "createDirectory"] : ["openDirectory"],
+    // D252: a .uncut folder is a package in the packaged app (Finder shows it as one file), which a
+    // folders-only panel won't let you pick; openFile + the uncut filter make it pickable, and
+    // openDirectory keeps plain folders (and the dev build, where nothing is registered) working.
+    ...(purpose === "project" ? { filters: [{ name: "Uncut project", extensions: ["uncut"] }] } : {}),
+    properties: purpose === "parent" ? ["openDirectory", "createDirectory"] : purpose === "project" ? ["openFile", "openDirectory"] : ["openDirectory"],
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
 }

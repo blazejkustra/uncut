@@ -59,6 +59,8 @@ export interface UncutBridge {
   // The disk path of a dropped File ("" if it isn't a file on disk).
   readonly pathForFile: (file: File) => string;
   readonly onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
+  // D252: the .uncut project Finder asked Uncut to open before the window was ready; null if none.
+  readonly pendingOpen?: () => Promise<string | null>;
   // Environments (D106): the list and which is active; switching (and removing the active one) reloads the window.
   readonly environments: () => Promise<{ readonly active: string; readonly environments: ReadonlyArray<EnvironmentInfo> }>;
   readonly addEnvironment: (input: { name: string; url: string; token: string }) => Promise<{ readonly id: string } | { readonly problem: string }>;
