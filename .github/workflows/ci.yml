@@ -1,8 +1,18 @@
-# Every push to main and every PR (#89, D254): typecheck + the fast tests (everything but test/app),
-# and the packaged-app tests (test/app) split over 4 parallel jobs, each building the app itself.
-# Tests that need what GitHub's macOS VM doesn't have (a real GPU for preview = export pixel parity,
-# a real audio device, a big screen, the footage, the real claude/argent) skip with their reason
-# (test/helpers/capabilities.ts).
+# Every push to main and every PR (#89, D254): the whole suite, typecheck + the fast tests + the
+# packaged-app tests (test/app), split over 5 parallel macOS jobs. Each job builds the app itself,
+# runs its fifth of the fast tests (node --test-shard), then its share of the app files
+# (scripts/test-app-shard.ts, balanced by test/app/durations.json). 5 because GitHub runs at most 5
+# macOS jobs at once on this plan: a 6th would only queue.
+#
+# Skipped on these runners, each with its reason in the log and the job summary
+# (test/helpers/capabilities.ts): what needs a real GPU and media engine (preview = export pixel
+# parity, playback smoothness and frame pacing, the WebGPU shaders' pixels; the runner is an Apple
+# Virtualization VM with a paravirtual GPU), a real audio output (audible playback, the preview's
+# mix vs the export's; the runner has "Apple Virtual Sound Device"), a screen bigger than the
+# runner's 1024×674, the user's footage (UNCUT_FOOTAGE_DIR) and the real claude/argent CLIs.
+#
+# An app test file that fails is run once more (--retries 1). A pass on the retry still shows as a
+# ::warning:: and as "flaky" in the job summary, so a flake is seen and fixed, never hidden.
 name: CI
 
 on:
@@ -17,11 +27,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch or PR replaces the run in progress (main too: the repo is public,
-# minutes are free, and the newest commit's result is the one that matters).
+# A new push to a PR replaces its running check; every push to main finishes (D253), so a broken
+# commit on main is always pinned down.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # pnpm's version comes from package.json's packageManager field (corepack).
@@ -29,51 +39,13 @@ env:
 
 jobs:
   test:
-    name: typecheck + fast tests
+    name: tests ${{ matrix.shard }}/5
     runs-on: macos-latest
     timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: corepack enable
-      - name: Find the pnpm store
-        run: echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Cache pnpm store, Electron and cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.PNPM_STORE }}
-            ~/Library/Caches/electron
-            ~/.cargo/registry
-            native/media/target
-          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'native/media/Cargo.lock') }}
-          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
-      # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
-      - run: brew install ffmpeg
-      - run: pnpm install --frozen-lockfile
-      # The tests start the bundled server (apps/server/dist) and the media core (native/media, cargo).
-      - run: pnpm build
-      - run: node scripts/notices.ts --check
-      - run: pnpm test:fast
-      - name: Keep the test output
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-output-fast
-          path: test-output/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  app:
-    name: app tests ${{ matrix.shard }}/4
-    runs-on: macos-latest
-    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
     env:
       # 3 vCPUs: a launch or the first screen can take longer than on a laptop.
       UNCUT_TEST_LAUNCH_MS: "120000"
@@ -99,23 +71,26 @@ jobs:
             native/media/target
           key: app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'native/media/Cargo.lock') }}
           restore-keys: app-${{ runner.os }}-${{ runner.arch }}-
+      # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
       - run: brew install ffmpeg
       - run: pnpm install --frozen-lockfile
-      - name: Probe the runner (temporary)
-        run: |
-          sysctl -n kern.hv_vmm_present || true
-          system_profiler SPHardwareDataType | grep -i model || true
-          system_profiler SPDisplaysDataType || true
-          system_profiler SPAudioDataType || true
-          defaults read com.apple.universalaccess reduceMotion 2>&1 || true
-      - run: pnpm dist
-      - name: Run shard ${{ matrix.shard }} of 4
-        run: node scripts/test-app-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 4
+      - name: Typecheck and licence notices
+        if: matrix.shard == 1
+        run: pnpm typecheck && node scripts/notices.ts --check
+      # The fast tests start the bundled server and media core (pnpm build, part of dist); the app
+      # tests launch the packaged app.
+      - id: dist
+        run: pnpm dist
+      - name: Fast tests, shard ${{ matrix.shard }} of 5
+        run: node --test --test-shard=${{ matrix.shard }}/5 "test/!(app)/**/*.test.ts"
+      - name: App tests, shard ${{ matrix.shard }} of 5
+        if: (success() || failure()) && steps.dist.outcome == 'success'
+        run: node scripts/test-app-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 5 --retries 1
       - name: Keep the test output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-output-app-${{ matrix.shard }}
+          name: test-output-${{ matrix.shard }}
           path: |
             test-output/**/*.png
             test-output/shard-*.json

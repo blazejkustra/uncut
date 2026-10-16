@@ -328,7 +328,10 @@ test("graphic documents (review): their route takes only the graphic secret, whi
   const failed = await finished(jobId);
   assert.equal(failed.phase, "failed");
   assert.match(failed.error, /"move" \(graphics\/stuck\.html\).*took longer than 5 s to load and draw a frame/);
-  assert.ok(Date.now() - t0 < 25000, `failed in ${Date.now() - t0} ms, not after the 30 s render timeout`);
+  // The message above is the graphic's own deadline (5 s per drawn sub-frame), not the server's 30 s
+  // render timeout, whose error reads differently. The time only guards against a hang: the deadline
+  // covers every sub-frame of the frame: 25.5 s on a 3-core CI VM (#89).
+  assert.ok(Date.now() - t0 < 60000, `failed in ${Date.now() - t0} ms`);
 });
 
 test("agent: modules_list shows the components' params; insert_device_frame and an end card in one edit; graphic_write; render_frames draws them", { skip: skipServer, timeout: 240000 }, async () => {
