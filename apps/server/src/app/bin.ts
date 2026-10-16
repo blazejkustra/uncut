@@ -10,7 +10,7 @@ import { isLoopbackHost } from "./auth.ts";
 import { dataDirOf, readConfig, readLaunchOptions, type LaunchOptions } from "./config.ts";
 import { loadOrCreateToken } from "./pairing.ts";
 import { makeServerLayer, openSockets } from "./server.ts";
-import { fallbackPathDirs, holdClaudeAuth, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
+import { awaitShellFrom, fallbackPathDirs, holdClaudeAuth, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
 import { initTelemetry, shutdownTelemetry, trackCrash } from "../telemetry/telemetry.ts";
 import { crashOf, spoolCrash } from "../telemetry/spool.ts";
 
@@ -61,6 +61,8 @@ const shellReady =
           })
           .catch(() => undefined);
       })();
+// D277 review: claude (agent, critic, SVG generator) waits for this, bounded, before it starts.
+awaitShellFrom(shellReady);
 
 // The token: the desktop's (bootstrap fd), UNCUT_TOKEN, or a headless server's stored one (made once).
 let token = launch.bootstrapToken ?? envToken;

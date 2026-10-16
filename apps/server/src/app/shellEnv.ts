@@ -3,7 +3,7 @@
 // argent) are invisible. Like t3code's DesktopShellEnvironment, ask the user's login shell
 // once at startup, with markers around the values and a timeout, and fall back to the usual
 // install locations if the shell hangs, fails or prints nonsense.
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -43,26 +43,78 @@ export const mergePath = (...parts: ReadonlyArray<string | undefined>) => {
 };
 
 /**
- * D277: the variables Claude Code signs in with, whichever way the user set it up: a Claude login
- * token, an Anthropic API key or gateway (ANTHROPIC_*), Amazon Bedrock (and Mantle), Google Cloud's
- * Agent Platform (Vertex) or Microsoft Foundry. Anthropic's terms for products that run Claude Code
- * forbid removing or restricting any of its sign-in methods, so claude gets these as they are.
+ * D277: Claude Code's own sign-in variables, by the documented names (code.claude.com: Bedrock,
+ * Agent Platform/Vertex, Foundry and LLM-gateway pages): a Claude login token, an Anthropic API key
+ * or gateway, the provider switches and their Anthropic-side settings. Anthropic's terms for
+ * products that run Claude Code forbid removing or restricting any of its sign-in methods.
  */
-export const isClaudeAuthVar = (k: string) =>
-  k.startsWith("ANTHROPIC_") ||
-  k === "CLAUDE_CODE_OAUTH_TOKEN" ||
-  /^CLAUDE_CODE_(USE|SKIP)_(BEDROCK|VERTEX|FOUNDRY|MANTLE)(_AUTH)?$/.test(k) ||
-  k === "CLAUDE_CODE_SKIP_AWS_CRED_CACHE" ||
-  k === "CLAUDE_CODE_AWS_CHAIN_RESOLVE_TIMEOUT_MS" ||
-  k === "CLAUDE_CODE_API_KEY_HELPER_TTL_MS" ||
-  k.startsWith("AWS_") ||
-  k === "CLOUD_ML_REGION" ||
-  k.startsWith("VERTEX_REGION_") ||
-  k === "GOOGLE_APPLICATION_CREDENTIALS" ||
-  k === "GOOGLE_CLOUD_PROJECT" ||
-  k === "GCLOUD_PROJECT" ||
-  k === "CLOUDSDK_CONFIG" ||
-  k.startsWith("AZURE_");
+const CORE_AUTH = new Set([
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_CUSTOM_HEADERS",
+  "ANTHROPIC_MODEL",
+  "ANTHROPIC_DEFAULT_MODEL",
+  "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_SMALL_FAST_MODEL",
+  "ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION",
+  "ANTHROPIC_BEDROCK_BASE_URL",
+  "ANTHROPIC_BEDROCK_MANTLE_BASE_URL",
+  "ANTHROPIC_BEDROCK_REGION_PREFIX",
+  "ANTHROPIC_BEDROCK_SERVICE_TIER",
+  "ANTHROPIC_VERTEX_PROJECT_ID",
+  "ANTHROPIC_VERTEX_BASE_URL",
+  "ANTHROPIC_FOUNDRY_API_KEY",
+  "ANTHROPIC_FOUNDRY_AUTH_TOKEN",
+  "ANTHROPIC_FOUNDRY_RESOURCE",
+  "ANTHROPIC_FOUNDRY_BASE_URL",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "CLAUDE_CODE_SKIP_AWS_CRED_CACHE",
+  "CLAUDE_CODE_AWS_CHAIN_RESOLVE_TIMEOUT_MS",
+  "CLAUDE_CODE_API_KEY_HELPER_TTL_MS",
+]);
+const isCoreAuthVar = (k: string) => CORE_AUTH.has(k) || /^CLAUDE_CODE_(USE|SKIP)_(BEDROCK|VERTEX|FOUNDRY|MANTLE)(_AUTH)?$/.test(k);
+
+type Cloud = "aws" | "gcp" | "azure";
+/** A cloud provider's credentials and settings: passed only when Claude Code is set to use that provider. */
+export const cloudOf = (k: string): Cloud | undefined =>
+  k.startsWith("AWS_")
+    ? "aws"
+    : k === "CLOUD_ML_REGION" || k.startsWith("VERTEX_REGION_") || k === "GOOGLE_APPLICATION_CREDENTIALS" || k === "GOOGLE_CLOUD_PROJECT" || k === "GCLOUD_PROJECT" || k.startsWith("CLOUDSDK_")
+      ? "gcp"
+      : k.startsWith("AZURE_")
+        ? "azure"
+        : undefined;
+
+/** A sign-in variable or a cloud one that may become one (gateClaudeAuth decides). */
+export const isClaudeAuthVar = (k: string) => isCoreAuthVar(k) || cloudOf(k) !== undefined;
+
+const on = (v: string | undefined) => !!v && v !== "0" && v.toLowerCase() !== "false";
+/** The clouds Claude Code is set to use, from its provider switches. */
+export const cloudsOn = (vars: Readonly<Record<string, string | undefined>>): Set<Cloud> => {
+  const out = new Set<Cloud>();
+  if (on(vars.CLAUDE_CODE_USE_BEDROCK) || on(vars.CLAUDE_CODE_USE_MANTLE)) out.add("aws");
+  if (on(vars.CLAUDE_CODE_USE_VERTEX)) out.add("gcp");
+  if (on(vars.CLAUDE_CODE_USE_FOUNDRY)) out.add("azure");
+  return out;
+};
+
+/**
+ * D277 review: the sign-in variables claude gets. Claude Code's own always; a cloud's (AWS_*,
+ * Vertex's GOOGLE_/CLOUDSDK_/region variables, AZURE_*) only when its provider switch is on, so
+ * day-job cloud keys in a shell profile never reach an agent signed in with a Claude account.
+ */
+export const gateClaudeAuth = (vars: Readonly<Record<string, string>>): Record<string, string> => {
+  const clouds = cloudsOn(vars);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    const cloud = cloudOf(k);
+    if (isCoreAuthVar(k) || (cloud && clouds.has(cloud))) out[k] = v;
+  }
+  return out;
+};
 
 /** Only the Claude Code sign-in variables of an environment (isClaudeAuthVar). */
 export const pickClaudeAuth = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => {
@@ -93,12 +145,18 @@ export const parseShellOutput = (output: string): { path?: string; auth: Record<
   return { path: valid || undefined, auth: pickClaudeAuth(vars) };
 };
 
-/** The environment minus ANTHROPIC_API_KEY: for the media tools and other non-claude processes. */
-export const withoutApiKey = (env: NodeJS.ProcessEnv): Record<string, string> => {
+/**
+ * D277 review: the environment for the tools Uncut runs that aren't claude or a plugin (ffmpeg,
+ * ffprobe, the analysers, capture conversion, the setup probes, the login shell probe): no sign-in
+ * variable (isClaudeAuthVar) and nothing that looks like a secret.
+ */
+export const toolEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) if (v !== undefined && k !== "ANTHROPIC_API_KEY") out[k] = v;
+  for (const [k, v] of Object.entries(env)) if (v !== undefined && !isClaudeAuthVar(k) && !looksSecret(k) && !k.startsWith("ANTHROPIC_")) out[k] = v;
   return out;
 };
+/** The old name, kept for its callers: now toolEnv (no sign-in variables or secrets at all). */
+export const withoutApiKey = toolEnv;
 
 export interface ShellEnvironment {
   readonly path: string;
@@ -115,6 +173,28 @@ const heldAuth: { launch: Record<string, string>; shell: Record<string, string> 
 export const holdClaudeAuth = (from: "launch" | "shell", vars: Readonly<Record<string, string | undefined>>) => {
   heldAuth[from] = pickClaudeAuth(vars);
 };
+
+// D277 review: claude waits for the login shell's answer (its sign-in variables) before it starts,
+// at most SHELL_WAIT_MS (the probe itself gives up after 4 s). bin.ts hands over the pending answer.
+const SHELL_WAIT_MS = 6000;
+let shellPending: Promise<unknown> = Promise.resolve();
+export const awaitShellFrom = (pending: Promise<unknown>) => {
+  shellPending = pending.catch(() => undefined);
+};
+export const shellAuthReady = (timeoutMs = SHELL_WAIT_MS): Promise<void> =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    timer.unref?.();
+    void shellPending.then(() => (clearTimeout(timer), resolve()));
+  });
+
+/**
+ * D277 review: where claude's ANTHROPIC_API_KEY comes from: "environment" (Uncut's own, the one it
+ * was launched with, or the login shell's), "settings" (Claude Code's settings.json env) or none.
+ * Presence only; never the value.
+ */
+export const apiKeySource = (env: NodeJS.ProcessEnv = process.env): "environment" | "settings" | undefined =>
+  userAuthSettings(env).env.ANTHROPIC_API_KEY ? "settings" : env.ANTHROPIC_API_KEY || heldAuth.launch.ANTHROPIC_API_KEY || heldAuth.shell.ANTHROPIC_API_KEY ? "environment" : undefined;
 
 /**
  * Runs `$SHELL -ilc` once and returns the PATH to use. Never fails: a shell that can't start,
@@ -178,20 +258,23 @@ declare const __UNCUT_SERVER_VERSION__: string | undefined;
 
 /**
  * Every `claude` Uncut starts (the agent session, the critic, the SVG generator, the setup probes)
- * gets this environment (D218, D277): agentEnv, plus whatever Claude Code signs in with (D277,
- * isClaudeAuthVar: a Claude login token, ANTHROPIC_API_KEY or a gateway, Bedrock, Vertex, Foundry;
- * from Uncut's own environment, the one it was launched with and the login shell's), minus what
- * would make claude misreport who started it (an inherited CLAUDE_AGENT_SDK_VERSION /
- * CLAUDE_AGENT_SDK_CLIENT_APP, CLAUDE_CODE_ENTRYPOINT, so claude names its own entrypoint) and the
- * Node/debug switches the Agent SDK also removes (NODE_OPTIONS, DEBUG), plus
- * CLAUDE_AGENT_SDK_CLIENT_APP=uncut/<version>, the way Anthropic's SDK docs ask an app to identify
- * itself (it becomes claude's x-client-app header). The generators' keys (OPENAI_API_KEY and the
- * rest) and other secrets stay out. Every other process (plugins, ffmpeg, the rasteriser) gets no
- * sign-in variable at all.
+ * gets this environment (D218, D277): agentEnv, plus Claude Code's own sign-in (gateClaudeAuth: a
+ * Claude login token, ANTHROPIC_API_KEY or a gateway, and a cloud's credentials only when Claude
+ * Code is set to use that cloud), from the login shell, the environment Uncut was launched with,
+ * its own, and Claude Code's settings.json `env` (highest, as claude applies it; the agent and the
+ * critic run with --setting-sources "", which would skip it). Minus what would make claude
+ * misreport who started it (an inherited CLAUDE_AGENT_SDK_VERSION / CLAUDE_AGENT_SDK_CLIENT_APP,
+ * CLAUDE_CODE_ENTRYPOINT) and the Node/debug switches the Agent SDK also removes (NODE_OPTIONS,
+ * DEBUG), plus CLAUDE_AGENT_SDK_CLIENT_APP=uncut/<version>, the way Anthropic's SDK docs ask an app
+ * to identify itself. The generators' keys and other secrets stay out. Every other process
+ * (plugins, ffmpeg, the rasteriser) gets no sign-in variable at all.
  */
 export const claudeEnv = (env: NodeJS.ProcessEnv, version: string = typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev"): Record<string, string> => {
-  const out: Record<string, string> = { ...agentEnv(env), ...heldAuth.shell, ...heldAuth.launch, ...pickClaudeAuth(env) };
-  for (const k of Object.keys(out)) if (k.startsWith("CLAUDE_AGENT_SDK_") || k === "NODE_OPTIONS" || k === "DEBUG") delete out[k];
+  const auth = gateClaudeAuth({ ...heldAuth.shell, ...heldAuth.launch, ...pickClaudeAuth(env), ...userAuthSettings(env).env });
+  const out: Record<string, string> = agentEnv(env);
+  // A cloud's leftover non-secret variables (CLOUD_ML_REGION, GCLOUD_PROJECT…) only with its switch on, too.
+  for (const k of Object.keys(out)) if (cloudOf(k) || k.startsWith("CLAUDE_AGENT_SDK_") || k === "NODE_OPTIONS" || k === "DEBUG") delete out[k];
+  Object.assign(out, auth);
   out.CLAUDE_AGENT_SDK_CLIENT_APP = `uncut/${version}`;
   return out;
 };
@@ -207,13 +290,24 @@ const AUTH_SETTINGS = ["apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", 
  * ~/.claude>/settings.json: `env` filtered to isClaudeAuthVar (for the child's environment, never
  * argv) and the AUTH_SETTINGS commands (for --settings). A missing or broken file gives nothing.
  */
+const SETTINGS_MAX_BYTES = 1024 * 1024;
+let settingsCache: { path: string; mtimeMs: number; size: number; value: { env: Record<string, string>; settings: Record<string, string> } } | undefined;
 export const userAuthSettings = (env: NodeJS.ProcessEnv): { env: Record<string, string>; settings: Record<string, string> } => {
   const none = { env: {}, settings: {} };
   const home = env.HOME || homedir();
-  const dir = env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+  const path = join(env.CLAUDE_CONFIG_DIR || join(home, ".claude"), "settings.json");
+  // D277 review: at most 1 MB, and read again only when the file changed.
+  let st: { mtimeMs: number; size: number; isFile(): boolean };
+  try {
+    st = statSync(path);
+  } catch {
+    return none;
+  }
+  if (!st.isFile() || st.size > SETTINGS_MAX_BYTES) return none;
+  if (settingsCache && settingsCache.path === path && settingsCache.mtimeMs === st.mtimeMs && settingsCache.size === st.size) return settingsCache.value;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
+    parsed = JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return none;
   }
@@ -223,7 +317,22 @@ export const userAuthSettings = (env: NodeJS.ProcessEnv): { env: Record<string, 
   if (file.env && typeof file.env === "object") for (const [k, v] of Object.entries(file.env as Record<string, unknown>)) if (typeof v === "string") vars[k] = v;
   const settings: Record<string, string> = {};
   for (const k of AUTH_SETTINGS) if (typeof file[k] === "string" && file[k]) settings[k] = file[k] as string;
-  return { env: pickClaudeAuth(vars), settings };
+  const value = { env: pickClaudeAuth(vars), settings };
+  settingsCache = { path, mtimeMs: st.mtimeMs, size: st.size, value };
+  return value;
+};
+
+/**
+ * D277 review: the --settings a claude with --setting-sources "" gets, as a file when it carries
+ * the user's sign-in commands (apiKeyHelper and the cloud refresh commands stay off argv, where
+ * `ps` shows them): written 0600 into `dir` (a folder Uncut removes afterwards) and its path
+ * returned; else the JSON itself (Uncut's own rules only).
+ */
+export const settingsArg = (dir: string, own: Readonly<Record<string, unknown>>, auth: Readonly<Record<string, string>>): string => {
+  if (!Object.keys(auth).length) return JSON.stringify(own);
+  const file = join(dir, "claude-settings.json");
+  writeFileSync(file, JSON.stringify({ ...auth, ...own }), { mode: 0o600 });
+  return file;
 };
 
 /**

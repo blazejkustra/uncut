@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 import { graphicDocument } from "@uncut/core";
 
-import { claudeEnv } from "../app/shellEnv.ts";
+import { claudeEnv, shellAuthReady } from "../app/shellEnv.ts";
 import { which } from "../app/setup.ts";
 import { rasterizerCommand, startRasterizer } from "../export/rasterizer.ts";
 import { svgSize } from "../export/svg.ts";
@@ -169,6 +169,8 @@ export async function askClaude(input: { readonly prompt: string; readonly kind:
   const bin = process.env.UNCUT_CLAUDE || (await which("claude", process.env.PATH ?? ""));
   if (!bin) throw new Error("Claude Code isn't installed: the SVG generator writes its pictures with your Claude Code (Settings shows how to install it).");
   const ask = `${input.kind === "video" ? `An animation, ${input.seconds} seconds long` : "A still picture"}, ${input.width}x${input.height} pixels.\nWhat to draw: ${input.prompt}`;
+  // D277 review: the login shell's sign-in variables first (bounded wait).
+  await shellAuthReady();
   const cwd = await mkdtemp(join(tmpdir(), "uncut-svg-"));
   const args = ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config", "--permission-mode", "dontAsk", "--append-system-prompt", SYSTEM];
   if (process.env.UNCUT_AGENT_MODEL) args.push("--model", process.env.UNCUT_AGENT_MODEL);

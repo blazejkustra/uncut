@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { userAuthSettings } from "../app/shellEnv.ts";
+import { settingsArg, shellAuthReady, userAuthSettings } from "../app/shellEnv.ts";
 import { resultError, resultFailed, turnLimits } from "./agentLimits.ts";
 
 import type { Brief, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
@@ -376,12 +376,12 @@ export function reviewNext(review: Review, turnRound: number = review.round): st
 
 /**
  * The critic's command line: no tools, no MCP servers, no settings, no session kept; Uncut's critic
- * prompt replaces Claude Code's own (no tool talk, no hedging). D277: but Claude Code's sign-in
- * settings (apiKeyHelper, cloud refresh commands) from the user's settings, when there are any.
+ * prompt replaces Claude Code's own (no tool talk, no hedging). D277: `settings`, when given, is
+ * the --settings value (settingsArg: a 0600 file with the user's sign-in commands).
  */
-export function criticArgs(model: string | undefined, authSettings: Readonly<Record<string, string>> = userAuthSettings(process.env).settings) {
+export function criticArgs(model: string | undefined, settings?: string) {
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--permission-mode", "dontAsk", "--no-session-persistence", "--system-prompt", CRITIC_SYSTEM];
-  if (Object.keys(authSettings).length) args.push("--settings", JSON.stringify(authSettings));
+  if (settings) args.push("--settings", settings);
   if (model) args.push("--model", model);
   return args;
 }
@@ -391,10 +391,15 @@ export function criticArgs(model: string | undefined, authSettings: Readonly<Rec
  * text back. Killed on the signal, after its result, or after criticMs.
  */
 export async function runCritic(o: { bin: string; env: Record<string, string>; model: string | undefined; message: unknown; signal: AbortSignal }): Promise<string> {
+  // D277 review: the login shell's sign-in first (bounded), then the user's sign-in commands in a
+  // 0600 file inside the temp folder that is removed below, never on argv.
+  await shellAuthReady();
   const cwd = await mkdtemp(join(tmpdir(), "uncut-critic-"));
   try {
+    const auth = userAuthSettings(process.env).settings;
+    const settings = Object.keys(auth).length ? settingsArg(cwd, {}, auth) : undefined;
     return await new Promise<string>((resolve, reject) => {
-      const child = spawn(o.bin, criticArgs(o.model), { cwd, env: o.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+      const child = spawn(o.bin, criticArgs(o.model, settings), { cwd, env: o.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
       let buf = "";
       let stderr = "";
       let settled = false;
