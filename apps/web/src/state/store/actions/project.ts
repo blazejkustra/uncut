@@ -11,6 +11,15 @@ import { activeJobs, applyFromCall } from "../sync.ts";
 import type { Project } from "../types.ts";
 import { actions } from "../actions.ts";
 
+/** When a project last closed (D243). */
+export const projectClose = { at: 0 };
+
+/** How long after a project closes a ⌘W (or the window's close) is kept from closing the window (D243). */
+const CLOSE_GUARD_MS = 1000;
+
+/** A project is closing or has just closed: a second ⌘W mustn't take the window, and the app, with it (D243). */
+export const justClosedProject = () => Date.now() - projectClose.at < CLOSE_GUARD_MS;
+
 export const projectActions = {
   /** Creates and opens the project (replacing any open one); returns the error for the form. */
   async createProject(input: { parentDir: string; name: string; canvas: Canvas; matchFirstClip?: boolean }): Promise<string | undefined> {
@@ -49,11 +58,17 @@ export const projectActions = {
     if (dir) await actions.openProject(dir);
   },
 
+  /**
+   * Back to Welcome (D243): the app stays open. While it's under way and just after, a ⌘W (held,
+   * or pressed again) is kept from closing the window (keys.ts).
+   */
   async closeProject() {
     if (!state.snapshot) return;
     if (!(await confirmLeave("close-project"))) return;
+    projectClose.at = Date.now();
     const result = await call((c) => c["project.close"]({}));
     if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });
+    projectClose.at = Date.now();
     set({ snapshot: null, changedOnDisk: false, reloadProblem: undefined, notice: undefined, welcomeError: undefined });
     playback.reset();
     await refreshRecents();

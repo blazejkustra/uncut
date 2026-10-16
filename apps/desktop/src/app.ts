@@ -444,7 +444,7 @@ app.whenReady().then(() => {
     if (mode !== "welcome" && mode !== "editor") throw new Error("not a window mode");
     return setWindowMode(mode);
   });
-  setAppMenu({ projectOpen: false, recents: [] }, sendMenuCommand);
+  setAppMenu({ projectOpen: false, recents: [], environments: false }, sendMenuCommand);
   createWindow();
 });
 

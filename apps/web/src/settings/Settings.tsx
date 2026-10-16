@@ -1,9 +1,9 @@
 // Settings (G8, D119): ⌘, or Uncut › Settings…. Project (the open project's name, canvas, frame
 // rate, background, folder: the same component as the Inspector's), App (what this Mac remembers:
 // snapping, panel sizes, the rail's order; the agents and capture setup; environments) and the
-// keyboard shortcuts. Esc or a click outside closes it.
+// keyboard shortcuts. Labs (D245): feature flags. Esc or a click outside closes it.
 import { setSkipStoryboard, useSkipStoryboard } from "../state/agentPrefs.ts";
-import { Clapperboard, Keyboard, SlidersHorizontal, X } from "lucide-react";
+import { Clapperboard, FlaskConical, Keyboard, SlidersHorizontal, X } from "lucide-react";
 import { useEffect } from "react";
 
 import { layout, RAIL_KEY } from "../editor/layout.ts";
@@ -17,10 +17,13 @@ import { setScrubCacheOn, useScrubCacheOn } from "./scrub.ts";
 import { setGpuCompositorOn, useGpuCompositorOn } from "./gpu.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 import { UsageDataSettings } from "./telemetry.tsx";
+import { LabsSettings } from "./Labs.tsx";
+import { ENVIRONMENTS_LABS_HINT, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
   { id: "project", label: "Project", icon: Clapperboard },
   { id: "app", label: "App", icon: SlidersHorizontal },
+  { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
 ];
 
@@ -64,6 +67,7 @@ export function Settings() {
           </div>
           {section === "project" && snapshot && <ProjectSettings key={snapshot.dir} snapshot={snapshot} project={projectOf(snapshot)} online={online} />}
           {section === "app" && <AppSettings />}
+          {section === "labs" && <LabsSettings />}
           {section === "shortcuts" && <ShortcutList />}
         </div>
       </div>
@@ -76,6 +80,7 @@ function AppSettings() {
   const proxies = useProxiesOn();
   const scrubCache = useScrubCacheOn();
   const gpu = useGpuCompositorOn();
+  const environments = useEnvironmentsUsable();
   return (
     <div data-testid="app-settings">
       <div className="group">
@@ -138,10 +143,18 @@ function AppSettings() {
           <button className="btn" data-testid="settings-setup" onClick={() => actions.openSetup()}>
             Agents and setup…
           </button>
-          <button className="btn" data-testid="settings-open-environments" onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
+          <button className="btn" data-testid="settings-open-environments" disabled={!environments} title={environments ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
             Environments…
           </button>
         </div>
+        {!environments && (
+          <span className="labs-hint" data-testid="settings-environments-labs">
+            Environments is in Labs.{" "}
+            <button className="link-btn" data-testid="settings-go-labs" onClick={() => actions.openSettings("labs")}>
+              Turn it on in Labs
+            </button>
+          </span>
+        )}
       </div>
     </div>
   );

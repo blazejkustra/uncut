@@ -6,6 +6,7 @@ import { type PluginRule, pluginCheckRules, pluginRuleEntries, type PluginLook }
 import { type TextPreset, TEXT_PRESETS } from "../project.ts";
 import type { AppStateShape, Project } from "./types.ts";
 import { actions } from "./actions.ts";
+import { environmentsUsable, flagOn, subscribeFlags } from "../../settings/labs.ts";
 
 export let state: AppStateShape = {
   ready: false,
@@ -45,7 +46,7 @@ export const set = (patch: Partial<AppStateShape>) => {
   // An Analyze refusal belongs to the project it was about.
   if (state.analysisError && before.snapshot?.dir !== state.snapshot?.dir) state = { ...state, analysisError: undefined };
   for (const listener of listeners) listener();
-  if (before.snapshot !== state.snapshot || before.recents !== state.recents) syncShell();
+  if (before.snapshot !== state.snapshot || before.recents !== state.recents || before.environment !== state.environment) syncShell();
   // Plugins allowed, removed or installed: their looks, components and rules follow (D103).
   if (before.plugins !== state.plugins && state.connection === "connected") void actions.loadContributions();
 };
@@ -97,8 +98,16 @@ export const online = () => state.connection === "connected";
 /** The window shows a remote environment (D106): paths are the server's, not this Mac's. */
 export const isRemote = (s: AppStateShape = state) => s.environment.kind === "remote";
 
+// A Labs flag turned on or off (D245) changes the menu too.
+subscribeFlags(() => syncShell());
+
 /** Keep the native menu (Open Recent, ⌘W) and the window title in step with the screen. */
 function syncShell() {
-  bridge.setAppState({ projectOpen: state.snapshot !== null, recents: state.recents.map(({ name, dir }) => ({ name, dir })) });
+  bridge.setAppState({
+    projectOpen: state.snapshot !== null,
+    recents: state.recents.map(({ name, dir }) => ({ name, dir })),
+    // D245: the menu's Environments… is disabled while the Labs flag is off (and a remote isn't active).
+    environments: environmentsUsable(flagOn("environments"), state.environment.kind),
+  });
   document.title = state.snapshot ? projectOf(state.snapshot).name : "Uncut";
 }

@@ -4,31 +4,44 @@ import { shortPath } from "../state/format.ts";
 import { NewProject } from "./NewProject.tsx";
 import { StatusLine } from "../panels/StatusLine.tsx";
 import { EnvironmentChip } from "./Environments.tsx";
+import { UncutMark } from "../editor/Wordmark.tsx";
 import { actions, useApp } from "../state/store.ts";
+import "./welcome.css";
 
+/**
+ * Welcome (D243, #79): what the window shows with no project, at launch and after a project
+ * closes. The whole compact window is the screen (no card in a frame): a bar under the traffic
+ * lights, the logo and the start actions, Recent, and the server's status at the foot.
+ */
 export function Welcome() {
   const { recents, appInfo, welcomeError, newProjectOpen, connection, environment } = useApp();
   const remote = environment.kind === "remote";
   const offline = connection !== "connected";
   return (
     <div className="welcome" data-testid="welcome">
-      <div className="welcome-drag" />
-      <div className="modal wiz welcome-card">
-        <div className="wiz-header row">
-          <div className="wiz-brand">Uncut</div>
-          <div className="grow" />
-          <EnvironmentChip />
-          <button className="link-btn" data-testid="open-setup" onClick={actions.openSetup} disabled={offline} title="Check agents, Argent and ffmpeg">
-            <Settings2 />
-            Setup
-          </button>
-        </div>
-        <div className="wiz-panel">
+      <div className="welcome-bar">
+        <div className="grow" />
+        <EnvironmentChip />
+        <button className="link-btn" data-testid="open-setup" onClick={actions.openSetup} disabled={offline} title="Check agents, Argent and ffmpeg">
+          <Settings2 />
+          Setup
+        </button>
+      </div>
+      <div className="welcome-body">
+        <div className="wiz-panel welcome-main" data-new-project={newProjectOpen}>
           {newProjectOpen ? (
             <NewProject />
           ) : (
             <>
-              <h1>Start a video</h1>
+              <div className="welcome-hero">
+                <UncutMark className="welcome-logo" tile />
+                <div className="welcome-titles">
+                  <div className="welcome-brand" data-testid="welcome-brand">
+                    Uncut
+                  </div>
+                  <h1>Start a video</h1>
+                </div>
+              </div>
               <p className="wiz-lead" data-testid="welcome-lead">
                 {remote ? `Projects here live on ${environment.name}: its folders, its footage, its exports.` : "A project is a folder on this Mac. Your footage stays where it is."}
               </p>
@@ -71,9 +84,9 @@ export function Welcome() {
             </>
           )}
         </div>
-        <div className="welcome-foot">
-          <StatusLine />
-        </div>
+      </div>
+      <div className="welcome-foot">
+        <StatusLine />
       </div>
     </div>
   );
