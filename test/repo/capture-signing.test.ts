@@ -14,9 +14,11 @@ const read = (p: string) => readFileSync(p, "utf8");
 
 test("the signed build's entitlements: microphone, camera and what Electron needs under the hardened runtime", () => {
   const plist = read(`apps/desktop/${SIGNED_ENTITLEMENTS}`);
-  for (const key of ["com.apple.security.device.audio-input", "com.apple.security.device.camera", "com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory", "com.apple.security.cs.disable-library-validation"]) {
+  for (const key of ["com.apple.security.device.audio-input", "com.apple.security.device.camera", "com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"]) {
     assert.match(plist, new RegExp(`<key>${key.replace(/\./g, "\\.")}</key>\\s*<true/>`), key);
   }
+  // D247: every binary carries the team's signature, so library validation stays on.
+  assert.doesNotMatch(plist, /<key>com\.apple\.security\.cs\.disable-library-validation<\/key>/);
   assert.doesNotMatch(plist, /app-sandbox/, "not sandboxed (the server and plugins spawn tools)");
   // electron-builder picks these names up by itself, which would change the default ad-hoc build.
   assert.equal(existsSync("apps/desktop/build/entitlements.mac.plist"), false);
@@ -32,7 +34,8 @@ test("Info.plist gets the microphone and camera usage strings; the default build
   assert.match(yml, /\nafterSign: scripts\/after-sign\.ts\n/);
   const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
   assert.equal(pkg.scripts.dist, "pnpm build && pnpm --filter @uncut/desktop dist");
-  assert.equal(pkg.scripts["dist:signed"], "pnpm build && node apps/desktop/scripts/dist-signed.ts");
+  // The script runs pnpm build itself, after its checks, with the telemetry token (D247).
+  assert.equal(pkg.scripts["dist:signed"], "node apps/desktop/scripts/dist-signed.ts");
   assert.equal((JSON.parse(read("apps/desktop/package.json")) as { scripts: Record<string, string> }).scripts.dist, "electron-builder --config electron-builder.yml");
 });
 
@@ -46,21 +49,27 @@ test("after-sign re-seals an ad-hoc build with a pinned requirement and only ver
   assert.equal(isAdHoc("F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C"), false);
 });
 
-test("dist:signed picks a keychain identity and passes the hardened runtime, entitlements, no timestamp and its own output folder", () => {
+test("dist:signed picks a Developer ID identity and passes the hardened runtime, entitlements, a secure timestamp and its own output folder", () => {
   const listed = `  1) F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C "Apple Development: Jane Doe (ABCDE12345)"
   2) 0123456789ABCDEF0123456789ABCDEF01234567 "Developer ID Application: Jane Doe (ABCDE12345)"
      2 valid identities found`;
   const ids = parseIdentities(listed);
   assert.equal(ids.length, 2);
-  assert.deepEqual(pickIdentity(ids), ids[1], "Developer ID first");
-  assert.deepEqual(pickIdentity([ids[0]!]), ids[0], "else Apple Development");
-  assert.deepEqual(pickIdentity(ids, "Apple Development: Jane Doe (ABCDE12345)"), ids[0]);
-  assert.deepEqual(pickIdentity(ids, "f2408c1cfa9a417eb02dd28221af86a3fea5e75c"), ids[0], "by SHA-1");
+  assert.deepEqual(pickIdentity(ids), { identity: ids[1], shareable: true }, "Developer ID first, whatever the order");
+  const devOnly = pickIdentity([ids[0]!]) as { problem: string };
+  assert.match(devOnly.problem, /No "Developer ID Application" identity in the keychain \(found "Apple Development: Jane Doe \(ABCDE12345\)"\)/, "Apple Development alone is not a release");
+  assert.match(devOnly.problem, /UNCUT_SIGN_IDENTITY/);
+  const forced = pickIdentity(ids, "Apple Development: Jane Doe (ABCDE12345)") as { identity: unknown; shareable: boolean; warning: string };
+  assert.deepEqual([forced.identity, forced.shareable], [ids[0], false], "forced: local-only");
+  assert.match(forced.warning, /LOCAL-ONLY/);
+  assert.deepEqual(pickIdentity(ids, "f2408c1cfa9a417eb02dd28221af86a3fea5e75c"), { identity: ids[0], shareable: false, warning: forced.warning }, "by SHA-1");
+  assert.deepEqual(pickIdentity(ids, "Developer ID Application"), { identity: ids[1], shareable: true }, "by part of the name");
   assert.match((pickIdentity(ids, "Nobody") as { problem: string }).problem, /No signing identity "Nobody"/);
-  assert.match((pickIdentity([]) as { problem: string }).problem, /UNCUT_SIGN_IDENTITY/);
+  assert.match((pickIdentity([]) as { problem: string }).problem, /developer\.apple\.com/);
   const args = signedBuilderArgs("F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C");
   assert.deepEqual(args.slice(0, 5), ["--config", "electron-builder.yml", "--mac", "dir", "--arm64"]);
-  for (const a of ["-c.mac.identity=F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C", "-c.mac.hardenedRuntime=true", `-c.mac.entitlements=${SIGNED_ENTITLEMENTS}`, `-c.mac.entitlementsInherit=${SIGNED_ENTITLEMENTS}`, "-c.mac.timestamp=none", `-c.directories.output=${SIGNED_OUTPUT}`]) assert.ok(args.includes(a), a);
+  for (const a of ["-c.mac.identity=F2408C1CFA9A417EB02DD28221AF86A3FEA5E75C", "-c.mac.hardenedRuntime=true", `-c.mac.entitlements=${SIGNED_ENTITLEMENTS}`, `-c.mac.entitlementsInherit=${SIGNED_ENTITLEMENTS}`, "-c.mac.notarize=false", `-c.directories.output=${SIGNED_OUTPUT}`]) assert.ok(args.includes(a), a);
+  assert.ok(!args.some((a) => a.startsWith("-c.mac.timestamp")), "osx-sign's default: Apple's secure timestamp, which notarization requires");
   assert.equal(SIGNED_OUTPUT, "../../dist/signed", "never over dist/mac-arm64, the ad-hoc build the tests use");
 });
 

@@ -1,5 +1,10 @@
-# On a v* tag: build the unsigned (ad-hoc signed) dmg, keep it as an artifact and attach it to a
-# draft release. Developer ID signing and notarization come later.
+# On a v* tag: the Developer ID-signed, notarized and stapled DMG, made by the same script as a local
+# release (`pnpm dist:signed`, D247), kept as an artifact and attached to a draft release.
+# Secrets: MACOS_CERT_P12 (the Developer ID Application certificate and key, .p12, base64),
+# MACOS_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD (app-specific), and
+# UNCUT_TELEMETRY_TOKEN (D223; without it the build's telemetry is inert).
+# Without MACOS_CERT_P12 the job falls back to the old ad-hoc dmg, so a tag never fails for a missing
+# certificate; that dmg warns on other Macs.
 name: Release
 
 on:
@@ -12,7 +17,9 @@ permissions:
 jobs:
   dmg:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      HAS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,17 +27,59 @@ jobs:
           node-version: 24
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+
+      # A temporary keychain with the certificate and the notarytool profile; the script finds both
+      # there (find-identity searches the keychain list; notarytool gets UNCUT_NOTARY_KEYCHAIN).
+      # Not electron-builder's certificate variables: it would make its own keychain the script can't see.
+      - name: Signing keychain
+        if: env.HAS_CERT == 'true'
         env:
-          # Telemetry's app token (D223); without it the build sends nothing.
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/uncut-signing.keychain-db"
+          KC_PASS="$(openssl rand -hex 24)"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          xcrun notarytool store-credentials uncut-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$KC"
+          echo "UNCUT_NOTARY_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+
+      # Build, sign every binary, notarize and staple the app and the DMG, check them with stapler
+      # and spctl, copy to release/Uncut-<version>-<YYYYMMDD>-arm64.dmg.
+      - name: pnpm dist:signed
+        if: env.HAS_CERT == 'true'
+        env:
+          UNCUT_NOTARY_PROFILE: uncut-notary
           UNCUT_TELEMETRY_TOKEN: ${{ secrets.UNCUT_TELEMETRY_TOKEN }}
-      # publish never: electron-builder doesn't upload anything itself; the steps below do.
-      - run: pnpm --filter @uncut/desktop exec electron-builder --config electron-builder.yml --publish never
+        run: pnpm dist:signed
+
+      - name: Ad-hoc dmg (no MACOS_CERT_P12)
+        if: env.HAS_CERT != 'true'
+        env:
+          UNCUT_TELEMETRY_TOKEN: ${{ secrets.UNCUT_TELEMETRY_TOKEN }}
+        run: |
+          echo "::warning::No MACOS_CERT_P12 secret: an ad-hoc signed dmg, not notarized (other Macs warn)."
+          pnpm build
+          pnpm --filter @uncut/desktop exec electron-builder --config electron-builder.yml --publish never
+          mkdir -p release && cp dist/*.dmg release/
+
       - uses: actions/upload-artifact@v4
         with:
           name: Uncut-dmg
-          path: dist/*.dmg
+          path: release/*.dmg
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" release/*.dmg --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+      - name: Remove the signing keychain
+        if: always() && env.UNCUT_NOTARY_KEYCHAIN != ''
+        run: security delete-keychain "$UNCUT_NOTARY_KEYCHAIN"
