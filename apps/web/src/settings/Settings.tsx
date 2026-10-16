@@ -10,7 +10,8 @@ import { layout, RAIL_KEY } from "../editor/layout.ts";
 import { playback, usePlayback } from "../preview/playback.ts";
 import { actions, projectOf, useApp, type SettingsSection } from "../state/store.ts";
 import { ProjectSettings } from "./ProjectSettings.tsx";
-import { ShortcutList } from "./Shortcuts.tsx";
+import { ShortcutSettings } from "./Shortcuts.tsx";
+import { isRecordingKey } from "../editor/keymap.ts";
 import { DefaultLengths } from "./DefaultLengths.tsx";
 import { setProxiesOn, useProxiesOn } from "./proxies.ts";
 import { setScrubCacheOn, useScrubCacheOn } from "./scrub.ts";
@@ -35,7 +36,8 @@ export function Settings() {
   const section = settingsSection === "project" && !snapshot ? "app" : settingsSection;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      // #78: Esc while Settings › Shortcuts listens for a key cancels that (its own handler).
+      if (e.key !== "Escape" || isRecordingKey()) return;
       // Esc in a field puts its value back first (the field's own handler); the next one closes.
       if (document.activeElement instanceof HTMLInputElement && document.activeElement.type !== "color") return void document.activeElement.blur();
       e.preventDefault();
@@ -71,7 +73,7 @@ export function Settings() {
           {section === "app" && <AppSettings />}
           {section === "plugins" && <PluginsSettings />}
           {section === "labs" && <LabsSettings />}
-          {section === "shortcuts" && <ShortcutList />}
+          {section === "shortcuts" && <ShortcutSettings />}
         </div>
       </div>
     </div>

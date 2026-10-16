@@ -5,7 +5,6 @@
 // the jumps to start and end, the zoom and the frame steps, then the hand and the time itself.
 import { Hand, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 
-import { shortcutKeys } from "../editor/keys.ts";
 import { canvasLabel, frameTimecode } from "../state/format.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { layoutOf, type ProjectModel } from "../state/project.ts";
@@ -26,27 +25,27 @@ export function Transport({ project, view, full, onFull }: { project: ProjectMod
       </span>
       <div className="transport-mid">
         {/* #86 (D239): tooltips with the keys from the keymap. */}
-        <Tooltip label="Go to start" keys={shortcutKeys("jump", 0)}>
+        <Tooltip label="Go to start" shortcut="toStart">
           <button className="icon-btn tp-jump" data-testid="to-start" disabled={frame === 0} onClick={playback.toStart}>
             <SkipBack />
           </button>
         </Tooltip>
-        <Tooltip label="Back one frame" keys={shortcutKeys("frame", 0)}>
+        <Tooltip label="Back one frame" shortcut="frameBack">
           <button className="icon-btn tp-step" data-testid="step-back" disabled={frame === 0} onClick={() => playback.step(-1)}>
             <StepBack />
           </button>
         </Tooltip>
-        <Tooltip label={playing ? "Pause" : "Play"} keys={shortcutKeys("play")}>
+        <Tooltip label={playing ? "Pause" : "Play"} shortcut="play">
           <button className="icon-btn play" data-testid="play" disabled={frames <= 1} onClick={playback.toggle}>
             {playing ? <Pause /> : <Play />}
           </button>
         </Tooltip>
-        <Tooltip label="Forward one frame" keys={shortcutKeys("frame", 1)}>
+        <Tooltip label="Forward one frame" shortcut="frameForward">
           <button className="icon-btn tp-step" data-testid="step-forward" disabled={frame >= Math.max(frames - 1, end)} onClick={() => playback.step(1)}>
             <StepForward />
           </button>
         </Tooltip>
-        <Tooltip label="Go to end" keys={shortcutKeys("jump", 1)}>
+        <Tooltip label="Go to end" shortcut="toEnd">
           <button className="icon-btn tp-jump" data-testid="to-end" disabled={frame >= end} onClick={playback.toEnd}>
             <SkipForward />
           </button>
@@ -75,7 +74,7 @@ export function Transport({ project, view, full, onFull }: { project: ProjectMod
           <Hand />
         </button>
       </Tooltip>
-      <Tooltip label={full ? "Exit full screen" : "Full screen preview"} keys={full ? shortcutKeys("exitFull") : []}>
+      <Tooltip label={full ? "Exit full screen" : "Full screen preview"} shortcut={full ? "exitFull" : undefined}>
         <button className="icon-btn" data-testid="preview-fullscreen" aria-pressed={full} onClick={onFull}>
           {full ? <Minimize /> : <Maximize />}
         </button>

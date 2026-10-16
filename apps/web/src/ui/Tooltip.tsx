@@ -1,11 +1,13 @@
 // The app's one tooltip (#86, D239): an action's name and its keyboard shortcut, shown after a
 // short rest of the pointer (or on keyboard focus), above the control and kept inside the window.
-// Wrap a single control: <Tooltip label="Split at the playhead" keys={shortcutKeys("split")}>.
+// Wrap a single control: <Tooltip label="Split at the playhead" shortcut="split">. A `shortcut`
+// shows the keymap's current keys for that action (at most two), updated when they're rebound (#78).
 // It names the control (aria-label) and replaces the native title, so a control shows one tip.
 // Keys come from the keymap (editor/keys.ts SHORTCUTS, timeline/tools.ts TOOLS), never typed here.
 import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { useBindings, keysOf, type ShortcutId } from "../editor/keymap.ts";
 import "./tooltip.css";
 
 /** How long the pointer rests on a control before its tip shows. */
@@ -26,7 +28,12 @@ type ChildProps = {
   "aria-describedby"?: string;
 };
 
-export function Tooltip({ label, keys = [], children }: { label: string; keys?: ReadonlyArray<string>; children: ReactElement<ChildProps> }) {
+/** Keys a tooltip shows for an action: its first two. */
+export const TIP_KEYS = 2;
+
+export function Tooltip({ label, keys: literal = [], shortcut, children }: { label: string; keys?: ReadonlyArray<string>; shortcut?: ShortcutId; children: ReactElement<ChildProps> }) {
+  useBindings();
+  const keys = shortcut ? keysOf(shortcut).slice(0, TIP_KEYS) : literal;
   const id = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
