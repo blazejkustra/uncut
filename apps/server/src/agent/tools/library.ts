@@ -1,7 +1,7 @@
 // The agent's library tools: media_rank, graphic_write, library_search, library_add.
-import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, sep } from "node:path";
-import { familyKey, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, graphicLibsUsed, graphicMediaUsed, GRAPHIC_LIBS, type Project, projectIds, describeOp, type Op, GRAPHIC_SRC, MAX_GRAPHIC_BYTES } from "@uncut/core";
+import { familyKey, GENERIC_FAMILIES, graphicAskedFamilies, graphicDeclaredFamilies, graphicLogosUsed, graphicLibsUsed, graphicMediaUsed, GRAPHIC_LIBS, type Project, projectIds, describeOp, type Op, GRAPHIC_SRC, MAX_GRAPHIC_BYTES } from "@uncut/core";
 import { aliasOf, clipNote, filterFolderSounds, filterSfx, hitKey, libraryMediaOf, limitSentence, onlyWhenAsked } from "@uncut/core/library";
 import { mediaIdFor } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
@@ -99,6 +99,49 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
       });
     });
 
+  /**
+   * graphic_write's edit mode: the graphic `from` (a file in graphics/, read inside the project by
+   * realpath) with each { old, new } applied in order (old must occur exactly once), and the next
+   * free revision name when none is given (<stem>-2.html, -3, …).
+   */
+  const editedGraphic = async (dir: string, args: Record<string, unknown>): Promise<{ html: string; name: string; from: string } | { problem: string }> => {
+    const from = typeof args.from === "string" ? args.from.replace(/^graphics\//, "") : "";
+    if (!GRAPHIC_SRC.test(`graphics/${from}`)) return { problem: "from must be an existing graphic's file name, e.g. film.html (or graphics/film.html)." };
+    if (args.html !== undefined) return { problem: "Pass either html (a whole new graphic) or from with edits, not both." };
+    const edits = Array.isArray(args.edits) ? args.edits : [];
+    if (!edits.length || edits.length > 64) return { problem: "edits is a list of 1 to 64 { old, new } replacements, each old copied exactly from the file." };
+    let html: string;
+    try {
+      const folder = await realpath(join(dir, "graphics"));
+      const project = await realpath(dir);
+      const file = await realpath(join(folder, from));
+      if (!folder.startsWith(`${project}${sep}`) || !file.startsWith(`${folder}${sep}`)) return { problem: "That graphic is outside the project's graphics folder." };
+      html = await readFile(file, "utf8");
+    } catch {
+      return { problem: `There's no graphics/${from} to edit.` };
+    }
+    for (const [i, e] of edits.entries()) {
+      const old = (e as { old?: unknown })?.old;
+      const next = (e as { new?: unknown })?.new;
+      if (typeof old !== "string" || !old || typeof next !== "string") return { problem: `edits[${i}] must be { old, new }: old a non-empty string copied from the file, new its replacement ("" deletes it).` };
+      const at = html.indexOf(old);
+      if (at < 0) return { problem: `edits[${i}].old isn't in graphics/${from}${i ? " (after the edits before it)" : ""}: copy it exactly, whitespace included. Nothing was written.` };
+      if (html.indexOf(old, at + 1) >= 0) return { problem: `edits[${i}].old occurs more than once in graphics/${from}: include more of the surrounding text so it's unique. Nothing was written.` };
+      html = html.slice(0, at) + next + html.slice(at + old.length);
+    }
+    const stem = from.replace(/\.html$/, "").replace(/-\d+$/, "");
+    let name = "";
+    for (let n = 2; n < 1000; n++) {
+      const candidate = `${stem}-${n}.html`;
+      if (!(await stat(join(dir, "graphics", candidate)).then(() => true, () => false))) {
+        name = candidate;
+        break;
+      }
+    }
+    if (!name || !GRAPHIC_SRC.test(`graphics/${name}`)) return { problem: "No free revision name: pass name." };
+    return { html, name, from };
+  };
+
   // ui_show (D65): the renderer moves the playhead, selects and opens a panel once per request.
   /**
    * graphic_write (D78): a graphic's HTML into the project's graphics/ folder. A new file only
@@ -107,8 +150,18 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
    */
   const graphicWrite = (v: ProjectView, args: Record<string, unknown>) =>
     Effect.promise(async (): Promise<McpResult> => {
-      const name = args.name;
-      const html = args.html;
+      // Edit mode: `from` (an existing graphic) with `edits` [{ old, new }], each old found exactly
+      // once; the result is a new revision (never an overwrite), named `name` or <from>-<n>.html.
+      let name = args.name;
+      let html = args.html;
+      let editedFrom: string | undefined;
+      if (args.from !== undefined || args.edits !== undefined) {
+        const made = await editedGraphic(v.dir, args);
+        if ("problem" in made) return textResult(made.problem, true);
+        html = made.html;
+        name = typeof name === "string" && name ? name : made.name;
+        editedFrom = made.from;
+      }
       const src = `graphics/${String(name)}`;
       if (typeof name !== "string" || !GRAPHIC_SRC.test(src)) return textResult("name must be a plain file name ending in .html, e.g. counter.html (letters, digits, dots, dashes, underscores).", true);
       if (typeof html !== "string" || !html.trim()) return textResult("html must be the graphic's HTML: markup, <style> and a <script> defining render(t, info).", true);
@@ -130,14 +183,15 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
       const libNote = libs.unknown.length ? { libraries: `${libs.unknown.map((x) => `uncut:lib/${x}`).join(", ")} ${libs.unknown.length === 1 ? "isn't a bundled library" : "aren't bundled libraries"} and won't load (bundled: ${GRAPHIC_LIBS.join(", ")}).` } : libs.known.length ? { libraries: `Loads ${libs.known.join(", ")}.` } : {};
       // D198: fonts it asks for that aren't there (a fallback would draw them), and kit logos it asks for that the kit lacks.
       const fonts = await projectFonts(config.fontsDir, brandDirs(v), true).catch(() => undefined);
-      const missingFonts = fonts ? graphicAskedFamilies(html).filter((f) => !GENERIC_FAMILIES.has(familyKey(f)) && !fonts.available(f)) : [];
+      const own = new Set(graphicDeclaredFamilies(html).map(familyKey));
+      const missingFonts = fonts ? graphicAskedFamilies(html).filter((f) => !GENERIC_FAMILIES.has(familyKey(f)) && !fonts.available(f) && !own.has(familyKey(f))) : [];
       const missingLogos = fonts ? graphicLogosUsed(html).filter((slot) => !fonts.logos[slot]) : [];
-      const fontNote = missingFonts.length ? { fonts: `Not available: ${missingFonts.map((f) => `"${f}"`).join(", ")} (not bundled, not a font file of the brand kit, not installed), so ${missingFonts.length === 1 ? "it" : "they"} would fall back to another font and project_check fails. Use DM Sans, DM Mono or the kit's fonts, or add the font's file to the kit with brand_write.` } : {};
+      const fontNote = missingFonts.length ? { fonts: `Not available: ${missingFonts.map((f) => `"${f}"`).join(", ")} (not bundled, not a font file of the brand kit, not installed), so ${missingFonts.length === 1 ? "it" : "they"} would fall back to another font and project_check fails. Use DM Sans, DM Mono or the kit's fonts, media_download the font's WOFF2/TTF/OTF (an OFL font) into the project's fonts folder, or declare it in the graphic (@font-face with a data: URL).` } : {};
       // D290: media it names that the project doesn't have (they would draw nothing).
       const missingMedia = graphicMediaUsed(html).filter((id) => !v.session.project.media.some((m) => m.id === id && m.kind !== "audio"));
       const mediaNote = missingMedia.length ? { media: `No picture media ${missingMedia.map((x) => `"${x}"`).join(", ")} in this project: ${missingMedia.length === 1 ? "it draws" : "they draw"} nothing. project_read lists the media and their ids.` } : {};
       const logoNote = missingLogos.length ? { logos: `The kit has no ${missingLogos.map((x) => `logo-${x}`).join(", ")}: ${missingLogos.length === 1 ? "that marker draws" : "those markers draw"} nothing. brand_read lists its logos.` } : {};
-      return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...libNote, ...fontNote, ...logoNote, ...mediaNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
+      return textResult({ ok: true, src, ...(editedFrom ? { editedFrom: `graphics/${editedFrom}`, point: `Point the item at the new revision: update_item {"src":"${src}"} (the old file stays for earlier revisions).` } : {}), bytes: Buffer.byteLength(html), ...libNote, ...fontNote, ...logoNote, ...mediaNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
     });
 
   /**
