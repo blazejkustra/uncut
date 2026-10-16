@@ -2,11 +2,11 @@
 // line breaks or separate elements instead). This scans the renderer's sources and the server
 // files whose strings reach the screen (setup rows, plugin texts, step labels, transcription
 // states) for those separators in code, comments left out, so they can't come back. The website's
-// pages (site/src/**/*.tsx) and its blog posts (site/content/blog) are scanned the same way.
+// pages (site/src/**/*.tsx) and its blog posts (site/content/blog, and drafts when present) are scanned the same way.
 // agentTools.ts's system prompt names the rule itself and isn't shown, so it isn't scanned.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { withoutComments } from "../helpers/withoutComments.ts";
@@ -48,8 +48,11 @@ test("no ·, •, ∙ or ⋅ in the app's on-screen text, and no lone * between 
 });
 
 test("no ·, •, ∙ or ⋅ and no lone * between words in the blog's posts", () => {
-  const posts = (readdirSync("site/content/blog") as Array<string>).filter((f) => f.endsWith(".md")).map((f) => join("site/content/blog", f));
+  // Drafts (site/content/drafts, gitignored) are checked too when there are any on this machine.
+  const md = (dir: string) => (existsSync(dir) ? (readdirSync(dir) as Array<string>).filter((f) => f.endsWith(".md")).map((f) => join(dir, f)) : []);
+  const posts = md("site/content/blog");
   assert.ok(posts.length > 0);
+  posts.push(...md("site/content/drafts"));
   const found: Array<string> = [];
   for (const file of posts) {
     readFileSync(file, "utf8").split("\n").forEach((line, n) => {

@@ -37,3 +37,6 @@ site/.next/
 site/out/
 site/next-env.d.ts
 !/site/content/blog/*.md
+
+# Blog drafts (site/content/drafts/<slug>.md): reviewed on the preview branch, never committed.
+site/content/drafts/
