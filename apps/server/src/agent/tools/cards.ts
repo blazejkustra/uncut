@@ -18,7 +18,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { budgetLine, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
@@ -266,7 +266,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as { kit?: BrandKit; files: Record<string, string>; skills: Array<BrandSkill> }));
       // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
       // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
-      const intent = motionIntent({ skills: brand.skills.map((x) => x.name), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n") });
+      const hasFootage = project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "clip"));
+      const intent = motionIntent({ skills: brand.skills.map((x) => x.name), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.assets ?? []), ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n"), hasFootage });
       const anchors = motionAnchors(sb?.beats, fps, duration);
       const strips = stripPlan(anchors, fps, duration);
       const scanList = scanPlan(anchors, fps, duration);
@@ -297,14 +298,25 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                   stripImages.push({ label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`, jpeg });
                 }
                 let scan: MotionScan | undefined;
+                const flat: Array<FlatStrip> = [];
                 const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
+                // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
+                const { w, h } = scanSize(project.canvas);
                 if (ffmpeg && got.scanned.length > 2) {
-                  // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
-                  const { w, h } = scanSize(project.canvas);
                   const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, got.scanned.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
                   scan = motionScan(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), fps);
                 }
-                return { images: stripImages, scan, planned: got.planned, cut: got.cut };
+                // D296: how much of each strip's frames is flat background (the median of its frames).
+                const stripFrames = [...new Set(strips.flatMap((st) => st.frames.filter((f) => got.byFrame.has(f))))];
+                if (ffmpeg && stripFrames.length) {
+                  const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, stripFrames.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
+                  const share = new Map(stripFrames.map((f, i) => [f, flatFraction(grays[i]!, w, h)]));
+                  for (const st of strips) {
+                    const xs = st.frames.flatMap((f) => (share.has(f) ? [share.get(f)!] : [])).sort((a, b) => a - b);
+                    if (xs.length) flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]! });
+                  }
+                }
+                return { images: stripImages, scan, flat, planned: got.planned, cut: got.cut };
               }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
               return { mine, evidence, motion };
             }),
@@ -326,7 +338,12 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       });
       const images: Array<CriticImage> = [
         { label: `contact sheet of the whole video, ${evidence.shown.length} cells left to right, top to bottom, each captioned with its number, frame and time (frames ${evidence.shown.join(", ")})`, jpeg: evidence.sheet },
-        ...evidence.phone.map((f) => ({ label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s) at ${phoneWidth} px wide, as on a phone in a feed`, jpeg: f.jpeg })),
+        ...evidence.phone.map((f) => {
+          // D296: a beat's last frame carries the words the storyboard says that beat shows.
+          const beat = (sb?.beats ?? []).findIndex((b) => clampF(b.end * fps - 1) === f.frame);
+          const words = beat >= 0 ? beatWords(sb!.beats[beat]!) : [];
+          return { label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s) at ${phoneWidth} px wide, as on a phone in a feed${words.length ? `; the last frame of storyboard beat ${beat + 1}, which says it shows ${words.map((w) => `"${w}"`).join(", ")}` : ""}`, jpeg: f.jpeg };
+        }),
         ...evidence.fixed.map((f, i) => ({ label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s), the moment of claimed fix ${fixFrames[i]!.defect}, rendered after the fix`, jpeg: f.jpeg })),
       ];
       // Uncut's layout checks (D196) and the safe-area ones, as facts.
@@ -341,11 +358,16 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)), sound: rubric.sound })
         .map((c) => ({ rule: c.id, key: c.key, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), ...(c.range ? { range: c.range } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)) }));
       images.push(...motion.images);
-      const motionChecks = motion.scan ? motionFindings(motion.scan, fps, intent) : [];
+      const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
+      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, intent) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
       // D292: the time budget left some of the scan's frames out.
       const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
-      const motionFacts = motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : ["problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."];
+      const motionFacts = [
+        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : ["problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."]),
+        ...flatLines(flatStrips, fps, intent.footage),
+        ...beatWordLines(sb?.beats),
+      ];
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
