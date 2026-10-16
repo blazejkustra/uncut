@@ -35,6 +35,10 @@
                                                          // eased; to: "bleed" is the whole frame past every edge. The button grows into
                                                          // the next scene's full shape; never shrink a scene to a dot
      uncutMotion.coverage(s, width, height)              // 0..1: the share of the frame inside shape s (keep it at 0.7 or more on every frame)
+     uncutMotion.swap(t, at, { out: 0.1, in: 0.14, gap: 0.03, blur: 6, lift: 14 })
+                                                         // { out: { alpha, blur, dy, visible }, in: {...} }: the content inside a morphing
+                                                         // shape swaps on its own timing: the old content leaves (up, a few px of blur),
+                                                         // then the new arrives; draw each with ctx.globalAlpha, ctx.filter = blur(px), dy
      uncutMotion.beat(n, { bpm: 120, offset: 0 })         // seconds of beat n
      uncutMotion.loop(t, duration)                        // t wrapped into [0, duration): the last frame meets the first
      uncutMotion.ease.inOut(p), .out(p), .in(p)           // cubic eases for opacity or colour
@@ -342,6 +346,22 @@
     out.full = out.x - out.w / 2 <= 0 && out.y - out.h / 2 <= 0 && out.x + out.w / 2 >= W && out.y + out.h / 2 >= H;
     return out;
   }
+  // Content swapping inside a morphing shape: the old content leaves first (alpha down, lifting,
+  // a short blur), the new one arrives after a gap; both quick, so the swap reads as one change.
+  function swap(t, at, o) {
+    o = o || {};
+    var dOut = o.out || 0.1;
+    var dIn = o.in || 0.14;
+    var gap = o.gap === undefined ? 0.03 : o.gap;
+    var blur = o.blur === undefined ? 6 : o.blur;
+    var lift = o.lift === undefined ? 14 : o.lift;
+    var po = easeIn((t - at) / dOut);
+    var pi = easeOut((t - at - dOut - gap) / dIn);
+    return {
+      out: { alpha: 1 - po, blur: blur * po, dy: -lift * po, visible: po < 1 },
+      in: { alpha: pi, blur: blur * (1 - pi), dy: lift * (1 - pi), visible: pi > 0 },
+    };
+  }
   // The share of the W x H frame inside the rounded rect s (its corners' cut-outs subtracted where
   // they fall inside the frame).
   function coverage(s, W, H) {
@@ -399,6 +419,7 @@
     toScreen: toScreen,
     morph: morph,
     coverage: coverage,
+    swap: swap,
     beat: beat,
     loop: loop,
     ease: { inOut: easeInOut, out: easeOut, in: easeIn },

@@ -37,6 +37,7 @@ interface Motion {
   toScreen: (cam: { x: number; y: number; zoom: number }, x: number, y: number, w: number, h: number) => [number, number];
   morph: (t: number, from: Record<string, number> | string, to: Record<string, number> | string, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; p: number; full: boolean };
   coverage: (s: { x: number; y: number; w: number; h: number; r: number }, w: number, h: number) => number;
+  swap: (t: number, at: number, o?: Record<string, number>) => Record<"out" | "in", { alpha: number; blur: number; dy: number; visible: boolean }>;
 }
 
 const load = (): Motion => {
@@ -276,4 +277,15 @@ test("morph grows a button into the next scene's full shape in dur s; coverage m
     prev = c;
   }
   assert.ok(prev > 0.85);
+});
+
+test("swap: the old content leaves first, then the new arrives, each quick and with its own timing", () => {
+  const before = M.swap(0.9, 1);
+  assert.ok(before.out.alpha === 1 && before.out.blur === 0 && before.out.visible && !before.in.visible);
+  const mid = M.swap(1.12, 1);
+  assert.ok(!mid.out.visible && !mid.in.visible, "the gap: neither overlaps the other");
+  const arriving = M.swap(1.2, 1);
+  assert.ok(arriving.in.visible && arriving.in.alpha < 1 && arriving.in.blur > 0 && arriving.in.dy > 0);
+  const done = M.swap(1.3, 1);
+  assert.ok(done.in.alpha === 1 && done.in.blur === 0 && done.in.dy === 0);
 });

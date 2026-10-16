@@ -1060,7 +1060,7 @@
                 "still": {
                   "type": "integer",
                   "minimum": 0,
-                  "description": "A timeline frame to render as this beat's still on the card."
+                  "description": "A timeline frame rendered as this beat's still (at most 4 beats)."
                 }
               }
             }
