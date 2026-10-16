@@ -33,8 +33,8 @@ const seek = async (frame: number) => {
   await page.mouse.click(await xOf(frame), ruler.top + ruler.height - 6);
   await page.waitForFunction((f) => Math.abs(Number((document.querySelector("[data-testid=preview-frame]") as HTMLElement).dataset.frame) - f) <= 1, { timeout: 5000 }, frame);
 };
-const playing = () => page.$eval("[data-testid=play]", (el) => /Pause/.test((el as HTMLElement).title));
-const waitPlaying = (on: boolean) => page.waitForFunction((want) => /Pause/.test((document.querySelector("[data-testid=play]") as HTMLElement | null)?.title ?? "") === want, { timeout: 5000 }, on);
+const playing = () => page.$eval("[data-testid=play]", (el) => /Pause/.test((el as HTMLElement).getAttribute("aria-label") ?? ""));
+const waitPlaying = (on: boolean) => page.waitForFunction((want) => /Pause/.test((document.querySelector("[data-testid=play]") as HTMLElement | null)?.getAttribute("aria-label") ?? "") === want, { timeout: 5000 }, on);
 const value = (selector: string) => page.$eval(selector, (el) => (el as HTMLInputElement).value);
 const focused = () => page.evaluate(() => document.activeElement?.tagName ?? "");
 /** Space plays (and nothing is left focused to type in), Space again pauses. */

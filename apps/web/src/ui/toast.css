@@ -1,0 +1,9 @@
+/* #66 (D239): the banners and error toasts sit above every overlay scrollbar (editor/scrollbars.ts
+   draws those in a layer at z-index 2147483000 on body; .app makes no stacking context, so this
+   z-index competes with it directly). Higher specificity than styles.css's .banners, which loads later. */
+.app > .banners { z-index: 2147483500; }
+/* #67: an error toast closes itself; the line along its bottom shows the time left and stops while hovered. */
+.banner.toast { position: relative; overflow: hidden; }
+.toast-timer { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: currentColor; opacity: 0.35; transform-origin: left; animation: toast-timer linear forwards; pointer-events: none; }
+.banner.toast[data-paused="true"] .toast-timer { animation-play-state: paused; }
+@keyframes toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }

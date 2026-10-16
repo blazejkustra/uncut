@@ -13,6 +13,7 @@ import { usePlayback } from "../preview/playback.ts";
 import { Stage } from "../preview/Preview.tsx";
 import { actions, projectOf, useApp, type Project } from "../state/store.ts";
 import { Timeline } from "../timeline/Timeline.tsx";
+import { ErrorToast } from "../ui/Toast.tsx";
 import { ContextMenuHost } from "../timeline/ContextMenu.tsx";
 import { useEditorKeys } from "./keys.ts";
 import { layoutStyle, useLayout } from "./layout.ts";
@@ -88,12 +89,8 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
           </div>
         )}
         {notice && !changedOnDisk && (
-          <div className="banner error" data-testid="editor-error">
-            <span className="banner-text">{notice.text}</span>
-            <button className="icon-btn" title="Dismiss" onClick={actions.dismissNotice}>
-              <X />
-            </button>
-          </div>
+          // #67 (D239): closes itself after a while; hovering it keeps it.
+          <ErrorToast text={notice.text} token={notice} onClose={actions.dismissNotice} testId="editor-error" />
         )}
       </div>
       <Rail tab={tab} onTab={setTab} />

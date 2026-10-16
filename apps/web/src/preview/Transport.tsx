@@ -5,7 +5,9 @@
 // the jumps to start and end, the zoom and the frame steps, then the hand and the time itself.
 import { Hand, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 
+import { shortcutKeys } from "../editor/keys.ts";
 import { canvasLabel, frameTimecode } from "../state/format.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import { layoutOf, type ProjectModel } from "../state/project.ts";
 import { playback, usePlayback } from "./playback.ts";
 import { ZOOM_STEPS, type useViewport } from "./viewport.ts";
@@ -23,21 +25,32 @@ export function Transport({ project, view, full, onFull }: { project: ProjectMod
         <span className="tc-end"> / {frameTimecode(end, fps)}</span>
       </span>
       <div className="transport-mid">
-        <button className="icon-btn tp-jump" data-testid="to-start" title="Go to start (Home)" disabled={frame === 0} onClick={playback.toStart}>
-          <SkipBack />
-        </button>
-        <button className="icon-btn tp-step" data-testid="step-back" title="Back one frame (←)" disabled={frame === 0} onClick={() => playback.step(-1)}>
-          <StepBack />
-        </button>
-        <button className="icon-btn play" data-testid="play" title={playing ? "Pause (Space)" : "Play (Space)"} disabled={frames <= 1} onClick={playback.toggle}>
-          {playing ? <Pause /> : <Play />}
-        </button>
-        <button className="icon-btn tp-step" data-testid="step-forward" title="Forward one frame (→)" disabled={frame >= Math.max(frames - 1, end)} onClick={() => playback.step(1)}>
-          <StepForward />
-        </button>
-        <button className="icon-btn tp-jump" data-testid="to-end" title="Go to end (End)" disabled={frame >= end} onClick={playback.toEnd}>
-          <SkipForward />
-        </button>
+        {/* #86 (D239): tooltips with the keys from the keymap. */}
+        <Tooltip label="Go to start" keys={shortcutKeys("jump", 0)}>
+          <button className="icon-btn tp-jump" data-testid="to-start" disabled={frame === 0} onClick={playback.toStart}>
+            <SkipBack />
+          </button>
+        </Tooltip>
+        <Tooltip label="Back one frame" keys={shortcutKeys("frame", 0)}>
+          <button className="icon-btn tp-step" data-testid="step-back" disabled={frame === 0} onClick={() => playback.step(-1)}>
+            <StepBack />
+          </button>
+        </Tooltip>
+        <Tooltip label={playing ? "Pause" : "Play"} keys={shortcutKeys("play")}>
+          <button className="icon-btn play" data-testid="play" disabled={frames <= 1} onClick={playback.toggle}>
+            {playing ? <Pause /> : <Play />}
+          </button>
+        </Tooltip>
+        <Tooltip label="Forward one frame" keys={shortcutKeys("frame", 1)}>
+          <button className="icon-btn tp-step" data-testid="step-forward" disabled={frame >= Math.max(frames - 1, end)} onClick={() => playback.step(1)}>
+            <StepForward />
+          </button>
+        </Tooltip>
+        <Tooltip label="Go to end" keys={shortcutKeys("jump", 1)}>
+          <button className="icon-btn tp-jump" data-testid="to-end" disabled={frame >= end} onClick={playback.toEnd}>
+            <SkipForward />
+          </button>
+        </Tooltip>
       </div>
       <span className="muted small" data-testid="canvas-info">
         {canvasLabel(project.canvas)}
@@ -57,12 +70,16 @@ export function Transport({ project, view, full, onFull }: { project: ProjectMod
         ))}
         {custom && <option value="custom">{Math.round(view.scale * 100)}%</option>}
       </select>
-      <button className={`icon-btn tp-hand ${view.hand ? "on" : ""}`} data-testid="preview-hand" aria-pressed={view.hand} title="Hand: drag to pan the preview" onClick={() => view.setHand(!view.hand)}>
-        <Hand />
-      </button>
-      <button className="icon-btn" data-testid="preview-fullscreen" aria-pressed={full} title={full ? "Exit full screen (Esc)" : "Full screen preview"} onClick={onFull}>
-        {full ? <Minimize /> : <Maximize />}
-      </button>
+      <Tooltip label="Hand: drag to pan the preview">
+        <button className={`icon-btn tp-hand ${view.hand ? "on" : ""}`} data-testid="preview-hand" aria-pressed={view.hand} onClick={() => view.setHand(!view.hand)}>
+          <Hand />
+        </button>
+      </Tooltip>
+      <Tooltip label={full ? "Exit full screen" : "Full screen preview"} keys={full ? shortcutKeys("exitFull") : []}>
+        <button className="icon-btn" data-testid="preview-fullscreen" aria-pressed={full} onClick={onFull}>
+          {full ? <Minimize /> : <Maximize />}
+        </button>
+      </Tooltip>
     </div>
   );
 }
