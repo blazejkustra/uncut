@@ -245,7 +245,9 @@ test("graphic documents: canvas-sized, the strict CSP, the author's markup, and 
   const doc = graphicDocument("<div id=x></div><script>window.render = (t) => {}</script>", { width: 1280, height: 720 });
   assert.match(doc, new RegExp(`<meta http-equiv="Content-Security-Policy" content="${GRAPHIC_CSP.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
   assert.match(GRAPHIC_CSP, /default-src 'none'/);
-  assert.doesNotMatch(GRAPHIC_CSP, /connect-src|http/);
+  // D290: the only fetches are the rasteriser's own media scheme; still nothing from the network.
+  assert.doesNotMatch(GRAPHIC_CSP, /http/);
+  assert.equal(GRAPHIC_CSP.match(/connect-src ([^;]*)/)?.[1], "uncut-media:");
   assert.match(doc, /width:1280px;height:720px/);
   assert.match(doc, /<div id=x><\/div>/);
   assert.match(doc, /window\.__uncutRender = async/);

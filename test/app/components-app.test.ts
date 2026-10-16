@@ -154,7 +154,7 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
   await page.waitForSelector("[data-testid=components-grid]");
   const tiles = await page.$$eval("[data-testid=component-tile]", (els) => els.map((e) => [(e as HTMLElement).dataset.component, !!e.querySelector("[data-testid=component-thumb] .pv-comp")]));
   // In their sections (D251): titles, social, info, shapes and media, stickers.
-  assert.deepEqual(tiles, ["lower-third", "callout", "quote", "before-after", "end-card", "subscribe", "social-button", "follow", "progress-bar", "countdown", "checklist", "rating", "price-tag", "map-pin", "chart", "shape", "image-frame", "sticker"].map((id) => [`component.${id}`, true]));
+  assert.deepEqual(tiles, ["lower-third", "callout", "quote", "before-after", "end-card", "subscribe", "social-button", "follow", "follow-card", "progress-bar", "countdown", "checklist", "steps", "rating", "price-tag", "map-pin", "chart", "shape", "image-frame", "sticker"].map((id) => [`component.${id}`, true]));
   await page.screenshot({ path: out("components-panel.png") });
 
   // Drag the end card onto the canvas at frame 90: it lands there (full frame), 3 s, on a free video track.

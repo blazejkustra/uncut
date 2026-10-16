@@ -1,7 +1,7 @@
 // Issue #100 (D272) on the packaged app, run invisibly: the setup wizard's Plugins section at the
 // onboarding's real window size (760×720) and at its smallest (600×520). The heading and its
 // Browse… / Add plugin… sit on one row without overlapping; each plugin row is its name (version
-// de-emphasised), one short line ("10 editing skills…", Argent's first clause, not its tool names)
+// de-emphasised), one short line ("11 editing skills…", Argent's first clause, not its tool names)
 // and the status, in one right-hand column; the full lists are behind the details toggle.
 // Settings › Plugins (its own cards, not this component) is screenshotted to check it's unchanged.
 // Screenshots: test-output/issue100-*.png.
@@ -84,7 +84,7 @@ test("the wizard's Plugins section: one heading row, one-line summaries, aligned
 
     // Short human lines, not every skill and tool name; no dots or stars between words.
     const skills = await text(page, `${SKILLS} .plugin-summary`);
-    assert.match(skills, /^10 editing skills/);
+    assert.match(skills, /^11 editing skills/);
     assert.doesNotMatch(skills, /\/launch-promo/);
     const summaries = await page.$$eval("[data-testid=plugins] .plugin-summary", (els) => els.map((e) => (e as HTMLElement).innerText));
     assert.ok(summaries.every((s) => !/argent_|[·•*]/.test(s)), `summaries: ${summaries.join(" | ")}`);
