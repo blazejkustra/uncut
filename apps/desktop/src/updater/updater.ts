@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 
-import { app } from "electron";
+import { app, autoUpdater as squirrel } from "electron";
 import { MacUpdater, type UpdateInfo } from "electron-updater";
 
 import type { UpdateInstallResult, UpdateStatus } from "../ipc.ts";
@@ -61,7 +61,7 @@ export async function startUpdater(options: {
   }
 
   const cacheBase = process.env.UNCUT_DATA_DIR ? path.join(process.env.UNCUT_DATA_DIR, "cache") : path.join(homedir(), "Library", "Caches");
-  const configDir = path.join(process.env.UNCUT_DATA_DIR || app.getPath("userData"), "updater");
+  const configDir = path.join(options.dataDir, "updater");
   mkdirSync(configDir, { recursive: true });
   const configPath = path.join(configDir, "app-update.yml");
   writeFileSync(configPath, updaterConfigYaml(policy.feed));
@@ -105,7 +105,26 @@ export async function startUpdater(options: {
   updater.on("download-progress", (p: { percent: number }) => {
     if (status.kind === "downloading") send({ ...status, manual, percent: Math.max(0, Math.min(100, Math.round(p.percent))) });
   });
+  // Squirrel.Mac's own step after electron-updater's download: it fetches the zip from
+  // electron-updater's local proxy, checks the new bundle's signature against this app's and stages
+  // it. Restart to update waits for its answer: quitting before Squirrel is ready would install
+  // nothing (and the server would already be stopped). Its refusal is logged, as any failure.
+  let staged: Promise<boolean> | undefined;
+  const watchSquirrel = () =>
+    new Promise<boolean>((resolve) => {
+      const done = (ok: boolean) => {
+        squirrel.off("update-downloaded", onReady);
+        squirrel.off("error", onError);
+        if (!ok) log("Squirrel.Mac could not stage the update (Restart to update will say so)");
+        resolve(ok);
+      };
+      const onReady = () => done(true);
+      const onError = () => done(false);
+      squirrel.on("update-downloaded", onReady);
+      squirrel.on("error", onError);
+    });
   updater.on("update-downloaded", (info: UpdateInfo) => {
+    staged ??= watchSquirrel();
     downloaded = versionOf(info);
     log(`downloaded ${downloaded}; installs on Restart to update or at quit`);
     send({ kind: "downloaded", version: downloaded });
@@ -135,6 +154,12 @@ export async function startUpdater(options: {
     install: async () => {
       if (!downloaded) return "not-ready";
       if (!canInstallNow(schedule.isBusy())) return "busy";
+      // Squirrel's answer, if it hasn't come yet (bounded: a stuck Squirrel never holds the click).
+      const ready = await Promise.race([staged ?? Promise.resolve(false), new Promise<boolean>((r) => setTimeout(() => r(false), 120_000))]);
+      if (!ready) {
+        log(`not installing ${downloaded}: Squirrel.Mac has not staged it`);
+        return "not-ready";
+      }
       log(`restarting to install ${downloaded}`);
       if (policy.test) {
         // A test build: Squirrel can't install it; say what would happen and stop there.
