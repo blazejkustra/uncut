@@ -51,6 +51,8 @@ export interface CaptureImportInput {
   readonly turnId?: string | undefined;
   /** D114: also put it on the timeline at this frame, in the same edit (core planPlaceTake). */
   readonly place?: { readonly frame: number; readonly placement: TakePlacement } | undefined;
+  /** D259: dropped on the timeline (a link): put there at that frame / track, in the same edit (like T9). */
+  readonly drop?: MediaDrop | undefined;
 }
 
 /** D211: a multi-source take's files, imported (and with `frame`, placed) as one edit. */

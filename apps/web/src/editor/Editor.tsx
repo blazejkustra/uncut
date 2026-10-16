@@ -15,6 +15,7 @@ import { actions, projectOf, useApp, type Project } from "../state/store.ts";
 import { Timeline } from "../timeline/Timeline.tsx";
 import { ErrorToast } from "../ui/Toast.tsx";
 import { ContextMenuHost } from "../timeline/ContextMenu.tsx";
+import { LinkImportHost } from "../panels/library/ImportLinkDialog.tsx";
 import { useEditorKeys } from "./keys.ts";
 import { layoutStyle, useLayout } from "./layout.ts";
 import { Rail } from "./Rail.tsx";
@@ -47,6 +48,7 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
     <div className="app" data-testid="editor" style={layoutStyle(sizes)}>
       <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} />
       <ContextMenuHost />
+      <LinkImportHost />
       <div className="banners">
         {!online && (
           <div className="banner" data-testid="connection-banner" data-state={connection}>
