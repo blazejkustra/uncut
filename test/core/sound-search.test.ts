@@ -11,7 +11,8 @@ import { aliasOf, expandQuery, filterFolderSounds, filterSfx, MEME_SOUNDS, rankS
 
 test("meme names in any spelling find their alias; plain words don't", () => {
   for (const q of ["fahh", "Fahh", "FAAAH", "faah", "fahhhhh", "fah"]) assert.equal(aliasOf(q)?.id, "fahh", q);
-  for (const q of ["vine boom", "Vine-Boom", "vineboom", "viiine boooom"]) assert.equal(aliasOf(q)?.id, "boom", q);
+  for (const q of ["dramatic boom", "Dramatic-Boom", "boom meme", "draaamatic boooom"]) assert.equal(aliasOf(q)?.id, "boom", q);
+  for (const q of ["dramatic bong", "deep bong"]) assert.equal(aliasOf(q)?.id, "bong", q);
   for (const q of ["ba dum tss", "badum tss", "Ba-dum tsss", "rimshot"]) assert.equal(aliasOf(q)?.id, "rimshot", q);
   for (const q of ["bruh", "bruhhh", "BRUH"]) assert.equal(aliasOf(q)?.id, "bruh", q);
   for (const q of ["sad trombone", "wah wah", "womp womp"]) assert.equal(aliasOf(q)?.id, "trombone", q);
@@ -26,7 +27,7 @@ test("aliases: online searches checked to return free sounds, bundled answers th
   const ids = new Set(SFX_SOUNDS.map((s) => s.id));
   for (const a of SOUND_ALIASES) {
     // Searches that return nothing on Openverse (checked 2026-10-14) are never sent.
-    assert.doesNotMatch(a.online, /^(fahh?|vine boom|meme|anime wow|emotional damage)$/i, a.id);
+    assert.doesNotMatch(a.online, /^(fahh?|meme|anime wow|emotional damage)$/i, a.id);
     for (const b of a.bundled) assert.ok(ids.has(b), `${a.id}: ${b}`);
     if (a.tag) assert.match(a.tag, /^[a-z0-9-]+$/, a.id);
   }
@@ -53,8 +54,8 @@ test("synonyms and spellings find bundled sounds; meme names find their sound-al
   // D250: Uncut's own sound-alikes answer first, the recordings after.
   assert.deepEqual(ids("fahh").slice(0, 2), ["exaggerated-shout", "frustrated-yell"]);
   assert.equal(ids("faaaahhh")[0], "exaggerated-shout");
-  assert.equal(ids("vine boom")[0], "dramatic-boom");
-  assert.equal(ids("taco bell")[0], "deep-bong");
+  assert.equal(ids("dramatic boom")[0], "dramatic-boom");
+  assert.equal(ids("dramatic bong")[0], "deep-bong");
   assert.equal(ids("ba dum tss")[0], "rimshot");
   assert.equal(ids("bonk")[0], "bonk");
   assert.equal(ids("ka-ching")[0], "cash-register");
@@ -143,4 +144,17 @@ test("the designed pack (D208, D250): 100 to 160 CC0 sounds, each with its sourc
   }
   // Meme sounds are free recordings that sound alike, never a copyrighted clip by its name.
   for (const s of filterSfx({ category: "meme" })) assert.doesNotMatch(s.title, /fahh|vine|taco bell|emotional damage/i, s.id);
+});
+
+// Issue #103 (D278): no brand or person in a sound's name, tags or the words that find it.
+test("no brand or person names in sound titles, tags, aliases or their variants", () => {
+  const banned = /\b(vine|taco ?bell|roblox|owen wilson|windows|horny|huh cat|mlg)\b/i;
+  for (const s of SFX_SOUNDS) {
+    assert.doesNotMatch(s.title, banned, s.id);
+    for (const t of s.tags) assert.doesNotMatch(t, banned, `${s.id}: ${t}`);
+  }
+  for (const a of SOUND_ALIASES) for (const w of [a.name, a.online, ...a.variants]) assert.doesNotMatch(w, banned, `${a.id}: ${w}`);
+  assert.equal(SFX_SOUNDS.find((s) => s.id === "bass-boom"), undefined, "bass-boom is gone (derived from Apple Logic samples)");
+  const ding = SFX_SOUNDS.find((s) => s.id === "ding")!;
+  assert.match(ding.source, new RegExp(`/people/${ding.author.replace(/\./g, "\\.")}/`), "the ding's page is its author's");
 });

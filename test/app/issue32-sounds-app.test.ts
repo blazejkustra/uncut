@@ -155,7 +155,7 @@ test("issue #32: the designed pack with waveforms, meme names to free sound-alik
   // Synonyms and meme names find the pack's sounds.
   await typeSearch("keyboard");
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>("[data-testid=sfx-row]")].some((e) => e.dataset.id === "typing-mechanical"));
-  await typeSearch("vine boom");
+  await typeSearch("dramatic boom");
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === "dramatic-boom");
   await typeSearch("swoosh");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=sfx-row]").length >= 5);

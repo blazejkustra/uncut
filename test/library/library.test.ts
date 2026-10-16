@@ -287,12 +287,12 @@ test("add: downloaded into media/ with credits and a SHA-256, probed; the same s
   assert.equal(looked.path, "media/deep-whoosh-1-kinoton.mp3");
   await assert.rejects(fresh.add("nope:1", dir), /isn't a library id/);
   // A bundled sound effect: copied, CC0 credits.
-  const sfx = await lib.add("sfx:bass-boom", dir);
-  assert.equal(sfx.path, "media/bass-boom.m4a");
-  assert.ok(readFileSync(join(dir, sfx.path)).equals(readFileSync(resolve("assets/sfx/bass-boom.m4a"))));
+  const sfx = await lib.add("sfx:impact-boom", dir);
+  assert.equal(sfx.path, "media/impact-boom.m4a");
+  assert.ok(readFileSync(join(dir, sfx.path)).equals(readFileSync(resolve("assets/sfx/impact-boom.m4a"))));
   assert.equal(sfx.source.module, "library.bundled");
   assert.equal(sfx.source.license, "cc0");
-  assert.equal(sfx.source.landingUrl, "https://freesound.org/people/LordHannes/sounds/268084/");
+  assert.equal(sfx.source.landingUrl, "https://freesound.org/people/XHALE303/sounds/535592/");
   await assert.rejects(lib.add("sfx:nope", dir), /no bundled sound/);
 });
 

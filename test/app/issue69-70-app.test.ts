@@ -207,7 +207,7 @@ test("issues #69 and #70: the Audio tab's sources, the Music library, the grown 
   await sleep(150);
   await page.screenshot({ path: out("issue70-sounds-fahh.png") });
   await page.click('[data-testid=sfx-row][data-id="exaggerated-shout"] [data-testid=sfx-play]');
-  for (const [words, first] of [["vine boom", "dramatic-boom"], ["taco bell", "deep-bong"], ["record scratch", "record-scratch"], ["bonk", "bonk"], ["riser", ""]] as const) {
+  for (const [words, first] of [["dramatic boom", "dramatic-boom"], ["dramatic bong", "deep-bong"], ["record scratch", "record-scratch"], ["bonk", "bonk"], ["riser", ""]] as const) {
     await page.click("[data-testid=sfx-search]", { clickCount: 3 });
     await page.type("[data-testid=sfx-search]", words);
     if (first) await page.waitForFunction((id) => document.querySelector<HTMLElement>("[data-testid=sfx-row]")?.dataset.id === id, {}, first);

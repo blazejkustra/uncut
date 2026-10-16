@@ -181,8 +181,8 @@ test("D275: the follow handle draws each brand's own mark in its colour (Simple 
   }
   assert.ok(at("youtube").includes("#FF0000"));
   // A light brand colour gets dark ink on its circle, in the pill and the solid style.
-  assert.match(at("snapchat"), /fill="#0A0A0B" d="/);
-  assert.match(at("snapchat", "solid"), /fill="#0A0A0B" d="/);
+  assert.match(at("snapchat"), /fill="#000000" d="/);
+  assert.match(at("snapchat", "solid"), /fill="#000000" d="/);
   // LinkedIn (not in Simple Icons) and the generic kinds draw Uncut's own glyphs.
   assert.ok(at("linkedin").includes("background:#0A66C2"));
   for (const g of ["web", "mail", "video", "linkedin"]) assert.ok(!Object.values(BRAND_ICONS).some((b) => at(g).includes(b.path)), `${g} draws no brand mark`);

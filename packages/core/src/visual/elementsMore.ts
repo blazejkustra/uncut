@@ -134,7 +134,10 @@ export function drawFollow({ props, w, h, target, local, fps }: Draw) {
   const platform = PLATFORM_TINT[str(props.platform)] ? str(props.platform) : "youtube";
   const brand = BRAND_ICONS[platform];
   const style = ["pill", "solid", "minimal"].includes(str(props.style)) ? str(props.style) : "pill";
-  const tint = color(target, props.color, PLATFORM_TINT[platform]!);
+  // Issue #103 (D278): a brand's mark is never recoloured. Its circle (or the solid pill) is the brand's
+  // own colour and the mark on it plain white or black; `color` only tints the generic glyphs.
+  const locked = brand !== undefined || platform === "linkedin";
+  const tint = locked ? PLATFORM_TINT[platform]! : color(target, props.color, PLATFORM_TINT[platform]!);
   const handle = str(props.handle);
   const label = str(props.label);
   // In: the icon pops (0–0.35 s), the pill opens from it (0.15–0.65 s), the words slide in after.
@@ -151,8 +154,10 @@ export function drawFollow({ props, w, h, target, local, fps }: Draw) {
   const bg = style === "solid" ? tint : style === "minimal" ? "transparent" : color(target, props.background, "#FFFFFF");
   const ink = style === "pill" ? color(target, props.text, "#0A0A0B") : style === "solid" ? inkOn(tint) : "#FFFFFF";
   // A light brand colour (Snapchat's yellow, Kick's green) gets dark ink, like the solid pill's words.
+  // On the solid pill the circle is white and the mark keeps the brand's colour (black when that's too light).
+  const mono = (fill: string) => (inkOn(fill) === "#FFFFFF" ? "#FFFFFF" : locked ? "#000000" : "#0A0A0B");
   const iconBg = style === "solid" ? "#FFFFFF" : tint;
-  const iconInk = style === "solid" ? (inkOn(tint) === "#FFFFFF" ? tint : "#0A0A0B") : inkOn(tint);
+  const iconInk = style === "solid" ? (inkOn(tint) === "#FFFFFF" ? tint : locked ? "#000000" : "#0A0A0B") : mono(tint);
   const shadow = style === "minimal" ? `text-shadow:${TEXT_SHADOW};` : "";
   const panel = style === "minimal" ? "" : `<div style="position:absolute;left:0;top:${px((h - pillH) / 2)};width:${px(w)};height:${px(pillH)};background:${bg};border-radius:${px(pillH / 2)};box-shadow:0 ${px(pillH * 0.08)} ${px(pillH * 0.3)} rgb(0 0 0 / 22%);clip-path:inset(0 ${num((1 - open) * (1 - pillH / w) * 100)}% 0 0 round ${px(pillH / 2)})"></div>`;
   const glyphHtml = `<div style="position:absolute;left:${px(pad)};top:${px((h - icon) / 2)};width:${px(icon)};height:${px(icon)};border-radius:50%;background:${iconBg};display:flex;align-items:center;justify-content:center;transform:scale(${num(Math.max(0, pop))})">${brand ? brandGlyph(brand.path, icon * 0.54, iconInk) : glyph(PLATFORM_GLYPH[platform === "linkedin" ? "pro" : platform]!(iconInk), icon * 0.56, iconInk)}</div>`;
