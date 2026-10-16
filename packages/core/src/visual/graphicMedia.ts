@@ -78,9 +78,10 @@ export function graphicMediaUsed(html: string): Array<string> {
 /**
  * The script graphicDocument puts in a graphic's <head> (before its own bootstrap): window.uncut
  * (frame, image, url) and window.__uncutMedia (ready: the markers' pictures in place and decoded,
- * awaited before the first frame; sweep: called after each frame, forgets pictures not asked for
- * lately, so a long graphic doesn't keep every frame it drew; it never closes one, which the
- * graphic may still hold).
+ * awaited before the first frame; sweep(fps): called after each frame, forgets pictures not asked
+ * for lately, so a long graphic doesn't keep every frame it drew, and closes the ones unused for
+ * about 2 × fps frames so their memory is freed at once; a picture first asked for in the setup or
+ * the first render is never closed, since the graphic may hold it and draw it every frame).
  */
 export const GRAPHIC_MEDIA_BOOT = `(() => {
   const MARK = ${MARKER.toString()};
@@ -107,6 +108,8 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     return fetch("${GRAPHIC_MEDIA_SCHEME}://media/" + encodeURIComponent(id) + "?" + q).then((r) => (r.ok ? r.blob() : r.text().then((m) => Promise.reject(new Error(m || "the media couldn't be loaded")))));
   };
   const cache = new Map();
+  // Forgotten pictures not closed yet (closed once unused for about 2 × fps frames).
+  const aged = new Set();
   let gen = 0;
   const size = (v) => (typeof v === "number" && v >= 1 ? Math.min(8192, Math.round(v)) : 0);
   const entry = (id, t, opts) => {
@@ -117,7 +120,8 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     const k = id + "|" + s + "|" + w + "|" + h;
     let e = cache.get(k);
     if (!e) {
-      e = { blob: load(id, s, w, h) };
+      // Asked for before the first sweep (the setup, the first render): maybe held for good.
+      e = { blob: load(id, s, w, h), early: gen === 0 };
       cache.set(k, e);
       e.blob.catch(() => cache.delete(k));
     }
@@ -168,15 +172,25 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
       await Promise.all([...used].map((u) => { const i = new Image(); i.src = u; return i.decode().catch(() => {}); }));
       await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
     })()),
-    sweep: () => {
+    sweep: (fps) => {
       gen++;
-      if (cache.size <= KEEP) return;
+      const old = Math.max(2, Math.round(2 * (fps > 0 ? fps : 30)));
+      const close = (e) => e.bitmap && e.bitmap.then((b) => b.close(), () => {});
+      for (const e of aged) if (e.gen < gen - old) (aged.delete(e), close(e));
       for (const [k, e] of cache) {
-        if (e.keep || e.gen >= gen - 1 || cache.size <= KEEP) continue;
-        // Only forgotten, never closed: the graphic may still hold the bitmap (a thumbnail it
-        // fetched once in its setup and draws every frame); a closed one would throw in drawImage.
-        // Chromium counts an ImageBitmap's pixels against the page's memory, so GC frees it.
+        if (e.keep) continue;
+        // Unused for about two seconds of frames: closed, so its pixels go now rather than at some GC.
+        if (!e.early && e.gen < gen - old) {
+          cache.delete(k);
+          close(e);
+          continue;
+        }
+        if (e.gen >= gen - 1 || cache.size <= KEEP) continue;
+        // Forgotten (a call asks again), and closed once it's old. One from the setup or the first
+        // render is never closed: the graphic may hold it (a thumbnail fetched once and drawn every
+        // frame), and drawImage of a closed bitmap throws.
         cache.delete(k);
+        if (!e.early) aged.add(e);
       }
     },
   };

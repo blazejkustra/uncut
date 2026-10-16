@@ -169,7 +169,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
       }
     }
     await frames();
-    window.__uncutMedia.sweep();
+    window.__uncutMedia.sweep(info && info.fps);
     return true;
   };
   addEventListener("message", (e) => {
