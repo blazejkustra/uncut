@@ -90,6 +90,65 @@ export function libraryHeader(source: string): string | undefined {
 }
 
 /**
+ * A library's API as its code has it: the object it puts on window (window.uncutX = { name: fn, … },
+ * one level of nesting) with each function's parameters from its declaration, so a function the
+ * header doesn't mention yet is still listed. Undefined when the file has no such object.
+ */
+export function librarySignatures(source: string): string | undefined {
+  const m = /window\.([A-Za-z_$][\w$]*)\s*=\s*\{/.exec(source);
+  if (!m) return undefined;
+  // The object literal: from its brace to the matching one.
+  let depth = 0;
+  let end = -1;
+  for (let i = m.index + m[0].length - 1; i < source.length; i++) {
+    const c = source[i];
+    if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) return undefined;
+  const body = source.slice(m.index + m[0].length, end);
+  const params = (fn: string) => new RegExp(`function\\s+${fn.replace(/\$/g, "\\$")}\\s*\\(([^)]*)\\)`).exec(source)?.[1]?.replace(/\s+/g, " ").trim();
+  const lines: Array<string> = [];
+  // The entries at the top level of an object literal's body: split at commas outside brackets.
+  const entries = (text: string) => {
+    const out: Array<string> = [];
+    let level = 0;
+    let from = 0;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]!;
+      if ("{([".includes(c)) level++;
+      else if ("})]".includes(c)) level--;
+      else if (c === "," && level === 0) {
+        out.push(text.slice(from, i));
+        from = i + 1;
+      }
+    }
+    out.push(text.slice(from));
+    return out.map((e) => e.trim()).filter(Boolean);
+  };
+  const walk = (text: string, prefix: string) => {
+    for (const entry of entries(text)) {
+      const e = /^([A-Za-z_$][\w$]*)\s*:\s*([\s\S]*)$/.exec(entry);
+      if (!e) continue;
+      const key = e[1]!;
+      const value = e[2]!.trim();
+      const inline = /^function\s*[\w$]*\s*\(([^)]*)\)/.exec(value)?.[1];
+      if (inline !== undefined) lines.push(`${prefix}${key}(${inline.replace(/\s+/g, " ").trim()})`);
+      else if (value.startsWith("{") && value.endsWith("}")) walk(value.slice(1, -1), `${prefix}${key}.`);
+      else {
+        const p = /^[A-Za-z_$][\w$]*$/.test(value) ? params(value) : undefined;
+        lines.push(p !== undefined ? `${prefix}${key}(${p})` : `${prefix}${key} (a value)`);
+      }
+    }
+  };
+  walk(body, `${m[1]}.`);
+  return lines.length ? lines.join("\n") : undefined;
+}
+
+/**
  * The graphics topic's appendix: each bundled library's header (its whole API, as the library
  * file says it; three.js is its own documented library), from `libs` (name → source, the server's
  * loadGraphicLibs), so the agent never has to look for the files.
@@ -99,7 +158,9 @@ export function libraryReference(libs: Readonly<Record<string, string>>): string
     .filter(([name]) => name !== "three.js")
     .flatMap(([name, source]) => {
       const header = libraryHeader(source);
-      return header ? [`uncut:lib/${name}\n${header}`] : [];
+      const signatures = librarySignatures(source);
+      const text = [header, signatures ? `Every function it has, from its code:\n${signatures}` : undefined].filter(Boolean).join("\n");
+      return text ? [`uncut:lib/${name}\n${text}`] : [];
     });
   return parts.length ? `\n\nThe bundled libraries' full API, from each library's own header (everything each one has; their files are inlined by Uncut, so there is nothing on disk to look up):\n\n${parts.join("\n\n")}` : "";
 }
