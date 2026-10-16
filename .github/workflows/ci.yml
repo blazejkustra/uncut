@@ -1,8 +1,8 @@
 # Every push to main and every PR (#89, D254): the whole suite, typecheck + the fast tests + the
 # packaged-app tests (test/app), split over 5 parallel macOS jobs. Each job builds the app itself,
-# runs its fifth of the fast tests (node --test-shard), then its share of the app files
-# (scripts/test-app-shard.ts, balanced by test/app/durations.json). 5 because GitHub runs at most 5
-# macOS jobs at once on this plan: a 6th would only queue.
+# then runs its share of the test files (scripts/test-shard.ts, balanced by test/durations.json):
+# fast files two at a time, then app files one at a time. 5 because GitHub runs at most 5 macOS jobs
+# at once on this plan: a 6th would only queue.
 #
 # Skipped on these runners, each with its reason in the log and the job summary
 # (test/helpers/capabilities.ts): what needs a real GPU and media engine (preview = export pixel
@@ -47,8 +47,6 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5]
     env:
-      # 3 vCPUs: a launch or the first screen can take longer than on a laptop.
-      UNCUT_TEST_LAUNCH_MS: "120000"
       # electron-builder skips signing on PRs; the app is only ad-hoc signed ("-", no certificate in
       # this workflow) and Apple silicon won't run it unsigned, nor verify a half-signed bundle.
       CSC_FOR_PULL_REQUEST: "true"
@@ -79,13 +77,9 @@ jobs:
         run: pnpm typecheck && node scripts/notices.ts --check
       # The fast tests start the bundled server and media core (pnpm build, part of dist); the app
       # tests launch the packaged app.
-      - id: dist
-        run: pnpm dist
-      - name: Fast tests, shard ${{ matrix.shard }} of 5
-        run: node --test --test-shard=${{ matrix.shard }}/5 "test/!(app)/**/*.test.ts"
-      - name: App tests, shard ${{ matrix.shard }} of 5
-        if: (success() || failure()) && steps.dist.outcome == 'success'
-        run: node scripts/test-app-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 5 --retries 1
+      - run: pnpm dist
+      - name: Tests, shard ${{ matrix.shard }} of 5
+        run: node scripts/test-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 5 --retries 1
       - name: Keep the test output
         if: always()
         uses: actions/upload-artifact@v4

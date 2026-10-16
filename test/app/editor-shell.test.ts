@@ -56,6 +56,12 @@ async function createThroughForm(page: Page, name: string) {
   await page.click("[data-testid=create]");
   await page.waitForFunction((n: string) => document.title === n, {}, name);
   // A new project opens on the Agent tab (U14); the project's settings are in the Inspector.
+  await waitFor(page, "[data-testid=tab-inspector]").catch(async (error) => {
+    // #89: seen missing once on a CI runner; say what the editor showed instead.
+    const state = await page.evaluate(() => ({ size: [innerWidth, innerHeight], side: !!document.querySelector(".side"), stage: !!document.querySelector("[data-testid=agent-stage]"), storage: { ...localStorage }, testids: [...document.querySelectorAll("[data-testid]")].slice(0, 60).map((el) => el.getAttribute("data-testid")) }));
+    await page.screenshot({ path: `test-output/shell-no-inspector-${name}.png` }).catch(() => {});
+    throw new Error(`no Inspector tab after creating ${name}: ${JSON.stringify(state)}`, { cause: error });
+  });
   await page.click("[data-testid=tab-inspector]");
 }
 const rect = (page: Page, selector: string) => page.$eval(selector, (el) => el.getBoundingClientRect().toJSON());
