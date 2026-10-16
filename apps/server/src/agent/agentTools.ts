@@ -20,7 +20,7 @@ export { FONT_ERRORS, checksOut, musicOut } from "./tools/outputs.ts";
 // chunk 2 (D78); captions_make with chunk 5 (D82); project_check, music_list and music_add with
 // chunk 8 (D90, D91); generate_media with phase 7 chunk B (D99); subtitles_export with D105.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "project_check", "music_list", "music_add", "library_search", "library_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "brand_write", "reference_frames", "beat_grid", "shader_write", "skill_read", "media_download", "docs_read"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "project_check", "music_list", "music_add", "library_search", "library_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "brand_write", "reference_frames", "beat_grid", "shader_write", "skill_read", "media_download", "docs_read", "plan_read"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;
@@ -130,6 +130,7 @@ The edit model:
 
 Tools:
 - Uncut's tools are mcp__uncut__<name> (this prompt says project_read for mcp__uncut__project_read); all are available directly. Their descriptions carry the details; modules_list gives every installed module's params.
+- plan_read gives the brief, the storyboard's beats and the last review's defect ids again (a message's <plan> may just say "Unchanged").
 - docs_read {topic} gives an area's reference with exact fields and examples: production, text, picture, sound, components, graphics, footage. Read the topic before you first work in that area in this conversation, instead of guessing fields.
 - You also have Claude Code's own tools: WebSearch and WebFetch, Read, Glob and Grep (files on this Mac), Bash, Write and Edit, Task (subagents). Your working folder is the project folder. Look up what you can instead of asking: for a product, its site and docs (what it does, its tagline, real copy, logo, screenshots); the files and folders the user points at. media_download {url} brings a real asset (a logo, a screenshot, a demo video) into Media. Change the project only with Uncut's tools, never by editing project.json; Bash and file writes are for what Uncut's tools can't do.
 - The access line in <editor-context> decides what runs freely and what waits for the user's Allow on a card; a refusal is final for that call.

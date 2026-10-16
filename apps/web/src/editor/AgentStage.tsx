@@ -6,6 +6,7 @@ import { ArrowRight, Upload } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
 import { AgentPanel } from "../panels/Agent.tsx";
+import { ImportReport } from "../panels/library/ImportReport.tsx";
 import { bridge } from "../state/bridge.ts";
 import { actions, getState, isRemote, type Project } from "../state/store.ts";
 import type { StageDismissal } from "./agentStage.ts";
@@ -17,7 +18,8 @@ export function AgentStage({ project, online, onDismiss }: { project: Project; o
   useEffect(() => {
     const dialog = () => {
       const s = getState();
-      return s.newProjectOpen || s.exportOpen || s.settingsOpen || s.setupOpen || s.shortcutsOpen || s.environmentsOpen;
+      // D266: and any other dialog on screen (Import from link…), wherever the focus is.
+      return s.newProjectOpen || s.exportOpen || s.settingsOpen || s.setupOpen || s.shortcutsOpen || s.environmentsOpen || document.querySelector(".modal-layer") !== null;
     };
     // The composer's pickers take Esc first (they prevent its default).
     const onKey = (e: KeyboardEvent) => {
@@ -80,6 +82,8 @@ export function AgentStage({ project, online, onDismiss }: { project: Project; o
           </button>
         </div>
         <AgentPanel project={project} online={online} />
+        {/* D266: a drop that imported nothing says why here, not only in Media under the backdrop. */}
+        <ImportReport testId="agent-stage-import-report" className="agent-stage-report" />
         <div className="agent-stage-foot">
           <Upload />
           Drop videos, sounds or pictures here to import them

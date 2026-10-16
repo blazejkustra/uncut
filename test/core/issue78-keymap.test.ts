@@ -145,3 +145,17 @@ test("persistence: remembered in storage, read back, defaults stored as nothing,
   none.set(choosePreset("resolve"));
   assert.deepEqual(none.bindings().toolBlade, ["B"]);
 });
+
+test("stale overrides: a key reserved after it was saved is dropped, an emptied override falls back (D266)", () => {
+  // Saved before ⇧⌘T became the timeline toggle: one press would hide the timeline and split.
+  const stale = parseKeymap(JSON.stringify({ preset: "uncut", overrides: { split: ["⇧⌘T"] } }));
+  assert.deepEqual(stale.overrides, {});
+  assert.deepEqual(bindingsOf(stale).split, presetBindings("uncut").split);
+  assert.equal(actionFor(bindingsOf(stale), "⇧⌘T"), undefined);
+  // A reserved key mixed with free ones: only the reserved one goes.
+  assert.deepEqual(parseKeymap(JSON.stringify({ overrides: { zoomIn: ["⌘Z", "="], split: ["⌃⌘F", "S"] } })).overrides, { zoomIn: ["="], split: ["S"] });
+  // A deliberately cleared action (no keys) stays cleared.
+  assert.deepEqual(parseKeymap(JSON.stringify({ overrides: { split: [] } })).overrides, { split: [] });
+  // ⌃⌘F is macOS's full screen: refused like the menu's keys.
+  assert.equal(checkKey(presetBindings("uncut"), "split", "⌃⌘F").kind, "reserved");
+});

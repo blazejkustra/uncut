@@ -328,3 +328,29 @@ test("U6 progress: several edits in one turn land one by one (each published bef
     await s.stop();
   }
 });
+
+test("D266: after claude compacts (system/compact_boundary) the next message carries <brand> and <plan> whole; plan_read reads the plan back", { skip, timeout: 60000 }, async () => {
+  const results = join(root, "compact-results.jsonl");
+  writeFileSync(results, "");
+  const s = await setup("compact", { FAKE_RESULT_LOG: results });
+  try {
+    writeFileSync(join(s.dir, "brief.json"), JSON.stringify({ film: "a teaser for Acme", audience: "developers", by: "agent" }));
+    const planOf = (i: number) => s.runs()[i]!.prompt.match(/<plan>\n([^]*?)\n<\/plan>/)?.[1] ?? "";
+    assert.equal((await s.ask("one", [{ text: "ok" }])).status, "done");
+    assert.match(planOf(0), /a teaser for Acme/, "the first message has the plan whole");
+    assert.equal((await s.ask("two", [{ text: "ok" }])).status, "done");
+    assert.match(planOf(1), /^Unchanged since your last message[^\n]*plan_read/, "unchanged: one line naming plan_read");
+    // Claude Code compacts during this turn (auto, or /compact).
+    assert.equal((await s.ask("three", [{ raw: { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 150000 } } }, { text: "ok" }])).status, "done");
+    assert.match(planOf(2), /^Unchanged/);
+    const t4 = await s.ask("four", [{ tool: "plan_read" }, { text: "ok" }]);
+    assert.equal(t4.status, "done", t4.error);
+    assert.match(planOf(3), /a teaser for Acme/, "after the compaction: whole again");
+    assert.match(s.runs()[3]!.prompt, /<brand>\nNo brand kit is chosen/, "the brand block whole too");
+    assert.equal(s.runs()[3]!.pid, s.runs()[0]!.pid, "the same claude (not a new session)");
+    const read = readFileSync(results, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.tool === "plan_read");
+    assert.match(JSON.stringify(read?.result), /a teaser for Acme/, "plan_read gives the brief");
+  } finally {
+    await s.stop();
+  }
+});

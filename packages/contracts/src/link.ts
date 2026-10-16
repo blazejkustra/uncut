@@ -33,6 +33,9 @@ export const LinkRequest = Schema.Struct({
   quality: Schema.optional(LinkQuality),
   // Dropped on the timeline: it goes there too, in the import's own edit (like T9 file drops).
   drop: Schema.optional(Schema.Struct({ frame: Schema.Number, track: Schema.optional(Schema.String) })),
+  // D266: the renderer's Labs flag (importFromLink) is on; the server refuses a start without it
+  // (defense in depth: every UI entry point checks the flag too).
+  labs: Schema.optional(Schema.Boolean),
 });
 export type LinkRequest = typeof LinkRequest.Type;
 

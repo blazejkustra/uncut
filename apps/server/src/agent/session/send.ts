@@ -35,6 +35,14 @@ export interface SentBlocks {
 const sentBlocks = new WeakMap<ClaudeSession, { committed?: SentBlocks; pending?: { sent: SentBlocks; r: Running } }>();
 export const RESEND_EVERY = 8;
 
+/**
+ * D266: claude compacted the conversation (auto or /compact: its system/compact_boundary event), so
+ * the blocks it saw may be summarised away; the next message carries both whole again.
+ */
+export function forgetSentBlocks(s: ClaudeSession): void {
+  sentBlocks.delete(s);
+}
+
 /** The <brand> and <plan> part of a message: blocks that changed whole, unchanged ones as a line each. */
 export function leanPlanBlock(full: string, last: SentBlocks | undefined): { text: string; sent: SentBlocks } {
   const at = full.indexOf("\n\n<plan>");
@@ -43,7 +51,7 @@ export function leanPlanBlock(full: string, last: SentBlocks | undefined): { tex
   if (!last || last.since + 1 >= RESEND_EVERY) return { text: full, sent: { brand, plan, since: 0 } };
   const parts = [brand === last.brand ? "<brand>\nUnchanged since your last message (brand_read reads the kit again).\n</brand>" : brand];
   if (plan === last.plan) {
-    if (plan) parts.push("<plan>\nUnchanged since your last message: the same brief, storyboard and last review.\n</plan>");
+    if (plan) parts.push("<plan>\nUnchanged since your last message: the same brief, storyboard and last review (plan_read reads them again).\n</plan>");
   } else parts.push(plan || "<plan>\nThe brief, storyboard and reviews are gone: nothing is planned now.\n</plan>");
   const changed = brand !== last.brand || plan !== last.plan;
   return { text: parts.join("\n\n"), sent: changed ? { brand, plan, since: 0 } : { ...last, since: last.since + 1 } };
