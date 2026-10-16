@@ -107,7 +107,8 @@ test("tool and plugin rows show marks; the Speech model keeps its waveform; Sett
     await waitForWelcome(page);
     await page.click("[data-testid=new-project]");
     await waitFor(page, "[data-testid=new-project-form]");
-    await page.click("[data-testid=choose-folder]");
+    // The window is short on a CI runner (674 px): the folder row sits under the pinned Create/Cancel.
+    await clickWhenReady(page, "[data-testid=choose-folder]");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await clickWhenReady(page, "[data-testid=create]");
     await waitFor(page, "[data-testid=editor]");

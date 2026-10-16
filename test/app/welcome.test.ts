@@ -136,9 +136,14 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   await page.click("[data-testid=redo]");
   await waitForDisk("First Cut", (p) => p.name === "Renamed");
   // ⌘Z outside a text field undoes the project change; ⇧⌘Z redoes it.
+  // Each key once the editor has heard of the last change: the file is written before the editor's
+  // undo/redo state follows, and a key pressed in between does nothing (a 3-core CI runner, #89).
+  const ready = (id: "undo" | "redo") => page.waitForFunction((b: string) => document.querySelector<HTMLButtonElement>(`[data-testid=${b}]`)?.disabled === false, { timeout: 10000 }, id);
   await page.click("[data-testid=timeline]");
+  await ready("undo");
   await meta(page, "KeyZ");
   await waitForDisk("First Cut", (p) => p.name === "First Cut");
+  await ready("redo");
   await meta(page, "KeyZ", true);
   await waitForDisk("First Cut", (p) => p.name === "Renamed");
   // The field follows the file once the editor hears of the redo (a beat later on a slow machine).
