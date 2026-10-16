@@ -100,6 +100,10 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   const oneTake = motionFindings(scan, fps, { oneTake: true, loop: true });
   assert.deepEqual(oneTake.map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:hold:60", "motion:seam:0"]);
   assert.ok(oneTake.every((f) => f.rule === "motion" && !f.hard));
+  // D297: in a motion film pops, jumps (cuts) and the seam are blockers; a hold stays a finding.
+  const filmFound = motionFindings(scan, fps, { oneTake: true, loop: true, hard: true });
+  assert.deepEqual(filmFound.filter((f) => f.hard).map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:seam:0"]);
+  assert.ok(!filmFound.find((f) => f.key === "motion:hold:60")!.hard);
   assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { oneTake: true, loop: true, footage: false });
   assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { oneTake: true, loop: false, footage: false });
   assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { oneTake: false, loop: false, footage: false });

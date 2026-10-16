@@ -50,6 +50,7 @@ const BLOCKER_SCORE: Readonly<Record<string, keyof ReviewScores>> = {
   blank: "variety",
   "unverified-fix": "readability",
   sound: "sound",
+  motion: "motion",
 };
 type Category = keyof ReviewScores & RubricCategory;
 const SCORE_NAMES: Readonly<Record<Category, string>> = {

@@ -292,18 +292,20 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
 /**
  * The scan as review findings (rule "motion"): pops always; one-frame jumps and holds over a second
  * when the film is one take (a cut is fine elsewhere, an end card may hold); the seam when it loops.
- * At most 8, worst pops first.
+ * At most 8, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
  */
-export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean } = {}): Array<CriticFinding> {
+export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean } = {}): Array<CriticFinding> {
+  // D297: in a motion film (hard) a pop, a one-frame jump (a cut) and a broken seam fail the round.
+  const hard = !!o.hard;
   const out: Array<CriticFinding> = [];
   for (const p of [...scan.pops].sort((a, b) => b.ratio - a.ratio).slice(0, 4)) {
-    out.push({ rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard: false, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
+    out.push({ rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
   }
   if (o.oneTake) {
-    for (const j of scan.jumps.slice(0, 2)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard: false, message: `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
+    for (const j of scan.jumps.slice(0, 2)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
     for (const h of scan.holds.slice(0, 2)) out.push({ rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${((h.end - h.start) / fps).toFixed(1)} s): a hold over 1 s.` });
   }
-  if (o.loop && seamBroken(scan)) out.push({ rule: "motion", key: "motion:seam:0", frame: 0, hard: false, message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.` });
+  if (o.loop && seamBroken(scan)) out.push({ rule: "motion", key: "motion:seam:0", frame: 0, hard, message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.` });
   return out.slice(0, 8);
 }
 
