@@ -138,6 +138,8 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (owned(r, project)) return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is Uncut's own file; writing it by hand would fight the open project. Change the project with timeline_edit and the other Uncut tools.` };
     const z = zone(r);
     if (z === "cache") return { kind: "allow" };
+    // The active kit's folder and the bundled libraries are only read (D296): never written, not even on a card.
+    if (z === "sanctioned") return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is in the brand kit's folder or Uncut's graphic libraries, which are only read. Change a kit with brand_write; write your own files in the project.` };
     const title = tool === "Write" ? "Write a file" : "Edit a file";
     // "Always" covers this exact file, and only inside the project.
     if (z === "project") {

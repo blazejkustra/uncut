@@ -374,9 +374,57 @@ test("D296: the active brand kit's folder and the bundled graphic libraries are 
     assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/other/logo.svg` }, access, { sanctioned }), "ask", "another kit still asks");
     assert.equal(kind("Read", { file_path: `${DATA}/server-token` }, access, { sanctioned }), "ask");
     assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/uncut/../../../settings.json` }, access, { sanctioned }), "ask", "no climbing out");
-    assert.notEqual(kind("Write", { file_path: `${DATA}/brand/kits/uncut/kit.json`, content: "{}" }, access, { sanctioned }), "allow", "never written");
-    assert.notEqual(kind("Edit", { file_path: `${LIBS}/motion.js` }, access, { sanctioned }), "allow");
+    assert.equal(kind("Write", { file_path: `${DATA}/brand/kits/uncut/kit.json`, content: "{}" }, access, { sanctioned }), "deny", "never written, not even on a card");
+    assert.equal(kind("Edit", { file_path: `${LIBS}/motion.js` }, access, { sanctioned }), "deny");
   }
   // After the web (Ask first, Look only), like a confirmed folder: a card again.
   assert.equal(kind("Read", { file_path: `${LIBS}/motion.js` }, "ask", { sanctioned, webUsed: true }), "ask");
+});
+
+test("D296: a symlinked kit folder sanctions nothing it points at; a project's own kit isn't a sanctioned dir (it's the project)", async () => {
+  const { sanctionedDirs } = await import("../../apps/server/src/agent/tools/ask.ts");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-sanctioned-")));
+  try {
+    const data = join(root, "data"), libs = join(root, "libs"), project = join(root, "Promo.uncut"), docs = join(root, "Documents");
+    for (const dir of [join(data, "brand", "kits", "real"), libs, join(project, "brand", "kits"), docs]) mkdirSync(dir, { recursive: true });
+    symlinkSync(docs, join(project, "brand", "kits", "evil"));
+    symlinkSync(docs, join(data, "brand", "kits", "evil"));
+    symlinkSync(join(data, "brand", "kits", "real"), join(data, "brand", "kits", "alias"));
+    const config = { dataDir: data, graphicLibsDir: libs };
+    assert.deepEqual(sanctionedDirs(config, project, "evil"), [libs], "a link out of the kits folder: only the libraries");
+    assert.deepEqual(sanctionedDirs(config, project, "real"), [libs, join(data, "brand", "kits", "real")]);
+    assert.deepEqual(sanctionedDirs(config, project, "alias"), [libs, join(data, "brand", "kits", "real")], "a link to another kit stays inside");
+    const sanctioned = sanctionedDirs(config, project, "evil");
+    assert.equal(decide("Read", { file_path: join(docs, "taxes.pdf") }, { access: "auto", project, roots: [], sanctioned, grants: new Set() }).kind, "ask");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a downloaded font: over 2 MB or a family no drawer takes is refused (and removed); a taken name is Geist-2, still Geist", async () => {
+  const { intoFonts } = await import("../../apps/server/src/agent/tools/ask.ts");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-into-fonts-")));
+  try {
+    const project = join(root, "Promo.uncut"), dl = join(root, "dl");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(dl, { recursive: true });
+    const file = (name: string, bytes = 16) => {
+      const p = join(dl, name);
+      writeFileSync(p, Buffer.alloc(bytes, 1));
+      return p;
+    };
+    const first = await intoFonts(file("a.woff2"), project, "Geist");
+    assert.deepEqual(first, { path: join(project, "fonts", "Geist.woff2"), family: "Geist" });
+    const second = await intoFonts(file("b.woff2"), project, "Geist");
+    assert.deepEqual(second, { path: join(project, "fonts", "Geist-2.woff2"), family: "Geist" });
+    const big = file("big.woff2", 2 * 1024 * 1024 + 1);
+    const tooBig = await intoFonts(big, project, "Big");
+    assert.ok("problem" in tooBig && /2 MB/.test(tooBig.problem), JSON.stringify(tooBig));
+    assert.throws(() => realpathSync(big), "and removed");
+    // A family read from the file (here its own name; a TTF's name table the same) that the drawers skip.
+    const odd = await intoFonts(file("Grötesk©.woff2"), project, undefined);
+    assert.ok("problem" in odd && /isn't a family name/.test(odd.problem), JSON.stringify(odd));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
