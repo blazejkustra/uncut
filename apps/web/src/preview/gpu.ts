@@ -178,9 +178,12 @@ export interface GpuSolid {
 const naturalSize = (s: GpuPicture["source"]) =>
   s instanceof HTMLVideoElement ? { w: s.videoWidth, h: s.videoHeight } : s instanceof HTMLImageElement ? { w: s.naturalWidth, h: s.naturalHeight } : { w: s.width, h: s.height };
 
-/** What a source shows now, so a paused one isn't uploaded again. */
+/**
+ * What a source shows now, so a paused one isn't uploaded again. A video's key names its file too:
+ * a relinked file (same item and media ids, another src) paused at the same time is another picture.
+ */
 const frameKey = (s: GpuPicture["source"]) =>
-  s instanceof HTMLVideoElement ? `v${s.currentTime}|${s.paused ? "p" : performance.now()}` : s instanceof HTMLImageElement ? `i${s.currentSrc}` : s.classList.contains("pv-scrub") ? `c${s.dataset.scrub}|${s.dataset.sample}` : `c${performance.now()}`;
+  s instanceof HTMLVideoElement ? `v${s.currentSrc}|${s.currentTime}|${s.paused ? "p" : performance.now()}` : s instanceof HTMLImageElement ? `i${s.currentSrc}` : s.classList.contains("pv-scrub") ? `c${s.dataset.scrub}|${s.dataset.sample}` : `c${performance.now()}`;
 
 /** Where a picture of size n lands in rect r with an object-fit (centred, as CSS's default object-position). */
 export function fitInto(r: Rect, n: { w: number; h: number }, fit: string): Rect {
@@ -241,7 +244,7 @@ export class GpuCompositor {
   private quad!: WebGLBuffer;
   private u: Uniforms = {};
   // Each layer's last uploaded picture (`n`: its natural size), kept while the layer is drawn.
-  private readonly textures = new Map<string, { tex: WebGLTexture; key: string; n: { w: number; h: number }; mip: boolean }>();
+  private readonly textures = new Map<string, { tex: WebGLTexture; key: string; source?: GpuPicture["source"] | undefined; n: { w: number; h: number }; mip: boolean }>();
   // Each effects layer's last drawn picture (`drawn` once it holds one).
   private readonly fxTargets = new Map<string, { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number; drawn?: boolean }>();
   // Issue #82 (D241): since when the frame on screen has been held (a layer had nothing to draw).
@@ -401,7 +404,9 @@ export class GpuCompositor {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t.tex);
     const key = frameKey(source);
-    if (t.key === key) return t;
+    // Another element under the same layer id (another project's clip with the same ids) is uploaded
+    // even when its key matches the old one's.
+    if (t.key === key && t.source === source) return t;
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
@@ -415,6 +420,7 @@ export class GpuCompositor {
     if (mip !== t.mip) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
     t.mip = mip;
     t.key = key;
+    t.source = source;
     t.n = naturalSize(source);
     return t;
   }

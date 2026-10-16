@@ -139,7 +139,9 @@ export class Compositor extends CompositorBase {
         el.dataset.bg = bg;
         el.style.background = bg;
       }
-      el.style.opacity = String(v.opacity);
+      // On the GPU its div stays transparent: an inline opacity would beat styles.css's
+      // `.pv-solid[data-gpu] { opacity: 0 }`, and a dip would be drawn twice (twice as dark mid-way).
+      el.style.opacity = onGpu.has(v.item.id) ? "0" : String(v.opacity);
       el.style.zIndex = String(z.get(v.item.id));
       transitionCanvas(el, v, project.canvas);
       if (onGpu.has(v.item.id)) el.dataset.gpu = "";
