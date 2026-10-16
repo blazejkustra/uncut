@@ -49,7 +49,7 @@ const skip = existsSync(APP) ? (hasFfmpeg ? false : "needs ffmpeg") : `packaged 
 
 const FPS = 30;
 const SEG = 30;
-const LAYOUTS = ["image", "still-video", "grid", "grid-1080p", "grid-sd", "reveal", "blur-dissolve", "blur-effect", "shader"] as const;
+const LAYOUTS = ["image", "still-video", "grid", "grid-1080p", "grid-sd", "reveal", "blur-dissolve", "blur-effect", "shader", "text-between", "interleaved"] as const;
 /** Each layout's frame and how many layers the GPU compositor draws there. */
 const AT: Record<(typeof LAYOUTS)[number], { frame: number; layers: number }> = {
   image: { frame: 15, layers: 7 },
@@ -62,6 +62,10 @@ const AT: Record<(typeof LAYOUTS)[number], { frame: number; layers: number }> = 
   "blur-dissolve": { frame: 229, layers: 2 },
   "blur-effect": { frame: 285, layers: 1 },
   shader: { frame: 315, layers: 1 },
+  // A video, a text over it, a video over the text (the text drawn by the DOM between two GPU runs).
+  "text-between": { frame: 345, layers: 3 },
+  // D221's 12 overlays with a text track between each two (12 GPU runs), 2 s, also played.
+  interleaved: { frame: 375, layers: 13 },
 };
 let root = "";
 let dir = "";
@@ -123,8 +127,20 @@ before(async () => {
     { id: "c8", type: "clip", media: "m-big", in: 30, duration: 30, effects: [{ module: "effect.blur", params: { amount: 6 } }], transform: { x: 160, y: 90, w: 1280, h: 720, fit: "cover", radius: 24 } },
     // A shader, then a look after it, in a smaller box.
     { id: "c9", type: "clip", media: "m-layer", in: 30, duration: 30, effects: [shaderEntry(SMEAR, { amount: 0.7 }), { module: "effect.look", params: { look: "warm", intensity: 1 } }], transform: { x: 200, y: 120, w: 1200, h: 675, fit: "cover", radius: 12 } },
+    { id: "c10", type: "clip", media: "m-layer", in: 0, duration: 30 },
+    { id: "c11", type: "clip", media: "m-layer", in: 0, duration: 60 },
   ];
-  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Parity", canvas: { width: 1920, height: 1080, fps: FPS }, textLooks: 1, media, tracks: [...overlays.reverse(), { id: "main", kind: "video", role: "main", name: "Main", items: main }] }));
+  // Top first: overlay 11, its text, overlay 10, its text, ... overlay 0, its text.
+  const interleaved = grid.flatMap((transform, i) => [
+    { id: `iv${i}`, kind: "video", name: `IV${i}`, items: [{ id: `ic${i}`, type: "clip", media: "m-layer", start: 360, in: (i * 5) % 50, duration: 60, transform }] },
+    { id: `it${i}`, kind: "text", name: `IT${i}`, items: [{ id: `ix${i}`, type: "text", start: 360, duration: 60, text: `Layer ${i + 1}`, transform: { x: transform.x + 40, y: transform.y + 260 }, style: { preset: "text.title", size: 64, weight: 800 } }] },
+  ]).reverse();
+  const between = [
+    { id: "top", kind: "video", name: "Top", items: [{ id: "vb", type: "clip", media: "m-layer", start: 330, in: 40, duration: 30, transform: { x: 900, y: 500, w: 700, h: 394, fit: "cover", radius: 16 } }] },
+    { id: "words", kind: "text", name: "Words", items: [{ id: "x1", type: "text", start: 330, duration: 30, text: "Between the layers", transform: { x: 420, y: 520 }, style: { preset: "text.title", size: 110, weight: 800 } }] },
+    { id: "under", kind: "video", name: "Under", items: [{ id: "va", type: "clip", media: "m-big", start: 330, in: 20, duration: 30, transform: { x: 300, y: 260, w: 800, h: 450, fit: "cover", radius: 16 } }] },
+  ];
+  writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Parity", canvas: { width: 1920, height: 1080, fps: FPS }, textLooks: 1, media, tracks: [...interleaved, ...between, ...overlays.reverse(), { id: "main", kind: "video", role: "main", name: "Main", items: main }] }));
 });
 after(async () => {
   await app?.close();
@@ -202,6 +218,34 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
     shots[layout] = { dom: a.file, gpu: b.file, ssim: ssim(a.file, b.file, a.w, a.h) };
     console.log(`# issue12 ${layout}: DOM vs GPU SSIM ${shots[layout]!.ssim.toFixed(4)}`);
   }
+  // Playback with the GPU on through the interleaved layout: every overlay on the GPU, in 12 runs, at the display's rate.
+  await setGpu(true);
+  await clickAt(AT.interleaved.frame - 14);
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.style.opacity === "0" || (!v.seeking && v.readyState >= 2)), { timeout: 15000 });
+  await sleep(500);
+  await page.keyboard.press("Space");
+  const played = await page.evaluate(
+    () =>
+      new Promise<{ raf: Array<number>; layers: number; runs: number }>((done) => {
+        const raf: Array<number> = [];
+        let last = 0;
+        const end = performance.now() + 1500;
+        const tick = (t: number) => {
+          if (last) raf.push(t - last);
+          last = t;
+          if (performance.now() < end) return void requestAnimationFrame(tick);
+          done({ raf, layers: Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")!.dataset.gpuLayers ?? 0), runs: [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-gpu-compositor]")].filter((c) => c.style.visibility !== "hidden").length });
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  await page.keyboard.press("Space");
+  const raf = [...played.raf].sort((a, b) => a - b);
+  const median = raf[Math.floor(raf.length / 2)]!;
+  console.log(`# issue12 interleaved playback: ${played.layers} layers on the GPU in ${played.runs} runs; rAF median ${median.toFixed(1)} ms, p90 ${raf[Math.floor(raf.length * 0.9)]!.toFixed(1)} ms, ${raf.filter((x) => x > 25).length} frames > 25 ms`);
+  assert.equal(played.layers, 13);
+  assert.equal(played.runs, 12, "a run under each text (the main clip and overlay 0 share the first)");
+  assert.ok(median < 12, `animation frames every ${median} ms`);
   await setGpu(false);
 
   // Export (Standard, loudness off).
@@ -228,7 +272,9 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
     const dom = compare(s.dom, file);
     const gpu = compare(s.gpu, file);
     console.log(`# issue12 ${layout} vs export: DOM SSIM ${dom.ssim.toFixed(4)} Δ${dom.colour.toFixed(2)}, GPU SSIM ${gpu.ssim.toFixed(4)} Δ${gpu.colour.toFixed(2)}`);
-    if (!(s.ssim >= 0.99)) low.push(`${layout}: DOM vs GPU SSIM ${s.ssim}`);
+    // Interleaved with texts, the DOM path's own videos move off the export's place (measured: DOM vs
+    // export 0.978 where the plain grid gives 0.987; GPU vs export 0.984): there the gate is the export.
+    if (layout === "interleaved" ? !(s.ssim >= 0.96 && gpu.ssim >= dom.ssim) : !(s.ssim >= 0.99)) low.push(`${layout}: DOM vs GPU SSIM ${s.ssim}`);
     if (!(gpu.ssim >= dom.ssim - 0.003)) low.push(`${layout}: GPU vs export SSIM ${gpu.ssim} below the DOM path's ${dom.ssim}`);
     if (!(gpu.colour <= dom.colour + 0.5)) low.push(`${layout}: GPU vs export colour Δ ${gpu.colour} above the DOM path's ${dom.colour}`);
   }

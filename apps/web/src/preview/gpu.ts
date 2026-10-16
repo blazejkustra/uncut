@@ -224,7 +224,17 @@ export const HOLD_MS = 150;
 type Uniforms = Record<string, WebGLUniformLocation | null>;
 
 export class GpuCompositor {
+  /**
+   * D265: the GL context draws on an offscreen surface; each run of consecutive GPU layers (in track
+   * order, between layers the DOM draws: text, components, graphics, overlays) is handed to a canvas
+   * of its own at that run's place in the stacking order (`flush`), so a layer the GPU can't draw
+   * only interrupts the run instead of sending every layer above it to the DOM path. The first run's
+   * canvas is `canvas`.
+   */
   readonly canvas: HTMLCanvasElement;
+  private readonly surface: OffscreenCanvas;
+  private readonly runs: Array<HTMLCanvasElement> = [];
+  private run = 0;
   private readonly gl: WebGL2RenderingContext;
   private program!: WebGLProgram;
   private vao!: WebGLVertexArrayObject;
@@ -254,19 +264,21 @@ export class GpuCompositor {
   lost = false;
   onRestored: (() => void) | undefined;
 
-  constructor() {
-    this.canvas = document.createElement("canvas");
-    this.canvas.className = "pv-gpu";
-    this.canvas.dataset.gpuCompositor = "";
-    const gl = this.canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: false });
+  private readonly parent: HTMLElement;
+
+  constructor(parent: HTMLElement) {
+    this.parent = parent;
+    this.surface = new OffscreenCanvas(1, 1);
+    this.canvas = this.runCanvas(0);
+    const gl = this.surface.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error("WebGL2 isn't available");
     this.gl = gl;
     this.init();
-    this.canvas.addEventListener("webglcontextlost", (e) => {
+    this.surface.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
       this.lost = true;
     });
-    this.canvas.addEventListener("webglcontextrestored", () => {
+    this.surface.addEventListener("webglcontextrestored", () => {
       this.lost = false;
       this.textures.clear();
       this.fxTargets.clear();
@@ -331,19 +343,11 @@ export class GpuCompositor {
   begin(place: GpuPlace) {
     const gl = this.gl;
     const { k, bw, bh } = GpuCompositor.layout(place);
-    if (this.canvas.width !== bw) this.canvas.width = bw;
-    if (this.canvas.height !== bh) this.canvas.height = bh;
-    const key = `${k}|${bw}|${bh}`;
-    if (this.placeKey !== key) {
-      this.placeKey = key;
-      // In the canvas's own px (the layer is scaled with it): one backing pixel per device pixel, not
-      // 100 % of the canvas (1080 × k is rarely a whole number of rows, and a canvas stretched by a
-      // fraction of a pixel is resampled once more by the browser, softening every edge).
-      const st = this.canvas.style;
-      st.width = `${bw / k}px`;
-      st.height = `${bh / k}px`;
-    }
+    if (this.surface.width !== bw) this.surface.width = bw;
+    if (this.surface.height !== bh) this.surface.height = bh;
+    this.placeKey = `${k}|${bw}|${bh}`;
     this.canvasSize = { w: place.w, h: place.h };
+    this.run = 0;
     this.k = k;
     this.px = 1 / k;
     this.used = new Set();
@@ -356,17 +360,17 @@ export class GpuCompositor {
   private bindOwn() {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.viewport(0, 0, this.surface.width, this.surface.height);
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.uniform2f(this.u.uBacking!, this.canvas.width, this.canvas.height);
+    gl.uniform2f(this.u.uBacking!, this.surface.width, this.surface.height);
     gl.uniform1f(this.u.uK!, this.k);
     gl.uniform1f(this.u.uPx!, this.px);
     gl.uniform1i(this.u.uTex!, 0);
     gl.uniform1i(this.u.uMask!, 1);
-    gl.uniform2f(this.u.uBackingF!, this.canvas.width, this.canvas.height);
+    gl.uniform2f(this.u.uBackingF!, this.surface.width, this.surface.height);
     gl.uniform1i(this.u.uMasked!, 0);
   }
 
@@ -549,7 +553,7 @@ export class GpuCompositor {
     }
     this.used.add(p.id);
     if (p.fx) {
-      this.fx ??= new FxRenderer(this.canvas, gl);
+      this.fx ??= new FxRenderer(this.surface as unknown as HTMLCanvasElement, gl);
       const { w, h } = p.fx.size;
       const target = this.fxTarget(p.id, w, h);
       gl.disable(gl.BLEND);
@@ -610,8 +614,8 @@ export class GpuCompositor {
   /** A whole-canvas target at the backing size. */
   private target(i: number) {
     const gl = this.gl;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = this.surface.width;
+    const h = this.surface.height;
     let t = this.targets[i];
     if (!t) {
       t = { tex: gl.createTexture()!, fbo: gl.createFramebuffer()!, w: 0, h: 0 };
@@ -637,7 +641,7 @@ export class GpuCompositor {
   private bindTarget(t: { fbo: WebGLFramebuffer } | undefined) {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, t?.fbo ?? null);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.viewport(0, 0, this.surface.width, this.surface.height);
     if (t) {
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -671,8 +675,8 @@ export class GpuCompositor {
   /** A reveal shape's coverage into the mask texture (unit 1), even-odd and antialiased. */
   private drawMask(rings: NonNullable<GpuPicture["mask"]>) {
     const gl = this.gl;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = this.surface.width;
+    const h = this.surface.height;
     if (!this.maskCanvas || this.maskCanvas.width !== w || this.maskCanvas.height !== h) this.maskCanvas = new OffscreenCanvas(w, h);
     const ctx = this.maskCanvas.getContext("2d")!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -736,9 +740,52 @@ export class GpuCompositor {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  /** Ends a frame: textures of layers no longer drawn (or warmed up) go. */
+  /** A run's canvas (made on first use, at the bottom of the parent until placed). */
+  private runCanvas(i: number) {
+    let c = this.runs[i];
+    if (!c) {
+      c = document.createElement("canvas");
+      c.className = "pv-gpu";
+      c.dataset.gpuCompositor = String(i);
+      c.style.visibility = "hidden";
+      this.runs[i] = c;
+      this.parent.prepend(c);
+    }
+    return c;
+  }
+
+  /**
+   * Shows what was drawn since `begin` (or the last flush) as the next run, its canvas at z-index
+   * `z` (any of its layers' own: the DOM elements of a GPU layer are transparent), and starts the
+   * next run on a clear surface.
+   */
+  flush(z: number) {
+    if (this.lost) return;
+    const c = this.runCanvas(this.run++);
+    const w = this.surface.width;
+    const h = this.surface.height;
+    if (c.width !== w) c.width = w;
+    if (c.height !== h) c.height = h;
+    // In the canvas's own px (the layer is scaled with it): one backing pixel per device pixel, not
+    // 100 % of the canvas (1080 × k is rarely a whole number of rows, and a canvas stretched by a
+    // fraction of a pixel is resampled once more by the browser, softening every edge).
+    const st = c.style;
+    const cw = `${w / this.k}px`;
+    const ch = `${h / this.k}px`;
+    if (st.width !== cw) st.width = cw;
+    if (st.height !== ch) st.height = ch;
+    const zi = String(z);
+    if (st.zIndex !== zi) st.zIndex = zi;
+    if (st.visibility) st.visibility = "";
+    // Handing the bitmap over clears the surface for the next run.
+    (c.getContext("bitmaprenderer") as ImageBitmapRenderingContext).transferFromImageBitmap(this.surface.transferToImageBitmap());
+    this.bindOwn();
+  }
+
+  /** Ends a frame: run canvases not used this time are hidden, textures of layers no longer drawn (or warmed up) go. */
   end() {
     const gl = this.gl;
+    for (let i = this.run; i < this.runs.length; i++) this.hideRun(i);
     for (const [id, t] of [...this.textures]) {
       if (this.used.has(id)) continue;
       gl.deleteTexture(t.tex);
@@ -752,19 +799,23 @@ export class GpuCompositor {
     }
   }
 
+  private hideRun(i: number) {
+    const c = this.runs[i]!;
+    if (c.style.visibility === "hidden") return;
+    c.style.visibility = "hidden";
+    (c.getContext("bitmaprenderer") as ImageBitmapRenderingContext).transferFromImageBitmap(null);
+  }
+
   /** Nothing drawn (every layer back on the DOM path). */
   clear() {
     if (this.lost) return;
-    const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    this.run = 0;
     this.used = new Set();
     this.end();
   }
 
   dispose() {
     this.gl.getExtension("WEBGL_lose_context")?.loseContext();
-    this.canvas.remove();
+    for (const c of this.runs) c.remove();
   }
 }
