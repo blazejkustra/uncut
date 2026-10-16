@@ -32,6 +32,11 @@ interface Motion {
   shapePath: (ctx: unknown, s: { x: number; y: number; w: number; h: number; r: number }) => void;
   footageRect: (sw: number, sh: number, w: number, h: number, s?: Record<string, number>) => { x: number; y: number; w: number; h: number };
   riseText: (ctx: unknown, text: string, x: number, baseline: number, t: number, o: Record<string, unknown>) => boolean;
+  frameRect: (left: number, top: number, w: number, h: number, o?: Record<string, unknown>) => { x: number; y: number; zoom: number };
+  apply: (ctx: unknown, cam: { x: number; y: number; zoom: number }, w: number, h: number) => void;
+  toScreen: (cam: { x: number; y: number; zoom: number }, x: number, y: number, w: number, h: number) => [number, number];
+  morph: (t: number, from: Record<string, number> | string, to: Record<string, number> | string, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; p: number; full: boolean };
+  coverage: (s: { x: number; y: number; w: number; h: number; r: number }, w: number, h: number) => number;
 }
 
 const load = (): Motion => {
@@ -213,4 +218,62 @@ test("riseText: at rest the mask holds the whole line (ascenders and descenders)
   assert.ok(rect[1]! <= 500 - 100 && rect[1]! + rect[3]! >= 500 + 30, `mask ${rect[1]} to ${rect[1]! + rect[3]!}`);
   assert.ok(Math.abs((text[2] as number) - 500) < 0.5, "at rest on its baseline");
   assert.equal(M.riseText(ctx, "Uncut", 100, 500, 4, { at: 0.5, out: 3, size: 100 }), false, "left within a second");
+});
+
+// Rehearsal 3: UI beats framed full-bleed (the UI surface is the frame), a button that grows into
+// the next scene instead of collapsing into a dot, and an even push (zoom in log space).
+test("frameRect covers the frame with a UI rect; apply and toScreen agree; camera zooms evenly and carries missing fields", () => {
+  const W = 1080;
+  const H = 1350;
+  // A 600 x 400 panel at (200, 100): cover fills the frame (height-limited), cropped at the centre.
+  const k = M.frameRect(200, 100, 600, 400, { width: W, height: H });
+  assert.ok(near(k.zoom, H / 400, 1e-9));
+  const [l, tp] = M.toScreen(k, 200, 100, W, H);
+  const [r, b] = M.toScreen(k, 800, 500, W, H);
+  assert.ok(l <= 0 && tp <= 1e-6 && r >= W && b >= H - 1e-6, `panel on screen ${l},${tp} to ${r},${b}`);
+  assert.ok(near(l + r, W, 1e-6), "centred crop");
+  // align x 0 shows the panel's left edge.
+  const left = M.frameRect(200, 100, 600, 400, { width: W, height: H, align: { x: 0 } });
+  assert.ok(near(M.toScreen(left, 200, 100, W, H)[0], 0, 1e-6));
+  // fit shows all of it, with the pad around.
+  const fit = M.frameRect(200, 100, 600, 400, { width: W, height: H, fit: true, pad: 20 });
+  const [fl] = M.toScreen(fit, 200, 100, W, H);
+  assert.ok(near(fl, 20 * fit.zoom, 1e-6), "the pad, scaled");
+  // apply is the same transform.
+  const calls: Array<Array<number>> = [];
+  M.apply({ transform: (...a: Array<number>) => calls.push(a) }, k, W, H);
+  const [a, , , d, e, f] = calls[0]!;
+  assert.ok(near(a! * 200 + e!, l, 1e-6) && near(d! * 100 + f!, tp, 1e-6));
+  // Zoom rides the spring in log space: halfway in time the log zoom is about halfway (1x to 4x passes 2x, not 2.5x),
+  // and a key without x/y/zoom keeps the previous key's.
+  const keys = [{ at: 0, x: 540, y: 675, zoom: 1 }, { at: 1, zoom: 4 }];
+  const z = M.camera(1.15, keys, "spring.settle");
+  const lin = 1 + 3 * M.spring(0.15, "spring.settle");
+  assert.ok(near(Math.log(z.zoom), Math.log(4) * M.spring(0.15, "spring.settle"), 1e-9) && z.zoom < lin, `${z.zoom} vs linear ${lin}`);
+  assert.ok(near(z.x, 540, 1e-9) && near(z.y, 675, 1e-9), "x and y carried over");
+});
+
+test("morph grows a button into the next scene's full shape in dur s; coverage measures it", () => {
+  const W = 1080;
+  const H = 1350;
+  const button = { x: 960, y: 1250, w: 88, h: 88, r: 44 };
+  const scene = { x: 540, y: 675, w: 1000, h: 1270, r: 40 };
+  assert.deepEqual({ ...M.morph(0.9, button, scene, { at: 1 }) }, { p: 0, ...button, full: false });
+  const done = M.morph(1.31, button, scene, { at: 1, dur: 0.3 });
+  assert.ok(near(done.w, 1000, 1e-9) && near(done.r, 40, 1e-9) && done.p === 1);
+  assert.ok(M.morph(1.5, button, "bleed", { at: 1, width: W, height: H }).full, "to bleed");
+  // Coverage: the whole frame, a quarter, a rounded rect's corners off it, nothing.
+  assert.equal(M.coverage({ x: 540, y: 675, w: 1400, h: 1700, r: 0 }, W, H), 1);
+  assert.ok(near(M.coverage({ x: 270, y: 337.5, w: 540, h: 675, r: 0 }, W, H), 0.25, 1e-9));
+  assert.ok(M.coverage(scene, W, H) > 0.85 && M.coverage(scene, W, H) < 1);
+  assert.ok(M.coverage(button, W, H) < 0.01);
+  assert.equal(M.coverage({ x: -500, y: -500, w: 100, h: 100, r: 0 }, W, H), 0);
+  // The morph from the button: past the first frames coverage only rises (grows, never collapses).
+  let prev = 0;
+  for (let f = 0; f <= 24; f++) {
+    const c = M.coverage(M.morph(1 + f / 60, button, scene, { at: 1 }), W, H);
+    assert.ok(c >= prev - 1e-12, `frame ${f}`);
+    prev = c;
+  }
+  assert.ok(prev > 0.85);
 });
