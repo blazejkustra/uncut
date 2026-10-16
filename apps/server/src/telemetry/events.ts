@@ -1,4 +1,4 @@
-// The telemetry event catalog and its sanitizer (issue #13, D223; opt-in since #103, D278): the last gate before anything
+// The telemetry event catalog and its sanitizer (issue #13, D223; anonymous since #103, D283): the last gate before anything
 // leaves the machine. Every event is named here with the attributes it may carry, and each value
 // must pass its validator (an enum, a bounded count, a boolean or a tight regex). Unknown events
 // and unknown keys are dropped; nothing free-form (paths, file names, prompts, error messages,
@@ -36,11 +36,8 @@ export const EXPORT_FAIL_CODES = ["no-ffmpeg", "measure", "missing-media", "rast
 export const AGENT_FAIL_CODES = ["usage-limit", "rate-limit", "overloaded", "signed-out", "start", "connection", "busy", "other"] as const;
 export const CRASH_PROCESSES = ["main", "renderer", "server", "gpu", "utility", "other"] as const;
 
-/** Attributes every event carries (telemetry.ts adds them). */
+/** Attributes every event carries (telemetry.ts adds them). No identifier of any kind (D283). */
 export const BASE: Readonly<Record<string, Validator>> = {
-  // The random install id (identity.ts, D278).
-  distinct_id: matching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
-  session_id: matching(/^[0-9a-f-]{36}$/),
   app_version: matching(/^[0-9A-Za-z.+-]{1,40}$/),
   os: oneOf("darwin", "linux", "win32", "other"),
   arch: oneOf("arm64", "x64", "other"),

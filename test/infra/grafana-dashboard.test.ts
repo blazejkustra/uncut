@@ -62,11 +62,13 @@ test("every LogQL query is balanced and selects service_name=\"uncut\"", () => {
 
 test("the basic panels are there", () => {
   const titles = panels.map((p) => p.title);
-  for (const t of ["Events per day by event_name", "Daily active machines (approx. distinct distinct_id)", "Sessions per day", "App versions (machines)", "OS (machines)", "Top events", "Failures by code", "Export duration p50 / p95", "Agent turns per day", "Crashes by crash_fingerprint", "Recent events"]) {
+  for (const t of ["Events per day by event_name", "Daily unique users", "Launches per day", "App versions (launches)", "OS (launches)", "Top events", "Failures by code", "Export duration p50 / p95", "Agent turns per day", "Crashes by crash_fingerprint", "Recent events"]) {
     assert.ok(titles.includes(t), t);
   }
   const find = (title: string) => exprs.filter((e) => e.title === title).map((e) => e.expr);
-  assert.match(find("Daily active machines (approx. distinct distinct_id)")[0], /^count\(count by \(distinct_id\) \(count_over_time\(.+\[1d\]\)\)\)$/);
+  // D283: users are counted only by the proxy's daily visitor_day hash; events carry no identifier.
+  assert.match(find("Daily unique users")[0], /^count\(count by \(visitor_day\) \(count_over_time\(.+\[1d\]\)\)\)$/);
+  for (const { title, expr } of exprs) assert.doesNotMatch(expr, /distinct_id|session_id/, title);
   assert.match(find("Failures by code")[0], /event_name=~"\.\+:fail"/);
   assert.deepEqual(find("Export duration p50 / p95").map((e) => /quantile_over_time\((0\.\d+),.*unwrap duration_ms/.exec(e)?.[1]), ["0.5", "0.95"]);
   assert.equal(panels.find((p) => p.title === "Recent events")?.type, "logs");

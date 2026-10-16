@@ -1,10 +1,2 @@
-/* The setup wizard's usage-data question (issue #103, D278). */
-.wiz-telemetry { display: flex; align-items: flex-start; gap: 8px; flex: 1; margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; cursor: pointer; }
-.wiz-telemetry input { flex: none; margin-top: 3px; }
-.wiz-telemetry-label { color: var(--fg); font-weight: 500; }
-.wiz-telemetry a, [data-testid="settings-telemetry-note"] a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }
-.usage-prompt { width: min(440px, 100%); padding: 22px 24px; }
-.usage-prompt h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
-.usage-prompt p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.55; }
-.usage-prompt a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }
-.usage-prompt-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+/* Usage data (issue #103, D283): the setup wizard's quiet line and the Settings note's link. */
+.wiz-usage-line a, [data-testid="settings-telemetry-note"] a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }

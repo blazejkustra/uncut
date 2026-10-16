@@ -1,8 +1,9 @@
-// Issue #103 (D278) on the packaged app, against a local collector (never the real endpoint):
-// usage data is opt-in. First launch: the setup wizard's last step has the question, unticked; a
-// skipped wizard is a no and sends nothing, not even app:start. An install that never answered is
-// asked once on launch ("Share usage data" / "Don't share"); a no is never asked again, a yes sends
-// this run's app:start with a random install id. Screenshots: test-output/issue103-*.png.
+// Issue #103 (D283) on the packaged app, against a local collector (never the real endpoint):
+// usage data is anonymous and on by default. The setup wizard's last step shows one quiet line with a
+// Privacy link (no question, nothing blocks New project); app:start is sent at first launch with no
+// identifier; old install-id / telemetry-id files are deleted and none is made. A build that can't
+// send (no token) shows no line. The Settings toggle and DO_NOT_TRACK: telemetry-app.test.ts.
+// Screenshots: test-output/issue103-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
@@ -17,14 +18,14 @@ const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
 const T = { skip, timeout: 120000 };
 const TOKEN = "app-test-token-0123456789";
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 let root: string, collector: Server | undefined, endpoint = "";
 const bodies: Array<string> = [];
 const apps = new Set<LaunchedApp>();
-const launch = async (data: string, firstLaunch = false) => {
-  // UNCUT_TELEMETRY "on" on purpose: the environment can't say yes for the user.
-  const app = await launchApp({ command: APP, firstLaunch, env: { UNCUT_DATA_DIR: data, UNCUT_TELEMETRY: "on", UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: TOKEN, DO_NOT_TRACK: "" } });
+const launch = async (data: string, firstLaunch = false, token = TOKEN) => {
+  // UNCUT_TELEMETRY "on" on purpose: the environment can't say yes for the user. The endpoint is
+  // always the local collector; without a token it can send nothing (never the real endpoint).
+  const app = await launchApp({ command: APP, firstLaunch, env: { UNCUT_DATA_DIR: data, UNCUT_TELEMETRY: "on", UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: token, DO_NOT_TRACK: "" } });
   apps.add(app);
   return app;
 };
@@ -51,8 +52,9 @@ const dataDir = (name: string) => {
 const toLastStep = async (page: Page) => {
   await page.waitForSelector("[data-testid=onboarding]", { timeout: 20000 });
   await page.click("[data-testid=wizard-step-2]");
-  await page.waitForSelector("[data-testid=wizard-telemetry]:not([disabled])", { timeout: 10000 });
+  await page.waitForSelector("[data-testid=wizard-new-project]");
 };
+const ALLOWED = ["app_version", "arch", "event.name", "headless", "os", "runtime", "process", "error_name", "crash_fingerprint", "code", "fatal"];
 
 before(async () => {
   if (skip) return;
@@ -78,83 +80,42 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("first launch: the wizard asks, unticked; skipping it is a no and nothing is sent", T, async () => {
+test("first launch: one quiet line in the wizard, New project free; app:start sent with no identifier; old id files deleted", T, async () => {
   const data = dataDir("first");
+  writeFileSync(join(data, "install-id"), "0b5c3c3e-1111-4222-8333-444455556666\n");
+  writeFileSync(join(data, "telemetry-id"), `${"a".repeat(64)}\n`);
   const app = await launch(data, true);
   await toLastStep(app.page);
-  assert.equal(await app.page.$eval("[data-testid=wizard-telemetry]", (el) => (el as HTMLInputElement).checked), false, "unticked until the user says yes");
-  const row = await app.page.$eval("[data-testid=wizard-telemetry-row]", (el) => (el as HTMLElement).innerText);
-  assert.match(row, /Send usage data and crash reports/);
-  assert.match(row, /isn't linked to your name/);
-  assert.doesNotMatch(row, /anonymous/i);
-  assert.ok(await app.page.$("[data-testid=wizard-telemetry-row] [data-testid=privacy-link]"), "a Privacy link");
-  await app.page.screenshot({ path: "test-output/issue103-wizard.png" });
+  await app.page.waitForSelector("[data-testid=wizard-telemetry-note]", { timeout: 10000 });
+  const line = await app.page.$eval("[data-testid=wizard-telemetry-note]", (el) => (el as HTMLElement).innerText);
+  assert.equal(line, "Uncut sends anonymous usage counts and crash types, never your footage or prompts. You can turn it off in Settings. Privacy");
+  assert.ok(await app.page.$("[data-testid=wizard-telemetry-note] [data-testid=privacy-link]"), "Privacy is a link");
+  assert.equal(await app.page.$("[data-testid=wizard-telemetry-accept]"), null, "no choice to make");
+  assert.equal(await app.page.$eval("[data-testid=wizard-new-project]", (el) => (el as HTMLButtonElement).disabled), false);
+  await new Promise((r) => setTimeout(r, 300));
+  await app.page.screenshot({ path: "test-output/issue103-wizard-line.png" });
+  await until(() => events().some((e) => e.name === "app:start"), 20000, "app:start without any answer");
+  for (const e of events()) for (const k of Object.keys(e.attrs)) assert.ok(ALLOWED.includes(k), `unexpected attribute ${k}`);
+  assert.ok(!existsSync(join(data, "install-id")), "D278's install id deleted");
+  assert.ok(!existsSync(join(data, "telemetry-id")), "D223's id deleted");
   await app.page.click("[data-testid=wizard-skip]");
   await app.page.waitForFunction(() => !document.querySelector("[data-testid=onboarding]"));
   await waitForWelcome(app.page);
-  await until(() => settings(data).telemetry?.enabled === false, 5000, "a skipped wizard saved as no");
-  await sleep(500);
-  assert.equal(await app.page.$("[data-testid=usage-data-prompt]"), null, "not asked again right after");
-  await sleep(11000);
-  await close(app);
   await sleep(1000);
-  assert.equal(bodies.length, 0, "nothing sent, not even app:start");
-  assert.ok(!existsSync(join(data, "install-id")), "no id made");
-});
-
-test("first launch: ticking the box sends this run's app:start with a random install id", T, async () => {
-  const data = dataDir("tick");
-  const app = await launch(data, true);
-  await toLastStep(app.page);
-  await app.page.click("[data-testid=wizard-telemetry]");
-  await until(() => settings(data).telemetry?.enabled === true, 5000, "the yes saved");
-  await app.page.screenshot({ path: "test-output/issue103-wizard-ticked.png" });
-  await until(() => events().some((e) => e.name === "app:start"), 20000, "app:start");
-  const id = String(events().find((e) => e.name === "app:start")!.attrs.distinct_id);
-  assert.match(id, UUID);
-  assert.equal(readFileSync(join(data, "install-id"), "utf8").trim(), id);
+  assert.equal(await app.page.$("[data-testid=usage-data-prompt]"), null, "no dialog");
+  assert.equal(settings(data).telemetry, undefined, "nothing saved: on is the default");
+  assert.ok(!existsSync(join(data, "install-id")), "none made");
   await close(app);
 });
 
-test("an install that never answered is asked once; Don't share holds, Share usage data sends", T, async () => {
+test("a build that can't send shows no line", T, async () => {
   const before = bodies.length;
-  const data = dataDir("existing");
-  // An install from before opt-in: set up, never asked (D223 counted that as yes).
-  writeFileSync(join(data, "settings.json"), JSON.stringify({ onboarded: true }));
-  writeFileSync(join(data, "telemetry-id"), `${"a".repeat(64)}\n`);
-  let app = await launch(data);
-  await waitForWelcome(app.page);
-  await app.page.waitForSelector("[data-testid=usage-data-prompt]", { timeout: 15000 });
-  const text = await app.page.$eval("[data-testid=usage-data-prompt]", (el) => (el as HTMLElement).innerText);
-  assert.match(text, /Share usage data\?/);
-  assert.match(text, /Don't share/);
-  assert.doesNotMatch(text, /anonymous/i);
-  await sleep(300);
-  await app.page.screenshot({ path: "test-output/issue103-prompt.png" });
-  await app.page.click("[data-testid=usage-data-decline]");
-  await app.page.waitForFunction(() => !document.querySelector("[data-testid=usage-data-prompt]"));
-  await until(() => settings(data).telemetry?.enabled === false, 5000, "the no saved");
+  const data = dataDir("no-token");
+  const app = await launch(data, true, "");
+  await toLastStep(app.page);
+  await sleep(1500);
+  assert.equal(await app.page.$("[data-testid=wizard-telemetry-note]"), null, "no usage-data line");
+  await app.page.screenshot({ path: "test-output/issue103-no-token.png" });
   await close(app);
-  assert.equal(bodies.length, before, "nothing sent before or after a no");
-
-  // A no is never asked again.
-  app = await launch(data);
-  await waitForWelcome(app.page);
-  await sleep(2500);
-  assert.equal(await app.page.$("[data-testid=usage-data-prompt]"), null);
-  await close(app);
-
-  // Another install that never answered: yes.
-  const data2 = dataDir("existing-yes");
-  writeFileSync(join(data2, "settings.json"), JSON.stringify({ onboarded: true }));
-  writeFileSync(join(data2, "telemetry-id"), `${"a".repeat(64)}\n`);
-  app = await launch(data2);
-  await waitForWelcome(app.page);
-  await app.page.waitForSelector("[data-testid=usage-data-prompt]", { timeout: 15000 });
-  await app.page.click("[data-testid=usage-data-accept]");
-  await until(() => settings(data2).telemetry?.enabled === true, 5000, "the yes saved");
-  await until(() => events().filter((e) => e.name === "app:start").length >= 2, 20000, "app:start after the yes");
-  assert.match(String(events().filter((e) => e.name === "app:start").at(-1)!.attrs.distinct_id), UUID);
-  assert.ok(!existsSync(join(data2, "telemetry-id")), "the hardware-derived id is deleted");
-  await close(app);
+  assert.equal(bodies.length, before, "nothing sent");
 });
