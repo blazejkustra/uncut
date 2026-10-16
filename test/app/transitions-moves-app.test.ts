@@ -183,8 +183,15 @@ test("iris, push and zoom: applied from the panel, drawn in the preview mid-way,
     if (f === 180) {
       // The outgoing picture 1.1× about the centre (its box stays the canvas), the incoming one half faded in.
       assert.equal(await page.$eval(".pv-box[data-item=p2]", (el) => (el as HTMLElement).style.left), "0px");
-      assert.equal(await page.$eval("video[data-item=p2]", (el) => (el as HTMLElement).style.width), "1408px");
-      assert.equal(await page.$eval("video[data-item=p2]", (el) => (el as HTMLElement).style.left), "-64px");
+      // Where the picture is drawn in its box's px (laid out at its content rect, or placed there by a transform: D265).
+      const placed = await page.$eval("video[data-item=p2]", (el) => {
+        const box = el.parentElement!;
+        const a = el.getBoundingClientRect();
+        const b = box.getBoundingClientRect();
+        const k = b.width / box.offsetWidth;
+        return { left: Math.round((a.left - b.left) / k), width: Math.round(a.width / k) };
+      });
+      assert.deepEqual(placed, { left: -64, width: 1408 });
       assert.equal(await page.$eval("video[data-item=s2]", (el) => (el as HTMLElement).style.opacity), "0.5");
     }
     const path = out(names[f] ?? `transitions-moves-${f}.png`);

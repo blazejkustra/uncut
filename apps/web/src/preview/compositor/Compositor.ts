@@ -12,7 +12,7 @@ import { scrubCacheOn } from "../../settings/scrub.ts";
 import { gpuCompositorOn } from "../../settings/gpu.ts";
 import { GpuCompositor, plainColour, type GpuPicture } from "../gpu.ts";
 import { needsPicturePass, fxPictureSize } from "@uncut/core/fx";
-import { setStyle, px, transitionCanvas, setBlur, placeBox, drive, seek, irisClip } from "./media.ts";
+import { px, transitionCanvas, setBlur, placeBox, placePicture, drive, seek, irisClip, wanted } from "./media.ts";
 
 import { CompositorBase } from "./base.ts";
 
@@ -33,6 +33,9 @@ export class Compositor extends CompositorBase {
       this.mix.stop();
       return;
     }
+    // Issue #12 (D265): device px per canvas px, read before this render writes any style (no forced
+    // layout): the GPU compositor gives the canvas one backing pixel per device pixel.
+    const gpuScale = gpuCompositorOn() && !this.gpuBroken ? this.screenScale(project.canvas.width) : 1;
     const background = canvasBackground(project);
     if (this.frameEl.style.background !== background) this.frameEl.style.background = background;
     const { frame, playing: running, rate, selected } = getPlayback();
@@ -301,7 +304,7 @@ export class Compositor extends CompositorBase {
       wrap.style.zIndex = String(z.get(c.item.id));
       if (c.box) placeBox(wrap, el, c.box, project.canvas, c.wipe, c.iris, c.mask, c.blur);
       if (pic !== el) {
-        for (const k of ["left", "top", "width", "height", "objectFit"] as const) setStyle(pic, k, el.style[k]);
+        if (c.box) placePicture(pic, c.box);
         pic.style.opacity = el.style.opacity;
         el.style.visibility = "hidden";
       } else if (el instanceof HTMLVideoElement && !wrap.querySelector("[data-missing]")) el.style.visibility = "";
@@ -318,6 +321,7 @@ export class Compositor extends CompositorBase {
           wipe: c.wipe,
           iris: c.iris !== undefined ? { x: project.canvas.width / 2, y: project.canvas.height / 2, r: irisRadius(c.iris, project.canvas) } : undefined,
           fx: fx && needsPicturePass(fx) && !this.fxBroken ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps } : undefined,
+          gamut: pic instanceof HTMLVideoElement && this.gamutVideo(pic),
         });
       } else {
         delete wrap.dataset.gpu;
@@ -347,10 +351,27 @@ export class Compositor extends CompositorBase {
         // Just before it starts (while playing) it already runs, out of sight and silent, so the
         // cut doesn't wait for the decoder to start (picture and sound).
         const early = (ahead.in ?? 0) + (frame - starts.get(ahead.id)!) * speed;
-        if (playing && from - frame <= PREROLL_S * fps && early >= 0) drive(el, early / fps, true, speed, ahead.keepPitch !== false);
-        else {
+        // Issue #12 (D265): starting to run is never a seek back. Paused, it waits at its first frame
+        // (stepping onto the cut shows it at once); made while playing, it waits where its run starts
+        // (PREROLL_S before that), so the run just starts. One waiting at its first frame when playback
+        // starts stays there and starts running at its cut (its decoder already holds that frame). Before,
+        // the run began with a seek PREROLL_S back: a second decoder start on a long-GOP file right
+        // before the cut, which stalled the clip playing on screen into a drift seek.
+        const first = ((ahead.in ?? 0) - preroll(ahead) * speed) / fps + 0.0001;
+        const parked = el.paused && !el.seeking && el.readyState >= 2;
+        if (playing && from - frame <= PREROLL_S * fps && early >= 0) {
+          const lead = el.currentTime - early / fps;
+          if (parked && lead > -0.1 && lead <= 0.5 / fps) {
+            if (el.playbackRate !== speed || el.preservesPitch !== (ahead.keepPitch !== false)) {
+              el.playbackRate = speed;
+              el.preservesPitch = ahead.keepPitch !== false;
+            }
+            el.play().catch(() => {});
+          } else if (!(parked && lead > 0 && el.currentTime <= first + 0.05)) drive(el, early / fps, true, speed, ahead.keepPitch !== false);
+        } else {
           if (!el.paused) el.pause();
-          seek(el, ((ahead.in ?? 0) - preroll(ahead) * speed) / fps + 0.0001);
+          if (!playing) seek(el, first);
+          else if (!wanted.has(el)) seek(el, Math.max(0, (ahead.in ?? 0) - (preroll(ahead) + PREROLL_S * fps) * speed) / fps + 0.0001);
         }
       }
     }
@@ -395,16 +416,21 @@ export class Compositor extends CompositorBase {
     this.scrub.sweep();
     if (this.gpu && !this.gpu.lost) {
       if (onGpu.size) {
-        const scale = (this.frameEl.clientWidth / project.canvas.width) * (window.devicePixelRatio || 1);
+        const place = { w: project.canvas.width, h: project.canvas.height, k: gpuScale };
         // Issue #82 (D241): a layer with nothing to draw yet (the next clip's <video> still seeking at
         // a cut) keeps the last frame up a moment instead of a transparent hole over the black frame.
-        if (!this.gpu.holds(gpuPictures.values(), project.canvas.width, project.canvas.height, scale)) {
-          this.gpu.begin(project.canvas.width, project.canvas.height, scale);
+        if (!this.gpu.holds(gpuPictures.values(), place)) {
+          this.gpu.begin(place);
           for (const v of drawn) {
             if (!onGpu.has(v.item.id)) break;
             const p = gpuPictures.get(v.item.id);
             if (p) this.gpu.drawPicture(p);
             else if (v.item.type === "component") this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
+          }
+          // Issue #12 (D265): the next clips' pictures, so a cut has one to hold while its <video> seeks.
+          for (const ahead of aheads) {
+            const el = this.els.get(ahead.id);
+            if (el instanceof HTMLVideoElement && !clips.some((c) => c.item.id === ahead.id)) this.gpu.prewarm(ahead.id, el);
           }
           this.gpu.end();
         } else this.frameEl.dataset.gpuHeld = String(Number(this.frameEl.dataset.gpuHeld ?? 0) + 1);
@@ -459,6 +485,13 @@ export class Compositor extends CompositorBase {
       const hide = id === this.editing ? "hidden" : "";
       if (t.el.style.visibility !== hide) t.el.style.visibility = hide;
     }
+  }
+
+  /** Device px per canvas px (the scaled canvas layer's width on screen, not the frame's rounded clientWidth). */
+  protected screenScale(width: number) {
+    const dpr = window.devicePixelRatio || 1;
+    const r = (this.mediaLayer.parentElement ?? this.mediaLayer).getBoundingClientRect();
+    return r.width > 0 ? (r.width * dpr) / width : (this.frameEl.clientWidth / width) * dpr;
   }
 
   /** Where the top fully visible video really is, so the clock can follow a late decoder. */
