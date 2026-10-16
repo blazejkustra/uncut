@@ -25,6 +25,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 // The Capture tab also asks Argent for its devices: always the fake (the real CLI would start the shared tool-server).
@@ -129,10 +130,11 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await waitFor(page, "[data-testid=capture-countdown]");
     assert.equal(await text(page, "[data-testid=capture-countdown]"), "3");
     await waitFor(page, "[data-testid=capture-take-timer]", 10000);
-    await sleep(800);
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true", { timeout: 10000 }).catch(() => {});
     assert.equal(await page.$eval("[data-testid=preview-frame]", (el) => (el as HTMLElement).dataset.playing), "true", "the timeline plays while recording");
     await page.screenshot({ path: "test-output/capture-recording-mic.png" });
-    await sleep(1700);
+    // The take's length (the timer is up; recordedMs is checked against 2–4 s below).
+    await sleep(2500);
     await page.click("[data-testid=capture-take-stop]");
     await waitFor(page, "[data-testid=capture-take-saved]", 30000);
     assert.match(await text(page, "[data-testid=capture-take-saved]"), /^Voiceover \d{8}-\d{6}\.m4a \(\d+\.\d s\) is in Media and on the timeline at 0:01\.$/);
@@ -296,7 +298,7 @@ test("This Mac: permissions macOS refused say how to fix them and open System Se
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await page.screenshot({ path: "test-output/capture-denied.png" });
     await page.click("[data-testid=capture-open-settings-microphone]");
-    await sleep(300);
+    await eventually(() => /Privacy_Microphone/.test(app.output()));
     assert.match(app.output(), /\[test\] open x-apple\.systempreferences:com\.apple\.preference\.security\?Privacy_Microphone/);
 
     await page.click("[data-testid=capture-src-voiceover]");
@@ -309,7 +311,7 @@ test("This Mac: permissions macOS refused say how to fix them and open System Se
     await page.click("[data-testid=capture-src-screen]");
     await waitFor(page, '[data-testid=capture-access][data-kind="screen"][data-state="denied"]');
     await page.click("[data-testid=capture-open-settings-screen]");
-    await sleep(300);
+    await eventually(() => /Privacy_ScreenCapture/.test(app.output()));
     assert.match(app.output(), /Privacy_ScreenCapture/);
     assert.deepEqual(app.errors, []);
   } catch (error) {

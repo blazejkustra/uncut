@@ -192,7 +192,7 @@ test("transitions: the panel, drag onto a cut, the marker and Inspector, length 
   await page.mouse.down();
   await page.mouse.move(ex - 1.5 * k, edge.y + edge.height / 2, { steps: 3 });
   await page.mouse.move(ex - 3 * k, edge.y + edge.height / 2, { steps: 6 });
-  await sleep(120);
+  await page.waitForFunction(() => /frames\)/.test(document.querySelector("[data-testid=drag-tip]")?.textContent ?? ""), { timeout: 5000 }).catch(() => {});
   assert.match(await page.$eval("[data-testid=drag-tip]", (el) => el.textContent ?? ""), /frames\)/);
   await page.mouse.up();
   await waitRevision(r0 + 3);

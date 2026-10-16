@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { KeyInput, Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { settled, until } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -241,7 +242,7 @@ test("feedback round 1: layout, panels, rail, selection, sticky timeline, shortc
     await page.keyboard.press("KeyK");
     assert.ok((await playhead()) < afterL, "J played backwards");
     await page.keyboard.press("Space");
-    await sleep(300);
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true", { timeout: 10000 }).catch(() => {});
     assert.equal(await page.$eval("[data-testid=preview-frame]", (el) => (el as HTMLElement).dataset.playing), "true", "Space plays");
     await page.keyboard.press("Space");
 
@@ -314,20 +315,30 @@ test("feedback round 1: layout, panels, rail, selection, sticky timeline, shortc
     await page.keyboard.down("Meta");
     await page.mouse.wheel({ deltaY: -300 });
     await page.keyboard.up("Meta");
-    await sleep(200);
-    const zoomed = await rect("[data-testid=preview-frame]");
-    assert.ok(zoomed.width > fit.width * 1.3, `⌘ wheel zoomed ${fit.width} → ${zoomed.width}`);
+    // #89: the view re-renders after the wheel and pointer events (not within them), so wait for
+    // the frame to get there (and stop moving) instead of reading it once after a fixed sleep.
+    const frameLeft = async () => (await rect("[data-testid=preview-frame]")).left;
+    const panTo = async (x: number, what: string) => {
+      await until(async () => Math.abs((await frameLeft()) - x) <= 2, `${what}: the frame's left edge at ${x}`, { timeout: 5000 });
+      await settled(frameLeft, what);
+      assert.ok(Math.abs((await frameLeft()) - x) <= 2, what);
+    };
+    const zoomed = await until(async () => {
+      const r = await rect("[data-testid=preview-frame]");
+      return r.width > fit.width * 1.3 && r;
+    }, `⌘ wheel zoomed from ${fit.width}`, { timeout: 5000 });
     // A plain wheel pans when zoomed; the hand drags.
-    const x0 = zoomed.left;
+    const x0 = (await settled(() => rect("[data-testid=preview-frame]"), "the ⌘ wheel zoom")).left;
+    assert.ok(zoomed.width > fit.width * 1.3);
     await page.mouse.wheel({ deltaX: 100 });
-    await sleep(200);
-    assert.ok(Math.abs((await rect("[data-testid=preview-frame]")).left - (x0 - 100)) <= 2, "wheel pans");
+    await panTo(x0 - 100, "wheel pans");
     await page.click("[data-testid=preview-hand]");
+    await page.waitForSelector("[data-testid=preview-hand][aria-pressed=true]");
     await page.mouse.move(area.left + 100, area.top + 100);
     await page.mouse.down();
     await page.mouse.move(area.left + 160, area.top + 130, { steps: 5 });
     await page.mouse.up();
-    assert.ok(Math.abs((await rect("[data-testid=preview-frame]")).left - (x0 - 40)) <= 2, "hand pans");
+    await panTo(x0 - 40, "hand pans");
     await page.screenshot({ path: out("preview-zoomed") });
     await page.click("[data-testid=preview-hand]");
     assert.equal(await revision(), rev, "zoom and pan never touch the project");

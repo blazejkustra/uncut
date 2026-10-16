@@ -21,6 +21,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE_ARGENT = resolve("test/helpers/fake-argent/argent");
@@ -220,7 +221,7 @@ test("issue 18 and 19: this Mac's sound alone, with the microphone and the scree
     await page.keyboard.down("Meta");
     await page.keyboard.press("z");
     await page.keyboard.up("Meta");
-    for (let i = 0; i < 50 && onDisk().media.length !== before - 4; i++) await sleep(100);
+    await eventually(() => onDisk().media.length === before - 4);
     assert.equal(onDisk().media.length, before - 4);
     assert.ok(!onDisk().tracks.some((t) => t.name === "Camera"), "the Camera track went with it");
     assert.ok(existsSync(join(dir, "media", "captures", folder, "camera.mp4")), "undo leaves the files, like captures");
@@ -240,7 +241,7 @@ test("issue 18 and 19: permissions: the screen permission governs this Mac's sou
     await app.page.waitForSelector('[data-testid=capture-card-system] [data-testid=capture-access][data-kind="screen"][data-state="denied"]', { timeout: 15000 });
     assert.match(await text(app.page, "[data-testid=capture-card-system]"), /isn't allowed to record this Mac's sound: macOS lets it with screen recording\. Turn Uncut on in System Settings, Privacy & Security, Screen & System Audio Recording/);
     await app.page.click("[data-testid=capture-card-system] [data-testid=capture-open-settings-screen]");
-    for (let i = 0; i < 30 && !/\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/.test(app.output()); i++) await sleep(100);
+    await eventually(() => /\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/.test(app.output()));
     assert.match(app.output(), /\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/);
     await app.page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await shot(app.page, "issue18-denied");

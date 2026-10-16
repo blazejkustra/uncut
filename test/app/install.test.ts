@@ -124,7 +124,7 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   const whisper = join(installed, "Contents/Resources/plugins/whisper-transcribe");
   assert.deepEqual(readdirSync(whisper).sort(), ["server.ts", "uncut.module.json", "whisper.ts"]);
   for (const f of readdirSync(whisper)) assert.ok(readFileSync(join(whisper, f)).equals(readFileSync(resolve("plugins/whisper-transcribe", f))), f);
-  assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "catalog", "whisper-transcribe"]);
+  assert.deepEqual(readdirSync(join(installed, "Contents/Resources/plugins")).sort(), ["argent-capture", "catalog", "uncut-skills", "whisper-transcribe"]);
   // The catalog (D103): every plugin in plugins/catalog, as in the repo, off until enabled.
   const catalog = join(installed, "Contents/Resources/plugins/catalog");
   assert.deepEqual(readdirSync(catalog).sort(), readdirSync(resolve("plugins/catalog")).filter((n) => !n.startsWith(".") && !n.startsWith("_")).sort());

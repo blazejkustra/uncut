@@ -404,16 +404,34 @@ test("planners keep to the schema's bounds; restore labels; an empty Captions tr
 });
 
 test("editWords: 9000 words under 3000 clips in well under a pointer move's budget", () => {
-  const words = Array.from({ length: 9000 }, (_, i) => ({ text: `w${i}`, start: i * 0.4, end: i * 0.4 + 0.3 }));
-  const main = Array.from({ length: 3000 }, (_, k) => clip(`c${k}`, k * 36, 30));
-  const p: Project = { ...projectWith([]), media: [{ id: "m-talk", kind: "video", name: "T", path: "/tmp/T.mp4", probe: { frames: 200000, fps: 30, hasAudio: true } }], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: main }] };
-  editWords(p, new Map([["m-talk", words]]));
-  const t0 = performance.now();
-  const out = editWords(p, new Map([["m-talk", words]]));
-  const ms = performance.now() - t0;
-  console.log(`  editWords: ${out.length} words heard in ${ms.toFixed(1)} ms`);
+  const sized = (n: number) => {
+    const words = Array.from({ length: 3 * n }, (_, i) => ({ text: `w${i}`, start: i * 0.4, end: i * 0.4 + 0.3 }));
+    const main = Array.from({ length: n }, (_, k) => clip(`c${k}`, k * 36, 30));
+    const project: Project = { ...projectWith([]), media: [{ id: "m-talk", kind: "video", name: "T", path: "/tmp/T.mp4", probe: { frames: 200000, fps: 30, hasAudio: true } }], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: main }] };
+    return { project, transcripts: new Map([["m-talk", words]]) };
+  };
+  // #89: the fastest of several runs (a busy machine only ever adds time), and the cost of 10× the
+  // input relative to 1×, so a full test run's load can't fail it but a quadratic scan still does.
+  const fastest = ({ project, transcripts }: ReturnType<typeof sized>) => {
+    editWords(project, transcripts);
+    let best = Infinity;
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      editWords(project, transcripts);
+      best = Math.min(best, performance.now() - t0);
+    }
+    return best;
+  };
+  const { project: p, transcripts } = sized(3000);
+  const words = transcripts.get("m-talk")!;
+  const out = editWords(p, transcripts);
+  const ms = fastest(sized(3000));
+  const small = fastest(sized(300));
+  console.log(`  editWords: ${out.length} words heard in ${ms.toFixed(1)} ms (a tenth of it: ${small.toFixed(2)} ms)`);
   assert.ok(out.length > 6000);
-  assert.ok(ms < 20, `${ms} ms`);
+  assert.ok(ms < 50, `${ms} ms`);
+  // Linear is ~10×, quadratic ~100×; below a millisecond the small run is mostly timer noise.
+  assert.ok(ms < 30 * Math.max(small, 0.5), `10× the words and clips cost ${(ms / small).toFixed(0)}× (${small.toFixed(2)} → ${ms.toFixed(1)} ms)`);
   // Same answer as the plain scan for words out of order (the fallback).
   const shuffled = [...words.slice(0, 50)].reverse();
   const q: Project = { ...p, tracks: [{ ...p.tracks[0]!, items: [clip("c0", 0, 300)] }] };

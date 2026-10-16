@@ -111,7 +111,7 @@ test("Find beats in the inspector, ticks on the audio item, a dragged title and 
   await page.mouse.down();
   await page.mouse.move(from.x + (to.x - from.x) / 3, from.y, { steps: 4 });
   await page.mouse.move(to.x, to.y, { steps: 10 });
-  await sleep(150);
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=snap-line]")?.dataset.frame === "111", { timeout: 5000 }).catch(() => {});
   assert.equal(await page.$eval("[data-testid=snap-line]", (el) => Number((el as HTMLElement).dataset.frame)), 111, "the snap line on the beat");
   await page.screenshot({ path: "test-output/beats-snap.png" });
   await page.mouse.up();

@@ -97,6 +97,8 @@ test("matches ffprobe on generated files: audio-only, 24/25/29.97 fps, audio+vid
 });
 
 const SCRATCH = "/private/tmp/claude-501/-Users-blazejkustra-Documents-devrel/3831cfa3-e621-4363-bd93-bfd925d590db/scratchpad/gen";
+// Both files, not just the folder: an emptied or half-filled scratchpad skips instead of failing (#89).
+const REPRO = ["twoedits.mp4", "frag.mp4"].map((name) => join(SCRATCH, name));
 
 test("variable frame rate: fps is the most used frame duration (ffprobe packet durations), not r_frame_rate by luck", { skip }, () => {
   // 60 fps for the first second, then every other frame: 60 frames at 1/60 s, 60 at 1/30 s, plus a few odd ones.
@@ -114,7 +116,7 @@ test("variable frame rate: fps is the most used frame duration (ffprobe packet d
   console.log(`# vfr: native fps ${ours.fps}; packet-duration mode ${expected}; ffprobe avg_frame_rate differs by design`);
 });
 
-test("the reviewer's repro files (when present): two edit-list entries, fragmented, VFR", { skip: skip || (!existsSync(SCRATCH) && "repro files aren't here") }, () => {
+test("the reviewer's repro files (when present): two edit-list entries, fragmented, VFR", { skip: skip || (!REPRO.every((f) => existsSync(f)) && "repro files aren't here") }, () => {
   const twoEdits = native(join(SCRATCH, "twoedits.mp4"));
   assert.equal(twoEdits.durationSeconds, reference(join(SCRATCH, "twoedits.mp4")).durationSeconds);
   const frag = native(join(SCRATCH, "frag.mp4"));

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { settled, until } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -87,12 +88,16 @@ async function dragEdge(id: string, edge: "start" | "end", frames: number, optio
   await drag(from, { x: from.x + frames * (await ppf()), y: from.y }, options);
 }
 
-/** Put the playhead on exactly `target`: click the ruler near it, then step with the arrow keys. */
+/**
+ * Put the playhead on exactly `target`: click the ruler near it, then step with the arrow keys.
+ * Each step reads the frame only once it has stopped changing (#89): a read taken before the last
+ * click or key press shows up is stale, and stepping from it overshoots, or returns one frame off.
+ */
 async function seekTo(target: number) {
   const ruler = await box("[data-testid=ruler]");
   await page.mouse.click(ruler.x + target * (await ppf()) + 1, ruler.y + ruler.height / 2);
   for (let i = 0; i < 200; i++) {
-    const f = await frameOf();
+    const f = await settled(frameOf, "the playhead", { interval: 40, times: 3 });
     if (f === target) return;
     await page.keyboard.press(target > f ? "ArrowRight" : "ArrowLeft");
   }
@@ -102,17 +107,29 @@ async function settle() {
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => !v.seeking && v.readyState >= 2), { timeout: 10000 });
   await sleep(150);
 }
+/** `check` passes within a few seconds: what a drag shows while held renders after the pointer moves, not with them. */
+const soon = (check: () => Promise<void>, what: string) =>
+  until(async () => {
+    await check();
+    return true;
+  }, what, { timeout: 5000 }).then(() => {});
 const visibleVideo = () =>
   page.$$eval("video[data-item]", (els) => {
     const v = (els as Array<HTMLVideoElement>).find((e) => e.style.opacity === "1" && e.style.visibility !== "hidden");
     return v ? { id: v.dataset.item, time: v.currentTime } : undefined;
   });
-/** Average colour of the middle of the preview, [r, g, b]. */
+/**
+ * Average colour of the middle of the preview, [r, g, b], once two samples in a row agree (#89):
+ * under load the compositor can draw the seeked frame a little after the <video> reports it ready.
+ */
 async function previewColour(name: string) {
   await settle();
   const path = resolve("test-output", `timeline-edit-${name}.png`);
-  await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path });
-  return [...execFileSync("ffmpeg", ["-v", "error", "-i", path, "-vf", "crop=iw/4:ih/4,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+  const sample = async () => {
+    await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path });
+    return [...execFileSync("ffmpeg", ["-v", "error", "-i", path, "-vf", "crop=iw/4:ih/4,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])];
+  };
+  return settled(sample, `the preview colour (${name})`, { interval: 100, times: 2 });
 }
 const isColour = (name: "red" | "blue" | "green" | "black", [r, g, b]: Array<number>) =>
   name === "red" ? r! > 150 && g! < 90 && b! < 90 : name === "blue" ? b! > 150 && r! < 90 && g! < 90 : name === "green" ? g! > 100 && r! < 90 && b! < 90 : r! < 30 && g! < 30 && b! < 30;
@@ -212,9 +229,11 @@ test("move a text item: the saved start changes; onto another item it lands on t
   await dragItem("title-1", 130, {
     meta: true,
     during: async () => {
-      const left = await page.$eval(`${itemSel("title-1")}.landing`, (e) => parseFloat((e as HTMLElement).style.left));
-      assert.ok(Math.abs(left - 90 * (await ppf())) < 1, `landing at ${left}px`);
-      assert.ok(await page.$("[data-testid=drag-float]"), "the item follows the pointer");
+      await soon(async () => {
+        const left = await page.$eval(`${itemSel("title-1")}.landing`, (e) => parseFloat((e as HTMLElement).style.left));
+        assert.ok(Math.abs(left - 90 * (await ppf())) < 1, `landing at ${left}px`);
+        assert.ok(await page.$("[data-testid=drag-float]"), "the item follows the pointer");
+      }, "the landing spot at 90 while dragging");
       await page.screenshot({ path: "test-output/timeline-edit-moving.png" });
     },
   });
@@ -247,7 +266,7 @@ test("trim both edges of a clip: in and duration saved, the next clip ripples, t
   const r = await revision();
   await dragEdge("clip-1", "start", 75, {
     meta: true,
-    during: async () => assert.equal(await page.$eval("[data-testid=drag-tip]", (e) => e.textContent), "1.50s", "the length shows while trimming"),
+    during: () => soon(async () => assert.equal(await page.$eval("[data-testid=drag-tip]", (e) => e.textContent), "1.50s", "the length shows while trimming"), "the trim length tip"),
   });
   await waitRevision(r + 1);
   assert.deepEqual([saved("clip-1")!.in, saved("clip-1")!.duration], [75, 45]);
@@ -357,7 +376,7 @@ test("snapping: a moved item sticks to the playhead (with a snap line); ⌘ turn
   const offset = -4 / px;
   await dragItem("title-1", 70 + offset, {
     during: async () => {
-      assert.equal(await page.$eval("[data-testid=snap-line]", (e) => Number((e as HTMLElement).dataset.frame)), 70);
+      await soon(async () => assert.equal(await page.$eval("[data-testid=snap-line]", (e) => Number((e as HTMLElement).dataset.frame)), 70), "the snap line at 70");
       await page.screenshot({ path: "test-output/timeline-edit-snap.png" });
     },
   });

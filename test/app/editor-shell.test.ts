@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { KeyInput, Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const skip = existsSync(APP) ? false : `packaged app not built: run pnpm dist to create ${APP}`;
@@ -106,7 +107,7 @@ test("errors, drafts, the New project form, reload failures and the minimum wind
     await page.click("[data-testid=leave-drop]");
     await page.waitForFunction(() => document.title === "Alpha");
     await page.click("[data-testid=timeline]");
-    await sleep(300);
+    await eventually(() => onDisk("Alpha").name === "Alpha");
     assert.equal(onDisk("Alpha").name, "Alpha");
     assert.equal(onDisk("Beta").name, "Beta");
     assert.equal(await page.$eval("[data-testid=inspector-name]", (i) => (i as HTMLInputElement).value), "Alpha");
