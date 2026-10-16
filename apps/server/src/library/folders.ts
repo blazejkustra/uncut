@@ -3,6 +3,8 @@
 // referenced: nothing is copied until one is added to a project (then into its media/, like a
 // bundled sound). The list of folders is kept in <dataDir>/sound-folders.json; each folder's index
 // (names, paths inside it, sizes) is made by walking it, kept for a minute, and made again on rescan.
+// The Music library read from its XML is kept until that file's size or mtime changes (D262). One
+// folder that can't be read is listed as missing; it never hides the others.
 //
 // Safety: the client names a sound by its id only; the server maps it to a path it found in the
 // folder's walk, and that path's real path must still sit inside the folder's real path (a link
@@ -15,7 +17,7 @@ import { basename, extname, isAbsolute, join, sep } from "node:path";
 
 import { FOLDER_AUDIO_EXTENSIONS, MUSIC_LIBRARY_PATH, type FolderSound, type SoundFolder } from "@uncut/core/library";
 
-import { MUSIC_FOLDER_NAME, readMusicLibrary } from "./musicApp.ts";
+import { MUSIC_FOLDER_NAME, musicLibraryStamp, readMusicLibrary } from "./musicApp.ts";
 
 /** The most audio files one folder's index lists, folders it walks, and how deep. */
 export const MAX_FOLDER_FILES = 5000;
@@ -36,6 +38,8 @@ interface Indexed {
   /** The folder's real path ("" for the Music library, whose songs can sit anywhere: D249). */
   readonly real: string;
   readonly paths: ReadonlyMap<string, string>;
+  /** The Music library's XML size and mtime when it was read (D262): reused while they hold. */
+  readonly stamp?: string;
 }
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
@@ -99,9 +103,11 @@ async function walk(root: string, folderId: string): Promise<{ sounds: Array<Fol
   return { sounds, paths, truncated };
 }
 
-export function soundFolders({ dataDir, now = Date.now, musicRoot }: { readonly dataDir: string; readonly now?: () => number; readonly musicRoot?: string | undefined }) {
+export function soundFolders({ dataDir, now = Date.now, musicRoot, readMusic = readMusicLibrary }: { readonly dataDir: string; readonly now?: () => number; readonly musicRoot?: string | undefined; readonly readMusic?: typeof readMusicLibrary }) {
   const file = join(dataDir, "sound-folders.json");
   const indexes = new Map<string, Indexed>();
+  /** Indexes being made (a second list() at the same time waits for the same one). */
+  const making = new Map<string, Promise<Indexed>>();
   let lock: Promise<unknown> = Promise.resolve();
   const locked = <A>(run: () => Promise<A>): Promise<A> => {
     const next = lock.then(run, run);
@@ -124,17 +130,27 @@ export function soundFolders({ dataDir, now = Date.now, musicRoot }: { readonly 
     await rename(part, file);
   }
 
-  async function index(f: Stored, rescan: boolean): Promise<Indexed> {
+  function index(f: Stored, rescan: boolean): Promise<Indexed> {
+    const pending = making.get(f.id);
+    if (pending && !rescan) return pending;
+    const run = make(f, rescan).finally(() => making.get(f.id) === run && making.delete(f.id));
+    making.set(f.id, run);
+    return run;
+  }
+
+  async function make(f: Stored, rescan: boolean): Promise<Indexed> {
     const known = indexes.get(f.id);
-    if (known && !rescan && now() - known.at < INDEX_MS) return known;
     if (f.path === MUSIC_LIBRARY_PATH) {
-      // D249: the Music app's library, its DRM-free songs (musicApp.ts).
-      const lib = await readMusicLibrary(musicRoot, f.id, walk);
+      // D249: the Music app's library, its DRM-free songs (musicApp.ts). D262: an unchanged XML isn't read again.
+      const stamp = await musicLibraryStamp(musicRoot);
+      if (known && !rescan && (stamp ? known.stamp === stamp : now() - known.at < INDEX_MS)) return known;
+      const lib = await readMusic(musicRoot, f.id, walk);
       const folder: SoundFolder = { id: f.id, path: lib.where || "~/Music", name: MUSIC_FOLDER_NAME, sounds: lib.sounds, system: "music", ...(lib.found ? {} : { missing: true }), ...(lib.truncated ? { truncated: true } : {}), ...(lib.skipped ? { skipped: lib.skipped } : {}) };
-      const entry: Indexed = { at: now(), real: "", paths: lib.paths, folder };
+      const entry: Indexed = { at: now(), real: "", paths: lib.paths, folder, ...(stamp ? { stamp } : {}) };
       indexes.set(f.id, entry);
       return entry;
     }
+    if (known && !rescan && now() - known.at < INDEX_MS) return known;
     const name = basename(f.path) || f.path;
     let real: string;
     try {
@@ -154,7 +170,14 @@ export function soundFolders({ dataDir, now = Date.now, musicRoot }: { readonly 
   async function list(rescan = false): Promise<Array<SoundFolder>> {
     const folders = await stored();
     for (const id of indexes.keys()) if (!folders.some((f) => f.id === id)) indexes.delete(id);
-    return Promise.all(folders.map(async (f) => (await index(f, rescan)).folder));
+    // D262: one folder failing is listed as missing; the others still show.
+    const settled = await Promise.allSettled(folders.map((f) => index(f, rescan)));
+    return settled.map((r, i) => {
+      if (r.status === "fulfilled") return r.value.folder;
+      const f = folders[i]!;
+      console.warn(`sound folder ${f.path} can't be read: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+      return f.path === MUSIC_LIBRARY_PATH ? { id: f.id, path: "~/Music", name: MUSIC_FOLDER_NAME, sounds: [], system: "music" as const, missing: true } : { id: f.id, path: f.path, name: basename(f.path) || f.path, sounds: [], missing: true };
+    });
   }
 
   function add(raw: string): Promise<Array<SoundFolder>> {
