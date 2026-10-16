@@ -130,14 +130,28 @@ export function pointerAt(local: number, at: number, fps: number, w: number, h: 
 
 // ---- follow handle ----
 
-export function drawFollow({ props, w, h, target, local, fps }: Draw) {
-  const platform = PLATFORM_TINT[str(props.platform)] ? str(props.platform) : "youtube";
+/**
+ * A platform's mark (D275, D278): its id, whether it's a brand (locked to its own colour), its tint
+ * and its glyph at a circle's size. A brand's mark is never recoloured: `color` only tints the
+ * generic glyphs. An unknown or missing platform is `fallback` (follow handle: youtube; follow card:
+ * the generic @ in `color` or the theme's accent).
+ */
+export function platformMark(target: RenderTarget, props: { readonly [key: string]: unknown }, fallback: string): { platform: string; locked: boolean; tint: string; glyph: (size: number, ink: string) => string } {
+  const platform = PLATFORM_TINT[str(props.platform)] ? str(props.platform) : fallback;
   const brand = BRAND_ICONS[platform];
+  const locked = brand !== undefined || platform === "linkedin";
+  const tint = locked ? PLATFORM_TINT[platform]! : color(target, props.color, PLATFORM_TINT[platform] ?? accentOf(target));
+  const glyphFn = PLATFORM_GLYPH[platform === "linkedin" ? "pro" : platform] ?? PLATFORM_GLYPH.social!;
+  return { platform, locked, tint, glyph: (size, ink) => (brand ? brandGlyph(brand.path, size * 0.54, ink) : glyph(glyphFn(ink), size * 0.56, ink)) };
+}
+/** The ink on a mark's circle: white, or dark on a light colour (pure black for a brand: Snapchat's yellow). */
+export const markInk = (tint: string, locked: boolean) => (inkOn(tint) === "#FFFFFF" ? "#FFFFFF" : locked ? "#000000" : "#0A0A0B");
+
+export function drawFollow({ props, w, h, target, local, fps }: Draw) {
   const style = ["pill", "solid", "minimal"].includes(str(props.style)) ? str(props.style) : "pill";
   // Issue #103 (D278): a brand's mark is never recoloured. Its circle (or the solid pill) is the brand's
   // own colour and the mark on it plain white or black; `color` only tints the generic glyphs.
-  const locked = brand !== undefined || platform === "linkedin";
-  const tint = locked ? PLATFORM_TINT[platform]! : color(target, props.color, PLATFORM_TINT[platform]!);
+  const { locked, tint, glyph: markGlyph } = platformMark(target, props, "youtube");
   const handle = str(props.handle);
   const label = str(props.label);
   // In: the icon pops (0–0.35 s), the pill opens from it (0.15–0.65 s), the words slide in after.
@@ -155,12 +169,11 @@ export function drawFollow({ props, w, h, target, local, fps }: Draw) {
   const ink = style === "pill" ? color(target, props.text, "#0A0A0B") : style === "solid" ? inkOn(tint) : "#FFFFFF";
   // A light brand colour (Snapchat's yellow, Kick's green) gets dark ink, like the solid pill's words.
   // On the solid pill the circle is white and the mark keeps the brand's colour (black when that's too light).
-  const mono = (fill: string) => (inkOn(fill) === "#FFFFFF" ? "#FFFFFF" : locked ? "#000000" : "#0A0A0B");
   const iconBg = style === "solid" ? "#FFFFFF" : tint;
-  const iconInk = style === "solid" ? (inkOn(tint) === "#FFFFFF" ? tint : locked ? "#000000" : "#0A0A0B") : mono(tint);
+  const iconInk = style === "solid" ? (inkOn(tint) === "#FFFFFF" ? tint : locked ? "#000000" : "#0A0A0B") : markInk(tint, locked);
   const shadow = style === "minimal" ? `text-shadow:${TEXT_SHADOW};` : "";
   const panel = style === "minimal" ? "" : `<div style="position:absolute;left:0;top:${px((h - pillH) / 2)};width:${px(w)};height:${px(pillH)};background:${bg};border-radius:${px(pillH / 2)};box-shadow:0 ${px(pillH * 0.08)} ${px(pillH * 0.3)} rgb(0 0 0 / 22%);clip-path:inset(0 ${num((1 - open) * (1 - pillH / w) * 100)}% 0 0 round ${px(pillH / 2)})"></div>`;
-  const glyphHtml = `<div style="position:absolute;left:${px(pad)};top:${px((h - icon) / 2)};width:${px(icon)};height:${px(icon)};border-radius:50%;background:${iconBg};display:flex;align-items:center;justify-content:center;transform:scale(${num(Math.max(0, pop))})">${brand ? brandGlyph(brand.path, icon * 0.54, iconInk) : glyph(PLATFORM_GLYPH[platform === "linkedin" ? "pro" : platform]!(iconInk), icon * 0.56, iconInk)}</div>`;
+  const glyphHtml = `<div style="position:absolute;left:${px(pad)};top:${px((h - icon) / 2)};width:${px(icon)};height:${px(icon)};border-radius:50%;background:${iconBg};display:flex;align-items:center;justify-content:center;transform:scale(${num(Math.max(0, pop))})">${markGlyph(icon, iconInk)}</div>`;
   const text = `<div style="position:absolute;left:${px(textX)};top:0;bottom:0;width:${px(textW)};display:flex;flex-direction:column;justify-content:center;gap:${px(pillH * 0.02)};font-family:${DM_SANS};color:${ink};${shadow}opacity:${num(words)};transform:translateX(${px((1 - words) * -pillH * 0.3)})">${label ? `<div style="font-weight:600;font-size:${px(small)};line-height:1.1;letter-spacing:0.06em;text-transform:uppercase;opacity:0.7;white-space:nowrap">${esc(label)}</div>` : ""}<div style="font-weight:700;font-size:${px(big)};line-height:1.1;letter-spacing:-0.01em;white-space:nowrap">${esc(handle)}</div></div>`;
   return box(panel + glyphHtml + text);
 }

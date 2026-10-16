@@ -396,7 +396,7 @@ test("agent: modules_list shows the components' params; insert_device_frame and 
   assert.equal(end.showsInPreview, true);
   assert.ok(mods.find((m) => m.id === "component.device-frame")!.component, "the device frame's screens");
   assert.equal(mods.find((m) => m.id === "component.callout")!.showsInPreview, true, "drawn since D130");
-  assert.equal(mods.find((m) => m.id === "component.follow-card")!.showsInPreview, false);
+  assert.equal(mods.find((m) => m.id === "component.zoom-pan")!.showsInPreview, false);
   // One edit: the device frame's two tracks and items, the card's track and item.
   assert.ok(!edit!.result.isError, edit!.result.content[0]!.text);
   const saved = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as Project;
