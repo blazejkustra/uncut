@@ -25,7 +25,8 @@ const skip = !existsSync(DESKTOP) ? "desktop not built (run pnpm build)" : bin ?
 const W = 160;
 const H = 120;
 const canvas = { width: W, height: H, fps: 30 };
-const FRAMES = 40;
+// Past 2 × fps frames, so the sweep closes the old pictures while the held one stays.
+const FRAMES = 80;
 
 // Like launch-film-8.html: thumbs fetched in init, footage asked per frame, both drawn every frame.
 const HELD = `<canvas id="c" width="${W}" height="${H}"></canvas>
@@ -40,6 +41,19 @@ window.render = async (t) => {
   ctx.clearRect(0, 0, ${W}, ${H});
   ctx.drawImage(frame, 0, 0, ${W}, ${H});
   ctx.drawImage(thumb, 4, 4, 32, 18);
+};
+</script>`;
+
+// A picture asked for once after the first frame and kept: closed once unused for about 2 × fps
+// frames (a closed ImageBitmap reads 0 × 0), so its memory goes predictably; the setup's isn't.
+const AGED = `<canvas id="c" width="${W}" height="${H}"></canvas>
+<script>
+let early, late;
+window.render = async (t, info) => {
+  early ??= await uncut.frame("clip", 0.1, { width: 32 });
+  if (info.frame === 1) late = await uncut.frame("clip", 0.3, { width: 32 });
+  if (info.frame > 1) await uncut.frame("clip", 0.2 + t, { width: 16 });
+  if (info.frame === ${FRAMES - 1} && (late.width !== 0 || early.width === 0)) throw new Error("late " + late.width + ", early " + early.width);
 };
 </script>`;
 
@@ -76,11 +90,16 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-const draw = (html: string, local: number) =>
-  raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, canvas), t: local / canvas.fps, info: graphicInfo({ duration: FRAMES, props: {} }, canvas, local), out: join(root, `f${local}.png`), name: '"held" (graphics/held.html)' });
+const draw = (html: string, local: number) => drawIn(html, local, "held");
+const drawIn = (html: string, local: number, name: string) =>
+  raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, canvas), t: local / canvas.fps, info: graphicInfo({ duration: FRAMES, props: {} }, canvas, local), out: join(root, `${name}-${local}.png`), name: `"${name}" (graphics/${name}.html)` });
 
 test("a picture fetched once and drawn every frame survives more frames than the media cache keeps", { skip }, async () => {
   for (let f = 0; f < FRAMES; f++) await assert.doesNotReject(draw(HELD, f), `frame ${f}`);
+});
+
+test("a picture unused for about 2 × fps frames is closed; one from the first render is not", { skip }, async () => {
+  for (let f = 0; f < FRAMES; f++) await assert.doesNotReject(drawIn(AGED, f, "aged"), `frame ${f}`);
 });
 
 test("what render(t) throws reaches the export with its name and message, never undefined", { skip }, async () => {
