@@ -1,0 +1,81 @@
+/* D238 (issue #65): the Capture tab's one recorder, the screen picker modal and Argent's device picker. */
+
+/* Source toggles: two by two in the narrow panel, a row of four when there's room. */
+.capture-toggles { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 6px; }
+.capture-toggle { position: relative; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--muted); font-size: 12px; text-align: left; }
+.capture-toggle svg.lucide { width: 15px; height: 15px; flex: none; }
+.capture-toggle span:first-of-type { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capture-toggle:not(:disabled):hover { border-color: var(--border-strong); color: var(--fg); }
+.capture-toggle.on { color: var(--fg); border-color: var(--border-strong); background: var(--raised); }
+.capture-toggle-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--border-strong); flex: none; }
+.capture-toggle.on .capture-toggle-dot { background: var(--error); border-color: var(--error); }
+.capture-toggle:disabled { opacity: 0.7; cursor: default; }
+
+/* One card per source that's on. */
+.capture-card { display: flex; flex-direction: column; gap: 6px; }
+.capture-card-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); }
+.capture-card-head svg.lucide { width: 12px; height: 12px; }
+.capture-card-body { display: flex; flex-direction: column; gap: 6px; }
+.capture-card-body > * { flex: none; }
+.capture-composite { flex: none; }
+.composite-error { position: absolute; inset: auto 8px 8px 8px; }
+
+/* The chosen screen or window; a click opens the picker. */
+.capture-chosen { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); text-align: left; min-width: 0; }
+.capture-chosen:not(:disabled):hover { border-color: var(--border-strong); }
+.capture-chosen svg.lucide { width: 14px; height: 14px; color: var(--muted); flex: none; }
+.capture-chosen-name { flex: 1; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.capture-chosen-change { font-size: 11px; color: var(--select); flex: none; }
+
+/* The screen picker modal. */
+.capture-picker-layer { z-index: 70; }
+.modal.capture-picker { width: 620px; max-width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; gap: 10px; padding: 14px; overflow: hidden; }
+.capture-picker-head { display: flex; align-items: center; gap: 4px; }
+.capture-picker-title { flex: 1; font-weight: 600; }
+.capture-picker-body { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
+.capture-picker .capture-sources { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+
+/* A search field (the picker modal and the device list). */
+.capture-search { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); flex: none; }
+.capture-search svg.lucide { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.capture-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg); font: 12px var(--font); outline: 0; }
+
+/* Argent: the chosen device's row is the picker with Record beside it. */
+.capture-row.chosen { padding: 0; gap: 6px; }
+.capture-row.chosen:hover { background: none; }
+.capture-row.chosen.recording { background: none; }
+.device-picker { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); text-align: left; }
+.device-picker:not(:disabled):hover { border-color: var(--border-strong); }
+.device-picker-icon { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.device-picker-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.device-picker-name, .device-picker-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-picker-name { font-size: 12px; }
+.device-picker-sub { font-size: 11px; color: var(--dim); }
+.device-picker-count { font: 10px var(--mono); color: var(--dim); padding: 1px 5px; border-radius: 999px; background: var(--raised); flex: none; }
+.device-picker-caret { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.capture-row.recording .device-picker { border-color: rgb(248 113 113 / 35%); }
+
+.device-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; margin: 0 -4px; padding: 0 4px; }
+.device-group { display: flex; flex-direction: column; gap: 1px; }
+.device-group-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); padding: 2px 6px; }
+.device-option { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; text-align: left; min-width: 0; }
+.device-option:hover { background: var(--raised); }
+.device-option.active { background: var(--raised); box-shadow: inset 2px 0 0 var(--select); }
+.device-option > svg.lucide { width: 14px; height: 14px; color: var(--muted); flex: none; }
+.device-option-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.device-option-name, .device-option-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-option-name { font-size: 12px; }
+.device-option-sub { font-size: 11px; color: var(--dim); }
+.device-option.later .device-option-name { color: var(--muted); }
+.device-option-rec { width: 7px; height: 7px; border-radius: 50%; background: var(--error); flex: none; }
+.device-none { padding: 4px 6px; }
+
+/* Argent's options: a tidy two-column grid and chips, no padded checkboxes. */
+.capture-options { gap: 8px; margin-top: 8px; padding-top: 8px; }
+.capture-options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.capture-opt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.capture-opt > span { font-size: 11px; color: var(--dim); }
+.capture-opt select, .capture-opt input { height: 26px; min-width: 0; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); font: 12px var(--font); outline: 0; }
+.capture-opt select:disabled { color: var(--dim); }
+.capture-opt input::placeholder { color: var(--dim); }
+.capture-opt select:focus, .capture-opt input:focus { border-color: var(--border-strong); }

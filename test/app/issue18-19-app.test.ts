@@ -5,6 +5,8 @@
 //   with the microphone (a chip on Microphone) each is its own file and track, grouped and starting
 //   together; with the screen (a chip on Screen) the same; the screen permission governs it; an
 //   older macOS says what it needs.
+// - D238: one recorder: these are source toggles now (Mac sound, plus Microphone, plus Screen),
+//   and "Multi" is all four toggled on; the screen is picked in the modal.
 // - #19: "Multi" records the screen, the camera, the microphone and this Mac's sound at once, with a
 //   live composite picture and a layout preset: four files in media/captures/<take>/, one edit (one
 //   ⌘Z), the camera a bubble over the screen, every part at the playhead with the earlier recorders
@@ -30,7 +32,6 @@ const apps = new Set<LaunchedApp>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shot = (page: Page, name: string) => page.screenshot({ path: resolve("test-output", `${name}.png`) });
 const text = (page: Page, selector: string) => page.$eval(selector, (el) => ((el as HTMLElement).innerText ?? "").trim());
-const checked = (page: Page, selector: string) => page.$eval(selector, (el) => (el as HTMLInputElement).checked);
 const disabled = (page: Page, selector: string) => page.$eval(selector, (el) => (el as HTMLInputElement).disabled);
 
 type Item = { id: string; start: number; in: number; duration: number; media: string; group?: string; transform?: Record<string, unknown>; type: string };
@@ -70,6 +71,20 @@ const launch = async (dir: string, data: string, extra: Record<string, string> =
   return app;
 };
 
+/** D238: turn sources on or off to exactly `want`. */
+async function sources(page: Page, want: ReadonlyArray<string>) {
+  for (const k of ["screen", "voiceover", "camera", "system"]) {
+    const on = (await page.$eval(`[data-testid=capture-src-${k}]`, (el) => (el as HTMLElement).dataset.on)) === "yes";
+    if (on !== want.includes(k)) await page.click(`[data-testid=capture-src-${k}]`);
+  }
+  await page.waitForFunction((w: string) => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")?.dataset.parts === w, { timeout: 5000 }, ["screen", "camera", "voiceover", "system"].filter((k) => want.includes(k)).join(","));
+}
+async function pick(page: Page, id: string) {
+  await page.click("[data-testid=capture-pick-source]");
+  await page.click(`[data-testid=capture-source-picker] [data-testid=capture-source][data-id="${id}"]`);
+  await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
+}
+
 /** Record → wait for the timer → `ms` → Stop → the saved message. */
 async function take(page: Page, ms: number) {
   await page.click("[data-testid=capture-take-record]");
@@ -94,9 +109,9 @@ test("issue 18 and 19: this Mac's sound alone, with the microphone and the scree
   const byMedia = (mediaId: string) => onDisk().tracks.flatMap((t) => t.items.map((i) => ({ ...i, track: t }))).find((i) => i.media === mediaId)!;
   try {
     // #18: Mac sound alone.
-    await page.click("[data-testid=capture-mode-system]");
-    await page.waitForSelector("[data-testid=capture-system] [data-testid=capture-take-record]", { timeout: 15000 });
-    assert.match(await text(page, "[data-testid=capture-system]"), /What this Mac plays/);
+    await sources(page, ["system"]);
+    await page.waitForSelector("[data-testid=capture-card-system]", { timeout: 15000 });
+    assert.match(await text(page, "[data-testid=capture-card-system]"), /What this Mac plays/);
     assert.match(await text(page, "[data-testid=capture-take-record]"), /Record sound/);
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-this-mac]")), "no dots or stars between words");
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
@@ -112,13 +127,10 @@ test("issue 18 and 19: this Mac's sound alone, with the microphone and the scree
     assert.equal(sysItem.type, "audio");
     assert.equal(sysItem.start, 0);
 
-    // #18: with the microphone (a chip on Microphone): two files, two tracks, grouped, together.
-    await page.click("[data-testid=capture-mode-voiceover]");
-    await page.waitForSelector("[data-testid=capture-mic-with-system]");
-    assert.equal(await disabled(page, "[data-testid=capture-mic-with-system]"), false);
-    await page.click("[data-testid=capture-mic-with-system]");
+    // #18: with the microphone: two files, two tracks, grouped, together.
+    await sources(page, ["voiceover", "system"]);
     await page.click("[data-testid=capture-play-timeline]");
-    assert.match(await text(page, "[data-testid=capture-mic]"), /this Mac's sound on its own track/);
+    assert.match(await text(page, "[data-testid=capture-where]"), /Each source is its own file and track/);
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await shot(page, "issue18-mic-and-sound");
     const both = await take(page, 1600);
@@ -135,24 +147,20 @@ test("issue 18 and 19: this Mac's sound alone, with the microphone and the scree
     assert.ok(micItem.group && micItem.group === sysItem2.group, "linked: one group");
     assert.notEqual(sysItem2.track.id, sysItem.track.id, "the first Mac sound take is in the way: a second Mac sound track");
 
-    // #18: with the screen (a chip on Screen).
-    await page.click("[data-testid=capture-mode-screen]");
-    await page.click('[data-testid=capture-source][data-id="standin:window:1"]');
-    await page.click("[data-testid=capture-screen-with-system]");
-    assert.equal(await checked(page, "[data-testid=capture-screen-place]"), true, "with this Mac's sound the take goes on the timeline");
+    // #18: with the screen: the take goes on the timeline.
+    await sources(page, ["screen", "system"]);
+    await pick(page, "standin:window:1");
+    assert.equal(await page.$("[data-testid=capture-place]"), null, "a take of more than one source always goes on the timeline");
     const screenTake = await take(page, 1500);
     assert.match(screenTake, /^Test window \d{8}-\d{6} \(\d+\.\d s, 2 files\) is in Media/);
     const screenFolder = screenTake.split(" (")[0]!;
     assert.deepEqual(readdirSync(join(dir, "media", "captures", screenFolder)).sort(), ["screen.mp4", "system.m4a"]);
 
-    // #19: Multi: all four sources, the bubble top left; a composite picture before and while recording.
-    await page.click("[data-testid=capture-mode-multi]");
-    await page.waitForSelector("[data-testid=capture-multi]");
-    for (const k of ["screen", "camera", "voiceover"]) assert.equal(await checked(page, `[data-testid=capture-multi-${k}]`), true, `${k} on by default`);
-    await page.click("[data-testid=capture-multi-system]");
-    assert.equal(await checked(page, "[data-testid=capture-multi-system]"), true);
-    await page.click('[data-testid=capture-multi] [data-testid=capture-source][data-id="standin:screen:1"]');
-    await page.click('[data-testid=capture-multi-layout] button[data-value="tl"]');
+    // #19: all four sources, the bubble top left; a composite picture before and while recording.
+    await sources(page, ["screen", "camera", "voiceover", "system"]);
+    assert.equal(await text(page, "[data-testid=capture-take-record]"), "Record 4 sources");
+    await pick(page, "standin:screen:1");
+    await page.click('[data-testid=capture-layout] button[data-value="tl"]');
     await page.waitForSelector('[data-testid=capture-composite][data-layout="tl"]');
     await page.waitForFunction(() => {
       const v = document.querySelector<HTMLVideoElement>("[data-testid=capture-composite-camera] video");
@@ -165,7 +173,6 @@ test("issue 18 and 19: this Mac's sound alone, with the microphone and the scree
     });
     assert.ok(bubble.left < 0.05 && bubble.top < 0.1 && bubble.w > 0.1 && bubble.w < 0.25, `the bubble is top left: ${JSON.stringify(bubble)}`);
     assert.ok(await page.$("[data-testid=capture-composite-screen] img"), "the screen's picture before recording");
-    await page.$eval("[data-testid=capture-multi]", (el) => el.scrollIntoView());
     await shot(page, "issue19-multi");
 
     await page.click("[data-testid=capture-take-record]");
@@ -229,24 +236,23 @@ test("issue 18 and 19: permissions: the screen permission governs this Mac's sou
   // Screen recording denied: Mac sound shows how to turn it on; Multi can't add the screen or the sound.
   const app = await launch(dir, "data-denied", { UNCUT_TEST_MEDIA_ACCESS: JSON.stringify({ screen: "denied" }) });
   try {
-    await app.page.click("[data-testid=capture-mode-system]");
-    await app.page.waitForSelector('[data-testid=capture-system] [data-testid=capture-access][data-kind="screen"][data-state="denied"]', { timeout: 15000 });
-    assert.match(await text(app.page, "[data-testid=capture-system]"), /isn't allowed to record this Mac's sound: macOS lets it with screen recording\. Turn Uncut on in System Settings, Privacy & Security, Screen & System Audio Recording/);
-    await app.page.click("[data-testid=capture-open-settings-screen]");
+    await sources(app.page, ["system"]);
+    await app.page.waitForSelector('[data-testid=capture-card-system] [data-testid=capture-access][data-kind="screen"][data-state="denied"]', { timeout: 15000 });
+    assert.match(await text(app.page, "[data-testid=capture-card-system]"), /isn't allowed to record this Mac's sound: macOS lets it with screen recording\. Turn Uncut on in System Settings, Privacy & Security, Screen & System Audio Recording/);
+    await app.page.click("[data-testid=capture-card-system] [data-testid=capture-open-settings-screen]");
     for (let i = 0; i < 30 && !/\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/.test(app.output()); i++) await sleep(100);
     assert.match(app.output(), /\[test\] open x-apple\.systempreferences:.*Privacy_ScreenCapture/);
     await app.page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await shot(app.page, "issue18-denied");
-    await app.page.click("[data-testid=capture-mode-voiceover]");
-    assert.equal(await disabled(app.page, "[data-testid=capture-mic-with-system]"), true, "no Mac sound chip without the permission");
-    await app.page.click("[data-testid=capture-mode-multi]");
-    await app.page.waitForSelector("[data-testid=capture-multi]");
-    assert.equal(await disabled(app.page, "[data-testid=capture-multi-screen]"), true);
-    assert.equal(await disabled(app.page, "[data-testid=capture-multi-system]"), true);
-    assert.equal(await disabled(app.page, "[data-testid=capture-multi-camera]"), false);
-    assert.equal(await app.page.$eval("[data-testid=capture-multi-screen]", (el) => el.closest("label")!.title), "Allow screen recording under Screen first");
-    await app.page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
+    // No Record while a source that's on isn't allowed; the camera and microphone alone record.
+    await sources(app.page, ["voiceover", "system"]);
+    assert.equal(await disabled(app.page, "[data-testid=capture-take-record]"), true, "no Mac sound without the permission");
+    await sources(app.page, ["screen", "camera", "voiceover"]);
+    assert.equal(await disabled(app.page, "[data-testid=capture-take-record]"), true, "no screen without the permission");
+    await app.page.waitForSelector('[data-testid=capture-card-screen] [data-testid=capture-access][data-state="denied"]');
     await shot(app.page, "issue19-denied");
+    await sources(app.page, ["camera", "voiceover"]);
+    await app.page.waitForFunction(() => !document.querySelector<HTMLButtonElement>("[data-testid=capture-take-record]")!.disabled, { timeout: 10000 });
   } finally {
     await app.close();
     apps.delete(app);
@@ -255,13 +261,10 @@ test("issue 18 and 19: permissions: the screen permission governs this Mac's sou
   // An older macOS (the test's stand-in says 12.7): the sound can't be recorded, and it says why.
   const old = await launch(dir, "data-old", { UNCUT_TEST_SYSTEM_AUDIO: "unsupported" });
   try {
-    await old.page.click("[data-testid=capture-mode-system]");
+    await sources(old.page, ["screen", "system"]);
     await old.page.waitForSelector("[data-testid=capture-system-unsupported]", { timeout: 15000 });
-    assert.match(await text(old.page, "[data-testid=capture-system]"), /needs macOS 13 or later; this Mac has macOS 12\.7\. The microphone, camera and screen still work\./);
-    await old.page.click("[data-testid=capture-mode-screen]");
-    assert.equal(await disabled(old.page, "[data-testid=capture-screen-with-system]"), true);
-    await old.page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
-    await old.page.click("[data-testid=capture-mode-system]");
+    assert.match(await text(old.page, "[data-testid=capture-card-system]"), /needs macOS 13 or later; this Mac has macOS 12\.7\. The microphone, camera and screen still work\./);
+    assert.equal(await disabled(old.page, "[data-testid=capture-take-record]"), true, "no take with Mac sound on an older macOS");
     await shot(old.page, "issue18-old-macos");
     assert.deepEqual(old.errors, []);
   } finally {

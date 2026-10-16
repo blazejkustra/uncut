@@ -6,6 +6,7 @@
 // D143: This Mac comes first; a shut-down simulator has "Boot and record" (the fake counts one boot,
 // only after the click) and records with the options (orientation, an app to open, show touches);
 // a saved flow picked in the options plays while recording (no Stop; it ends with the flow).
+// D238: the devices are in a searchable picker; the chosen one's row has Record beside it.
 // Screenshots: test-output/capture-tab.png, capture-recording.png, capture-booting.png,
 // capture-options.png, capture-flow.png.
 import { test, before, after } from "node:test";
@@ -26,6 +27,14 @@ const waitFor = (page: Page, selector: string, timeout = 15000) => page.waitForS
 const text = (page: Page, selector: string) => page.$eval(selector, (el) => ((el as HTMLElement).innerText ?? "").trim());
 const mediaNames = (page: Page) => page.$$eval("[data-testid=media-tile]", (els) => els.map((e) => (e as HTMLElement).innerText.trim()));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** D238: choose a device in the picker (by typing part of its name when `search` is given). */
+async function choose(page: Page, id: string, search?: string) {
+  await page.click("[data-testid=capture-device-picker]");
+  await waitFor(page, "[data-testid=capture-device-search]");
+  if (search) await page.type("[data-testid=capture-device-search]", search);
+  await page.click(`[data-testid=capture-device-option][data-id="${id}"]`);
+  await page.waitForFunction((d) => document.querySelector<HTMLElement>("[data-testid=capture-device-picker]")?.dataset.id === d, { timeout: 5000 }, id);
+}
 
 before(async () => {
   if (skip) return;
@@ -70,17 +79,24 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     await waitFor(page, "[data-testid=capture-devices]", 30000);
     const order = await page.$$eval("[data-testid=capture-library] > .lib-section", (els) => els.map((e) => (e as HTMLElement).dataset.testid));
     assert.deepEqual(order, ["capture-this-mac", "capture-argent"], "This Mac above Argent");
-    const rows = await page.$$eval("[data-testid=capture-device]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id, recordable: (e as HTMLElement).dataset.recordable, bootable: (e as HTMLElement).dataset.bootable, text: (e as HTMLElement).innerText })));
+    // One row: the first device that records, chosen; the rest are in the picker.
+    assert.deepEqual(await page.$$eval("[data-testid=capture-device]", (els) => els.map((e) => (e as HTMLElement).dataset.id)), ["SIM-IPHONE-16"]);
+    await page.click("[data-testid=capture-device-picker]");
+    await waitFor(page, "[data-testid=capture-device-menu] [data-testid=capture-device-option]");
+    const rows = await page.$$eval("[data-testid=capture-device-option]", (els) => els.map((e) => ({ id: (e as HTMLElement).dataset.id, recordable: (e as HTMLElement).dataset.recordable, bootable: (e as HTMLElement).dataset.bootable, text: (e as HTMLElement).innerText })));
     assert.deepEqual(rows.slice(0, 2).map((r) => [r.id, r.recordable]), [["SIM-IPHONE-16", "true"], ["emulator-5554", "true"]]);
     assert.deepEqual(rows.slice(2, 4).map((r) => [r.id, r.bootable]), [["SIM-IPAD-OFF", "true"], ["avd:Pixel_Tablet_API_35", "true"]]);
-    assert.match(rows[2]!.text, /Boot and record/);
+    assert.match(rows[2]!.text, /iOS simulator, off/);
     const tv = rows.find((r) => r.id === "SIM-APPLE-TV")!;
     assert.equal(tv.recordable, "false");
-    assert.match(tv.text, /Not recordable yet/);
     assert.match(tv.text, /tvOS simulators can't be recorded yet/);
     assert.match(rows.find((r) => r.id === "chromium-cdp-9222")!.text, /Chromium apps can't be recorded yet/);
-    // This Mac (D114) has its own test: capture-this-mac-app.test.ts. Screen is its first part.
-    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-screen]");
+    assert.match(await page.$eval("[data-testid=capture-device-menu]", (el) => el.textContent ?? ""), /Ready[\s\S]*Off, boots when you record[\s\S]*Can't record yet/);
+    await page.screenshot({ path: "test-output/capture-device-menu.png" });
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector("[data-testid=capture-device-menu]"));
+    // This Mac (D114) has its own test: capture-this-mac-app.test.ts. Screen is on by default.
+    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-screen]");
     await waitFor(page, "[data-testid=capture-options]");
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-library]")), "no dots or stars between words");
     await page.screenshot({ path: "test-output/capture-tab.png" });
@@ -131,6 +147,7 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     await page.screenshot({ path: "test-output/capture-options.png" });
     mkdirSync(join(root, "fake-argent-state"), { recursive: true });
     writeFileSync(join(root, "fake-argent-state", "boot-delay"), "1500");
+    await choose(page, "SIM-IPAD-OFF");
     const ipad = "[data-testid=capture-device][data-id=SIM-IPAD-OFF]";
     await page.click(`${ipad} [data-testid=capture-boot-record]`);
     await waitFor(page, `${ipad} [data-testid=capture-booting]`, 5000);
@@ -158,6 +175,7 @@ test("the Capture tab records a simulator into the Library, and ⌘Z removes the
     await page.waitForFunction(() => [...document.querySelectorAll<HTMLOptionElement>("[data-testid=capture-opt-flow] option")].some((o) => o.value === "tour"), { timeout: 10000 });
     await page.select("[data-testid=capture-opt-flow]", "tour");
     assert.equal(await page.$eval("[data-testid=capture-opt-max]", (el) => (el as HTMLSelectElement).disabled), true, "a flow's take lasts as long as the flow");
+    await choose(page, "SIM-IPHONE-16", "iphone");
     await page.click(`${iphone} [data-testid=capture-record]`);
     await waitFor(page, `${iphone} [data-testid=capture-timer]`, 10000);
     assert.match(await text(page, iphone), /Playing tour/);
