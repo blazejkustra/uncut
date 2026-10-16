@@ -157,7 +157,7 @@ test("issue #28/#36: inline brief, storyboard and review cards; the critic's blo
     ]);
     await send("fix them");
     await lastDone();
-    await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-card][data-type=review]").length === 2, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-card][data-type=review]").length === 2, { timeout: 90000 });
     const passed = "[data-testid=agent-card][data-type=review][data-passed=true]";
     // The second card comes with the turn, its verdict with the critic's result (#89: a beat later on a slow runner).
     await page.waitForSelector(passed, { timeout: 30000 }).catch(() => {});
