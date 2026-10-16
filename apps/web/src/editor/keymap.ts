@@ -41,6 +41,7 @@ export const ACTION_IDS = [
   "toolSelect",
   "toolBlade",
   "toolHand",
+  "addToChat",
   "shortcuts",
 ] as const;
 export type ActionId = (typeof ACTION_IDS)[number];
@@ -100,6 +101,8 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   { id: "clickSelect", group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item", fixed: "pointer" },
   { id: "export", group: "App", keys: ["⌘E"], does: "Export", fixed: "menu" },
   { id: "settings", group: "App", keys: ["⌘,"], does: "Settings", fixed: "menu" },
+  // D264 (#77): the selection (timeline items, or words in the Transcript) as chips in the composer.
+  { id: "addToChat", group: "App", keys: ["⌘L"], does: "Add the selection to the agent chat" },
   { id: "shortcuts", group: "App", keys: ["?"], does: "Keyboard shortcuts" },
   { id: "close", group: "App", keys: ["⌘W"], does: "Close the project", fixed: "menu" },
 ];

@@ -1,0 +1,9 @@
+/* D264 (#77): a media tile's Add to chat, a round button on hover next to + (and Analyse / Make again). */
+.tile-chat { position: absolute; right: 30px; top: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 60%); color: var(--fg); opacity: 0; transition: opacity 0.1s; }
+.tile-chat.second { right: 56px; }
+.tile-chat svg.lucide { width: 13px; height: 13px; }
+.tile:hover .tile-chat, .tile-chat:focus-visible { opacity: 1; }
+.tile-chat:hover { background: rgb(0 0 0 / 80%); }
+.media-list .tile .tile-chat { top: auto; bottom: 3px; width: 18px; height: 18px; right: 26px; }
+.media-list .tile .tile-chat.second { right: 48px; }
+.media-list .tile .tile-chat svg.lucide { width: 11px; height: 11px; }

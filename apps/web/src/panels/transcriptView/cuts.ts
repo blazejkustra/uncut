@@ -94,6 +94,20 @@ async function cutSelected() {
   return sendCut(planCutWords(project, transcripts, selected, scope));
 }
 
+/** D264 (#77): the selected words as a chip in the composer (the stretch they're heard over, quoted). */
+export function addSelectedWordsToChat(): boolean {
+  const snapshot = getState().snapshot;
+  if (!snapshot) return false;
+  const project = projectOf(snapshot);
+  const { entries, anchor, focus, source } = getTranscripts();
+  const transcripts = doneTranscripts(entries);
+  const selected = selectedWords(wordsOfEdit(project, transcripts, scopeOf(project, source)), anchor, focus);
+  if (!selected.length) return false;
+  const text = selected.map((w) => transcripts.get(w.media)?.words[w.index]?.text ?? "").join(" ");
+  actions.addWordsToChat(Math.min(...selected.map((w) => w.start)), Math.max(...selected.map((w) => w.end)), text);
+  return true;
+}
+
 /** The last mode and look picked for "Make captions" (kept for the session). */
 export let captionChoice: { mode: CaptionMode; look: string } = { mode: CAPTION_DEFAULTS.mode, look: CAPTION_DEFAULTS.look };
 

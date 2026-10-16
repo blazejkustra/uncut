@@ -5,11 +5,13 @@
 import { ADJUST, ADJUST_INFO, adjustOf, effectInfo, effectParams, LOOK, lookInfo, planAdjust, planEffect, planEffectBypass, planRemoveEffect, planSetLook, type AdjustKey } from "@uncut/core/fx";
 import { planShader, planShaderValues, SHADER, shaderUseOf } from "@uncut/core/shaders";
 import type { Item } from "@uncut/core/types";
-import { RotateCcw, X } from "lucide-react";
+import { AtSign, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { PreviewDraft } from "../preview/playback.ts";
 import { type ProjectModel } from "../state/project.ts";
+import { actions } from "../state/store.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import { Prop, Section, SliderNum, Toggle } from "./controls.tsx";
 import { send, showDraft, type PlanResult } from "./fields.tsx";
 
@@ -115,6 +117,12 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
               <div key={e.module} className={`fx-entry${e.bypass ? " off" : ""}`} data-testid="insp-effect" data-module={e.module} data-off={e.bypass === true}>
                 <div className="fx-entry-head">
                   <span className="grow">{info.name}</span>
+                  {/* D264 (#77): this effect as a chip in the Agent tab's composer. */}
+                  <Tooltip label={`Add ${info.name.toLowerCase()} to the agent chat`}>
+                    <button className="icon-btn" data-testid="insp-effect-add-to-chat" onClick={() => actions.addEffectToChat(item.id, e.module)}>
+                      <AtSign />
+                    </button>
+                  </Tooltip>
                   <Power item={item} module={e.module} off={e.bypass === true} name={info.name.toLowerCase()} testId="insp-effect-power" disabled={locked} />
                   <button className="icon-btn" title={`Remove ${info.name.toLowerCase()}`} data-testid="insp-effect-remove" disabled={locked} onClick={() => send((p) => planRemoveEffect(p, item.id, e.module))}>
                     <X />
