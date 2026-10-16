@@ -26,6 +26,13 @@ const thinkingDisplay = () => {
   if (asked === "off" || thinkingDisplayRefused) return undefined;
   return asked || "summarized";
 };
+/**
+ * D260 amended: `--system-prompt-snapshot off` (claude 2.1.257+) so a resumed conversation gets the
+ * current system prompt, not the one recorded on its first request. A claude that refuses the flag is
+ * started again without it, and this server doesn't pass it again (before 2.1.265 an append flag
+ * turned recording off anyway).
+ */
+let promptSnapshotRefused = false;
 
 export const makeSpawn = (ctx: StreamCtx) => {
   const { persist, closeSession, canUseTool, st, publishNow, watchData, delivered, onStream, onAssistant, finish, noteContext, turnCleanup, publish, config, bridgeUrl, sessions } = ctx;
@@ -199,9 +206,10 @@ export const makeSpawn = (ctx: StreamCtx) => {
       projects = [owner.dir, realpathSync.native(owner.dir)];
     } catch {}
     // D232: every installed skill's name and description go in the system prompt (send's toolsKey has their names).
-    const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
+    const snapshotOff = !promptSnapshotRefused;
+    const args = sessionArgs({ cfg, model: choice.model, effort: choice.effort, resume: resumed, thinking, promptSnapshot: snapshotOff ? "off" : undefined, addDirs, access, projects, dataDir: config.dataDir, skills: ctx.plugins.skillsNow() });
     const initId = `init-${randomBytes(4).toString("hex")}`;
-    const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
+    const s: ClaudeSession = { owner, openId: owner.openId, dir, token, toolsKey, model: choice.model, effort: choice.effort, thinking, snapshotOff, resumed, dirsKey: addDirs.join("\n"), prompts: new Map(), access, initId, initialized: false, initFailed: false, initTimer: undefined, waiting: undefined, child: undefined, turn: undefined, gotInit: false, closed: false, stderr: "", idleTimer: undefined, killTimer: undefined, gens: 0, initModel: undefined, systemChars: args.includes("--append-system-prompt") ? (args[args.indexOf("--append-system-prompt") + 1]?.length ?? 0) : 0, toolsChars: undefined };
     try {
       writeFileSync(
         cfg,
@@ -272,6 +280,15 @@ export const makeSpawn = (ctx: StreamCtx) => {
       if (s.thinking && !s.gotInit && /--thinking/i.test(s.stderr)) {
         thinkingDisplayRefused = true;
         console.error(`[uncut] claude refused --thinking-display; the agent runs without thinking summaries: ${s.stderr.trim().split("\n")[0]}`);
+        const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
+        if (typeof again === "string") return finish(r, { status: "error", error: again });
+        st.session = again;
+        return writeTurn(again, r);
+      }
+      // D260 amended: a claude that doesn't take --system-prompt-snapshot: again without it (never again here).
+      if (s.snapshotOff && !s.gotInit && /--system-prompt-snapshot/i.test(s.stderr)) {
+        promptSnapshotRefused = true;
+        console.error(`[uncut] claude refused --system-prompt-snapshot; a resumed conversation keeps the system prompt it started with: ${s.stderr.trim().split("\n")[0]}`);
         const again = spawnSession(s.owner, bin, s.toolsKey, !!s.resumed, { model: s.model, effort: s.effort, access: s.access });
         if (typeof again === "string") return finish(r, { status: "error", error: again });
         st.session = again;

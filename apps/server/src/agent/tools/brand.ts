@@ -98,7 +98,7 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       };
       return {
         content: [
-          { type: "text" as const, text: JSON.stringify(summary, null, 1) },
+          { type: "text" as const, text: JSON.stringify(summary) },
           ...drawn.flatMap((d, i) => (d.png ? [{ type: "text" as const, text: `Logo: ${label[slots[i]!.slot]}, ${slots[i]!.name}:` }, picture(d.png)] : [{ type: "text" as const, text: `Logo ${slots[i]!.name} couldn't be drawn: ${d.problem ?? "unknown"}.` }])),
         ],
       };

@@ -315,7 +315,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
             r.owner.seen.add(snapshot.revision);
           }
           const fps = ((snapshot?.project ?? v.session.project) as Project).canvas.fps;
-          return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify(appliedNote(applied, fps), null, 1) }] };
+          return { ...out, content: [...out.content, { type: "text" as const, text: JSON.stringify(appliedNote(applied, fps)) }] };
         }
       }
     });

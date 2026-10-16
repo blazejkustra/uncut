@@ -449,7 +449,12 @@ test("media_import returns the user's changes made since the agent's read, and i
   assert.match(out.userChanges, /by hand/);
   assert.match(out.userChanges, /track audio/);
   // An edit based on the returned revision goes through (the fake can't chain it; ask directly).
-  const { turn, results } = await ask("use it", [{ tool: "timeline_edit", args: { baseRevision: out.revision, summary: "Use W", ops: [{ op: "insert_item", track: "mix", item: { id: "w", type: "clip", media: "m-w", in: 0, start: 40, duration: 10 } }] } }]);
+  // It adds its own track: the test must not depend on tracks an earlier test added.
+  const ops = [
+    { op: "add_track", track: { id: "w-track", kind: "video", name: "W" }, index: 0 },
+    { op: "insert_item", track: "w-track", item: { id: "w", type: "clip", media: "m-w", in: 0, start: 40, duration: 10 } },
+  ];
+  const { turn, results } = await ask("use it", [{ tool: "timeline_edit", args: { baseRevision: out.revision, summary: "Use W", ops } }]);
   assert.equal(turn.status, "done", turn.error);
   assert.ok(!results[0]!.isError, textOf(results[0]!));
 });

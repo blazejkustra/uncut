@@ -32,6 +32,7 @@
 //   The prompt log records { initialized } per message.
 // $FAKE_NO_THINKING_DISPLAY: started with --thinking-display, it says commander's unknown-option
 //   error on stderr and exits 1 before init (as a claude that doesn't know the flag).
+// $FAKE_NO_PROMPT_SNAPSHOT: the same for --system-prompt-snapshot.
 // $FAKE_RESUME_GONE=<id>: started with --resume <id>, it says "No conversation found" and exits.
 // Every message appends { prompt, resume, message, env, pid, mcpPid, mcpToken, system, tools,
 // allowed, partial } to $FAKE_PROMPT_LOG (resume: the session it continued, null for the very
@@ -69,6 +70,11 @@ const out = (msg: unknown) => process.stdout.write(`${JSON.stringify(msg)}\n`);
 if (process.env.FAKE_NO_THINKING_DISPLAY && argv.includes("--thinking-display")) {
   if (process.env.FAKE_PROMPT_LOG) appendFileSync(process.env.FAKE_PROMPT_LOG, `${JSON.stringify({ refused: "--thinking-display", argv })}\n`);
   process.stderr.write("error: unknown option '--thinking-display'\n", () => process.exit(1));
+  await new Promise(() => {});
+}
+if (process.env.FAKE_NO_PROMPT_SNAPSHOT && argv.includes("--system-prompt-snapshot")) {
+  if (process.env.FAKE_PROMPT_LOG) appendFileSync(process.env.FAKE_PROMPT_LOG, `${JSON.stringify({ refused: "--system-prompt-snapshot", argv })}\n`);
+  process.stderr.write("error: unknown option '--system-prompt-snapshot'\n", () => process.exit(1));
   await new Promise(() => {});
 }
 if (resume && process.env.FAKE_RESUME_GONE === resume) {
