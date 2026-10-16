@@ -35,6 +35,10 @@ export function isTyping(el: EventTarget | null): boolean {
 export function installFocusRules(): () => void {
   let pressId = 0;
   let keptBy = -1;
+  // The press whose own mousedown already took focus off the field (to a button, say). Something it
+  // does may put focus back in the field on purpose (Make from reference, Add to chat): that stays.
+  let movedBy = -1;
+  let pressed: Element | null = null;
   let tabbing = false;
   let byPointer = false;
   let before: Element | null = null;
@@ -47,11 +51,14 @@ export function installFocusRules(): () => void {
     before = chosen;
     chosen = null;
     const active = document.activeElement;
+    pressed = active;
     if (!(active instanceof HTMLElement) || !isTextEntry(active) || active.contains(e.target as Node | null)) return;
     // After the press is handled: a cancelled mousedown means "keep typing there"; a cancelled
     // pointerdown (no mousedown at all) or an ordinary press elsewhere means the field is done with.
+    // The timer can fire after the click (a busy or throttled renderer, #89): by then a focus the
+    // click gave back to the field is the app's, not the field the press left.
     setTimeout(() => {
-      if (keptBy === id || document.activeElement !== active) return;
+      if (keptBy === id || movedBy === id || document.activeElement !== active) return;
       active.blur();
     }, 0);
   };
@@ -67,6 +74,10 @@ export function installFocusRules(): () => void {
     if (e.key === " " || e.key === "Escape" || e.key === "Tab" || e.metaKey || e.ctrlKey || ["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(e.key)) return;
     const field = fieldOf(e.target);
     if (field) chosen = field;
+  };
+  const onMouseUp = () => {
+    if (pressed && document.activeElement !== pressed) movedBy = pressId;
+    pressed = null;
   };
   const onFocusIn = (e: FocusEvent) => {
     if (tabbing && fieldOf(e.target)) chosen = e.target as Element;
@@ -90,6 +101,7 @@ export function installFocusRules(): () => void {
   };
   window.addEventListener("pointerdown", onPointerDown, true);
   window.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("mouseup", onMouseUp, true);
   window.addEventListener("keydown", onKeyDownCapture, true);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("focusin", onFocusIn);
@@ -98,6 +110,7 @@ export function installFocusRules(): () => void {
   return () => {
     window.removeEventListener("pointerdown", onPointerDown, true);
     window.removeEventListener("mousedown", onMouseDown);
+    window.removeEventListener("mouseup", onMouseUp, true);
     window.removeEventListener("keydown", onKeyDownCapture, true);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("focusin", onFocusIn);
