@@ -1,6 +1,7 @@
 import { Sparkles, X } from "lucide-react";
 import { useApp, actions } from "../../state/store.ts";
 import { changeLabel } from "../../state/agentChange.ts";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 /** D202, D235: where the agent changed things; a click jumps there. */
 export function AgentChangePill({ fps }: { fps: number }) {
@@ -12,9 +13,11 @@ export function AgentChangePill({ fps }: { fps: number }) {
         <Sparkles />
         {changeLabel(agentChange, fps)}
       </button>
-      <button className="icon-btn" data-testid="agent-change-dismiss" title="Dismiss" onClick={actions.dismissAgentChange}>
-        <X />
-      </button>
+      <Tooltip label="Dismiss">
+        <button className="icon-btn" data-testid="agent-change-dismiss" onClick={actions.dismissAgentChange}>
+          <X />
+        </button>
+      </Tooltip>
     </div>
   );
 }

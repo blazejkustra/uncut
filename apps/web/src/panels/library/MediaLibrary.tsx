@@ -12,6 +12,7 @@ import { useFlag } from "../../settings/labs.ts";
 import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { call } from "../../state/store/server.ts";
 import { dragMayHoldLink, linkFromDrag, liveLinkJob, openLinkImport, useLinkJobs } from "./linkImport.ts";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: () => void }) {
   const app = useApp();
@@ -179,12 +180,16 @@ export function MediaLibrary({ project, onEdit }: { project: Project; onEdit?: (
                   </option>
                 ))}
               </select>
-              <button className={`icon-btn${view.mode === "grid" ? " active" : ""}`} data-testid="media-view-grid" aria-pressed={view.mode === "grid"} title="Grid" onClick={() => setMediaMode("grid")}>
-                <LayoutGrid />
-              </button>
-              <button className={`icon-btn${view.mode === "list" ? " active" : ""}`} data-testid="media-view-list" aria-pressed={view.mode === "list"} title="List" onClick={() => setMediaMode("list")}>
-                <List />
-              </button>
+              <Tooltip label="Grid">
+                <button className={`icon-btn${view.mode === "grid" ? " active" : ""}`} data-testid="media-view-grid" aria-pressed={view.mode === "grid"} onClick={() => setMediaMode("grid")}>
+                  <LayoutGrid />
+                </button>
+              </Tooltip>
+              <Tooltip label="List">
+                <button className={`icon-btn${view.mode === "list" ? " active" : ""}`} data-testid="media-view-list" aria-pressed={view.mode === "list"} onClick={() => setMediaMode("list")}>
+                  <List />
+                </button>
+              </Tooltip>
             </span>
           </div>
           <div className={view.mode === "list" ? "media-list" : "grid2"} data-testid="media-grid" data-view={view.mode} data-sort={view.sort}>

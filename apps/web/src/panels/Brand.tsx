@@ -15,6 +15,7 @@ import { type View, draftOfKit, freeId, emptyKit, SCOPE_LABEL, LOGO_BACKDROP } f
 import { KitEditor } from "./brand/KitEditor.tsx";
 import { ThisProject } from "./brand/ThisProject.tsx";
 import { Swatches, ScopeChoice } from "./brand/parts.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import "./skills/skills.css";
 export { freeId } from "./brand/kit.ts";
 
@@ -47,9 +48,11 @@ export function BrandLibrary() {
       {app.brandError && (
         <div className="inline-error small brand-error" data-testid="brand-error">
           <span>{app.brandError}</span>
-          <button className="icon-btn" title="Dismiss" data-testid="brand-error-dismiss" onClick={actions.dismissBrandError}>
-            <X />
-          </button>
+          <Tooltip label="Dismiss">
+            <button className="icon-btn" data-testid="brand-error-dismiss" onClick={actions.dismissBrandError}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
       )}
       {!brand ? (

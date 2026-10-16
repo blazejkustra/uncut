@@ -3,6 +3,7 @@ import { Eye, ShieldCheck, Sparkles, ChevronDown, Gauge, Check, Search, Star } f
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useAgentPrefs, setAgentPrefs, toggleFavourite } from "../../state/agentPrefs.ts";
 import { ClaudeMark, OpenAIMark } from "./providerMarks.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export const ACCESS_INFO: Record<AgentAccess, { name: string; short: string; detail: string; icon: typeof Eye }> = {
   look: { name: "Look only", short: "Look only", detail: "Reads and looks, changes nothing", icon: Eye },
@@ -105,9 +106,11 @@ export function ComposerChoices({ dir, provider }: { dir: string; provider: stri
   }, [search, favourites]);
   return (
     <div className="composer-choices" ref={row}>
-      <button className={`choice provider ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" data-provider="claude" title={`Claude, through ${provider} with your subscription`} onClick={() => toggle("provider")}>
-        <ProviderMark provider="claude" />
-      </button>
+      <Tooltip label={`Claude, through ${provider} with your subscription`}>
+        <button className={`choice provider ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" data-provider="claude" onClick={() => toggle("provider")}>
+          <ProviderMark provider="claude" />
+        </button>
+      </Tooltip>
       <button className={`choice model ${open === "model" ? "open" : ""}`} data-testid="agent-model" data-model={prefs.model ?? ""} title={`Model: ${model?.name ?? "Default (Claude Code's choice)"}`} onClick={() => toggle("model")}>
         <ProviderWordmark provider="claude" />
         <span className="choice-label">{model?.name ?? "Default"}</span>
@@ -145,12 +148,16 @@ export function ComposerChoices({ dir, provider }: { dir: string; provider: stri
       {open === "model" && (
         <div className="choice-menu model-menu" role="listbox" data-testid="agent-model-menu">
           <div className="model-rail" data-testid="agent-model-rail">
-            <button className="model-rail-btn active" title="Claude" data-testid="agent-model-rail-claude">
-              <ProviderMark provider="claude" size="md" />
-            </button>
-            <button className="model-rail-btn" disabled title="Codex: coming later" data-testid="agent-model-rail-codex">
-              <ProviderMark provider="codex" size="md" />
-            </button>
+            <Tooltip label="Claude">
+              <button className="model-rail-btn active" data-testid="agent-model-rail-claude">
+                <ProviderMark provider="claude" size="md" />
+              </button>
+            </Tooltip>
+            <Tooltip label="Codex: coming later">
+              <button className="model-rail-btn" disabled data-testid="agent-model-rail-codex">
+                <ProviderMark provider="codex" size="md" />
+              </button>
+            </Tooltip>
           </div>
           <div className="model-list">
           <label className="choice-search">
@@ -190,17 +197,19 @@ export function ComposerChoices({ dir, provider }: { dir: string; provider: stri
                   </kbd>
                 )}
                 {m.id && (
-                  <button
-                    className={`icon-btn choice-star ${fav ? "on" : ""}`}
-                    title={fav ? "Remove from favourites" : "Add to favourites"}
-                    data-testid="agent-model-star"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFavourite(m.id);
-                    }}
-                  >
-                    <Star />
-                  </button>
+                  <Tooltip label={fav ? "Remove from favourites" : "Add to favourites"}>
+                    <button
+                      className={`icon-btn choice-star ${fav ? "on" : ""}`}
+                     
+                      data-testid="agent-model-star"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFavourite(m.id);
+                      }}
+                    >
+                      <Star />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             );

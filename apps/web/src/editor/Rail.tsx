@@ -144,7 +144,9 @@ export function Rail({ tab, onTab }: { tab: LibraryTab; onTab: (tab: LibraryTab)
   ];
 
   return (
-    <nav className={`rail ${drag ? "dragging" : ""}`} ref={nav} data-testid="rail" data-order={order.join(",")} data-hidden={hidden.join(",")}>
+    // No overlay scrollbar on the rail (D263): it drew a grey bar along the left panel's edge whenever the pointer was over a rail
+    // a little too tall for the window; the wheel still scrolls it.
+    <nav className={`rail ${drag ? "dragging" : ""}`} ref={nav} data-testid="rail" data-scrollbars="off" data-order={order.join(",")} data-hidden={hidden.join(",")}>
       {shown.map((id) => {
         const t = info(id);
         const Icon = t.icon;

@@ -76,7 +76,7 @@ const BLOCKER_NAMES: Readonly<Record<string, string>> = {
 function IntendedButton({ finding, what, marked, online }: { finding: FindingRef; what: string; marked: boolean; online: boolean }) {
   return (
     <button
-      className={`chip-btn intended-btn ${marked ? "active" : ""}`}
+      className={`link-btn intended-btn ${marked ? "active" : ""}`}
       data-testid="agent-review-intended"
       aria-pressed={marked}
       disabled={!online}

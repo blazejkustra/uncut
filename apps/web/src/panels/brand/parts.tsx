@@ -3,6 +3,7 @@ import { ChevronLeft, Trash2 } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import { SCOPE_CHOICE } from "./kit.ts";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export function Swatches({ hexes }: { hexes: ReadonlyArray<string> }) {
   return (
@@ -16,9 +17,10 @@ export function Swatches({ hexes }: { hexes: ReadonlyArray<string> }) {
 
 export function ScopeChoice({ value, onChange, hasProject, testId }: { value: BrandScope; onChange: (scope: BrandScope) => void; hasProject: boolean; testId: string }) {
   return (
-    <div className="brand-menu">
+    // A segmented choice, not chips (D263).
+    <div className="seg brand-scope" role="radiogroup" aria-label="Where it's kept">
       {(["global", "project"] as const).map((s) => (
-        <button key={s} className={`chip-btn ${value === s ? "active" : ""}`} data-testid={`${testId}-${s}`} disabled={s === "project" && !hasProject} onClick={() => onChange(s)}>
+        <button key={s} className={value === s ? "active" : ""} role="radio" aria-checked={value === s} data-testid={`${testId}-${s}`} disabled={s === "project" && !hasProject} onClick={() => onChange(s)}>
           {SCOPE_CHOICE[s]}
         </button>
       ))}
@@ -41,9 +43,11 @@ export function EditorFrame({ title, testId, children, onClose, onSave, onDelete
       }}
     >
       <div className="brand-editor-head">
-        <button className="icon-btn" title="Back" data-testid="brand-back" onClick={onClose}>
-          <ChevronLeft />
-        </button>
+        <Tooltip label="Back">
+          <button className="icon-btn" data-testid="brand-back" onClick={onClose}>
+            <ChevronLeft />
+          </button>
+        </Tooltip>
         <span className="ellipsis">{title}</span>
       </div>
       <div className="brand-body">{children}</div>

@@ -116,7 +116,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
         lab: row.querySelector<HTMLElement>("[data-testid=generator-soon]")?.innerText.trim(),
         labels: [...options.querySelectorAll<HTMLElement>("[data-testid=generate-option] .k")].map((k) => k.innerText.trim()),
         text: options.innerText,
-        controls: [...options.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input")].map((c) => c.disabled),
+        controls: [...options.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>("button, input, select")].map((c) => c.disabled),
         run: document.querySelector<HTMLButtonElement>("[data-testid=generate-run]")!.disabled,
         estimate: document.querySelector<HTMLElement>("[data-testid=generate-estimate]")!.innerText.trim(),
       };
@@ -126,9 +126,12 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     assert.equal(grok.lab, "xAI");
     assert.deepEqual(grok.labels, ["Frames", "Length", "Aspect", "Resolution"]);
     assert.match(grok.text, /First frame[\s\S]*Last frame/);
-    assert.ok(grok.controls.length >= 8 && grok.controls.every(Boolean), `every option disabled (${grok.controls})`);
+    assert.ok(grok.controls.length >= 5 && grok.controls.every(Boolean), `every option disabled (${grok.controls})`);
     assert.equal(grok.run, true, "Generate is disabled for a coming-soon model");
     assert.equal(grok.estimate, "Grok Imagine is coming soon");
+    // D263: the options (selects, not chips) fit the panel: nothing scrolls sideways.
+    const wide = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-testid=generate-library], [data-testid=generate-library] *"), ...(() => { const up: Array<HTMLElement> = []; for (let el = document.querySelector<HTMLElement>("[data-testid=generate-library]")?.parentElement; el && el !== document.body; el = el.parentElement) up.push(el); return up; })()].filter((el) => ["auto", "scroll"].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1).map((el) => el.className));
+    assert.deepEqual(wide, [], "no sideways scrolling in the Generate panel");
     await page.screenshot({ path: "test-output/issue63-video-soon.png" });
     // Every coming-soon model, in every type: disabled options, Generate off.
     for (const t of ["image", "video", "audio"]) {
@@ -138,7 +141,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
         await page.waitForFunction((m: string) => document.querySelector<HTMLElement>("[data-testid=generate-options]")?.dataset.model === m, {}, id);
         const state = await page.evaluate(() => ({
           run: document.querySelector<HTMLButtonElement>("[data-testid=generate-run]")!.disabled,
-          controls: [...document.querySelectorAll<HTMLButtonElement | HTMLInputElement>("[data-testid=generate-options] button, [data-testid=generate-options] input")].map((c) => c.disabled),
+          controls: [...document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>("[data-testid=generate-options] button, [data-testid=generate-options] input, [data-testid=generate-options] select")].map((c) => c.disabled),
           all: document.querySelector<HTMLElement>("[data-testid=generate-library]")!.innerText,
         }));
         assert.equal(state.run, true, `${id}: Generate disabled`);

@@ -4,6 +4,7 @@ import { Folder, FolderPlus, Library, RefreshCw, X, Square, Play, Plus } from "l
 import { useState, useEffect } from "react";
 import { type Project, useApp, actions, folderSoundUrl } from "../../state/store.ts";
 import { type Preview, Wave, TogetherButton } from "./preview.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 /** The most rows the list draws at once (search narrows the rest). */
 const FOLDER_ROWS = 200;
@@ -46,9 +47,11 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
             <FolderPlus /> Add a folder
           </button>
           {!!folders?.length && (
-            <button className="icon-btn" data-testid="folder-rescan" disabled={!online || busy} title="Look for new files in your folders" onClick={() => void run(() => actions.soundFolders(true))}>
-              <RefreshCw className={busy ? "spin" : ""} />
-            </button>
+            <Tooltip label="Look for new files in your folders">
+              <button className="icon-btn" data-testid="folder-rescan" disabled={!online || busy} onClick={() => void run(() => actions.soundFolders(true))}>
+                <RefreshCw className={busy ? "spin" : ""} />
+              </button>
+            </Tooltip>
           )}
         </div>
       ) : (
@@ -79,14 +82,16 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
               <Folder />
               <span className="lib-folder-name">{f.name}</span>
               <span className="lib-folder-count">{f.missing ? "missing" : `${f.sounds.length}${f.truncated ? "+" : ""}`}</span>
-              <button
-                className="icon-btn"
-                data-testid="sound-folder-remove"
-                title="Remove this folder from the list (its files stay)"
-                onClick={() => void run(() => actions.removeSoundFolder(f.id))}
-              >
-                <X />
-              </button>
+              <Tooltip label="Remove this folder from the list (its files stay)">
+                <button
+                  className="icon-btn"
+                  data-testid="sound-folder-remove"
+                 
+                  onClick={() => void run(() => actions.removeSoundFolder(f.id))}
+                >
+                  <X />
+                </button>
+              </Tooltip>
             </div>
           ))}
         </div>
@@ -100,12 +105,16 @@ export function FolderSounds({ kind, mode, project, online, query, preview }: { 
                 ? "No Music library found"
                 : `${library.sounds.length}${library.truncated ? "+" : ""} song${library.sounds.length === 1 ? "" : "s"}${library.skipped ? `, ${library.skipped} Apple Music or protected left out` : ""}`}
             </span>
-            <button className="icon-btn" data-testid="music-app-rescan" disabled={!online || busy} title="Read the Music library again" onClick={() => void run(() => actions.soundFolders(true))}>
-              <RefreshCw className={busy ? "spin" : ""} />
-            </button>
-            <button className="icon-btn" data-testid="music-app-remove" title="Stop listing the Music library" onClick={() => void run(() => actions.removeSoundFolder(library.id))}>
-              <X />
-            </button>
+            <Tooltip label="Read the Music library again">
+              <button className="icon-btn" data-testid="music-app-rescan" disabled={!online || busy} onClick={() => void run(() => actions.soundFolders(true))}>
+                <RefreshCw className={busy ? "spin" : ""} />
+              </button>
+            </Tooltip>
+            <Tooltip label="Stop listing the Music library">
+              <button className="icon-btn" data-testid="music-app-remove" onClick={() => void run(() => actions.removeSoundFolder(library.id))}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
           {library.missing && (
             <div className="muted small" data-testid="music-app-missing">

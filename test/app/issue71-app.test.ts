@@ -135,27 +135,38 @@ test("issue 71: Elements sections, chips and search; stickers dropped on the can
   assert.equal(await page.$$eval("[data-testid=component-tile]", (els) => els.filter((e) => !e.querySelector("[data-testid=component-thumb] .pv-comp")).length), 0);
   await (await page.$("[data-testid=elements-library]"))!.screenshot({ path: out("issue71-panel.png") });
 
-  // A chip shows one section; All shows them all again.
-  await page.click('[data-testid=elements-chip][data-category="Social"]');
+  // #86 (D263): a tile's + names itself in the app's tooltip, not a native title.
+  const add = "[data-testid=component-tile][data-component='component.lower-third'] [data-testid=component-add]";
+  assert.equal(await page.$eval(add, (el) => el.getAttribute("title")), null, "no native title on +");
+  await page.hover("[data-testid=component-tile][data-component='component.lower-third']");
+  await page.hover(add);
+  await page.waitForSelector("[data-testid=tooltip]", { timeout: 3000 });
+  assert.match(await page.$eval("[data-testid=tooltip]", (el) => el.textContent ?? ""), /^Add lower third at the playhead$/);
+  await page.mouse.move(5, 5);
+  await page.waitForFunction(() => !document.querySelector("[data-testid=tooltip]"), { timeout: 3000 });
+
+  // The section select (no chips, D263) shows one section; All sections shows them all again.
+  assert.equal(await page.$("[data-testid=elements-chip], .chip-btn"), null, "no chips");
+  await page.select("[data-testid=elements-section]", "Social");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=elements-category]").length === 1);
   assert.deepEqual(await categories(), ["Social"]);
   await (await page.$("[data-testid=elements-library]"))!.screenshot({ path: out("issue71-social.png") });
-  await page.click('[data-testid=elements-chip][data-category="Stickers"]');
+  await page.select("[data-testid=elements-section]", "Stickers");
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=elements-category]")?.dataset.category === "Stickers");
   await (await page.$("[data-testid=elements-library]"))!.screenshot({ path: out("issue71-stickers.png") });
-  await page.click('[data-testid=elements-chip][data-category="All"]');
+  await page.select("[data-testid=elements-section]", "");
   await page.waitForFunction(() => document.querySelectorAll("[data-testid=elements-category]").length === 5);
 
   // One search over elements and stickers: "sale" finds the price tag and the sale stickers.
   await page.type("[data-testid=sticker-search]", "sale");
-  await page.waitForFunction(() => !document.querySelector("[data-testid=elements-chips]"));
+  await page.waitForFunction(() => !document.querySelector("[data-testid=elements-section]"));
   assert.deepEqual(await categories(), ["Info", "Stickers"]);
   assert.deepEqual(await inSection("Info"), ["component.price-tag"]);
   const found = await page.$$eval("[data-testid=sticker]", (els) => els.map((e) => (e as HTMLElement).dataset.key));
   assert.ok(found.includes("art:sale") && found.includes("art:seal"), JSON.stringify(found));
   await (await page.$("[data-testid=elements-library]"))!.screenshot({ path: out("issue71-search.png") });
   await page.click("[data-testid=elements-search-clear]");
-  await page.waitForSelector("[data-testid=elements-chips]");
+  await page.waitForSelector("[data-testid=elements-section]");
 
   // Drag the hand-drawn circle onto the canvas at frame 15: it lands centred where it's dropped, wide.
   await goTo(15);

@@ -21,6 +21,7 @@ import { UsageDataSettings } from "./telemetry.tsx";
 import { LabsSettings } from "./Labs.tsx";
 import { PluginsSettings } from "./plugins/PluginsSettings.tsx";
 import { ENVIRONMENTS_LABS_HINT, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
   { id: "project", label: "Project", icon: Clapperboard },
@@ -65,9 +66,11 @@ export function Settings() {
         <div className="settings-body" data-testid={`settings-${section}`}>
           <div className="sheet-head">
             <span className="grow">{SECTIONS.find((s) => s.id === section)!.label}</span>
-            <button className="icon-btn" title="Close (Esc)" data-testid="settings-close" onClick={actions.closeSettings}>
-              <X />
-            </button>
+            <Tooltip label="Close" keys={["Esc"]}>
+              <button className="icon-btn" data-testid="settings-close" onClick={actions.closeSettings}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
           {section === "project" && snapshot && <ProjectSettings key={snapshot.dir} snapshot={snapshot} project={projectOf(snapshot)} online={online} />}
           {section === "app" && <AppSettings />}

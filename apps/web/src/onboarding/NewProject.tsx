@@ -7,6 +7,7 @@ import { useState } from "react";
 import { FPS_CHOICES, canvasSide } from "../settings/canvas.ts";
 import { CANVAS_PRESETS, canvasLabel, fpsLabel, shortPath, type Canvas } from "../state/format.ts";
 import { actions, MAX_NAME_LENGTH, useApp } from "../state/store.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 const CUSTOM = "custom";
 const DEFAULT_BACKGROUND = "#000000";
@@ -124,9 +125,11 @@ export function NewProject() {
             <span>Width</span>
             <input data-testid="custom-width" inputMode="numeric" value={width} onChange={(e) => typed("w", e.target.value)} onBlur={() => sideOf(width) && setWidth(String(sideOf(width)))} />
           </label>
-          <button type="button" className={`icon-btn aspect-lock ${lock ? "on" : ""}`} data-testid="custom-lock" aria-pressed={lock} title={lock ? "The height follows the width" : "Width and height are free"} onClick={toggleLock}>
-            {lock ? <Link2 /> : <Link2Off />}
-          </button>
+          <Tooltip label={lock ? "The height follows the width" : "Width and height are free"}>
+            <button type="button" className={`icon-btn aspect-lock ${lock ? "on" : ""}`} data-testid="custom-lock" aria-pressed={lock} onClick={toggleLock}>
+              {lock ? <Link2 /> : <Link2Off />}
+            </button>
+          </Tooltip>
           <label className="wiz-mini">
             <span>Height</span>
             <input data-testid="custom-height" inputMode="numeric" value={height} onChange={(e) => typed("h", e.target.value)} onBlur={() => sideOf(height) && setHeight(String(sideOf(height)))} />

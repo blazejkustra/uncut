@@ -4,6 +4,7 @@ import { useState } from "react";
 import { actions, getState, brandFileUrl } from "../../state/store.ts";
 import { type View, type KitDraft, HEX6, type LogoSlot, lines, LOGO_SLOTS, LOGO_BACKDROP, COLOR_ROLES, FONT_ROLES } from "./kit.ts";
 import { EditorFrame, ScopeChoice, Swatches } from "./parts.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }: { brand: BrandState; view: Extract<View, { kind: "kit" }>; hasProject: boolean; online: boolean; onDraft: (f: (d: KitDraft) => KitDraft) => void; onClose: () => void }) {
   const d = view.draft;
@@ -164,17 +165,19 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
               Choose…
             </button>
             {d.logos[id] && (
-              <button
-                className="icon-btn"
-                title="Remove"
-                data-testid={`brand-logo-${id}-clear`}
-                onClick={() => {
-                  const { [id]: _gone, ...rest } = d.logos;
-                  set({ logos: rest });
-                }}
-              >
-                <X />
-              </button>
+              <Tooltip label="Remove">
+                <button
+                  className="icon-btn"
+                 
+                  data-testid={`brand-logo-${id}-clear`}
+                  onClick={() => {
+                    const { [id]: _gone, ...rest } = d.logos;
+                    set({ logos: rest });
+                  }}
+                >
+                  <X />
+                </button>
+              </Tooltip>
             )}
           </div>
           );
@@ -189,9 +192,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
             onChange={(e) => setSource(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void importFrom(source)}
           />
-          <button className="icon-btn" title="Choose a file or folder" data-testid="brand-import-pick" disabled={!online || busy} onClick={() => void actions.pickBrandSource().then((p) => importFrom(p))}>
-            <FolderOpen />
-          </button>
+          <Tooltip label="Choose a file or folder">
+            <button className="icon-btn" data-testid="brand-import-pick" disabled={!online || busy} onClick={() => void actions.pickBrandSource().then((p) => importFrom(p))}>
+              <FolderOpen />
+            </button>
+          </Tooltip>
           <button className="btn ghost brand-small-btn" data-testid="brand-import-go" disabled={!online || busy || !source.trim()} onClick={() => void importFrom(source)}>
             Import
           </button>
@@ -201,9 +206,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
       <div className="lib-section">
         <div className="brand-head">
           <span className="lib-label">Colours</span>
-          <button className="icon-btn" title="Add colour" data-testid="brand-color-add" onClick={() => set({ colors: [...d.colors, { hex: "#ffffff", role: d.colors.length ? "accent" : "background" }] })}>
-            <Plus />
-          </button>
+          <Tooltip label="Add colour">
+            <button className="icon-btn" data-testid="brand-color-add" onClick={() => set({ colors: [...d.colors, { hex: "#ffffff", role: d.colors.length ? "accent" : "background" }] })}>
+              <Plus />
+            </button>
+          </Tooltip>
         </div>
         {d.colors.map((c, i) => {
           const ok = HEX6.test(c.hex.trim());
@@ -220,9 +227,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
                   </option>
                 ))}
               </select>
-              <button className="icon-btn" title="Remove" data-testid={`brand-color-remove-${i}`} onClick={() => set({ colors: d.colors.filter((_, j) => j !== i) })}>
-                <X />
-              </button>
+              <Tooltip label="Remove">
+                <button className="icon-btn" data-testid={`brand-color-remove-${i}`} onClick={() => set({ colors: d.colors.filter((_, j) => j !== i) })}>
+                  <X />
+                </button>
+              </Tooltip>
             </div>
           );
         })}
@@ -231,9 +240,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
       <div className="lib-section">
         <div className="brand-head">
           <span className="lib-label">Fonts</span>
-          <button className="icon-btn" title="Add font" data-testid="brand-font-add" onClick={() => set({ fonts: [...d.fonts, { family: "", role: d.fonts.length ? "body" : "headline" }] })}>
-            <Plus />
-          </button>
+          <Tooltip label="Add font">
+            <button className="icon-btn" data-testid="brand-font-add" onClick={() => set({ fonts: [...d.fonts, { family: "", role: d.fonts.length ? "body" : "headline" }] })}>
+              <Plus />
+            </button>
+          </Tooltip>
         </div>
         {d.fonts.map((f, i) => {
           const patch = (p: Partial<(typeof d.fonts)[number]>) => set({ fonts: d.fonts.map((x, j) => (j === i ? { ...x, ...p } : x)) });
@@ -262,12 +273,16 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
                   patch({ weight: e.target.value && n >= 100 && n <= 900 ? Math.round(n) : undefined });
                 }}
               />
-              <button className={`icon-btn ${f.file ? "on" : ""}`} title={f.file ? `${f.file}: loaded in graphics, texts and the export` : "Add the font's file"} data-testid={`brand-font-file-${i}`} disabled={!online} onClick={() => void fontFile(i)}>
-                <Type />
-              </button>
-              <button className="icon-btn" title="Remove" data-testid={`brand-font-remove-${i}`} onClick={() => set({ fonts: d.fonts.filter((_, j) => j !== i) })}>
-                <X />
-              </button>
+              <Tooltip label={f.file ? `${f.file}: loaded in graphics, texts and the export` : "Add the font's file"}>
+                <button className={`icon-btn ${f.file ? "on" : ""}`} data-testid={`brand-font-file-${i}`} disabled={!online} onClick={() => void fontFile(i)}>
+                  <Type />
+                </button>
+              </Tooltip>
+              <Tooltip label="Remove">
+                <button className="icon-btn" data-testid={`brand-font-remove-${i}`} onClick={() => set({ fonts: d.fonts.filter((_, j) => j !== i) })}>
+                  <X />
+                </button>
+              </Tooltip>
             </div>
           );
         })}
@@ -289,15 +304,17 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
       <div className="lib-section">
         <div className="brand-head">
           <span className="lib-label">Examples</span>
-          <button
-            className="icon-btn"
-            title="Add examples"
-            data-testid="brand-example-add"
-            disabled={!online}
-            onClick={() => void pickInto(true).then((names) => names.length && onDraft((cur) => ({ ...cur, examples: [...cur.examples, ...names.filter((n) => !cur.examples.includes(n))] })))}
-          >
-            <Plus />
-          </button>
+          <Tooltip label="Add examples">
+            <button
+              className="icon-btn"
+             
+              data-testid="brand-example-add"
+              disabled={!online}
+              onClick={() => void pickInto(true).then((names) => names.length && onDraft((cur) => ({ ...cur, examples: [...cur.examples, ...names.filter((n) => !cur.examples.includes(n))] })))}
+            >
+              <Plus />
+            </button>
+          </Tooltip>
         </div>
         {d.examples.length === 0 && <div className="muted small">None</div>}
         {d.examples.map((name, i) => (
@@ -305,9 +322,11 @@ export function KitEditor({ brand, view, hasProject, online, onDraft, onClose }:
             <span className="brand-file ellipsis" title={files[name]}>
               {name}
             </span>
-            <button className="icon-btn" title="Remove" data-testid={`brand-example-remove-${i}`} onClick={() => set({ examples: d.examples.filter((x) => x !== name) })}>
-              <X />
-            </button>
+            <Tooltip label="Remove">
+              <button className="icon-btn" data-testid={`brand-example-remove-${i}`} onClick={() => set({ examples: d.examples.filter((x) => x !== name) })}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
         ))}
       </div>

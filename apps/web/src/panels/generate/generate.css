@@ -45,15 +45,15 @@
 .gen-panel .gen-box .gen-prompt { border: 0; border-radius: var(--radius); background: transparent; resize: vertical; min-height: 84px; padding: 9px 11px; font: 13px/1.45 var(--font); color: var(--fg); outline: 0; }
 .gen-panel .gen-box .gen-prompt::placeholder { color: var(--dim); }
 
-/* Options: label column and chips. */
+/* Options: a label column, then a segmented choice or a select (no chips, D263). */
 .gen-options { display: flex; flex-direction: column; gap: 8px; }
 .gen-options:empty { display: none; }
-.gen-panel .gen-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.gen-panel .gen-chips .k { font-size: 11px; color: var(--dim); min-width: 64px; margin-right: 0; }
-.gen-panel .chip-btn { height: 24px; padding: 0 10px; font-size: 11.5px; }
-.gen-panel .chip-btn:not(:disabled):hover { color: var(--fg); border-color: var(--border-strong); }
-.gen-panel .chip-btn.active { border-color: rgb(255 255 255 / 22%); background: var(--raised); color: var(--fg); }
-.gen-options.soon .chip-btn, .gen-options.soon .gen-frame, .gen-options.soon .gen-toggle, .gen-options.soon .gen-text { opacity: 0.55; cursor: not-allowed; }
+.gen-panel .gen-opt { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.gen-panel .gen-opt .k { font-size: 11px; color: var(--dim); min-width: 64px; margin-right: 0; }
+.gen-panel .gen-opt .seg button { font-size: 11.5px; }
+.gen-panel .gen-opt .seg button:not(.active):hover { color: var(--fg); }
+.gen-panel .gen-opt .gen-select { flex: 1 1 0; width: auto; min-width: 0; height: 26px; font-size: 12px; }
+.gen-options.soon .gen-select, .gen-options.soon .gen-frame, .gen-options.soon .gen-toggle, .gen-options.soon .gen-text { opacity: 0.55; cursor: not-allowed; }
 .gen-frames { display: flex; gap: 6px; flex-wrap: wrap; }
 .gen-frame { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 74px; height: 50px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); font-size: 10px; color: var(--muted); }
 .gen-frame svg.lucide { width: 14px; height: 14px; }
