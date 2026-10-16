@@ -47,24 +47,28 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
 .top nav { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .top nav a { color: var(--muted); text-decoration: none; }
 .top nav a:hover { color: var(--fg); }
-/* The stars pill and the compact Download (proportions after t3.codes' nav). The pill has a fixed
-   width so the count replacing "GitHub" (hero.js) doesn't move anything. */
+/* The GitHub button and the compact Download: same 34px height, small radius, never a pill. The
+   button has a fixed width so the count replacing "Star" (hero.js, from 10 stars) moves nothing. */
 .top nav .nav-stars {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  width: 98px; height: 34px; padding: 0 12px;
-  border: 1px solid var(--border-strong); border-radius: 10px;
-  background: rgb(255 255 255 / 2%);
-  color: var(--fg); font: 500 13px/1 var(--font); font-variant-numeric: tabular-nums;
-  transition: background 0.15s, border-color 0.15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 92px; height: 34px; padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+  color: var(--fg); font: 500 14px/1 var(--font);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.top nav .nav-stars:hover { background: rgb(255 255 255 / 6%); border-color: rgb(255 255 255 / 20%); }
-.nav-stars .gh { width: 15px; height: 15px; flex: none; }
-.nav-stars .star { display: none; width: 12px; height: 12px; flex: none; color: #e3b341; margin-right: -3px; }
-.nav-stars.has-stars .star { display: block; }
+.top nav .nav-stars:hover { color: var(--fg); background: rgb(255 255 255 / 7%); border-color: rgb(255 255 255 / 20%); }
+.nav-stars .gh { width: 16px; height: 16px; flex: none; color: #d4d4d4; transition: color 0.15s; }
+.nav-stars:hover .gh { color: #ffffff; }
+.nav-stars .count { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.nav-stars .count[hidden], .nav-stars.has-stars .label { display: none; }
+.nav-stars .star { width: 12px; height: 12px; flex: none; color: var(--muted); transition: color 0.15s; }
+.nav-stars:hover .star { color: #e3b341; }
 .top nav .btn-nav {
   display: inline-flex; align-items: center; gap: 7px;
   height: 34px; padding: 0 14px 0 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #f5f5f5; color: #0a0a0a;
   font: 500 14px/1 var(--font);
   transition: background 0.15s;

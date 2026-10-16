@@ -1,11 +1,14 @@
 // The landing page's only script (built by `pnpm site:build` into site/assets/hero.js):
-//   - the nav's GitHub star count, fetched once per session and cached in sessionStorage;
+//   - the nav's GitHub star count (shown from 10 stars), fetched once per session and cached in
+//     sessionStorage;
 //   - the hero background, a WebGPU shader (heroGpu.ts, a separate chunk loaded only where
 //     navigator.gpu exists). Without WebGPU, or if anything fails, the static CSS gradient under
 //     the canvas stays as it is. Everything works without this script too.
 
 const REPO = "blazejkustra/uncut";
 const STARS_KEY = "uncut-stars";
+/** Below this the count reads as a sad number, so the button says "Star" instead. */
+const MIN_STARS = 10;
 
 /** 1234 → "1.2k", 999 → "999", 12500 → "12.5k". */
 function formatStars(n: number): string {
@@ -46,11 +49,16 @@ async function stars() {
     }
     writeCache(n);
   }
-  // No number (the repo is private, rate-limited, offline): the plain "GitHub" label stays.
-  if (typeof n !== "number" || !Number.isFinite(n)) return;
-  slot.textContent = formatStars(n);
-  slot.closest("a")?.setAttribute("aria-label", `GitHub, ${n} stars`);
-  slot.closest("a")?.classList.add("has-stars");
+  // No number (private, rate-limited, offline) or too few to be worth showing: the button keeps
+  // its "Star" label. From MIN_STARS on, the count takes the label's place in the same fixed width.
+  if (typeof n !== "number" || !Number.isFinite(n) || n < MIN_STARS) return;
+  const link = slot.closest("a");
+  const num = slot.querySelector<HTMLElement>(".n");
+  if (!link || !num) return;
+  num.textContent = formatStars(n);
+  slot.hidden = false;
+  link.classList.add("has-stars");
+  link.setAttribute("aria-label", `Star Uncut on GitHub, ${n.toLocaleString("en-US")} stars`);
 }
 
 async function background() {
