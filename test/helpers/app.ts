@@ -285,7 +285,7 @@ export const WELCOME_TIMEOUT_MS = Number(process.env.UNCUT_TEST_LAUNCH_MS ?? 600
 export const waitForWelcome = (page: Page, timeout = WELCOME_TIMEOUT_MS) => page.waitForSelector("[data-testid=welcome]", { timeout });
 
 /**
- * Clicks `selector` once it's visible, again if React swapped the element between finding and
+ * Clicks `selector` once it's visible, scrolled to the middle of its scroller, again if React swapped the element between finding and
  * clicking it ("detached") or it wasn't laid out yet ("not clickable"): a slow runner (#89) renders
  * a beat later than the click arrives. Any other error, or the same one after `timeout`, is thrown.
  */
@@ -293,7 +293,10 @@ export async function clickWhenReady(page: Page, selector: string, timeout = 100
   const end = Date.now() + timeout;
   for (;;) {
     try {
-      await page.waitForSelector(selector, { visible: true, timeout: Math.max(1, end - Date.now()) });
+      const el = await page.waitForSelector(selector, { visible: true, timeout: Math.max(1, end - Date.now()) });
+      // In the middle of its scroller: a pinned footer (the New project form's, D295) can cover an
+      // element that puppeteer counts as in view, and the click then lands on the footer.
+      await el?.evaluate((e) => e.scrollIntoView({ block: "center" }));
       return await page.click(selector);
     } catch (error) {
       if (Date.now() > end || !/detached|not clickable/i.test(String(error))) throw error;
