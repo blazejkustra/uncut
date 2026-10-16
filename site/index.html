@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uncut: edit videos by talking to an agent</title>
+<meta name="description" content="Uncut is an AI-first video editor for the Mac. It runs your installed Claude Code, which edits with you on a real timeline. Free and open source.">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="canonical" href="https://uncut.video/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Uncut">
+<meta property="og:description" content="Edit videos by talking to an agent. An AI-first video editor for the Mac.">
+<meta property="og:url" content="https://uncut.video/">
+<meta property="og:image" content="https://uncut.video/assets/img/editor.webp">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/DMSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="wordmark" href="/" aria-label="Uncut home">
+      <svg viewBox="280 230 464 562" aria-hidden="true" focusable="false">
+        <defs>
+          <mask id="cut-top" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+            <rect width="1024" height="1024" fill="#fff"/>
+            <path d="M270 506 L466 403" stroke="#000" stroke-width="26"/>
+          </mask>
+        </defs>
+        <path d="M368 318 V560 A144 144 0 0 0 656 560 V318" fill="none" stroke="currentColor" stroke-width="128" stroke-linecap="round" mask="url(#cut-top)"/>
+      </svg>
+      <span>Uncut</span>
+    </a>
+    <nav aria-label="Main">
+      <a class="hide-sm" href="#features">Features</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="https://github.com/blazejkustra/uncut">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <img class="icon" src="/assets/icon-512.png" width="88" height="88" alt="">
+      <h1>Edit videos by talking to an agent</h1>
+      <p class="lede">Uncut is a video editor for the Mac with an agent built in. It runs your installed Claude Code, which plans the cut, edits a real timeline while you watch, and hands every change back to you to keep or undo.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/blazejkustra/uncut/releases/latest">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v9M4 7l4 4 4-4M2.5 14h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download for Mac
+        </a>
+        <a class="btn" href="https://github.com/blazejkustra/uncut">View on GitHub</a>
+      </div>
+      <p class="req">For Apple silicon Macs. Free and open source.</p>
+      <img class="shot" src="/assets/img/editor.webp" width="1600" height="1040" fetchpriority="high" alt="The Uncut editor: a media library of clips, a title reading Ship it in the preview, a timeline with text, graphics, video and music tracks, and the agent panel with its brief, an approved storyboard and a passed review.">
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap agent">
+      <div>
+        <p class="kicker">The agent</p>
+        <h2>It edits the timeline live, and you stay in charge</h2>
+        <p class="sub">Ask for a cut the way you would ask an editor. The agent sees your timeline, your footage and its transcript, and makes the edit right where you can watch it happen.</p>
+        <ul>
+          <li><strong>Plans before it cuts.</strong> A brief and a storyboard come first, for you to approve or change.</li>
+          <li><strong>Reviewed by a critic.</strong> An independent pass checks the edit against the plan and sends it back when it falls short.</li>
+          <li><strong>Every turn is one undo.</strong> Keep what works, undo the rest, or keep editing by hand on the same timeline.</li>
+        </ul>
+      </div>
+      <div class="panels">
+        <img class="panel-img" src="/assets/img/agent-turn.webp" width="620" height="730" loading="lazy" alt="An agent turn: it reads the transcript, cuts filler words and long pauses, appends the cleanest take and reports 3 edits with an undo button.">
+        <img class="panel-img" src="/assets/img/agent-review.webp" width="620" height="750" loading="lazy" alt="A passed review from the independent critic, with scores for the hook, phone readability, motion, variety and sound sync.">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="kicker">The editor</p>
+      <h2>A real editor underneath</h2>
+      <p class="sub">Tracks, trims, splits, snapping, keyframes and a mixer with ducking. Everything the agent does, you can do yourself.</p>
+      <div class="cards">
+        <article class="card">
+          <div class="crop"><img src="/assets/img/transcript.webp" width="520" height="1040" loading="lazy" alt="The transcript panel with buttons to remove filler words and pauses, and the transcribed talk below."></div>
+          <div class="body">
+            <h3>Edit by transcript</h3>
+            <p>Local transcription on your Mac. Remove fillers and long pauses in one click, or cut by the words.</p>
+          </div>
+        </article>
+        <article class="card">
+          <div class="crop"><img src="/assets/img/text.webp" width="520" height="1040" loading="lazy" alt="Text presets: title, lower third, big title, kicker, highlight word, caption, stroked title and outline."></div>
+          <div class="body">
+            <h3>Captions and titles</h3>
+            <p>Burned-in or word by word captions, SRT and WebVTT in and out, and animated titles, lower thirds and end cards.</p>
+          </div>
+        </article>
+        <article class="card">
+          <div class="crop"><img src="/assets/img/sounds.webp" width="520" height="1040" loading="lazy" alt="The sound effects panel with a search box and a list of sounds with waveforms."></div>
+          <div class="body">
+            <h3>Sound effects and music</h3>
+            <p>A built-in sound library, online sound search, and a mixer that ducks the music under speech.</p>
+          </div>
+        </article>
+        <article class="card">
+          <div class="crop"><img src="/assets/img/capture.webp" width="520" height="700" loading="lazy" alt="The capture panel with screen recording and a list of simulators and emulators to record."></div>
+          <div class="body">
+            <h3>Capture</h3>
+            <p>Record your screen, camera and mic, or iOS simulators, Android emulators and apps, straight into the project.</p>
+          </div>
+        </article>
+      </div>
+      <div class="facts">
+        <div class="fact">
+          <h3>Effects and looks</h3>
+          <p>Filters, colour looks, transitions and text animations, previewed on the GPU.</p>
+        </div>
+        <div class="fact">
+          <h3>Plugins</h3>
+          <p>Looks, components, checks and agent tools in a folder, with a catalog to browse.</p>
+        </div>
+        <div class="fact">
+          <h3>Export</h3>
+          <p>H.264 at the quality you pick, with loudness for social or broadcast and optional subtitles.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="kicker">On your Mac</p>
+      <h2>Your footage stays with you</h2>
+      <p class="sub">Uncut runs on your Mac, and so does transcription. The agent is your own Claude Code, with whatever sign-in it already uses, billed to you as your Claude Code usage normally is. Usage data is off unless you turn it on.</p>
+      <p class="sub"><a href="/privacy/">Read the privacy notice</a></p>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2>Start your next cut</h2>
+      <p class="sub">Install Claude Code and sign in, then open Uncut and tell it what to make.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/blazejkustra/uncut/releases/latest">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v9M4 7l4 4 4-4M2.5 14h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download for Mac
+        </a>
+        <a class="btn" href="https://github.com/blazejkustra/uncut">View on GitHub</a>
+      </div>
+      <p class="req">For Apple silicon Macs.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Uncut is MIT licensed. Not affiliated with Anthropic.</p>
+    <nav aria-label="Footer">
+      <a href="/privacy/">Privacy</a>
+      <a href="https://github.com/blazejkustra/uncut">GitHub</a>
+      <a href="https://github.com/blazejkustra/uncut/blob/main/LICENSE">Licence</a>
+      <a href="https://github.com/blazejkustra/uncut/blob/main/THIRD_PARTY_NOTICES">Third-party notices</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
