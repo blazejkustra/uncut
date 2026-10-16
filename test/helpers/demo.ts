@@ -4,13 +4,15 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { DJI_CLIP } from "./footage.ts";
 
 const MAKE_DEMO = resolve("scripts/make-demo.ts");
-export const FOOTAGE = resolve(process.env.UNCUT_FOOTAGE ?? "../drone/DJI_20261010132228_0005_D.MP4");
+// The DJI clip of test/helpers/footage.ts (UNCUT_FOOTAGE_DIR), or any clip named by UNCUT_FOOTAGE.
+export const FOOTAGE = resolve(process.env.UNCUT_FOOTAGE ?? DJI_CLIP);
 
 const hasTool = (tool: string) => !spawnSync(tool, ["-version"], { stdio: "ignore" }).error;
 export const skipDemo = !existsSync(FOOTAGE)
-  ? `needs the demo footage at ${FOOTAGE} (or set UNCUT_FOOTAGE)`
+  ? `needs the demo footage at ${FOOTAGE} (set UNCUT_FOOTAGE_DIR to your footage folder, or UNCUT_FOOTAGE to a clip)`
   : !hasTool("ffprobe")
     ? "needs ffprobe on PATH to build the demo project"
     : false;

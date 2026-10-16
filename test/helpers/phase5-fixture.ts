@@ -1,5 +1,5 @@
 // The Phase 5 exit check's footage (test/app/phase5-exit.test.ts, scripts/phase5-manual-check.ts), made
-// on this Mac with macOS `say` and ffmpeg, never taken from ~/Documents/devrel/drone:
+// on this Mac with macOS `say` and ffmpeg, never taken from the user's footage folder:
 // - Talk.mp4: about a minute of real speech (13 sentences, an "um" and an "uh") over SMPTE bars,
 //   built from known pieces: each `say` clip trimmed of its own leading and trailing quiet, then
 //   joined with silences of known length (short ones that stay, long ones ≥ 1 s to cut). The layout

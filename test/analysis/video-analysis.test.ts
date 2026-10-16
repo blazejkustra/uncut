@@ -12,13 +12,14 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AnalysisQueue, cacheFile, fingerprint, spawnRunner, type AnalysisTarget, type Runner } from "../../apps/server/src/analysis/analysis.ts";
 import { analyzeVideo, PhaseCorrelator, smooth, windowsOf, type VideoResult } from "../../apps/server/src/analysis/videoAnalysis.ts";
 import { bestStretch, cleanOf, meanScores, shotsOf, stabilityOf, sharpnessOf } from "../../apps/server/src/analysis/videoScores.ts";
 import { framesFor, videoOut } from "../../apps/server/src/agent/agentVideo.ts";
+import { DJI_CLIP, footageMissing } from "../helpers/footage.ts";
 
 const ffmpegPath = (() => {
   try {
@@ -301,9 +302,8 @@ test("scores: each component falls as its measure worsens; an unmeasured one is 
 
 // The user's footage, read only (never copied or written next to). Slow (about a minute), so it
 // runs only when asked: UNCUT_DJI_PERF=1 node --test test/analysis/video-analysis.test.ts
-const DRONE = join(homedir(), "Documents", "devrel", "drone");
-const DJI = join(DRONE, "DJI_20261010132228_0005_D.MP4");
-const perfSkip = skip || (!process.env.UNCUT_DJI_PERF ? "set UNCUT_DJI_PERF=1 to time a real DJI clip" : !existsSync(DJI) ? "the DJI clip isn't here" : false);
+const DJI = DJI_CLIP;
+const perfSkip = skip || (!process.env.UNCUT_DJI_PERF ? "set UNCUT_DJI_PERF=1 to time a real DJI clip" : !existsSync(DJI) ? footageMissing(DJI) : false);
 test("speed: at least 4× realtime on a real DJI clip (4K HEVC 10-bit)", { skip: perfSkip, timeout: 600000 }, async () => {
   const t0 = performance.now();
   const r = await analyzeVideo(ffmpegPath!, DJI, { signal: signal() });

@@ -1,5 +1,5 @@
 // Taste checks (D90): what a project does against the best practices for short product videos
-// (devrel VIDEO-BEST-PRACTICES), as far as the model alone can tell. Each rule is objective (read
+// as far as the model alone can tell. Each rule is objective (read
 // time, punctuation, sizes, speeds, sound) and says one plain sentence per finding; some carry a
 // fix (edit ops planned against the project, applied as one undoable edit). Checks never block an
 // export: the editor lists them, the export dialog mentions them, the agent's project_check returns

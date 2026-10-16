@@ -7,7 +7,7 @@
 // - A slow job answers "running" (the agent asks again), a cancel from the Library leaves nothing
 //   in .cache/analysis and the job says cancelled.
 // - Analysis waits while an export renders.
-// All media is made here with ffmpeg's lavfi sources; nothing from ~/Documents/devrel/drone.
+// All media is made here with ffmpeg's lavfi sources; nothing from the user's footage folder.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";

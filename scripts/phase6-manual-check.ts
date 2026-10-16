@@ -14,8 +14,8 @@
 //   ... --prompt "<text>"                        a different prompt
 //   ... --fake                                   (testing this script) the scripted claude from the exit test
 //                                                instead of the real one: no subscription used
-// Needs: the reference folder (~/Documents/devrel/video-editor/argent-haiku45-vs-haiku55 or
-// UNCUT_ARGENT_REF; never written to), the studio's argent-logo.svg (UNCUT_ARGENT_LOGO), ffmpeg.
+// Needs: the reference promo's folder (UNCUT_ARGENT_REF; never written to), its white logo SVG
+// (UNCUT_ARGENT_LOGO), its music (UNCUT_ARGENT_MUSIC), ffmpeg.
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -46,10 +46,10 @@ const brand = makeBrandFolder(join(out, "Brand"));
 const prompt =
   option("--prompt") ??
   [
-    `Make the Argent promo "Haiku 4.5 vs Haiku 5.5 on the same Argent test" from these files, in the style of the reference video ${REF.out} (import it and look at it with contact_sheet first, then keep it off the timeline: same scenes, timings, copy and numbers).`,
-    `Files: the sky background ${REF.sky}, the two sped-up recordings ${REF.h45} (Haiku 4.5) and ${REF.h55} (Haiku 5.5), and a dark Argent logo ${brand.logo}.`,
+    `Make a product demo promo comparing two runs of the same task from these files, in the style of the reference video ${REF.out} (import it and look at it with contact_sheet first, then keep it off the timeline: same scenes, timings, copy and numbers).`,
+    `Files: the sky background ${REF.sky}, the two sped-up screen recordings ${REF.h45} (the first run) and ${REF.h55} (the second run), and a dark product logo ${brand.logo}.`,
     `The reference's copy, the agent logs (model, clock, tokens and lines per run) and the comparison table's numbers are in ${REF.project}: read them from there, don't make any up.`,
-    "Structure: a white title card over the sky (about 3 s); the race: both recordings side by side in phone frames, each next to its agent log, the Argent wordmark and the task line on top and the footnote at the bottom, recordings that end early hold their last frame (about 22 s); the dark comparison table over the sky (about 10 s); the white Argent end card with the install command and github.com/blazejkustra as the URL (about 4 s). 1920×1080, 39.5 s in all.",
+    `Structure: a white title card over the sky (about 3 s); the race: both recordings side by side in phone frames, each next to its agent log, the product wordmark and the task line on top and the footnote at the bottom, recordings that end early hold their last frame (about 22 s); the dark comparison table over the sky (about 10 s); the white end card with the product's logo, the install command and ${END_URL} as the URL (about 4 s). 1920×1080, 39.5 s in all.`,
     `Music: the lo-fi track ${MUSIC} under all of it with short fades, export target −16 LUFS. Run project_check before you're done and fix every warning.`,
   ].join(" ");
 

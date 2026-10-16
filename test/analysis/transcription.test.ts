@@ -7,7 +7,7 @@
 //   cancel mid-whisper leaves no temp WAV and no cache; missing binary / model / JSON fail clearly;
 //   the model download shows as the job's stage; no sound = no job.
 // - transcript_read's answer: frames, text lines, words, paging.
-// ffmpeg makes the sound here (lavfi); nothing from ~/Documents/devrel/drone, no real model.
+// ffmpeg makes the sound here (lavfi); nothing from the user's footage folder, no real model.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

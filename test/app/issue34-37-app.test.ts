@@ -33,12 +33,12 @@ before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-issue34-37-")));
   home = join(root, "home");
   mkdirSync(join(home, "Projects"), { recursive: true });
-  const clips = join(home, "Documents", "devrel", "recreate");
+  const clips = join(home, "Videos", "project");
   mkdirSync(join(clips, "takes"), { recursive: true });
   for (const n of ["intro.mp4", "demo.mp4", "frame.png"]) writeFileSync(join(clips, n), "x");
-  mkdirSync(join(home, "Documents", "devrel", "video-editor"), { recursive: true });
-  writeFileSync(join(home, "Documents", "devrel", "video-editor", "notes.txt"), "x");
-  const brand = join(home, "Downloads", "argent-brand");
+  mkdirSync(join(home, "Videos", "assets"), { recursive: true });
+  writeFileSync(join(home, "Videos", "assets", "notes.txt"), "x");
+  const brand = join(home, "Downloads", "brand-kit");
   mkdirSync(brand, { recursive: true });
   writeFileSync(join(brand, "argent-logo.svg"), LOGO("#0b1d3a"));
   writeFileSync(join(brand, "argent-logo-white.svg"), LOGO("#ffffff"));
@@ -61,7 +61,7 @@ test("issues 34, 35, 37: path chips and found folders, a library kit with logo p
     plan,
     JSON.stringify([
       [
-        { tool: "brand_write", args: { name: "Argent", colors: [{ hex: "#0b1d3a", role: "background" }, { hex: "#f5a623", role: "accent" }, { hex: "#ffffff", role: "text" }], import: "~/Downloads/argent-brand", fonts: [{ family: FAMILY, role: "headline", file: "~/Downloads/KitMono.woff2" }] } },
+        { tool: "brand_write", args: { name: "Argent", colors: [{ hex: "#0b1d3a", role: "background" }, { hex: "#f5a623", role: "accent" }, { hex: "#ffffff", role: "text" }], import: "~/Downloads/brand-kit", fonts: [{ family: FAMILY, role: "headline", file: "~/Downloads/KitMono.woff2" }] } },
         { tool: "project_read" },
         { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Title", ops: [{ op: "insert_item", track: "text", item: { id: "title", type: "text", text: "Argent 0123 iii", start: 0, duration: 90, style: { font: FAMILY, size: 140, color: "#ffffff" } } }] } },
         { tool: "brand_write", args: { kit: "argent", colors: [{ hex: "#e5484d", role: "error" }, { hex: "#0b1d3a", role: "background" }], style: { source: "reference.mp4", palette: [{ hex: "#e5484d", role: "alert" }], type: "Heavy grotesk", shotLengths: "under 1 s", transitions: "hard cuts", camera: "locked", grain: "none" } } },
@@ -87,9 +87,9 @@ test("issues 34, 35, 37: path chips and found folders, a library kit with logo p
 
     // #37: paths in the composer are chips (~, $HOME and a plain one).
     await page.click("[data-testid=agent-input]");
-    await page.keyboard.type("Recreate it with the clips in ~/Documents/devrel/recreate and the assets in $HOME/Documents/devrel/video-editor. The brand is in ~/Downloads/argent-brand, more in ~/Downloads.");
+    await page.keyboard.type("Recreate it with the clips in ~/Videos/project and the assets in $HOME/Videos/assets. The brand is in ~/Downloads/brand-kit, more in ~/Downloads.");
     const chips = await page.$$eval(".composer-hl [data-testid=agent-path-chip]", (els) => els.map((el) => (el as HTMLElement).innerText));
-    assert.deepEqual(chips, ["~/Documents/devrel/recreate", "$HOME/Documents/devrel/video-editor", "~/Downloads/argent-brand", "~/Downloads"]);
+    assert.deepEqual(chips, ["~/Videos/project", "$HOME/Videos/assets", "~/Downloads/brand-kit", "~/Downloads"]);
     await page.screenshot({ path: shot("issue37-path-chips") });
     await page.keyboard.press("Enter");
 
@@ -106,9 +106,9 @@ test("issues 34, 35, 37: path chips and found folders, a library kit with logo p
     // #37: what was found in each folder, and why ~/Downloads wasn't listed.
     const found = await page.$$eval("[data-testid=agent-turn-folder]", (els) => els.map((el) => (el as HTMLElement).innerText.trim()));
     assert.deepEqual(found, [
-      "Found 3 files and 1 folder in ~/Documents/devrel/recreate",
-      "Found 1 file in ~/Documents/devrel/video-editor",
-      "Found 3 files in ~/Downloads/argent-brand",
+      "Found 3 files and 1 folder in ~/Videos/project",
+      "Found 1 file in ~/Videos/assets",
+      "Found 3 files in ~/Downloads/brand-kit",
       "Didn't list ~/Downloads: it's all of ~/Downloads; paste a folder inside it",
     ]);
     await page.$eval("[data-testid=agent-turn-folders]", (el) => el.scrollIntoView({ block: "start" }));

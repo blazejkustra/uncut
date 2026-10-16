@@ -2,6 +2,7 @@
 // fake env, a fake rate limiter and a stubbed upstream fetch; nothing reaches the network.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import worker, { handleRequest, memoryLimiter, MAX_BODY_BYTES, MAX_RECORDS, type Deps, type Env, type RateLimiter } from "../../infra/telemetry-proxy/src/index.ts";
 
@@ -10,7 +11,7 @@ const NEXT_TOKEN = "b".repeat(64);
 const allow: RateLimiter = { limit: async () => ({ success: true }) };
 const env = (over: Partial<Env> = {}): Env => ({
   GRAFANA_OTLP_URL: "https://otlp.example.test/otlp",
-  GRAFANA_INSTANCE_ID: "1876240",
+  GRAFANA_INSTANCE_ID: "100001",
   GRAFANA_TOKEN: "glc_secret",
   APP_TOKEN,
   RATE_LIMITER: allow,
@@ -61,7 +62,7 @@ test("a valid request is forwarded to Grafana with Basic auth and answered 204",
   assert.equal(url, "https://otlp.example.test/otlp/v1/logs");
   assert.equal(init.method, "POST");
   const headers = new Headers(init.headers);
-  assert.equal(headers.get("authorization"), `Basic ${Buffer.from("1876240:glc_secret").toString("base64")}`);
+  assert.equal(headers.get("authorization"), `Basic ${Buffer.from("100001:glc_secret").toString("base64")}`);
   assert.equal(headers.get("content-type"), "application/json");
   assert.equal(new TextDecoder().decode(init.body as Uint8Array), payload());
 });
@@ -164,9 +165,17 @@ test("upstream errors become a bare 502 (or 429) and are never echoed", async ()
 });
 
 test("missing Grafana secrets give 503 without calling upstream", async () => {
-  const { res, up } = await run(req(), env({ GRAFANA_TOKEN: "" }));
-  assert.equal(res.status, 503);
-  assert.equal(up.calls.length, 0);
+  for (const over of [{ GRAFANA_TOKEN: "" }, { GRAFANA_INSTANCE_ID: "" }]) {
+    const { res, up } = await run(req(), env(over));
+    assert.equal(res.status, 503);
+    assert.equal(up.calls.length, 0);
+  }
+});
+
+test("the Grafana instance id is a Worker secret, not a var in wrangler.toml", () => {
+  const toml = readFileSync(new URL("../../infra/telemetry-proxy/wrangler.toml", import.meta.url), "utf8");
+  assert.doesNotMatch(toml, /^\s*GRAFANA_INSTANCE_ID\s*=/m);
+  assert.match(toml, /Secrets \(wrangler secret put\): GRAFANA_INSTANCE_ID/);
 });
 
 test("the rate limiter is keyed by client IP and a refusal is 429 before reading the body", async () => {

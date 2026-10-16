@@ -58,27 +58,27 @@ Identifier=uncut-media
 Format=Mach-O thin (arm64)
 CodeDirectory v=20500 size=1234 flags=0x10000(runtime) hashes=30+7 location=embedded
 Signature size=9000
-Authority=Developer ID Application: Blazej Kustra (9S2Q77K6U6)
+Authority=Developer ID Application: Example Developer (ABCDE12345)
 Authority=Developer ID Certification Authority
 Authority=Apple Root CA
 Timestamp=16 Oct 2026 at 12:00:00
-TeamIdentifier=9S2Q77K6U6
+TeamIdentifier=ABCDE12345
 Runtime Version=15.0.0`;
   const d = parseCodesignDetails(good);
-  assert.deepEqual(d, { signed: true, adHoc: false, runtime: true, timestamp: true, teamId: "9S2Q77K6U6", authority: "Developer ID Application: Blazej Kustra (9S2Q77K6U6)" });
-  assert.deepEqual(signatureProblems(d, "9S2Q77K6U6"), []);
+  assert.deepEqual(d, { signed: true, adHoc: false, runtime: true, timestamp: true, teamId: "ABCDE12345", authority: "Developer ID Application: Example Developer (ABCDE12345)" });
+  assert.deepEqual(signatureProblems(d, "ABCDE12345"), []);
   const adhoc = parseCodesignDetails(`CodeDirectory v=20400 size=1 flags=0x20002(adhoc,linker-signed) hashes=1+0 location=embedded
 Signature=adhoc
 Signed Time=16 Oct 2026
 TeamIdentifier=not set`);
-  assert.deepEqual(signatureProblems(adhoc, "9S2Q77K6U6"), ["ad-hoc signature", "no hardened runtime", "no secure timestamp", "team none, expected 9S2Q77K6U6"]);
-  assert.deepEqual(signatureProblems(parseCodesignDetails("/x: code object is not signed at all"), "9S2Q77K6U6"), ["not signed"]);
-  const otherTeam = parseCodesignDetails(good.replace(/9S2Q77K6U6/g, "6HVVJA9KV8"));
-  assert.deepEqual(signatureProblems(otherTeam, "9S2Q77K6U6"), ["team 6HVVJA9KV8, expected 9S2Q77K6U6"]);
+  assert.deepEqual(signatureProblems(adhoc, "ABCDE12345"), ["ad-hoc signature", "no hardened runtime", "no secure timestamp", "team none, expected ABCDE12345"]);
+  assert.deepEqual(signatureProblems(parseCodesignDetails("/x: code object is not signed at all"), "ABCDE12345"), ["not signed"]);
+  const otherTeam = parseCodesignDetails(good.replace(/ABCDE12345/g, "6HVVJA9KV8"));
+  assert.deepEqual(signatureProblems(otherTeam, "ABCDE12345"), ["team 6HVVJA9KV8, expected ABCDE12345"]);
 });
 
 test("spctl's verdict: only accepted + Notarized Developer ID passes", () => {
-  assert.deepEqual(parseSpctl("/x/Uncut.app: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Blazej Kustra (9S2Q77K6U6)"), { accepted: true, source: "Notarized Developer ID" });
+  assert.deepEqual(parseSpctl("/x/Uncut.app: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Example Developer (ABCDE12345)"), { accepted: true, source: "Notarized Developer ID" });
   assert.deepEqual(parseSpctl("/x/Uncut.app: accepted\nsource=Developer ID"), { accepted: true, source: "Developer ID" });
   assert.deepEqual(parseSpctl("/x/Uncut.app: rejected\nsource=Unnotarized Developer ID"), { accepted: false, source: "Unnotarized Developer ID" });
   assert.deepEqual(spctlDmgArgs("/x.dmg"), ["-a", "-t", "open", "--context", "context:primary-signature", "-vv", "/x.dmg"]);

@@ -10,9 +10,9 @@
 //                                                       project, send the prompt to the real claude, wait for
 //                                                       the turn and print what it did with a pass/check list
 //   node scripts/phase5-manual-check.ts --verify <dir>  after a manual --drone run: the drone files are unchanged
-//   ... --drone                                         also name a few of your drone takes
-//                                                       (~/Documents/devrel/drone/croatia-day-1-kuba/*_MASTER.MP4)
-//                                                       in the prompt, by path. They're only referenced:
+//   ... --drone <dir>                                   also name a few of your drone takes (the first three
+//                                                       .mp4/.mov files in <dir>, or in $UNCUT_DRONE_DIR when
+//                                                       no folder is given) in the prompt, by path. They're only referenced:
 //                                                       media_import adds them by path and never copies or
 //                                                       changes them (test/agent/agent-footage.test.ts checks hashes,
 //                                                       mtimes and an empty media/ folder); this script also
@@ -27,7 +27,7 @@
 // 10 s shorter for the default prompt) and Smooth.mp4 appended after it (or, with --drone, the take
 // the agent judged cleanest, with its reason in the reply).
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { makeFixture } from "../test/helpers/phase5-fixture.ts";
@@ -35,7 +35,9 @@ import { makeFixture } from "../test/helpers/phase5-fixture.ts";
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
 const option = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
-const DRONE_DIR = join(homedir(), "Documents/devrel/drone/croatia-day-1-kuba");
+// Your own footage folder: --drone <dir>, else $UNCUT_DRONE_DIR (never a path baked in here).
+const droneArg = option("--drone");
+const DRONE_DIR = droneArg && !droneArg.startsWith("--") ? resolve(droneArg) : process.env.UNCUT_DRONE_DIR ? resolve(process.env.UNCUT_DRONE_DIR) : undefined;
 
 const stamp = (files: Array<string>) => files.map((f) => ({ path: f, size: statSync(f).size, mtimeMs: statSync(f).mtimeMs }));
 
@@ -53,11 +55,14 @@ if (flag("--verify")) {
 }
 
 const out = resolve(option("--out") ?? realpathSync(mkdtempSync(join(tmpdir(), "uncut-phase5-manual-"))));
+if (flag("--drone") && (!DRONE_DIR || !existsSync(DRONE_DIR))) {
+  console.error("--drone needs your footage folder: --drone <dir>, or set UNCUT_DRONE_DIR.");
+  process.exit(2);
+}
 // Never write next to the footage.
-const droneRoot = resolve(homedir(), "Documents/devrel/drone");
 const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
-if (`${real(out)}/`.startsWith(`${real(droneRoot)}/`)) {
-  console.error(`--out ${out} is inside ${droneRoot}: pick a folder outside your footage.`);
+if (DRONE_DIR && `${real(out)}/`.startsWith(`${real(DRONE_DIR)}/`)) {
+  console.error(`--out ${out} is inside ${DRONE_DIR}: pick a folder outside your footage.`);
   process.exit(2);
 }
 mkdirSync(out, { recursive: true });
@@ -66,9 +71,10 @@ const fixture = makeFixture(join(out, "Footage"));
 console.log(`  Talk.mp4 (${fixture.seconds.toFixed(1)} s), Smooth.mp4, Jittered.mp4, Blurred.mp4`);
 
 // Your drone takes: referenced by path only, never opened for writing here.
-const drone = flag("--drone")
+const drone = flag("--drone") && DRONE_DIR
   ? readdirSync(DRONE_DIR)
-      .filter((n) => n.endsWith("_MASTER.MP4"))
+      .filter((n) => /\.(mp4|mov)$/i.test(n))
+      .sort()
       .slice(0, 3)
       .map((n) => join(DRONE_DIR, n))
   : [];
@@ -99,7 +105,7 @@ ${prompt}
      lists the turn; quit, reopen from Recents, ⌘Z / ⇧⌘Z still work.
   5. Export (Draft) and watch the join between the talk and the take.
 ${drone.length ? `  6. After: node scripts/phase5-manual-check.ts --verify ${out}  (the drone files' size and mtime are unchanged)\n` : ""}
-Or run it headlessly: node scripts/phase5-manual-check.ts --run${drone.length ? " --drone" : ""}
+Or run it headlessly: node scripts/phase5-manual-check.ts --run${drone.length ? ` --drone ${DRONE_DIR}` : ""}
 `);
   process.exit(0);
 }

@@ -84,26 +84,26 @@ const json = (r: Result) => JSON.parse(r.result.content[0]!.text!);
 test("#37: every folder a message names is listed for the agent and reported (two folders, ~ and $HOME), all of ~/Downloads says why; reference_frames takes ~/", { skip, timeout: 120000 }, async () => {
   const s = await setup("folders");
   try {
-    const clips = join(s.home, "Documents", "devrel", "recreate");
-    const assets = join(s.home, "Documents", "devrel", "video-editor");
+    const clips = join(s.home, "Videos", "project");
+    const assets = join(s.home, "Videos", "assets");
     mkdirSync(join(clips, "old"), { recursive: true });
     mkdirSync(assets, { recursive: true });
     mkdirSync(join(s.home, "Downloads"), { recursive: true });
     for (const n of ["a.mp4", "b.mp4", "c.png"]) writeFileSync(join(clips, n), "x");
     writeFileSync(join(assets, "logo.svg"), SVG);
     writeFileSync(join(s.home, "Downloads", "ref.png"), PNG);
-    const id = await s.start("Recreate ~/Downloads/ref.png with the clips in ~/Documents/devrel/recreate and the assets in $HOME/Documents/devrel/video-editor (also look in ~/Downloads).", [{ tool: "reference_frames", args: { path: "~/Downloads/ref.png" } }, { tool: "reference_frames", args: { path: "$HOME/Documents/devrel/video-editor/logo.svg" } }, { text: "Looked." }]);
+    const id = await s.start("Recreate ~/Downloads/ref.png with the clips in ~/Videos/project and the assets in $HOME/Videos/assets (also look in ~/Downloads).", [{ tool: "reference_frames", args: { path: "~/Downloads/ref.png" } }, { tool: "reference_frames", args: { path: "$HOME/Videos/assets/logo.svg" } }, { text: "Looked." }]);
     const t = await s.done(id);
     assert.equal(t.status, "done", t.error);
     assert.deepEqual(t.folders, [
-      { path: "~/Documents/devrel/recreate", files: 3, folders: 1 },
-      { path: "~/Documents/devrel/video-editor", files: 1, folders: 0 },
+      { path: "~/Videos/project", files: 3, folders: 1 },
+      { path: "~/Videos/assets", files: 1, folders: 0 },
       { path: "~/Downloads", files: 0, folders: 0, problem: "it's all of ~/Downloads; paste a folder inside it" },
     ]);
     const prompt = s.prompts().at(-1)!.prompt;
     assert.match(prompt, /<folders>\nThe folders the user named in this message, each listed by Uncut/);
-    assert.ok(prompt.includes(`~/Documents/devrel/recreate (${clips}): 3 files (2 videos, 1 image) and 1 folder: a.mp4, b.mp4, c.png, old/.`), prompt);
-    assert.ok(prompt.includes(`~/Documents/devrel/video-editor (${assets}): 1 file (1 image): logo.svg.`), prompt);
+    assert.ok(prompt.includes(`~/Videos/project (${clips}): 3 files (2 videos, 1 image) and 1 folder: a.mp4, b.mp4, c.png, old/.`), prompt);
+    assert.ok(prompt.includes(`~/Videos/assets (${assets}): 1 file (1 image): logo.svg.`), prompt);
     assert.match(prompt, /~\/Downloads: not listed, it's all of ~\/Downloads; paste a folder inside it/);
     const [ref, svg] = s.results().filter((r) => r.tool === "reference_frames");
     assert.ok(!ref!.result.isError, JSON.stringify(ref!.result));
@@ -119,15 +119,15 @@ test("#37: every folder a message names is listed for the agent and reported (tw
 test("#35 + #34: a kit in the library from ~/ files and a folder, picked by another project; logos as pictures; colour changes wait for the card; a missing font is an error until the kit has its file", { skip, timeout: 240000 }, async () => {
   const s = await setup("brand");
   try {
-    const brand = join(s.home, "Downloads", "argent-brand");
+    const brand = join(s.home, "Downloads", "brand-kit");
     mkdirSync(brand, { recursive: true });
     writeFileSync(join(brand, "argent-logo.svg"), SVG);
     writeFileSync(join(brand, "argent-mark.png"), PNG);
     writeFileSync(join(s.home, "Downloads", "KitMono.woff2"), readFileSync(resolve("assets/fonts/DMMono-Regular.woff2")));
     const ghost = `<canvas id="c"></canvas><script>const c = document.getElementById("c"); window.render = (t, info) => { c.width = info.width; c.height = info.height; const x = c.getContext("2d"); x.font = "64px 'Ghost Grotesk', sans-serif"; x.fillText("Argent", 40, 120); };</script>`;
     const kitFont = ghost.replace("Ghost Grotesk", "Uncut Kit Mono");
-    const id = await s.start("Make the Argent kit from ~/Downloads/argent-brand", [
-      { tool: "brand_write", args: { name: "Argent", colors: [{ hex: "#0b1d3a", role: "background" }, { hex: "#f5a623", role: "accent" }], logos: { light: "~/Downloads/argent-brand/argent-logo.svg" }, import: "$HOME/Downloads/argent-brand" } },
+    const id = await s.start("Make the Argent kit from ~/Downloads/brand-kit", [
+      { tool: "brand_write", args: { name: "Argent", colors: [{ hex: "#0b1d3a", role: "background" }, { hex: "#f5a623", role: "accent" }], logos: { light: "~/Downloads/brand-kit/argent-logo.svg" }, import: "$HOME/Downloads/brand-kit" } },
       { tool: "brand_read" },
       { tool: "graphic_write", args: { name: "ghost.html", html: ghost } },
       { tool: "project_read" },

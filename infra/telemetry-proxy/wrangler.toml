@@ -8,8 +8,8 @@ observability = { enabled = false }
 
 [vars]
 GRAFANA_OTLP_URL = "https://otlp-gateway-prod-eu-north-0.grafana.net/otlp"
-GRAFANA_INSTANCE_ID = "1876240"
-# Secrets (wrangler secret put): GRAFANA_TOKEN, APP_TOKEN, optional APP_TOKEN_NEXT.
+# Secrets (wrangler secret put): GRAFANA_INSTANCE_ID, GRAFANA_TOKEN, APP_TOKEN, optional APP_TOKEN_NEXT.
+# The instance id isn't a credential, but it stays out of the public repo all the same.
 
 # Per-IP limit: 60 requests per 60 s per Cloudflare location (period must be 10 or 60).
 # A client batches up to 20 events every 10 s, so a normal app sends <= 6 requests a minute.

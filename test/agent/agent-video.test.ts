@@ -7,7 +7,7 @@
 //   re-ask comes from the cache with no ffmpeg; refusals.
 // - A slow take answers "pending" and joins the same job when asked again.
 // - media_analyze ["shots"] of a clip with cuts at frames 45 and 100; contact_sheet at "shots".
-// All media is made here with ffmpeg's lavfi sources; nothing from ~/Documents/devrel/drone.
+// All media is made here with ffmpeg's lavfi sources; nothing from the user's footage folder.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

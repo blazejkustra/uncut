@@ -8,6 +8,7 @@
 // Deploy (from the repo root):
 //   pnpm --dir infra/telemetry-proxy install --ignore-workspace
 //   pnpm --dir infra/telemetry-proxy exec wrangler login
+//   pnpm --dir infra/telemetry-proxy exec wrangler secret put GRAFANA_INSTANCE_ID  # the Grafana Cloud instance (user) id, digits only
 //   pnpm --dir infra/telemetry-proxy exec wrangler secret put GRAFANA_TOKEN        # the Grafana logs:write token
 //   TOKEN=$(openssl rand -hex 32); echo "$TOKEN"                                # keep it for the app build
 //   printf '%s' "$TOKEN" | pnpm --dir infra/telemetry-proxy exec wrangler secret put APP_TOKEN
@@ -18,6 +19,10 @@
 //   curl -i -X POST https://uncut-telemetry.<your-subdomain>.workers.dev/v1/logs \
 //     -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
 //     --data '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"uncut"}}]},"scopeLogs":[{"logRecords":[{"body":{"stringValue":"proxy:smoke"},"attributes":[{"key":"event.name","value":{"stringValue":"proxy:smoke"}}]}]}]}]}'
+//
+// Local runs (wrangler dev) read the same names from infra/telemetry-proxy/.dev.vars (gitignored).
+// GRAFANA_INSTANCE_ID moved from wrangler.toml's [vars] to a secret: on a Worker deployed before
+// that, put the secret first, then deploy (a deploy without it answers 503 until it's set).
 //
 // Rotating the app token: put the new one in APP_TOKEN_NEXT, ship a build that uses it, then once
 // old builds have faded, move it to APP_TOKEN and `wrangler secret delete APP_TOKEN_NEXT`.

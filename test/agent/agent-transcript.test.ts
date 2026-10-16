@@ -7,7 +7,7 @@
 //   and pauses (aligned to the silences once loudness ran); a re-ask spawns no whisper.
 // - media_analyze ["transcript"] gives a summary; refusals; step labels.
 // - setup.check has the whisper row; transcription.* chooses (saved), downloads and cancels models.
-// All media is made here with ffmpeg; nothing from ~/Documents/devrel/drone.
+// All media is made here with ffmpeg; nothing from the user's footage folder.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";

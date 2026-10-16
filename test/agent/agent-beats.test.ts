@@ -5,7 +5,7 @@
 //   beats in project frames (6, 21, 36, …); "tempo" again comes from the cache without ffmpeg; a
 //   range lists the beats and onsets inside it; a clip without sound has none.
 // - The tool's schema takes the aliases; the step label and the system prompt know beats.
-// Media is made here (TS-synthesised WAV, ffmpeg lavfi); nothing from ~/Documents/devrel/drone.
+// Media is made here (TS-synthesised WAV, ffmpeg lavfi); nothing from the user's footage folder.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
