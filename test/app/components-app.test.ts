@@ -148,12 +148,13 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
 
-  // The Elements grid (D130): the general elements, the end card and the chart, each with its real
+  // The Elements grid (D130, sections D251): the general elements, the end card and the chart, each with its real
   // HTML as the thumbnail; the dev-promo components start hidden (listed under the grid).
   await page.click("[data-testid=rail-elements]");
   await page.waitForSelector("[data-testid=components-grid]");
   const tiles = await page.$$eval("[data-testid=component-tile]", (els) => els.map((e) => [(e as HTMLElement).dataset.component, !!e.querySelector("[data-testid=component-thumb] .pv-comp")]));
-  assert.deepEqual(tiles, ["shape", "lower-third", "callout", "progress-bar", "countdown", "subscribe", "sticker", "image-frame", "end-card", "chart"].map((id) => [`component.${id}`, true]));
+  // In their sections (D251): titles, social, info, shapes and media, stickers.
+  assert.deepEqual(tiles, ["lower-third", "callout", "quote", "before-after", "end-card", "subscribe", "social-button", "follow", "progress-bar", "countdown", "checklist", "rating", "price-tag", "map-pin", "chart", "shape", "image-frame", "sticker"].map((id) => [`component.${id}`, true]));
   await page.screenshot({ path: out("components-panel.png") });
 
   // Drag the end card onto the canvas at frame 90: it lands there (full frame), 3 s, on a free video track.

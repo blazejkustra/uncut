@@ -25,6 +25,6 @@ export { DEVICES, deviceSpec, screenRect, FRAME_COLOR, bezelSvg } from "./compon
 export type { Device } from "./components/device.ts";
 export { terminalState, agentLogState } from "./components/draw.ts";
 export type { TerminalLine } from "./components/draw.ts";
-export { COMPONENTS, componentInfo, DRAWN_COMPONENTS, UNDRAWN_COMPONENTS, isDrawnComponent, componentScale, naturalSize, componentBox, componentRest, defaultComponentBox, componentDefaults, componentHtml, componentParts, wrapComponent } from "./components/registry.ts";
+export { COMPONENTS, componentInfo, DRAWN_COMPONENTS, UNDRAWN_COMPONENTS, isDrawnComponent, componentScale, naturalSize, componentBox, componentRest, defaultComponentBox, componentDefaults, componentHtml, componentParts, wrapComponent, ELEMENT_CATEGORIES, elementCategory, type ElementCategory } from "./components/registry.ts";
 export { screenTransform, screenKeys, planDeviceFrame, alignScreen } from "./components/deviceFrame.ts";
 export type { DeviceFrameRequest } from "./components/deviceFrame.ts";

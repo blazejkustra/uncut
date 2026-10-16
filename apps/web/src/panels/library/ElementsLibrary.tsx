@@ -1,6 +1,6 @@
 import { SOLID } from "@uncut/core/render";
-import { type ComponentInfo, componentDefaults, naturalSize, componentHtml, screenRect, COMPONENTS } from "@uncut/core/components";
-import { Eye, EyeOff, Plus, Blocks, ChevronDown, ChevronRight } from "lucide-react";
+import { type ComponentInfo, componentDefaults, naturalSize, componentHtml, screenRect, COMPONENTS, ELEMENT_CATEGORIES, elementCategory, type ElementCategory } from "@uncut/core/components";
+import { Eye, EyeOff, Plus, Blocks, ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import React, { useRef, useState, useLayoutEffect } from "react";
 import { type Project, useApp, actions } from "../../state/store.ts";
 import { COMPONENT_DRAG_TYPE, setDraggedComponent } from "../../preview/components.ts";
@@ -10,9 +10,14 @@ import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { canGoBehind } from "../../preview/text.ts";
 import { getPlayback } from "../../preview/playback.ts";
 import { StickerPicker } from "../Stickers.tsx";
+import "./elements.css";
 
 /** The frame a component's thumbnail shows (a terminal mid-way, its line typed). */
-const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45, "component.agent-log": 150, "component.compare-table": 75, "component.lower-third": 45, "component.sticker": 30, "component.progress-bar": 200, "component.subscribe": 20 };
+const THUMB_FRAME: Readonly<Record<string, number>> = { "component.terminal": 45, "component.agent-log": 150, "component.compare-table": 75, "component.lower-third": 45, "component.sticker": 30, "component.progress-bar": 200, "component.subscribe": 20, "component.callout": 30, "component.social-button": 60, "component.checklist": 150, "component.rating": 60 };
+/** Props a thumbnail shows instead of the defaults (no pointer in a tile). */
+const THUMB_PROPS: Readonly<Record<string, Record<string, unknown>>> = { "component.subscribe": { cursor: false }, "component.social-button": { cursor: false } };
+/** A frame where everything has settled, for elements whose look is a moment in an animation. */
+const SETTLED = 60;
 
 /**
  * A component's thumbnail (D76): its real HTML (core componentHtml with its default props) laid out
@@ -32,10 +37,10 @@ function ComponentThumb({ info, project }: { info: ComponentInfo; project: Proje
     return () => observer.disconnect();
   }, []);
   const canvas = { width: 1920, height: 1080 };
-  const props = componentDefaults(info.id);
+  const props = { ...componentDefaults(info.id), ...THUMB_PROPS[info.id] };
   const size = naturalSize({ component: info.id, props }, canvas);
   const item = { id: `thumb-${info.id}`, type: "component" as const, component: info.id, duration: 300, props, transform: { x: 0, y: 0, w: size.width, h: size.height } };
-  const html = componentHtml(item, { canvas, theme: project.theme }, THUMB_FRAME[info.id] ?? 0, { fps: 30 });
+  const html = componentHtml(item, { canvas, theme: project.theme }, THUMB_FRAME[info.id] ?? (info.block.animated ? SETTLED : 0), { fps: 30 });
   const k = box.w && box.h ? Math.min((box.w * 0.86) / size.width, (box.h * 0.86) / size.height) : 0;
   const screen = info.id === "component.device-frame" ? screenRect("phone", size.width, size.height) : undefined;
   return (
@@ -70,18 +75,28 @@ const HideButton = ({ id, name, hidden }: { id: string; name: string; hidden: bo
   </button>
 );
 
+/** Words a tile is found by: its name, its section and its search words. */
+const tileWords = (name: string, id: string) => [...name.toLowerCase().split(/[\s/-]+/), ...elementCategory(id).category.toLowerCase().split(/[\s&]+/), ...elementCategory(id).keywords];
+/** Every word of the query starts one of the tile's words. */
+const matches = (query: string, words: ReadonlyArray<string>) => query.toLowerCase().trim().split(/[\s-]+/).filter(Boolean).every((t) => words.some((w) => w.startsWith(t)));
+
 /**
- * The Elements tab (D76, E2/E3 in D130/D131): one grid of elements, general ones first, then a
- * Background (a colour or gradient under the text) and a plugin's components (D103). Drag one onto
- * the canvas (it lands there, at the playhead) or the timeline (at that time), or + adds it at the
- * playhead. Any tile can be hidden (its eye, or right-click); hidden ones (the dev-promo components
- * start that way) are listed below the grid, and can be shown again. Remembered on this Mac.
+ * The Elements tab (D76, E2/E3 in D130/D131, sections and search in D251): one search over every
+ * element and sticker, a row of section chips (All, Titles & text, Social, Info, Shapes & media,
+ * Stickers, …), and the elements in their sections; a Background (a colour or gradient under the
+ * text) sits with the shapes, a plugin's components (D103) under More, and the stickers in their own
+ * section with theirs inside. Drag one onto the canvas (it lands there, at the playhead) or the
+ * timeline (at that time), or + adds it at the playhead. Any tile can be hidden (its eye, or
+ * right-click); hidden ones (the dev-promo components start that way) are listed at the end and can
+ * be shown again. Remembered on this Mac.
  */
 export function ElementsLibrary({ project }: { project: Project }) {
   const { connection, contributions } = useApp();
   const online = connection === "connected";
   const hidden = useHiddenElements();
   const [showHidden, setShowHidden] = useState(false);
+  const [query, setQuery] = useState("");
+  const [only, setOnly] = useState<ElementCategory | undefined>(undefined);
   const menu = (e: React.MouseEvent, id: string, name: string, isHidden: boolean) => {
     e.preventDefault();
     openMenu(e.clientX, e.clientY, [isHidden ? { id: "element-show", label: "Show in the grid", run: () => showElement(id) } : { id: "element-hide", label: "Hide from the grid", run: () => hideElement(id) }], name);
@@ -183,20 +198,65 @@ export function ElementsLibrary({ project }: { project: Project }) {
     </div>
   );
   const plugins = contributions?.components ?? [];
+  const searching = query.trim() !== "";
+  // Each section's visible tiles, filtered by the search.
+  const tilesIn = (cat: ElementCategory) => {
+    const tiles: Array<React.ReactNode> = [];
+    for (const c of COMPONENTS) if (elementCategory(c.id).category === cat && !hidden.includes(c.id) && (!searching || matches(query, tileWords(c.name, c.id)))) tiles.push(componentTile(c, false));
+    if (cat === "Shapes & media" && !backgroundHidden && (!searching || matches(query, ["background", "colour", "color", "gradient", "fill", "backdrop", "shapes", "media"]))) tiles.push(backgroundTile(false));
+    // A plugin's components (D103): a named tile, never its template here (it only runs in the graphics sandbox once added).
+    if (cat === "More") for (const c of plugins) if (!hidden.includes(c.id) && (!searching || matches(query, [...c.name.toLowerCase().split(/\s+/), c.pluginName.toLowerCase()]))) tiles.push(pluginTile(c, false));
+    return tiles;
+  };
+  const sections = ELEMENT_CATEGORIES.map((cat) => ({ cat, tiles: tilesIn(cat) })).filter(({ cat, tiles }) => tiles.length > 0 || cat === "Stickers");
+  const shown = sections.filter(({ cat }) => !only || cat === only);
   const hiddenCount = COMPONENTS.filter((c) => hidden.includes(c.id)).length + plugins.filter((c) => hidden.includes(c.id)).length + (backgroundHidden ? 1 : 0);
   return (
     <aside className="library" data-testid="elements-library">
       <div className="lib-head">Elements</div>
-      <div className="lib-section">
-        <div className="grid2" data-testid="components-grid">
-          {COMPONENTS.filter((c) => !hidden.includes(c.id)).map((c) => componentTile(c, false))}
-          {!backgroundHidden && backgroundTile(false)}
-          {/* A plugin's components (D103): a named tile, never its template here (it only runs in the graphics sandbox once added). */}
-          {plugins.filter((c) => !hidden.includes(c.id)).map((c) => pluginTile(c, false))}
-        </div>
+      <div className="elements-top">
+        <label className="elements-search">
+          <Search aria-hidden />
+          {/* One search over elements and stickers; its test id stays the stickers' one (D165). */}
+          <input className="field input" data-testid="sticker-search" placeholder="Search elements" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && query && (e.stopPropagation(), setQuery(""))} />
+          {query && (
+            <button className="icon-btn elements-search-clear" data-testid="elements-search-clear" aria-label="Clear the search" onClick={() => setQuery("")}>
+              <X />
+            </button>
+          )}
+        </label>
+        {!searching && (
+          <div className="elements-chips" role="tablist" aria-label="Sections" data-testid="elements-chips">
+            <button className={`chip-btn ${only ? "" : "active"}`} role="tab" aria-selected={!only} data-testid="elements-chip" data-category="All" onClick={() => setOnly(undefined)}>
+              All
+            </button>
+            {sections.map(({ cat }) => (
+              <button key={cat} className={`chip-btn ${only === cat ? "active" : ""}`} role="tab" aria-selected={only === cat} data-testid="elements-chip" data-category={cat} onClick={() => setOnly(only === cat ? undefined : cat)}>
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <StickerPicker />
-      {hiddenCount > 0 && (
+      {(searching ? sections : shown).map(({ cat, tiles }) =>
+        cat === "Stickers" ? (
+          <div key={cat} className="lib-section" data-testid="elements-category" data-category={cat}>
+            <div className="lib-label elements-section-label">{cat}</div>
+            {tiles.length > 0 && <div className="grid2" data-testid="components-grid">{tiles}</div>}
+            <div data-testid="stickers">
+              <StickerPicker query={query} />
+            </div>
+          </div>
+        ) : tiles.length ? (
+          <div key={cat} className="lib-section" data-testid="elements-category" data-category={cat}>
+            <div className="lib-label elements-section-label">{cat}</div>
+            <div className="grid2" data-testid="components-grid">
+              {tiles}
+            </div>
+          </div>
+        ) : null,
+      )}
+      {hiddenCount > 0 && !searching && !only && (
         <div className="lib-section">
           <button className="lib-label hidden-toggle" data-testid="hidden-elements-toggle" aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
             {showHidden ? <ChevronDown /> : <ChevronRight />}

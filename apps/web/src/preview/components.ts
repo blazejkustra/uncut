@@ -16,8 +16,15 @@ type Problem = { readonly problem: string };
 /** The drag type of a component tile, and the one being dragged (dataTransfer can't be read on dragover). */
 export const COMPONENT_DRAG_TYPE = "application/x-uncut-component";
 let dragged: string | undefined;
-export const setDraggedComponent = (id: string | undefined) => void (dragged = id);
+/** The props a dragged tile adds its component with (a sticker from the set, D251), kept past the drop so the drop's add can read them. */
+let draggedProps: { readonly id: string; readonly props: Record<string, unknown> } | undefined;
+export const setDraggedComponent = (id: string | undefined, props?: Record<string, unknown>) => {
+  dragged = id;
+  if (id) draggedProps = props ? { id, props } : undefined;
+};
 export const draggedComponent = () => dragged;
+export const draggedComponentProps = (id: string) => (draggedProps?.id === id ? draggedProps.props : undefined);
+export const clearDraggedComponentProps = () => void (draggedProps = undefined);
 /** A Text tab preset being dragged (D80): its TEXT_PRESETS id. */
 export const TEXT_DRAG_TYPE = "application/x-uncut-text";
 /** The text preset being dragged (X2, D132): dragover can't read dataTransfer, the drop ghost needs it. */
@@ -25,8 +32,8 @@ let draggedTextId: string | undefined;
 export const setDraggedText = (id: string | undefined) => void (draggedTextId = id);
 export const draggedText = () => draggedTextId;
 
-/** How long a new component lasts: a countdown or a lower third 5 s, an end card, callout or subscribe 3 s, a sticker 2 s, the rest 4 s. */
-const SECONDS: Readonly<Record<string, number>> = { "component.end-card": 3, "component.subscribe": 3, "component.sticker": 2, "component.callout": 3, "component.countdown": 5, "component.lower-third": 5 };
+/** How long a new component lasts: a countdown, lower third, quote or checklist 5 s, an end card, callout, subscribe or social button 3 s, a sticker 2 s, the rest 4 s. */
+const SECONDS: Readonly<Record<string, number>> = { "component.end-card": 3, "component.subscribe": 3, "component.social-button": 3, "component.sticker": 2, "component.callout": 3, "component.countdown": 5, "component.lower-third": 5, "component.quote": 5, "component.checklist": 5 };
 export const secondsFor = (id: string) => SECONDS[id] ?? 4;
 
 /**
@@ -63,9 +70,9 @@ export function planAddComponent(project: ProjectModel, componentId: string, fra
   const itemId = uniqueId(project, c.id.replace(/^component\./, ""), taken);
   taken.add(itemId);
   // Dropped on the canvas: centred on the drop point; else where it goes on this canvas's aspect (F7, D152).
-  let transform: Item["transform"] = defaultComponentBox(c.id, project);
+  let transform: Item["transform"] = defaultComponentBox(c.id, project, { ...componentDefaults(c.id), ...(props ?? {}) });
   if (at && !c.block.fullFrame) {
-    const size = transform ? { width: transform.w!, height: transform.h! } : naturalSize({ component: c.id, props: componentDefaults(c.id) }, project.canvas);
+    const size = transform ? { width: transform.w!, height: transform.h! } : naturalSize({ component: c.id, props: { ...componentDefaults(c.id), ...(props ?? {}) } }, project.canvas);
     transform = { x: Math.round(at.x - size.width / 2), y: Math.round(at.y - size.height / 2), w: Math.round(size.width), h: Math.round(size.height) };
   }
   // A sticker from the set (D165) comes with its own props over the defaults, and its name.
