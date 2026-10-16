@@ -45,6 +45,8 @@ function watchRemoteStatus() {
   }, 1500);
 }
 
+let askedPendingOpen = false;
+
 export async function start() {
   // Only Local's own server can exit under the window (the desktop doesn't report it for a remote).
   bridge.onServerExit((message) => !isRemote() && set({ connection: "server-exited", connectionMessage: message }));
@@ -76,6 +78,14 @@ export async function start() {
       if (state.connection === "server-exited") return;
       set({ connection: "connected", environmentProblem: undefined, notice: state.notice?.transport ? undefined : state.notice });
       void actions.loadContributions();
+      // D252: a .uncut project double-clicked in Finder before the window was ready opens now (Local only).
+      if (!askedPendingOpen && !isRemote()) {
+        askedPendingOpen = true;
+        bridge.pendingOpen?.().then(
+          (dir) => void (dir && actions.openProject(dir)),
+          () => {}, // a main process without the open-file hook: nothing is pending
+        );
+      }
       // A remote that restarted may be another version; a late first connect has no hello yet.
       if (isRemote() || !state.hello) void refreshHello();
       unsubscribeJobs?.();
