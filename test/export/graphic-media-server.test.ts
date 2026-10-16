@@ -147,7 +147,8 @@ test("a graphic drawing the project's own video: export.start draws its exact fr
     name: "Graphic media",
     canvas: { width: W, height: H, fps: 30 },
     media: [{ id: "m-clip", kind: "video", name: "Clip.mp4", path: clip, probe: { frames: 90, fps: 30, width: 1280, height: 720, hasAudio: false } }],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/footage.html", duration: 45 }] }],
+    // The morph's cut: the graphic's last frame (local 44) draws source frame 59; the clip after it starts on that same frame.
+    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/footage.html", duration: 45 }, { id: "c", type: "clip", media: "m-clip", in: 59, duration: 15 }] }],
   } as Project;
   const dir = writeProject(root, "GraphicMedia", project);
   mkdirSync(join(dir, "graphics"));
@@ -186,4 +187,15 @@ test("a graphic drawing the project's own video: export.start draws its exact fr
     assert.ok(same >= 0.97, `frame ${local}: the export is what the preview draws (SSIM ${same})`);
     assert.ok(toRight > toNext, `frame ${local}: the source frame ${15 + local}, not the next (${toRight} vs ${toNext})`);
   }
+  // The cut from the graphic to a clip of the same footage: the same source frame on both sides
+  // (the graphic's picture through Chromium, the clip's through the export's own filters).
+  const before = frameOf(output, 44, resolve("test-output/d290-cut-graphic.png"));
+  const after = frameOf(output, 45, resolve("test-output/d290-cut-clip.png"));
+  const cut = ssim(before, after, W, H);
+  const mean = (png: string) => {
+    const px = execFileSync("ffmpeg", ["-v", "error", "-i", png, "-vf", "scale=1:1:flags=area,format=rgb24", "-f", "rawvideo", "-"]);
+    return [...px];
+  };
+  t.diagnostic(`the cut: graphic frame vs clip frame SSIM ${cut.toFixed(4)}, mean RGB ${mean(before).join(",")} vs ${mean(after).join(",")}`);
+  assert.ok(cut >= 0.98, `the graphic's last frame is the clip's first: SSIM ${cut}`);
 });
