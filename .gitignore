@@ -24,3 +24,6 @@ release/
 native/media/target/
 # D258: the plugins the desktop build lays out for electron-builder.
 apps/desktop/stage/
+
+# Finder aliases (one held a home path)
+* alias

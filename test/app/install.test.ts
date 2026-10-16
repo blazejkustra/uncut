@@ -11,8 +11,9 @@ import { join, resolve } from "node:path";
 import { loadModules, validateProject } from "../../packages/core/src/index.ts";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, onInterrupt, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { DJI_CLIP } from "../helpers/footage.ts";
 
-const DJI = join(homedir(), "Documents/devrel/drone/DJI_20261010132228_0005_D.MP4");
+const DJI = DJI_CLIP;
 const dmgs = existsSync("dist") ? readdirSync("dist").filter((f) => /^Uncut-.+-arm64\.dmg$/.test(f)).map((f) => resolve("dist", f)) : [];
 const DMG = dmgs[0];
 const skip = dmgs.length === 0 ? "no dmg built: run pnpm dist" : false;

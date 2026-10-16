@@ -7,7 +7,7 @@
 // - Applying cuts the word and the pauses as ONE agent edit on the turn; a second ask for the same
 //   word is a no-op with a note; Undo turn restores the clip.
 // - Refusals with sentences; step labels.
-// All media is made here with ffmpeg; nothing from ~/Documents/devrel/drone.
+// All media is made here with ffmpeg; nothing from the user's footage folder.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

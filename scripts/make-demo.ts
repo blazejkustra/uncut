@@ -1,5 +1,6 @@
 // Builds a demo .uncut project from real drone footage (paths are referenced, never copied).
-// Usage: node scripts/make-demo.ts <footage.mp4> [out dir] (pnpm demo). Tests build their own copy (test/helpers/demo.ts).
+// Usage: node scripts/make-demo.ts <footage.mp4> [out dir] (pnpm demo), or with UNCUT_FOOTAGE=<footage.mp4>.
+// Tests build their own copy (test/helpers/demo.ts).
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
@@ -7,7 +8,12 @@ import { basename, resolve } from "node:path";
 import type { Item, MediaProbe, Project } from "../packages/core/src/timeline/types.ts";
 
 const FPS = 60;
-const src = resolve(process.argv[2] ?? "../drone/DJI_20261010132228_0005_D.MP4");
+const footage = process.argv[2] ?? process.env.UNCUT_FOOTAGE;
+if (!footage) {
+  console.error("Usage: node scripts/make-demo.ts <footage.mp4> [out dir]  (or set UNCUT_FOOTAGE)");
+  process.exit(2);
+}
+const src = resolve(footage);
 const out = resolve(process.argv[3] ?? "fixtures/drone-demo.uncut");
 
 interface FfprobeStream {

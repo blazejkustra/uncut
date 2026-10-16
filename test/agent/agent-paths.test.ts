@@ -45,8 +45,8 @@ test("media_import's paths take $HOME too", async () => {
 });
 
 test("every folder a message names: both of two folders, a file's folder, $HOME paths; all of ~/Downloads is named with why, a file in it isn't a folder to list", async () => {
-  const a = join(home, "Documents", "devrel", "recreate");
-  const b = join(home, "Documents", "devrel", "video-editor");
+  const a = join(home, "Videos", "project");
+  const b = join(home, "Videos", "assets");
   mkdirSync(join(a, "sub"), { recursive: true });
   mkdirSync(b, { recursive: true });
   mkdirSync(join(home, "Downloads"), { recursive: true });
@@ -61,7 +61,7 @@ test("every folder a message names: both of two folders, a file's folder, $HOME 
       return undefined;
     }
   };
-  const text = `Recreate it from ~/Downloads/ref.mp4, use the clips in ~/Documents/devrel/recreate and the assets in $HOME/Documents/devrel/video-editor. Also ~/Downloads.`;
+  const text = `Recreate it from ~/Downloads/ref.mp4, use the clips in ~/Videos/project and the assets in $HOME/Videos/assets. Also ~/Downloads.`;
   const named = namedFolders(text, join(root, "project"), kind, home, (p) => p);
   assert.deepEqual(named, [
     { dir: a, named: "folder" },

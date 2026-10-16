@@ -6,16 +6,16 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DJI_CLIP, DJI_STILL, FIRST_FLIGHT } from "../helpers/footage.ts";
 
 const BIN = resolve("native/media/target/release/uncut-media");
 const hasFfmpeg = !spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).error && !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = !existsSync(BIN) ? "media core not built (run pnpm build)" : !hasFfmpeg ? "needs ffmpeg and ffprobe for the comparison" : false;
 
-const DRONE = join(homedir(), "Documents/devrel/drone");
 const REAL = [
-  join(DRONE, "DJI_20261010132228_0005_D.MP4"),
-  join(DRONE, "first-flight.mp4"),
-  join(DRONE, "DJI_20261010131759_0002_D.JPG"),
+  DJI_CLIP,
+  FIRST_FLIGHT,
+  DJI_STILL,
   resolve("fixtures/synth-hevc10.mp4"),
   resolve("fixtures/trim-proxy.mp4"),
 ];
@@ -96,9 +96,10 @@ test("matches ffprobe on generated files: audio-only, 24/25/29.97 fps, audio+vid
   assert.equal(native(made["audio-only.mov"]!).kind, "audio");
 });
 
-const SCRATCH = "/private/tmp/claude-501/-Users-blazejkustra-Documents-devrel/3831cfa3-e621-4363-bd93-bfd925d590db/scratchpad/gen";
-// Both files, not just the folder: an emptied or half-filled scratchpad skips instead of failing (#89).
-const REPRO = ["twoedits.mp4", "frag.mp4"].map((name) => join(SCRATCH, name));
+// A reviewer's repro files, when UNCUT_PROBE_REPRO_DIR names their folder. Both files, not just the
+// folder: an emptied or half-filled folder skips instead of failing (#89).
+const SCRATCH = process.env.UNCUT_PROBE_REPRO_DIR ?? "";
+const REPRO = SCRATCH ? ["twoedits.mp4", "frag.mp4"].map((name) => join(SCRATCH, name)) : [];
 
 test("variable frame rate: fps is the most used frame duration (ffprobe packet durations), not r_frame_rate by luck", { skip }, () => {
   // 60 fps for the first second, then every other frame: 60 frames at 1/60 s, 60 at 1/30 s, plus a few odd ones.
@@ -116,7 +117,7 @@ test("variable frame rate: fps is the most used frame duration (ffprobe packet d
   console.log(`# vfr: native fps ${ours.fps}; packet-duration mode ${expected}; ffprobe avg_frame_rate differs by design`);
 });
 
-test("the reviewer's repro files (when present): two edit-list entries, fragmented, VFR", { skip: skip || (!REPRO.every((f) => existsSync(f)) && "repro files aren't here") }, () => {
+test("the reviewer's repro files (when present): two edit-list entries, fragmented, VFR", { skip: skip || ((!REPRO.length || !REPRO.every((f) => existsSync(f))) && "set UNCUT_PROBE_REPRO_DIR to the folder with twoedits.mp4 and frag.mp4") }, () => {
   const twoEdits = native(join(SCRATCH, "twoedits.mp4"));
   assert.equal(twoEdits.durationSeconds, reference(join(SCRATCH, "twoedits.mp4")).durationSeconds);
   const frag = native(join(SCRATCH, "frag.mp4"));

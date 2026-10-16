@@ -5,19 +5,20 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp } from "../helpers/app.ts";
+import { DJI_CLIP, FIRST_FLIGHT, footageMissing } from "../helpers/footage.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
-const DJI = join(homedir(), "Documents/devrel/drone/DJI_20261010132228_0005_D.MP4");
-const FIRST = join(homedir(), "Documents/devrel/drone/first-flight.mp4");
+const DJI = DJI_CLIP;
+const FIRST = FIRST_FLIGHT;
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const skip = !existsSync(APP)
   ? `packaged app not built: run pnpm dist to create ${APP}`
   : !existsSync(DJI) || !existsSync(FIRST)
-    ? "needs the drone clips in ~/Documents/devrel/drone"
+    ? footageMissing(!existsSync(DJI) ? DJI : FIRST)
     : !hasFfmpeg
       ? "needs ffmpeg for thumbnails"
       : false;

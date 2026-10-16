@@ -12,11 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { avcCodec, hevcCodec, keyframeOf, readMp4Index, sampleAt, type Mp4Index } from "../../packages/core/src/media/mp4index.ts";
+import { DJI_CLIP, footageMissing } from "../helpers/footage.ts";
 
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
 const encoders = hasFfmpeg ? execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }) : "";
 const skip = hasFfmpeg ? false : "needs ffmpeg";
-const DRONE = join(process.env.HOME ?? "", "Documents/devrel/drone/DJI_20261010132228_0005_D.MP4");
+const DRONE = DJI_CLIP;
 let dir = "";
 const ff = (...args: Array<string>) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args]);
 
@@ -194,7 +195,7 @@ test("D221: codec strings from avcC and hvcC records", () => {
   assert.equal(hevcCodec(main10, "hev1"), "hev1.2.4.H153.B0");
 });
 
-test("D221: the DJI 4K60 HEVC drone clip (read-only) matches ffprobe", { skip: !hasFfmpeg ? "needs ffmpeg" : existsSync(DRONE) ? false : "drone footage not on this Mac" }, async () => {
+test("D221: the DJI 4K60 HEVC drone clip (read-only) matches ffprobe", { skip: !hasFfmpeg ? "needs ffmpeg" : existsSync(DRONE) ? false : footageMissing(DRONE) }, async () => {
   const index = (await indexOf(DRONE))!;
   assert.ok(index, "indexed");
   assert.match(index.codec, /^hvc1\.2\./, `Main 10: ${index.codec}`);

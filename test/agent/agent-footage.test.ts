@@ -7,7 +7,7 @@
 // - contact_sheet of a media file (right cells, frames and size; always the first video stream,
 //   checked on a clip whose second stream is a larger default mjpeg) and of a timeline range.
 // - ui_show puts a one-time request in the agent state (the renderer side is in agent-app).
-// All media is made here with ffmpeg's lavfi sources; nothing from ~/Documents/devrel/drone.
+// All media is made here with ffmpeg's lavfi sources; nothing from the user's footage folder.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

@@ -2,11 +2,11 @@
 // rebuilt in Uncut from the reference video's own files. Shared by test/app/phase6-exit.test.ts (the
 // scripted claude) and scripts/phase6-manual-check.ts (the real one).
 //
-// The reference (~/Documents/devrel/video-editor/argent-haiku45-vs-haiku55, or $UNCUT_ARGENT_REF) is
+// The reference ($UNCUT_ARGENT_REF, else fixtures/promo-reference, which is gitignored) is
 // READ-ONLY: its recordings and sky background are imported by path (media_import references them in
 // place), its copy and numbers are read from its project.json at run time (nothing invented or
-// restated), and nothing is ever written there. The Argent wordmark comes from the studio library
-// ($UNCUT_ARGENT_LOGO): it is white, and Uncut draws images as they are (no CSS filter), so a dark
+// restated), and nothing is ever written there. The Argent wordmark is logo.svg there (or
+// $UNCUT_ARGENT_LOGO): it is white, and Uncut draws images as they are (no CSS filter), so a dark
 // copy (fills and strokes #111111) is written into the run's own folder, as a designer would hand
 // over a dark logo.
 //
@@ -16,25 +16,28 @@
 // sky (25.2–35.3 s), the white Argent end card wiping in (35.3–39.47 s).
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export const FPS = 30;
-export const REF_DIR = process.env.UNCUT_ARGENT_REF ?? join(homedir(), "Documents/devrel/video-editor/argent-haiku45-vs-haiku55");
-export const LOGO_SVG = process.env.UNCUT_ARGENT_LOGO ?? join(homedir(), "Documents/devrel/video-editor/studio/library/assets/argent-logo.svg");
-/** The reference's music, from the studio library (Uncut ships no music since D274; imported by path). */
-export const MUSIC = process.env.UNCUT_ARGENT_MUSIC ?? join(homedir(), "Documents/devrel/video-editor/studio/library/music/cozy-3.mp3");
+export const REF_DIR = resolve(process.env.UNCUT_ARGENT_REF ?? "fixtures/promo-reference");
+export const LOGO_SVG = process.env.UNCUT_ARGENT_LOGO ?? join(REF_DIR, "logo.svg");
+/** The reference's music ($UNCUT_ARGENT_MUSIC; Uncut ships no music since D274; imported by path). */
+export const MUSIC = process.env.UNCUT_ARGENT_MUSIC ?? join(REF_DIR, "music.mp3");
+function lastMp4(dir: string): string | undefined {
+  return existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".mp4")).sort().at(-1) : undefined;
+}
 /** The reference's files this check reads. */
 export const REF = {
   project: join(REF_DIR, "project.json"),
   sky: join(REF_DIR, "assets/breathe-sky.mp4"),
   h45: join(REF_DIR, "assets/h45-1-x8.mp4"),
   h55: join(REF_DIR, "assets/h55b-1-x8.mp4"),
-  out: join(REF_DIR, "out/argent-haiku45-vs-haiku55-20261009-0929.mp4"),
+  /** The reference's rendered video: the last .mp4 (by name) in its out/ folder. */
+  out: join(REF_DIR, "out", lastMp4(join(REF_DIR, "out")) ?? "reference.mp4"),
 };
 /** Why the check can't run here (the reference or the logo is missing), or false. */
 export function referenceMissing(): string | false {
-  for (const f of [...Object.values(REF), LOGO_SVG, MUSIC]) if (!existsSync(f)) return `the Argent reference isn't on this machine (${f} is missing; set UNCUT_ARGENT_REF=<dir> and UNCUT_ARGENT_LOGO=<svg>)`;
+  for (const f of [...Object.values(REF), LOGO_SVG, MUSIC]) if (!existsSync(f)) return `the Argent reference isn't on this machine (${f} is missing; set UNCUT_ARGENT_REF=<dir>, UNCUT_ARGENT_LOGO=<svg> and UNCUT_ARGENT_MUSIC=<audio>)`;
   return false;
 }
 
