@@ -399,8 +399,10 @@ test("end to end: listed, refused until allowed, then called through the agent; 
     assert.deepEqual([...toolLists[0].slice(0, TOOL_NAMES.length)].sort(), [...TOOL_NAMES].sort(), "the built-in tools come first");
     assert.deepEqual(toolLists[0].slice(TOOL_NAMES.length), ["shipped_echo"], "only allowed plugins' tools are listed");
     const [modules, refused, shipped] = newResults();
-    const list = JSON.parse(textOf(modules));
-    assert.ok(list.some((m: any) => m.id === "transition.crossfade" && m.source === "builtin"));
+    // D285: without a kind, an index of the built-ins (id: purpose by kind) and the plugins as they are.
+    const index = JSON.parse(textOf(modules));
+    assert.equal(index.modules.transition["transition.crossfade"], "Crossfade");
+    const list = index.plugins;
     const fakeEntry = list.find((m: any) => m.id === "fake.capture" && !m.skipped);
     assert.deepEqual(
       fakeEntry,

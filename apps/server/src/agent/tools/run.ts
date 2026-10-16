@@ -6,7 +6,7 @@ import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPla
 import * as Effect from "effect/Effect";
 import { gateOf, gateRefusal, planOnly } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
-import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_FRAMES, modulesList, projectSummary, docsRead } from "../agentTools.ts";
+import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_EDGE, LOOK_TOOLS, MAX_FRAMES, modulesIndex, modulesList, projectSummary, docsRead } from "../agentTools.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
 import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
@@ -17,6 +17,9 @@ import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import type { McpResult } from "../agent.ts";
 import type { LibraryCtx } from "./library.ts";
+
+/** D285: a dry run's line per op is cut at this many characters. */
+const DRY_LINE = 200;
 
 export const makeRunTool = (ctx: LibraryCtx) => {
   const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser } = ctx;
@@ -39,7 +42,15 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // D213: the shader effects there are (allowed plugins', the project's), each with its params.
           const shaders = kind === undefined || kind === "effect" ? [...(yield* shaderDefsOf(v)).values()].map((d) => ({ kind: "effect", module: "effect.shader", ...shaderForAgent({ id: d.id, name: d.name, description: d.description ?? "", params: d.params }), source: d.id.startsWith("project.") ? "project" : "plugin" })) : [];
           // The built-in modules, then the plugins (D97) with their source, approval and warnings.
-          return textResult([...modulesList(format.modules, kind), ...shaders, ...(yield* plugins.modules(kind))]);
+          const listed = [...modulesList(format.modules, kind), ...shaders, ...(yield* plugins.modules(kind))] as ReadonlyArray<Record<string, unknown>>;
+          // D285: ids gives just those modules whole; no kind and no ids an index (id: purpose by kind), not ~70k of manifests.
+          const ids = Array.isArray(args.ids) ? args.ids.filter((x): x is string => typeof x === "string") : undefined;
+          if (ids?.length) {
+            const found = listed.filter((m) => ids.includes(m.id as string));
+            const missing = ids.filter((id) => !found.some((m) => m.id === id));
+            return textResult(missing.length ? { modules: found, unknown: missing, note: "modules_list without arguments lists every id." } : found, !found.length);
+          }
+          return textResult(kind === undefined ? modulesIndex(listed) : listed);
         }
         case "shader_write": {
           const out = yield* Effect.promise(() => writeProjectShader(v.dir, args as Parameters<typeof writeProjectShader>[1]));
@@ -62,7 +73,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           if (!frames.length || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0)) return textResult(`frames must be 1 to ${MAX_FRAMES} frame numbers (integers from 0).`, true);
           const canvas = v.session.project.canvas;
           // D189: phone true draws them 360 px wide, as in a feed on a phone.
-          const scale = args.phone === true ? Math.min(1, PHONE_WIDTH / canvas.width) : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_WIDTH / canvas.width);
+          const scale = args.phone === true ? Math.min(1, PHONE_WIDTH / canvas.width) : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
           const width = Math.max(64, Math.round(canvas.width * scale));
           const rendered = yield* exporter.renderFrames(frames as Array<number>, width).pipe(
             Effect.map((list) => ({ ok: true as const, list })),
@@ -255,13 +266,17 @@ export const makeRunTool = (ctx: LibraryCtx) => {
               dryRun: true,
               ok: true,
               revision: v.session.revision,
-              ops,
+              // D285: not the ops themselves (the model sent them; a keyframed update echoed 20k
+              // chars back): one line per planned op, convenience ops expanded, says what runs; a long
+              // line (every key time of a shake) cut at DRY_LINE chars.
               lines: (ops as ReadonlyArray<Op>).map((op) => {
+                let line: string;
                 try {
-                  return describeOp(op, planned);
+                  line = describeOp(op, planned);
                 } catch {
-                  return String((op as { op?: unknown }).op ?? "edit");
+                  line = String((op as { op?: unknown }).op ?? "edit");
                 }
+                return line.length > DRY_LINE ? `${line.slice(0, DRY_LINE - 1)}…` : line;
               }),
               diff: projectDiff(v.session.project as Project, planned),
               ...placements,

@@ -18,6 +18,11 @@ import { realOr, analyzeWaitMs } from "./common.ts";
 import type { McpResult } from "../agent.ts";
 import type { BrandCtx } from "./brand.ts";
 
+/** D285 (issue #81): library_search shows this many online hits, bundled sounds and the user's own files; the rest is a "more" line. */
+export const HITS_SHOWN = 8;
+export const SOUNDS_SHOWN = 16;
+export const YOURS_SHOWN = 12;
+
 export const makeLibraryTools = (ctx: BrandCtx) => {
   const { textResult, requestAndWait, pendingOut, cancelledNote, config, brandDirs, view, projects, persist, publish, sounds } = ctx;
 
@@ -148,10 +153,11 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         // D274: no bundled music; the user's own folders and their Music library are the music here.
         const folders = yield* sounds.folders.list().pipe(Effect.catch(() => Effect.succeed([])));
         const all = filterFolderSounds(folders, query);
-        const yours = all.slice(0, 30);
+        const yours = all.slice(0, YOURS_SHOWN);
         return textResult({
           yours: yours.map((f) => ({ id: `folder:${f.id}`, title: f.name, folder: f.folderName, file: f.rel })),
           total: all.length,
+          ...(all.length > yours.length ? { more: `${all.length - yours.length} more: narrow the query to see them.` } : {}),
           note: folders.length
             ? "Files from the user's own sound folders and Music library (theirs to use). Uncut ships no music. library_add copies one into the project; beat_grid then gives its tempo."
             : "The user hasn't added a sound folder or their Music library (the Audio tab's Your folders or Music library). Uncut ships no music: ask the user for a song or a folder of their music, or search online (library_search kind music, no source).",
@@ -162,10 +168,11 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         const sfx = filterSfx({ query, category });
         // D208: the user's own sound folders too (their files, referenced until added).
         const folders = category ? [] : yield* sounds.folders.list().pipe(Effect.catch(() => Effect.succeed([])));
-        const yours = query ? filterFolderSounds(folders, query).slice(0, 30) : [];
+        const yours = query ? filterFolderSounds(folders, query).slice(0, YOURS_SHOWN) : [];
         const alias = query ? aliasOf(query) : undefined;
         return textResult({
-          sounds: sfx.map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0", ...(onlyWhenAsked(s) ? { onlyWhenAsked: true } : {}) })),
+          ...(sfx.length > SOUNDS_SHOWN ? { more: `${sfx.length - SOUNDS_SHOWN} more of ${sfx.length}: narrow it with query or category.` } : {}),
+          sounds: sfx.slice(0, SOUNDS_SHOWN).map((s) => ({ id: `sfx:${s.id}`, title: s.title, category: s.category, seconds: s.seconds, frames: Math.round(s.seconds * fps), author: s.author, license: "CC0", ...(onlyWhenAsked(s) ? { onlyWhenAsked: true } : {}) })),
           ...(yours.length ? { yours: yours.map((f) => ({ id: `folder:${f.id}`, title: f.name, folder: f.folderName, file: f.rel })) } : {}),
           ...(alias?.clip ? { clip: clipNote(alias) } : {}),
           note: "Bundled CC0 sounds (no credit needed); `yours` are files from the user's own sound folders (theirs to use). library_add copies one into the project. Sound effects go only on real visual events, at most 4 in any 10 s, 6 to 12 dB under the music; onlyWhenAsked ones (memes, crowds) only when the user asked for that joke (D207).",
@@ -188,7 +195,9 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         total: result.total,
         page: result.page,
         pages: result.pages,
-        hits: result.hits.map((h) => ({ id: hitKey(h), title: h.title, creator: h.creator, seconds: h.seconds, ...(h.seconds ? { frames: Math.round(h.seconds * fps) } : {}), license: h.license === "by" ? `CC BY ${h.licenseVersion}` : "CC0", tags: h.tags.slice(0, 6) })),
+        // D285: the best HITS_SHOWN, each with what picks one (frames, licence, a few tags), and how to see more.
+        hits: result.hits.slice(0, HITS_SHOWN).map((h) => ({ id: hitKey(h), title: h.title.slice(0, 70), creator: h.creator.slice(0, 40), ...(h.seconds ? { frames: Math.round(h.seconds * fps) } : {}), license: h.license === "by" ? `CC BY ${h.licenseVersion}` : "CC0", tags: h.tags.slice(0, 3) })),
+        ...(result.total > Math.min(result.hits.length, HITS_SHOWN) ? { more: `${result.total - Math.min(result.hits.length, HITS_SHOWN)} more: a sharper query first${result.pages > result.page ? `, else page ${result.page + 1}` : ""}.` } : {}),
         ...(result.searched ? { searched: result.searched } : {}),
         ...(result.note ? { clip: result.note } : {}),
         note: "CC BY sounds need credit in the video's description (project_read lists credits). library_add downloads one into the project.",
