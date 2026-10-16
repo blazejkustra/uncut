@@ -125,3 +125,30 @@ test("layout checks: off-centre centred text, a round text box, a word wider tha
   assert.ok(keys.includes("layout-off-canvas:c0"));
   assert.ok(LAYOUT_HARD.has("layout-off-centre") && LAYOUT_HARD.has("layout-round-text-box") && !LAYOUT_HARD.has("layout-word-overflow"));
 });
+
+// Rehearsal 4: plain Claude iterates without limit; three rounds are a floor, six a ceiling, and
+// past three a turn goes on only while the blockers shrink.
+test("review rounds: past 3 only while the blockers go down, never past 6", async () => {
+  const { mayReviewAgain, REVIEW_ROUNDS, REVIEW_ROUNDS_MAX } = await import("../../apps/server/src/agent/agentCritic.ts");
+  const b = (n: number, passed = false) => ({ passed, blockers: Array.from({ length: n }, () => ({})) });
+  assert.equal(REVIEW_ROUNDS, 3);
+  assert.equal(REVIEW_ROUNDS_MAX, 6);
+  assert.equal(mayReviewAgain([b(5), b(5)]), true, "under 3: always");
+  assert.equal(mayReviewAgain([b(5), b(4), b(2)]), true, "shrinking");
+  assert.equal(mayReviewAgain([b(5), b(4), b(4)]), false, "stalled");
+  assert.equal(mayReviewAgain([b(5), b(2), b(3)]), false, "grew");
+  assert.equal(mayReviewAgain([b(5), b(2), b(0)]), false, "no blockers left (scores under the bar don't keep it going)");
+  assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6), b(5)]), true);
+  assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6), b(5), b(4)]), false, "the ceiling");
+  const r = criticReview(parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "blank", what: "Empty frame", at: 4.2 }] })) as never, ctx);
+  assert.match(reviewNext(r, 3, true), /Not passed\. Round 3: the blockers went down, so you get another round \(at most 6/);
+  assert.match(reviewNext(r, 4, false), /round 4 in this turn, the last one \(past 3 rounds a turn goes on only while the blockers shrink, up to 6\): stop fixing/);
+  assert.match(reviewNext(r, 3), /the last one/, "the default stays 3");
+});
+
+test("the critic's prompt: near-empty frames are blank; a wide shot of the whole editor is a readability defect", () => {
+  assert.match(CRITIC_SYSTEM, /blank: a black or blank frame, or a nearly empty one \(bare canvas with at most a cursor or a speck\) for 0\.2 s or more/);
+  assert.match(CRITIC_SYSTEM, /fine only while it fills a fair share of the frame and the next shape is already growing/);
+  assert.doesNotMatch(CRITIC_SYSTEM, /on its way to the next state is not blank/);
+  assert.match(CRITIC_SYSTEM, /A wide shot of a whole app window .* is a readability defect with its time range .*not a blocker/);
+});

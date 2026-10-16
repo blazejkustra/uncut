@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { EMPTY_SHARE, emptyRuns, FAST_STEP, nearlyEmpty, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -489,4 +489,50 @@ test("a rendered film with real cuts mid-beat: review_submit's sampling plus the
   } finally {
     await session.close();
   }
+});
+
+// Rehearsal 4: nearly empty frames (A1 22.1-22.5 s cursor only, A2 4.2-4.4 s) block a motion film;
+// fast moves that the export's blur stacks into copies (A2 14.0 s) are a finding with the fix.
+test("nearly empty stretches are measured to the frame and block a motion film; very fast moves are findings", async () => {
+  const fps = 60, w = 64, h = 80, n = 600;
+  const canvas = (cursor: boolean) => {
+    const g = new Uint8Array(w * h).fill(237);
+    if (cursor) for (let y = 40; y < 42; y++) for (let x = 30; x < 32; x++) g[y * w + x] = 10;
+    return g;
+  };
+  const hero = (f: number) => {
+    const g = new Uint8Array(w * h).fill(237);
+    for (let y = 12; y < 68; y++) for (let x = 8; x < 56; x++) g[y * w + x] = 20 + ((x * 7 + y * 3 + f) % 60);
+    return g;
+  };
+  // Empty from 253 to 266 (0.23 s, cursor only) and from 400 to 405 (0.1 s, too short to count).
+  const frameAt = (f: number) => ((f >= 253 && f <= 266) ? canvas(true) : f >= 400 && f <= 405 ? canvas(false) : hero(f));
+  assert.ok(nearlyEmpty(canvas(true), w, h) && !nearlyEmpty(hero(0), w, h));
+  assert.ok(EMPTY_SHARE > 0.95);
+  const plan = scanPlan(motionAnchors([{ start: 0 }, { start: 5 }], fps, n), fps, n, 120);
+  const sampled = plan.map((f) => ({ frame: f, gray: frameAt(f) }));
+  const edges = await refineEmpty({ frames: sampled, fps, size: { w, h }, render: async (fs) => fs.map((f) => ({ frame: f, gray: frameAt(f) })) });
+  const scan = motionScan([...sampled, ...edges], fps, { size: { w, h } });
+  assert.deepEqual(emptyRuns(scan, fps), [{ start: 253, end: 266 }]);
+  const found = motionFindings(scan, fps, { oneTake: true, hard: true });
+  const empty = found.find((f) => f.key === "motion:empty:253")!;
+  assert.ok(empty.hard, "a blocker in a motion film");
+  assert.match(empty.message, /f 253 to f 266 \(4\.22 s to 4\.45 s, 0\.23 s\)/);
+  assert.ok(!motionFindings(scan, fps, { oneTake: true }).find((f) => f.key === "motion:empty:253")!.hard, "a finding elsewhere");
+  assert.deepEqual(motionFindings(scan, fps).filter((f) => /empty/.test(f.key ?? "")), [], "not one take: no finding");
+  assert.match(motionLines(scan, fps, { consecutive: false }).join("\n"), /Nearly empty frames .* f 253 to f 266/);
+  // Without the frame size there's no claim either way.
+  assert.ok(!motionLines(motionScan(sampled, fps), fps, { consecutive: false }).some((l) => /empty/i.test(l)));
+  // A very fast move: 3+ frames each changing more than FAST_STEP; not a jump.
+  const fast = Array.from({ length: 40 }, (_, f) => {
+    const g = new Uint8Array(w * h);
+    const off = f < 20 ? 0 : f < 25 ? (f - 19) * 30 : 150;
+    for (let i = 0; i < g.length; i++) g[i] = (((i % w) * 4 + off) % 200) + 20;
+    return { frame: f, gray: g };
+  });
+  const fs = motionScan(fast, fps);
+  assert.ok(fs.fast.length === 1 && fs.fast[0]!.peak >= FAST_STEP, JSON.stringify(fs.fast));
+  const ff = motionFindings(fs, fps, { oneTake: true, hard: true }).find((f) => f.key?.startsWith("motion:fast:"))!;
+  assert.ok(!ff.hard);
+  assert.match(ff.message, /update_project \{"motionBlur":\{"samples":12\}\}/);
 });
