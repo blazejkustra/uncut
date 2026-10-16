@@ -85,7 +85,7 @@ const prompt =
   option("--prompt") ??
   [
     `Import ${fixture.folder}${drone.length ? ` and these drone takes: ${drone.join(", ")}` : ""}.`,
-    "Put Talk.mp4 on the timeline and cut it tight from its transcript — remove fillers and long pauses (0.5 s or more), and the sentence about almost deleting a take.",
+    "Put Talk.mp4 on the timeline and cut it tight from its transcript: remove fillers and long pauses (0.5 s or more), and the sentence about almost deleting a take.",
     `Then rank the drone takes (${["Smooth.mp4", "Jittered.mp4", "Blurred.mp4", ...drone.map((d) => d.split("/").pop())].join(", ")}) and append the cleanest one after the talk. Tell me why you picked it.`,
   ].join(" ");
 
