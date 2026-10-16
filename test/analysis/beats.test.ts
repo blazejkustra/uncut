@@ -116,7 +116,7 @@ for (const track of HARD) {
 test("beats.ts can be the first module imported (no import cycle through the HTTP side)", () => {
   const r = spawnSync(process.execPath, ["-e", "import('./apps/server/src/analysis/beats.ts').then((m) => console.log(m.BEATS_VERSION))"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout.trim(), "1");
+  assert.equal(r.stdout.trim(), "2", "D296: beatLevels");
 });
 
 test("silence and white noise: no steady beat (bpm null, no beats)", () => {

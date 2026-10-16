@@ -21,6 +21,9 @@
 // 4. bpm: a least-squares line through the beats (numbered by the period, so a skipped beat
 //    doesn't bend it), which is much finer than one hop. confidence: the envelope's normalised
 //    autocorrelation at the beat period (pulse clarity): ~1 for a click track, ~0 for speech/noise.
+// 5. beatLevels (D296): the low bands' level (kick, bass, below LOW_HZ) between each beat and the
+//    next, as an RMS of the bins' magnitudes relative to the loudest beat (0–1). Flux only sees
+//    changes, so a drop that brings in a sustained bass barely moves it; the level does.
 import { Cancelled, ffmpegError, NO_AUDIO_STREAM, pcmArgs, spawnRunner, type Runner } from "./analysisRunner.ts";
 import { fft, fftTables } from "./fft.ts";
 import { WINDOW, HOP, BAND_LOW, BAND_HIGH, SAMPLE_RATE, BANDS, LOW_HZ, PEAK_DECAY, ABS_FLOOR, RANGE_DB, MAX_S, FRAME_RATE, PRE_AVG_S, POST_AVG_S, MIN_GAP_S, DELTA, MIN_ONSETS, MIN_CONFIDENCE, timeoutFor } from "./beats/params.ts";
@@ -29,7 +32,7 @@ export { SAMPLE_RATE, WINDOW, HOP, FRAME_RATE, MIN_BPM, MAX_BPM, MIN_CONFIDENCE,
 export { estimateTempo, trackBeats, bpmOf } from "./beats/tempo.ts";
 
 /** Bumped when the beats analyzer's output changes, so older cache files are redone. */
-export const BEATS_VERSION = 1;
+export const BEATS_VERSION = 2;
 
 export interface Onset {
   /** Seconds of the file. */
@@ -49,6 +52,8 @@ export interface BeatsResult {
   /** Beat times (seconds), in order. */
   readonly beats?: ReadonlyArray<number>;
   readonly onsets?: ReadonlyArray<Onset>;
+  /** D296: the low bands' level from each beat to the next, relative to the loudest (0–1), one per beat. */
+  readonly beatLevels?: ReadonlyArray<number>;
 }
 
 export const NO_BEATS_AUDIO: BeatsResult = { hasAudio: false };
@@ -62,6 +67,7 @@ export function isBeatsResult(value: unknown): value is BeatsResult {
   if (!r.hasAudio) return true;
   if (!finite(r.seconds) || !(r.bpm === null || finite(r.bpm)) || !finite(r.confidence)) return false;
   if (!Array.isArray(r.beats) || !r.beats.every(finite)) return false;
+  if (r.beatLevels !== undefined && !(Array.isArray(r.beatLevels) && r.beatLevels.every(finite))) return false;
   return Array.isArray(r.onsets) && r.onsets.every((o) => o && typeof o === "object" && finite((o as Onset).t) && finite((o as Onset).strength));
 }
 
@@ -98,6 +104,8 @@ export class OnsetEnvelope {
   private cur: Float64Array;
   private env = new Float32Array(4096);
   private low = new Float32Array(4096);
+  /** D296: the low bins' power (Σ magnitude², below LOW_HZ) per frame. */
+  private power = new Float32Array(4096);
   private lowBands = 0;
   private peak = 0;
   private frames = 0;
@@ -172,9 +180,13 @@ export class OnsetEnvelope {
     const prev = this.prev;
     const { bandOf, bands } = this;
     cur.fill(0, 0, bands);
+    let power = 0;
     for (let k = 1; k <= WINDOW / 2; k++) {
       const b = bandOf[k]!;
-      if (b >= 0) cur[b] = cur[b]! + Math.hypot(re[k]!, im[k]!);
+      if (b < 0) continue;
+      const mag = Math.hypot(re[k]!, im[k]!);
+      cur[b] = cur[b]! + mag;
+      if (b < this.lowBands) power += mag * mag;
     }
     let flux = 0;
     let lowFlux = 0;
@@ -202,7 +214,11 @@ export class OnsetEnvelope {
       const g2 = new Float32Array(this.low.length * 2);
       g2.set(this.low);
       this.low = g2;
+      const g3 = new Float32Array(this.power.length * 2);
+      g3.set(this.power);
+      this.power = g3;
     }
+    this.power[this.frames] = power;
     this.low[this.frames] = lowFlux;
     this.env[this.frames++] = flux;
   }
@@ -226,6 +242,32 @@ export class OnsetEnvelope {
     for (let i = 0; i < env.length; i++) env[i] = (se ? env[i]! / se : 0) + (sl ? low[i]! / sl : 0);
     return env;
   }
+
+  /** D296: the low bins' power per envelope frame (after `finish`). */
+  lowPower(): Float32Array {
+    return this.power.subarray(0, this.frames);
+  }
+}
+
+/**
+ * D296: the low bands' level between each beat and the next (the last beat: one median beat
+ * period), the RMS of the frames' low power, relative to the loudest beat; 0–1, 3 decimals.
+ */
+export function beatLevels(beats: ReadonlyArray<number>, power: Float32Array): Array<number> {
+  if (!beats.length || !power.length) return [];
+  const gaps = beats.slice(1).map((b, i) => b - beats[i]!).sort((a, b) => a - b);
+  const period = gaps.length ? gaps[gaps.length >> 1]! : 0.5;
+  const frameOf = (t: number) => Math.max(0, Math.min(power.length, Math.round((t - ONSET_LAG_S) * FRAME_RATE)));
+  const raw = beats.map((b, i) => {
+    const a = frameOf(b);
+    const z = Math.max(a + 1, frameOf(beats[i + 1] ?? b + period));
+    let sum = 0;
+    let n = 0;
+    for (let f = a; f < Math.min(z, power.length); f++, n++) sum += power[f]!;
+    return n ? Math.sqrt(sum / n) : 0;
+  });
+  const top = Math.max(...raw);
+  return raw.map((v) => (top > 0 ? Math.round((v / top) * 1000) / 1000 : 0));
 }
 
 /**
@@ -272,21 +314,22 @@ export function pickOnsets(env: Float32Array): Array<Onset> {
   return out;
 }
 
-/** Tempo, beats and onsets from an onset envelope (pure: the tests feed it synthetic sound). */
-export function beatsFromEnvelope(env: Float32Array, seconds: number): BeatsResult {
+/** Tempo, beats and onsets from an onset envelope (pure: the tests feed it synthetic sound); `lowPower` adds beatLevels (D296). */
+export function beatsFromEnvelope(env: Float32Array, seconds: number, lowPower?: Float32Array): BeatsResult {
   const onsets = pickOnsets(env);
   const tempo = onsets.length >= MIN_ONSETS ? estimateTempo(env) : undefined;
   if (!tempo || tempo.clarity < MIN_CONFIDENCE) return { hasAudio: true, seconds: r3(seconds), bpm: null, confidence: Math.round((tempo?.clarity ?? 0) * 100) / 100, beats: [], onsets };
   const beats = trackBeats(env, tempo.period).map((f) => Math.max(0, timeOf(f)));
   const bpm = bpmOf(beats, (60 * FRAME_RATE) / tempo.period);
-  return { hasAudio: true, seconds: r3(seconds), bpm: Math.round(bpm * 100) / 100, confidence: Math.round(tempo.clarity * 100) / 100, beats: beats.map(r3), onsets };
+  const levels = lowPower ? beatLevels(beats, lowPower) : [];
+  return { hasAudio: true, seconds: r3(seconds), bpm: Math.round(bpm * 100) / 100, confidence: Math.round(tempo.clarity * 100) / 100, beats: beats.map(r3), onsets, ...(levels.length ? { beatLevels: levels } : {}) };
 }
 
 /** The same from mono float samples at SAMPLE_RATE. */
 export function beatsFromSamples(samples: ArrayLike<number>): BeatsResult {
   const envelope = new OnsetEnvelope();
   envelope.pushFloats(samples);
-  return beatsFromEnvelope(envelope.finish(), samples.length / SAMPLE_RATE);
+  return beatsFromEnvelope(envelope.finish(), samples.length / SAMPLE_RATE, envelope.lowPower());
 }
 
 /** ffmpeg's arguments: progress on stderr, the first audio stream as mono PCM on stdout (the waveform's decode, at SAMPLE_RATE). */
@@ -320,5 +363,5 @@ export async function analyzeBeats(
   }
   if (options.signal.aborted) throw new Cancelled();
   const seconds = envelope.samples / SAMPLE_RATE;
-  return beatsFromEnvelope(envelope.finish(), seconds);
+  return beatsFromEnvelope(envelope.finish(), seconds, envelope.lowPower());
 }
