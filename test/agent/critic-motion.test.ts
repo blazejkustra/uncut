@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { beatWordLines, beatWords, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -97,9 +97,11 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   const oneTake = motionFindings(scan, fps, { oneTake: true, loop: true });
   assert.deepEqual(oneTake.map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:hold:60", "motion:seam:0"]);
   assert.ok(oneTake.every((f) => f.rule === "motion" && !f.hard));
-  assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { oneTake: true, loop: true });
-  assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { oneTake: true, loop: false });
-  assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { oneTake: false, loop: false });
+  assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { oneTake: true, loop: true, footage: false });
+  assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { oneTake: true, loop: false, footage: false });
+  assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { oneTake: false, loop: false, footage: false });
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "DJI 0050 drone footage" }).footage, true);
+  assert.equal(motionIntent({ skills: [], words: "", hasFootage: true }).footage, true);
   const lines = motionLines(scan, fps, { consecutive: true });
   assert.match(lines.join("\n"), /Single-frame pops: f 20 \(0\.67 s/);
   assert.match(lines.join("\n"), /Holds over 1 s with nothing changing: f 60 to f 99/);
@@ -150,6 +152,50 @@ window.render = (t, info) => {
   document.getElementById("flash").style.display = info.frame === 12 ? "block" : "none";
 };
 </script>`;
+
+// D296: scale. A grey frame (64 × 80) with a textured "footage" card on flat black, or full-bleed.
+function card(w: number, h: number, cover: number, seed = 1) {
+  const g = new Uint8Array(w * h).fill(10);
+  const cw = Math.round(w * Math.sqrt(cover));
+  const ch = Math.round(h * Math.sqrt(cover));
+  const x0 = (w - cw) >> 1;
+  const y0 = (h - ch) >> 1;
+  let x = seed;
+  for (let y = y0; y < y0 + ch; y++)
+    for (let i = x0; i < x0 + cw; i++) {
+      x = (x * 1103515245 + 12345) & 0x7fffffff;
+      g[y * w + i] = 60 + (x % 140);
+    }
+  return g;
+}
+
+test("D296: flat background share, the scale finding for footage-first films, the storyboard's words", () => {
+  const w = 64;
+  const h = 80;
+  const small = flatFraction(card(w, h, 0.45), w, h);
+  assert.ok(Math.abs(small - 0.55) < 0.05, `a card covering 45 %: ${small}`);
+  assert.ok(flatFraction(card(w, h, 1), w, h) < 0.05, "full-bleed footage");
+  assert.ok(flatFraction(new Uint8Array(w * h).fill(200), w, h) > 0.99, "a flat frame");
+  // A smooth gradient (a sky) isn't one flat colour.
+  const sky = Uint8Array.from({ length: w * h }, (_, i) => Math.floor(i / w) * 3);
+  assert.ok(flatFraction(sky, w, h) < 0.2, `a gradient: ${flatFraction(sky, w, h)}`);
+  const strips = [0.55, 0.6, 0.1, 0.5].map((flat, i) => ({ label: `beat ${i + 1}`, at: i * 120, flat }));
+  const found = flatFindings(strips, 60, true);
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.rule, "scale");
+  assert.match(found[0]!.message, /3 of 4 scene changes \(worst 60 % at 2\.00 s\)[\s\S]*70 %/);
+  assert.deepEqual(flatFindings(strips, 60, false), [], "not footage first: no finding");
+  assert.deepEqual(flatFindings(strips.map((x) => ({ ...x, flat: 0.2 })), 60, true), []);
+  assert.match(flatLines(strips, 60, true).join("\n"), /beat 1 \(0\.00 s\) 55 %[\s\S]*Over 35 % at 3 of 4 strips/);
+  assert.equal(FLAT_MAX, 0.35);
+  // The words a beat says it shows, from its quotes (straight, curly, single).
+  assert.deepEqual(beatWords({ title: "Open: the claim", entry: "Coastal road in the card, Uncut mark, 'Edit videos by talking to an agent'", exit: "“Free and open source” rises; the user's car" }), ["Edit videos by talking to an agent", "Free and open source"]);
+  assert.deepEqual(beatWords({ entry: 'The line "Hands every change back to you" rises' }), ["Hands every change back to you"]);
+  const lines = beatWordLines([{ start: 0, end: 2.5, entry: "'Edit videos'" }, { start: 2.5, end: 4, entry: "no words" }]);
+  assert.equal(lines.length, 2);
+  assert.match(lines[1]!, /^beat 1 \(0 s to 2\.5 s\): "Edit videos"$/);
+  assert.match(CRITIC_SYSTEM, /over 35 % at most scene changes[\s\S]*storyboard's words/);
+});
 
 test("render order: the strips' frames and the scene changes' windows first, then the rest of the scan, each once", () => {
   const fps = 60;

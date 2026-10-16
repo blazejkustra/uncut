@@ -319,11 +319,111 @@ export function stripLayout(count: number, aspect: number): SheetLayout {
   return { columns: n, rows: 1, cellWidth: STRIP_CELL, cellHeight, width: n * STRIP_CELL + GAP * (n + 1), height: cellHeight + CAPTION_HEIGHT + GAP * 2 };
 }
 
-/** Whether the film is meant as one take (no cuts, no holds) and as a loop: the motion-film skill, or the brief's words. */
-export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string }): { oneTake: boolean; loop: boolean } {
+/**
+ * Whether the film is meant as one take (no cuts, no holds) and as a loop: the motion-film skill, or
+ * the brief's words. D296: and whether it is footage first (the brief's words name footage, or the
+ * timeline has video or pictures), where the footage should fill the frame.
+ */
+export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean }): { oneTake: boolean; loop: boolean; footage: boolean } {
   const film = o.skills.includes("motion-film");
   return {
     oneTake: film || /one[- ]take|never cut|no cuts|one continuous (shot|take)/i.test(o.words),
     loop: film || /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
+    footage: !!o.hasFootage || /\b(footage|drone|b-?roll|clips?|travel|photos?|aerials?)\b/i.test(o.words),
   };
+}
+
+// ---- D296: scale (how much of the frame is flat background) and the storyboard's words ----
+
+/** A footage-first film's frames should be at most this share flat background at most beats. */
+export const FLAT_MAX = 0.35;
+/** Two grey levels this close count as the same flat colour; a pixel this close to its right and lower neighbours is flat. */
+const FLAT_LEVELS = 6;
+const FLAT_GRADIENT = 3;
+
+/**
+ * The share of a grey frame (w × h) that is flat background: pixels in a flat neighbourhood (each
+ * within FLAT_GRADIENT of its right and lower neighbours) whose level is the frame's most common
+ * flat level (± FLAT_LEVELS). A card of footage on black is about the black's share; footage
+ * full-bleed is near 0 (it has texture); a flat sky counts as flat. 0..1.
+ */
+export function flatFraction(gray: Uint8Array, w: number, h: number): number {
+  const n = w * h;
+  if (!n || gray.length < n) return 0;
+  const flat = new Uint8Array(n);
+  const hist = new Uint32Array(256);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const v = gray[i]!;
+      const r = x + 1 < w ? gray[i + 1]! : gray[i - 1]!;
+      const d = y + 1 < h ? gray[i + w]! : gray[i - w]!;
+      if (Math.abs(v - r) <= FLAT_GRADIENT && Math.abs(v - d) <= FLAT_GRADIENT) {
+        flat[i] = 1;
+        hist[v]!++;
+      }
+    }
+  // The most common flat level (summed over ± FLAT_LEVELS).
+  let best = 0;
+  let level = 0;
+  for (let v = 0; v < 256; v++) {
+    let c = 0;
+    for (let u = Math.max(0, v - FLAT_LEVELS); u <= Math.min(255, v + FLAT_LEVELS); u++) c += hist[u]!;
+    if (c > best) {
+      best = c;
+      level = v;
+    }
+  }
+  let count = 0;
+  for (let i = 0; i < n; i++) if (flat[i] && Math.abs(gray[i]! - level) <= FLAT_LEVELS) count++;
+  return count / n;
+}
+
+export interface FlatStrip {
+  readonly label: string;
+  readonly at: number;
+  /** The median flat share of the strip's frames. */
+  readonly flat: number;
+}
+
+/** The scale facts for the critic: each strip's flat share, and whether most are over FLAT_MAX. */
+export function flatLines(strips: ReadonlyArray<FlatStrip>, fps: number, footage: boolean): Array<string> {
+  if (!strips.length) return [];
+  const over = strips.filter((x) => x.flat > FLAT_MAX);
+  return [
+    `Flat background (one flat colour, no footage, picture or type) per frame strip, the median of its frames: ${strips.map((x) => `${x.label} (${secs(x.at, fps)}) ${Math.round(x.flat * 100)} %`).join(", ")}.`,
+    footage
+      ? over.length * 2 > strips.length
+        ? `Over ${Math.round(FLAT_MAX * 100)} % at ${over.length} of ${strips.length} strips: in a footage-first film the footage sits small on an empty canvas there.`
+        : `At most ${Math.round(FLAT_MAX * 100)} % at most strips: the footage fills the frame.`
+      : "",
+  ].filter(Boolean);
+}
+
+/** A finding (rule "scale") when a footage-first film's frames are mostly flat background at more than half its strips. */
+export function flatFindings(strips: ReadonlyArray<FlatStrip>, fps: number, footage: boolean): Array<CriticFinding> {
+  const over = strips.filter((x) => x.flat > FLAT_MAX);
+  if (!footage || over.length * 2 <= strips.length) return [];
+  const worst = [...over].sort((a, b) => b.flat - a.flat)[0]!;
+  return [{ rule: "scale", key: "scale:flat", frame: worst.at, hard: false, message: `The footage sits small on flat background: over ${Math.round(FLAT_MAX * 100)} % of the frame is one flat colour at ${over.length} of ${strips.length} scene changes (worst ${Math.round(worst.flat * 100)} % at ${secs(worst.at, fps)}). At rest the hero shape should fill most of the frame (70 % or more, margins of about 6 %), flood past the corners on the big beats, and the type sit large inside or over it.` }];
+}
+
+/** The words a beat says it shows: text in quotes in its title, entry and exit ("…", '…', “…”, ‘…’), at most 4. */
+export function beatWords(beat: { readonly title?: string; readonly entry?: string; readonly exit?: string }): Array<string> {
+  const text = [beat.title, beat.entry, beat.exit].filter(Boolean).join("\n");
+  const out: Array<string> = [];
+  for (const m of text.matchAll(/"([^"\n]{2,120})"|“([^”\n]{2,120})”|‘([^’\n]{2,120})’|(?:^|[\s(:→])'([^'\n]{2,120})'(?=[\s.,;:)→]|$)/g)) {
+    const w = (m[1] ?? m[2] ?? m[3] ?? m[4] ?? "").trim();
+    if (w && /[A-Za-z0-9]/.test(w) && !out.includes(w)) out.push(w);
+  }
+  return out.slice(0, 4);
+}
+
+/** The storyboard's words per beat for the critic to read in that beat's frames (D296), or none. */
+export function beatWordLines(beats: ReadonlyArray<{ readonly start: number; readonly end: number; readonly title?: string; readonly entry?: string; readonly exit?: string }> | undefined): Array<string> {
+  const lines = (beats ?? []).flatMap((b, i) => {
+    const words = beatWords(b);
+    return words.length ? [`beat ${i + 1} (${b.start} s to ${b.end} s): ${words.map((w) => `"${w}"`).join(", ")}`] : [];
+  });
+  return lines.length ? ["The storyboard's words, each beat's text as approved; read them in that beat's frames (its strip and its last frame): missing, cut or different words are a defect.", ...lines] : [];
 }
