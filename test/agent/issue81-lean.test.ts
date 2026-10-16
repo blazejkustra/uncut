@@ -22,6 +22,8 @@ test("#81: the system prompt is a tight core and says where the rest is", () => 
   assert.match(SYSTEM_PROMPT, /Never invent facts/);
   assert.match(SYSTEM_PROMPT, /never draw a placeholder screen/);
   assert.match(SYSTEM_PROMPT, /words ÷ 3 s/);
+  // A1/A2: the agent called bare graphic_write / timeline_edit ("No such tool available"); the full name is the rule.
+  assert.match(SYSTEM_PROMPT, /always call the full name \(mcp__uncut__graphic_write, never graphic_write/);
   // The reference blocks moved out.
   assert.doesNotMatch(SYSTEM_PROMPT, /audio\.compressor|transition\.iris|component\.end-card|uncut:lib\/three/);
 });
