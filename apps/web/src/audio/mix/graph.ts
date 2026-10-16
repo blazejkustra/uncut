@@ -137,16 +137,26 @@ export class MixGraph {
     const bus = this.buses.get(trackId);
     if (!bus) return;
     this.buses.delete(trackId);
-    const nodes = [bus.input, ...bus.chain.nodes, bus.splitter, bus.left, bus.right, bus.merger];
+    // The chain's own nodes go with dispose (D262: noise removal's processors end, not just disconnect).
+    const nodes = [bus.input, bus.splitter, bus.left, bus.right, bus.merger];
+    const letGo = () => {
+      bus.chain.dispose();
+      nodes.forEach((n) => n.disconnect());
+    };
     const ctx = this.ctx;
-    if (!ctx || ctx.state !== "running") return nodes.forEach((n) => n.disconnect());
+    if (!ctx || ctx.state !== "running") return letGo();
     // Ramp its output down first, then let go of it.
     for (const g of [bus.left.gain, bus.right.gain]) {
       g.cancelScheduledValues(ctx.currentTime);
       g.setValueAtTime(g.value, ctx.currentTime);
       g.linearRampToValueAtTime(0, ctx.currentTime + UNWIRE_S);
     }
-    setTimeout(() => nodes.forEach((n) => n.disconnect()), UNWIRE_S * 1000 + 15);
+    setTimeout(letGo, UNWIRE_S * 1000 + 15);
+  }
+
+  /** Clear every noise removal's buffers (D262): a seek, a scrub or a play start leaves no stale tail. */
+  protected resetDenoise() {
+    for (const bus of this.buses.values()) bus.chain.reset();
   }
 
   /** Feed a route into another bus: at once when it is silent, else after a short ramp down (the next render ramps it back up). */
@@ -227,7 +237,8 @@ export class MixGraph {
     const old = bus.chain;
     const chain = buildStages(this.ctx!, stages);
     bus.input.disconnect();
-    for (const n of old.nodes) n.disconnect();
+    // D262: dispose, not just disconnect: a noise removal's processor would otherwise run on forever.
+    old.dispose();
     if (chain.first && chain.last) {
       bus.input.connect(chain.first);
       chain.last.connect(bus.splitter);

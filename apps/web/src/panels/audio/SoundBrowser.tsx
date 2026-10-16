@@ -95,6 +95,9 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
       localStorage.setItem(SOURCE_KEY(kind), s);
     } catch {}
     preview.stop();
+    // D262: a search still running for the old source is dropped (its hits would show under this one).
+    seq.current++;
+    setBusy(false);
     setResult(undefined);
     setError(undefined);
     if (isOnline(s) && (query.trim() || mood)) void search(words(query, mood), { source: s });

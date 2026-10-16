@@ -9,6 +9,10 @@
 //   noise removal on, against the export's mix of the same project.json (planExport + audioGraph):
 //   every 0.25 s window within 2.5 dB (1.5 dB where the voice speaks), LUFS within 1 dB, and the
 //   noise between the words as quiet as the export's.
+// - Noise removal's latency compensated (D262): with an undenoised copy of the voice on another
+//   track (hard right), the denoised voice lands within 3 ms of it, as in the export (no ±0.6 s
+//   search: one cross-correlation over ±30 ms); ten On/Off toggles leave one denoise processor
+//   running, not eleven (__uncutAudio.denoiseStats).
 // - The loudness target heard: the master popover's Preview "At target" plays the gain the export's
 //   loudness step measures (export.loudness); the recorded preview lands within 1 LU of the target.
 // - The popovers: one On switch (bypass, ducking, limiter), the EQ curve with a dragged mid handle
@@ -64,6 +68,7 @@ type AudioHook = {
   stopCapture(): { sampleRate: number; t0: number; left: string; right: string; marks: Array<{ t: number; frame: number }>; latency: number; sink: string } | undefined;
   offlineRender(o: { stages: ReadonlyArray<Stage>; input: string; sampleRate?: number }): Promise<{ ready: boolean; output: string }>;
   levels(): { limiter: number; reduction: Record<string, number> };
+  denoiseStats(): { live: number; made: number };
 };
 const H = "__uncutAudio";
 const startCapture = (page: Page) => page.evaluate((h) => (globalThis as unknown as Record<string, AudioHook>)[h]!.startCapture(), H);
@@ -103,6 +108,8 @@ before(async () => {
       tracks: [
         { id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "clip-1", type: "clip", media: "m-pic", in: 0, duration: frames }] },
         { id: "voice", kind: "audio", name: "Voice", items: [{ id: "v", type: "audio", media: "m-voice", in: 0, start: 0, duration: frames }] },
+        // D262: an undenoised copy of the voice, hard right, unmuted only for the latency check.
+        { id: "ref", kind: "audio", name: "Ref", mixer: { mute: true, pan: 1 }, items: [{ id: "r", type: "audio", media: "m-voice", in: 0, start: 0, duration: frames }] },
         // Muted for the recordings (the hiss is what's measured); unmuted for the duck graph.
         { id: "music", kind: "audio", name: "Music", mixer: { mute: true }, items: [{ id: "m", type: "audio", media: "m-music", in: 0, start: 0, duration: frames }] },
       ],
@@ -295,6 +302,55 @@ test("issue #83: noise removal heard in the preview ≈ the export, the loudness
     assert.ok(Math.abs(noisePre / noiseN - noiseEx / noiseN) <= 2, "the hiss between the words: preview ≈ export");
     assert.ok(noisePre / noiseN <= offline.noiseIn - 4, `the hiss is down in the live preview too (${(noisePre / noiseN).toFixed(2)} dB vs ${offline.noiseIn.toFixed(2)} in the file)`);
     assert.ok(Math.abs(lPre - lExp) <= 1, `LUFS preview ${lPre} vs export ${lExp}`);
+
+    // ---- D262: the denoised voice lands with an undenoised copy of it (the export has no offset) ----
+    // Ref (hard right) unmuted: left is the denoised voice, right − left is Ref's raw voice (the
+    // voice is centred: 1 on both sides). Their lag, by cross-correlation over ±30 ms, must be about
+    // 0: uncompensated it is DENOISE_FFT samples (21–23 ms). What is left is two <audio> elements
+    // starting a hair apart (measured −0.7 and +2.5 ms over runs; undenoised tracks have it too),
+    // so the bound is 3 ms.
+    await page.click(`${strip("ref")} [data-testid=mixer-mute]`);
+    rev = await savedAfter(page, rev);
+    const capR = await record(page);
+    const L = f32(capR.left);
+    const R = f32(capR.right);
+    const diff = new Float32Array(L.length);
+    for (let i = 0; i < L.length; i++) diff[i] = R[i]! - L[i]!;
+    // 2 s from the middle of the take (hiss and a word: broadband, one clear peak).
+    const from = Math.round(L.length / 2 - capR.sampleRate);
+    const n = Math.round(2 * capR.sampleRate);
+    const maxLag = Math.round(0.03 * capR.sampleRate);
+    let bestLag = 0;
+    let bestC = -Infinity;
+    for (let lag = -maxLag; lag <= maxLag; lag++) {
+      let c = 0;
+      for (let i = from; i < from + n; i++) c += L[i + lag]! * diff[i]!;
+      if (c > bestC) (bestC = c), (bestLag = lag);
+    }
+    const lagMs = (bestLag / capR.sampleRate) * 1000;
+    console.log(`denoised voice vs its undenoised copy: ${bestLag} samples (${lagMs.toFixed(2)} ms; uncompensated ${((DENOISE_FFT / capR.sampleRate) * 1000).toFixed(1)} ms)`);
+    assert.ok(Math.abs(lagMs) < 3, `the denoised voice lags its undenoised copy by ${lagMs.toFixed(2)} ms`);
+    await page.click(`${strip("ref")} [data-testid=mixer-mute]`);
+    rev = await savedAfter(page, rev);
+
+    // ---- D262: toggling noise removal leaves no processor behind ----
+    const stats = () => page.evaluate((h) => (globalThis as unknown as Record<string, AudioHook>)[h]!.denoiseStats(), H);
+    await page.waitForFunction((h) => (globalThis as unknown as Record<string, AudioHook>)[h]!.denoiseStats().live === 1, { timeout: 5000 }, H);
+    const made0 = (await stats()).made;
+    await page.click(`${strip("voice")} [data-testid=fx-slot][data-module="audio.denoise"]`);
+    await waitFor(page, "[data-testid=fx-popover] [data-testid=fx-bypass]");
+    for (let i = 0; i < 10; i++) {
+      await page.click("[data-testid=fx-popover] [data-testid=fx-bypass]");
+      rev = await savedAfter(page, rev);
+      await sleep(100);
+    }
+    assert.equal(fxOf("voice")[0]!.bypass, undefined, "ten toggles: on again");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction((h) => (globalThis as unknown as Record<string, AudioHook>)[h]!.denoiseStats().live <= 1, { timeout: 5000 }, H).catch(() => {});
+    const after10 = await stats();
+    console.log(`denoise processors after 10 toggles: ${after10.made - made0} made, ${after10.live} running`);
+    assert.ok(after10.made - made0 >= 5, `each toggle back on built a new chain (${after10.made - made0} made)`);
+    assert.equal(after10.live, 1, "only the current chain's denoise processor runs");
 
     // ---- The loudness target, heard: Broadcast (−23 LUFS), Preview At target ----
     await page.click("[data-testid=target-btn]");
