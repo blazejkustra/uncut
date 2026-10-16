@@ -1,10 +1,13 @@
 Deploying uncut.video (Cloudflare Pages)
 
-The site is plain static files in this folder; there is no build step.
+The site is static files in this folder plus one Pages Function (functions/_middleware.ts, the
+analytics region cookie, D284). Scripts are built locally (pnpm site:build) and committed.
 
 1. Preview locally:
      cd site && python3 -m http.server 8000
-   then open http://localhost:8000/
+   then open http://localhost:8000/ (no function: you count as an EU visitor and see the banner).
+   With the function: cd site && npx wrangler pages dev . --port 8788
+   (add ?region=other or ?region=eu to the URL to try either case).
 
 2. Log in to Cloudflare once:
      npx wrangler login
@@ -12,8 +15,8 @@ The site is plain static files in this folder; there is no build step.
 3. Create the Pages project once (from the repo root):
      npx wrangler pages project create uncut --production-branch main
 
-4. Deploy (from the repo root, every time):
-     npx wrangler pages deploy site --project-name uncut --branch main
+4. Deploy (from site/, every time; wrangler only picks up ./functions from the folder it runs in):
+     cd site && npx wrangler pages deploy . --project-name uncut --branch main
 
    The site is then live at https://uncut.pages.dev. _headers in this folder sets the
    security headers; DEPLOY.txt itself is served too, which is harmless.

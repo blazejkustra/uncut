@@ -1,0 +1,32 @@
+/* Cookie banner (D284), loaded by assets/analytics.js only when the banner is shown.
+   Uses the tokens from styles.css. Accept and Reject look the same on purpose (equal prominence). */
+.consent {
+  position: fixed; z-index: 50; left: 24px; bottom: 24px;
+  width: min(380px, calc(100vw - 48px));
+  padding: 16px;
+  background: var(--panel-2, #161616);
+  border: 1px solid var(--border-strong, rgb(255 255 255 / 12%));
+  border-radius: var(--radius, 10px);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
+  color: var(--fg, #ededed);
+  font: 400 14px/1.5 var(--font, system-ui, sans-serif);
+}
+.consent-text { margin: 0; color: var(--muted, #8f8f8f); }
+.consent-text a { color: var(--fg, #ededed); text-decoration: underline; text-underline-offset: 2px; }
+.consent-actions { display: flex; gap: 8px; margin-top: 14px; }
+.consent-btn {
+  flex: 1; height: 36px; padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--raised, #1c1c1c);
+  color: var(--fg, #ededed);
+  font: 500 14px/1 var(--font, system-ui, sans-serif);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.consent-btn:hover { background: rgb(255 255 255 / 8%); border-color: rgb(255 255 255 / 26%); }
+.consent-btn:focus-visible, .consent-text a:focus-visible { outline: 2px solid var(--select, #6d8cff); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .consent { left: 16px; right: 16px; bottom: 16px; width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .consent-btn { transition: none; } }
