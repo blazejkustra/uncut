@@ -22,6 +22,7 @@ import { shaderEntry, type Project, type ShaderDef } from "../../packages/core/s
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { makeColours } from "../helpers/fx-fixture.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -226,7 +227,7 @@ test("D213: shader effects in the preview (WebGPU), the Effects tab and the Insp
     execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${CLIP * i + 15})`, "-frames:v", "1", "-update", "1", file]);
     const c = compare(space === "p3" ? toSrgb(shot) : shot, file);
     scores.push(`${i ? "crt" : "ripple"} SSIM ${c.ssim.toFixed(4)} Δ${c.colour.toFixed(1)}`);
-    assert.ok(c.ssim >= 0.98, `${i ? "crt" : "ripple"}: preview vs export SSIM ${c.ssim}`);
+    check(NO_REAL_GPU, c.ssim >= 0.98, `${i ? "crt" : "ripple"}: preview vs export SSIM ${c.ssim}`);
   }
   console.log(`  preview vs export (screenshots in ${space}): ${scores.join(", ")}`);
   await app.close();

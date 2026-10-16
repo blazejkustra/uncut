@@ -24,6 +24,7 @@ import type { Item, Project } from "../../packages/core/src/index.ts";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { whisperJson, type Token } from "../helpers/whisper-json.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE_WHISPER = resolve("test/helpers/fake-whisper.ts");
@@ -329,7 +330,7 @@ test("issues 40 and 41: a take's mic as a transcript source, Put on Main, transc
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${f})`, "-frames:v", "1", "-update", "1", exported]);
   const score = ssim(preview, exported);
   console.log(`  preview vs export mid-crossfade into the title (frame ${f}): SSIM ${score.toFixed(4)}`);
-  assert.ok(score >= 0.97, `SSIM ${score}`);
+  check(NO_REAL_GPU, score >= 0.97, `preview vs export SSIM ${score}`);
 
   const labels = historyLabels();
   console.log(`  history: ${labels.join(" | ")}`);

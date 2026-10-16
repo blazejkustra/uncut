@@ -19,6 +19,7 @@ import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { eventually } from "../helpers/wait.ts";
 import { FPS, makeExportFixture, writeProject } from "../helpers/export-fixture.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -177,7 +178,7 @@ test("export dialog: ⌘E, quality, file and folder, progress, shown in Finder; 
     // through Chromium's colour management in the preview (its BT.709 curve lifts mid-tones a few
     // levels) while the export keeps the code values, so video frames sit a little lower.
     // (Raised with D56: the preview lays out at canvas size, so text matches; measured 0.997 and 0.974–0.992.)
-    assert.ok(score >= (f <= 30 ? 0.99 : 0.96), `frame ${f}: SSIM ${score}`);
+    check(NO_REAL_GPU, score >= (f <= 30 ? 0.99 : 0.96), `frame ${f}: SSIM ${score}`);
   }
   // The title card's text (frame 30, fully faded in) in the same place, the same width (D56).
   const brightBox = (png: string) => {

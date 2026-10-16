@@ -25,6 +25,7 @@ import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { countGlitches, startGlitchProbe, stopGlitchProbe, type GlitchCounts, type GlitchLayer, type GlitchSample } from "../helpers/preview-glitches.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -233,13 +234,13 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
   assert.equal(stats?.compositors, 1, "the preview's compositor was made once (no re-mount)");
   for (const [name, c] of Object.entries(runs)) {
     assert.equal(c.flash, 0, `${name}: layers blanked after showing`);
-    assert.equal(c.late, 0, `${name}: layers not drawn in time`);
+    check(NO_REAL_GPU, c.late === 0, `${name}: layers not drawn in time (${c.late})`);
     assert.equal(c.lookFlash, 0, `${name}: effects lost after showing`);
-    assert.equal(c.stale, 0, `${name}: videos off the playhead while playing`);
-    assert.equal(c.frozen, 0, `${name}: videos stopped presenting while playing`);
+    check(NO_REAL_GPU, c.stale === 0, `${name}: videos off the playhead while playing (${c.stale})`);
+    check(NO_REAL_GPU, c.frozen === 0, `${name}: videos stopped presenting while playing (${c.frozen})`);
     assert.equal(c.order, 0, `${name}: layers stacked out of their tracks' order`);
     assert.equal(c.contextLost, 0, `${name}: WebGL contexts lost`);
-    assert.equal(c.longFrames, 0, `${name}: animation frames over ${LONG_MS} ms`);
+    check(NO_REAL_GPU, c.longFrames === 0, `${name}: animation frames over ${LONG_MS} ms (${c.longFrames})`);
   }
   assert.deepEqual(app.errors, []);
 });

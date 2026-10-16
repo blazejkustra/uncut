@@ -25,6 +25,7 @@ import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } fro
 import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { makeColours } from "../helpers/fx-fixture.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -250,7 +251,7 @@ test("D136: every look and effect drawn in the preview matches the export; the E
     if (!(r.ssim >= c.min) || !(r.colour <= most)) low.push(`${c.name}: SSIM ${r.ssim} (≥ ${c.min}), colour Δ ${r.colour.toFixed(2)} (≤ ${most})`);
   }
   console.log(`  preview vs export, luma SSIM and mean colour Δ (screenshots in ${space}):\n    ${scores.join("\n    ")}`);
-  assert.deepEqual(low, []);
+  check(NO_REAL_GPU, low.length === 0, `preview vs export: ${low.join("; ")}`);
   // The looks really change the picture: each differs from the clip without effects.
   for (const l of LOOKS) assert.ok(compare(exported.get(`look-${l.id}`)!, exported.get("none")!).colour > 2, `${l.id} changes the colours`);
   // The half-transparent still shows the grey canvas through it, in the export as in the preview.

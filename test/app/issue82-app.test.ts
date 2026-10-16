@@ -19,6 +19,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { countGlitches, startGlitchProbe, stopGlitchProbe, type GlitchLayer } from "../helpers/preview-glitches.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -217,7 +218,7 @@ test("issue #82: playback across 6 cuts (4K HEVC among them) shows no black fram
   }
   for (const [label, r] of Object.entries(runs)) {
     assert.ok(r.playingShots > 100, `${label}: the screencast saw the playback (${r.playingShots} frames)`);
-    assert.deepEqual(r.blacks.map((b) => b.frame), [], `${label}: black frames while playing`);
+    check(NO_REAL_GPU, r.blacks.length === 0, `${label}: black frames while playing at ${r.blacks.map((b) => b.frame).join(", ")}`);
     assert.equal(r.flash, 0, `${label}: a layer blanked after showing`);
   }
   assert.deepEqual(app.errors, []);

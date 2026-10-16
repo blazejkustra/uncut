@@ -17,6 +17,9 @@ const T = { skip, timeout: 90000 };
 let root: string, data: string, projects: string, broken: string;
 const apps = new Set<LaunchedApp>();
 const launch = async (dialogs: Array<unknown> = []) => {
+  // Every test shares one data dir, so one app at a time: an app a failed test left open would
+  // hold the single-instance lock and make this launch quit at once (#89: one failure became three).
+  for (const open of apps) await close(open);
   const app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: data, UNCUT_TEST_DIALOG: JSON.stringify(dialogs) } });
   apps.add(app);
   return app;
@@ -137,7 +140,8 @@ test("welcome → create → editor shell → rename/undo/redo → hand edit →
   await waitForDisk("First Cut", (p) => p.name === "First Cut");
   await meta(page, "KeyZ", true);
   await waitForDisk("First Cut", (p) => p.name === "Renamed");
-  assert.equal(await page.$eval("[data-testid=inspector-name]", (i) => (i as HTMLInputElement).value), "Renamed");
+  // The field follows the file once the editor hears of the redo (a beat later on a slow machine).
+  await page.waitForFunction(() => document.querySelector<HTMLInputElement>("[data-testid=inspector-name]")?.value === "Renamed", { timeout: 10000 });
 
   // Show in Finder (logged instead of opening Finder in test mode).
   await page.click("[data-testid=show-in-finder]");

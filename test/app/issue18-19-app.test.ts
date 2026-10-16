@@ -22,6 +22,7 @@ import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
 import { eventually } from "../helpers/wait.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE_ARGENT = resolve("test/helpers/fake-argent/argent");
@@ -191,7 +192,8 @@ test("issue 18 and 19: this Mac's sound alone, with the microphone and the scree
     assert.deepEqual(readdirSync(join(dir, "media", "captures", folder)).sort(), ["camera.mp4", "mic.m4a", "screen.mp4", "system.m4a"]);
     const offsets = JSON.parse((await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.offsets)) ?? "{}") as Record<string, number>;
     assert.deepEqual(Object.keys(offsets).sort(), ["camera", "screen", "system", "voiceover"]);
-    assert.ok(Math.min(...Object.values(offsets)) === 0 && Math.max(...Object.values(offsets)) < 500, `the recorders started together: ${JSON.stringify(offsets)}`);
+    assert.equal(Math.min(...Object.values(offsets)), 0, `the first recorder starts the take: ${JSON.stringify(offsets)}`);
+    check(NO_REAL_GPU, Math.max(...Object.values(offsets)) < 500, `the recorders started together: ${JSON.stringify(offsets)}`);
     const parts = onDisk().media.filter((m) => m.source?.take === folder);
     assert.equal(parts.length, 4);
     const kindOf: Record<string, string> = { "capture.screen": "screen", "capture.camera": "camera", "capture.microphone": "voiceover", "capture.system": "system" };

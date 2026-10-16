@@ -325,7 +325,9 @@ async function launchOnce({ command, args = [], env: extra = {}, port: requested
   const startedAt = Date.now();
   // D216: draw as on a 2x sRGB screen whatever displays are attached (Chromium switches, which on
   // macOS only take as real argv), so preview screenshots compare with the export the same way everywhere.
-  const proc = spawn(command, [...TEST_DISPLAY_ARGS, ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
+  // Animations run whatever the Mac's Reduce motion setting (#89: GitHub's macOS runners have it on,
+  // and the tests that check animations saw none); a test that wants reduced motion emulates it.
+  const proc = spawn(command, [...TEST_DISPLAY_ARGS, "--force-prefers-no-reduced-motion", ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
   launched.add(proc);
   proc.once("exit", () => launched.delete(proc));
   let ended: { code: number | null; signal: NodeJS.Signals | null; at: number } | undefined;

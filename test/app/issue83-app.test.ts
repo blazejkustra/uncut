@@ -32,6 +32,7 @@ import { stageFilter } from "../../apps/server/src/export/plan/audio.ts";
 import { cachedFor, targetOf, type LoudnessResult } from "../../apps/server/src/analysis/analysis.ts";
 import { decodeEnvelope, trackNoiseFloorDb, type Project, type SpeechEnvelope, type Stage } from "../../packages/core/src/index.ts";
 import { DENOISE_FFT } from "../../packages/core/src/audio/denoise.ts";
+import { NO_REAL_AUDIO } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -186,7 +187,7 @@ function align(cap: NonNullable<Awaited<ReturnType<typeof record>>>, ref: Float3
 }
 const inSpeech = (t0: number, t1: number) => SPEECH.some(([a, b]) => t1 > a - 0.05 && t0 < b + 0.05);
 
-test("issue #83: noise removal heard in the preview ≈ the export, the loudness target heard, and the redesigned effect popovers", { skip, timeout: 480000 }, async () => {
+test("issue #83: noise removal heard in the preview ≈ the export, the loudness target heard, and the redesigned effect popovers", { skip: skip || NO_REAL_AUDIO, timeout: 480000 }, async () => {
   const dir = join(root, "Fx83.uncut");
   const app = await launchApp({
     command: APP,
