@@ -81,6 +81,12 @@ dmg:
       path: /Applications
 # Pins the ad-hoc signature's designated requirement to the bundle id (see the script).
 afterSign: scripts/after-sign.ts
+# D293: the UI is English only, so only Electron's English localisations ship (in Contents/Resources
+# and in Electron Framework.framework/Resources). en.lproj holds Chromium's en-US strings, en_GB the
+# British ones; the gendered folders are Chromium's 18-byte stand-ins, kept so lookups find them.
+# macOS shows native panels and menus in the app's localisations, so these stay English too.
+# Applied when electron-builder packs, before signing, so `pnpm dist:signed` signs the trimmed app.
+electronLanguages: [en, en_GB, en_FEMININE, en_MASCULINE, en_NEUTER, en_GB_FEMININE, en_GB_MASCULINE, en_GB_NEUTER]
 mac:
   category: public.app-category.video
   icon: build/icon.icns
