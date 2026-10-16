@@ -24,10 +24,16 @@ test("motion-film is one of Uncut's own skills, callable with /motion-film and l
   assert.ok(argv[argv.indexOf("--append-system-prompt") + 1]!.includes(`- motion-film: ${skill.description}`));
 });
 
-test("its instructions: beat map and stills first, the techniques, the banned list, the gotchas, a checklist the critic can check", () => {
+test("its instructions: defaults not questions, beat map with numbered stills as the storyboard, footage and UI paths, the techniques, the banned list, the gotchas, a checklist the critic can check", () => {
   const body = bundledSkill("motion-film").instructions;
   for (const head of ["Start", "Build", "Export and sound", "Banned", "Gotchas", "Review checklist"]) assert.match(body, new RegExp(`^${head}`, "m"), head);
-  for (const word of ["beat_grid", "render_frames", "4 stills", "render(t)", "pure function of t", "uncut:lib/motion.js", "120 BPM", "1080 x 1350", "60 fps", "motion blur", "-14 LUFS", "by its peak", "overscale", "0.3 s", "mask", "cursor", "last frame equals the first", "crossfades", "blur-ins", "Holds over 1 s", "particles", "glows", "gradients on UI chrome", "Bouncy easing"]) assert.ok(body.toLowerCase().includes(word.toLowerCase()), word);
+  for (const word of ["beat_grid", "drop", "storyboard_propose", "still", "approval", "render(t)", "pure function of t", "uncut:lib/motion.js", "docs_read graphics", "1080 x 1350 at 60 fps", "motion blur", "-14 LUFS", "by its peak", "overscale", "0.3 s", "mask", "cursor", "uncut.frame(", "hero shape", "rounded rect or pill", "rises out of a mask line", "last frame equals frame 0", "crossfades", "blur-ins", "Holds over 1 s", "particles", "glows", "gradients on UI chrome", "Bouncy easing"]) assert.ok(body.toLowerCase().includes(word.toLowerCase()), word);
+  // D295: no opening question, defaults instead; tempo from beat_grid, never rounded.
+  assert.ok(!/^- Ask on one ask_user card/m.test(body), "no opening question");
+  assert.match(body, /don't ask/);
+  assert.match(body, /ask_user only when something essential is missing/);
+  assert.match(body, /never a rounded "about 120 BPM"/);
+  assert.match(body, /^Pick the path from the brief and the media\n- Footage first[\s\S]*\n- UI first/m);
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 8 && checklist.length <= 12, `${checklist.length} lines`);
   for (const re of [/every beat/, /pop/, /1 s/, /frame 0 and the last frame match/, /overscales/]) assert.ok(checklist.some((l) => re.test(l)), String(re));

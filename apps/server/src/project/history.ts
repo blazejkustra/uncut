@@ -500,7 +500,7 @@ export class HistoryDb {
         return [];
       }
     });
-    return { sessionId: this.meta.get("agent.sessionId"), pendingNote: this.meta.get("agent.pendingNote"), turns, migratedAt: this.meta.get("agent.turnsJsonMigratedAt") };
+    return { sessionId: this.meta.get("agent.sessionId"), pendingNote: this.meta.get("agent.pendingNote"), threadStart: this.meta.get("agent.threadStart"), turns, migratedAt: this.meta.get("agent.turnsJsonMigratedAt") };
   }
 
   /**
@@ -510,6 +510,8 @@ export class HistoryDb {
   saveAgent(input: {
     readonly sessionId: string | undefined;
     readonly pendingNote: string | undefined;
+    /** D295: the current chat's start; left as it is when not given. */
+    readonly threadStart?: string | undefined;
     readonly turns: ReadonlyArray<TurnRecord>;
     readonly order?: ReadonlyArray<string> | undefined;
     readonly migratedAt?: string | undefined;
@@ -529,6 +531,7 @@ export class HistoryDb {
         ["agent.sessionId", input.sessionId],
         ["agent.pendingNote", input.pendingNote || undefined],
         ...(input.migratedAt ? ([["agent.turnsJsonMigratedAt", input.migratedAt]] as Array<[string, string]>) : []),
+        ...("threadStart" in input ? ([["agent.threadStart", input.threadStart]] as Array<[string, string | undefined]>) : []),
       ];
       for (const [k, v] of changes) v === undefined ? delMeta.run(k) : setMeta.run(k, v);
       return () => {

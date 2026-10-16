@@ -2,7 +2,7 @@
 // reply and edit list, "Undo turn", the note about edits made by hand, and the composer. Live: text
 // and thinking stream in, a line says what it's doing now. Names, never ids (AG5). Everything shown
 // comes from the server's agent.subscribe stream; this component only sends, stops and undoes.
-import { ChevronDown, Maximize2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Maximize2, SquarePen, TriangleAlert, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Composer } from "./Composer.tsx";
@@ -11,6 +11,7 @@ import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ProjectContext } from "./agent/context.ts";
 import { ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
 import { TurnCard } from "./agent/TurnCard.tsx";
+import { splitThread } from "./agent/thread.ts";
 import { projectEmpty, stage, useStageDismissed } from "../editor/agentStage.ts";
 import { panels } from "../editor/layout.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
@@ -29,15 +30,25 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
   }, []);
   const claude = setupChecks?.find((c) => c.id === "claude");
   const blocked = claude?.status === "missing" || claude?.status === "needs-login";
-  const turns = agent?.turns ?? [];
+  const allTurns = agent?.turns ?? [];
   const running = agent?.running ?? null;
+  // D295: the current chat's turns; earlier chats fold behind a line that opens them.
+  const { earlier, current: turns } = splitThread(allTurns, agent?.threadStart);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const newChat = (
+    <Tooltip label={running !== null ? "Wait for the agent to finish to start a new chat" : "New chat: the agent starts a fresh conversation"}>
+      <button className="icon-btn agent-new-chat" data-testid="agent-new-chat" aria-label="New chat" disabled={!online || running !== null || turns.length === 0} onClick={() => (setShowEarlier(false), void actions.agentNewThread())}>
+        <SquarePen />
+      </button>
+    </Tooltip>
+  );
   // D9: the session's estimated spend on the user's API keys (generators), when there is any.
-  const sessionSpend = turns.reduce((n, t) => n + (t.spend ?? 0), 0);
+  const sessionSpend = allTurns.reduce((n, t) => n + (t.spend ?? 0), 0);
   // D197: the latest brief and storyboard cards (edit, approve there), as "turn:item".
   const latest = new Set<string>();
   for (const type of ["brief", "storyboard"] as const) {
     let at: string | undefined;
-    for (const t of turns) t.items.forEach((item, i) => item.kind === "card" && item.card?.type === type && (at = `${t.id}:${i}`));
+    for (const t of allTurns) t.items.forEach((item, i) => item.kind === "card" && item.card?.type === type && (at = `${t.id}:${i}`));
     if (at) latest.add(at);
   }
   const live: CardLive | undefined = agent?.plan ? { plan: agent.plan, online, busy: running !== null, waiting: !!agent.approval?.storyboard } : undefined;
@@ -78,15 +89,30 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           {agent.warning}
         </p>
       )}
-      {/* An empty plan has no chip: no strip either (it left a bare rule above the empty state). */}
-      {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && (
-        <div className="plan-strip agent-strip">
+      {/* An empty plan and no turns: no strip (it left a bare rule above the empty state). */}
+      {(allTurns.length > 0 || (agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0))) && (
+        <div className="plan-strip agent-strip" data-testid="agent-strip">
+          {newChat}
           <span className="spacer" />
-          <PlanChip plan={agent.plan} />
+          {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && <PlanChip plan={agent.plan} />}
         </div>
       )}
       <div className="agent-thread" ref={thread} data-testid="agent-thread" onScroll={onScroll}>
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
+        {earlier.length > 0 && (
+          <button className="link-btn agent-earlier" data-testid="agent-earlier" aria-expanded={showEarlier} onClick={() => setShowEarlier(!showEarlier)}>
+            {showEarlier ? <ChevronDown /> : <ChevronRight />}
+            {showEarlier ? "Hide earlier chat" : `Earlier chat, ${earlier.length === 1 ? "1 turn" : `${earlier.length} turns`}`}
+          </button>
+        )}
+        {showEarlier && earlier.length > 0 && (
+          <>
+            {earlier.map((t) => <TurnCard key={t.id} turn={t} busy={running !== null} online={online} approval={undefined} latest={latest} live={live} />)}
+            <div className="agent-thread-divider" data-testid="agent-thread-divider">
+              <span>New chat</span>
+            </div>
+          </>
+        )}
         {turns.length === 0 ? (
           <>
             <AgentEmpty name={project.name} />
@@ -131,7 +157,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           </Tooltip>
         </div>
       )}
-      <Composer project={project} online={online} blocked={blocked} turns={turns} running={running} provider={agent?.provider ?? "Claude Code"} />
+      <Composer project={project} online={online} blocked={blocked} turns={allTurns} running={running} provider={agent?.provider ?? "Claude Code"} />
     </div>
     </ProjectContext.Provider>
   );

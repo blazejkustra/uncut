@@ -23,7 +23,22 @@ let root = "";
 const apps = new Set<LaunchedApp>();
 const shot = (page: Page, name: string) => page.screenshot({ path: resolve("test-output", `${name}.png`) });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// D295: the form scrolls under its pinned Create foot; bring a field to the middle before clicking it
+// (puppeteer only scrolls an element that is fully out of view).
+const reveal = (page: Page, selector: string) => page.$eval(selector, (el) => el.scrollIntoView({ block: "center" }));
 const viewport = (page: Page) => page.evaluate(() => [innerWidth, innerHeight]);
+/** D295: Create is in view and on top at the body's top scroll: above the status foot, the click lands on it. */
+const createReachable = async (page: Page, label: string) => {
+  const r = await page.evaluate(() => {
+    document.querySelector(".welcome-body")!.scrollTop = 0;
+    const b = document.querySelector("[data-testid=create]")!.getBoundingClientRect();
+    const foot = document.querySelector(".welcome-foot")!.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    return { bottom: b.bottom, top: b.top, footTop: foot.top, onTop: !!hit?.closest("[data-testid=create]") };
+  });
+  assert.ok(r.top >= 0 && r.bottom <= r.footTop, `${label}: Create (${r.top}–${r.bottom}) is above the status foot (${r.footTop})`);
+  assert.ok(r.onTop, `${label}: a click on Create lands on it`);
+};
 const waitViewport = (page: Page, w: number, h: number) =>
   page.waitForFunction((w, h) => innerWidth === w && innerHeight === h, { timeout: 10000 }, w, h).catch(async () => {
     throw new Error(`viewport ${await viewport(page)}, wanted ${w}×${h}`);
@@ -67,6 +82,16 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     assert.deepEqual(await page.$$eval(".wiz-cards.presets [data-preset]", (els) => els.map((e) => (e as HTMLElement).dataset.preset)), ["landscape", "1080p60", "4k", "cinema", "vertical", "4k-vertical", "social", "square"]);
     const fits = await page.$eval("[data-testid=new-project-form]", (el) => el.getBoundingClientRect().right <= innerWidth);
     assert.ok(fits, "the form fits the compact window");
+    await createReachable(page, "760×720");
+    // D295: the frame rate works with a preset: Social at 60 fps, and another preset brings back its own.
+    await page.click("[data-preset=social]");
+    assert.equal(await page.$eval("[data-testid=custom-fps]", (el) => (el as HTMLSelectElement).value), "30");
+    await page.select("[data-testid=custom-fps]", "60");
+    assert.match(await page.$eval("[data-testid=new-project-meta]", (el) => (el as HTMLElement).innerText), /as 1080×1350, 60 fps\.$/);
+    assert.match(await page.$eval("[data-preset=social]", (el) => (el as HTMLElement).innerText), /60 fps/);
+    await page.click("[data-preset=cinema]");
+    assert.match(await page.$eval("[data-testid=new-project-meta]", (el) => (el as HTMLElement).innerText), /as 2560×1080, 24 fps\.$/);
+    await page.click("[data-preset=landscape]");
     await shot(page, "issue15-new-project");
     await page.click("[data-testid=custom-canvas]");
     await page.waitForSelector("[data-testid=custom-fields]");
@@ -93,9 +118,12 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     await page.click("[data-testid=custom-lock]");
     assert.equal(await page.$eval("[data-testid=custom-lock]", (el) => el.getAttribute("aria-pressed")), "true");
     assert.match(await page.$eval("[data-testid=new-project-meta]", (el) => (el as HTMLElement).innerText), /as 1280×720, 29\.97 fps\.$/);
+    await createReachable(page, "760×720 with Custom open");
     await shot(page, "issue15-custom");
+    await reveal(page, "[data-testid=project-name]");
     await page.click("[data-testid=project-name]", { clickCount: 3 });
     await page.keyboard.type("Custom");
+    await reveal(page, "[data-testid=choose-folder]");
     await page.click("[data-testid=choose-folder]");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
@@ -131,10 +159,22 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     await waitViewport(page, 700, 600);
     await page.click("[data-testid=new-project]");
     await page.waitForSelector("[data-testid=new-project-form]");
+    await createReachable(page, "700×600");
+    await page.evaluate(() => window.resizeTo(600, 520));
+    await waitViewport(page, 600, 520);
+    await page.click("[data-testid=custom-canvas]");
+    await page.waitForSelector("[data-testid=custom-fields]");
+    await createReachable(page, "600×520 with Custom open");
+    await shot(page, "issue15-small");
+    // D295: Social at 60 fps (until the first clip sets it).
+    await page.click("[data-preset=social]");
+    await page.select("[data-testid=custom-fps]", "60");
+    await reveal(page, "[data-testid=project-name]");
     await page.click("[data-testid=project-name]", { clickCount: 3 });
     await page.keyboard.type("Matched");
     await page.click("[data-testid=match-first-clip]");
     assert.match(await page.$eval("[data-testid=new-project-meta]", (el) => (el as HTMLElement).innerText), /until the first video sets it/);
+    await reveal(page, "[data-testid=choose-folder]");
     await page.click("[data-testid=choose-folder]");
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=parent-dir]")!.title !== "");
     await page.click("[data-testid=create]");
@@ -142,7 +182,7 @@ test("issues 14, 15: a compact start window, the editor's own size, custom canva
     assert.deepEqual(await viewport(page), [1360, 760], "the editor's own size, remembered");
     const dir = join(projects, "Matched.uncut");
     assert.ok(existsSync(join(dir, ".cache", "match-first-clip")));
-    assert.deepEqual(JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).canvas, { width: 1920, height: 1080, fps: 30 });
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, "project.json"), "utf8")).canvas, { width: 1080, height: 1350, fps: 60 });
     await page.click("[data-testid=import-plus]");
     await page.waitForFunction(() => document.querySelectorAll("[data-testid=media-tile], [data-testid=media-row]").length > 0 || document.querySelector("[data-testid=canvas-info]")?.textContent?.includes("1280"), { timeout: 30000 });
     await page.waitForFunction(() => /1280×720/.test(document.querySelector("[data-testid=canvas-info]")?.textContent ?? ""), { timeout: 30000 });

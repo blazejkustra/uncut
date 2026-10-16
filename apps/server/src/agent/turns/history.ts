@@ -88,6 +88,7 @@ interface History {
   readonly sessionId: string | undefined;
   readonly turns: Array<StoredTurn>;
   readonly pendingNote: string | undefined;
+  readonly threadStart?: string | undefined;
   readonly readError?: string;
 }
 
@@ -129,7 +130,7 @@ export async function loadAgentHistory(dir: string): Promise<History> {
   return withHistory(dir, (db) => {
     const stored = db.agent();
     const turns = stored.turns.map(storedTurn).filter((t): t is StoredTurn => t !== undefined);
-    if (!existsSync(historyFile(dir))) return { sessionId: stored.sessionId, turns, pendingNote: stored.pendingNote };
+    if (!existsSync(historyFile(dir))) return { sessionId: stored.sessionId, turns, pendingNote: stored.pendingNote, threadStart: stored.threadStart };
     const known = new Set(turns.map((t) => t.id));
     const merged = [...turns, ...legacy.turns.filter((t) => !known.has(t.id))].sort(byStart);
     const sessionId = stored.sessionId ?? legacy.sessionId;
@@ -145,7 +146,7 @@ export async function loadAgentHistory(dir: string): Promise<History> {
         }
       }
     }
-    return { sessionId, turns: merged, pendingNote };
+    return { sessionId, turns: merged, pendingNote, threadStart: stored.threadStart };
   });
 }
 

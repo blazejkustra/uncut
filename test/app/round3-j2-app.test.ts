@@ -151,7 +151,7 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     const title = { id: "claim", type: "text", start: 0, duration: 60, text: "QA on real devices, in the cloud", transform: { x: 80, y: 400 }, style: { preset: "text.title", size: 90, weight: 700, color: "#ffffff" } };
     nextTurn([
       { tool: "brief_write", args: brief },
-      { tool: "storyboard_propose", args: { summary: "Claim, the real dashboard, end card", beats: BEATS } },
+      { tool: "storyboard_propose", args: { summary: "Claim, the real dashboard, end card", beats: BEATS.map((b, i) => (i === 0 ? { ...b, still: 0 } : b)) } },
       { tool: "project_read" },
       { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1: the claim", ops: [{ op: "insert_item", track: "text", item: title }] } },
       { tool: "contact_sheet", args: { max: 4 } },
@@ -162,6 +162,10 @@ test("round 3 J2: brand kit and skill, question card, brief, storyboard approval
     await send("go ahead");
     await waitFor("[data-testid=agent-storyboard]");
     assert.equal(await page.$$eval("[data-testid=agent-storyboard] [data-testid=agent-storyboard-beat]", (els) => els.length), 3);
+    // D295: the first beat's still, rendered by Uncut and shown on its numbered beat.
+    await page.waitForFunction(() => (document.querySelector<HTMLImageElement>("[data-testid=agent-storyboard] [data-testid=agent-storyboard-still]")?.naturalWidth ?? 0) > 0, { timeout: 15000 });
+    assert.equal(await page.$$eval("[data-testid=agent-storyboard] [data-testid=agent-storyboard-still]", (els) => els.length), 1);
+    assert.match(await text(page, "[data-testid=agent-storyboard] [data-testid=agent-storyboard-beat] .beat-time"), /^1\. 0 s to 2 s/);
     await waitFor("[data-testid=agent-card][data-type=brief]");
     await page.screenshot({ path: out("storyboard") });
     await page.click("[data-testid=agent-storyboard-edit]");

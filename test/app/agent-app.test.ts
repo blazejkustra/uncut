@@ -220,6 +220,27 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   assert.match(runs.at(-1).prompt, /^then say hi/);
   assert.equal(new Set(runs.map((r: { pid: number }) => r.pid)).size, 1, "four messages, one claude process (D139)");
   await page.screenshot({ path: "test-output/agent-stopped.png" });
+
+  // D295: New chat (the strip above the thread): the earlier turns fold behind one line, the next
+  // message starts a fresh claude conversation, and the line opens the earlier chat again.
+  await page.click("[data-testid=agent-new-chat]");
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]").length === 0, { timeout: 10000 });
+  assert.equal(await text(page, "[data-testid=agent-earlier]"), "Earlier chat, 4 turns");
+  assert.equal(await page.$eval("[data-testid=agent-new-chat]", (b) => (b as HTMLButtonElement).disabled), true, "an empty chat needs no new one");
+  nextTurn([{ text: "Fresh start." }]);
+  await page.click("[data-testid=agent-input]");
+  await page.type("[data-testid=agent-input]", "start over");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelectorAll<HTMLElement>("[data-testid=agent-turn]")[0]?.dataset.status === "done", { timeout: 20000 });
+  assert.equal(await turnCount(page), 1);
+  const fresh = readFileSync(promptLog(), "utf8").trim().split("\n").map((l) => JSON.parse(l)).at(-1);
+  assert.match(fresh.prompt, /^start over/);
+  assert.equal(fresh.resume, null, "a fresh conversation");
+  await page.screenshot({ path: "test-output/agent-new-chat.png" });
+  await page.click("[data-testid=agent-earlier]");
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=agent-turn]").length === 5);
+  await waitFor(page, "[data-testid=agent-thread-divider]");
+  await page.screenshot({ path: "test-output/agent-earlier-chat.png" });
   assert.deepEqual(app.errors, []);
 }
 

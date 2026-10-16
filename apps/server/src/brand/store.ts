@@ -14,6 +14,7 @@ import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
 import type { AgentPlan, BrandActive, BrandKit, BrandScope, BrandSkill, BrandState, BrandStyle, Brief, IntendedFinding, Review, Storyboard, StoryboardBeat } from "@uncut/contracts";
+import { AGENT_IMAGE_NAME } from "@uncut/contracts";
 
 import type { PluginSkill } from "@uncut/core";
 import { isVideoType, skillIdsOf } from "@uncut/core/skills";
@@ -464,7 +465,8 @@ export function normBeats(raw: unknown): Array<StoryboardBeat> {
       const start = Math.max(0, num(b.start));
       const end = Math.max(start, num(b.end, start));
       const sound = str(b.sound, 200);
-      return [{ start, end, title: str(b.title, 120), entry: str(b.entry, 600), exit: str(b.exit, 600), purpose: str(b.purpose, 400), assets: strs(b.assets, 12, 200), ...(sound ? { sound } : {}) }];
+      const still = typeof b.still === "string" && AGENT_IMAGE_NAME.test(b.still) ? b.still : undefined;
+      return [{ start, end, title: str(b.title, 120), entry: str(b.entry, 600), exit: str(b.exit, 600), purpose: str(b.purpose, 400), assets: strs(b.assets, 12, 200), ...(sound ? { sound } : {}), ...(still ? { still } : {}) }];
     })
     .slice(0, 40);
 }

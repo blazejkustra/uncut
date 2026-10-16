@@ -97,6 +97,8 @@ export interface AgentShape {
   readonly undoTurn: (turnId: string) => Effect.Effect<ProjectSnapshot, AgentError | EditRefused | ProjectError>;
   /** D206: puts back the graphics a turn's clean-up moved to the trash. */
   readonly restoreCleanup: (turnId: string) => Effect.Effect<{ readonly restored: ReadonlyArray<string> }, AgentError>;
+  /** D295: a new chat: the next message starts a fresh Claude conversation (earlier turns stay in the history). */
+  readonly newThread: Effect.Effect<{ readonly threadStart: string }, AgentError>;
   /** For the bridge: the tool list, or undefined when `token` isn't the live session's. */
   readonly tools: (token: string | null) => Effect.Effect<ReadonlyArray<McpTool> | undefined>;
   /** For the bridge: whether `token` is the running turn's (no rescan, unlike tools). */
@@ -160,7 +162,7 @@ export const layer = Layer.effect(
 
     const services: AgentServices = { projects, format, exporter, media, mediaCore, analysis, config, plugins, generator, keys, capture, sounds, mediaIndex, bridgeUrl, stateRef, loadLock, st, sessions, testRun, approvalMs, screenWaits, view };
     const core = { ...services, ...makeCore(services) };
-    const { ensureLoaded, trackPending, publish, killRunning, persist, stop, sessionTokenOk, tokenOk } = core;
+    const { ensureLoaded, trackPending, publish, killRunning, persist, stop, sessionTokenOk, tokenOk, closeSession } = core;
 
     // Follow the open project: another opening loads its history, every change refreshes the
     // undo states, a close stops the running turn.
@@ -278,6 +280,27 @@ export const layer = Layer.effect(
           publish();
           return { restored };
         }),
+      // D295: New chat. The live claude ends (gracefully: it's idle), the stored conversation is
+      // forgotten, so the next message spawns one without --resume and gets the brand and plan
+      // blocks whole (a new session has sent none). The note of edits by hand stays for it. What
+      // D194 keeps "for this chat" (Always answers, added folders, web use) starts over too.
+      newThread: Effect.gen(function* () {
+        const owner = yield* ensureLoaded;
+        if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
+        if (st.running) return yield* new AgentError({ reason: "busy", message: "Wait for the agent to finish, or stop it, before starting a new chat." });
+        if (st.session) closeSession(st.session, "graceful");
+        owner.sessionId = undefined;
+        owner.context = undefined;
+        owner.threadStart = new Date().toISOString();
+        owner.grants.clear();
+        owner.dirs.length = 0;
+        owner.mentioned.length = 0;
+        owner.webUsed = false;
+        owner.tainted.clear();
+        persist(owner);
+        publish();
+        return { threadStart: owner.threadStart };
+      }),
       // The built-in tools, then the plugins' (D97; the folders are scanned again for each list).
       // Any time the session lives: claude lists its tools when it starts.
       tools: (token) =>

@@ -33,6 +33,8 @@ export const StoryboardBeat = Schema.Struct({
   purpose: Schema.String,
   assets: Schema.Array(Schema.String),
   sound: Schema.optional(Schema.String), // the beat or hit it lands on
+  // D295: the beat's still, rendered by storyboard_propose (an image name in .cache/agent-images/).
+  still: Schema.optional(Schema.String),
 });
 export type StoryboardBeat = typeof StoryboardBeat.Type;
 /** The storyboard (`<project>/storyboard.json`): proposed by the agent, approved (maybe edited) by the user before the build. */
@@ -349,6 +351,8 @@ export const AgentState = Schema.Struct({
   warning: Schema.optional(Schema.String),
   // D261: the context window's use after the last answer (absent until claude reported one).
   context: Schema.optional(AgentContext),
+  // D295: when the current chat started (New chat); turns before it belong to earlier chats.
+  threadStart: Schema.optional(Schema.String),
 });
 export type AgentState = typeof AgentState.Type;
 

@@ -29,6 +29,7 @@ export const makeCore = (ctx: AgentServices) => {
       ...(owner.ui ? { ui: owner.ui } : {}),
       plan: owner.plan,
       ...(owner.context ? { context: owner.context } : {}),
+      ...(owner.threadStart ? { threadStart: owner.threadStart } : {}),
       ...(st.initWarning || st.limitWarning ? { warning: [st.initWarning, st.limitWarning].filter(Boolean).join(" ") } : {}),
       ...(st.approval && st.running && st.running.owner === owner && st.running.turn.id === st.approval.card.turnId ? { approval: st.approval.card } : {}),
       ...(() => {
@@ -52,7 +53,7 @@ export const makeCore = (ctx: AgentServices) => {
       return [turnRecord(t, owner.bounds.get(t.id))];
     });
     try {
-      withHistory(owner.dir, (db) => db.saveAgent({ sessionId: owner.sessionId, pendingNote, turns, order: owner.turns.map((t) => t.id) }));
+      withHistory(owner.dir, (db) => db.saveAgent({ sessionId: owner.sessionId, pendingNote, threadStart: owner.threadStart, turns, order: owner.turns.map((t) => t.id) }));
       for (const [id, json] of changed) owner.saved.set(id, json);
     } catch (error) {
       console.error(`[uncut] can't save the agent history of ${owner.dir}: ${(error as Error).message}`);
@@ -176,6 +177,7 @@ export const makeCore = (ctx: AgentServices) => {
         mentioned: [],
         webUsed: false,
         tainted: new Set(),
+        ...(history.threadStart ? { threadStart: history.threadStart } : {}),
       };
       return st.loaded;
     }),

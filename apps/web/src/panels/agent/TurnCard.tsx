@@ -1,10 +1,11 @@
 import { type AgentTurn, type AgentApproval, AGENT_MODELS, type AgentEdit } from "@uncut/contracts";
-import { FolderOpen, Square, Undo2, PencilLine, Pencil } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Square, Undo2, PencilLine, Pencil } from "lucide-react";
 import { useState, useRef, useEffect, type ReactNode, Fragment } from "react";
 import { withChips } from "../Composer.tsx";
 import { type CardLive, CardItem, QuestionCard, StoryboardApproval } from "../AgentCards.tsx";
 import { agentImageUrl, actions } from "../../state/store.ts";
 import { useFriendly } from "./context.ts";
+import { noteLines } from "./thread.ts";
 import { groupItems, WorkLog, EditRow, MediaRow, Thinking, NowLine } from "./workLog.tsx";
 import { CopyButton } from "./copy.tsx";
 import { ScreenApprovalCard, BootCard, PermissionCard, BrandDiffCard, ApprovalCard, CleanupLine } from "./approvals.tsx";
@@ -170,21 +171,40 @@ function EditsFooter({ edits, undone }: { edits: ReadonlyArray<AgentEdit>; undon
   );
 }
 
-/** D6: the edits by hand the agent was told about with this prompt. */
+/** D6: the edits by hand the agent was told about with this prompt; D295: imports folded into one line that opens. */
 function ManualNote({ note }: { note: string }) {
   const friendly = useFriendly();
-  const lines = note.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+  const [open, setOpen] = useState(false);
+  const count = note.split("\n").filter((l) => l.startsWith("- ")).length;
   return (
     <div className="manual-note" data-testid="agent-note">
       <div className="manual-note-head">
         <Pencil />
-        {lines.length === 1 ? "Told the agent about 1 change you made by hand" : `Told the agent about ${lines.length} changes you made by hand`}
+        {count === 1 ? "Told the agent about 1 change you made by hand" : `Told the agent about ${count} changes you made by hand`}
       </div>
-      {lines.map((line, i) => (
-        <div key={i} className="manual-note-line">
-          {friendly(line)}
-        </div>
-      ))}
+      {noteLines(note).map((line, i) =>
+        line.kind === "line" ? (
+          <div key={i} className="manual-note-line">
+            {friendly(line.text)}
+          </div>
+        ) : (
+          <div key={i} className="manual-note-imports">
+            <button className="manual-note-line manual-note-toggle" data-testid="agent-note-imports" aria-expanded={open} title={open ? "Hide the files" : "Show the files"} onClick={() => setOpen(!open)}>
+              {open ? <ChevronDown /> : <ChevronRight />}
+              {line.text}
+            </button>
+            {open && (
+              <div className="manual-note-files" data-testid="agent-note-files">
+                {line.names.map((name, j) => (
+                  <div key={j} className="manual-note-line">
+                    {friendly(name)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ),
+      )}
     </div>
   );
 }

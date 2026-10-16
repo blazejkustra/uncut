@@ -42,7 +42,9 @@ test("Uncut's own skills (the bundled uncut.skills plugin): names, a review chec
     assert.ok(/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name) && s.title && s.description && s.plugin === "uncut.skills", s.name);
     const list = skillChecklist(s.instructions);
     assert.ok(list.length >= 4 && list.length <= 12, `${s.name}: ${list.length} checklist lines`);
-    assert.ok(s.instructions.length <= 2600, `${s.name} is ${s.instructions.length} characters`);
+    // D295: the one-take film skill carries a whole recipe (two paths, the beat map, stills); the rest stay short.
+    const cap = s.name === BUILTIN_IDS.film ? 4800 : 2600;
+    assert.ok(s.instructions.length <= cap, `${s.name} is ${s.instructions.length} characters (at most ${cap})`);
     for (const head of ["Review checklist"]) assert.match(s.instructions, new RegExp(`\\n${head}\\n`), s.name);
     // On-screen copy rules apply to the recipes too (D207): commas or line breaks, never ·, • or *.
     assert.ok(!/[·•]/.test(s.instructions) && !/\S \* \S/.test(s.instructions), s.name);

@@ -153,6 +153,12 @@ export const agentActions = {
     else if (result.error.reason === "changed-on-disk") set({ changedOnDisk: true, reloadProblem: undefined });
     else set({ agentError: plainError(result.error) });
   },
+  /** D295: New chat: the next message starts a fresh Claude conversation. */
+  async agentNewThread() {
+    set({ agentError: undefined });
+    const result = await call((c) => c["agent.newThread"]({}));
+    if (!result.ok) set({ agentError: plainError(result.error) });
+  },
   /** D206: puts back the graphics a turn's clean-up moved to the trash. */
   async agentRestoreCleanup(turnId: string) {
     const result = await call((c) => c["agent.restoreCleanup"]({ turnId }));

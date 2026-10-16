@@ -50,6 +50,8 @@ export interface Loaded {
   // D261: the context window's use after the agent's last answer (the composer's meter). Kept
   // across claude sessions of the conversation (a --resume carries on from it); not saved.
   context?: AgentContext | undefined;
+  // D295: when the current chat started (New chat); earlier turns are earlier chats. Saved.
+  threadStart?: string | undefined;
 }
 
 /**
@@ -102,6 +104,9 @@ export interface ClaudeSession {
   // D261: the model claude said it runs (system/init), the length of the system prompt Uncut
   // appended, and of the tool list claude got from tools/list (JSON), for the meter's estimate.
   initModel: string | undefined;
+  // Where claude's credential came from (system/init apiKeySource: "ANTHROPIC_API_KEY", "apiKeyHelper",
+  // "/login managed key", "none", ...), to say which sign-in an auth or billing error came from. Never the key.
+  apiKeySource?: string | undefined;
   readonly systemChars: number;
   toolsChars: number | undefined;
 }
@@ -161,6 +166,8 @@ export interface Running {
   readonly skipStoryboard: boolean;
   // D237: this turn wrote the brief or proposed a storyboard: its timeline_edits wait for the approval.
   planned: boolean;
+  // D295: storyboard proposals with stills in this turn (names their images apart).
+  stills?: number;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
   // D218: the subscription limits and sign-in problems claude reported in this turn (agentLimits.ts).

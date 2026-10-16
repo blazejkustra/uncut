@@ -1,7 +1,7 @@
 import type { StoryboardBeat, AgentApproval, Storyboard } from "@uncut/contracts";
 import { Clapperboard, Pencil } from "lucide-react";
 import { useState, useEffect } from "react";
-import { actions } from "../../state/store.ts";
+import { actions, agentImageUrl } from "../../state/store.ts";
 
 export const seconds = (s: number) => `${Math.round(s * 10) / 10} s`;
 
@@ -9,10 +9,11 @@ export const seconds = (s: number) => `${Math.round(s * 10) / 10} s`;
 export function BeatRow({ beat, i, edit, onChange }: { beat: StoryboardBeat; i: number; edit: boolean; onChange?: (b: StoryboardBeat) => void }) {
   if (!edit || !onChange) {
     return (
-      <div className="beat" data-testid="agent-storyboard-beat">
+      <div className={`beat ${beat.still ? "with-still" : ""}`} data-testid="agent-storyboard-beat">
+        {beat.still && <img className="beat-still" data-testid="agent-storyboard-still" src={agentImageUrl(beat.still)} alt={`Beat ${i + 1} still`} title={`Beat ${i + 1}`} />}
         <div className="beat-head">
           <span className="beat-time">
-            {seconds(beat.start)} to {seconds(beat.end)}
+            {i + 1}. {seconds(beat.start)} to {seconds(beat.end)}
           </span>
           <b>{beat.title || `Beat ${i + 1}`}</b>
         </div>
