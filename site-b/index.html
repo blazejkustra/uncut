@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uncut, the video editor with an agent built in</title>
+<meta name="description" content="Uncut is a video editor for the Mac with an agent built in. It runs your installed Claude Code, which edits a real timeline while you watch. Free and open source.">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://uncut.video/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Uncut">
+<meta property="og:description" content="Say the cut. Watch it happen. A video editor for the Mac with an agent built in.">
+<meta property="og:url" content="https://uncut.video/">
+<meta property="og:image" content="https://uncut.video/assets/img/editor.webp">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/HankenGrotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="wordmark" href="/" aria-label="Uncut home">
+    <svg viewBox="280 230 464 562" aria-hidden="true" focusable="false">
+      <defs>
+        <mask id="cut-top" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+          <rect width="1024" height="1024" fill="#fff"/>
+          <path d="M270 506 L466 403" stroke="#000" stroke-width="26"/>
+        </mask>
+      </defs>
+      <path d="M368 318 V560 A144 144 0 0 0 656 560 V318" fill="none" stroke="currentColor" stroke-width="128" stroke-linecap="round" mask="url(#cut-top)"/>
+    </svg>
+    <span>Uncut</span>
+  </a>
+  <nav aria-label="Main">
+    <a class="wide-only" href="#turn">How it works</a>
+    <a class="wide-only" href="#editor">Editor</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="https://github.com/blazejkustra/uncut">GitHub</a>
+  </nav>
+</header>
+
+<main>
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">Say the cut.<br>Watch it happen.</h1>
+      <div class="hero-side">
+        <p class="lead">Uncut is a video editor for the Mac with an agent built in. It runs your installed Claude Code, which edits a real timeline while you watch and hands every change back to you to keep or undo.</p>
+        <div class="actions">
+          <a class="button" href="https://github.com/blazejkustra/uncut/releases/latest">Download for Mac</a>
+          <a class="textlink" href="https://github.com/blazejkustra/uncut">Source on GitHub</a>
+        </div>
+        <p class="note">For Apple silicon Macs. Free and open source.</p>
+      </div>
+    </div>
+    <picture class="hero-shot">
+      <source media="(max-width: 700px)" srcset="/assets/img/editor-phone.webp" width="1000" height="853">
+      <img src="/assets/img/editor.webp" width="2200" height="1041" fetchpriority="high" alt="The Uncut editor with a drone shot over a city in the preview, a title reading Kraków from above, and a timeline of six clips named Reveal, City, Above, Quarry, Orbit and Bench under two titles.">
+    </picture>
+  </section>
+
+  <section class="turn" id="turn" aria-labelledby="turn-title">
+    <div class="turn-copy">
+      <h2 id="turn-title">Ask the way you would ask an editor</h2>
+      <p>The agent sees your timeline, your footage and its transcript. Each request becomes one turn, and every turn goes the same way.</p>
+    </div>
+
+    <div class="stepper">
+      <input class="sr" type="radio" name="stage" id="st-brief" checked>
+      <input class="sr" type="radio" name="stage" id="st-board">
+      <input class="sr" type="radio" name="stage" id="st-edit">
+      <input class="sr" type="radio" name="stage" id="st-review">
+
+      <div class="tabs" role="presentation">
+        <label for="st-brief" class="tab tab-brief">
+          <span class="tab-name">Brief</span>
+          <span class="tab-text">It writes the brief first: length, format, look, sound and what it must never do, for you to change before anything is cut.</span>
+        </label>
+        <label for="st-board" class="tab tab-board">
+          <span class="tab-name">Storyboard</span>
+          <span class="tab-text">Then a storyboard, beat by beat and timed, waiting for you to approve it or ask for changes.</span>
+        </label>
+        <label for="st-edit" class="tab tab-edit">
+          <span class="tab-name">Edit</span>
+          <span class="tab-text">It edits the timeline live. Each step lands on the tracks as you watch, and it asks you when a choice is yours.</span>
+        </label>
+        <label for="st-review" class="tab tab-review">
+          <span class="tab-name">Review</span>
+          <span class="tab-text">An independent critic scores the edit against the plan and sends it back when it falls short.</span>
+        </label>
+      </div>
+
+      <div class="stage">
+        <img class="shot-brief" src="/assets/img/stage-brief.webp" width="588" height="577" loading="lazy" alt="The brief: screen recording of the setup, a calm and clear look, never invent UI, a 16:9 mp4, at most four sound effects in any ten seconds, and the product demo skill.">
+        <img class="shot-board" src="/assets/img/stage-storyboard.webp" width="588" height="393" loading="lazy" alt="An approved storyboard of two beats: a one second hook where the claim types in, then the dashboard where the phone slides up and a run goes green.">
+        <img class="shot-edit" src="/assets/img/stage-edit.webp" width="588" height="616" loading="lazy" alt="The agent at work: it asks which ending the video should have, goes with the line you picked, adds the end text to the timeline and reports six steps done.">
+        <img class="shot-review" src="/assets/img/stage-review.webp" width="588" height="514" loading="lazy" alt="A passed review from the independent critic, round two, scoring the hook, phone readability, motion and variety nine out of ten.">
+      </div>
+    </div>
+
+    <p class="statement">Every turn is one undo. Keep what works, undo the rest, or carry on by hand on the same timeline.</p>
+  </section>
+
+  <section class="editor" id="editor" aria-labelledby="editor-title">
+    <h2 id="editor-title">Everything it does, you can do by hand</h2>
+    <picture class="strip">
+      <source media="(max-width: 700px)" srcset="/assets/img/timeline-phone.webp" width="900" height="210">
+      <img src="/assets/img/timeline.webp" width="2200" height="216" loading="lazy" alt="The timeline: a text track with two titles above a main track of six drone clips with their thumbnails and lengths.">
+    </picture>
+    <div class="editor-grid">
+      <div class="editor-intro">
+        <p>Tracks, trims, splits, snapping, keyframes and a mixer. A real editor underneath the agent, on the same timeline.</p>
+        <figure class="duck">
+          <img src="/assets/img/ducking.webp" width="590" height="690" loading="lazy" alt="Ducking settings: music goes down twelve decibels under the voice track, with a graph of the music level across the timeline and attack and release times.">
+          <figcaption>Ducking in the mixer: the music steps down under the voice.</figcaption>
+        </figure>
+      </div>
+      <dl class="caps">
+        <div><dt>Edit by transcript</dt><dd>Transcription runs on your Mac. Remove fillers and long pauses in one click, or cut by the words.</dd></div>
+        <div><dt>Captions and titles</dt><dd>Burned in or word by word, SRT and WebVTT in and out, and animated titles, lower thirds and end cards.</dd></div>
+        <div><dt>Sound and music</dt><dd>A built-in sound library, online sound search, and a mixer that ducks the music under speech.</dd></div>
+        <div><dt>Capture</dt><dd>Record your screen, camera and mic, or iOS simulators, Android emulators and apps, straight into the project.</dd></div>
+        <div><dt>Effects and looks</dt><dd>Filters, colour looks, transitions and text animations, previewed on the GPU.</dd></div>
+        <div><dt>Plugins</dt><dd>Looks, components, checks and agent tools in a folder, with a catalog to browse.</dd></div>
+        <div><dt>Export</dt><dd>H.264 at the quality you pick, with loudness for social or broadcast and optional subtitles.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="mac" aria-labelledby="mac-title">
+    <h2 id="mac-title">Your footage stays on your Mac</h2>
+    <div class="mac-body">
+      <p>Uncut runs on your Mac, and so does transcription. The agent is your own Claude Code, with whatever sign-in it already uses, billed to you as your Claude Code usage normally is. Usage data is off unless you turn it on.</p>
+      <p><a class="textlink" href="/privacy/">Read the privacy notice</a></p>
+    </div>
+  </section>
+
+  <section class="close" aria-labelledby="close-title">
+    <h2 id="close-title">Open it and say what to make</h2>
+    <p>Install Claude Code and sign in, then open Uncut and describe the video you want.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/blazejkustra/uncut/releases/latest">Download for Mac</a>
+      <a class="textlink" href="https://github.com/blazejkustra/uncut">Source on GitHub</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <p>Uncut is MIT licensed. Not affiliated with Anthropic.</p>
+  <nav aria-label="Footer">
+    <a href="/privacy/">Privacy</a>
+    <a href="https://github.com/blazejkustra/uncut">GitHub</a>
+    <a href="https://github.com/blazejkustra/uncut/blob/main/LICENSE">Licence</a>
+    <a href="https://github.com/blazejkustra/uncut/blob/main/THIRD_PARTY_NOTICES">Third-party notices</a>
+  </nav>
+</footer>
+
+</body>
+</html>

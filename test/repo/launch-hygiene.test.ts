@@ -51,8 +51,8 @@ test("no email addresses", () => {
   const placeholder = (m: string) => /@(example\.(com|org|net|invalid)|[\w.-]+\.(invalid|local|test))$/i.test(m) || /^git@/.test(m);
   // THIRD_PARTY_NOTICES quotes upstream licences verbatim, copyright lines included (D278). The
   // README's Privacy section names the controller's contact, the one address the author publishes,
-  // and the website's privacy page (site/privacy/index.html) repeats it.
-  const contact = (m: string, file: string) => (file === "README.md" || file === "site/privacy/index.html") && m === ["kustrablazej", "gmail.com"].join("@");
+  // and the website's privacy page (site/privacy/index.html, and site-b/'s copy of it) repeats it.
+  const contact = (m: string, file: string) => (file === "README.md" || file === "site/privacy/index.html" || file === "site-b/privacy/index.html") && m === ["kustrablazej", "gmail.com"].join("@");
   const hits = scan(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/, (m, file) => file === "pnpm-lock.yaml" || file === "THIRD_PARTY_NOTICES" || contact(m, file) || placeholder(m))
     // npm scopes (@uncut/core) and versions (react@19.2.6) aren't addresses.
     .filter((h) => !/: @?[\w.-]+@\d/.test(h));
