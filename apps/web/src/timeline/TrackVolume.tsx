@@ -8,6 +8,7 @@ import { getPlayback, playback, type PreviewDraft } from "../preview/playback.ts
 import type { ProjectModel, Track } from "../state/project.ts";
 import { actions, getState, projectOf } from "../state/store.ts";
 import { draftOf } from "./edit.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 /**
  * A track's volume (D54): a button in its header opens a slider (−∞…+12 dB) and a number. The
@@ -41,16 +42,18 @@ export function TrackVolume({ project, track, online }: { project: ProjectModel;
   };
   return (
     <div className="track-volume" ref={ref}>
-      <button
-        className={`icon-btn ${db !== 0 ? "on-soft" : ""}`}
-        data-testid="track-volume"
-        aria-expanded={open}
-        disabled={!online}
-        title={`Track volume: ${dbLabel(db)} dB`}
-        onClick={() => setOpen(!open)}
-      >
-        <SlidersHorizontal />
-      </button>
+      <Tooltip label={`Track volume: ${dbLabel(db)} dB`}>
+        <button
+          className={`icon-btn ${db !== 0 ? "on-soft" : ""}`}
+          data-testid="track-volume"
+          aria-expanded={open}
+          disabled={!online}
+         
+          onClick={() => setOpen(!open)}
+        >
+          <SlidersHorizontal />
+        </button>
+      </Tooltip>
       {open && (
         <div className="track-volume-pop" data-testid="track-volume-pop">
           <div className="group-label">{track.name} volume</div>

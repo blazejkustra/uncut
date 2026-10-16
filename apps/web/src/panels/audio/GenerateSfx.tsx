@@ -2,6 +2,7 @@ import { Check, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type Project, actions, useApp } from "../../state/store.ts";
 import { KeyRow } from "./KeyRow.tsx";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 const GENERATOR = "generate.sound";
 const LENGTHS = [2, 5, 10] as const;
@@ -42,9 +43,11 @@ export function GenerateSfx({ project, online, query }: { project: Project; onli
     <div className="lib-generate" data-testid="sfx-generate">
       <div className="lib-generate-head">
         <span>Generate a sound effect</span>
-        <button className="icon-btn" data-testid="sfx-generate-close" title="Close" onClick={() => setOpen(false)}>
-          <X />
-        </button>
+        <Tooltip label="Close">
+          <button className="icon-btn" data-testid="sfx-generate-close" onClick={() => setOpen(false)}>
+            <X />
+          </button>
+        </Tooltip>
       </div>
       {g && !g.ready ? (
         <KeyRow provider="elevenlabs" text="Sound effects are made by ElevenLabs with your own key, billed to your ElevenLabs credits." placeholder="ElevenLabs API key" />

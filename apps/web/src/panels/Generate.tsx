@@ -1,7 +1,7 @@
 // The Generate tab (D31, D99, D145, redesigned for issue #63 in D234): a Picture / Video / Sound
 // switch at the top, then that type's models with their labs' marks (the wired ones first, then
 // the ones coming soon, whose real options show but can't be used), the prompt in a composer-like
-// box, the model's options as chips, and one Generate button that says what it costs: your
+// box, the model's options as segmented choices and selects (no chips, D263), and one Generate button that says what it costs: your
 // subscription for Claude's, your key for the keyed ones. Progress and Cancel stay here; results go
 // to Media, marked Generated (GeneratedSection), with Add, Again and Edit prompt.
 import type { GenerateJob, GeneratorInfo, KeyProvider } from "@uncut/contracts";
@@ -12,6 +12,7 @@ import { actions, useApp, type GenerateDraft, type Project } from "../state/stor
 import { MediaTile } from "./library/MediaTile.tsx";
 import { firstModel, modelsFor, TITLE_CARD, TITLE_PREFIX, type GenType, type Model, type ModelOption } from "./generate/catalog.ts";
 import { LabMark } from "./generate/marks.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import "./generate/generate.css";
 
 const SIZE_LABEL: Record<string, string> = { canvas: "Project canvas", "1536x1024": "1536×1024 landscape", "1024x1024": "1024×1024 square", "1024x1536": "1024×1536 portrait", "16:9": "16:9 landscape", "9:16": "9:16 portrait", "1920x1080": "1920×1080", "1080x1920": "1080×1920", "1080x1350": "1080×1350" };
@@ -133,9 +134,11 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
     <aside className="library gen-panel" data-testid="generate-library">
       <div className="lib-head">
         Generate
-        <button className="icon-btn" data-testid="generate-refresh" disabled={!online} title="Check the generators and keys again" onClick={() => void actions.listGenerators()}>
-          <RefreshCw />
-        </button>
+        <Tooltip label="Check the generators and keys again">
+          <button className="icon-btn" data-testid="generate-refresh" disabled={!online} onClick={() => void actions.listGenerators()}>
+            <RefreshCw />
+          </button>
+        </Tooltip>
       </div>
       <div className="lib-section gen-form" data-type={type}>
         <div className="seg gen-types" role="radiogroup" aria-label="What to make" data-testid="generate-types">
@@ -169,23 +172,28 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
         </div>
         <div className={`gen-options${m?.soon ? " soon" : ""}`} data-testid="generate-options" data-model={m?.id}>
           {g && g.sizes.length > 1 && (
-            <div className="gen-chips" data-testid="generate-sizes">
+            <div className="gen-opt" data-testid="generate-sizes">
               <span className="k">Size</span>
-              {g.sizes.map((s) => (
-                <button key={s} className={`chip-btn${s === size ? " active" : ""}`} data-testid={`generate-size-${s}`} data-value={s} title={sizeLabel(s)} onClick={() => setDraft((d) => ({ ...d, size: s }))}>
-                  {chipLabel(s)}
-                </button>
-              ))}
+              {/* A plain select (D263): up to five sizes don't fit a segmented control in the panel. */}
+              <select className="field input gen-select" data-testid="generate-size" aria-label="Size" value={size} onChange={(e) => setDraft((d) => ({ ...d, size: e.target.value }))}>
+                {g.sizes.map((s) => (
+                  <option key={s} value={s} title={sizeLabel(s)}>
+                    {chipLabel(s)}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
           {g?.seconds && type !== "image" && (
-            <div className="gen-chips" data-testid="generate-lengths">
+            <div className="gen-opt" data-testid="generate-lengths">
               <span className="k">Length</span>
-              {g.seconds.map((n) => (
-                <button key={n} className={`chip-btn${n === seconds ? " active" : ""}`} data-testid={`generate-seconds-${n}`} data-value={n} onClick={() => setDraft((d) => ({ ...d, seconds: n }))}>
-                  {n} s
-                </button>
-              ))}
+              <span className="seg" role="radiogroup" aria-label="Length">
+                {g.seconds.map((n) => (
+                  <button key={n} className={n === seconds ? "active" : ""} role="radio" aria-checked={n === seconds} data-testid={`generate-seconds-${n}`} data-value={n} onClick={() => setDraft((d) => ({ ...d, seconds: n }))}>
+                    {n} s
+                  </button>
+                ))}
+              </span>
             </div>
           )}
           {m?.soon && m.options?.map((o) => <SoonOption key={o.label} option={o} />)}
@@ -242,7 +250,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
 function SoonOption({ option: o }: { option: ModelOption }) {
   if (o.kind === "frames")
     return (
-      <div className="gen-chips" data-testid="generate-option" data-kind="frames">
+      <div className="gen-opt" data-testid="generate-option" data-kind="frames">
         <span className="k">{o.label}</span>
         <span className="gen-frames">
           {o.slots.map((s) => (
@@ -256,26 +264,29 @@ function SoonOption({ option: o }: { option: ModelOption }) {
     );
   if (o.kind === "toggle")
     return (
-      <label className="gen-chips gen-toggle" data-testid="generate-option" data-kind="toggle">
+      <label className="gen-opt gen-toggle" data-testid="generate-option" data-kind="toggle">
         <input type="checkbox" disabled />
         <span>{o.label}</span>
       </label>
     );
   if (o.kind === "text")
     return (
-      <div className="gen-chips" data-testid="generate-option" data-kind="text">
+      <div className="gen-opt" data-testid="generate-option" data-kind="text">
         <span className="k">{o.label}</span>
         <input className="field input gen-text" disabled placeholder={o.placeholder} />
       </div>
     );
   return (
-    <div className="gen-chips" data-testid="generate-option" data-kind="chips">
+    <div className="gen-opt" data-testid="generate-option" data-kind="choice">
       <span className="k">{o.label}</span>
-      {o.values.map((v, i) => (
-        <button key={v} className={`chip-btn${i === 0 ? " active" : ""}`} disabled>
-          {v}
-        </button>
-      ))}
+      {/* A plain select, not chips (D263). */}
+      <select className="field input gen-select" disabled aria-label={o.label} defaultValue={o.values[0]}>
+        {o.values.map((v) => (
+          <option key={v} value={v}>
+            {v}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

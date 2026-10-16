@@ -75,9 +75,10 @@ export function MakePlugin({ onShowExample }: { onShowExample: (id: string, name
           </a>
         </div>
       </div>
-      <nav className="pg-toc">
+      {/* The guide's contents as a plain list of links, not chips (D263). */}
+      <nav className="pg-toc" aria-label="On this page">
         {PLUGIN_GUIDE.map((s) => (
-          <button key={s.id} className="chip-btn" onClick={() => document.getElementById(`plugin-guide-${s.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}>
+          <button key={s.id} className="link-btn" onClick={() => document.getElementById(`plugin-guide-${s.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}>
             {s.title}
           </button>
         ))}

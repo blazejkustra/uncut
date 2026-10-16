@@ -92,9 +92,9 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     assert.match(await text(page, "[data-testid=capture-level-db]"), /^-?\d+ dB$|^-∞ dB$/);
     assert.equal(await page.$eval("[data-testid=capture-play-timeline]", (el) => (el as HTMLInputElement).checked), true);
     await page.click("[data-testid=capture-mute-timeline]");
-    assert.equal(await page.$eval("[data-testid=capture-mute-timeline]", (el) => (el as HTMLInputElement).checked), false, "a chip toggles");
+    assert.equal(await page.$eval("[data-testid=capture-mute-timeline]", (el) => (el as HTMLInputElement).checked), false, "an option toggles");
     await page.click("[data-testid=capture-mute-timeline]");
-    assert.equal(await page.$$eval(".capture-this-mac input[type=checkbox]", (els) => els.every((e) => e.closest(".opt-chip"))), true, "options are chips, not a column of checkboxes");
+    assert.equal(await page.$$eval(".capture-this-mac input[type=checkbox]", (els) => els.every((e) => e.closest(".opt-row .opt-check"))), true, "options are checkboxes in a row, not chips (D263)");
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-this-mac]")), "no dots or stars between words");
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await shot(page, "issue17-mic");

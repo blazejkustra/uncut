@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { shortPath } from "../state/format.ts";
 import { actions, useApp, type RemotePickerRequest } from "../state/store.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 const TITLES: Record<RemotePickerRequest["purpose"], string> = {
   project: "Open a project",
@@ -97,18 +98,24 @@ export function RemoteBrowser({ request }: { request: RemotePickerRequest }) {
             <div className="wiz-brand small">{TITLES[purpose]}</div>
             <div className="wiz-sub">On {environment.name}. These are the server's folders, not this Mac's.</div>
           </div>
-          <button className="icon-btn" title="Cancel (Esc)" data-testid="remote-browser-cancel" onClick={() => actions.answerPicker(null)}>
-            <X />
-          </button>
+          <Tooltip label="Cancel" keys={["Esc"]}>
+            <button className="icon-btn" data-testid="remote-browser-cancel" onClick={() => actions.answerPicker(null)}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
         <div className="wiz-panel">
           <div className="remote-path">
-            <button className="icon-btn" title="Up one folder" data-testid="remote-browser-up" disabled={!listing?.parent || loading} onClick={() => listing?.parent && void go(listing.parent)}>
-              <ArrowUp />
-            </button>
-            <button className="icon-btn" title="Home folder" data-testid="remote-browser-home" disabled={loading} onClick={() => void go(listing?.home)}>
-              <House />
-            </button>
+            <Tooltip label="Up one folder">
+              <button className="icon-btn" data-testid="remote-browser-up" disabled={!listing?.parent || loading} onClick={() => listing?.parent && void go(listing.parent)}>
+                <ArrowUp />
+              </button>
+            </Tooltip>
+            <Tooltip label="Home folder">
+              <button className="icon-btn" data-testid="remote-browser-home" disabled={loading} onClick={() => void go(listing?.home)}>
+                <House />
+              </button>
+            </Tooltip>
             <span className="mono small ellipsis grow" data-testid="remote-browser-dir" title={dir}>
               {dir ? shortPath(dir, listing?.home ?? appInfo.homeDir) : "…"}
             </span>

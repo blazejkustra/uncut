@@ -38,7 +38,7 @@ export function DevicePicker({ devices, value, onChange, disabled, recording }: 
         <ChevronDown className="device-picker-caret" />
       </button>
       {open && (
-        <Popover anchor={anchor.current} onClose={close} testId="capture-device-menu" width={Math.max(240, anchor.current?.offsetWidth ?? 0)}>
+        <Popover anchor={anchor.current} onClose={close} testId="capture-device-menu" width={Math.max(240, anchor.current?.offsetWidth ?? 0)} align="start">
           <label className="capture-search">
             <Search />
             <input

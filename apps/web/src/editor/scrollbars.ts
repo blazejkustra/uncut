@@ -196,6 +196,8 @@ export function installScrollbars() {
     (e) => {
       const el = e.target;
       if (!(el instanceof HTMLElement)) return;
+      // An area that opts out (the rail, D263) gets no bar while it scrolls either.
+      if (el.closest("[data-scrollbars=off]")) return;
       if (scrolls(el, "y")) show(el, "y");
       if (scrolls(el, "x")) show(el, "x");
     },

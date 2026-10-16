@@ -15,6 +15,7 @@ import { usePlayback } from "../preview/playback.ts";
 import { actions, shaderDefs, useApp, type Project } from "../state/store.ts";
 import { findItem } from "../timeline/edit.ts";
 import { EFFECT_DRAG_TYPE, setDraggedEffect } from "../timeline/dnd.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 /** Thumbnails are drawn this size (px), the canvas's 1080 lines scaled to its height. */
 const THUMB = { width: 192, height: 108 } as const;
@@ -278,9 +279,11 @@ export function EffectsLibrary({ project }: { project: Project }) {
           <div className="tr-search">
             <input className="field input" data-testid="effects-search" placeholder="Search filters and effects" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
             {query && (
-              <button className="icon-btn" data-testid="effects-search-clear" title="Clear" onClick={() => setQuery("")}>
-                <X />
-              </button>
+              <Tooltip label="Clear">
+                <button className="icon-btn" data-testid="effects-search-clear" onClick={() => setQuery("")}>
+                  <X />
+                </button>
+              </Tooltip>
             )}
           </div>
           <div className="muted small" data-testid="effects-target">

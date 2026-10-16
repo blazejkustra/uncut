@@ -14,6 +14,7 @@ import { dropTransition, setDraggedTransition, setTilePointer } from "../timelin
 import { usePlayback } from "../preview/playback.ts";
 import { cutFit, findItem, secondsLabel } from "../timeline/edit.ts";
 import { useTransitionSeconds } from "../timeline/transitionLength.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 /** The thumbnail's own canvas (px): the shapes are drawn on it, then it's scaled into the tile. */
 const THUMB = { width: 160, height: 90 } as const;
@@ -234,9 +235,11 @@ export function TransitionsLibrary({ project }: { project: Project }) {
           <div className="tr-search">
             <input className="field input" data-testid="transition-search" placeholder="Search transitions" value={query} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
             {query && (
-              <button className="icon-btn" data-testid="transition-search-clear" title="Clear" onClick={() => setQuery("")}>
-                <X />
-              </button>
+              <Tooltip label="Clear">
+                <button className="icon-btn" data-testid="transition-search-clear" onClick={() => setQuery("")}>
+                  <X />
+                </button>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -275,9 +278,11 @@ export function TransitionsLibrary({ project }: { project: Project }) {
             >
               <div className="tr-thumb-wrap">
                 <TransitionThumb t={t} playing={playing === t.id} />
-                <button className="tile-add" data-testid="transition-add" disabled={!online} title={`Put a ${t.name.toLowerCase()} on the cut nearest the playhead`} onClick={(e) => apply(t, e, true)}>
-                  <Plus />
-                </button>
+                <Tooltip label={`Put a ${t.name.toLowerCase()} on the cut nearest the playhead`}>
+                  <button className="tile-add" data-testid="transition-add" disabled={!online} onClick={(e) => apply(t, e, true)}>
+                    <Plus />
+                  </button>
+                </Tooltip>
               </div>
               <div className="tile-name">{t.name}</div>
               <div className="tile-sub" data-testid="transition-default">

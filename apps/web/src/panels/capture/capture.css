@@ -70,7 +70,7 @@
 .device-option-rec { width: 7px; height: 7px; border-radius: 50%; background: var(--error); flex: none; }
 .device-none { padding: 4px 6px; }
 
-/* Argent's options: a tidy two-column grid and chips, no padded checkboxes. */
+/* Argent's options: a tidy two-column grid of selects, then plain checkboxes (no chips, D263). */
 .capture-options { gap: 8px; margin-top: 8px; padding-top: 8px; }
 .capture-options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .capture-opt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }

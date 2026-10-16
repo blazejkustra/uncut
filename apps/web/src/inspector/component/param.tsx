@@ -4,6 +4,7 @@
 // switch, an image picker. Each sits in a labelled row with a reset to the manifest's default.
 // Typing and sliding preview live; each commit is one edit (planComponentProps, the whole props).
 import { COMPONENT_IMAGE, componentDefaults, type ComponentInfo } from "@uncut/core/components";
+import { STICKER_ART } from "@uncut/core/stickers";
 import type { Item } from "@uncut/core/types";
 import { useEffect, useRef, useState } from "react";
 
@@ -110,7 +111,8 @@ export function Param({ project, item, info, name, schema, disabled }: { project
             {!required && fallback === undefined && <option value="">None</option>}
             {options.map((o) => (
               <option key={o} value={o}>
-                {o[0]!.toUpperCase() + o.slice(1)}
+                {/* A sticker's drawn art by its name ("Hand-drawn circle"), not its id (D263). */}
+                {(name === "art" ? STICKER_ART[o]?.name : undefined) ?? o[0]!.toUpperCase() + o.slice(1)}
               </option>
             ))}
           </select>

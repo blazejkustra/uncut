@@ -10,6 +10,7 @@ import { NOT_ENCRYPTED, notEncrypted } from "../state/remoteUrl.ts";
 import { sshCommands, validSshTarget } from "../state/ssh.ts";
 import { actions, useApp } from "../state/store.ts";
 import { environmentsUsable, LABS_HINT, useFlag } from "../settings/labs.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import "../settings/labs.css";
 
 /** D245: Environments can be opened (the Labs flag is on, or a remote is active: the way back). */
@@ -43,9 +44,11 @@ export function Environments() {
       <div className="modal wiz">
         <div className="wiz-header row">
           <div className="wiz-brand">Environments</div>
-          <button className="icon-btn" title="Close (Esc)" data-testid="environments-close" onClick={actions.closeEnvironments}>
-            <X />
-          </button>
+          <Tooltip label="Close" keys={["Esc"]}>
+            <button className="icon-btn" data-testid="environments-close" onClick={actions.closeEnvironments}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
         <div className="wiz-panel">
           <p className="wiz-lead">Where Uncut's server runs: this Mac, or another machine with uncut-server. Projects, footage, exports, the agent and plugins stay on that machine; this window edits them there.</p>
@@ -150,12 +153,16 @@ function EnvironmentRow({ env, active, state, problem }: { env: EnvironmentInfo;
         )}
         {env.kind === "remote" && !renaming && (
           <>
-            <button className="icon-btn" title="Test the connection" data-testid="env-test" disabled={test === "testing"} onClick={() => (setTest("testing"), void actions.testEnvironment({ id: env.id }).then(setTest))}>
-              <RefreshCw className={test === "testing" ? "spin" : ""} />
-            </button>
-            <button className="icon-btn" title="Rename" data-testid="env-rename" onClick={() => (setName(env.name), setRenaming(true))}>
-              <Pencil />
-            </button>
+            <Tooltip label="Test the connection">
+              <button className="icon-btn" data-testid="env-test" disabled={test === "testing"} onClick={() => (setTest("testing"), void actions.testEnvironment({ id: env.id }).then(setTest))}>
+                <RefreshCw className={test === "testing" ? "spin" : ""} />
+              </button>
+            </Tooltip>
+            <Tooltip label="Rename">
+              <button className="icon-btn" data-testid="env-rename" onClick={() => (setName(env.name), setRenaming(true))}>
+                <Pencil />
+              </button>
+            </Tooltip>
             <button className="icon-btn" title="Remove from this Mac (the server and its projects stay as they are)" data-testid="env-remove" onClick={() => void actions.removeEnvironment(env.id)}>
               <Trash2 />
             </button>
