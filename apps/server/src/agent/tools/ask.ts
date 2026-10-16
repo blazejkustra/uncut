@@ -199,7 +199,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     // D296: the active kit's folder (the user's, or the project's own) and the bundled graphic
     // libraries are read without a card: Uncut points the agent at them.
     let sanctioned: ReadonlyArray<string> = [];
-    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, sanctioned, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted });
+    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, sanctioned, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted, dataDir: config.dataDir });
     // claude may give up on it while the kit is looked up: then it's not answered at all.
     s.prompts.set(requestId, () => {
       answered = true;

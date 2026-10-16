@@ -34,19 +34,31 @@ const bashSafe = (p: string) => p.replace(/[\\*]/g, (c) => `\\${c}`);
 /**
  * D219: apps' data, Uncut's first. Uncut's data folder holds what a session must never change
  * (settings.json with the plugin approvals, plugins/, brand kits) and the app's server token: no
- * file tool writes anywhere in it, the token isn't read, and no command names it. The same for
- * every app's data in ~/Library/Application Support (browsers' cookies, other apps' tokens): no
- * writes, no command naming it (the Read tool there gets Uncut's card, like anything outside the
- * project). Brand kit files stay readable with a card: the agent is shown their paths.
+ * file tool writes anywhere in it and the token isn't read or named by a command (deny rules). The
+ * same for every app's data in ~/Library/Application Support (browsers' cookies, other apps'
+ * tokens): no writes. A command naming apps' data goes to Uncut (appDataAskRules), which runs only
+ * a plain read of the active kit or the graphic libraries and refuses the rest (decide).
  */
 export function appDataRules(dataDir?: string): Array<string> {
-  const rules = ["Edit(~/Library/Application Support/**)", "Bash(*Application Support*)", "Bash(*Application\\ Support*)"];
+  const rules = ["Edit(~/Library/Application Support/**)"];
   if (!dataDir) return rules;
   const dir = dataDir.replace(/\/+$/, "");
-  rules.push(`Edit(/${globSafe(dir)}/**)`, `Read(/${globSafe(dir)}/server-token)`);
+  rules.push(`Edit(/${globSafe(dir)}/**)`, `Read(/${globSafe(dir)}/server-token)`, "Bash(*server-token*)");
+  return rules;
+}
+
+/**
+ * D219 (issue A/B 2026-10-17): commands naming apps' data are ask rules, not deny rules, in every
+ * access: an ask rule is checked before claude's read-only auto-allow and its classifier, so the
+ * command comes to Uncut over stdio and `decide` lets a plain read of the active kit's files run
+ * (claude's deny rules refused `cat` of a kit SVG silently, with no card) and refuses the rest.
+ */
+export function appDataAskRules(dataDir?: string): Array<string> {
+  const rules = ["Bash(*Application Support*)", "Bash(*Application\\ Support*)"];
+  const dir = dataDir?.replace(/\/+$/, "");
   // A data folder elsewhere (UNCUT_DATA_DIR) isn't caught by the Application Support rules.
   // (The folder itself, not a sibling that starts with its name.)
-  if (!/\/Library\/Application Support(\/|$)/.test(dir)) rules.push(...["/", " ", '"', "'"].map((end) => `Bash(*${bashSafe(dir)}${end}*)`), `Bash(*${bashSafe(dir)})`);
+  if (dir && !/\/Library\/Application Support(\/|$)/.test(dir)) rules.push(...["/", " ", '"', "'"].map((end) => `Bash(*${bashSafe(dir)}${end}*)`), `Bash(*${bashSafe(dir)})`);
   return rules;
 }
 
@@ -57,8 +69,9 @@ const globSafe = (p: string) => p.replace(/[\\*?[\]{}!]/g, (c) => `\\${c}`);
  * D214: Auto only. claude's classifier would allow "local file operations within project scope"
  * itself, so Uncut's own files get claude-side deny rules too: Edit (claude's Edit rules cover every
  * file-writing tool) of project.json, history.db*, agent/ and brand/active.json at the project's
- * absolute paths (`//` + the path; the real path and the opened one when they differ), and a command
- * naming one of them.
+ * absolute paths (`//` + the path; the real path and the opened one when they differ). A command
+ * naming one of them is an ask rule (ownFileAskRules): Uncut runs a plain read (`cat project.json`)
+ * and refuses the rest.
  */
 export function ownFileRules(projects: ReadonlyArray<string>): Array<string> {
   const rules: Array<string> = [];
@@ -66,9 +79,11 @@ export function ownFileRules(projects: ReadonlyArray<string>): Array<string> {
     const base = globSafe(dir.replace(/\/+$/, ""));
     for (const rel of ["project.json", "history.db*", "agent/**", "brand/active.json"]) rules.push(`Edit(/${base}/${rel})`);
   }
-  rules.push("Bash(*project.json*)", "Bash(*history.db*)", "Bash(*brand/active.json*)", "Bash(*agent/turns*)");
   return rules;
 }
+
+/** D214: Auto only, commands naming Uncut's own files: to Uncut, which runs only a plain read of them. */
+export const ownFileAskRules = (): Array<string> => ["Bash(*project.json*)", "Bash(*history.db*)", "Bash(*brand/active.json*)", "Bash(*agent/turns*)"];
 
 /**
  * D214: Auto only, claude-side ask rules. An ask rule is checked before the classifier, so these calls
@@ -76,7 +91,8 @@ export function ownFileRules(projects: ReadonlyArray<string>): Array<string> {
  * every file write (outside the project and in confirmed folders: a card; in the project: no card;
  * Uncut's own files: refused), every read, glob and grep (outside the project: a card; confirmed
  * folders: no card), and the web tools (a secret-looking string: a card). Commands stay with the
- * classifier, also after the web (D214: no web taint in Auto, the user's call).
+ * classifier, also after the web (D214: no web taint in Auto, the user's call), except those naming
+ * apps' data or Uncut's own files (appDataAskRules, ownFileAskRules).
  */
 export function autoAskRules(): Array<string> {
   return ["Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"];
@@ -87,8 +103,8 @@ export function autoAskRules(): Array<string> {
  * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
  */
 export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined } = {}): string {
-  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir) } });
-  return JSON.stringify({ permissions: { deny: [...denyRules(o.dataDir), ...ownFileRules(o.projects ?? [])], ask: autoAskRules() } });
+  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir), ask: appDataAskRules(o.dataDir) } });
+  return JSON.stringify({ permissions: { deny: [...denyRules(o.dataDir), ...ownFileRules(o.projects ?? [])], ask: [...autoAskRules(), ...appDataAskRules(o.dataDir), ...ownFileAskRules()] } });
 }
 
 /** D194: tools a Look only session starts without (--disallowedTools): claude can't even auto-allow a read-only command. */

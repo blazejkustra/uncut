@@ -196,8 +196,10 @@ test("D277 review: claude waits for the login shell's answer, but not forever", 
 
 test("D219 argv: the session's --settings keep Uncut's data folder out", () => {
   const argv = sessionArgs({ cfg: "/tmp/m.json", dataDir: "/Users/me/Library/Application Support/Uncut" });
-  const deny = JSON.parse(argv[argv.indexOf("--settings") + 1]!).permissions.deny as Array<string>;
-  assert.ok(deny.includes("Edit(//Users/me/Library/Application Support/Uncut/**)") && deny.includes("Read(//Users/me/Library/Application Support/Uncut/server-token)") && deny.includes("Bash(*Application Support*)"));
+  const { deny, ask } = JSON.parse(argv[argv.indexOf("--settings") + 1]!).permissions as { deny: Array<string>; ask: Array<string> };
+  assert.ok(deny.includes("Edit(//Users/me/Library/Application Support/Uncut/**)") && deny.includes("Read(//Users/me/Library/Application Support/Uncut/server-token)") && deny.includes("Bash(*server-token*)"));
+  // A command naming apps' data comes to Uncut, which runs only a plain read of the active kit (A/B 2026-10-17).
+  assert.ok(ask.includes("Bash(*Application Support*)") && !deny.includes("Bash(*Application Support*)"));
 });
 
 test("argv: the user's claude in print mode, no API key or entrypoint flags; thinking as the SDK passes it", () => {
