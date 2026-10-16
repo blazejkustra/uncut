@@ -1,7 +1,7 @@
 # Every push to main and every PR (#89, D254): the whole suite, typecheck + the fast tests + the
 # packaged-app tests (test/app), split over 5 parallel macOS jobs. Each job builds the app itself,
 # then runs its share of the test files (scripts/test-shard.ts, balanced by test/durations.json):
-# fast files two at a time, then app files one at a time. 5 because GitHub runs at most 5 macOS jobs
+# fast files three at a time, then app files one at a time. 5 because GitHub runs at most 5 macOS jobs
 # at once on this plan: a 6th would only queue.
 #
 # Skipped on these runners, each with its reason in the log and the job summary
