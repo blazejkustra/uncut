@@ -45,7 +45,10 @@ test("allowing a plugin with skills says the agent follows them and lists them; 
     await page.click("[data-testid=wizard-step-1]");
     const row = "[data-testid='plugin-acme.pack']";
     await waitFor(page, `${row}[data-status=needs-approval]`);
-    assert.match(await text(page, row), /Skills: Cold open \(\/cold-open\), \/end-card/);
+    // D272: the row says how many; the details (the chevron) list them with their commands.
+    assert.match(await text(page, row), /2 editing skills/);
+    await page.click("[data-testid='plugin-more-acme.pack']");
+    assert.match(await text(page, "[data-testid='plugin-details-acme.pack']"), /Cold open\s+\/cold-open\s+\/end-card/);
     assert.match(await text(page, "[data-testid='plugin-detail-acme.pack']"), /adds 2 skills\. Its skills are instructions the agent follows when they fit, without asking you first/);
 
     await page.click("[data-testid='plugin-allow-acme.pack']");
