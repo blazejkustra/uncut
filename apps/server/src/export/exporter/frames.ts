@@ -8,6 +8,7 @@ import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffm
 import { makeTemp } from "./files.ts";
 import { withMedia } from "./graphics.ts";
 import { graphicMediaSource } from "../graphicMedia.ts";
+import { type SheetLayout, sheetHtml } from "../../agent/agentFootage.ts";
 
 export interface RenderedFrame {
   readonly frame: number;
@@ -16,16 +17,50 @@ export interface RenderedFrame {
   readonly notes?: ReadonlyArray<string>;
 }
 
+export interface FrameSessionOptions {
+  /**
+   * Draw graphics and HTML at the canvas size (so they lay out exactly as in the export) but have
+   * the rasteriser shrink the capture to the output size before it's encoded, when that's under
+   * half the canvas width (review_submit's small frames, D292). Off for render_frames, whose frames
+   * the export tests compare with the export's.
+   */
+  readonly downscale?: boolean;
+}
+
+export interface FrameSession {
+  /**
+   * `frames` of the edit, `width` px wide, in order; `until` is asked before each frame and, once
+   * it says true, the rest are left out (the frames done so far are returned).
+   */
+  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly signal?: AbortSignal }) => Promise<Array<RenderedFrame>>;
+  /** A contact sheet's grid (agentFootage sheetHtml) drawn by this session's rasteriser, as a JPEG. */
+  readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Promise<Buffer>;
+  /** Stop the rasteriser and the media source, remove the temp folder. */
+  readonly close: () => Promise<void>;
+}
+
 /**
  * Frames of the edit as JPEGs, built the way export builds them: the canvas colour, then every
  * visual at f in visualsAt order (footage at its source time, text and backgrounds drawn by
  * Chromium with the frame's opacity and motion), one ffmpeg run per frame.
  */
 export async function renderFramesWith(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, frames: ReadonlyArray<number>, width: number, signal: AbortSignal, css: string = RASTER_CSS): Promise<Array<RenderedFrame>> {
+  const session = await openFrameSession(bin, unsized, mediaPath, graphics, signal, css);
+  try {
+    return await session.render(frames, width);
+  } finally {
+    await session.close();
+  }
+}
+
+/**
+ * A frame session (D292): one rasteriser, one graphic media source and one temp folder for any
+ * number of renderFramesWith-style renders (the picture sizes, the plan, the background and the
+ * untagged files once per width). `signal` (and each render's own) stops it.
+ */
+export async function openFrameSession(bin: string, unsized: Project, mediaPath: (m: Media) => string, graphics: ReadonlyMap<string, string>, signal: AbortSignal, css: string = RASTER_CSS, options: FrameSessionOptions = {}): Promise<FrameSession> {
   const project = await withPictureSizes(bin, unsized, mediaPath, signal);
   const { starts, duration } = layout(project);
-  const W = Math.max(2, Math.round(width / 2) * 2);
-  const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
   const caps = await capsOf(bin);
   const command = rasterizerCommand();
   if ("problem" in command) throw new Error(command.problem);
@@ -35,21 +70,69 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
   const media = graphicMediaSource({ bin, media: () => project.media, mediaPath, videotoolbox: caps.videotoolboxDecode });
   const onAbort = () => void raster?.close();
   signal.addEventListener("abort", onAbort, { once: true });
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    signal.removeEventListener("abort", onAbort);
+    await raster?.close().catch(() => {});
+    media.close();
+    await rm(temp, { recursive: true, force: true }).catch(() => {});
+  };
   try {
     raster = await startRasterizer(command, undefined, { media: media.file });
-    const { width: cw, height: ch } = project.canvas;
-    const background = join(temp, "bg.png");
-    const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src) });
-    const urls = new Map<string, string>();
-    // Components' media references as placeholders, swapped for data: URLs before drawing (as the export does).
-    const target = { ...project, mediaUrl: (id: string) => (project.media.find((m) => m.id === id)?.kind === "image" ? mediaToken(id) : undefined) };
-    const draw = async (html: string, png: string) => raster!.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png });
-    await raster.render({ width: cw, height: ch, css, html: "problem" in plan ? "" : plan.backgroundHtml, out: background });
-    const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
+  } catch (error) {
+    await close();
+    throw error;
+  }
+  const rs = raster;
+  const { width: cw, height: ch } = project.canvas;
+  const urls = new Map<string, string>();
+  // Components' media references as placeholders, swapped for data: URLs before drawing (as the export does).
+  const target = { ...project, mediaUrl: (id: string) => (project.media.find((m) => m.id === id)?.kind === "image" ? mediaToken(id) : undefined) };
+  // The colour tables (D136) written so far, by key.
+  const luts = new Map<string, string>();
+  // Per output width: the plan, the background and the untagged files.
+  const widths = new Map<number, Promise<{ background: string; untagged: Map<string, number>; small: { outWidth: number; outHeight: number } | undefined }>>();
+  let sheets = 0;
+  const forWidth = (W: number, H: number, signal: AbortSignal) => {
+    let got = widths.get(W);
+    if (!got) {
+      got = (async () => {
+        const small = options.downscale && W * 2 <= cw ? { outWidth: W, outHeight: H } : undefined;
+        const background = join(temp, `bg-${W}.png`);
+        const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src) });
+        await rs.render({ width: cw, height: ch, css, html: "problem" in plan ? "" : plan.backgroundHtml, out: background, ...small });
+        const untagged = "problem" in plan ? new Map<string, number>() : await untaggedFiles(bin, plan, signal);
+        return { background, untagged, small };
+      })();
+      widths.set(W, got);
+      // A failure isn't kept: the next render tries again.
+      got.catch(() => widths.delete(W));
+    }
+    return got;
+  };
+
+  const render = async (frames: ReadonlyArray<number>, width: number, o: { readonly until?: () => boolean; readonly signal?: AbortSignal } = {}): Promise<Array<RenderedFrame>> => {
+    if (closed) throw new Error("The frame session is closed.");
+    const call = o.signal ? AbortSignal.any([signal, o.signal]) : signal;
+    const onCallAbort = () => void raster?.close();
+    o.signal?.addEventListener("abort", onCallAbort, { once: true });
+    try {
+      return await renderIn(frames, width, call, o.until);
+    } finally {
+      o.signal?.removeEventListener("abort", onCallAbort);
+    }
+  };
+
+  const renderIn = async (frames: ReadonlyArray<number>, width: number, signal: AbortSignal, until: (() => boolean) | undefined): Promise<Array<RenderedFrame>> => {
+    const W = Math.max(2, Math.round(width / 2) * 2);
+    const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
+    const { background, untagged, small } = await forWidth(W, H, signal);
+    const draw = async (html: string, png: string) => rs.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png, ...small });
     const out: Array<RenderedFrame> = [];
-    // The colour tables (D136) written so far, by key.
-    const luts = new Map<string, string>();
     for (const requested of frames) {
+      if (until?.()) break;
       const f = Math.max(0, Math.min(duration - 1, Math.floor(requested)));
       const notes: Array<string> = [];
       const inputs: Array<string> = ["-i", background];
@@ -66,12 +149,12 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
         if (v.item.type === "clip" && media && media.kind === "video") input = [...(caps.videotoolboxDecode ? ["-hwaccel", "videotoolbox"] : []), ...pick.seekArgs, "-i", mediaPath(media)];
         else if (svg) {
           // An SVG (D76): drawn by Chromium in its box, as the export does.
-          const png = join(temp, `f${f}-${k}.png`);
+          const png = join(temp, `w${W}-f${f}-${k}.png`);
           await draw(svgClipHtml(v.item, v.box!, mediaToken(media!.id), v.opacity), png);
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         } else if (v.item.type === "clip" && media && media.kind === "image") input = ["-f", "image2", "-pattern_type", "none", "-i", mediaPath(media)];
         else if ((v.item.type === "text" && typeof v.item.text === "string") || (v.item.type === "component" && v.item.component === SOLID) || isDrawnComponent(v.item)) {
-          const png = join(temp, `f${f}-${k}.png`);
+          const png = join(temp, `w${W}-f${f}-${k}.png`);
           const html =
             v.item.type === "text"
               ? textHtml(v.item, project, { opacity: v.opacity, motion: v.motion })
@@ -87,9 +170,9 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
             notes.push(`the graphic "${v.item.name ?? v.item.id}" isn't drawn: ${v.item.src} couldn't be read (missing, outside graphics/, over ${MAX_GRAPHIC_BYTES / 1024} KB or a name it doesn't take)`);
             continue;
           }
-          const png = join(temp, `f${f}-${k}-g.png`);
+          const png = join(temp, `w${W}-f${f}-${k}-g.png`);
           const at = Math.max(0, Math.min(v.item.duration - 1, local));
-          await raster.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})` });
+          await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...small });
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }
         if (!input) continue;
@@ -116,7 +199,7 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
         const picture = needsPicturePass(effects) || effects?.blur !== undefined || !!shader;
         const overlay = async () => {
           if (!effects || !hasOverlay(effects) || !v.box) return;
-          const png = join(temp, `f${f}-${k}-fx.png`);
+          const png = join(temp, `w${W}-f${f}-${k}-fx.png`);
           await draw(fxOverlayHtml(effects, v.box, local), png);
           k++;
           inputs.push("-f", "image2", "-pattern_type", "none", "-i", png);
@@ -136,13 +219,13 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
             const fit = fitRect(baseBox(v.item, project.canvas, media.probe), v.box.fit, media.probe);
             const sw = v.box.scale !== 1 ? Math.max(1, Math.round((fit.w * W) / cw)) : p.cw;
             const sh = v.box.scale !== 1 ? Math.max(1, Math.round((fit.h * H) / ch)) : p.ch;
-            const raw = join(temp, `f${f}-${k}-src.rgba`);
-            const drawn = join(temp, `f${f}-${k}-shader.rgba`);
+            const raw = join(temp, `w${W}-f${f}-${k}-src.rgba`);
+            const drawn = join(temp, `w${W}-f${f}-${k}-shader.rgba`);
             const d = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...input, "-filter_complex", `[0:v:0]${picked}scale=w=${sw}:h=${sh}:out_range=pc,format=rgba[o]`, "-map", "[o]", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", raw], signal);
             if (d.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(d.stderr)}`);
             const params = shaderParamBytes(shader.def.params, shader.values);
             try {
-              await raster.render({ kind: "shader", width: sw, height: sh, code: shaderModuleCode(shader.def), frame: [...new Float32Array(shaderFrameBytes(sw, sh, shaderTime(f, starts.get(v.item.id) ?? 0, project.canvas.fps), false))], ...(params ? { params: [...new Float32Array(params)] } : {}), input: raw, out: drawn, name: `the shader effect ${shader.def.name}` });
+              await rs.render({ kind: "shader", width: sw, height: sh, code: shaderModuleCode(shader.def), frame: [...new Float32Array(shaderFrameBytes(sw, sh, shaderTime(f, starts.get(v.item.id) ?? 0, project.canvas.fps), false))], ...(params ? { params: [...new Float32Array(params)] } : {}), input: raw, out: drawn, name: `the shader effect ${shader.def.name}` });
               source = ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${sw}x${sh}`, "-i", drawn];
               pick = "trim=end_frame=1,setpts=0,";
             } catch (error) {
@@ -189,16 +272,20 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
         await overlay();
       }
       graph.push(`[${base}]format=yuvj420p[out]`);
-      const file = join(temp, `frame-${f}.jpg`);
+      const file = join(temp, `w${W}-frame-${f}.jpg`);
       const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
       out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}) });
     }
     return out;
-  } finally {
-    signal.removeEventListener("abort", onAbort);
-    await raster?.close().catch(() => {});
-    media.close();
-    await rm(temp, { recursive: true, force: true }).catch(() => {});
-  }
+  };
+
+  const sheet = async (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => {
+    if (closed) throw new Error("The frame session is closed.");
+    const out = join(temp, `sheet-${sheets++}.jpg`);
+    await rs.render({ width: layout.width, height: layout.height, css: "", html: sheetHtml(cells, layout), out });
+    return readFile(out);
+  };
+
+  return { render, sheet, close };
 }

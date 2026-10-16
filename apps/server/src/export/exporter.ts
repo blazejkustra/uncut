@@ -30,7 +30,7 @@ import { outputSize, planExport, RASTER_CSS, canHevc, type ExportPlan } from "./
 import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { overwritesImported } from "./subtitleSources.ts";
-import { type RenderedFrame, renderFramesWith } from "./exporter/frames.ts";
+import { type RenderedFrame, type FrameSessionOptions, openFrameSession, renderFramesWith } from "./exporter/frames.ts";
 import { type MediaFrame, mediaFramesWith, drawSheet } from "./exporter/sheets.ts";
 import { type SavedSubtitles, NO_SUBTITLES, saveSubtitlesFile } from "./exporter/subtitles.ts";
 import { sweepStaleTemp, exists, plainFsError, canonical } from "./exporter/files.ts";
@@ -39,7 +39,7 @@ import { projectGraphics } from "./exporter/graphics.ts";
 import { makeDuckEnvelopes } from "./exporter/duckEnvelopes.ts";
 import { makeRunJob } from "./exporter/runJob.ts";
 import { makePreviewLoudness } from "./exporter/previewLoudness.ts";
-export type { RenderedFrame } from "./exporter/frames.ts";
+export type { RenderedFrame, FrameSessionOptions } from "./exporter/frames.ts";
 export { NO_SUBTITLES, saveSubtitlesFile } from "./exporter/subtitles.ts";
 export type { SavedSubtitles } from "./exporter/subtitles.ts";
 export { sweepStaleTemp, plainFsError, EXPORT_TEMP_PREFIX } from "./exporter/files.ts";
@@ -65,6 +65,14 @@ export interface ExportInput {
   readonly motionBlur?: boolean | undefined;
 }
 
+/** D292: a frame session's renders (exporter/frames.ts openFrameSession), as effects. */
+export interface FrameSessionShape {
+  /** As renderFrames; `until` is asked before each frame and, once true, the rest are left out. */
+  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean }) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  /** As sheetImage, drawn by the session's rasteriser. */
+  readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
+}
+
 export interface ExporterShape {
   readonly start: (input: ExportInput) => Effect.Effect<{ jobId: string }, ExportError>;
   readonly cancel: (jobId: string) => Effect.Effect<void>;
@@ -75,6 +83,11 @@ export interface ExporterShape {
   readonly busy: () => boolean;
   /** Frames of the open project as JPEGs, `width` px wide (the agent's render_frames). */
   readonly renderFrames: (frames: ReadonlyArray<number>, width: number) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  /**
+   * D292: `use` with one frame session of the open project (one rasteriser, one temp folder, the
+   * plan once per width), closed when it ends: many renders without a rasteriser start each.
+   */
+  readonly frameSession: <A, E, R>(use: (session: FrameSessionShape) => Effect.Effect<A, E, R>, options?: FrameSessionOptions) => Effect.Effect<A, E | ExportError, R>;
   /** contact_sheet (D65): the first video stream of `path` at each of `seconds`, `width` px wide, as JPEGs. */
   readonly mediaFrames: (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) => Effect.Effect<ReadonlyArray<MediaFrame>, ExportError>;
   /** contact_sheet (D65): the cells in a grid with their captions, drawn by the rasteriser, as one JPEG. */
@@ -266,6 +279,36 @@ export const layer = Layer.effect(
         });
       });
 
+    const frameSession = <A, E, R>(use: (session: FrameSessionShape) => Effect.Effect<A, E, R>, options: FrameSessionOptions = {}) =>
+      Effect.gen(function* () {
+        const { dir, project, mediaPath } = yield* current;
+        const bin = yield* Effect.promise(ffmpegBin);
+        if (!bin) return yield* new ExportError({ reason: "no-ffmpeg", message: "ffmpeg isn't installed, so frames can't be rendered." });
+        const failed = (error: unknown) => new ExportError({ reason: "missing-media", message: (error as Error).message });
+        return yield* Effect.acquireUseRelease(
+          Effect.tryPromise({
+            try: async () => {
+              const { graphics, fonts } = await projectGraphics(config, dir, project);
+              const life = new AbortController();
+              const session = await openFrameSession(bin, project, mediaPath, graphics, life.signal, RASTER_CSS + fonts.kitCss, options);
+              return { session, life };
+            },
+            catch: failed,
+          }),
+          ({ session }) =>
+            use({
+              render: (frames, width, o) => Effect.tryPromise({ try: (signal) => session.render(frames, width, { ...o, signal }), catch: failed }),
+              // A sheet the session can't draw gets the sheet's own rasteriser.
+              sheet: (cells, layout) => Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
+            }),
+          ({ session, life }) =>
+            Effect.promise(async () => {
+              life.abort();
+              await session.close();
+            }),
+        );
+      });
+
     // ---- the agent's contact sheets ----
 
     const mediaFrames = (path: string, seconds: ReadonlyArray<number>, width: number, fps: number) =>
@@ -307,6 +350,6 @@ export const layer = Layer.effect(
       });
 
     const busy = () => Effect.runSync(SubscriptionRef.get(jobsRef)).some((j) => j.phase === "queued" || j.phase === "preparing" || j.phase === "rendering");
-    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), jobList: SubscriptionRef.get(jobsRef), busy, renderFrames, mediaFrames, sheetImage, saveSubtitles, previewLoudness });
+    return Exporter.of({ start, cancel, jobs: SubscriptionRef.changes(jobsRef), jobList: SubscriptionRef.get(jobsRef), busy, renderFrames, frameSession, mediaFrames, sheetImage, saveSubtitles, previewLoudness });
   }),
 );

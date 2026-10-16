@@ -42,10 +42,15 @@ export function rasterizerCommand(
   return { bin, args: [entry, ...render] };
 }
 
-/** Draw `html` (with `css`) on a transparent width×height page, or a frame of a graphic's document (D78: render(t, info) called), and save it to `out`. */
+/**
+ * Draw `html` (with `css`) on a transparent width×height page, or a frame of a graphic's document
+ * (D78: render(t, info) called), and save it to `out`. With `outWidth` and `outHeight` (both, at
+ * most width × height) the page still lays out at width × height and the capture is shrunk to that
+ * size before it's encoded (D292: review_submit's small frames).
+ */
 export type RasterJob =
-  | { readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string }
-  | { readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string }
+  | ({ readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string } & RasterOutSize)
+  | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string } & RasterOutSize)
   /** A shader effect's frame (D213): `input` a width×height RGBA file, `out` .rgba or .png; "no-webgpu: <why>" without WebGPU. */
   | { readonly kind: "shader"; readonly width: number; readonly height: number; readonly code: string; readonly frame: ReadonlyArray<number>; readonly params?: ReadonlyArray<number>; readonly input: string; readonly out: string; readonly name?: string }
   /** Whether WebGPU works there: fails with "no-webgpu: <why>" when it doesn't. */
@@ -61,6 +66,12 @@ export type RasterJob =
   | { readonly kind: "seq-html"; readonly css: string; readonly html: string }
   | { readonly kind: "seq-hold"; readonly count: number }
   | { readonly kind: "seq-close" };
+
+/** D292: the size a capture is shrunk to before it's saved (see RasterJob). */
+export interface RasterOutSize {
+  readonly outWidth?: number;
+  readonly outHeight?: number;
+}
 
 export interface Rasterizer {
   /** Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). */

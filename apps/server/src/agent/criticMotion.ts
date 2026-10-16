@@ -5,7 +5,8 @@
 //   frames around its start at 1/12 s apart, downscaled, one image per strip (bounded: at most
 //   MAX_STRIPS strips of STRIP_FRAMES cells, STRIP_CELL px wide);
 // - a frame-difference scan: small grey frames (SCAN_WIDTH px) of consecutive frames around each
-//   scene change plus an even sampling of the whole film (at most SCAN_BUDGET frames), from which
+//   scene change plus an even sampling of the whole film (at most SCAN_BUDGET frames, rendered once
+//   with the strips' at STRIP_CELL and stopped at MOTION_BUDGET_MS), from which
 //   it finds single-frame pops (a frame that differs from both neighbours more than POP_RATIO times
 //   as much as they differ from each other), one-frame jumps (a cut, or a flood that took one
 //   frame), holds over a second and the loop seam (last frame against frame 0).
@@ -25,6 +26,12 @@ export const STRIP_CELL = 200;
 /** The scan's grey frames are this wide; at most this many frames are rendered for it. */
 export const SCAN_WIDTH = 64;
 export const SCAN_RENDER_WIDTH = 96;
+/**
+ * The most time (ms) review_submit spends rendering the strips' and the scan's frames: past it the
+ * scan's remaining frames are left out and the scan runs on what was rendered (and says so). The
+ * strips' frames and the scene changes' windows come first, so a cut-off scan still covers them.
+ */
+export const MOTION_BUDGET_MS = 40_000;
 export const SCAN_BUDGET = 160;
 /** Consecutive frames on each side of a scene change in the scan. */
 export const SCAN_WINDOW = 5;
@@ -92,6 +99,51 @@ export function scanPlan(anchors: ReadonlyArray<MotionAnchor>, fps: number, dura
   const every = Math.max(1, Math.round(0.25 * fps), Math.ceil(duration / left));
   for (let f = 0; f < duration; f += every) set.add(f);
   return [...set].sort((a, b) => a - b).slice(0, budget + 8);
+}
+
+/**
+ * The strips' and the scan's frames, each once, in render order: first the strips' frames, the
+ * scan's frames around each scene change (SCAN_WINDOW each side) and the first and last two
+ * frames; then the rest of the scan. Each part sorted.
+ */
+export function motionRenderOrder(strips: ReadonlyArray<MotionStrip>, scanList: ReadonlyArray<number>, anchors: ReadonlyArray<MotionAnchor>, duration: number): Array<number> {
+  const first = new Set<number>(strips.flatMap((s) => s.frames));
+  for (const f of scanList) if (f <= 1 || f >= duration - 2 || anchors.some((a) => Math.abs(f - a.frame) <= SCAN_WINDOW)) first.add(f);
+  const rest = new Set(scanList.filter((f) => !first.has(f)));
+  return [...[...first].sort((a, b) => a - b), ...[...rest].sort((a, b) => a - b)];
+}
+
+export interface MotionFrames {
+  /** Every frame rendered (the strips' and the scan's), by frame. */
+  readonly byFrame: ReadonlyMap<number, Buffer>;
+  /** The scan's frames that were rendered, in order. */
+  readonly scanned: ReadonlyArray<number>;
+  /** How many the scan planned (scanList). */
+  readonly planned: number;
+  /** Whether the time budget left some out. */
+  readonly cut: boolean;
+}
+
+/**
+ * The strips' and the scan's frames rendered once (motionRenderOrder) by `render`, which asks
+ * `until` before each frame: once `budgetMs` has gone by (on `now`), the rest are left out.
+ */
+export async function motionFrames(o: {
+  readonly strips: ReadonlyArray<MotionStrip>;
+  readonly scanList: ReadonlyArray<number>;
+  readonly anchors: ReadonlyArray<MotionAnchor>;
+  readonly duration: number;
+  readonly render: (frames: ReadonlyArray<number>, until: () => boolean) => Promise<ReadonlyArray<{ readonly frame: number; readonly jpeg: Buffer }>>;
+  readonly budgetMs?: number;
+  readonly now?: () => number;
+}): Promise<MotionFrames> {
+  const now = o.now ?? Date.now;
+  const deadline = now() + (o.budgetMs ?? MOTION_BUDGET_MS);
+  const order = motionRenderOrder(o.strips, o.scanList, o.anchors, o.duration);
+  const rendered = await o.render(order, () => now() > deadline);
+  const byFrame = new Map(rendered.map((f) => [f.frame, f.jpeg]));
+  const scanned = [...new Set(o.scanList)].filter((f) => byFrame.has(f)).sort((a, b) => a - b);
+  return { byFrame, scanned, planned: new Set(o.scanList).size, cut: rendered.length < order.length };
 }
 
 /** Mean absolute difference of two grey frames, 0..1. */
@@ -216,9 +268,14 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   return out.slice(0, 8);
 }
 
+/** What a scan cut short by the time budget says (in the facts and the tool's result). */
+export const budgetLine = (covered: number, planned: number) => `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
+
 /** The scan for the critic, as facts (in <motion>). */
-export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean }): Array<string> {
-  const lines = [`Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, and an even sampling of the rest"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
+export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean; readonly planned?: number }): Array<string> {
+  const lines = [
+    ...(scanned.planned !== undefined && scan.frames < scanned.planned ? [budgetLine(scan.frames, scanned.planned)] : []),
+    `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, and an even sampling of the rest"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
   lines.push(scan.pops.length ? `Single-frame pops: ${scan.pops.map((p) => `f ${p.frame} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops found.");
   if (scan.jumps.length) lines.push(`One-frame jumps (cuts, or changes that took one frame): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %)`).join(", ")}.`);
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");

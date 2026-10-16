@@ -11,13 +11,13 @@ import { criticMessage, criticReview, parseCritic, reviewNext, REVIEW_ROUNDS, ru
 import { activeBrand, readBrand, readPlan, writeBrief, writeReview, writeStoryboard, normBrief, normBeats } from "../../brand/store.ts";
 import { guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
 import { FONT_ERRORS } from "../agentTools.ts";
-import { readGraphics } from "../../export/exporter.ts";
+import { readGraphics, type FrameSessionShape } from "../../export/exporter.ts";
 import { projectFonts } from "../../export/fonts.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { grayFrames, motionAnchors, motionFindings, motionIntent, motionLines, motionScan, scanPlan, scanSize, SCAN_RENDER_WIDTH, STRIP_CELL, stripLayout, stripPlan, type MotionScan } from "../criticMotion.ts";
+import { budgetLine, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
@@ -199,21 +199,12 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       if (unseen.length) {
         return textResult(`Look at each fix before you claim it: render_frames a frame of ${unseen.map((c) => `${c.defect} (at ${c.at} s, frames ${near(c.at!).join(" to ")})`).join(", ")} after your last change, and check the defect is really gone. Frames rendered before the change don't count.`, true);
       }
-      // Determinism (D189).
+      // Determinism (D189): each graphic's middle frame in the round's session and once more in a
+      // separate one; the same JPEG twice or it differed.
       const graphics = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items.filter((i) => i.type === "graphic" && typeof i.src === "string")).slice(0, 4);
-      const checked: Array<string> = [];
-      const differed: Array<string> = [];
-      for (const g of graphics) {
-        const frame = (starts.get(g.id) ?? 0) + Math.floor(g.duration / 2);
-        const twice = yield* Effect.all([exporter.renderFrames([frame], 480), exporter.renderFrames([frame], 480)]).pipe(
-          Effect.map(([a, b]) => ({ ok: true as const, same: createHash("sha256").update(a[0]!.jpeg).digest("hex") === createHash("sha256").update(b[0]!.jpeg).digest("hex") })),
-          Effect.catch(() => Effect.succeed({ ok: false as const })),
-        );
-        const name = g.name ?? g.src!.replace(/^graphics\//, "");
-        if (!twice.ok) continue;
-        checked.push(name);
-        if (!twice.same) differed.push(name);
-      }
+      const twiceOf = graphics.map((g) => ({ name: g.name ?? g.src!.replace(/^graphics\//, ""), frame: (starts.get(g.id) ?? 0) + Math.floor(g.duration / 2) }));
+      const sha = (jpeg: Buffer) => createHash("sha256").update(jpeg).digest("hex");
+      const hashes = (session: FrameSessionShape) => Effect.forEach(twiceOf, (x) => session.render([x.frame], 480).pipe(Effect.map((a) => sha(a[0]!.jpeg)), Effect.catch(() => Effect.succeed(undefined))));
       // The evidence, rendered by Uncut at this revision: a contact sheet, phone-size frames, each claimed fix's moment.
       const last = duration - 1;
       const clampF = (f: number) => Math.max(0, Math.min(last, Math.round(f)));
@@ -222,15 +213,67 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const phoneWidth = Math.max(64, Math.round(project.canvas.width * Math.min(1, PHONE_WIDTH / project.canvas.width)));
       const fixFrames = claims.flatMap((c) => (c.at === undefined ? [] : [{ defect: c.defect, frame: clampF(c.at * fps) }])).slice(0, 6);
       const sheetCells = sheetFrames(0, duration, undefined, 16);
-      const evidence = yield* Effect.gen(function* () {
-        const cells = "refused" in sheetCells ? [0] : [...sheetCells];
-        const list = yield* exporter.renderFrames(cells, CELL_WIDTH);
-        const sheet = yield* exporter.sheetImage(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), sheetLayout(list.length, project.canvas.width / project.canvas.height));
-        const phone = yield* exporter.renderFrames(phoneFrames, phoneWidth);
-        const fixed = fixFrames.length ? yield* exporter.renderFrames(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720)) : [];
-        return { ok: true as const, sheet, shown: list.map((f) => f.frame), phone, fixed };
-      }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
+      const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as { kit?: BrandKit; files: Record<string, string>; skills: Array<BrandSkill> }));
+      // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
+      // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
+      const intent = motionIntent({ skills: brand.skills.map((x) => x.name), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n") });
+      const anchors = motionAnchors(sb?.beats, fps, duration);
+      const strips = stripPlan(anchors, fps, duration);
+      const scanList = scanPlan(anchors, fps, duration);
+      const aspect = project.canvas.width / project.canvas.height;
+      // D292: one frame session for the round (one rasteriser, the plan once per width), small
+      // frames captured small; the strips' and the scan's frames rendered once, under a time budget.
+      const rendered = yield* exporter
+        .frameSession(
+          (session) =>
+            Effect.gen(function* () {
+              const mine = yield* hashes(session);
+              const evidence = yield* Effect.gen(function* () {
+                const cells = "refused" in sheetCells ? [0] : [...sheetCells];
+                const list = yield* session.render(cells, CELL_WIDTH);
+                const sheet = yield* session.sheet(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), sheetLayout(list.length, aspect));
+                const phone = yield* session.render(phoneFrames, phoneWidth);
+                const fixed = fixFrames.length ? yield* session.render(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720)) : [];
+                return { ok: true as const, sheet, shown: list.map((f) => f.frame), phone, fixed };
+              }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
+              if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
+              const motion = yield* Effect.gen(function* () {
+                const got = yield* Effect.tryPromise({ try: (signal) => motionFrames({ strips, scanList, anchors, duration, render: (frames, until) => Effect.runPromise(session.render(frames, STRIP_CELL, { until }), { signal }) }), catch: (e) => e as Error });
+                const stripImages: Array<CriticImage> = [];
+                for (const st of strips) {
+                  const cells = st.frames.flatMap((f) => (got.byFrame.has(f) ? [{ jpeg: got.byFrame.get(f)!, caption: `f ${f}   ${clock(f / fps)}` }] : []));
+                  if (!cells.length) continue;
+                  const jpeg = yield* session.sheet(cells, stripLayout(cells.length, aspect));
+                  stripImages.push({ label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`, jpeg });
+                }
+                let scan: MotionScan | undefined;
+                const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
+                if (ffmpeg && got.scanned.length > 2) {
+                  // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
+                  const { w, h } = scanSize(project.canvas);
+                  const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, got.scanned.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
+                  scan = motionScan(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), fps);
+                }
+                return { images: stripImages, scan, planned: got.planned, cut: got.cut };
+              }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
+              return { mine, evidence, motion };
+            }),
+          { downscale: true },
+        )
+        .pipe(Effect.catch((error) => Effect.succeed({ mine: [] as Array<string | undefined>, evidence: { ok: false as const, message: error.message }, motion: { images: [] as Array<CriticImage>, scan: undefined } })));
+      const { evidence, motion } = rendered;
       if (!evidence.ok) return textResult(`Couldn't render the frames for the critic: ${evidence.message}`, true);
+      // The second render of each graphic, in a session of its own.
+      const theirs = twiceOf.length ? yield* exporter.frameSession(hashes, { downscale: true }).pipe(Effect.catch(() => Effect.succeed([] as Array<string | undefined>))) : [];
+      const checked: Array<string> = [];
+      const differed: Array<string> = [];
+      twiceOf.forEach((x, i) => {
+        const a = rendered.mine[i];
+        const b = theirs[i];
+        if (a === undefined || b === undefined) return;
+        checked.push(x.name);
+        if (a !== b) differed.push(x.name);
+      });
       const images: Array<CriticImage> = [
         { label: `contact sheet of the whole video, ${evidence.shown.length} cells left to right, top to bottom, each captioned with its number, frame and time (frames ${evidence.shown.join(", ")})`, jpeg: evidence.sheet },
         ...evidence.phone.map((f) => ({ label: `frame ${f.frame} (${(f.frame / fps).toFixed(2)} s) at ${phoneWidth} px wide, as on a phone in a feed`, jpeg: f.jpeg })),
@@ -247,39 +290,12 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const intended = r.owner.plan.intended ?? [];
       const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)), sound: rubric.sound })
         .map((c) => ({ rule: c.id, key: c.key, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), ...(c.range ? { range: c.range } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)) }));
-      const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as { kit?: BrandKit; files: Record<string, string>; skills: Array<BrandSkill> }));
-      // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
-      // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
-      const intent = motionIntent({ skills: brand.skills.map((x) => x.name), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n") });
-      const anchors = motionAnchors(sb?.beats, fps, duration);
-      const strips = stripPlan(anchors, fps, duration);
-      const scanList = scanPlan(anchors, fps, duration);
-      const aspect = project.canvas.width / project.canvas.height;
-      const motion = yield* Effect.gen(function* () {
-        const stripFrames = [...new Set(strips.flatMap((x) => x.frames))].sort((a, b) => a - b);
-        const rendered = yield* exporter.renderFrames(stripFrames, STRIP_CELL);
-        const byFrame = new Map(rendered.map((f) => [f.frame, f.jpeg]));
-        const stripImages: Array<CriticImage> = [];
-        for (const st of strips) {
-          const cells = st.frames.flatMap((f) => (byFrame.has(f) ? [{ jpeg: byFrame.get(f)!, caption: `f ${f}   ${clock(f / fps)}` }] : []));
-          if (!cells.length) continue;
-          const jpeg = yield* exporter.sheetImage(cells, stripLayout(cells.length, aspect));
-          stripImages.push({ label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`, jpeg });
-        }
-        let scan: MotionScan | undefined;
-        const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
-        if (ffmpeg && scanList.length > 2) {
-          const frames = yield* exporter.renderFrames(scanList, SCAN_RENDER_WIDTH);
-          const { w, h } = scanSize(project.canvas);
-          const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, frames.map((f) => f.jpeg), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
-          scan = motionScan(frames.map((f, i) => ({ frame: f.frame, gray: grays[i]! })), fps);
-        }
-        return { images: stripImages, scan };
-      }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
       images.push(...motion.images);
       const motionChecks = motion.scan ? motionFindings(motion.scan, fps, intent) : [];
       checks.push(...motionChecks);
-      const motionFacts = motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration }) : ["problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."];
+      // D292: the time budget left some of the scan's frames out.
+      const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
+      const motionFacts = motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : ["problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."];
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
@@ -309,7 +325,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         blockers: review.blockers,
         defects: review.defects,
         ...(review.fixes ? { fixes: review.fixes } : {}),
-        motion: { strips: motion.images.length, ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
+        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
         next: reviewNext(review, round),
       });

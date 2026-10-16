@@ -8,6 +8,8 @@
 //   stdin  ← { id, kind: "graphic", width, height, doc, t, info, out }   a graphic item's frame (D78):
 //                                                    its document (core graphicDocument) loaded in a
 //                                                    window of its own, render(t, info) called, captured
+//   either of those two with outWidth and outHeight: laid out at width × height, the capture shrunk
+//                                                    to outWidth × outHeight before it's encoded (D292)
 //   stdin  ← { id, kind: "shader", width, height, code, frame, params?, input, out }   a shader effect's
 //                                                    frame (D213): `input` a width×height RGBA file, drawn
 //                                                    with WebGPU (core shaderModuleCode `code`, the
@@ -91,6 +93,9 @@ interface HtmlRequest {
   readonly css: string;
   readonly html: string;
   readonly out: string;
+  /** D292: shrink the capture to this size before it's saved (the page still lays out at width × height). */
+  readonly outWidth?: number;
+  readonly outHeight?: number;
 }
 interface GraphicRequest {
   readonly id: number;
@@ -103,6 +108,9 @@ interface GraphicRequest {
   readonly out: string;
   /** What to call it in an error ("intro" (graphics/intro.html)). */
   readonly name?: string;
+  /** D292: as HtmlRequest's. */
+  readonly outWidth?: number;
+  readonly outHeight?: number;
 }
 interface ShaderRequest {
   readonly id: number;
@@ -207,6 +215,11 @@ const isRequest = (v: unknown): v is Request => {
     r.height! <= 8192 &&
     typeof r.out === "string";
   if (!sized) return false;
+  // D292: an output size is both or neither, and no bigger than the page.
+  if (r.outWidth !== undefined || r.outHeight !== undefined) {
+    const within = (n: unknown, max: number) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= max;
+    if ((r.kind !== undefined && r.kind !== "graphic") || !within(r.outWidth, r.width!) || !within(r.outHeight, r.height!)) return false;
+  }
   if (r.kind === "graphic") return typeof r.doc === "string" && typeof r.t === "number" && Number.isFinite(r.t) && (r.name === undefined || typeof r.name === "string");
   if ((r.kind as unknown) === "shader") {
     const sr = v as Partial<ShaderRequest>;
@@ -316,8 +329,12 @@ async function main() {
       if (Date.now() > until) throw new Error("the frame drawn never reached the capture (the machine too busy?)");
     }
   };
-  const save = (out: string) => (image: Electron.NativeImage) => writeFileSync(out, /\.jpe?g$/i.test(out) ? image.toJPEG(85) : image.toPNG());
-  const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest, expected: number) => save(r.out)(await grab(target, r.width, r.height, expected));
+  // D292: an output size shrinks the capture (laid out and checked at full size) before it's encoded.
+  const save = (out: string, size?: { readonly outWidth?: number; readonly outHeight?: number }) => (full: Electron.NativeImage) => {
+    const image = size?.outWidth && size.outHeight && (size.outWidth !== full.getSize().width || size.outHeight !== full.getSize().height) ? full.resize({ width: size.outWidth, height: size.outHeight, quality: "best" }) : full;
+    writeFileSync(out, /\.jpe?g$/i.test(out) ? image.toJPEG(85) : image.toPNG());
+  };
+  const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest, expected: number) => save(r.out, r)(await grab(target, r.width, r.height, expected));
   const newGraphicWindow = () => {
     const gw = new BrowserWindow(windowOptions);
     gw.webContents.setFrameRate(FRAME_RATE);
@@ -491,7 +508,12 @@ async function main() {
     // Set the content, then wait for fonts, images and two frames so what's captured is what was set.
     await win.webContents.executeJavaScript(
       `(() => { ${css} document.getElementById("frame").innerHTML = ${JSON.stringify(r.html)}; void document.body.offsetHeight;
-        const images = Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+        // An image counts once decoded or loaded (D292: decode() in this offscreen page sometimes waits
+        // ~5 s for no reason). A loaded image is decoded in the paint that first shows it (decoding
+        // "sync": never a placeholder filled in a frame later), so the frames waited for below have it.
+        for (const i of document.images) i.decoding = "sync";
+        const loaded = (i) => (i.complete ? Promise.resolve() : new Promise((done) => { i.addEventListener("load", done, { once: true }); i.addEventListener("error", done, { once: true }); }));
+        const images = Promise.all([...document.images].map((i) => Promise.race([i.decode().catch(() => {}), loaded(i)])));
         const settled = Promise.all([document.fonts.ready, images]).then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(innerWidth + "x" + innerHeight)))));
         // A frame that never comes (a busy machine) mustn't hang the request: capture after 5 s regardless.
         return Promise.race([settled, new Promise((done) => setTimeout(done, 5000))]).then(() => ${setSentinel(r.height, expected)}); })()`,
@@ -550,7 +572,7 @@ async function main() {
 
   const render = async (r: Request) => {
     if (r.kind !== undefined && r.kind !== "graphic" && r.kind !== "shader" && r.kind !== "shader-probe") return renderSeq(r);
-    if (r.kind === "graphic") return renderGraphic(r, [r.t], save(r.out));
+    if (r.kind === "graphic") return renderGraphic(r, [r.t], save(r.out, r));
     if (r.kind === "shader") return renderShader(r);
     if (r.kind === "shader-probe") return probeShader().catch((error: Error) => {
       throw new Error((error.message.match(/no-webgpu: .*/) ?? [`no-webgpu: ${error.message}`])[0]);
