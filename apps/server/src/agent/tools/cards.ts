@@ -121,7 +121,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       if (!beats.length) return textResult("beats is the shot list: each {start, end (seconds), title, entry, exit, purpose, assets, sound}.", true);
       const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 600) : "";
       const wanted = asked.flatMap((f, i) => (f === undefined ? [] : [[i, f] as const]));
-      if (wanted.length > MAX_STILLS || wanted.some(([, f]) => !Number.isInteger(f) || (f as number) < 0)) return textResult(`still is a timeline frame (an integer from 0) on at most ${MAX_STILLS} beats.`, true);
+      if (wanted.length > MAX_STILLS || wanted.some(([, f]) => !Number.isInteger(f) || (f as number) < 0)) {
+        const many = wanted.length > MAX_STILLS ? ` You gave ${wanted.length} (beats ${wanted.map(([i]) => i + 1).join(", ")}): keep ${MAX_STILLS}, say the open, the drop, the busiest state and the last frame, and propose again.` : "";
+        return textResult(`still is a timeline frame (an integer from 0) on at most ${MAX_STILLS} beats.${many}`, true);
+      }
       // D296: from here the proposal locks the edit (run.ts): the stills render from this state and
       // the user approves what they see. Set before rendering, so a parallel edit can't slip in.
       r.planned = true;
