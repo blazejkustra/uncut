@@ -168,7 +168,7 @@ test("issue #63: the type picker, coming-soon models disabled, no free wording, 
     await waitFor(page, "[data-testid=library] [data-testid=generated-item]");
     const item = await page.evaluate(() => {
       const el = document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated-item]")!;
-      return { badge: !!el.querySelector("[data-testid=generated-badge]"), prompt: el.querySelector<HTMLElement>("[data-testid=generated-prompt]")!.innerText.trim(), by: el.querySelector<HTMLElement>(".gen-by")!.innerText.trim(), section: document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated] .lib-label")!.innerText.trim() };
+      return { badge: !!el.querySelector("[data-testid=generated-badge]"), prompt: el.title.split("\n")[1], by: el.querySelector<HTMLElement>(".gen-by")!.innerText.trim(), section: document.querySelector<HTMLElement>("[data-testid=library] [data-testid=generated] .lib-label")!.innerText.trim() };
     });
     assert.deepEqual(item, { badge: true, prompt: "A red kite on a pale sky", by: "Drawn by Claude, Anthropic", section: "Generated" });
     assert.ok(!FREE.test(await text(page, "[data-testid=library]")), "no free wording in Media");
