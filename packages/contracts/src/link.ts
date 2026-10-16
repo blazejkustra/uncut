@@ -1,8 +1,12 @@
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 
-// ---- import from a link (D259, #94) ----
-// Uncut never ships or downloads a downloader: it runs the user's own yt-dlp when there is one.
+// ---- import from a link (D259, #94; D280) ----
+// Uncut never ships or downloads a downloader. Import from link is a catalog plugin (not bundled,
+// off until the user installs and allows it in Settings › Plugins) that runs the user's own yt-dlp.
+
+/** The plugin that does the downloading (plugins/catalog/uncut-link-import). */
+export const LINK_PLUGIN_ID = "uncut.link-import";
 
 export const LINK_METHODS = {
   check: "link.check",
@@ -19,11 +23,13 @@ export const LinkQuality = Schema.Literals(LINK_QUALITIES);
 export type LinkQuality = typeof LinkQuality.Type;
 export const DEFAULT_LINK_QUALITY: LinkQuality = "1080";
 
-/** The server's yt-dlp: where it is and its version, or not found. */
+/** The server's yt-dlp (found by the plugin): where it is and its version, or not found. */
 export const LinkTool = Schema.Struct({
   found: Schema.Boolean,
   path: Schema.optional(Schema.String),
   version: Schema.optional(Schema.String),
+  // D280: why it couldn't look (the plugin isn't installed or allowed), in words.
+  problem: Schema.optional(Schema.String),
 });
 export type LinkTool = typeof LinkTool.Type;
 
@@ -33,9 +39,6 @@ export const LinkRequest = Schema.Struct({
   quality: Schema.optional(LinkQuality),
   // Dropped on the timeline: it goes there too, in the import's own edit (like T9 file drops).
   drop: Schema.optional(Schema.Struct({ frame: Schema.Number, track: Schema.optional(Schema.String) })),
-  // D266: the renderer's Labs flag (importFromLink) is on; the server refuses a start without it
-  // (defense in depth: every UI entry point checks the flag too).
-  labs: Schema.optional(Schema.Boolean),
 });
 export type LinkRequest = typeof LinkRequest.Type;
 
@@ -59,7 +62,8 @@ export const LinkJob = Schema.Struct({
 export type LinkJob = typeof LinkJob.Type;
 
 export class LinkError extends Schema.TaggedError<LinkError>()("LinkError", {
-  reason: Schema.Literals(["no-project", "no-tool", "bad-url", "failed"]),
+  // no-plugin (D280): the Import from link plugin isn't installed and allowed.
+  reason: Schema.Literals(["no-project", "no-plugin", "no-tool", "bad-url", "failed"]),
   message: Schema.String,
 }) {}
 

@@ -13,7 +13,7 @@ export interface AppState {
   readonly environments: boolean;
   /** #76 (D256): which parts of the editor show (the View menu's checkmarks). */
   readonly panels?: { readonly lib: boolean; readonly side: boolean; readonly bottom: boolean; readonly focus: boolean };
-  /** #94 (D263): File › Import from Link… shows (the Labs flag is on). */
+  /** #94 (D263, D280): File › Import from Link… shows (its plugin is installed and allowed). */
   readonly importLink?: boolean;
 }
 

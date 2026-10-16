@@ -9,12 +9,6 @@ export const FLAGS = {
     description: "Edit on another machine: pair a remote Uncut server and switch the window to it.",
     default: false,
   },
-  // D259 (#94): Media's + menu gets Import from link…, through the user's own yt-dlp.
-  importFromLink: {
-    label: "Import from link",
-    description: "Import video or sound from a link with yt-dlp, if you've installed it yourself (brew install yt-dlp). Uncut doesn't include it.",
-    default: false,
-  },
 } as const satisfies Record<string, { readonly label: string; readonly description: string; readonly default: boolean }>;
 
 export type Flag = keyof typeof FLAGS;

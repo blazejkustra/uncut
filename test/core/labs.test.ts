@@ -13,11 +13,9 @@ const store = new Map<string, string>();
 const labs = await import("../../apps/web/src/settings/labs.ts");
 
 test("Labs: Environments is listed, off by default, and remembered when turned on", () => {
-  assert.deepEqual(labs.FLAG_IDS, ["environments", "importFromLink"]);
+  // D280: Import from link is a catalog plugin now, not a Labs flag.
+  assert.deepEqual(labs.FLAG_IDS, ["environments"]);
   assert.equal(labs.FLAGS.environments.default, false);
-  // D259 (#94): Import from link, off by default too.
-  assert.equal(labs.FLAGS.importFromLink.default, false);
-  assert.equal(labs.flagOn("importFromLink"), false);
   assert.equal(labs.flagOn("environments"), false);
   let heard = 0;
   const stop = labs.subscribeFlags(() => heard++);

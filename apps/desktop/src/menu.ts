@@ -101,7 +101,7 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         item("Open…", "CmdOrCtrl+O", { type: "open-project" }),
         { label: "Open Recent", submenu: recent },
         { type: "separator" },
-        // #94 (D263): only while the Labs flag is on, like Media's + menu; it opens the same dialog.
+        // #94 (D263, D280): only while the Import from link plugin is installed and allowed, like Media's + menu; it opens the same dialog.
         ...(state.importLink ? [{ ...item("Import from Link…", undefined, { type: "import-link" }), enabled: state.projectOpen }] : []),
         { ...item("Export…", "CmdOrCtrl+E", { type: "export" }), enabled: state.projectOpen },
         { type: "separator" },

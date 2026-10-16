@@ -1,17 +1,17 @@
-// D259 (#94): Import from link… (a Labs flag). Uncut runs the user's own yt-dlp on the server: if
-// there's none, the dialog says how to install it (brew install yt-dlp, with Copy) and offers Check
-// again, and does nothing else. Before the first import, a one-time notice about rights. Then a
-// link, Video (best up to a height, 1080p by default) or Audio only (m4a), Import; progress and
-// Cancel while it downloads; errors in plain words. The media lands in Media (on the timeline too
-// when the link was dropped there), named after the video's title.
+// D259 (#94), D280: Import from link… (shown only while its catalog plugin is installed and
+// allowed). The plugin runs the user's own yt-dlp on the server: if there's none, the dialog says
+// how to install it (brew install yt-dlp, with Copy) and offers Check again, and does nothing else.
+// Every time it opens, the rights notice first (and its line stays above Import). Then a link,
+// Video (best up to a height, 1080p by default) or Audio only (m4a), Import; progress and Cancel
+// while it downloads; errors in plain words. The media lands in Media (on the timeline too when the
+// link was dropped there), named after the video's title.
 import { DEFAULT_LINK_QUALITY, type LinkKind, type LinkQuality, type LinkTool } from "@uncut/contracts";
 import { Check, Copy, Link2, RefreshCw } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
 import { plainError, useApp } from "../../state/store.ts";
 import { call, connection } from "../../state/store/server.ts";
-import { acknowledgeRights, closeLinkImport, rightsAcknowledged, setLinkJobs, useLinkDialog, useLinkJobs, type LinkDialogRequest } from "./linkImport.ts";
-import { flagOn } from "../../settings/labs.ts";
+import { closeLinkImport, setLinkJobs, useLinkDialog, useLinkJobs, type LinkDialogRequest } from "./linkImport.ts";
 import "./importLink.css";
 
 export const BREW_COMMAND = "brew install yt-dlp";
@@ -35,7 +35,7 @@ export function LinkImportHost() {
   return request ? <ImportLinkDialog request={request} /> : null;
 }
 
-type Step = { readonly kind: "checking" } | { readonly kind: "missing" } | { readonly kind: "notice" } | { readonly kind: "form" } | { readonly kind: "job"; readonly jobId: string };
+type Step = { readonly kind: "checking" } | { readonly kind: "missing" } | { readonly kind: "unavailable"; readonly problem: string } | { readonly kind: "notice" } | { readonly kind: "form" } | { readonly kind: "job"; readonly jobId: string };
 
 function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
   const app = useApp();
@@ -56,7 +56,8 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
     const r = await call((c) => c["link.check"]({}), 20000);
     const found = r.ok ? r.value : { found: false };
     setTool(found);
-    setStep(found.found ? (rightsAcknowledged() ? { kind: "form" } : { kind: "notice" }) : { kind: "missing" });
+    // D280: the rights notice on every import, never remembered.
+    setStep(found.found ? { kind: "notice" } : found.problem ? { kind: "unavailable", problem: found.problem } : { kind: "missing" });
   };
   useEffect(() => {
     void check();
@@ -70,7 +71,7 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
   const start = async () => {
     setProblem(undefined);
     setStarting(true);
-    const r = await call((c) => c["link.start"]({ url: url.trim(), kind, labs: flagOn("importFromLink"), ...(kind === "video" ? { quality } : {}), ...(request.drop ? { drop: request.drop } : {}) }));
+    const r = await call((c) => c["link.start"]({ url: url.trim(), kind, ...(kind === "video" ? { quality } : {}), ...(request.drop ? { drop: request.drop } : {}) }));
     setStarting(false);
     if (!r.ok) {
       if (r.error.reason === "no-tool") {
@@ -105,6 +106,16 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
             <RefreshCw className="spin" /> Looking for yt-dlp…
           </div>
         )}
+        {step.kind === "unavailable" && (
+          <div data-testid="link-unavailable">
+            <p className="link-error">{step.problem}</p>
+            <div className="confirm-actions">
+              <button className="btn" data-testid="link-close" onClick={close}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
         {step.kind === "missing" && (
           <div data-testid="link-missing">
             <p className="link-text">Import from link uses yt-dlp, a free downloader you install yourself. It isn't on {where}, and Uncut doesn't include it. Install it with Homebrew, then check again:</p>
@@ -122,7 +133,7 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
         {step.kind === "notice" && (
           <div data-testid="link-notice">
             <p className="link-notice-text">You need the rights to what you import. Uncut doesn't check.</p>
-            <p className="link-text">Only import what you made, what you have permission to use, or what its licence allows. This is shown once on this Mac.</p>
+            <p className="link-text">Only import what you made, what you have permission to use, or what its licence allows. Nothing behind a sign-in can be imported.</p>
             <div className="confirm-actions">
               <button className="btn" data-testid="link-close" onClick={close}>
                 Cancel
@@ -131,10 +142,7 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
                 className="btn primary"
                 data-testid="link-notice-ok"
                 autoFocus
-                onClick={() => {
-                  acknowledgeRights();
-                  setStep({ kind: "form" });
-                }}
+                onClick={() => setStep({ kind: "form" })}
               >
                 I understand
               </button>
@@ -177,6 +185,9 @@ function ImportLinkDialog({ request }: { request: LinkDialogRequest }) {
                 {problem}
               </p>
             )}
+            <p className="link-hint" data-testid="link-rights">
+              You need the rights to what you import. Uncut doesn't check.
+            </p>
             <p className="link-hint" data-testid="link-tool">
               With yt-dlp{tool?.version ? ` ${tool.version}` : ""} on {where}. The name comes from the video's title.
             </p>

@@ -2,13 +2,12 @@
 import type React from "react";
 import type { Cut } from "@uncut/core/transitions";
 import { bridge } from "../../state/bridge.ts";
-import { actions, isRemote, textPresets } from "../../state/store.ts";
+import { actions, getState, isRemote, textPresets } from "../../state/store.ts";
 import { COMPONENT_DRAG_TYPE, draggedComponent, secondsFor, setDraggedComponent, setDraggedText, TEXT_DRAG_TYPE } from "../../preview/components.ts";
 import { CUT_DROP_PX, EFFECT_DRAG_TYPE, hasFiles, MEDIA_DRAG_TYPE, setDraggedEffect, setDraggedTransition, TRANSITION_DRAG_TYPE } from "../dnd.ts";
 import { HEAD_WIDTH } from "./dragView.ts";
 import type { LaneGeometry } from "./lanes.ts";
-import { flagOn } from "../../settings/labs.ts";
-import { dragMayHoldLink, linkFromDrag, openLinkImport } from "../../panels/library/linkImport.ts";
+import { dragMayHoldLink, linkFromDrag, linkImportReady, openLinkImport } from "../../panels/library/linkImport.ts";
 
 export interface LaneDropCtx {
   readonly fps: number;
@@ -59,8 +58,8 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
       if (over !== dropCut) setDropCut(over);
       return;
     }
-    // D259: a link dragged from a browser (Labs › Import from link) is imported and put here.
-    const link = flagOn("importFromLink") && dragMayHoldLink(e.dataTransfer);
+    // D259, D280: a link dragged from a browser (with the Import from link plugin) is imported and put here.
+    const link = linkImportReady(getState().plugins) && dragMayHoldLink(e.dataTransfer);
     if (!online || ![MEDIA_DRAG_TYPE, COMPONENT_DRAG_TYPE, TEXT_DRAG_TYPE].some((t) => types.includes(t)) && !hasFiles(types) && !link) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -130,7 +129,7 @@ export function makeLaneDrop(ctx: LaneDropCtx) {
       return;
     }
     // D259: a link: the Import from link dialog, and what it imports lands here.
-    const url = flagOn("importFromLink") ? linkFromDrag(e.dataTransfer) : undefined;
+    const url = linkImportReady(getState().plugins) ? linkFromDrag(e.dataTransfer) : undefined;
     if (url) {
       e.preventDefault();
       openLinkImport({ url, drop: { frame, ...(track ? { track } : {}) } });

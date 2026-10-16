@@ -1,17 +1,20 @@
-// D259 (#94): Import from link, through the user's own yt-dlp. Uncut never bundles or downloads
-// yt-dlp: it looks for one on PATH (which already holds the login shell's PATH, D-shellEnv) and in
-// the Homebrew folders, and says how to install it when there's none. A download runs yt-dlp
-// directly (no shell) with linkArgs' arguments into the project's media/links/ under a name of
-// ours, renames it after the title, and imports it like a capture (D98: the import job, quiet, a
-// relative path) with source {module: "import.link", url, title, kind, quality}: one user edit, on the
-// timeline too when the link was dropped there. Cancel kills yt-dlp's whole process group (its
-// ffmpeg too) and removes the partial files. On a remote environment it's the server's yt-dlp.
-import { spawn, type ChildProcess } from "node:child_process";
+// D259 (#94), D280: Import from link, through the user's own yt-dlp, run by the Import from link
+// plugin (plugins/catalog/uncut-link-import, uncut.link-import): not bundled, off until the user installs
+// and allows it in Settings › Plugins; refused here otherwise. Uncut never bundles or downloads
+// yt-dlp: the plugin looks for one in the search path Uncut gives it (PATH, which already holds the
+// login shell's PATH, and the Homebrew folders). Uncut calls the plugin itself (plugins.callPlugin,
+// like the Whisper plugin): it has no agent tools, so the agent can't start a download. The plugin
+// downloads into the project's media/links/ under a name of ours; Uncut renames it after the title
+// and imports it like a capture (D98: the import job, quiet, a relative path) with source
+// {module: "import.link", url, title, kind, quality, tool}: one user edit, on the timeline too when
+// the link was dropped there. Cancel cancels the plugin call: the plugin kills yt-dlp's whole
+// process group (its ffmpeg too) and removes the partial files. On a remote environment it's the
+// server's plugin and yt-dlp.
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative } from "node:path";
 
-import { DEFAULT_LINK_QUALITY, LinkError, type LinkJob, type LinkRequest, type LinkTool } from "@uncut/contracts";
+import { DEFAULT_LINK_QUALITY, LINK_PLUGIN_ID, LinkError, type LinkJob, type LinkRequest, type LinkTool } from "@uncut/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -19,15 +22,13 @@ import type * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { ServerConfig } from "../app/config.ts";
-import { versionToken, which } from "../app/setup.ts";
-import { mergePath, pluginEnv } from "../app/shellEnv.ts";
+import { mergePath } from "../app/shellEnv.ts";
+import { Plugins } from "../plugins/plugins.ts";
 import { Projects } from "../project/projects.ts";
 import { MediaLibrary } from "./media.ts";
-import { runProbe } from "./probe.ts";
-import { checkLink, labsRefusal, linkFileStem, linkMediaName, LINKS_DIR, parseLine, plainYtDlpError, ytDlpArgs } from "./linkArgs.ts";
+import { checkLink, linkFileStem, linkMediaName, LINKS_DIR } from "./linkArgs.ts";
 
 const MAX_JOBS_KEPT = 10;
-const STDERR_KEEP = 64 * 1024;
 /** Homebrew's folders, looked in even when PATH doesn't have them (not when tests turn the shell lookup off). */
 export const HOMEBREW_DIRS = ["/opt/homebrew/bin", "/usr/local/bin"];
 
@@ -43,84 +44,18 @@ export class LinkImport extends Context.Service<LinkImport, LinkImportShape>()("
 /** Where to look for yt-dlp: PATH, then the Homebrew folders (unless UNCUT_SHELL_ENV=off, the tests' bare PATH). */
 export const ytDlpSearchPath = (env: NodeJS.ProcessEnv) => mergePath(env.PATH, env.UNCUT_SHELL_ENV === "off" ? "" : HOMEBREW_DIRS.join(":"));
 
-/** Whether any process of the group led by `pid` is still there. */
-const groupAlive = (pid: number) => {
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
-  }
-};
+/** One download may take this long (the manifest's per-call limit is 30 minutes; Cancel stops it sooner). */
+const DOWNLOAD_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
-/** Kills a detached child's whole process group: TERM, then KILL if it's still there. */
-const killTree = (child: ChildProcess) => {
-  const signal = (s: NodeJS.Signals) => {
-    try {
-      if (child.pid) process.kill(-child.pid, s);
-    } catch {
-      try {
-        child.kill(s);
-      } catch {}
-    }
-  };
-  signal("SIGTERM");
-  // The group, not just the leader: an ffmpeg can outlive yt-dlp (D266).
-  setTimeout(() => ((child.exitCode === null && child.signalCode === null) || (child.pid && groupAlive(child.pid))) && signal("SIGKILL"), 3000).unref();
-};
-
-/** Waits (up to `ms`) for a process group to be gone: yt-dlp's ffmpeg can outlive it and still write. */
-const groupGone = async (pid: number | undefined, ms: number) => {
-  if (!pid) return;
-  const until = Date.now() + ms;
-  while (groupAlive(pid) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
-};
-
-/**
- * Runs yt-dlp in `cwd` (the output folder: its -o is relative), handing each output line to
- * `onLine`; resolves with its exit code and the tail of stderr once its whole process group is
- * gone (D266: an ffmpeg that outlives a cancelled yt-dlp can't leave a .temp after the cleanup).
- */
-export const runYtDlp = (bin: string, args: ReadonlyArray<string>, onLine: (line: string) => void, signal: AbortSignal, cwd?: string) =>
-  new Promise<{ code: number | null; stderr: string; spawnError?: string }>((resolve) => {
-    let child: ChildProcess;
-    try {
-      child = spawn(bin, [...args], { env: { ...pluginEnv(process.env), PATH: process.env.PATH ?? "" }, stdio: ["ignore", "pipe", "pipe"], detached: true, ...(cwd ? { cwd } : {}) });
-    } catch (e) {
-      return resolve({ code: null, stderr: "", spawnError: (e as Error).message });
-    }
-    let stderr = "";
-    const lines = (onChunk: (text: string) => void) => {
-      let buffer = "";
-      return (chunk: Buffer) => {
-        buffer += chunk.toString("utf8");
-        const parts = buffer.split(/\r?\n|\r/);
-        buffer = parts.pop() ?? "";
-        for (const p of parts) onChunk(p);
-        if (buffer.length > 16384) buffer = buffer.slice(-16384);
-      };
-    };
-    child.stdout?.on("data", lines(onLine));
-    child.stderr?.on(
-      "data",
-      lines((l) => {
-        stderr = (stderr + l + "\n").slice(-STDERR_KEEP);
-        onLine(l);
-      }),
-    );
-    const onAbort = () => killTree(child);
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
-    child.on("error", (e) => {
-      signal.removeEventListener("abort", onAbort);
-      resolve({ code: null, stderr, spawnError: e.message });
-    });
-    child.on("close", (code) => {
-      signal.removeEventListener("abort", onAbort);
-      // The SIGKILL comes 3 s after a cancel's SIGTERM: a little longer than that.
-      void groupGone(child.pid, signal.aborted ? 4000 : 1000).then(() => resolve({ code, stderr }));
-    });
-  });
+/** Why Import from link can't run when its plugin isn't installed and allowed, in words. */
+export const pluginRefusal = (status: "ready" | "needs-approval" | "broken" | undefined): string | undefined =>
+  status === "ready"
+    ? undefined
+    : status === "needs-approval"
+      ? "Import from link isn't allowed yet: allow it in Settings › Plugins."
+      : status === "broken"
+        ? "The Import from link plugin can't be used right now: look at it in Settings › Plugins."
+        : "Import from link is a plugin: install it from Settings › Plugins first.";
 
 export const layer = Layer.effect(
   LinkImport,
@@ -128,6 +63,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const projects = yield* Projects;
     const media = yield* MediaLibrary;
+    const plugins = yield* Plugins;
     const scope = yield* Effect.scope;
     const jobsRef = yield* SubscriptionRef.make<ReadonlyArray<LinkJob>>([]);
     const controllers = new Map<string, AbortController>();
@@ -135,17 +71,23 @@ export const layer = Layer.effect(
 
     const update = (id: string, patch: Partial<LinkJob>) => Effect.runSync(SubscriptionRef.update(jobsRef, (jobs) => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j))));
 
-    const find = Effect.promise(async () => {
+    /** The plugin's status (installed and allowed: "ready"), after a fresh scan; undefined when it isn't installed. */
+    const pluginStatus = Effect.map(plugins.list, (list) => list.find((p) => p.id === LINK_PLUGIN_ID)?.status);
+    /** Where the plugin looks for yt-dlp and ffmpeg: PATH (with the login shell's, once read) and the Homebrew folders. */
+    const searchPath = Effect.promise(async () => {
       await config.shellReady;
-      return which("yt-dlp", ytDlpSearchPath(process.env));
+      return ytDlpSearchPath(process.env);
     });
+    const textOf = (r: { readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }> }) => r.content.flatMap((c) => (c.type === "text" && c.text ? [c.text] : [])).join(" ").trim();
 
     const check: LinkImportShape["check"] = Effect.gen(function* () {
-      const bin = yield* find;
-      if (!bin) return { found: false };
-      const r = yield* Effect.promise(() => runProbe(bin, ["--version"], { timeoutMs: 10000, env: pluginEnv(process.env), maxBytes: 4096 }));
-      const version = r.kind === "done" && r.code === 0 ? versionToken(r.stdout) : undefined;
-      return { found: true, path: bin, ...(version ? { version } : {}) };
+      const refused = pluginRefusal(yield* pluginStatus);
+      if (refused) return { found: false, problem: refused };
+      const r = yield* plugins.callPlugin(LINK_PLUGIN_ID, "check", { searchPath: yield* searchPath }, { timeoutMs: 20000 });
+      const out = (r.structured ?? {}) as { found?: unknown; path?: unknown; version?: unknown };
+      if (r.isError) return { found: false, problem: textOf(r) || "Import from link couldn't look for yt-dlp." };
+      if (out.found !== true) return { found: false };
+      return { found: true, ...(typeof out.path === "string" ? { path: out.path } : {}), ...(typeof out.version === "string" ? { version: out.version.slice(0, 32) } : {}) };
     });
 
     /** The project's media/links/, inside the project by realpath (a symlinked media/ pointing out is refused). */
@@ -169,51 +111,44 @@ export const layer = Layer.effect(
         await Promise.all(files.filter((f) => f.startsWith(`${stem}.`)).map((f) => rm(join(folder, f), { force: true, recursive: true })));
       });
 
-    const run = (id: string, bin: string, request: { readonly url: string; readonly kind: LinkRequest["kind"]; readonly quality: NonNullable<LinkRequest["quality"]>; readonly drop?: LinkRequest["drop"] }, target: { readonly openId: number; readonly dir: string }, signal: AbortSignal) =>
+    const run = (id: string, request: { readonly url: string; readonly kind: LinkRequest["kind"]; readonly quality: NonNullable<LinkRequest["quality"]>; readonly drop?: LinkRequest["drop"] }, target: { readonly openId: number; readonly dir: string }, signal: AbortSignal) =>
       Effect.gen(function* () {
         const failed = (message: string) => new LinkError({ reason: "failed", message });
         const folder = yield* linksFolder(target.dir);
         const stem = `link-${id.slice(0, 8)}`;
-        const ffmpeg = yield* Effect.promise(() => which("ffmpeg", process.env.PATH ?? ""));
-        const args = ytDlpArgs({ url: request.url, kind: request.kind, quality: request.quality, stem, ffmpeg });
-        let title: string | undefined;
-        let printed: string | undefined;
-        const result = yield* Effect.promise(() =>
-          runYtDlp(
-            bin,
-            args,
-            (line) => {
-              const read = parseLine(line);
-              if (!read) return;
-              if ("title" in read) {
-                title = read.title;
-                update(id, { title: read.title });
-              } else if ("file" in read) printed = read.file;
-              else if ("progress" in read) update(id, { progress: read.progress, status: `Downloading… ${Math.round(read.progress * 100)}%` });
-              else update(id, { status: read.status });
-            },
+        // The plugin runs yt-dlp; progress comes as MCP progress (a step in words as its message).
+        const result = yield* plugins.callPlugin(
+          LINK_PLUGIN_ID,
+          "download",
+          { url: request.url, kind: request.kind, quality: request.quality, folder, stem, searchPath: yield* searchPath },
+          {
             signal,
-            folder,
-          ),
+            timeoutMs: DOWNLOAD_TIMEOUT_MS,
+            onProgress: (progress, total, message) => {
+              const p = Math.max(0, Math.min(1, total ? progress / total : progress));
+              update(id, message ? { progress: p, status: message } : { progress: p, status: `Downloading… ${Math.round(p * 100)}%` });
+            },
+          },
         );
         if (signal.aborted) {
+          // The plugin removes the partial files once yt-dlp's process group is gone; these are what's already there.
           yield* removePartials(folder, stem);
           return yield* failed("Cancelled.");
         }
-        if (result.spawnError) {
+        if (result.isError) {
           yield* removePartials(folder, stem);
-          return yield* failed(`yt-dlp couldn't be started: ${result.spawnError}`);
+          // Turned off or removed while it ran: say so, not the plugin host's words.
+          const refused = pluginRefusal(yield* pluginStatus);
+          return yield* failed(refused ?? (textOf(result) || "yt-dlp stopped before it finished."));
         }
-        if (result.code !== 0) {
-          yield* removePartials(folder, stem);
-          return yield* failed(plainYtDlpError(result.stderr, result.code));
-        }
-        // The finished file: the one yt-dlp printed (only if it's ours, in the folder), else ours by name.
+        const out = (result.structured ?? {}) as { file?: unknown; title?: unknown };
+        const title = typeof out.title === "string" && out.title.trim() ? out.title.trim().slice(0, 500) : undefined;
+        if (title) update(id, { title });
+        // The finished file: the one the plugin names, only if it's ours (in the folder, our stem), else ours by name.
         const made = yield* Effect.promise(async () => {
           const ours = (p: string) => dirname(p) === folder && basename(p).startsWith(`${stem}.`) && !/\.(part|ytdl|temp)$/.test(p);
-          // Relative to the folder it ran in (its -o is relative).
-          if (printed) {
-            const real = await realpath(isAbsolute(printed) ? printed : join(folder, printed)).catch(() => undefined);
+          if (typeof out.file === "string") {
+            const real = await realpath(isAbsolute(out.file) ? out.file : join(folder, out.file)).catch(() => undefined);
             if (real && ours(real) && (await stat(real).catch(() => undefined))?.isFile()) return real;
           }
           const files = (await readdir(folder).catch(() => [] as Array<string>)).filter((f) => f.startsWith(`${stem}.`) && !/\.f\d+\./.test(f) && !/\.(part|ytdl|temp)$/.test(f));
@@ -261,12 +196,12 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const open = yield* projects.current;
         if (!open) return yield* new LinkError({ reason: "no-project", message: "Open a project first: what's imported goes into its Media." });
-        const off = labsRefusal(request);
-        if (off) return yield* new LinkError({ reason: "failed", message: off });
+        const refused = pluginRefusal(yield* pluginStatus);
+        if (refused) return yield* new LinkError({ reason: "no-plugin", message: refused });
         const checked = checkLink(request.url);
         if ("problem" in checked) return yield* new LinkError({ reason: "bad-url", message: checked.problem });
-        const bin = yield* find;
-        if (!bin) return yield* new LinkError({ reason: "no-tool", message: "yt-dlp isn't installed. Install it with: brew install yt-dlp" });
+        const tool = yield* check;
+        if (!tool.found) return yield* new LinkError(tool.problem ? { reason: "failed", message: tool.problem } : { reason: "no-tool", message: "yt-dlp isn't installed. Install it with: brew install yt-dlp" });
         const id = randomUUID();
         const quality = request.quality ?? DEFAULT_LINK_QUALITY;
         const job: LinkJob = { id, projectDir: open.dir, url: checked.url, kind: request.kind, quality, phase: "running", status: "Starting yt-dlp…", startedAt: new Date().toISOString() };
@@ -275,7 +210,7 @@ export const layer = Layer.effect(
         const controller = new AbortController();
         controllers.set(id, controller);
         yield* Effect.forkIn(
-          run(id, bin, { url: checked.url, kind: request.kind, quality, ...(request.drop ? { drop: request.drop } : {}) }, { openId: open.openId, dir: open.dir }, controller.signal).pipe(
+          run(id, { url: checked.url, kind: request.kind, quality, ...(request.drop ? { drop: request.drop } : {}) }, { openId: open.openId, dir: open.dir }, controller.signal).pipe(
             Effect.match({
               onSuccess: (entry) => update(id, { phase: "done", status: undefined, mediaId: entry.id, name: entry.name }),
               onFailure: (e) => update(id, controller.signal.aborted ? { phase: "cancelled", status: undefined } : { phase: "failed", status: undefined, error: e.message }),

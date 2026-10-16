@@ -101,9 +101,10 @@ export async function discoverPlugins(
       const read = bundled && read0.contributions.skills?.length ? { ...read0, contributions: { ...read0.contributions, skills: read0.contributions.skills.map((x) => ({ ...x, bundled: true as const })) } } : read0;
       warnings.push(...read.warnings);
       const contributes = read.contributions.looks.length + read.contributions.components.length + read.contributions.rules.length + read.contributions.filters.length + (read.contributions.shaders?.length ?? 0) + (read.contributions.skills?.length ?? 0) > 0;
-      // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent; a
-      // plugin that contributes looks, components or checks (D103) is used without tools.
-      if (!declared.length && manifest.kind !== "analyzer" && !contributes) warnings.push("It has no agent tools, so the agent can't use it.");
+      // An analyzer is called by Uncut itself (the analysis queue, D100), not by the agent, and so
+      // is an importer (D280, Import from link); a plugin that contributes looks, components or
+      // checks (D103) is used without tools.
+      if (!declared.length && manifest.kind !== "analyzer" && manifest.kind !== "importer" && !contributes) warnings.push("It has no agent tools, so the agent can't use it.");
       plugins.push({
         id: manifest.id,
         name: manifest.name,
