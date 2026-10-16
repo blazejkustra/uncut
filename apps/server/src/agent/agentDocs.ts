@@ -76,7 +76,7 @@ export const DOCS = {
   picture: { title: "the picture reference", summary: "backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws", body: PICTURE },
   sound: { title: "the sound reference", summary: "volume, fades, mixer, track effects, ducking, limiter, loudness, music", body: SOUND },
   components: { title: "the components reference", summary: "end cards, follow cards, steps, terminals, charts, device frames", body: COMPONENTS_DOC },
-  graphics: { title: "the graphics reference", summary: "graphic_write, bundled libraries, generate_media", body: GRAPHICS },
+  graphics: { title: "the graphics reference", summary: "graphic_write, bundled libraries, project media in graphics, generate_media", body: GRAPHICS },
   footage: { title: "the footage reference", summary: "import, scanning, takes, transcripts, captions, subtitles, recording", body: FOOTAGE },
 } as const;
 

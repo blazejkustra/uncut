@@ -569,7 +569,7 @@
     },
     {
       "name": "graphic_write",
-      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network, no other files, system fonts only; render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
+      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network; fonts: DM Sans, DM Mono, the brand kit's fonts and installed ones; the project's media by id: await uncut.frame(mediaId, seconds) gives a video's exact frame (or a still) for a canvas, src=\"uncut:media/<id>\" or \"uncut:media/<id>#t=2.5\" in an <img> or CSS url(); render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
       "inputSchema": {
         "type": "object",
         "required": [

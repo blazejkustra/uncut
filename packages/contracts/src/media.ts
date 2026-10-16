@@ -78,6 +78,10 @@ export interface FilmstripLayout {
 // sandboxed iframe: the open project's graphics/<file name>, only if one of its graphic items uses
 // it, wrapped by core graphicDocument and served with its strict CSP (inline script, no network).
 export const GRAPHIC_PATH = "/media/graphic";
+// GET /media/graphic-media/<media id>?t=&w=&h=&token=… (D290): a picture of the open project's media
+// for a graphic in the preview (its iframe asks the editor, which fetches it here): the frame on the
+// media's own grid at t seconds, as the export's rasteriser gets it. The server token, as any route.
+export const GRAPHIC_MEDIA_PATH = "/media/graphic-media";
 // GET /media/agent-image/<file name>?token=…: an image the user attached to an agent message (U4,
 // D184), kept in the open project's .cache/agent-images/ for the turn card's thumbnails.
 export const AGENT_IMAGE_PATH = "/media/agent-image";

@@ -7,6 +7,7 @@ import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasteriz
 import { withPictureSizes, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
 import { makeTemp } from "./files.ts";
 import { withMedia } from "./graphics.ts";
+import { graphicMediaSource } from "../graphicMedia.ts";
 
 export interface RenderedFrame {
   readonly frame: number;
@@ -30,10 +31,12 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
   if ("problem" in command) throw new Error(command.problem);
   const temp = await makeTemp();
   let raster: Rasterizer | undefined;
+  // D290: project media its graphics draw, as the export gets them.
+  const media = graphicMediaSource({ bin, media: () => project.media, mediaPath, videotoolbox: caps.videotoolboxDecode });
   const onAbort = () => void raster?.close();
   signal.addEventListener("abort", onAbort, { once: true });
   try {
-    raster = await startRasterizer(command);
+    raster = await startRasterizer(command, undefined, { media: media.file });
     const { width: cw, height: ch } = project.canvas;
     const background = join(temp, "bg.png");
     const plan = planExport(project, { mediaPath, width: W, height: H, graphic: (src) => graphics.get(src) });
@@ -195,6 +198,7 @@ export async function renderFramesWith(bin: string, unsized: Project, mediaPath:
   } finally {
     signal.removeEventListener("abort", onAbort);
     await raster?.close().catch(() => {});
+    media.close();
     await rm(temp, { recursive: true, force: true }).catch(() => {});
   }
 }

@@ -8,6 +8,8 @@ import { PREROLL_S } from "../../audio/audio.ts";
 import { getPlayback } from "../playback.ts";
 import { type Item, layoutOf } from "../../state/project.ts";
 import { getState, mediaUrl, graphicUrl } from "../../state/store.ts";
+// D290: graphics' project media answered from this page (their iframes ask by postMessage).
+import "../graphicMedia.ts";
 import { scrubCacheOn } from "../../settings/scrub.ts";
 import { gpuCompositorOn } from "../../settings/gpu.ts";
 import { GpuCompositor, plainColour, type GpuPicture } from "../gpu.ts";

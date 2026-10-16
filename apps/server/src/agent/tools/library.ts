@@ -1,7 +1,7 @@
 // The agent's library tools: media_rank, graphic_write, library_search, library_add.
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, sep } from "node:path";
-import { familyKey, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, graphicLibsUsed, GRAPHIC_LIBS, type Project, projectIds, describeOp, type Op, GRAPHIC_SRC, MAX_GRAPHIC_BYTES } from "@uncut/core";
+import { familyKey, GENERIC_FAMILIES, graphicAskedFamilies, graphicLogosUsed, graphicLibsUsed, graphicMediaUsed, GRAPHIC_LIBS, type Project, projectIds, describeOp, type Op, GRAPHIC_SRC, MAX_GRAPHIC_BYTES } from "@uncut/core";
 import { aliasOf, clipNote, filterFolderSounds, filterSfx, hitKey, libraryMediaOf, limitSentence, onlyWhenAsked } from "@uncut/core/library";
 import { mediaIdFor } from "@uncut/core/library";
 import * as Effect from "effect/Effect";
@@ -133,8 +133,11 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
       const missingFonts = fonts ? graphicAskedFamilies(html).filter((f) => !GENERIC_FAMILIES.has(familyKey(f)) && !fonts.available(f)) : [];
       const missingLogos = fonts ? graphicLogosUsed(html).filter((slot) => !fonts.logos[slot]) : [];
       const fontNote = missingFonts.length ? { fonts: `Not available: ${missingFonts.map((f) => `"${f}"`).join(", ")} (not bundled, not a font file of the brand kit, not installed), so ${missingFonts.length === 1 ? "it" : "they"} would fall back to another font and project_check fails. Use DM Sans, DM Mono or the kit's fonts, or add the font's file to the kit with brand_write.` } : {};
+      // D290: media it names that the project doesn't have (they would draw nothing).
+      const missingMedia = graphicMediaUsed(html).filter((id) => !v.session.project.media.some((m) => m.id === id && m.kind !== "audio"));
+      const mediaNote = missingMedia.length ? { media: `No picture media ${missingMedia.map((x) => `"${x}"`).join(", ")} in this project: ${missingMedia.length === 1 ? "it draws" : "they draw"} nothing. project_read lists the media and their ids.` } : {};
       const logoNote = missingLogos.length ? { logos: `The kit has no ${missingLogos.map((x) => `logo-${x}`).join(", ")}: ${missingLogos.length === 1 ? "that marker draws" : "those markers draw"} nothing. brand_read lists its logos.` } : {};
-      return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...libNote, ...fontNote, ...logoNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
+      return textResult({ ok: true, src, bytes: Buffer.byteLength(html), ...libNote, ...fontNote, ...logoNote, ...mediaNote, ...(hasRender ? {} : { note: "No render function found: define window.render = (t, info) => { ... } (or function render(t, info)) so the graphic can move; without it the page is drawn as is." }), next: `Insert it with timeline_edit: {"op":"insert_item","track":"<a video track>","item":{"id":"…","type":"graphic","src":"${src}","start":0,"duration":90}}` });
     });
 
   /**

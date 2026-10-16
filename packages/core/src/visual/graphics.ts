@@ -25,6 +25,7 @@
 // in, a document stays under MAX_GRAPHIC_DOC_BYTES (the export loads it as a data: URL, which
 // Chromium caps at 2 MB of URL, base64).
 import type { Canvas, Item } from "../timeline/types.ts";
+import { GRAPHIC_MEDIA_BOOT, GRAPHIC_MEDIA_SCHEME } from "./graphicMedia.ts";
 
 /** Where graphic files live in a project, and what their names look like (project.schema.json `src`). */
 export const GRAPHIC_SRC = /^graphics\/[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.html$/;
@@ -35,8 +36,8 @@ export const GRAPHIC_FRAME_MS = 5000;
 /** The most distinct pictures the export draws for one animated layer (a component or a graphic) before it holds frames. */
 export const MAX_RASTER_STATES = 360;
 
-/** The CSP of a graphic's document: its own inline script and styles, data: images and fonts, nothing else. */
-export const GRAPHIC_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:";
+/** The CSP of a graphic's document: its own inline script and styles, data: images and fonts, nothing else; D290: the project's media through the rasteriser's own scheme (blob: images of them). */
+export const GRAPHIC_CSP = `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src ${GRAPHIC_MEDIA_SCHEME}:`;
 
 /** What render(t, info) gets besides t. */
 export interface GraphicInfo {
@@ -133,6 +134,7 @@ export const GRAPHIC_LIBS_DOC = [
   "uncutRandom(seed) returns a seeded generator (rnd() in [0, 1), rnd.range(a, b), rnd.int(a, b), rnd.pick(list), rnd.normal()); uncutRandom.noise(seed, x) is smooth noise.",
   'Fonts: name a family in CSS font-family or in ctx.font (for example ctx.font = "600 64px \'DM Sans\', sans-serif") and Uncut declares it inside the graphic when it is DM Sans, DM Mono or a font file of the brand kit, loaded before the first frame; fonts installed on this Mac work by name. Any other family is a project_check error (it would fall back to another font), so never ask for one that isn\'t there.',
   'Brand logos: src="uncut:brand/logo-light" (also logo-dark, logo-mark) in an <img> or a CSS url() is the kit\'s logo file as it is (an SVG stays vector), inlined by Uncut.',
+  'Project media (ids from project_read): const f = await uncut.frame(mediaId, seconds, { width, height }) is that video\'s frame at that moment of it (a still: any seconds) as an ImageBitmap for ctx.drawImage or a three.js texture, exact in the preview and the export; for footage that plays inside the graphic, await uncut.frame(id, start + t) inside an async render (return its promise). In markup, src="uncut:media/<id>" (a still or a video\'s first frame) or "uncut:media/<id>#t=2.5" in an <img> or a CSS url(). Pictures come at most 1920 px on their long edge (smaller when you ask for a smaller width or height), never inlined, so the 256 KB limit is about your code only.',
 ].join(" ");
 
 export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "height">): string {
@@ -141,6 +143,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   // or <title> in their HTML can't swallow it. It only looks up window.render when called.
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${GRAPHIC_CSP}">
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;${size}}</style>
+<script>${GRAPHIC_MEDIA_BOOT}</script>
 <script>(() => {
   const frames = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
@@ -148,8 +151,10 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
   window.__uncutRender = async (t, info) => {
     await fontsReady();
+    await window.__uncutMedia.ready();
     if (typeof window.render === "function") await window.render(t, info);
     await frames();
+    window.__uncutMedia.sweep();
     return true;
   };
   addEventListener("message", (e) => {
