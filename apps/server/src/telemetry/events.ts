@@ -1,4 +1,4 @@
-// The telemetry event catalog and its sanitizer (issue #13, D223): the last gate before anything
+// The telemetry event catalog and its sanitizer (issue #13, D223; opt-in since #103, D278): the last gate before anything
 // leaves the machine. Every event is named here with the attributes it may carry, and each value
 // must pass its validator (an enum, a bounded count, a boolean or a tight regex). Unknown events
 // and unknown keys are dropped; nothing free-form (paths, file names, prompts, error messages,
@@ -38,7 +38,8 @@ export const CRASH_PROCESSES = ["main", "renderer", "server", "gpu", "utility", 
 
 /** Attributes every event carries (telemetry.ts adds them). */
 export const BASE: Readonly<Record<string, Validator>> = {
-  distinct_id: matching(/^[0-9a-f]{64}$/),
+  // The random install id (identity.ts, D278).
+  distinct_id: matching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
   session_id: matching(/^[0-9a-f-]{36}$/),
   app_version: matching(/^[0-9A-Za-z.+-]{1,40}$/),
   os: oneOf("darwin", "linux", "win32", "other"),

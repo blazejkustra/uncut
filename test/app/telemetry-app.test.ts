@@ -1,11 +1,12 @@
 // Issue #13 (D223) on the packaged app: telemetry pointed at a local collector (never the real
-// endpoint) sends app:start with the anonymous id; Settings › App › Usage data turns it off and
-// that holds across launches; DO_NOT_TRACK locks it off. Screenshots: test-output/telemetry-*.png.
+// endpoint). After a yes (opt-in, D278; the first-launch question is test/app/issue103-app.test.ts)
+// it sends app:start with the random install id; Settings › App › Usage data turns it off and that
+// holds across launches; DO_NOT_TRACK locks it off. Screenshots: test-output/telemetry-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
@@ -78,16 +79,19 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("app:start reaches the collector; the Settings toggle turns telemetry off for good", T, async () => {
+test("after a yes app:start reaches the collector; the Settings toggle turns telemetry off for good", T, async () => {
+  mkdirSync(data, { recursive: true });
+  writeFileSync(join(data, "settings.json"), JSON.stringify({ onboarded: true, telemetry: { enabled: true } }));
   let app = await launch();
   // The first batch goes out within the SDK's 10 s delay (or at quit).
   await until(() => events().some((e) => e.name === "app:start"), 20000, "app:start");
   assert.ok(bodies.every((b) => b.auth === `Bearer ${TOKEN}`));
   const start = events().find((e) => e.name === "app:start")!;
-  assert.match(String(start.attrs.distinct_id), /^[0-9a-f]{64}$/);
+  assert.match(String(start.attrs.distinct_id), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(start.attrs.runtime, "electron");
   assert.equal(start.attrs.headless, false);
-  assert.ok(existsSync(join(data, "telemetry-id")));
+  assert.equal(readFileSync(join(data, "install-id"), "utf8").trim(), start.attrs.distinct_id);
+  assert.ok(!existsSync(join(data, "telemetry-id")), "no hardware-derived id");
   for (const { body } of bodies) assert.doesNotMatch(body, new RegExp(root.replace(/[/.]/g, "\\$&")));
 
   await openUsageData(app.page);

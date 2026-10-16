@@ -1,5 +1,6 @@
-// Issue #13 (D223): telemetry's allowlist, its inert mode without a token, DO_NOT_TRACK and the
-// Settings opt-out, the anonymous id, crash fingerprints and spool, and the OTLP/HTTP JSON payload.
+// Issue #13 (D223), opt-in since #103 (D278): telemetry's allowlist, its inert mode without a token,
+// nothing at all until the user says yes, DO_NOT_TRACK and the Settings answer, the random install
+// id, crash fingerprints and spool, and the OTLP/HTTP JSON payload.
 // Every send goes to a local HTTP server; nothing here can reach the real endpoint.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +11,7 @@ import { join } from "node:path";
 
 import { agentFailCode, sanitize, EVENTS } from "../../apps/server/src/telemetry/events.ts";
 import { crashFingerprint, frameOf } from "../../apps/server/src/telemetry/fingerprint.ts";
-import { distinctIdOf, ID_FILE, loadOrCreateId } from "../../apps/server/src/telemetry/identity.ts";
+import { ID_FILE, INSTALL_ID, loadOrCreateId, OLD_ID_FILE } from "../../apps/server/src/telemetry/identity.ts";
 import { SPOOL_FILE, crashOf, spoolCrash, takeSpooledCrashes } from "../../apps/server/src/telemetry/spool.ts";
 import { withoutOtelEnv } from "../../apps/server/src/telemetry/client.ts";
 import { consentOf, ENDPOINT, initTelemetry, resetTelemetry, setTelemetryChoice, targetOf, telemetryStatus, track, trackCrash, trackRendererCrash, shutdownTelemetry } from "../../apps/server/src/telemetry/telemetry.ts";
@@ -44,9 +45,10 @@ afterEach(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const probe = async () => "TEST-HARDWARE-UUID";
 const localEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({ UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: "test-app-token-0123456789", ...extra });
-const start = (env: NodeJS.ProcessEnv, token = "") => initTelemetry({ dataDir, version: "1.2.3", env, token, probe, sink: { scheduledDelayMillis: 50 } });
+const start = (env: NodeJS.ProcessEnv, token = "") => initTelemetry({ dataDir, version: "1.2.3", env, token, sink: { scheduledDelayMillis: 50 } });
+/** The user said yes (the wizard's checkbox or Settings), before this run. */
+const saidYes = () => writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ telemetry: { enabled: true } }));
 /** Lets the id load and a batch go out (the sink sends every 50 ms here). */
 const settle = async () => {
   await new Promise((r) => setTimeout(r, 150));
@@ -123,11 +125,12 @@ test("the spool keeps only crash fields and is emptied when read", () => {
 
 // ---- consent, the token and the id ----
 
-test("consent: DO_NOT_TRACK, then UNCUT_TELEMETRY, then the Settings toggle, else on", () => {
-  assert.deepEqual(consentOf({}, undefined), { enabled: true, source: "default" });
+test("consent: DO_NOT_TRACK, then UNCUT_TELEMETRY, then the user's answer; never answered is no", () => {
+  assert.deepEqual(consentOf({}, undefined), { enabled: false, source: "default" });
+  assert.deepEqual(consentOf({ UNCUT_TELEMETRY: "on" }, undefined), { enabled: false, source: "default" }, "the environment can't say yes for the user");
   assert.deepEqual(consentOf({ DO_NOT_TRACK: "1" }, true), { enabled: false, source: "do-not-track" });
   assert.deepEqual(consentOf({ DO_NOT_TRACK: "true" }, undefined), { enabled: false, source: "do-not-track" });
-  assert.deepEqual(consentOf({ DO_NOT_TRACK: "0" }, undefined), { enabled: true, source: "default" });
+  assert.deepEqual(consentOf({ DO_NOT_TRACK: "0" }, true), { enabled: true, source: "settings" });
   assert.deepEqual(consentOf({ UNCUT_TELEMETRY: "off" }, true), { enabled: false, source: "env" });
   assert.deepEqual(consentOf({}, false), { enabled: false, source: "settings" });
   assert.deepEqual(consentOf({}, true), { enabled: true, source: "settings" });
@@ -142,19 +145,42 @@ test("the target: none without a token; an override only to loopback with its ow
   assert.deepEqual(targetOf({ UNCUT_TELEMETRY_ENDPOINT: endpoint, UNCUT_TELEMETRY_TOKEN: "t" }, ""), { endpoint, token: "t" });
 });
 
-test("the anonymous id is an HMAC of the hardware id, kept 0600 and reused", async () => {
-  const id = await loadOrCreateId(dataDir, probe);
-  assert.equal(id, distinctIdOf("TEST-HARDWARE-UUID"));
-  assert.match(id, /^[0-9a-f]{64}$/);
-  assert.notEqual(id, distinctIdOf("OTHER"));
+test("the install id is a random UUID, kept 0600 and reused; the old hardware-derived id is deleted", async () => {
+  writeFileSync(join(dataDir, OLD_ID_FILE), `${"a".repeat(64)}\n`);
+  const id = await loadOrCreateId(dataDir);
+  assert.match(id, INSTALL_ID);
+  assert.equal(existsSync(join(dataDir, OLD_ID_FILE)), false, "D223's IOPlatformUUID HMAC is gone");
   assert.equal(statSync(join(dataDir, ID_FILE)).mode & 0o777, 0o600);
-  assert.equal(await loadOrCreateId(dataDir, async () => "CHANGED"), id);
+  assert.equal(await loadOrCreateId(dataDir), id);
   const other = mkdtempSync(join(tmpdir(), "uncut-telemetry-"));
   try {
-    assert.match(await loadOrCreateId(other, async () => undefined), /^[0-9a-f]{64}$/);
+    assert.notEqual(await loadOrCreateId(other), id, "not derived from the machine");
   } finally {
     rmSync(other, { recursive: true, force: true });
   }
+});
+
+test("never answered: nothing sent (not even app:start) and no id, even with a token", async () => {
+  spoolCrash(dataDir, { process: "main", error_name: "TypeError" });
+  start(localEnv({ UNCUT_TELEMETRY: "on" }));
+  track("agent:turn", { outcome: "done" });
+  trackCrash("server", new Error("boom"));
+  await settle();
+  assert.equal(received.length, 0);
+  assert.equal(existsSync(join(dataDir, ID_FILE)), false);
+  assert.equal(existsSync(join(dataDir, SPOOL_FILE)), false, "the spooled crash is dropped, not kept for later");
+  assert.deepEqual(telemetryStatus(), { enabled: false, source: "default", configured: true });
+});
+
+test("saying yes mid-run (the setup wizard) sends this run's app:start, then events", async () => {
+  start(localEnv());
+  track("agent:turn", { outcome: "done" });
+  setTelemetryChoice(true);
+  track("agent:turn", { outcome: "cancelled" });
+  await settle();
+  assert.deepEqual(records().map((r) => r.body.stringValue), ["app:start", "agent:turn"]);
+  assert.equal(attrs(records()[1]!.attributes).outcome, "cancelled");
+  assert.match(String(attrs(records()[0]!.attributes).distinct_id), INSTALL_ID);
 });
 
 // ---- end to end against a local collector ----
@@ -180,7 +206,7 @@ test("DO_NOT_TRACK sends nothing and makes no id, even with a token", async () =
   assert.equal(telemetryStatus().source, "do-not-track");
 });
 
-test("the Settings opt-out holds until turned back on", async () => {
+test("a no in Settings holds until turned to yes", async () => {
   writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ telemetry: { enabled: false } }));
   start(localEnv());
   track("agent:turn", { outcome: "done" });
@@ -191,8 +217,8 @@ test("the Settings opt-out holds until turned back on", async () => {
   track("agent:turn", { outcome: "cancelled" });
   await settle();
   const names = records().map((r) => r.body.stringValue);
-  assert.deepEqual(names, ["agent:turn"]);
-  assert.equal(attrs(records()[0]!.attributes).outcome, "cancelled");
+  assert.deepEqual(names, ["app:start", "agent:turn"]);
+  assert.equal(attrs(records()[1]!.attributes).outcome, "cancelled");
 });
 
 test("payload: OTLP/HTTP JSON logs, Bearer token, sanitized attributes, the user's OTEL headers kept out", async () => {
@@ -201,6 +227,7 @@ test("payload: OTLP/HTTP JSON logs, Bearer token, sanitized attributes, the user
   process.env.OTEL_EXPORTER_OTLP_LOGS_HEADERS = "x-leak-logs=developer-secret";
   try {
     spoolCrash(dataDir, crashOf("main", new TypeError("x of /Users/me/y")));
+    saidYes();
     start(localEnv());
     track("export:complete", { duration_ms: 4200, codec: "hevc", quality: "high", path: "/Users/me/out.mp4" } as never);
     track("export:fail", { code: "encode", duration_ms: 12 });
@@ -227,7 +254,8 @@ test("payload: OTLP/HTTP JSON logs, Bearer token, sanitized attributes, the user
   const all = records();
   assert.deepEqual(all.map((r) => r.body.stringValue).sort(), ["app:crash", "app:crash", "app:start", "export:complete", "export:fail"]);
   assert.equal(attrs(all[0]!.resource.attributes)["service.name"], "uncut");
-  const id = distinctIdOf("TEST-HARDWARE-UUID");
+  const id = readFileSync(join(dataDir, ID_FILE), "utf8").trim();
+  assert.match(id, INSTALL_ID);
   const sessions = new Set<unknown>();
   for (const r of all) {
     const a = attrs(r.attributes);
@@ -258,6 +286,7 @@ test("an unreachable endpoint never throws and shutdown stays bounded", async ()
   collector.closeAllConnections();
   await new Promise<void>((resolve) => collector.close(() => resolve()));
   collector = createServer().listen(0); // something for afterEach to close
+  saidYes();
   start({ UNCUT_TELEMETRY_ENDPOINT: `http://127.0.0.1:${port}/v1/logs`, UNCUT_TELEMETRY_TOKEN: "t" });
   for (let i = 0; i < 200; i++) track("agent:turn", { outcome: "done", duration_ms: i });
   const t0 = Date.now();
