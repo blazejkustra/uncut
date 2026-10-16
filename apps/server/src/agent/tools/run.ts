@@ -8,6 +8,7 @@ import { gateOf, gateRefusal, planOnly, PROPOSE_LOCK } from "../agentPlan.ts";
 import { activeBrand, readPlan } from "../../brand/store.ts";
 import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_EDGE, LOOK_TOOLS, MAX_FRAMES, modulesIndex, modulesList, projectSummary, docsRead } from "../agentTools.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
+import { loadGraphicLibs } from "../../export/graphicLibs.ts";
 import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
 import { applyDeclared, appliedNote } from "../../capture/capture.ts";
@@ -22,7 +23,7 @@ import type { LibraryCtx } from "./library.ts";
 const DRY_LINE = 200;
 
 export const makeRunTool = (ctx: LibraryCtx) => {
-  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser } = ctx;
+  const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser, config } = ctx;
 
   const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
     Effect.gen(function* () {
@@ -116,7 +117,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* skillRead(v, args);
         case "docs_read": {
           // D260 (issue #81): an area's reference, on demand instead of in the system prompt.
-          const doc = docsRead(args.topic);
+          // The graphics topic carries the bundled libraries' own API (their headers), read from the files Uncut inlines.
+          const libs = args.topic === "graphics" ? yield* Effect.promise(() => loadGraphicLibs(config.graphicLibsDir).catch(() => undefined)) : undefined;
+          const doc = docsRead(args.topic, libs);
           return textResult(doc.text, doc.isError);
         }
         case "brand_write":

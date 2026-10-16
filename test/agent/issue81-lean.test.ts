@@ -141,3 +141,22 @@ test("#81: project_read gives a long project's items as compact lines, every fie
   // Compact JSON is what the agent gets (no indentation).
   assert.ok(JSON.stringify(c).length < JSON.stringify(all).length * 0.75);
 });
+
+test("docs_read graphics carries the bundled libraries' own API (their headers), so the agent never searches the disk for them", async () => {
+  const { loadGraphicLibs } = await import("../../apps/server/src/export/graphicLibs.ts");
+  const { libraryHeader } = await import("../../apps/server/src/agent/agentDocs.ts");
+  const libs = await loadGraphicLibs("assets/graphic-libs");
+  const out = docsRead("graphics", libs);
+  assert.equal(out.isError, false);
+  assert.ok(out.text.startsWith(DOCS.graphics.body));
+  // Every library's header, word for word (the library file is the one source of its API).
+  for (const name of ["motion.js", "spring.js", "random.js", "confetti.js", "globe.js"]) {
+    const header = libraryHeader(libs[name]!);
+    assert.ok(header && out.text.includes(header), name);
+  }
+  assert.match(out.text, /uncutMotion\.shape\(/);
+  assert.match(out.text, /uncutMotion\.riseText\(/);
+  assert.ok(!out.text.includes("Ec.exports"), "three.js's code isn't pasted");
+  assert.equal(docsRead("sound", libs).text, DOCS.sound.body, "other topics unchanged");
+  assert.match(SYSTEM_PROMPT, /never search the disk/);
+});
