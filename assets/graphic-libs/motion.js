@@ -22,7 +22,19 @@
      uncutMotion.iris(open, { x, y, r, blades: 6, turn }) // blade polygons [[x, y], ...]: open 1 = no blades in the circle, 0 = closed
      uncutMotion.squeeze(xs, widths, anchor, f)           // [{ x, scale }]: letters pulled toward anchor by f (1 = as set, 0 = in the anchor), widths follow
      uncutMotion.cursor(t, [{ at, x, y, click }], { spring })  // { x, y, scale, down }: a drawn cursor's path with real presses
-     uncutMotion.camera(t, [{ at, x, y, zoom }], spring)  // { x, y, zoom }: screen-studio zoom keys; scale the cursor with zoom
+     uncutMotion.camera(t, [{ at, x, y, zoom }], spring)  // { x, y, zoom }: the world point at the frame's centre and its zoom;
+                                                         // zoom rides the spring in log space (an even push, no lurch); a key
+                                                         // missing x, y or zoom keeps the previous key's
+     uncutMotion.frameRect(left, top, w, h, { width, height, fit, pad, align })
+                                                         // a camera key { x, y, zoom } that frames a UI rect (world px, top-left):
+                                                         // by default it COVERS the frame (the UI surface is the frame, the overflow
+                                                         // cropped at align { x, y }, 0.5 = centred); fit: true shows all of it, pad px around
+     uncutMotion.apply(ctx, cam, width, height)          // ctx.transform for that camera (save first): draw the UI in world px after it
+     uncutMotion.toScreen(cam, x, y, width, height)      // [sx, sy]: a world point on screen (the cursor, a headline pinned to the UI)
+     uncutMotion.morph(t, from, to, { at, dur: 0.3 })     // { x, y, w, h, r, p, full }: rect to rect (centres, corner radius) in dur s,
+                                                         // eased; to: "bleed" is the whole frame past every edge. The button grows into
+                                                         // the next scene's full shape; never shrink a scene to a dot
+     uncutMotion.coverage(s, width, height)              // 0..1: the share of the frame inside shape s (keep it at 0.7 or more on every frame)
      uncutMotion.beat(n, { bpm: 120, offset: 0 })         // seconds of beat n
      uncutMotion.loop(t, duration)                        // t wrapped into [0, duration): the last frame meets the first
      uncutMotion.ease.inOut(p), .out(p), .in(p)           // cubic eases for opacity or colour
@@ -270,10 +282,79 @@
     }
     return { x: x, y: y, scale: scale, down: down };
   }
+  // Screen-studio camera: (x, y) is the world point at the frame's centre. Missing fields carry
+  // over from the previous key; zoom springs in log space, so a 1x to 3x push moves evenly.
   function camera(t, keys, preset) {
     var ks = sorted(keys);
     var s = preset || "spring.settle";
-    return { x: springs(t, ks, s, "x"), y: springs(t, ks, s, "y"), zoom: springs(t, ks, s, "zoom") };
+    if (!ks.length) return { x: 0, y: 0, zoom: 1 };
+    var full = [];
+    for (var i = 0; i < ks.length; i++) {
+      var p = full[i - 1] || { x: 0, y: 0, zoom: 1 };
+      var k = ks[i];
+      full.push({ at: k.at, spring: k.spring, x: k.x === undefined ? p.x : k.x, y: k.y === undefined ? p.y : k.y, lz: Math.log(Math.max(1e-3, k.zoom === undefined ? p.zoom : k.zoom)), zoom: k.zoom === undefined ? p.zoom : k.zoom });
+    }
+    return { x: springs(t, full, s, "x"), y: springs(t, full, s, "y"), zoom: Math.exp(springs(t, full, s, "lz")) };
+  }
+  // A camera key framing a UI rect (left, top, w, h in world px): cover (default) fills the frame
+  // with it, cropping the overflow at align; fit shows all of it with pad px around.
+  function frameRect(left, top, w, h, o) {
+    o = o || {};
+    var W = o.width || 1080;
+    var H = o.height || 1350;
+    var pad = o.pad || 0;
+    var al = o.align || {};
+    var ax = al.x === undefined ? 0.5 : al.x;
+    var ay = al.y === undefined ? 0.5 : al.y;
+    var zw = W / Math.max(1, w + 2 * pad);
+    var zh = H / Math.max(1, h + 2 * pad);
+    var zoom = o.fit ? Math.min(zw, zh) : Math.max(zw, zh);
+    var vw = W / zoom;
+    var vh = H / zoom;
+    // The visible window slides inside the rect (cover) or centres on it (fit) along align.
+    var x = left + (o.fit ? w / 2 : vw / 2 + (w - vw) * ax);
+    var y = top + (o.fit ? h / 2 : vh / 2 + (h - vh) * ay);
+    return { x: x, y: y, zoom: zoom };
+  }
+  function apply(ctx, cam, W, H) {
+    var z = cam.zoom;
+    ctx.transform(z, 0, 0, z, W / 2 - cam.x * z, H / 2 - cam.y * z);
+  }
+  function toScreen(cam, x, y, W, H) {
+    return [(x - cam.x) * cam.zoom + W / 2, (y - cam.y) * cam.zoom + H / 2];
+  }
+  // Rect to rect (centre x, y, size w, h, corner r) over dur s from at, eased in and out.
+  function morph(t, from, to, o) {
+    o = o || {};
+    var W = o.width || 1080;
+    var H = o.height || 1350;
+    var bleed = function (k) {
+      return k === "bleed" || (k && k.bleed) ? { x: W / 2, y: H / 2, w: W * 1.24, h: H * 1.24, r: 0 } : k;
+    };
+    var a = bleed(from);
+    var b = bleed(to);
+    var p = easeInOut((t - (o.at || 0)) / (o.dur || 0.3));
+    var out = { p: p };
+    ["x", "y", "w", "h", "r"].forEach(function (f) {
+      out[f] = mix(a[f] || 0, b[f] || 0, p);
+    });
+    out.r = clamp(out.r, 0, Math.min(out.w, out.h) / 2);
+    out.full = out.x - out.w / 2 <= 0 && out.y - out.h / 2 <= 0 && out.x + out.w / 2 >= W && out.y + out.h / 2 >= H;
+    return out;
+  }
+  // The share of the W x H frame inside the rounded rect s (its corners' cut-outs subtracted where
+  // they fall inside the frame).
+  function coverage(s, W, H) {
+    var x0 = s.x - s.w / 2, y0 = s.y - s.h / 2, x1 = s.x + s.w / 2, y1 = s.y + s.h / 2;
+    var iw = Math.max(0, Math.min(W, x1) - Math.max(0, x0));
+    var ih = Math.max(0, Math.min(H, y1) - Math.max(0, y0));
+    var area = iw * ih;
+    var r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2);
+    var cut = r * r * (1 - Math.PI / 4);
+    [[x0, y0], [x1 - r, y0], [x0, y1 - r], [x1 - r, y1 - r]].forEach(function (c) {
+      if (c[0] >= 0 && c[1] >= 0 && c[0] + r <= W && c[1] + r <= H) area -= cut;
+    });
+    return clamp(area / (W * H), 0, 1);
   }
   function beat(n, o) {
     var bpm = (o && o.bpm) || 120;
@@ -313,6 +394,11 @@
     squeeze: squeeze,
     cursor: cursor,
     camera: camera,
+    frameRect: frameRect,
+    apply: apply,
+    toScreen: toScreen,
+    morph: morph,
+    coverage: coverage,
     beat: beat,
     loop: loop,
     ease: { inOut: easeInOut, out: easeOut, in: easeIn },
