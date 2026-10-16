@@ -7,7 +7,11 @@ import { QUESTION_MS } from "../agentPlan.ts";
 import { join } from "node:path";
 import { decide, realPath, shownPath } from "../agentPermissions.ts";
 import { BRAND_ID, globalBrandDir, projectBrandDir, readActive } from "../../brand/store.ts";
-import { downloadToProject } from "../agentDownload.ts";
+import { mkdir, rename, stat } from "node:fs/promises";
+import { basename, extname } from "node:path";
+import { FONT_FORMATS } from "@uncut/core";
+import { BRAND_DOWNLOAD_TYPES, DOWNLOAD_TYPES, downloadToFolder, safeName } from "../agentDownload.ts";
+import { fontFileFamilies, projectFontsDir } from "../../export/fonts.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { Running, ClaudeSession } from "../session/types.ts";
 import { isString } from "../turns/history.ts";
@@ -21,6 +25,22 @@ export const sanctionedDirs = (config: { readonly dataDir: string; readonly grap
   if (kit && BRAND_ID.test(kit)) dirs.push(realPath(join(globalBrandDir(config.dataDir), "kits", kit), projectDir), realPath(join(projectBrandDir(projectDir), "kits", kit), projectDir));
   return dirs;
 };
+
+const FONT_DOWNLOAD_TYPES = Object.fromEntries(Object.entries(BRAND_DOWNLOAD_TYPES).filter(([type]) => /font|opentype/.test(type)));
+
+/** A downloaded font file moved into <project>/fonts, named after its family (`name`) when given. */
+async function intoFonts(path: string, projectDir: string, name: string | undefined): Promise<{ readonly path: string; readonly family: string } | { readonly problem: string }> {
+  const dir = projectFontsDir(projectDir);
+  await mkdir(dir, { recursive: true });
+  const ext = extname(path).toLowerCase();
+  const stem = (name ? safeName(name) : basename(path, extname(path))).replace(/ \d+$/, "");
+  let target = join(dir, `${stem}${ext}`);
+  for (let n = 2; await stat(target).then(() => true, () => false); n++) target = join(dir, `${stem} ${n}${ext}`);
+  await rename(path, target);
+  // The family as projectFontSources reads it: the file's own name table (TTF, OTF), else its name before the first dash.
+  const own = ext === ".ttf" || ext === ".otf" ? (await fontFileFamilies(target))[0] : undefined;
+  return { path: target, family: own ?? stem.split("-")[0]!.replace(/_+/g, " ").trim() };
+}
 
 export const makeAskTools = (ctx: TranscriptCtx) => {
   const { textResult, publish, testRun, approvalMs, st, mediaImport, config } = ctx;
@@ -103,9 +123,19 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
       const left = DOWNLOAD_BYTES_PER_TURN - r.downloads.bytes;
       if (left <= 0) return textResult("Not downloaded: this turn already downloaded 1 GB.", true);
       r.downloads.count++;
-      const got = yield* Effect.promise(() => downloadToProject(url, v.dir, name, r.abort.signal, left));
+      // A font file (WOFF2, WOFF, TTF, OTF) goes to the project's fonts folder, where every drawer
+      // finds it by family (export/fonts.ts projectFontSources), not into Media.
+      const got = yield* Effect.promise(() => downloadToFolder(url, join(v.dir, "media", "downloads"), name, r.abort.signal, left, { ...DOWNLOAD_TYPES, ...FONT_DOWNLOAD_TYPES }));
       if (!("problem" in got)) r.downloads.bytes += got.bytes;
       if ("problem" in got) return textResult(`Not downloaded: ${got.problem}`, true);
+      if (FONT_FORMATS[extname(got.path).toLowerCase()]) {
+        const placed = yield* Effect.promise(() => intoFonts(got.path, v.dir, name));
+        if ("problem" in placed) return textResult(`Not downloaded: ${placed.problem}`, true);
+        return textResult({
+          font: { family: placed.family, file: shownPath(placed.path, v.dir), url: got.url, bytes: got.bytes },
+          note: `Saved in the project's fonts folder: "${placed.family}" now works by name in graphics (CSS font-family, ctx.font) and text styles, in the preview and the export, and project_check counts it as there. Use only a font whose licence allows it (an OFL font such as Geist, Archivo or Inter is fine; say which in your reply). The family is the file's name before its first dash (name the download after the family, e.g. "Geist", or "Geist-Bold" for one weight).`,
+        });
+      }
       const out = yield* mediaImport(r, v, { path: got.path, ...(name ? { name } : {}) });
       const source = { url: got.url, bytes: got.bytes, type: got.type, file: shownPath(got.path, v.dir) };
       const first = out.content[0];

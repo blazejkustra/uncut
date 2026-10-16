@@ -455,7 +455,7 @@
     },
     {
       "name": "media_download",
-      "description": "Download a picture, video or sound from the web (a product's logo, a screenshot, a demo video you found with WebSearch or WebFetch) into the project's media/downloads folder and import it into Media. https addresses on the public internet only; redirects are followed; only image, video and audio files (by their type), at most 300 MB. Pass the file's own address, not the page it's on. Undo turn removes the import (the file stays in media/downloads).",
+      "description": "Download a picture, video or sound from the web (a product's logo, a screenshot, a demo video you found with WebSearch or WebFetch) into the project's media/downloads folder and import it into Media. https addresses on the public internet only; redirects are followed; only image, video and audio files (by their type), at most 300 MB. Pass the file's own address, not the page it's on. Undo turn removes the import (the file stays in media/downloads). A font file (WOFF2, WOFF, TTF, OTF; an OFL font such as Geist, Archivo or Inter) goes to the project's fonts folder instead: its family then works by name in graphics and text styles, preview and export alike; name it after the family (\"Geist\", or \"Geist-Bold\" for one weight).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -473,11 +473,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 80,
-            "description": "A display name for the media (e.g. \"Argent logo\"); the file is named from it too."
+            "description": "A display name for the media (e.g. \"Argent logo\"); the file is named from it too. For a font file: its family (\"Geist\")."
           }
         }
       },
-      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], source: { url, bytes, type }"
+      "returns": "revision, imported: [{ id, kind, name, path, frames, seconds, fps, width, height, hasAudio }], source: { url, bytes, type }; for a font file: font: { family, file, url, bytes }, note"
     },
     {
       "name": "generate_media",
@@ -569,7 +569,7 @@
     },
     {
       "name": "graphic_write",
-      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network; fonts: DM Sans, DM Mono, the brand kit's fonts and installed ones; the project's media by id: await uncut.frame(mediaId, seconds) gives a video's exact frame (or a still) for a canvas, src=\"uncut:media/<id>\" or \"uncut:media/<id>#t=2.5\" in an <img> or CSS url(); render must finish within 5 s a frame. Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit. A graphic for the whole film is ONE item spanning it, never several items of one file.",
+      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network; fonts: DM Sans, DM Mono, the brand kit's fonts, the project's fonts folder (media_download a font file), installed ones, or the graphic's own @font-face with a data: URL; the project's media by id: await uncut.frame(mediaId, seconds) gives a video's exact frame (or a still) for a canvas, src=\"uncut:media/<id>\" or \"uncut:media/<id>#t=2.5\" in an <img> or CSS url(); render must finish within 5 s a frame. Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit. A graphic for the whole film is ONE item spanning it, never several items of one file.",
       "inputSchema": {
         "type": "object",
         "required": [

@@ -122,7 +122,7 @@ export async function downloadToFolder(url: string, folder: string, name: string
   const ext = types[type] ?? (GENERIC.has(type) ? fromUrl : undefined);
   if (!ext) {
     await res.body?.cancel().catch(() => {});
-    return { problem: `${target.host} sent ${type || "a file of no type"}, not ${types === DOWNLOAD_TYPES ? "a picture, video or sound" : "a logo picture or a font file"}${type === "text/html" ? " (that's a web page: find the file's own address in it)" : ""}.` };
+    return { problem: `${target.host} sent ${type || "a file of no type"}, not ${types === BRAND_DOWNLOAD_TYPES ? "a logo picture or a font file" : types === DOWNLOAD_TYPES ? "a picture, video or sound" : "a picture, video or sound (or a font file)"}${type === "text/html" ? " (that's a web page: find the file's own address in it)" : ""}.` };
   }
   const length = Number(res.headers.get("content-length"));
   if (Number.isFinite(length) && length > cap) {
