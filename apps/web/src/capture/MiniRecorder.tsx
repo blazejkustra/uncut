@@ -15,7 +15,12 @@ export const isMiniWindow = () => new URLSearchParams(location.search).has("mini
 export function MiniRecorder() {
   const [state, setState] = useState<MiniRecorderState | null>(null);
   const [now, setNow] = useState(Date.now());
-  useEffect(() => bridge.onMiniRecorderState?.(setState), []);
+  useEffect(() => {
+    const off = bridge.onMiniRecorderState?.(setState);
+    // D267: ask for the state once listening (it may have been sent before this page subscribed).
+    bridge.miniRecorderAction?.("ready");
+    return off;
+  }, []);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);

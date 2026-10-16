@@ -116,7 +116,7 @@ export interface MiniRecorderState {
   readonly at: number;
   readonly count?: number | undefined;
 }
-export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel";
+export type MiniRecorderAction = "stop" | "pause" | "resume" | "cancel" | "ready";
 
 declare global {
   interface Window {

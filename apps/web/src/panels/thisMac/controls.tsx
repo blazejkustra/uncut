@@ -102,9 +102,10 @@ function useTakeSeconds() {
 }
 
 /**
- * D209: the recording bar: a big record button; then the 3-2-1; then the timer, the level meter
- * (when the take has sound), Pause, Stop and Cancel; then saving. (D238: the meter before a take
- * is the Microphone card's.)
+ * D209: the recording bar: a big record button; then the timer, the level meter (when the take has
+ * sound), Pause, Stop and Cancel; then saving. (D238: the meter before a take is the Microphone
+ * card's.) D267: the button stands alone at the top of the tab (no box around it) and a take
+ * starts as soon as its devices are open, no 3-2-1 (the agent's take keeps its count).
  */
 export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }: { mode?: TakeMode; disabled: boolean; onRecord: () => void; label?: string; meter: boolean }) {
   const phase = useRecorder((s) => s.phase);
@@ -116,12 +117,10 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
   const mine = mode === undefined || runningMode === mode;
   if (phase === "idle" || !mine) {
     return (
-      <div className="record-bar idle" data-testid="capture-record-bar" data-state="idle">
-        <button className="record-button" data-testid="capture-take-record" disabled={disabled || phase !== "idle"} onClick={onRecord}>
-          <span className="record-dot" />
-          <span className="record-label">{label}</span>
-        </button>
-      </div>
+      <button className="record-button" data-testid="capture-take-record" disabled={disabled || phase !== "idle"} onClick={onRecord}>
+        <span className="record-dot" />
+        <span className="record-label">{label}</span>
+      </button>
     );
   }
   if (phase === "saving") {
@@ -137,9 +136,15 @@ export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }:
     <div className={`record-bar live ${paused ? "paused" : ""}`} data-testid="capture-record-bar" data-state={phase === "countdown" ? "countdown" : paused ? "paused" : "recording"}>
       <div className="record-bar-row">
         {phase === "countdown" ? (
-          <span className="capture-countdown" data-testid="capture-countdown">
-            {count ?? ""}
-          </span>
+          count ? (
+            <span className="capture-countdown" data-testid="capture-countdown">
+              {count}
+            </span>
+          ) : (
+            <span className="small muted" data-testid="capture-take-starting">
+              Starting…
+            </span>
+          )
         ) : (
           <span className={`capture-timer ${paused ? "paused" : ""}`} data-testid="capture-take-timer">
             <CircleDot />

@@ -3,7 +3,7 @@ import { muteOutput } from "../../audio/audio.ts";
 import { playback, getPlayback } from "../../preview/playback.ts";
 import { type CaptureSource, bridge } from "../../state/bridge.ts";
 import { actions, getState, subscribeApp } from "../../state/store.ts";
-import { type TakeMode, type Resolution, type PartKind, type RecorderState, set, stopStream, state, errorText, COUNTDOWN, MIN_TAKE_MS, listeners } from "./state.ts";
+import { type TakeMode, type Resolution, type PartKind, type RecorderState, set, stopStream, state, errorText, MIN_TAKE_MS, listeners } from "./state.ts";
 import { openParts, openStreams } from "./streams.ts";
 import { closeMonitor, closePreview } from "./devices.ts";
 
@@ -24,6 +24,8 @@ export interface TakeOptions {
   readonly place?: boolean;
   /** Stop by itself after this many seconds of recording (D144's screen_record). */
   readonly seconds?: number;
+  /** D267: seconds of 3-2-1 before recording starts (the agent's take); none means it starts as soon as the devices are open. */
+  readonly countdown?: number;
   /** D144: the agent's screen_record this take answers (card id): uploaded and handed to the agent's turn, not saved as the user's edit. */
   readonly agent?: { readonly id: string };
   /** D211: the sources of a multi-source take (each its own file; with more than one, or mode "multi"). */
@@ -167,7 +169,7 @@ function startParts(r: Running, streams: Map<PartKind, MediaStream>) {
   }
 }
 
-/** Record: opens the devices, counts 3-2-1, then records until stopTake or cancelTake. */
+/** Record: opens the devices (the agent's take then counts 3-2-1, D267), then records until stopTake or cancelTake. */
 export async function startTake(options: TakeOptions) {
   const snapshot = getState().snapshot;
   const refuse = (text: string) => {
@@ -181,13 +183,14 @@ export async function startTake(options: TakeOptions) {
   const r: Running = { options, dir: snapshot.dir, frame: Math.round(getPlayback().frame), streams: [], cleanups: [], recorder: undefined, chunks: [], cancelled: false, startMs: 0, pauseMs: undefined, pausedTotal: 0, playing: false, countdown: undefined, wake: undefined, autoStop: undefined, answered: false, awaited: false, parts: undefined, finished: false };
   running = r;
   const multi = isMulti(options);
-  set({ phase: "countdown", mode: options.mode, count: COUNTDOWN, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id, paused: false, pausedMs: 0, pausedAt: undefined, parts: multi ? options.parts : undefined });
+  set({ phase: "countdown", mode: options.mode, count: options.countdown || undefined, message: undefined, recordedMs: undefined, startedAt: undefined, agentId: options.agent?.id, paused: false, pausedMs: 0, pausedAt: undefined, parts: multi ? options.parts : undefined });
   const stream = multi ? await openParts(options, r) : await openStreams(options, r);
   if (typeof stream === "string" || r.cancelled) {
     release(r);
     return endTake(r, typeof stream === "string" ? { message: { kind: "error", text: stream } } : {});
   }
-  for (let n = COUNTDOWN; n > 0; n--) {
+  // D267: the Capture tab records straight away; "countdown" without a count is the devices opening.
+  for (let n = Math.max(0, Math.floor(options.countdown ?? 0)); n > 0; n--) {
     set({ count: n });
     await sleep(1000, r);
     if (r.cancelled) return;

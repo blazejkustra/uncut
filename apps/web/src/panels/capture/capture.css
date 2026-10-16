@@ -79,3 +79,11 @@
 .capture-opt select:disabled { color: var(--dim); }
 .capture-opt input::placeholder { color: var(--dim); }
 .capture-opt select:focus, .capture-opt input:focus { border-color: var(--border-strong); }
+
+/* D267 (issue #96): Record sits alone at the top of the tab: a plain full-width button (not a pill,
+   no box around it); mid-take the timer and controls take its place, also without a box. */
+.capture-this-mac .record-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 36px; padding: 0 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--raised); color: var(--fg); font-weight: 500; flex: none; }
+.capture-this-mac .record-button:not(:disabled):hover { border-color: var(--error); }
+.capture-this-mac .record-button:disabled { color: var(--muted); cursor: default; }
+.capture-this-mac .record-dot { width: 12px; height: 12px; box-shadow: none; }
+.capture-this-mac .record-bar { padding: 0; border: 0; border-radius: 0; background: none; flex: none; }
