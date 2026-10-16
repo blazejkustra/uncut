@@ -137,11 +137,14 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await page.screenshot({ path: "test-output/capture-recording-mic.png" });
     // The take's length (the timer is up; recordedMs is checked against 2–4 s below).
     await sleep(2500);
+    const stopAt = Date.now();
     await page.click("[data-testid=capture-take-stop]");
     await waitFor(page, "[data-testid=capture-take-saved]", 30000);
     assert.match(await text(page, "[data-testid=capture-take-saved]"), /^Voiceover \d{8}-\d{6}\.m4a \(\d+\.\d s\) is in Media and on the timeline at 0:01\.$/);
     const recordedMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
-    assert.ok(recordedMs > 2000 && recordedMs < 4000, `${recordedMs} ms`);
+    // At least the 2.5 s waited, at most the time from Record to Stop and a second (the screenshot
+    // and the clicks take a while on a slow runner, #89).
+    assert.ok(recordedMs > 2000 && recordedMs < Math.max(4000, stopAt - clicked + 1000), `${recordedMs} ms (Record to Stop ${stopAt - clicked} ms)`);
     let project = onDisk();
     const voice = project.media.find((m: { source?: { module: string } }) => m.source?.module === "capture.microphone");
     assert.ok(voice, JSON.stringify(project.media));
