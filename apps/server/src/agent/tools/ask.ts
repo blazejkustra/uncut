@@ -5,13 +5,13 @@ import { layout } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { QUESTION_MS } from "../agentPlan.ts";
 import { join } from "node:path";
-import { decide, realPath, shownPath } from "../agentPermissions.ts";
-import { BRAND_ID, globalBrandDir, projectBrandDir, readActive } from "../../brand/store.ts";
-import { mkdir, rename, stat } from "node:fs/promises";
+import { decide, inside, realPath, shownPath } from "../agentPermissions.ts";
+import { BRAND_ID, globalBrandDir, readActive } from "../../brand/store.ts";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { FONT_FORMATS } from "@uncut/core";
 import { BRAND_DOWNLOAD_TYPES, DOWNLOAD_TYPES, downloadToFolder, safeName } from "../agentDownload.ts";
-import { fontFileFamilies, projectFontsDir } from "../../export/fonts.ts";
+import { fontFileFamilies, MAX_KIT_FONT_BYTES, projectFontsDir } from "../../export/fonts.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { Running, ClaudeSession } from "../session/types.ts";
 import { isString } from "../turns/history.ts";
@@ -19,27 +19,47 @@ import { DOWNLOADS_PER_TURN, DOWNLOAD_BYTES_PER_TURN } from "./common.ts";
 import type { McpResult, CardAnswer } from "../agent.ts";
 import type { TranscriptCtx } from "./transcript.ts";
 
-/** D296: the folders read without a card (agentPermissions sanctioned): the active kit's, wherever it is, and the bundled graphic libraries; real paths. */
+/**
+ * D296: the folders read without a card (agentPermissions sanctioned): the active kit's in the
+ * user's kits and the bundled graphic libraries; real paths. A project's own kit is in the project
+ * zone already. A kit folder that is a symlink out of the kits folder sanctions nothing, so a link
+ * can't open up any folder it points at.
+ */
 export const sanctionedDirs = (config: { readonly dataDir: string; readonly graphicLibsDir: string }, projectDir: string, kit: string | null): Array<string> => {
   const dirs = [realPath(config.graphicLibsDir, projectDir)];
-  if (kit && BRAND_ID.test(kit)) dirs.push(realPath(join(globalBrandDir(config.dataDir), "kits", kit), projectDir), realPath(join(projectBrandDir(projectDir), "kits", kit), projectDir));
+  if (kit && BRAND_ID.test(kit)) {
+    const kits = join(globalBrandDir(config.dataDir), "kits");
+    const parent = realPath(kits, projectDir);
+    const dir = realPath(join(kits, kit), projectDir);
+    if (dir !== parent && inside(dir, parent)) dirs.push(dir);
+  }
   return dirs;
 };
 
 const FONT_DOWNLOAD_TYPES = Object.fromEntries(Object.entries(BRAND_DOWNLOAD_TYPES).filter(([type]) => /font|opentype/.test(type)));
 
-/** A downloaded font file moved into <project>/fonts, named after its family (`name`) when given. */
-async function intoFonts(path: string, projectDir: string, name: string | undefined): Promise<{ readonly path: string; readonly family: string } | { readonly problem: string }> {
-  const dir = projectFontsDir(projectDir);
-  await mkdir(dir, { recursive: true });
+/**
+ * A downloaded font file moved into <project>/fonts, named after its family (`name`) when given.
+ * Refused (and removed) when projectFontSources wouldn't register it: over its size limit, or a
+ * family name it doesn't take. A taken name gets a numbered weightless style (Geist-2.woff2), so the
+ * family stays the one reported.
+ */
+export async function intoFonts(path: string, projectDir: string, name: string | undefined): Promise<{ readonly path: string; readonly family: string } | { readonly problem: string }> {
+  const refuse = async (problem: string) => (await rm(path, { force: true }), { problem });
+  const size = await stat(path).then((x) => x.size, () => 0);
+  if (size > MAX_KIT_FONT_BYTES) return refuse(`the font file is ${(size / 1024 / 1024).toFixed(1)} MB; fonts over ${MAX_KIT_FONT_BYTES / 1024 / 1024} MB aren't used.`);
   const ext = extname(path).toLowerCase();
   const stem = (name ? safeName(name) : basename(path, extname(path))).replace(/ \d+$/, "");
-  let target = join(dir, `${stem}${ext}`);
-  for (let n = 2; await stat(target).then(() => true, () => false); n++) target = join(dir, `${stem} ${n}${ext}`);
-  await rename(path, target);
   // The family as projectFontSources reads it: the file's own name table (TTF, OTF), else its name before the first dash.
-  const own = ext === ".ttf" || ext === ".otf" ? (await fontFileFamilies(target))[0] : undefined;
-  return { path: target, family: own ?? stem.split("-")[0]!.replace(/_+/g, " ").trim() };
+  const own = ext === ".ttf" || ext === ".otf" ? (await fontFileFamilies(path))[0] : undefined;
+  const family = (own ?? stem.split("-")[0]!.replace(/_+/g, " ")).trim();
+  if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(family)) return refuse(`"${family.slice(0, 100)}" isn't a family name fonts are used by (letters, digits, spaces, _ . -; up to 80). Name the download after the family, e.g. "Geist".`);
+  const dir = projectFontsDir(projectDir);
+  await mkdir(dir, { recursive: true });
+  let target = join(dir, `${stem}${ext}`);
+  for (let n = 2; await stat(target).then(() => true, () => false); n++) target = join(dir, `${stem}-${n}${ext}`);
+  await rename(path, target);
+  return { path: target, family };
 }
 
 export const makeAskTools = (ctx: TranscriptCtx) => {
@@ -187,7 +207,12 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     });
     void readActive(r.owner.dir)
       .then((active) => (sanctioned = sanctionedDirs(config, r.owner.dir, active.kit)), () => {})
-      .then(() => decideFirst());
+      .then(() => decideFirst())
+      .catch((error) => {
+        // Always answered: a decision that failed is a no.
+        console.error(`[uncut] permission check for ${tool} failed: ${(error as Error).message}`);
+        deny("Not done: Uncut couldn't check whether this may run.");
+      });
     const decideFirst = () => {
       if (answered) return;
       const first = decide(tool, input, ctx());
