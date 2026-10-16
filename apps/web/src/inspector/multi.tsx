@@ -7,12 +7,13 @@ import { MAX_DB, SILENCE_DB } from "@uncut/core/audio";
 import { fxSkips } from "@uncut/core/fx";
 import { ADJUST, ADJUST_INFO, adjustOf, effectInfo, effectParams, LOOK, lookInfo, planAdjust, planEffect, planRemoveEffect, planSetLook, type AdjustKey } from "@uncut/core/fx";
 import type { Item } from "@uncut/core/types";
-import { Layers, RotateCcw, X } from "lucide-react";
+import { AtSign, Layers, RotateCcw, X } from "lucide-react";
 
 import { hasSound, planGain } from "../audio/sound.ts";
 import { getPlayback } from "../preview/playback.ts";
 import { type ProjectModel } from "../state/project.ts";
-import { speedPlan } from "../state/store.ts";
+import { actions, speedPlan } from "../state/store.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import { clipState, isBoxed, planClipBox } from "../timeline/clip.ts";
 import { findItem, type Plan } from "../timeline/edit.ts";
 import { planForAll } from "../timeline/multi.ts";
@@ -89,6 +90,13 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
         <span className="ellipsis grow" data-testid="inspector-multi-title">
           {items.length} items selected
         </span>
+        {/* D264 (#77): every selected item as a chip in the Agent tab's composer. */}
+        <Tooltip label={`Add these ${items.length} items to the agent chat`} shortcut="addToChat">
+          <button className="small-btn insp-chat" data-testid="multi-add-to-chat" onClick={() => items.forEach((i) => actions.addItemToChat(i.id))}>
+            <AtSign />
+            Add to chat
+          </button>
+        </Tooltip>
       </div>
       <div className="insp-sub" data-testid="inspector-multi-sub">
         {selectionWords(items)}

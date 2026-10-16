@@ -1,11 +1,12 @@
 // The Inspector for a selected cut's transition (D73).
 import { transitionInfo, transitionLimits, transitionName, TRANSITIONS } from "@uncut/core/transitions";
-import { Blend, X } from "lucide-react";
+import { AtSign, Blend, X } from "lucide-react";
 
 import { cutFit, findItem } from "../timeline/edit.ts";
 import { itemLabel, type ProjectModel } from "../state/project.ts";
 import { actions } from "../state/store.ts";
 import { NumberField, Group } from "./fields.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 export function TransitionInspector({ project, placed, online }: { project: ProjectModel; placed: NonNullable<ReturnType<typeof findItem>>; online: boolean }) {
   const fps = project.canvas.fps;
@@ -21,7 +22,16 @@ export function TransitionInspector({ project, placed, online }: { project: Proj
     <div data-testid="inspector-transition" data-item={item.id}>
       <div className="insp-title">
         <Blend />
-        <span className="ellipsis">{tr ? transitionName(tr.module) : "Cut"}</span>
+        <span className="ellipsis grow">{tr ? transitionName(tr.module) : "Cut"}</span>
+        {/* D264 (#77): the transition as a chip in the Agent tab's composer. */}
+        {tr && (
+          <Tooltip label="Add this transition to the agent chat">
+            <button className="small-btn insp-chat" data-testid="insp-transition-add-to-chat" onClick={() => actions.addTransitionToChat(item.id)}>
+              <AtSign />
+              Add to chat
+            </button>
+          </Tooltip>
+        )}
       </div>
       <div className="insp-sub">
         Between {itemLabel(project, prev)} and {itemLabel(project, item)} on {track.name}

@@ -5,6 +5,7 @@
 import { useEffect } from "react";
 
 import { cutSelectedWords } from "../panels/Transcript.tsx";
+import { addSelectedWordsToChat } from "../panels/transcriptView/cuts.ts";
 import { getTranscripts, transcriptStore } from "../panels/transcript.ts";
 import { getPlayback, playback } from "../preview/playback.ts";
 import { actions, getState, isTextEntry, projectOf } from "../state/store.ts";
@@ -91,7 +92,14 @@ export function useEditorKeys(fps: number) {
     // #48: Space plays unless a text field is really being typed in (editor/focus.ts); a list, a
     // slider or a field focused for the user doesn't take it.
     const space = (e: KeyboardEvent) => e.code === "Space" && !e.metaKey && !e.altKey && !e.ctrlKey;
-    const blocked = (e: KeyboardEvent) => (space(e) ? isTyping(e.target) : isEditable(e.target)) || dialog();
+    // D264: the add-to-chat chord (⌘L) too: Add to chat leaves the caret in the composer, and the
+    // timeline keeps that focus, so only a field the user is really typing in takes it.
+    const chatChord = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) return false;
+      const pressed = keyOf(e);
+      return pressed !== undefined && actionFor(keymap.bindings(), pressed) === "addToChat";
+    };
+    const blocked = (e: KeyboardEvent) => (space(e) || chatChord(e) ? isTyping(e.target) : isEditable(e.target)) || dialog();
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked(e)) return;
       const done = () => e.preventDefault();
@@ -192,6 +200,15 @@ export function useEditorKeys(fps: number) {
           return (done(), playback.zoomOut());
         case "fit":
           return (done(), playback.zoomFit());
+        case "addToChat": {
+          // D264 (#77): words picked in the Transcript, else the timeline's selection.
+          if (e.repeat) return done();
+          if (words) return void (addSelectedWordsToChat() && done());
+          const ids = selection();
+          if (!ids.length) return;
+          done();
+          return ids.forEach((id) => actions.addItemToChat(id));
+        }
         case "shortcuts":
           return (done(), actions.openShortcuts());
       }

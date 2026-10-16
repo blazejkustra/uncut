@@ -2,7 +2,7 @@ import { type AgentMention, type AgentImage, type AgentAccess, type AgentAnswer,
 import { type Result } from "../../connection.ts";
 import { playback, getPlayback } from "../../../preview/playback.ts";
 import { findItem } from "../../../timeline/edit.ts";
-import { momentLabel, itemName } from "@uncut/core/mentions";
+import { momentLabel, itemName, mentionCandidates, effectMentionId, type MentionKind } from "@uncut/core/mentions";
 import { agentPrefs, DEFAULT_AGENT_PREFS, skipStoryboardSetting } from "../../agentPrefs.ts";
 import { set, state, online, projectOf } from "../core.ts";
 import { call, plainError, uploadOne } from "../server.ts";
@@ -78,6 +78,32 @@ export const agentActions = {
     const placed = snap ? findItem(projectOf(snap), itemId) : undefined;
     if (!snap || !placed) return;
     actions.addToChat({ kind: "item", id: itemId, label: itemName(projectOf(snap) as never, placed.item as never), range: { start: Math.round(placed.start), end: Math.round(placed.start + placed.item.duration) }, ...(frame !== undefined ? { frame: Math.floor(frame) } : {}) });
+  },
+  /**
+   * D264 (#77): Add to chat for anything the composer's @ picker offers (media, tracks, effects,
+   * transitions, markers): the same label and id the picker would give, so the agent gets the same
+   * <context> line either way. False when it's no longer in the project.
+   */
+  addRefToChat(kind: MentionKind, id: string): boolean {
+    const snap = state.snapshot;
+    const c = snap ? mentionCandidates(projectOf(snap) as never).find((x) => x.kind === kind && x.id === id) : undefined;
+    if (!c) return false;
+    actions.addToChat({ kind: c.kind, id: c.id, label: c.label, ...(c.frame !== undefined ? { frame: c.frame } : {}) });
+    return true;
+  },
+  addMediaToChat: (mediaId: string) => actions.addRefToChat("media", mediaId),
+  addTrackToChat: (trackId: string) => actions.addRefToChat("track", trackId),
+  addEffectToChat: (itemId: string, module: string) => actions.addRefToChat("effect", effectMentionId(itemId, module)),
+  addTransitionToChat: (itemId: string) => actions.addRefToChat("transition", itemId),
+  /** D264: words picked in the Transcript, as the stretch of the timeline they're heard over; the chip quotes them. */
+  addWordsToChat(start: number, end: number, words: string) {
+    const snap = state.snapshot;
+    if (!snap || end <= start) return;
+    const fps = projectOf(snap).canvas.fps;
+    const text = words.replace(/[\r\n<>@]+/g, " ").replace(/\s+/g, " ").trim();
+    const quoted = text.length > 40 ? `${text.slice(0, 39).trimEnd()}…` : text;
+    const label = quoted ? `"${quoted}" ${momentLabel(start, fps)}` : `${momentLabel(start, fps)}–${momentLabel(end, fps)}`;
+    actions.addToChat({ kind: "range", id: `words:${Math.floor(start)}-${Math.floor(end)}`, label, range: { start: Math.floor(start), end: Math.floor(end) } });
   },
   /** Add to chat (D141): a chip at the end of the composer, the Agent tab open, the caret there. */
   addToChat(mention: AgentMention) {
