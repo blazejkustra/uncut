@@ -91,9 +91,10 @@ async function setup(name: string) {
       return turnId as string;
     },
     // A long scripted turn (the critic test: 21 tool calls, contact sheets, frames and three critic
-    // runs) takes well over a minute on a 3-vCPU CI runner with the rest of the suite running (#88).
+    // runs) takes well over a minute on a 3-vCPU CI runner with the rest of the suite running (#88),
+    // and past 150 s once the critic also judged motion (D292, #89).
     done: async (id: string) => {
-      await agent.until(() => turn(id) && turn(id).status !== "running", 150000);
+      await agent.until(() => turn(id) && turn(id).status !== "running", 300000);
       return turn(id);
     },
     card: async (id: string) => (await agent.until((v) => v?.approval?.turnId === id, 15000), latest().approval),
@@ -347,7 +348,7 @@ test("U15: a storyboard sent back with a note keeps the build waiting; the Plan 
 const ev = (score: number, k: string) => ({ score, evidence: `f 0, f 45: ${k}` });
 const scoresOf = (score: number) => Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(score, k)]));
 
-test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are checked on fresh frames, and the critic never sees the builder", { skip, timeout: 240000 }, async () => {
+test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are checked on fresh frames, and the critic never sees the builder", { skip, timeout: 480000 }, async () => {
   const s = await setup("review");
   try {
     const html = `<canvas id="c"></canvas><script>const c=document.getElementById("c");window.render=(t,info)=>{c.width=info.width;c.height=info.height;const x=c.getContext("2d");x.fillStyle="#0b1d3a";x.fillRect(0,0,c.width,c.height);x.fillStyle="#f5a623";x.fillRect(40+t*200,40,120,120);};</script>`;
