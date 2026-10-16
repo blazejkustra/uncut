@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { audioGraph, planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { cachedFor, targetOf, type LoudnessResult } from "../../apps/server/src/analysis/analysis.ts";
 import { biquadResponseDb, compressorCurveDb, decodeEnvelope, type Project, type Stage } from "../../packages/core/src/index.ts";
@@ -124,6 +125,8 @@ test("effects: EQ and compressor slots, ducking with its line, limiter and targe
   const H = "__uncutAudio";
   try {
     await waitForWelcome(page);
+    // The mix as it is (D273 made At target the default): levels are measured against it.
+    await viewerPrefs(page, { atTarget: false });
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     let rev = await revision(page);

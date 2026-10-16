@@ -59,8 +59,6 @@ export const levelDb = (level: number) => (level <= 0 ? -Infinity : level * 60 -
 
 /** Shorter than this, a take is discarded (a click on Record then Stop). */
 export const MIN_TAKE_MS = 1000;
-/** D267: the 3-2-1 before the agent's take (the Capture tab records straight away). */
-export const COUNTDOWN = 3;
 
 export let state: RecorderState = {
   access: undefined,

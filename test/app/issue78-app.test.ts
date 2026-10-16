@@ -2,7 +2,8 @@
 // - Settings › Shortcuts: split's S is rebound to X by clicking it and pressing X; a key another
 //   action has (J) asks to swap or replace; Esc while listening cancels without closing Settings.
 // - In the editor X splits, S no longer does.
-// - The Premiere Pro preset: split is ⌘K (and works), and the toolbar's tooltip shows ⌘K.
+// - The Premiere Pro preset: it asks first, the user having changed a key (D273; Esc cancels, no
+//   dialog without changes; Reset all asks too); split is ⌘K (and works), the toolbar's tooltip shows ⌘K.
 // - The keymap is remembered (localStorage).
 // Screenshots: test-output/issue78-*.png.
 import { test, before, after } from "node:test";
@@ -145,7 +146,19 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
 
   // Premiere Pro: split is ⌘K.
   await openShortcuts();
+  // D273: the user's own change would go, so the preset asks first; Esc keeps everything (and Settings).
   await page.select("[data-testid=shortcut-preset]", "premiere");
+  await waitFor("[data-testid=shortcut-preset-confirm] [role=alertdialog]", 3000);
+  assert.match(await page.$eval("[data-testid=shortcut-preset-confirm]", (el) => el.textContent ?? ""), /Switch to Premiere Pro\?.*replace the 1 shortcut you changed/);
+  await page.screenshot({ path: out("preset-confirm") });
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=shortcut-preset-confirm]"), { timeout: 3000 });
+  assert.ok(await page.$("[data-testid=settings]"), "Settings still open after Esc in the dialog");
+  assert.equal(await page.$eval("[data-testid=shortcut-preset]", (el) => (el as HTMLSelectElement).value), "uncut", "Cancel keeps the preset");
+  assert.deepEqual(await rowKeys("split"), ["X", "⌘B"], "Cancel keeps the user's keys");
+  await page.select("[data-testid=shortcut-preset]", "premiere");
+  await waitFor("[data-testid=shortcut-preset-ok]", 3000);
+  await page.click("[data-testid=shortcut-preset-ok]");
   await page.waitForFunction(() => document.querySelector("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-key]")?.textContent === "⌘K", { timeout: 3000 });
   assert.deepEqual(await rowKeys("split"), ["⌘K"]);
   assert.deepEqual(await rowKeys("fit"), ["\\"]);
@@ -197,6 +210,23 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
   await page.$eval("[data-testid=shortcut-row][data-action=focusMode]", (el) => el.scrollIntoView({ block: "center" }));
   await sleep(200);
   await page.screenshot({ path: out("view-keys-locked") });
+
+  // D273: with no changes of the user's, a preset applies at once (nothing to lose, no dialog).
+  await page.select("[data-testid=shortcut-preset]", "uncut");
+  await page.waitForFunction(() => document.querySelector("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-key]")?.textContent === "S", { timeout: 3000 });
+  assert.equal(await page.$("[data-testid=shortcut-preset-confirm]"), null, "no dialog without changes");
+  assert.deepEqual(await rowKeys("split"), ["S", "⌘B"]);
+  // Reset all asks too; Reset all in the dialog drops the change.
+  await press("[data-testid=shortcut-row][data-action=split] [data-testid=shortcut-remove]");
+  assert.deepEqual(await rowKeys("split"), ["⌘B"]);
+  await press("[data-testid=shortcuts-reset-all]");
+  await waitFor("[data-testid=shortcut-preset-confirm]", 3000);
+  assert.match(await page.$eval("[data-testid=shortcut-preset-confirm]", (el) => el.textContent ?? ""), /Reset all shortcuts\?.*Uncut's keys replace the 1 shortcut you changed/);
+  await page.screenshot({ path: out("reset-all-confirm") });
+  await page.click("[data-testid=shortcut-preset-ok]");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=shortcut-preset-confirm]"), { timeout: 3000 });
+  assert.deepEqual(await rowKeys("split"), ["S", "⌘B"]);
+  assert.equal(await page.$("[data-testid=shortcut-customised]"), null);
   await closeSettings();
   assert.deepEqual(app!.errors, []);
 });

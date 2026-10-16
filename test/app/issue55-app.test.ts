@@ -1,5 +1,5 @@
 // Issue #55: a busy preview doesn't glitch, on the packaged app (run invisibly and muted), DOM path
-// (the GPU compositor stays off, as by default).
+// (the GPU compositor turned off: it's on by default since D273; issue82 covers it on).
 // The stress project: a main clip, 20 video overlay tracks in a 5×4 grid and 24 text tracks between
 // them (texts fade, type, come in word by word or pulse all the time; 24 on screen at once):
 // - A (0–8 s): 12 overlays, plain, half 1280×720 (shown through D222's untone filter), half 640×360;
@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { countGlitches, startGlitchProbe, stopGlitchProbe, type GlitchCounts, type GlitchLayer, type GlitchSample } from "../helpers/preview-glitches.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
@@ -186,17 +187,12 @@ test("issue #55: 20 video overlays and ~20 animated texts play and scrub without
     failed.set(key, (failed.get(key) ?? 0) + 1);
   });
   await waitForWelcome(page);
+  await viewerPrefs(page, { gpu: false });
   await page.click("[data-testid=open-project]");
   await waitFor("[data-testid=editor]");
   await page.click("[data-testid=bottom-timeline]");
-  const gpuOn = await page.evaluate(() => {
-    try {
-      return localStorage.getItem("uncut.preview.gpu") === "true";
-    } catch {
-      return false;
-    }
-  });
-  assert.equal(gpuOn, false, "the GPU compositor is off (the DOM path is under test)");
+  const gpuLayers = await page.$eval("[data-testid=preview-frame]", (el) => (el as HTMLElement).dataset.gpuLayers ?? "0");
+  assert.equal(gpuLayers, "0", "the GPU compositor is off (the DOM path is under test)");
 
   const runs: Record<string, GlitchCounts & { contextLost: number }> = {};
   runs["play A→B"] = await play("play across the A→B cut (12 overlays)", SEG - 60, 4500);

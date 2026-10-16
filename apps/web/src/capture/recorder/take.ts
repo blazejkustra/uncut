@@ -24,7 +24,7 @@ export interface TakeOptions {
   readonly place?: boolean;
   /** Stop by itself after this many seconds of recording (D144's screen_record). */
   readonly seconds?: number;
-  /** D267: seconds of 3-2-1 before recording starts (the agent's take); none means it starts as soon as the devices are open. */
+  /** Seconds of 3-2-1 before recording starts; none (every take since D267, D273) means it starts as soon as the devices are open. */
   readonly countdown?: number;
   /** D144: the agent's screen_record this take answers (card id): uploaded and handed to the agent's turn, not saved as the user's edit. */
   readonly agent?: { readonly id: string };
@@ -169,7 +169,7 @@ function startParts(r: Running, streams: Map<PartKind, MediaStream>) {
   }
 }
 
-/** Record: opens the devices (the agent's take then counts 3-2-1, D267), then records until stopTake or cancelTake. */
+/** Record: opens the devices, then records (no 3-2-1, D267, D273) until stopTake or cancelTake. */
 export async function startTake(options: TakeOptions) {
   const snapshot = getState().snapshot;
   const refuse = (text: string) => {
@@ -189,7 +189,7 @@ export async function startTake(options: TakeOptions) {
     release(r);
     return endTake(r, typeof stream === "string" ? { message: { kind: "error", text: stream } } : {});
   }
-  // D267: the Capture tab records straight away; "countdown" without a count is the devices opening.
+  // D267, D273: every take records straight away; "countdown" without a count is the devices opening.
   for (let n = Math.max(0, Math.floor(options.countdown ?? 0)); n > 0; n--) {
     set({ count: n });
     await sleep(1000, r);
