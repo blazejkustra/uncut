@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- D114: entitlements for `pnpm dist:signed` (a real identity with the hardened runtime). Not
+<!-- D114, D247: entitlements for `pnpm dist:signed` (a real identity with the hardened runtime). Not
      named entitlements.mac.plist on purpose: electron-builder would pick that up for the default
      ad-hoc `pnpm dist` too. -->
 <plist version="1.0">
@@ -10,10 +10,8 @@
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <!-- Electron's frameworks and helpers, and the bundled media core, load under one team's signature;
-       this keeps a development identity's build from being refused at launch. -->
-  <key>com.apple.security.cs.disable-library-validation</key>
-  <true/>
+  <!-- No disable-library-validation (D247): every binary in the bundle is signed by the same team,
+       and nothing loads a library from outside it, so library validation stays on. -->
   <!-- The Capture tab: a voiceover and camera takes (D114). Screen recording has no entitlement; macOS asks. -->
   <key>com.apple.security.device.audio-input</key>
   <true/>
