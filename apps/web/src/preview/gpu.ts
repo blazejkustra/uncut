@@ -123,6 +123,9 @@ export function plainColour(css: string): readonly [number, number, number, numb
   return [rgba[0]! * a, rgba[1]! * a, rgba[2]! * a, a];
 }
 
+/** Issue #82 (D241): the longest the GPU compositor keeps the frame on screen for a layer with nothing to draw. */
+const HOLD_MS = 500;
+
 type Uniforms = Record<string, WebGLUniformLocation | null>;
 
 export class GpuCompositor {
@@ -132,8 +135,12 @@ export class GpuCompositor {
   private vao!: WebGLVertexArrayObject;
   private quad!: WebGLBuffer;
   private u: Uniforms = {};
-  private readonly textures = new Map<string, { tex: WebGLTexture; key: string }>();
-  private readonly fxTargets = new Map<string, { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number }>();
+  // Each layer's last uploaded picture (`n`: its natural size), kept while the layer is drawn.
+  private readonly textures = new Map<string, { tex: WebGLTexture; key: string; n: { w: number; h: number } }>();
+  // Each effects layer's last drawn picture (`drawn` once it holds one).
+  private readonly fxTargets = new Map<string, { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number; drawn?: boolean }>();
+  // Issue #82 (D241): since when the frame on screen has been held (a layer had nothing to draw).
+  private heldSince: number | undefined;
   private fx: FxRenderer | undefined;
   private used = new Set<string>();
   private canvasSize = { w: 1, h: 1 };
@@ -240,7 +247,7 @@ export class GpuCompositor {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      t = { tex, key: "" };
+      t = { tex, key: "", n: { w: 0, h: 0 } };
       this.textures.set(id, t);
     }
     return t;
@@ -257,6 +264,7 @@ export class GpuCompositor {
     if (t.w !== w || t.h !== h) {
       t.w = w;
       t.h = h;
+      t.drawn = false;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, t.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -284,13 +292,58 @@ export class GpuCompositor {
     gl.uniform3f(this.u.uIris!, iris?.x ?? 0, iris?.y ?? 0, iris ? iris.r : -1);
   }
 
-  /** A clip's picture (with its effects when it has some). False when there's nothing to draw yet. */
+  /** Whether a source has a picture to read now (a seeking <video> drops below HAVE_CURRENT_DATA). */
+  private static ready(s: GpuPicture["source"]) {
+    const n = naturalSize(s);
+    return (s instanceof HTMLVideoElement ? s.readyState >= 2 : true) && n.w > 0 && n.h > 0;
+  }
+
+  /** Issue #82 (D241): the layer's last picture, when it has one, for while its source has none (a <video> seeking). */
+  private held(p: GpuPicture): { tex: WebGLTexture; img: Rect; flip: boolean } | undefined {
+    const f = p.fx ? this.fxTargets.get(p.id) : undefined;
+    if (f?.drawn) return { tex: f.tex, img: p.box.content, flip: true };
+    const t = this.textures.get(p.id);
+    if (!t?.key || !t.n.w) return undefined;
+    const k = 1 / this.px;
+    const c = p.box.content;
+    return { tex: t.tex, img: fitInto({ x: Math.round(c.x * k) / k, y: Math.round(c.y * k) / k, w: c.w, h: c.h }, t.n, p.box.fit), flip: false };
+  }
+
+  /**
+   * Issue #82 (D241): whether to leave the frame on screen as it is instead of drawing this one: a
+   * layer's source has no picture yet and the layer none of its own to hold (the next clip at a cut
+   * whose <video> is still seeking). The DOM path shows a seeking <video>'s last frame and the clip
+   * under it; drawn here it was a transparent hole: black. Held at most HOLD_MS, and never across a
+   * size change (that clears the canvas anyway).
+   */
+  holds(pictures: Iterable<GpuPicture>, width: number, height: number, scale: number): boolean {
+    if (this.lost) return false;
+    const k = Math.max(0.1, Math.min(2, scale));
+    const same = this.canvas.width === Math.max(1, Math.round(width * k)) && this.canvas.height === Math.max(1, Math.round(height * k));
+    let stuck = false;
+    for (const p of pictures) if (!GpuCompositor.ready(p.source) && !this.held(p)) stuck = true;
+    const now = performance.now();
+    if (!stuck || !same || this.used.size === 0) {
+      this.heldSince = undefined;
+      return false;
+    }
+    this.heldSince ??= now;
+    if (now - this.heldSince > HOLD_MS) return false;
+    return true;
+  }
+
+  /** A clip's picture (with its effects when it has some); its last one while its source has none. False when there's nothing to draw. */
   drawPicture(p: GpuPicture): boolean {
     const gl = this.gl;
     if (this.lost) return false;
     const n = naturalSize(p.source);
-    const ready = p.source instanceof HTMLVideoElement ? p.source.readyState >= 2 : n.w > 0;
-    if (!ready || !n.w || !n.h) return false;
+    if (!GpuCompositor.ready(p.source)) {
+      const h = this.held(p);
+      if (!h) return false;
+      this.used.add(p.id);
+      this.blit(p, h.tex, h.img, h.flip);
+      return true;
+    }
     this.used.add(p.id);
     let tex: WebGLTexture;
     let img: Rect;
@@ -304,6 +357,7 @@ export class GpuCompositor {
       const ok = this.fx.render(p.source, p.fx.fx, w, h, p.fx.t, 1, undefined, target.fbo);
       this.bindOwn();
       if (!ok) return this.drawPicture({ ...p, fx: undefined });
+      target.drawn = true;
       tex = target.tex;
       // The effects canvas is stretched over the content rect (as the DOM path's canvas, object-fit fill).
       img = p.box.content;
@@ -323,6 +377,7 @@ export class GpuCompositor {
           return false;
         }
         t.key = key;
+        t.n = n;
       }
       tex = t.tex;
       // The element's origin on a whole device pixel, as the browser places a <video>'s layer; its picture fitted inside.
@@ -330,6 +385,13 @@ export class GpuCompositor {
       const c = p.box.content;
       img = fitInto({ x: Math.round(c.x * k) / k, y: Math.round(c.y * k) / k, w: c.w, h: c.h }, n, p.box.fit);
     }
+    this.blit(p, tex, img, flip);
+    return true;
+  }
+
+  /** Draws a layer's texture at `img`, clipped to its box. */
+  private blit(p: GpuPicture, tex: WebGLTexture, img: Rect, flip: boolean) {
+    const gl = this.gl;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     this.clip(p.box, p.wipe, p.iris);
@@ -338,7 +400,6 @@ export class GpuCompositor {
     gl.uniform1f(this.u.uOpacity!, p.opacity);
     gl.uniform1i(this.u.uFlipY!, flip ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    return true;
   }
 
   /** A plain-colour background over the whole canvas. */
