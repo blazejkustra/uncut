@@ -138,6 +138,12 @@ export function gateRefusal(plan: AgentPlan, gate: BuildGate, ops?: unknown): st
 }
 
 /**
+ * D296: the refusal of timeline_edit, graphic_write and shader_write while a storyboard this turn
+ * proposed waits for the user: its stills are what they approve, so nothing changes under them.
+ */
+export const PROPOSE_LOCK = "Not done: the storyboard you proposed is waiting for the user's answer, and its stills show the edit as it is now, so nothing changes until they approve it or ask for changes. Don't edit; end your turn saying the storyboard waits on the Plan card. Once approved, build to match the stills; to change what they show (copy, logo, end card), propose again.";
+
+/**
  * The <brand> and <plan> blocks of a message: the project's kit and skills (or that there is none
  * and the user's kits by name), the brief, the storyboard and the last review.
  */

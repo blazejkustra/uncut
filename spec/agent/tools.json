@@ -986,7 +986,7 @@
     },
     {
       "name": "storyboard_propose",
-      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (at most 4, drawn from the timeline as it is now). The answer is approved (maybe with beats the user edited: build those), or a change the user asked for (propose again).",
+      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (at most 4, drawn from the timeline as it is now). Propose last: finish every change the stills show first (they're what the user approves). While the card waits, timeline_edit, graphic_write and shader_write are refused; unanswered, they stay refused for the rest of the turn, so end it. The answer is approved (maybe with beats the user edited: build those, keeping the copy, logo and end card the stills show), or a change the user asked for (propose again).",
       "inputSchema": {
         "type": "object",
         "required": [
