@@ -1,6 +1,6 @@
 # Uncut
 
-An AI-first video editor for macOS: Claude Code edits with you, on a real timeline, on your own subscription.
+An AI-first video editor for macOS: it runs your installed Claude Code, which edits with you on a real timeline.
 
 ![Uncut editing a launch film: imported clips, a title over footage in the preview, the timeline with transitions, text, a graphic and music, and the agent's brief, approved storyboard and passed review](docs/hero.png)
 
@@ -13,11 +13,11 @@ An AI-first video editor for macOS: Claude Code edits with you, on a real timeli
 - **Capture.** Record iOS simulators, Android emulators, web and desktop apps through [Argent](https://www.npmjs.com/package/@swmansion/argent), or your screen, camera and mic.
 - **Plugins.** Looks, components, checks and agent tools in a folder, with a catalog in [`plugins/catalog`](plugins/catalog).
 
-Everything runs on your Mac. The agent runs your own `claude` login, never an API key.
+Everything runs on your Mac. The agent runs your installed Claude Code with whatever sign-in it uses (a Claude account, an API key or a cloud provider), billed to you as Claude Code usage normally is. Uncut is not made by or affiliated with Anthropic.
 
 ## Install
 
-No signed builds yet, so build from source. You need an Apple Silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg (`brew install ffmpeg`). For the agent, sign in to [Claude Code](https://claude.com/claude-code); for transcription, `brew install whisper-cpp`.
+No signed builds yet, so build from source. You need an Apple Silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg (`brew install ffmpeg`). For the agent, install and sign in to [Claude Code](https://claude.com/claude-code) (any sign-in it supports); for transcription, `brew install whisper-cpp`.
 
 ```sh
 git clone https://github.com/blazejkustra/uncut
