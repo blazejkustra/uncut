@@ -8,10 +8,12 @@ import { STREAM_PUBLISH_MS, idleMs, canonical } from "./config.ts";
 import type { RunCtx } from "../tools/run.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import { agentFailCode } from "../../telemetry/events.ts";
-import { assistantUsage, contextOf, messageContextEstimate, resultWindow, systemToolsEstimate, windowFor } from "./usage.ts";
+import { assistantUsage, contextOf, knownWindow, messageContextEstimate, resultWindow, systemToolsEstimate, windowKey } from "./usage.ts";
 
 export const makeStream = (ctx: RunCtx) => {
   const { publish, closeSession, view, st, persist, trackPending, plugins } = ctx;
+  // D269: the context windows results reported this app run, by windowKey (init's model, "[1m]" kept).
+  const learnedWindows = new Map<string, number>();
 
   // ---- running claude ----
 
@@ -163,14 +165,20 @@ export const makeStream = (ctx: RunCtx) => {
     const s = r.session;
     const last = owner.context;
     const usage = assistantUsage(msg);
+    // D269 (#101): the window as soon as it's known (the chosen or init model's "[1m]", or what a
+    // result reported for this model before), never a guessed 200k; the result fills it in.
+    const ids = { model: usage?.model ?? last?.model, initModel: s.initModel, chosen: s.model };
     if (usage) {
       const model = usage.model ?? s.initModel ?? s.model;
-      const window = last && last.model === model ? last.window : windowFor(model ?? s.model);
+      const window = knownWindow({ ...ids, learned: learnedWindows }) ?? (last && last.model === model ? last.window : undefined);
       owner.context = contextOf({ used: usage.used, window, systemTools: systemToolsEstimate(s.systemChars, s.toolsChars ?? 0), message: messageContextEstimate(r.message, r.turn.prompt), model });
       return;
     }
     const window = last ? resultWindow(msg, last.model ?? s.initModel ?? s.model) : undefined;
-    if (last && window) owner.context = { ...last, window };
+    if (!last || !window) return;
+    owner.context = { ...last, window };
+    const key = windowKey(ids);
+    if (key) learnedWindows.set(key, window);
   };
 
   /** A full assistant message: replaces what was streamed of it, adds what wasn't (a block this turn already shows word for word isn't added twice). */
