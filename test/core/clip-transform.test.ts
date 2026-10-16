@@ -163,6 +163,7 @@ test("schema: loop on clips, transform.radius and typed keys validate; bad value
 import { applyEdit, createSession, describeOp, type Op } from "../../packages/core/src/index.ts";
 import { clipState, keyState, planClipBox, planLoop, planResetBox, planToggleKey, resizeBox } from "../../apps/web/src/timeline/clip.ts";
 import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const apply = (p: Project, plan: { ops: ReadonlyArray<Op> } | { problem: string }) => {
   if ("problem" in plan) throw new Error(plan.problem);
@@ -241,10 +242,10 @@ test("the edit log and the agent's docs say what a box, keys and loop do", () =>
   assert.equal(words({ op: "update_item", item: "c", set: { keys: [{ frame: 0, scale: 1 }, { frame: 60, scale: 1.2, x: 4 }] } }), "Keyframed M.mp4 (c): keys x at 2.0s; scale at 0.0s, 2.0s");
   assert.equal(words({ op: "update_item", item: "c", set: { transform: null, keys: null } }), "Restyled M.mp4 (c): position and size reset; no keys");
   assert.match(words({ op: "update_item", item: "c", set: { loop: true } }), /looped/);
-  assert.match(SYSTEM_PROMPT, /Clips \(video and stills\) draw in a box: transform \{x, y, w, h\}/);
-  assert.match(SYSTEM_PROMPT, /keys animate x, y, scale and opacity/);
-  assert.match(SYSTEM_PROMPT, /"loop":true on a clip/);
-  assert.match(SYSTEM_PROMPT, /media clips in their box/);
+  assert.match(AGENT_TEXT, /Clips \(video and stills\) draw in a box: transform \{x, y, w, h\}/);
+  assert.match(AGENT_TEXT, /keys animate x, y, scale and opacity/);
+  assert.match(AGENT_TEXT, /"loop":true on a clip/);
+  assert.match(AGENT_TEXT, /media clips in their box/);
 });
 
 test("split and trims keep keyed values: a key on the cut, keys re-timed, none past the end", () => {

@@ -9,6 +9,7 @@ import { applyEdit, audibleAt, canvasBox, clipBox, componentBox, componentHtml, 
 import { modulesList, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
 import { validateOps } from "../../packages/core/src/index.ts";
 import { mainCuts, nearestCut, planDelete, planMove, planSetTransition, planSplit, planTrim } from "../../apps/web/src/timeline/edit.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const close = (a: number, b: number, msg?: string) => assert.ok(Math.abs(a - b) < 1e-9, `${msg ?? ""} ${a} vs ${b}`);
@@ -247,9 +248,9 @@ test("the agent (D79): iris, push and zoom are listed as drawn, documented, and 
   const list = modulesList(modules, "transition") as Array<{ id: string; showsInPreview: boolean }>;
   for (const id of ["transition.crossfade", "transition.dip-to-black", "transition.wipe", "transition.iris", "transition.push-left", "transition.zoom"]) assert.equal(list.find((m) => m.id === id)?.showsInPreview, true, id);
   assert.equal(list.find((m) => m.id === "transition.cut")?.showsInPreview, false);
-  assert.match(SYSTEM_PROMPT, /transition\.iris \(iris, 6–30 frames\), transition\.push-left \(push, 4–30 frames\), transition\.zoom \(zoom, 4–30 frames\)/);
-  assert.match(SYSTEM_PROMPT, /an iris opens it in a circle/);
-  assert.doesNotMatch(SYSTEM_PROMPT, /iris, push-left, zoom\) are saved but draw as a crossfade/);
+  assert.match(AGENT_TEXT, /transition\.iris \(6–30 frames, a circle opening from the centre\), transition\.push-left \(4–30 frames/);
+  assert.match(AGENT_TEXT, /transition\.zoom \(4–30 frames/);
+  assert.doesNotMatch(AGENT_TEXT, /iris, push-left, zoom\) are saved but draw as a crossfade/);
   for (const [module, duration] of [["transition.iris", 6], ["transition.push-left", 30], ["transition.zoom", 15]] as const) {
     const ops = [{ op: "set_transition", item: "b", transition: { module, duration } }];
     assert.deepEqual(validateOps(ops), [], module);

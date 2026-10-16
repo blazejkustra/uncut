@@ -176,7 +176,7 @@ test("tool results pass through: text and images; anything else as JSON text", (
   assert.deepEqual(toMcpResult({ structuredContent: { a: 1 } }), { content: [{ type: "text", text: '{"a":1}' }] });
   assert.equal(stepLabel("argent_record", {}, "Argent"), "Used argent_record from Argent");
   assert.equal(stepLabel("whatever", {}), "Used whatever");
-  assert.ok(SYSTEM_PROMPT.includes("never changes the project itself: put what it gives you into the project with timeline_edit"));
+  assert.ok(SYSTEM_PROMPT.includes("add tools that return data and never change the project: put what they give into it with timeline_edit"));
   assert.ok(modulesList(new Map([["transition.cut", { manifest: "uncut.module/0", id: "transition.cut", kind: "transition", name: "Cut", version: "1.0.0", runtime: { type: "html" } }]])).every((m) => m.source === "builtin"));
 });
 

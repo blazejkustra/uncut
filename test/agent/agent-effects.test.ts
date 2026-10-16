@@ -16,6 +16,7 @@ import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { cachedFor, targetOf, type LoudnessResult } from "../../apps/server/src/analysis/analysis.ts";
 import { decodeEnvelope, VOICE_PRESET, type Project } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
@@ -180,16 +181,16 @@ test("the agent lists the audio effects, adds the voice preset, ducks the music 
 });
 
 test("the system prompt: effects, the voice preset, ducking, the limiter and targets are documented; nothing says audio effects aren't heard", { skip }, () => {
-  assert.doesNotMatch(SYSTEM_PROMPT, /audio effects are saved but not heard/);
-  assert.match(SYSTEM_PROMPT, /Track effects \(D84\) are mixer\.effects/);
-  assert.match(SYSTEM_PROMPT, /The voice preset is an EQ and a compressor/);
-  assert.match(SYSTEM_PROMPT, /"module":"audio\.duck","params":\{"under":\["voice"\]/);
-  assert.match(SYSTEM_PROMPT, /The master limiter \(D86\) is on by default at −1 dBTP/);
-  assert.match(SYSTEM_PROMPT, /master\.loudness \{"targetLufs":-23\}/);
-  assert.doesNotMatch(SYSTEM_PROMPT, /export only/);
-  assert.match(SYSTEM_PROMPT, /track effects \(EQ, compressor, voice, noise removal\)/);
+  assert.doesNotMatch(AGENT_TEXT, /audio effects are saved but not heard/);
+  assert.match(AGENT_TEXT, /Track effects are mixer\.effects/);
+  assert.match(AGENT_TEXT, /A voice preset: \{"op":"update_track"/);
+  assert.match(AGENT_TEXT, /"module":"audio\.duck","params":\{"under":\["voice"\]/);
+  assert.match(AGENT_TEXT, /The master limiter is on by default at −1 dBTP/);
+  assert.match(AGENT_TEXT, /master\.loudness \{"targetLufs":-23\}/);
+  assert.doesNotMatch(AGENT_TEXT, /export only/);
+  assert.match(AGENT_TEXT, /track effects \(EQ, compressor, voice, noise removal\)/);
   const prompt = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!);
-  assert.match(prompt.system ?? "", /audio\.duck/, "the CLI gets it");
+  assert.match(prompt.system ?? "", /docs_read \{topic\}[^\n]*sound/, "the CLI is told where the sound reference is");
 });
 
 test("a project saved before v0.2 of the audio manifests opens, edits and undoes (old EQ bands, deep duck, low limiter, unbounded ratio)", { skip, timeout: 60000 }, async () => {

@@ -3,7 +3,7 @@ import { type Project, describeOp, type Op } from "@uncut/core";
 import { stepLabel } from "./labels.ts";
 
 /** D184: the tools a "Look only" chat may use: they read, look and point, and change nothing. */
-export const LOOK_TOOLS = ["project_read", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "project_check", "music_list", "library_search", "media_search", "contact_sheet", "ui_show", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "reference_frames", "beat_grid", "skill_read"] as const;
+export const LOOK_TOOLS = ["project_read", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "project_check", "music_list", "library_search", "media_search", "contact_sheet", "ui_show", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "reference_frames", "beat_grid", "skill_read", "docs_read"] as const;
 
 /** D184: more ops than this in one timeline_edit is a big change in "Ask first". */
 export const BIG_EDIT_OPS = 12;
@@ -37,10 +37,3 @@ export function accessLine(access: "look" | "ask" | "auto"): string {
   if (access === "ask") return `Access: Ask first. Commands (Bash), file writes outside the project's .cache, removing items, tracks or media, cutting by transcript and edits of more than ${BIG_EDIT_OPS} ops wait for the user's Allow on a card; reading, the web and small edits don't. If they say no, don't retry it in this turn.`;
   return "Access: Auto. Claude Code approves routine commands and file writes inside the project itself; writing outside the project, Uncut's own files, deleting, sudo, git push and uploads are refused or ask the user first.";
 }
-
-/**
- * D194: what the agent can use, in every message's <editor-context> (a resumed conversation keeps
- * the system prompt it started with, which may predate the built-in tools).
- */
-export const TOOLS_LINE =
-  "Tools: Claude Code's own (WebSearch and WebFetch for the web, Read, Glob and Grep for files on this Mac, Bash, Write, Edit, Task for subagents) and Uncut's (mcp__uncut__…). Look up what you can (the product's site for its copy, features, logo and screenshots) instead of asking the user; mcp__uncut__media_download brings a file from the web into Media. Before drawing a placeholder for product footage, mcp__uncut__media_search the user's other projects, offer to record it (argent_boot, argent_record, screen_record) or ask.";

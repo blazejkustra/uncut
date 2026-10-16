@@ -35,6 +35,7 @@ import { planAddText } from "../../apps/web/src/state/project.ts";
 import { planAnimation, planPreset, planResetLook, planShadow, planStroke, planTextBox, planTransform, textBox, textDecorOf } from "../../apps/web/src/preview/text.ts";
 import { emptyProject } from "../../apps/server/src/project/projects.ts";
 import { expandTextLooks, modulesList, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const modules = await loadModules("spec/modules/builtin");
 const canvas = { width: 1920, height: 1080, fps: 30 } as const;
@@ -242,9 +243,9 @@ test("inserting text in a look (Text tab, agent): older tiles as before, a curat
   assert.match(cap.look.units, /em of the font size/);
   assert.ok(cap.showsInPreview);
   assert.ok(modulesList(modules, "move").every((m) => m.showsInPreview), "every built-in move draws now");
-  assert.match(SYSTEM_PROMPT, /"op":"insert_text","look":"text.big-title"/);
-  assert.match(SYSTEM_PROMPT, /move\.word-by-word/);
-  assert.match(SYSTEM_PROMPT, /move\.zoom/);
+  assert.match(AGENT_TEXT, /"op":"insert_text","look":"text.big-title"/);
+  assert.match(AGENT_TEXT, /move\.word-by-word/);
+  assert.match(AGENT_TEXT, /move\.zoom/);
 });
 
 test("Style tab planners: outline, shadow, box, apply and reset to preset, move params; labels and the edit note", () => {

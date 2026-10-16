@@ -8,11 +8,40 @@ function subtitleNote(project: Project): string | undefined {
   return n ? `${n} subtitle cue${n === 1 ? "" : "s"} (captions cards and Subtitles tracks): subtitles_export writes them as .srt or .vtt.` : undefined;
 }
 
+/** D260 (issue #81): over this many items (in the range), project_read's summary lists them as compact lines. */
+export const COMPACT_ITEMS = 30;
+
+/** An item in a few fields (D260): enough to find it, place things next to it and name it. */
+function compactItem(project: Project, it: Item, start: number | undefined) {
+  const x = it as Item & Record<string, unknown>;
+  const text = typeof x.text === "string" ? (x.text.length > 80 ? `${x.text.slice(0, 77)}...` : x.text) : undefined;
+  const tr = x.transitionIn as { module?: string; duration?: number } | undefined;
+  return {
+    id: it.id,
+    type: it.type,
+    ...(start !== undefined ? { start } : {}),
+    duration: it.duration,
+    ...(x.in !== undefined ? { in: x.in } : {}),
+    ...(it.media ? { media: it.media, ...mediaNameOf(project, it) } : {}),
+    ...(text !== undefined ? { text } : {}),
+    ...(typeof x.component === "string" ? { component: x.component } : {}),
+    ...(typeof x.src === "string" ? { src: x.src } : {}),
+    ...(x.gap ? { gap: x.gap } : {}),
+    ...(tr?.module ? { transitionIn: `${tr.module} ${tr.duration ?? ""}`.trim() } : {}),
+    ...(x.linkedTo ? { linkedTo: x.linkedTo } : {}),
+    ...(x.locked ? { locked: true } : {}),
+    ...(x.mute ? { mute: true } : {}),
+    ...(it.type === "captions" ? { words: Array.isArray(x.words) ? x.words.length : 0 } : {}),
+  };
+}
+
 /**
- * project_read's summary: tracks with every item (main-track items get their resolved start),
- * the media with its probe, the length, and the revision to pass back as baseRevision.
+ * project_read's summary: tracks with their items (main-track items get their resolved start),
+ * the media with its probe, the length, and the revision to pass back as baseRevision. D260: a
+ * long project's items (over COMPACT_ITEMS, no range) come as compact lines; detail "items" or
+ * `items` (ids) gives every field.
  */
-export function projectSummary(project: Project, revision: number, range?: { start: number; end: number }) {
+export function projectSummary(project: Project, revision: number, range?: { start: number; end: number }, opts: { readonly detail?: "summary" | "items"; readonly items?: ReadonlyArray<string> } = {}) {
   const { starts, duration } = layout(project);
   const end = project.tracks.some((t) => t.items.length) ? duration : 0;
   const fps = project.canvas.fps;
@@ -20,6 +49,11 @@ export function projectSummary(project: Project, revision: number, range?: { sta
     const start = starts.get(id) ?? 0;
     return !range || (start < range.end && start + length > range.start);
   };
+  const only = opts.items?.length ? new Set(opts.items) : undefined;
+  const picked = (it: Item) => (only ? only.has(it.id) : inRange(it.id, it.duration));
+  const count = project.tracks.reduce((n, t) => n + t.items.filter(picked).length, 0);
+  const compact = !only && !range && opts.detail !== "items" && count > COMPACT_ITEMS;
+  const full = (it: Item) => (it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) });
   return {
     revision,
     name: project.name,
@@ -41,8 +75,11 @@ export function projectSummary(project: Project, revision: number, range?: { sta
       ...(t.hidden ? { hidden: true } : {}),
       // The mix (D83): volume, pan, mute, solo.
       ...(t.mixer ? { mixer: t.mixer } : {}),
-      items: t.items.filter((it) => inRange(it.id, it.duration)).map((it) => (it.type === "captions" ? captionsSummary(project, it, starts.get(it.id) ?? 0, range) : { ...it, start: starts.get(it.id), ...mediaNameOf(project, it) })),
+      ...(t.locked ? { locked: true } : {}),
+      items: t.items.filter(picked).map((it) => (compact ? compactItem(project, it, starts.get(it.id)) : full(it))),
     })),
+    ...(compact ? { itemsNote: `${count} items, listed compactly. project_read with detail "items" and items [ids] (or a range) gives every field; read an item that way before update_item.` } : {}),
+    ...(only ? { itemsNote: `Only the items asked for${[...only].some((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))) ? `; not found: ${[...only].filter((id) => !project.tracks.some((t) => t.items.some((i) => i.id === id))).join(", ")}` : ""}.` } : {}),
     ...(project.master ? { master: project.master } : {}),
     // What solo, mutes and the master leave audible, when it needs saying (D83).
     ...(mixNote(project) ? { mixNote: mixNote(project) } : {}),

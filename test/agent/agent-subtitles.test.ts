@@ -11,6 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
@@ -158,6 +159,6 @@ test("subtitles_export's schema, label and the prompt", () => {
   assert.deepEqual(Object.keys((tool.inputSchema as any).properties).sort(), ["format", "overwrite", "path"]);
   assert.equal(stepLabel("subtitles_export", { format: "vtt" }), "Saved the subtitles as WebVTT");
   assert.equal(stepLabel("subtitles_export", { path: "/x/talk.srt" }), "Saved the subtitles as talk.srt");
-  assert.match(SYSTEM_PROMPT, /subtitles_export writes the subtitles as a file/);
-  assert.match(SYSTEM_PROMPT, /media_import of a \.srt or \.vtt file puts its cues on a new "Subtitles" text track/);
+  assert.match(AGENT_TEXT, /subtitles_export writes every captions item's cards/);
+  assert.match(AGENT_TEXT, /media_import of a \.srt or \.vtt puts its cues on a new "Subtitles" text track/);
 });

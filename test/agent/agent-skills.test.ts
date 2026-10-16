@@ -18,7 +18,8 @@ import { readBrand, saveSkill, deleteSkill, writeActive } from "../../apps/serve
 import { gateOf, planContext } from "../../apps/server/src/agent/agentPlan.ts";
 import { bundledSkill, bundledSkills } from "../helpers/skills.ts";
 import { CRITIC_SYSTEM, criticReview, criticText, parseCritic, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import { ALL_DOCS, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -118,11 +119,11 @@ test("planContext (D232): the skills the project uses by name, no bodies and no 
   assert.ok(!text.includes(bundledSkill(BUILTIN_IDS.launch).instructions.slice(0, 60)), "no bodies in every message");
   const none = planContext({ files: {}, skills: [], others: [] }, plan, gate);
   assert.ok(!/Skills this project uses|No skills are on/.test(none));
-  assert.match(SYSTEM_PROMPT, /the critic checks their review checklists/);
-  assert.match(SYSTEM_PROMPT, /read it with skill_read before you start/);
-  assert.ok(!/ask which to use|brief_write again with use/.test(SYSTEM_PROMPT));
-  assert.match(SYSTEM_PROMPT, /4 in any 10 s/);
-  assert.ok(!/cozy music/.test(SYSTEM_PROMPT));
+  assert.match(AGENT_TEXT, /the critic checks its review checklist/);
+  assert.match(AGENT_TEXT, /read it with skill_read before you start/);
+  assert.ok(!/ask which to use|brief_write again with use/.test(SYSTEM_PROMPT + ALL_DOCS));
+  assert.match(AGENT_TEXT, /4 in any 10 s/);
+  assert.ok(!/cozy music/.test(SYSTEM_PROMPT + ALL_DOCS));
 });
 
 test("the critic gets the skills' checklists and the sound sheet, reads it blindfold, and a hard sound finding is a sound blocker", () => {

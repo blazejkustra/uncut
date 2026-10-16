@@ -15,6 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { clickTrack, writeWav } from "../helpers/beats-audio.ts";
 import { mcpTools, stepLabel, SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -167,6 +168,6 @@ test("the tool schema, step labels and system prompt know beats", () => {
   assert.doesNotMatch(tool.description, /Beats and description come later/);
   assert.equal(stepLabel("media_analyze", { media: "m-song", analyzers: ["tempo", "beats"] }), "Found the beats in m-song");
   assert.equal(stepLabel("media_analyze", { media: "m-song", analyzers: ["beats", "loudness"] }), "Analysed m-song");
-  assert.match(SYSTEM_PROMPT, /"beats" \(also "rhythm", "onsets", "tempo"\)/);
-  assert.doesNotMatch(SYSTEM_PROMPT, /Beats come later/);
+  assert.match(AGENT_TEXT, /'beats' \(also 'rhythm', 'onsets', 'tempo'\)/);
+  assert.doesNotMatch(AGENT_TEXT, /Beats come later/);
 });

@@ -97,3 +97,21 @@ export function undoState(turn: StoredTurn, view: ProjectView | undefined, openI
   cache.set(turn.id, state);
   return state;
 }
+
+/** D260 (issue #81): at most this many listed edits in a message's note. */
+export const NOTE_LINES = 30;
+
+/** A note with at most NOTE_LINES "- " lines; the rest counted, project_read has the result. */
+export function capNote(note: string, max = NOTE_LINES): string {
+  const lines = note.split("\n");
+  let listed = 0;
+  let dropped = 0;
+  const out = lines.filter((l) => {
+    if (!l.startsWith("- ")) return true;
+    if (listed < max) return ++listed > 0;
+    dropped++;
+    return false;
+  });
+  if (dropped) out.push(`- and ${dropped} more edit${dropped === 1 ? "" : "s"} (project_read shows the project as it is now)`);
+  return out.join("\n");
+}
