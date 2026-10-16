@@ -67,12 +67,18 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
     const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-    if (!hasPointer) { bx = x; by = y; hasPointer = true; }
-    moved += Math.hypot(x - bx, (y - by) * (r.height / r.width));
+    // First contact (or re-entry): start the segment here, so no streak is drawn from elsewhere.
+    if (!hasPointer) { ax = bx = x; ay = by = y; hasPointer = true; }
+    const step = Math.hypot(x - bx, (y - by) * (r.height / r.width));
+    // A jump of over a third of the width in one event is a teleport (touch, a scrolled page): no streak.
+    if (step > 0.35) { ax = x; ay = y; } else moved += step;
     bx = x; by = y;
     lastMove = performance.now();
   };
-  if (!reducedMotion) hero.addEventListener("pointermove", onMove, { passive: true });
+  if (!reducedMotion) {
+    hero.addEventListener("pointermove", onMove, { passive: true });
+    hero.addEventListener("pointerleave", () => { hasPointer = false; moved = 0; });
+  }
 
   let cur = 0, w = 0, h = 0, started = performance.now(), last = started, raf = 0, visible = true, first = true;
   const resize = () => {
@@ -87,7 +93,7 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
 
   const frame = (now: number) => {
     raf = 0;
-    if (failed) { stop(); canvas.style.opacity = "0"; return; }
+    if (failed) { stop(); hero.classList.remove("fx-live"); return; }
     const active = now - lastMove < 1500;
     if (now - last < 1000 / (active ? FPS_ACTIVE : FPS_IDLE) - 2) { schedule(); return; }
     const dt = Math.min((now - last) / 1000, 1 / 20);
