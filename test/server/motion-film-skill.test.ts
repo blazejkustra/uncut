@@ -1,8 +1,9 @@
 // D292: the bundled skill motion-film. It ships in plugins/uncut-skills like Uncut's other skills
 // (so /motion-film calls it and the system prompt lists it for the agent to pick), it has the
 // sections its siblings have and a review checklist the critic reads (on the beat, pops, holds, the
-// loop seam), every uncutMotion function it names exists in uncut:lib/motion.js, a one-take brief
-// suggests it, and it makes the critic's motion score required.
+// loop seam, camera moves, shape-grow entries, no near-empty frames), every uncutMotion function it
+// names exists in uncut:lib/motion.js, a one-take brief suggests it, and it makes the critic's
+// motion score required.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -38,6 +39,10 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   // D296: scale and boldness, measurable; kits first; one item; the lock.
   assert.match(body, /^Scale \(both paths\)\n/m);
   for (const want of [/70 % of its area or more, edges within about 6 %/, /full-bleed again and again/, /9 % of the frame's height or more/, /Never a card on flat black with a small caption under it/, /A flood morphs the current shape into the next scene's shape/, /at least every 2 beats/, /The busiest section is busy/, /no hold over 1 s, even in a loop\) and springs back into frame 0/, /Never search the disk or the web for the product; no kit matches: ask_user once/, /ONE item spanning it/, /propose last: while it waits nothing can change/, /Footage appears only inside the UI \(timeline thumbnails and the preview via uncut\.frame; the preview may flood full-frame at the drop\)/, /never zooms in until it goes soft/]) assert.match(body, want);
+  // Round 2 craft: a camera move in every scene, never the whole editor; shots grow out of shapes (no
+  // cut, slice or tile); no near-empty frame; footage at its drawn size; on the kick; a big hook.
+  for (const want of [/Every scene gets a move/, /Never the whole editor at full width/, /uncutMotion\.grow\b/, /slice wipes, split-tile or pixelated transitions/, /No near-empty frame, not even 0\.2 s/, /uncutMotion\.frameWidth\(drawn width, camera zoom\)/, /start on the kick's frame/, /where beat 0 really falls/, /frame 0 is one huge headline/]) assert.match(body, want);
+  for (const re of [/near-empty/, /camera moving in every scene/, /grows out of a shape/, /on the kick/, /huge headline/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   for (const re of [/70 %/, /9 %/, /caption under a card/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 8 && checklist.length <= 12, `${checklist.length} lines`);
