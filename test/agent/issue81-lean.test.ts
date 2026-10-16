@@ -155,7 +155,12 @@ test("docs_read graphics carries the bundled libraries' own API (their headers),
     assert.ok(header && out.text.includes(header), name);
   }
   assert.match(out.text, /uncutMotion\.shape\(/);
-  assert.match(out.text, /uncutMotion\.riseText\(/);
+  assert.match(out.text, /uncutMotion\.riseText\(ctx, text, x, baseline, t, o\)/, "signatures from the code");
+  // Every function uncutMotion has is listed, even one its header doesn't mention yet.
+  const api = /window\.uncutMotion = \{([\s\S]*?)\n  \};/.exec(libs["motion.js"]!)![1]!;
+  for (const [, key] of api.matchAll(/^    ([A-Za-z]\w*): (?!\{)/gm)) assert.ok(out.text.includes(`uncutMotion.${key}`), key);
+  assert.match(out.text, /uncutMotion\.ease\.inOut\(p\)/);
+  assert.match(out.text, /uncutGlobe\.project\(ctx, t, lat, lon, options\)/);
   assert.ok(!out.text.includes("Ec.exports"), "three.js's code isn't pasted");
   assert.equal(docsRead("sound", libs).text, DOCS.sound.body, "other topics unchanged");
   assert.match(SYSTEM_PROMPT, /never search the disk/);
