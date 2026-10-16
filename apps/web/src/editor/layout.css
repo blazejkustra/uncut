@@ -1,0 +1,16 @@
+/* #76 (D256): hideable panels and focus mode. The grid's tracks come from panelsStyle (layout.ts);
+   hidden parts aren't rendered. The others grow into the room smoothly (not while a handle drags). */
+.app { --focus-row: clamp(220px, 34vh, 340px); transition: grid-template-columns 0.2s ease, grid-template-rows 0.2s ease; }
+body.resizing .app { transition: none; }
+@media (prefers-reduced-motion: reduce) { .app { transition: none; } }
+
+.layout-toggles { display: inline-flex; align-items: center; gap: 1px; padding: 1px; margin-right: 4px; border-radius: var(--radius-sm); }
+.layout-toggles .icon-btn[aria-pressed=false] { color: var(--muted); opacity: 0.6; }
+.layout-toggles .icon-btn[aria-pressed=false]:hover { opacity: 1; }
+.focus-exit { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 13px; background: var(--raised); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; }
+.focus-exit svg.lucide { width: 13px; height: 13px; }
+.focus-exit kbd { font-size: 10px; padding: 0 4px; }
+
+/* Focus mode: the agent under the preview, its thread and composer in a readable column. */
+.focus-agent { grid-area: bottom; min-height: 0; display: flex; justify-content: center; border-top: 1px solid var(--border); background: var(--panel); }
+.focus-agent .agent { flex: 0 1 760px; min-width: 0; }

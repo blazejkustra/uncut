@@ -39,6 +39,14 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
     click: () => send(command),
   });
 
+  // A checkbox item (View): enabled only with a project open.
+  const check = (label: string, accelerator: string, checked: boolean, command: MenuCommand): MenuItemConstructorOptions => ({
+    ...item(label, accelerator, command),
+    type: "checkbox",
+    checked: state.projectOpen && checked,
+    enabled: state.projectOpen,
+  });
+
   const recent: Array<MenuItemConstructorOptions> = state.recents.length
     ? state.recents.map((r) => ({ label: r.name, sublabel: r.dir, click: () => send({ type: "open-recent", dir: r.dir }) }))
     : [{ label: "No recent projects", enabled: false }];
@@ -93,7 +101,21 @@ export function setAppMenu(state: AppState, send: (command: MenuCommand) => void
         { role: "selectAll" },
       ],
     },
-    ...(app.isPackaged ? [] : [{ role: "viewMenu" } as MenuItemConstructorOptions]),
+    {
+      // #76 (D256): hide or show the editor's parts, and focus mode; checked from what the renderer reports.
+      label: "View",
+      submenu: [
+        check("Left Panel", "Shift+CmdOrCtrl+L", state.panels?.lib ?? true, { type: "toggle-panel", panel: "lib" }),
+        check("Right Panel", "Shift+CmdOrCtrl+I", state.panels?.side ?? true, { type: "toggle-panel", panel: "side" }),
+        check("Timeline", "Shift+CmdOrCtrl+T", state.panels?.bottom ?? true, { type: "toggle-panel", panel: "bottom" }),
+        { type: "separator" },
+        check("Focus Mode", "Shift+CmdOrCtrl+F", state.panels?.focus ?? false, { type: "focus-mode" }),
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        // In development also the usual reload and developer tools.
+        ...(app.isPackaged ? [] : ([{ type: "separator" }, { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" }] as Array<MenuItemConstructorOptions>)),
+      ],
+    },
     { role: "windowMenu" },
     {
       role: "help",

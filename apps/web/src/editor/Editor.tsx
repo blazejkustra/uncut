@@ -1,6 +1,6 @@
 import type { ProjectSnapshot } from "@uncut/contracts";
-import { Check, Redo2, RefreshCw, Settings as SettingsIcon, Share, TriangleAlert, Undo2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, Focus, Minimize2, PanelBottom, PanelLeft, PanelRight, Redo2, RefreshCw, Settings as SettingsIcon, Share, TriangleAlert, Undo2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useBeatsLoading } from "../audio/beats.ts";
 import { useDuckLoading } from "../audio/ducking.ts";
@@ -8,6 +8,7 @@ import { MixerPanel } from "../audio/Mixer.tsx";
 import { EnvironmentChip } from "../onboarding/Environments.tsx";
 import { NewProject } from "../onboarding/NewProject.tsx";
 import { ExportDialog, exportRunning } from "../panels/ExportDialog.tsx";
+import { AgentPanel } from "../panels/Agent.tsx";
 import { Library, type LibraryTab } from "../panels/Library.tsx";
 import { usePlayback } from "../preview/playback.ts";
 import { Stage } from "../preview/Preview.tsx";
@@ -17,7 +18,10 @@ import { ErrorToast } from "../ui/Toast.tsx";
 import { ContextMenuHost } from "../timeline/ContextMenu.tsx";
 import { LinkImportHost } from "../panels/library/ImportLinkDialog.tsx";
 import { useEditorKeys } from "./keys.ts";
-import { layoutStyle, useLayout } from "./layout.ts";
+import { AgentStage } from "./AgentStage.tsx";
+import { markDocked, stage, stageWanted, useStageDismissed, type StageDismissal } from "./agentStage.ts";
+import { layoutStyle, panels, panelShown, panelsStyle, rememberSideTab, useLayout, usePanels, type Hideable, type Panels } from "./layout.ts";
+import "./layout.css";
 import { Rail } from "./Rail.tsx";
 import { Resizer } from "./Resizer.tsx";
 import { Side } from "./Side.tsx";
@@ -36,6 +40,13 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
     const panel = panelRequest?.panel;
     if (panel === "media" || panel === "text" || panel === "elements" || panel === "audio") setTab(panel);
   }, [panelRequest]);
+  // #76 (D256): a panel asked for (the agent's ui_show, Add to chat) comes back if it was hidden.
+  useEffect(() => {
+    const panel = panelRequest?.panel;
+    if (!panel) return;
+    if (panel === "inspector" || (panel === "agent" && !panels.get().focus)) panels.show("side");
+    else if (panel === "media" || panel === "text" || panel === "elements" || panel === "audio") panels.show("lib");
+  }, [panelRequest]);
   // "Edit prompt" on a generated result opens the Generate tab with it (D99).
   useEffect(() => {
     if (generateDraft) setTab("generate");
@@ -44,9 +55,17 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   useBeatsLoading(project, snapshot.dir);
   useDuckLoading(project, snapshot.dir);
   const sizes = useLayout();
+  const shown = usePanels();
+  const { staged, dismiss: dismissStage } = useAgentStage(project, snapshot.dir, shown.focus);
   return (
-    <div className="app" data-testid="editor" style={layoutStyle(sizes)}>
-      <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} />
+    <div
+      className="app"
+      data-testid="editor"
+      data-focus={shown.focus || undefined}
+      data-hidden={(["lib", "side", "bottom"] as const).filter((p) => !panelShown(shown, p)).join(" ") || undefined}
+      style={{ ...layoutStyle(sizes), ...panelsStyle(shown) }}
+    >
+      <TopBar snapshot={snapshot} project={project} online={online} unsaved={changedOnDisk} shown={shown} />
       <ContextMenuHost />
       <LinkImportHost />
       <div className="banners">
@@ -97,14 +116,23 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
           <ErrorToast text={notice.text} token={notice} onClose={actions.dismissNotice} testId="editor-error" sticky={notice.transport === true && !online} />
         )}
       </div>
-      <Rail tab={tab} onTab={setTab} />
-      <Library project={project} dir={snapshot.dir} tab={tab} onTab={setTab} />
+      {/* #76 (D256): hidden parts aren't rendered; focus mode is the preview and the agent under it. */}
+      {panelShown(shown, "lib") && <Rail tab={tab} onTab={setTab} />}
+      {panelShown(shown, "lib") && <Library project={project} dir={snapshot.dir} tab={tab} onTab={setTab} />}
       <Stage key={snapshot.dir} project={project} dir={snapshot.dir} />
-      <Side snapshot={snapshot} project={project} online={online} />
-      <Bottom project={project} />
-      <Resizer panel="lib" />
-      <Resizer panel="side" />
-      <Resizer panel="bottom" />
+      {panelShown(shown, "side") && <Side snapshot={snapshot} project={project} online={online} staged={staged} onDock={() => dismissStage("link")} />}
+      {shown.focus ? (
+        <section className="focus-agent" data-testid="focus-agent">
+          <AgentPanel project={project} online={online} />
+        </section>
+      ) : (
+        panelShown(shown, "bottom") && <Bottom project={project} />
+      )}
+      {panelShown(shown, "lib") && <Resizer panel="lib" />}
+      {panelShown(shown, "side") && <Resizer panel="side" />}
+      {panelShown(shown, "bottom") && <Resizer panel="bottom" />}
+      {/* #75 (D255): a new, empty project: the agent centre stage over the editor. */}
+      {staged && !shown.focus && <AgentStage project={project} online={online} onDismiss={dismissStage} />}
       {exportOpen && !newProjectOpen && <ExportDialog key={snapshot.dir} project={project} dir={snapshot.dir} />}
       {newProjectOpen && (
         <div className="modal-layer" data-testid="new-project-modal">
@@ -119,13 +147,81 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
   );
 }
 
+/**
+ * #75 (D255): whether the agent centre stage shows. It opens on an empty project whose agent hasn't
+ * run (not in focus mode, where the agent is already under the preview), and docks into the side
+ * panel's Agent tab when that stops being so (a turn starts, media lands, the user goes to the
+ * editor): the composer glides there in a view transition, and the side panel comes back if hidden.
+ */
+function useAgentStage(project: Project, dir: string, focus: boolean): { staged: boolean; dismiss: (how: StageDismissal) => void } {
+  const { agent } = useApp();
+  const dismissed = useStageDismissed();
+  const staged = !focus && stageWanted(project, dir, agent, dismissed);
+  // The chat goes on in the Agent tab (the side panel back if hidden), sliding in from the middle.
+  const dock = useCallback(() => {
+    panels.show("side");
+    markDocked();
+    rememberSideTab(dir, "agent");
+  }, [dir]);
+  // A click on the editor leaves the side panel's tab alone (they clicked something there); Esc and
+  // "Go to editor" dock the chat into the Agent tab.
+  const dismiss = useCallback(
+    (how: StageDismissal) => {
+      stage.dismiss(dir);
+      if (how !== "outside") dock();
+    },
+    [dir, dock],
+  );
+  // The first turn or media landing (not a dismissal, not focus mode) docks it too.
+  const was = useRef({ dir, staged });
+  useEffect(() => {
+    const before = was.current;
+    was.current = { dir, staged };
+    if (before.dir === dir && before.staged && !staged && !focus && !dismissed.includes(dir)) dock();
+  }, [dir, staged]);
+  return { staged, dismiss };
+}
+
 /** The bottom panel (D32): the timeline or the mixer (D83). The transcript is a rail tab (U11, D177). */
 function Bottom({ project }: { project: Project }) {
   const bottom = usePlayback((s) => s.bottom);
   return bottom === "mixer" ? <MixerPanel project={project} /> : <Timeline project={project} />;
 }
 
-function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean }) {
+const TOGGLES: ReadonlyArray<{ panel: Hideable; icon: typeof PanelLeft; label: string; keys: string }> = [
+  { panel: "lib", icon: PanelLeft, label: "left panel", keys: "⇧⌘L" },
+  { panel: "bottom", icon: PanelBottom, label: "timeline", keys: "⇧⌘T" },
+  { panel: "side", icon: PanelRight, label: "right panel", keys: "⇧⌘I" },
+];
+
+/** #76 (D256): the top bar's way to hide and bring back each part, and focus mode: always visible. */
+function LayoutToggles({ shown }: { shown: Panels }) {
+  if (shown.focus)
+    return (
+      <button className="focus-exit" data-testid="focus-exit" title="Leave focus mode (⇧⌘F)" onClick={() => panels.focus(false)}>
+        <Minimize2 />
+        Leave focus
+        <kbd>⇧⌘F</kbd>
+      </button>
+    );
+  return (
+    <div className="layout-toggles" role="group" aria-label="Panels">
+      {TOGGLES.map(({ panel, icon: Icon, label, keys }) => {
+        const on = panelShown(shown, panel);
+        return (
+          <button key={panel} className="icon-btn" data-testid={`toggle-${panel}`} aria-pressed={on} title={`${on ? "Hide" : "Show"} the ${label} (${keys})`} onClick={() => panels.toggle(panel)}>
+            <Icon />
+          </button>
+        );
+      })}
+      <button className="icon-btn" data-testid="toggle-focus" aria-pressed={false} title="Focus mode: only the preview and the agent (⇧⌘F)" onClick={() => panels.focus(true)}>
+        <Focus />
+      </button>
+    </div>
+  );
+}
+
+function TopBar({ snapshot, project, online, unsaved, shown }: { snapshot: ProjectSnapshot; project: Project; online: boolean; unsaved: boolean; shown: Panels }) {
   const { exportJobs, exportJobId, environment } = useApp();
   const remote = environment.kind === "remote";
   const job = exportJobs.find((j) => j.id === exportJobId && j.projectDir === snapshot.dir);
@@ -136,6 +232,7 @@ function TopBar({ snapshot, project, online, unsaved }: { snapshot: ProjectSnaps
       {/* A remote environment says so next to the project's name (D106). */}
       {remote && <EnvironmentChip />}
       <div className="topbar-spacer" />
+      <LayoutToggles shown={shown} />
       <div
         className={`saved ${unsaved ? "warn" : ""}`}
         data-testid="saved"

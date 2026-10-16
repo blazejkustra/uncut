@@ -3,11 +3,15 @@ import { actions } from "./actions.ts";
 import { online, state } from "./core.ts";
 import { justClosedProject } from "./actions/project.ts";
 import { environmentsUsable, flagOn } from "../../settings/labs.ts";
+import { panels } from "../../editor/layout.ts";
 
 export function runCommand(command: MenuCommand) {
   // The way to another environment works while this one is away.
   // D245: behind the Labs flag (the menu item is disabled too), except to leave an active remote.
   if (command.type === "open-environments") return void (environmentsUsable(flagOn("environments"), state.environment.kind) && actions.openEnvironments());
+  // #76 (D256): the editor's layout is local UI too (only with a project open).
+  if (command.type === "toggle-panel") return void (state.snapshot && panels.toggle(command.panel));
+  if (command.type === "focus-mode") return void (state.snapshot && panels.focus());
   // Settings and the shortcuts sheet are local UI: they open while the server is away too.
   if (command.type === "open-settings") return actions.openSettings();
   if (command.type === "shortcuts") return actions.openShortcuts();
@@ -56,7 +60,7 @@ export function onKeyDown(event: KeyboardEvent) {
     key === "z"
       ? { type: event.shiftKey ? "redo" : "undo" }
       : event.shiftKey
-        ? undefined
+        ? layoutCommand(key)
         : key === ","
           ? { type: "open-settings" }
           : key === "n"
@@ -71,4 +75,14 @@ export function onKeyDown(event: KeyboardEvent) {
   if (!command) return;
   event.preventDefault();
   runCommand(command);
+}
+
+/** #76 (D256): ⇧⌘L, ⇧⌘I, ⇧⌘T hide or show the left panel, the right panel, the timeline; ⇧⌘F is focus mode. */
+function layoutCommand(key: string): MenuCommand | undefined {
+  if (!state.snapshot) return undefined;
+  if (key === "l") return { type: "toggle-panel", panel: "lib" };
+  if (key === "i") return { type: "toggle-panel", panel: "side" };
+  if (key === "t") return { type: "toggle-panel", panel: "bottom" };
+  if (key === "f") return { type: "focus-mode" };
+  return undefined;
 }
