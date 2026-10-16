@@ -9,9 +9,11 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR replaces its running check; every push to main finishes (D253), so a broken
+# commit on main is always pinned down.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -24,11 +26,14 @@ jobs:
           node-version: 24
       # pnpm's version comes from package.json's packageManager field.
       - run: corepack enable
+      - name: Find the pnpm store
+        run: echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
       - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: ~/Library/pnpm/store
+          path: ${{ env.PNPM_STORE }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -36,6 +41,7 @@ jobs:
             ~/.cargo/registry
             native/media/target
           key: cargo-${{ runner.os }}-${{ hashFiles('native/media/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
       # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
       - run: brew install ffmpeg
       - run: pnpm install --frozen-lockfile
