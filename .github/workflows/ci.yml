@@ -72,12 +72,17 @@ jobs:
       # ffmpeg/ffprobe are the user's own install (not bundled); the media and export tests need them.
       - run: brew install ffmpeg
       - run: pnpm install --frozen-lockfile
-      - name: Typecheck and licence notices
+      - name: Typecheck
         if: matrix.shard == 1
-        run: pnpm typecheck && node scripts/notices.ts --check
+        run: pnpm typecheck
       # The fast tests start the bundled server and media core (pnpm build, part of dist); the app
       # tests launch the packaged app.
       - run: pnpm dist
+      # After the build: the Rust crates' licences come from the cargo registry it fills (a cold
+      # cache, as on main's first run, has none before it).
+      - name: Licence notices
+        if: matrix.shard == 1
+        run: node scripts/notices.ts --check
       - name: Tests, shard ${{ matrix.shard }} of 5
         run: node scripts/test-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 5 --retries 1
       - name: Keep the test output
