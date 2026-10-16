@@ -1001,7 +1001,7 @@
     },
     {
       "name": "storyboard_propose",
-      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (at most 4, drawn from the timeline as it is now). Propose last: the stills are what the user approves. While it waits, edits are refused (unanswered: all turn, so end it). The answer is approved (maybe with edited beats; keep what the stills show), or a change to make (propose again).",
+      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (drawn from the timeline as it is now), or a graphic file and a moment of it ({graphic, t}: drawn alone, nothing placed, so the look can be approved before the film is built); up to 4 are drawn. Propose last: the stills are what the user approves. While it waits, edits are refused (unanswered: all turn, so end it). The answer is approved (maybe with edited beats; keep what the stills show), or a change to make (propose again).",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1073,9 +1073,11 @@
                   "description": "The beat, downbeat or hit it lands on."
                 },
                 "still": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "A timeline frame rendered as this beat's still (at most 4 beats)."
+                  "description": "This beat's still on the card: a timeline frame (an integer from 0), or a graphic and a moment of it, {\"graphic\": \"film.html\", \"t\": 12.5} (seconds), drawn alone without placing it, so the user sees the look before you build. Up to 4 beats get one (the open, the drop, the busiest state, the last frame); more are left out with a note.",
+                  "oneOf": [
+                    { "type": "integer", "minimum": 0 },
+                    { "type": "object", "additionalProperties": false, "required": ["graphic"], "properties": { "graphic": { "type": "string" }, "t": { "type": "number", "minimum": 0 } } }
+                  ]
                 }
               }
             }

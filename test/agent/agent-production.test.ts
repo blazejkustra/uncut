@@ -91,10 +91,9 @@ async function setup(name: string) {
       return turnId as string;
     },
     // A long scripted turn (the critic test: 21 tool calls, contact sheets, frames and three critic
-    // runs) takes well over a minute on a 3-vCPU CI runner with the rest of the suite running (#88),
-    // and past 150 s once the critic also judged motion (D292, #89).
+    // runs) takes well over a minute on a 3-vCPU CI runner with the rest of the suite running (#88).
     done: async (id: string) => {
-      await agent.until(() => turn(id) && turn(id).status !== "running", 300000);
+      await agent.until(() => turn(id) && turn(id).status !== "running", 150000);
       return turn(id);
     },
     card: async (id: string) => (await agent.until((v) => v?.approval?.turnId === id, 15000), latest().approval),
@@ -224,23 +223,23 @@ test("U8/U15/U9: ask_user is answered, the brief is saved, the build waits for t
   }
 });
 
-test("D295: storyboard_propose renders a still per beat for the card, kept through the approval; more than 4 is refused", { skip, timeout: 120000 }, async () => {
+test("D295: storyboard_propose renders a still per beat for the card, kept through the approval; a graphic's moment needs no placing; past 4 is a note, not a refusal", { skip, timeout: 120000 }, async () => {
   const s = await setup("stills");
   try {
-    // Before a brief there's no gate: the title goes on the timeline so the stills have something to show.
-    const placed = await s.ask("place the title", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "The title", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }]);
+    // Before a brief there's no gate: the title goes on the timeline so the stills have something to show,
+    // and a graphic is written but not placed (its still is drawn alone).
+    const look = "<!doctype html><canvas id=c width=64 height=64></canvas><script>window.render=(t)=>{const x=document.getElementById('c').getContext('2d');x.fillStyle=t>0.4?'#f00':'#00f';x.fillRect(0,0,64,64);}</script>";
+    const placed = await s.ask("place the title", [{ tool: "graphic_write", args: { name: "look.html", html: look } }, { tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "The title", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }]);
     assert.equal(placed.edits.length, 1, placed.error);
     s.results();
-    const many = BEATS.concat(BEATS, BEATS).map((b, i) => ({ ...b, still: i * 5 }));
-    await s.ask("too many", [{ tool: "storyboard_propose", args: { summary: "Six stills", beats: many } }]);
-    const [tooMany] = s.results();
-    assert.equal(tooMany!.result.isError, true);
-    assert.match(textOf(tooMany!.result), /at most 4 beats/);
-    const id = await s.start("storyboard", [{ tool: "storyboard_propose", args: { summary: "Beat 1 and 2 with stills", beats: [{ ...BEATS[0], still: 0 }, { ...BEATS[1], still: 30 }] } }]);
+    const asked = [0, { graphic: "look.html", t: 0.5 }, 30, 10, 20, 40];
+    const many = BEATS.concat(BEATS, BEATS).map((b, i) => ({ ...b, still: asked[i] }));
+    const id = await s.start("storyboard", [{ tool: "storyboard_propose", args: { summary: "Six beats with stills", beats: many } }]);
     const card = await s.card(id);
     const stills = card.storyboard.beats.map((b: { still?: string }) => b.still);
-    assert.equal(stills.length, 2);
-    for (const name of stills) {
+    assert.equal(stills.filter(Boolean).length, 4, "the first 4 drawn");
+    assert.deepEqual(stills.slice(4), [undefined, undefined]);
+    for (const name of stills.filter(Boolean)) {
       assert.match(name, new RegExp(`^${id}-s1-\\d\\.jpg$`));
       const jpeg = readFileSync(join(s.dir, ".cache", "agent-images", name));
       assert.equal(jpeg.subarray(0, 2).toString("hex"), "ffd8", "a JPEG");
@@ -248,10 +247,14 @@ test("D295: storyboard_propose renders a still per beat for the card, kept throu
     await s.client.ok("agent.approve", { id: card.id, allow: true, beats: card.storyboard.beats.map((b: object, i: number) => (i === 0 ? { ...b, title: "The claim" } : b)) });
     const t = await s.done(id);
     assert.equal(t.status, "done", t.error);
+    const [answer] = s.results();
+    assert.match(jsonOf(answer!.result).stills, /beats 5, 6 asked for one too and were left out/);
     const file = JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8"));
     assert.equal(file.status, "approved");
     assert.deepEqual(file.beats.map((b: { still?: string }) => b.still), stills, "the user's edit keeps the stills");
-    s.results();
+    // A still that's neither a frame nor a graphic is refused, saying both forms.
+    await s.ask("bad", [{ tool: "storyboard_propose", args: { summary: "Bad", beats: [{ ...BEATS[0], still: { graphic: "../x.html" } }] } }]);
+    assert.match(textOf(s.results()[0]!.result), /timeline frame .* or a graphic and a moment of it/);
   } finally {
     await s.stop();
   }
@@ -348,7 +351,7 @@ test("U15: a storyboard sent back with a note keeps the build waiting; the Plan 
 const ev = (score: number, k: string) => ({ score, evidence: `f 0, f 45: ${k}` });
 const scoresOf = (score: number) => Object.fromEntries(["hook", "readability", "motion", "variety", "sound", "brand"].map((k) => [k, ev(score, k)]));
 
-test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are checked on fresh frames, and the critic never sees the builder", { skip, timeout: 480000 }, async () => {
+test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are checked on fresh frames, and the critic never sees the builder", { skip, timeout: 240000 }, async () => {
   const s = await setup("review");
   try {
     const html = `<canvas id="c"></canvas><script>const c=document.getElementById("c");window.render=(t,info)=>{c.width=info.width;c.height=info.height;const x=c.getContext("2d");x.fillStyle="#0b1d3a";x.fillRect(0,0,c.width,c.height);x.fillStyle="#f5a623";x.fillRect(40+t*200,40,120,120);};</script>`;
