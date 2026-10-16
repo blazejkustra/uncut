@@ -110,9 +110,27 @@ export const gateOf = (plan: AgentPlan, skip: boolean, planning = false): BuildG
   return { closed: waiting && planning, waiting, skip };
 };
 
-/** timeline_edit's refusal while the gate is closed, or undefined. */
-export function gateRefusal(plan: AgentPlan, gate: BuildGate): string | undefined {
-  if (!gate.closed) return undefined;
+/**
+ * D237 (review finding 3): while the planned video waits for its storyboard (a brief with no
+ * storyboard, or one proposed or declined), a later turn may still make small edits, but at most
+ * this many new items per timeline_edit (a title and its background). More is building scenes.
+ */
+export const SMALL_EDIT_INSERTS = 2;
+
+/** The new items a timeline_edit's ops would add (insert_item, insert_text, insert_device_frame). */
+export const insertCount = (ops: unknown): number =>
+  Array.isArray(ops) ? ops.filter((o) => ["insert_item", "insert_text", "insert_device_frame"].includes(String((o as { op?: unknown } | null)?.op))).length : 0;
+
+/** timeline_edit's refusal while the gate is closed (or, while it waits, for an edit that builds scenes), or undefined. */
+export function gateRefusal(plan: AgentPlan, gate: BuildGate, ops?: unknown): string | undefined {
+  if (!gate.closed) {
+    if (!gate.waiting || ops === undefined) return undefined;
+    const n = insertCount(ops);
+    if (n <= SMALL_EDIT_INSERTS) return undefined;
+    const sb = plan.storyboard;
+    const why = !sb ? "this video has a brief but no storyboard yet" : sb.status === "declined" ? `the user sent the storyboard back${sb.note ? ` ("${sb.note}")` : ""}` : "the storyboard is still waiting for the user's approval";
+    return `Not done: ${why}, and this edit adds ${n} items, which is building the planned video. While the storyboard isn't approved only small edits go ahead (at most ${SMALL_EDIT_INSERTS} new items per edit). Ask the user (ask_user) whether to build without it, or change the storyboard and propose it again with storyboard_propose.`;
+  }
   const sb = plan.storyboard;
   if (!sb) return "Not done: this video has a brief but no storyboard yet. Propose the shot list with storyboard_propose and build once the user approves it.";
   if (sb.status === "declined") return `Not done: the user asked for changes to the storyboard${sb.note ? ` ("${sb.note}")` : ""}. Change it and propose it again with storyboard_propose; build once it's approved.`;
@@ -147,7 +165,7 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
     p.push(`Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`);
   }
   if (gate.closed) p.push(sb ? "The build waits for the storyboard's approval." : "The build waits for a storyboard (storyboard_propose).");
-  else if (gate.waiting) p.push(`${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead; building the planned video waits for an approved storyboard (storyboard_propose).`);
+  else if (gate.waiting) p.push(`${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead (at most ${SMALL_EDIT_INSERTS} new items per timeline_edit); building the planned video waits for an approved storyboard (storyboard_propose).`);
   const last = plan.reviews.at(-1);
   if (last) {
     // D195: the critic's findings by id, so the next round's fix claims can name them.
