@@ -323,7 +323,8 @@ export type AgentApproval = typeof AgentApproval.Type;
  */
 export const AgentContext = Schema.Struct({
   used: Schema.Number,
-  window: Schema.Number,
+  // D269 (#101): absent until known (the model's "[1m]", or the result's modelUsage): never guessed.
+  window: Schema.optional(Schema.Number),
   systemTools: Schema.Number,
   conversation: Schema.Number,
   message: Schema.Number,

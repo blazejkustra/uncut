@@ -37,10 +37,10 @@ test("resultWindow: modelUsage's contextWindow for the model, else the only or l
   assert.equal(resultWindow({ type: "assistant", modelUsage: two }, "claude-opus-5-5"), undefined);
 });
 
-test("windowFor: [1m] in the model id is 1M, else 200k", () => {
+test("windowFor: [1m] in the model id is 1M, else unknown (D269: never a guessed 200k)", () => {
   assert.equal(windowFor("claude-opus-5-5[1m]"), 1_000_000);
-  assert.equal(windowFor("claude-opus-5-5"), 200_000);
-  assert.equal(windowFor(undefined), 200_000);
+  assert.equal(windowFor("claude-opus-5-5"), undefined);
+  assert.equal(windowFor(undefined), undefined);
 });
 
 test("estimates: prose at 4 characters a token, JSON at 2.4, plus Claude Code's own", () => {

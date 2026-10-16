@@ -110,7 +110,8 @@ out({
   type: "system",
   subtype: "init",
   session_id: sessionId,
-  model: "fake",
+  // D269: FAKE_INIT_MODEL stands in for the model claude's init names (e.g. "claude-opus-5-5[1m]").
+  model: process.env.FAKE_INIT_MODEL ?? "fake",
   tools: tools.map((t) => `mcp__uncut__${t.name}`),
   mcp_servers: [{ name: "uncut", status: listed.result ? "connected" : "failed" }],
 });
@@ -319,6 +320,8 @@ async function playTurn(prompt: string, images: Array<{ media_type: string; byte
   const id = await assistant({ type: "text", text: said });
   const model = usage?.model ?? "fake";
   out({ type: "assistant", message: { id, role: "assistant", content: [{ type: "text", text: said }], ...(usage ? { model, usage: usage.usage } : {}) }, parent_tool_use_id: null, session_id: sessionId });
+  // D269: FAKE_RESULT_DELAY ms between the closing assistant message and the result (claude's gap).
+  if (process.env.FAKE_RESULT_DELAY) await pause(Number(process.env.FAKE_RESULT_DELAY));
   out({ type: "result", subtype: "success", is_error: false, result: said, duration_ms: Date.now() - started, num_turns: steps, session_id: sessionId, ...(usage?.contextWindow ? { modelUsage: { [model]: { inputTokens: 1, contextWindow: usage.contextWindow } } } : {}) });
   if (exitAfter) await new Promise<void>((r) => process.stdout.write("", () => r())).then(() => quit(0));
 }
