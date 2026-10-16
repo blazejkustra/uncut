@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, rmSync } from "node:fs";
 import { writeFile, rename, rm, mkdtemp, readdir, stat, realpath, access, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, basename } from "node:path";
@@ -17,8 +17,27 @@ export async function writeInto(path: string, text: string) {
   }
 }
 const TEMP_PREFIX = "uncut-export-";
+// Every temp folder made, removed again (synchronously) when the process exits: a quit mid-export
+// interrupts the job, whose own cleanup may not finish before bin.ts's 1 s exit timer (#89: seen on
+// a slow CI runner). Removing one that's already gone is a no-op.
+const made = new Set<string>();
+let removeOnExit = false;
 /** A temp folder of this server's: the prefix, our pid (so a sweep can tell whose it is), random. */
-export const makeTemp = () => mkdtemp(join(tmpdir(), `${TEMP_PREFIX}${process.pid}-`));
+export const makeTemp = async () => {
+  const dir = await mkdtemp(join(tmpdir(), `${TEMP_PREFIX}${process.pid}-`));
+  made.add(dir);
+  if (!removeOnExit) {
+    removeOnExit = true;
+    process.once("exit", () => {
+      for (const d of made) {
+        try {
+          rmSync(d, { recursive: true, force: true });
+        } catch {}
+      }
+    });
+  }
+  return dir;
+};
 
 const pidAlive = (pid: number) => {
   try {
