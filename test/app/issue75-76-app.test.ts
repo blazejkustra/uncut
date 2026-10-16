@@ -102,8 +102,14 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   assert.ok(card.width >= 600 && card.height >= 420, `a large card (${JSON.stringify(card)})`);
   assert.ok(Math.abs(card.x + card.width / 2 - win.w / 2) < 4, "centred across the window");
   assert.ok(Math.abs(card.y + card.height / 2 - (40 + (win.h - 40) / 2)) < 30, "centred under the top bar");
-  // The chat, the suggestions and the composer are in the card; the editor behind is dimmed and blurred.
-  assert.ok((await page.$$("[data-testid=agent-stage-card] [data-testid=agent-example]")).length >= 2, "the starter suggestions");
+  // The question and the composer are in the card, together in its middle (no prefilled prompts);
+  // the editor behind is dimmed and blurred.
+  assert.match(await page.$eval("[data-testid=agent-stage-card] [data-testid=agent-empty]", (el) => el.textContent ?? ""), /What should we make in/);
+  assert.equal(await page.$("[data-testid=agent-example]"), null, "no starter suggestions");
+  const title = await rect(page, "[data-testid=agent-stage-card] .agent-empty-title");
+  const box = await rect(page, "[data-testid=agent-stage-card] [data-testid=agent-input]");
+  assert.ok(box.y - (title.y + title.height) < 90, `the composer right under the question (${JSON.stringify({ title, box })})`);
+  assert.ok(Math.abs((title.y + box.y + box.height) / 2 - (card.y + card.height / 2)) < 60, "both in the middle of the card");
   assert.ok(await has(page, "[data-testid=agent-stage-card] [data-testid=agent-input]"), "the composer");
   assert.equal((await page.$$("[data-testid=agent-input]")).length, 1, "one composer in the window");
   const backdrop = await page.$eval("[data-testid=agent-stage]", (el) => {
@@ -147,9 +153,9 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   await waitFor(page, "[data-testid=agent-stage-card]");
   await sleep(400);
 
-  // A suggestion, then Enter: the first turn docks the stage into the Agent tab.
-  await page.click("[data-testid=agent-stage-card] [data-testid=agent-example]");
-  assert.ok((await page.$eval("[data-testid=agent-input]", (el) => (el as HTMLTextAreaElement).value)).length > 10, "the suggestion is in the box");
+  // A prompt, then Enter: the first turn docks the stage into the Agent tab.
+  await page.click("[data-testid=agent-stage-card] [data-testid=agent-input]");
+  await page.keyboard.type("Make a 5 s title card that says Hello");
   await page.keyboard.press("Enter");
   await gone(page, "[data-testid=agent-stage]");
   await waitFor(page, ".side [data-testid=agent-turn]");

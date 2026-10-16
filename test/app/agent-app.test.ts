@@ -91,18 +91,18 @@ async function agentOnEmptyProject(app: LaunchedApp) {
   const dir = await newProject(app);
   const onDisk = () => JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
 
-  // An empty project's Agent tab invites a first prompt, with examples that need no media.
+  // An empty project's Agent tab asks one question naming the project; no prefilled prompts.
   await page.click("[data-testid=tab-agent]");
   await waitFor(page, "[data-testid=agent-empty]");
-  assert.match(await text(page, "[data-testid=agent-empty]"), /No media needed to start/);
-  assert.equal((await page.$$("[data-testid=agent-example]")).length, 3);
+  assert.match(await text(page, "[data-testid=agent-empty]"), /What should we make in .+\?No media needed to start/);
+  assert.equal(await page.$("[data-testid=agent-example]"), null);
   // Claude Code (the stand-in) is found and signed in, so there's no setup card.
   await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"));
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(await page.$("[data-testid=agent-setup]"), null);
   await page.screenshot({ path: "test-output/agent-empty.png" });
 
-  // Turn 1: an example prompt; the fake reads the timeline and adds a 5 s title through MCP.
+  // Turn 1: a typed prompt; the fake reads the timeline and adds a 5 s title through MCP.
   nextTurn([
     { tool: "project_read" },
     {
@@ -115,9 +115,8 @@ async function agentOnEmptyProject(app: LaunchedApp) {
     },
     { text: "I added a **5 s** title card that says Kraków from above." },
   ]);
-  await page.click("[data-testid=agent-example]");
-  assert.match(await page.$eval("[data-testid=agent-input]", (el) => (el as HTMLTextAreaElement).value), /Kraków from above/);
-  assert.equal(await page.evaluate(() => document.activeElement?.id), "agent-input", "the example is ready to send with Enter");
+  await page.click("[data-testid=agent-input]");
+  await page.keyboard.type("Make a 5 s title card that says “Kraków from above”");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 30000 });
   const first = "[data-testid=agent-turn]:nth-of-type(1)";
@@ -433,7 +432,6 @@ test("without Claude Code the Agent tab says how to install it instead of failin
   assert.match(await text(page, "[data-testid=agent-setup]"), /Claude Code isn't installed/);
   assert.match(await text(page, "[data-testid=agent-setup-command]"), /claude\.ai\/install\.sh/);
   assert.equal(await page.$eval("[data-testid=agent-input]", (el) => (el as HTMLTextAreaElement).disabled), true);
-  assert.equal(await page.$eval("[data-testid=agent-example]", (el) => (el as HTMLButtonElement).disabled), true);
   await page.screenshot({ path: "test-output/agent-missing.png" });
   assert.deepEqual(app.errors, []);
 });
