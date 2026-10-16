@@ -305,7 +305,12 @@ test("round 3 editor: Agent tab first, Transcript in the rail, middle-button pan
     assert.deepEqual(app.errors, []);
   } catch (error) {
     await page.screenshot({ path: out("failure") }).catch(() => {});
-    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${app.output().slice(-3000)}` });
+    const output = app.output().slice(-3000);
+    // Quit now, not in after(): a window still open holds the single-instance lock, so the next
+    // test's launch would exit at once and fail for this one's reason.
+    await app.close().catch(() => {});
+    apps.delete(app);
+    throw Object.assign(error as Error, { message: `${(error as Error).message}\n--- app output ---\n${output}` });
   }
 });
 

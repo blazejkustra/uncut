@@ -31,6 +31,8 @@ const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: st
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
 ];
 
+const NOT_TYPED = new Set(["checkbox", "radio", "range", "color", "button", "submit", "reset", "file"]);
+
 export function Settings() {
   const { snapshot, settingsSection, connection } = useApp();
   const online = connection === "connected";
@@ -40,7 +42,9 @@ export function Settings() {
       // #78: Esc while Settings › Shortcuts listens for a key cancels that (its own handler).
       if (e.key !== "Escape" || isRecordingKey()) return;
       // Esc in a field puts its value back first (the field's own handler); the next one closes.
-      if (document.activeElement instanceof HTMLInputElement && document.activeElement.type !== "color") return void document.activeElement.blur();
+      // A switch, checkbox, radio, slider or colour has no typed value to put back: Esc closes.
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement && !NOT_TYPED.has(el.type)) return void el.blur();
       e.preventDefault();
       e.stopImmediatePropagation();
       actions.closeSettings();

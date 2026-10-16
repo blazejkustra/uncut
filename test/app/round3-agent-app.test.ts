@@ -217,12 +217,14 @@ test("round 3 agent: composer choices and images, moments, live status, failed s
         const foot = document.querySelector(".composer-foot")!.getBoundingClientRect();
         const buttons = [...document.querySelectorAll(".composer-foot button")].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0);
         const cut = [...document.querySelectorAll(".composer-choices .choice")].some((b) => b.scrollWidth > b.clientWidth + 1 && !b.classList.contains("model"));
-        return { width: foot.width, spread: Math.max(...buttons.map((r) => r.top + r.height / 2)) - Math.min(...buttons.map((r) => r.top + r.height / 2)), right: Math.max(...buttons.map((r) => r.right)), footRight: foot.right, cut, titles: [...document.querySelectorAll(".composer-choices .choice")].map((b) => (b as HTMLElement).title) };
+        return { width: foot.width, spread: Math.max(...buttons.map((r) => r.top + r.height / 2)) - Math.min(...buttons.map((r) => r.top + r.height / 2)), right: Math.max(...buttons.map((r) => r.right)), footRight: foot.right, cut, titles: [...document.querySelectorAll(".composer-choices .choice")].map((b) => (b as HTMLElement).title || b.getAttribute("aria-label") || "") };
       });
       assert.ok(row.spread <= 3, `${name}: one row (${row.width} px wide, centres ${row.spread} px apart)`);
       assert.ok(row.right <= row.footRight + 0.5, `${name}: nothing past the right edge`);
       assert.ok(!row.cut, `${name}: no clipped label`);
-      assert.ok(row.titles.every(Boolean), "every choice has a tooltip");
+      // Icon-only choices (the provider) are on the shared Tooltip, which names them by aria-label
+      // instead of a native title (D263); the labelled ones keep their title.
+      assert.ok(row.titles.every(Boolean), `every choice has a tooltip (${JSON.stringify(row.titles)})`);
       await page.screenshot({ path: out(`footer-${name}`) });
     }
   } catch (error) {
