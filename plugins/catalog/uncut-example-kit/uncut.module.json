@@ -1,0 +1,76 @@
+{
+  "manifest": "uncut.module/0",
+  "apiVersion": "uncut.module/1",
+  "id": "uncut.example-kit",
+  "kind": "pack",
+  "name": "Example kit",
+  "version": "1.0.0",
+  "description": "The worked example from Settings, Plugins, Make a plugin: a text look, a component, a skill and a shader effect in one data plugin. Nothing in it runs as a program. Start your own with pnpm plugin:new <id> --from uncut.example-kit.",
+  "author": "Uncut",
+  "license": "MIT",
+  "runtime": { "type": "data" },
+  "contributes": {
+    "looks": [
+      {
+        "id": "uncut.example-kit.lower-third",
+        "name": "Lower third",
+        "description": "A name line on a dark bar in the bottom left, sliding in.",
+        "look": {
+          "size": 0.045,
+          "weight": 700,
+          "tracking": -0.01,
+          "lineHeight": 1.1,
+          "color": "#FFFFFF",
+          "align": "left",
+          "w": 0.5,
+          "x": 0.06,
+          "y": 0.78,
+          "text": "Your name, what you do",
+          "background": { "color": "#111111", "opacity": 0.85, "padding": 0.6, "radius": 0.2, "wrap": "lines" },
+          "animation": { "in": { "module": "move.fade", "seconds": 0.25 } }
+        }
+      }
+    ],
+    "components": [
+      {
+        "id": "uncut.example-kit.badge",
+        "name": "Callout badge",
+        "description": "A round badge with a short word and a ring that pulses, in the top left corner.",
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": { "type": "string", "maxLength": 24, "default": "Live" },
+            "color": { "type": "string", "maxLength": 40, "default": "#FF4D6D" }
+          }
+        },
+        "template": "<div class=\"badge\" style=\"--c: {{color}}\"><span class=\"ring\"></span>{{label}}</div>",
+        "css": ".badge{position:absolute;top:7%;left:5%;display:flex;align-items:center;gap:16px;padding:14px 30px 14px 22px;border-radius:999px;background:#111;color:#fff;font:700 40px/1 -apple-system,system-ui,sans-serif;opacity:min(1, calc(var(--t) * 5))}.ring{width:22px;height:22px;border-radius:50%;background:var(--c);box-shadow:0 0 0 calc(10px * (0.5 + 0.5 * sin(var(--t) * 6))) color-mix(in srgb, var(--c) 35%, transparent)}"
+      }
+    ],
+    "skills": [
+      {
+        "name": "example-kit-lower-thirds",
+        "title": "Lower thirds",
+        "description": "Name and role captions for people on camera, with the Example kit's Lower third look.",
+        "instructions": "Use this when someone speaks on camera and the viewer should know who they are.\n\n- Put one lower third per person, the first time they appear, 0.5 s after their first word. Keep it on screen for 3 to 4 s.\n- Text: their name, a comma, what they do, at most 6 words. Never invent a name or a role: ask with ask_user if the brief doesn't give them.\n- Insert it with insert_text and the look uncut.example-kit.lower-third. Don't change its size or position unless it covers a face.\n- If the speaker talks about something live (a launch, a stream), add the Callout badge component with the label Live."
+      }
+    ],
+    "shaders": [
+      {
+        "id": "uncut.example-kit.spotlight",
+        "name": "Spotlight",
+        "description": "A soft, tinted vignette that draws the eye to the middle and can breathe slowly.",
+        "source": "effect.ts",
+        "export": "spotlight",
+        "params": [
+          { "key": "strength", "label": "Strength", "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.6 },
+          { "key": "radius", "label": "Radius", "type": "number", "min": 0.1, "max": 1.2, "step": 0.05, "default": 0.55 },
+          { "key": "tint", "label": "Tint", "type": "color", "default": "#0b0b1a" },
+          { "key": "breathe", "label": "Breathe", "type": "bool", "default": false }
+        ],
+        "wgsl": "struct Params {\n  strength: f32,\n  radius: f32,\n  tint: vec3f,\n  breathe: f32,\n}\n\nfn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {\n  let c = frame(uv).rgb;\n  let aspect = vec2f(size.x / size.y, 1.0);\n  let dist = length((uv - vec2f(0.5)) * aspect);\n  let r = p.radius * (1.0 + 0.08 * p.breathe * sin(t * 1.6));\n  let edge = smoothstep(r * 0.6, r * 1.4, dist);\n  return vec4f(mix(c, p.tint, edge * p.strength), 1.0);\n}"
+      }
+    ]
+  }
+}

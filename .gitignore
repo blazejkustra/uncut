@@ -22,3 +22,5 @@ apps/*/dist/
 # pnpm dist:signed's notarized DMGs (D247).
 release/
 native/media/target/
+# D258: the plugins the desktop build lays out for electron-builder.
+apps/desktop/stage/

@@ -47,10 +47,11 @@ extraResources:
   - from: ../../spec/modules/builtin
     to: modules/builtin
     filter: ["*.json"]
-  # Bundled plugins (D97, D98): Resources/plugins, pre-approved. Only manifests and their code.
-  # plugins/catalog (D103): shipped too, but off until the user enables one (Settings, Plugins, Browse).
-  # Not its _template or _shader-template (D104, D213): contributors copy them with pnpm plugin:new.
-  - from: ../../plugins
+  # Plugins (D97, D103, D258), laid out by the desktop build (scripts/build.ts → scripts/plugin-bundle.ts)
+  # from plugins/bundled.json: the listed ones in Resources/plugins (installed and allowed from the start),
+  # every other repo plugin in Resources/plugins/catalog (the marketplace in Settings › Plugins, install-only).
+  # Only manifests and their code; never the _template or _shader-template (D104, D213).
+  - from: stage/plugins
     to: plugins
     filter: ["*/uncut.module.json", "*/*.ts", "catalog/*/uncut.module.json", "catalog/*/*.ts", "!catalog/_*/**", "!**/*.test.ts", "!**/*.md"]
   # The plugin SDK (D102): plugins on the app's Node import "@uncut/plugin-sdk" from here.

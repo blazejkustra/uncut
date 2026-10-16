@@ -3,7 +3,7 @@
 // snapping, panel sizes, the rail's order; the agents and capture setup; environments) and the
 // keyboard shortcuts. Labs (D245): feature flags. Esc or a click outside closes it.
 import { setSkipStoryboard, useSkipStoryboard } from "../state/agentPrefs.ts";
-import { Clapperboard, FlaskConical, Keyboard, SlidersHorizontal, X } from "lucide-react";
+import { Blocks, Clapperboard, FlaskConical, Keyboard, SlidersHorizontal, X } from "lucide-react";
 import { useEffect } from "react";
 
 import { layout, RAIL_KEY } from "../editor/layout.ts";
@@ -18,11 +18,13 @@ import { setGpuCompositorOn, useGpuCompositorOn } from "./gpu.ts";
 import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 import { UsageDataSettings } from "./telemetry.tsx";
 import { LabsSettings } from "./Labs.tsx";
+import { PluginsSettings } from "./plugins/PluginsSettings.tsx";
 import { ENVIRONMENTS_LABS_HINT, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
   { id: "project", label: "Project", icon: Clapperboard },
   { id: "app", label: "App", icon: SlidersHorizontal },
+  { id: "plugins", label: "Plugins", icon: Blocks },
   { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
 ];
@@ -67,6 +69,7 @@ export function Settings() {
           </div>
           {section === "project" && snapshot && <ProjectSettings key={snapshot.dir} snapshot={snapshot} project={projectOf(snapshot)} online={online} />}
           {section === "app" && <AppSettings />}
+          {section === "plugins" && <PluginsSettings />}
           {section === "labs" && <LabsSettings />}
           {section === "shortcuts" && <ShortcutList />}
         </div>
