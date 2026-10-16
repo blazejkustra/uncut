@@ -5,11 +5,11 @@
 // subscription for Claude's, your key for the keyed ones. Progress and Cancel stay here; results go
 // to Media, marked Generated (GeneratedSection), with Add, Again and Edit prompt.
 import type { GenerateJob, GeneratorInfo, KeyProvider } from "@uncut/contracts";
-import { AudioLines, Check, Film, FolderOpen, Image as ImageIcon, ImagePlus, LoaderCircle, Plus, RefreshCw, Sparkles, SquarePen, X } from "lucide-react";
+import { AudioLines, Check, Film, FolderOpen, Image as ImageIcon, ImagePlus, LoaderCircle, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
-import { actions, mediaUrl, thumbUrl, useApp, type GenerateDraft, type Project } from "../state/store.ts";
-import { MEDIA_DRAG_TYPE } from "../timeline/dnd.ts";
+import { actions, useApp, type GenerateDraft, type Project } from "../state/store.ts";
+import { MediaTile } from "./library/MediaTile.tsx";
 import { firstModel, modelsFor, TITLE_CARD, TITLE_PREFIX, type GenType, type Model, type ModelOption } from "./generate/catalog.ts";
 import { LabMark } from "./generate/marks.tsx";
 import "./generate/generate.css";
@@ -359,8 +359,12 @@ const draftOf = (m: Project["media"][number]): GenerateDraft => {
   };
 };
 
-/** Media › Generated: each result marked Generated, with its prompt, Add at playhead, Again and Edit prompt (D31, D234). */
-export function GeneratedSection({ project, onEdit }: { project: Project; onEdit?: () => void }) {
+/**
+ * Media › Generated (D31, D234; compact in D240, #74): each result a media tile like the others
+ * (same size, following the grid/list view), with a small Generated badge; + adds it at the
+ * playhead, ↻ makes it again, and its menu has Edit prompt. The prompt and model are its tooltip.
+ */
+export function GeneratedSection({ project, onEdit, mode, used, selected, onSelect, onRemove }: { project: Project; onEdit?: () => void; mode: "grid" | "list"; used: ReadonlySet<string>; selected: string | undefined; onSelect: (id: string) => void; onRemove: (m: Project["media"][number]) => void }) {
   const app = useApp();
   const online = app.connection === "connected";
   const items = generatedMedia(project);
@@ -372,65 +376,34 @@ export function GeneratedSection({ project, onEdit }: { project: Project; onEdit
         <Sparkles />
         Generated
       </div>
-      <div className="gen-results">
+      <div className={mode === "list" ? "media-list" : "grid2"} data-testid="generated-grid" data-view={mode}>
         {[...items].reverse().map((m) => {
           const draft = draftOf(m);
           const ready = generators.find((g) => g.id === draft.generator)?.ready !== false;
-          const src = app.thumbIds.has(m.id) ? thumbUrl(m.id, m.path) : m.kind === "image" && /\.svg$/i.test(m.path) ? mediaUrl(m.id, m.path) : undefined;
-          const Icon = m.kind === "audio" ? AudioLines : m.kind === "image" ? ImageIcon : Film;
           const type: GenType = m.kind === "audio" ? "audio" : m.kind === "video" ? "video" : "image";
           const by = modelsFor(generators, type).find((x) => x.id === (draft.prompt.startsWith(TITLE_PREFIX) && draft.generator === "generate.svg" ? TITLE_CARD : draft.generator));
           return (
-            <div
+            <MediaTile
               key={m.id}
-              className="gen-result"
-              data-testid="generated-item"
-              data-id={m.id}
-              draggable={online}
-              onDragStart={(e) => {
-                e.dataTransfer.setData(MEDIA_DRAG_TYPE, m.id);
-                e.dataTransfer.effectAllowed = "copy";
+              item={m}
+              fps={project.canvas.fps}
+              online={online}
+              used={used.has(m.id)}
+              selected={selected === m.id}
+              onSelect={() => onSelect(m.id)}
+              onRemove={() => onRemove(m)}
+              generated={{
+                prompt: draft.prompt,
+                by: by ? `${by.name}, ${by.lab}` : draft.generator,
+                canAgain: ready && !!draft.prompt,
+                againTitle: !draft.prompt ? "No prompt saved" : ready ? "Make another one from the same prompt" : "Needs its key: Settings › Keys",
+                again: () => void actions.startGenerate(draft),
+                edit: () => {
+                  actions.editPrompt(draft);
+                  onEdit?.();
+                },
               }}
-            >
-              <div className="gen-thumb">
-                {src ? <img src={src} alt="" draggable={false} /> : <Icon />}
-                <span className="gen-badge" data-testid="generated-badge" title="Made in the Generate tab">
-                  <Sparkles />
-                </span>
-              </div>
-              <div className="gen-body">
-                <div className="gen-title" title={m.path}>
-                  {m.name}
-                </div>
-                <div className="gen-prompt-text" data-testid="generated-prompt" title={draft.prompt}>
-                  {draft.prompt || "No prompt saved"}
-                </div>
-                <div className="gen-by">{by ? `${by.name}, ${by.lab}` : draft.generator}</div>
-                <div className="gen-actions">
-                  <button className="link-btn" data-testid="generated-add" disabled={!online} title="Put it on the timeline at the playhead" onClick={() => void actions.addAtPlayhead(m.id)}>
-                    <Plus />
-                    Add at playhead
-                  </button>
-                  <button className="link-btn" data-testid="generated-again" disabled={!online || !ready || !draft.prompt} title={ready ? "Make another one from the same prompt" : "Needs its key: Settings › Keys"} onClick={() => void actions.startGenerate(draft)}>
-                    <RefreshCw />
-                    Again
-                  </button>
-                  <button
-                    className="link-btn"
-                    data-testid="generated-edit"
-                    disabled={!online}
-                    title="Change the prompt and make it again"
-                    onClick={() => {
-                      actions.editPrompt(draft);
-                      onEdit?.();
-                    }}
-                  >
-                    <SquarePen />
-                    Edit prompt
-                  </button>
-                </div>
-              </div>
-            </div>
+            />
           );
         })}
       </div>

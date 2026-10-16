@@ -76,9 +76,14 @@
 .gen-done-actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 .gen-done-actions .link-btn svg.lucide { width: 12px; height: 12px; margin-top: 0; }
 
-/* Media › Generated: the badge on each result. */
+/* Media › Generated (D240, #74): ordinary media tiles with a small Generated badge. */
 .gen-section-label { display: flex; align-items: center; gap: 5px; }
 .gen-section-label svg.lucide { width: 12px; height: 12px; color: #9b8cff; }
-.gen-result .gen-thumb { position: relative; }
-.gen-badge { position: absolute; left: 3px; bottom: 3px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #6d8cff, #b46dff); color: #fff; }
-.gen-result .gen-thumb .gen-badge svg.lucide { width: 10px; height: 10px; color: #fff; }
+.tile-gen-badge { position: absolute; left: 4px; bottom: 4px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; color: #fff; background: linear-gradient(135deg, #6d8cff, #b46dff); pointer-events: auto; }
+.tile-gen-badge svg.lucide { width: 10px; height: 10px; flex: none; }
+.media-list .tile .tile-gen-badge { left: 3px; bottom: 3px; width: 14px; height: 14px; }
+.media-list .tile .tile-gen-badge svg.lucide { width: 9px; height: 9px; }
+[data-testid="generated-item"] .tile-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+[data-testid="generated-item"]:focus { outline: none; }
+[data-testid="generated-item"].selected { border-color: var(--select); box-shadow: 0 0 0 1px var(--select); }
+.gen-tile .gen-by { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }

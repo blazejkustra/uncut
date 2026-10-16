@@ -1,4 +1,4 @@
-import { AudioLines, Image as ImageIcon, Film, Plus, Gauge, X } from "lucide-react";
+import { AudioLines, AudioWaveform, Image as ImageIcon, Film, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useState, useRef, useEffect, type ReactNode } from "react";
 import { timecode } from "../../state/format.ts";
 import { type MediaItem, useApp, isRemote, actions, getState, activeAnalyses, thumbUrl, mediaUrl, proxyOf, proxyUrl } from "../../state/store.ts";
@@ -19,9 +19,22 @@ export function mediaMeta(m: MediaItem) {
   return [size, m.probe?.fps ? `${fpsLabel(m.probe.fps)} fps` : undefined].filter(Boolean).join(", ");
 }
 
-/** "Analysing the sound… 42%" (or the picture, for the agent's video analysis, D67; "Transcribing…", D68), or why it waits. */
+/** What a tile in Media › Generated adds (D240, #74): its prompt and model, Again and Edit prompt. */
+export type GeneratedTileInfo = {
+  readonly prompt: string;
+  /** "Drawn by Claude, Anthropic" */
+  readonly by: string;
+  /** Again works (the model's key is set and there is a prompt). */
+  readonly canAgain: boolean;
+  readonly againTitle: string;
+  readonly again: () => void;
+  readonly edit: () => void;
+};
 
-export function MediaTile({ item, fps, online, used, selected, onSelect, onRemove }: { item: MediaItem; fps: number; online: boolean; used: boolean; selected: boolean; onSelect: () => void; onRemove: () => void }) {
+/** D240 (#73): the Analyze button's tooltip; it used to be an unexplained speedometer. */
+export const ANALYZE_TITLE = "Analyse the sound: find its silences and loudness (used for silence cuts and auto-ducking)";
+
+export function MediaTile({ item, fps, online, used, selected, onSelect, onRemove, generated }: { item: MediaItem; fps: number; online: boolean; used: boolean; selected: boolean; onSelect: () => void; onRemove: () => void; generated?: GeneratedTileInfo }) {
   const app = useApp();
   const { thumbIds } = app;
   // G4: renamed in place (double-click the name, or Rename in its menu).
@@ -41,7 +54,13 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
     e.preventDefault();
     const local = !isRemote();
     openMenu(e.clientX, e.clientY, [
-      { id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) },
+      ...(generated
+        ? [
+            { id: "generated-add", label: "Add at playhead", disabled: !online, run: () => void actions.addAtPlayhead(item.id) },
+            { id: "generated-again", label: "Make again", disabled: !online || !generated.canAgain, run: generated.again },
+            { id: "generated-edit", label: "Edit prompt", disabled: !online, run: generated.edit },
+          ]
+        : [{ id: "media-add", label: "Add to timeline", disabled: !online, run: () => void actions.addMedia(item.id) }]),
       { id: "media-rename", label: "Rename", disabled: !online, run: () => setRenaming(true) },
       ...(local ? [{ id: "media-reveal", label: "Reveal in Finder", run: () => void actions.showInFolder(item.path.startsWith("/") ? item.path : `${getState().snapshot?.dir ?? ""}/${item.path}`) }] : []),
       "-",
@@ -50,7 +69,7 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
   };
   // Analysis (D66) runs on demand: the Analyze button, or the agent's media_analyze.
   const analysis = activeAnalyses(app, item.id)[0];
-  const hasSound = item.kind === "audio" || (item.kind === "video" && item.probe?.hasAudio !== false);
+  const hasSound = !generated && (item.kind === "audio" || (item.kind === "video" && item.probe?.hasAudio !== false));
   const [broken, setBroken] = useState(false);
   const Icon = item.kind === "audio" ? AudioLines : item.kind === "image" ? ImageIcon : Film;
   // An SVG has no poster (ffmpeg can't read it): the tile shows the file itself (D76).
@@ -72,12 +91,12 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
   }, [scrub, seconds]);
   return (
     <div
-      className={`tile ${flash ? "flash" : ""} ${selected ? "selected" : ""}`}
-      data-testid="media-tile"
+      className={`tile ${flash ? "flash" : ""} ${selected ? "selected" : ""}${generated ? " gen-tile" : ""}`}
+      data-testid={generated ? "generated-item" : "media-tile"}
       data-id={item.id}
       data-used={used ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
-      title={item.path}
+      title={generated ? `${item.name}\n${generated.prompt || "No prompt saved"}\n${generated.by}` : item.path}
       ref={tileRef}
       tabIndex={0}
       onClick={onSelect}
@@ -119,7 +138,12 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
             Used
           </span>
         )}
-        {proxy && proxy.phase !== "failed" && (
+        {generated && (
+          <span className="tile-gen-badge" data-testid="generated-badge" title="Generated: made in the Generate tab" aria-label="Generated" role="img">
+            <Sparkles />
+          </span>
+        )}
+        {proxy && proxy.phase !== "failed" && !generated && (
           <span
             className={`tile-proxy ${proxy.phase}`}
             data-testid="media-proxy"
@@ -137,33 +161,50 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
         )}
         <button
           className="tile-add"
-          data-testid="add-to-timeline"
-          title={item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}
+          data-testid={generated ? "generated-add" : "add-to-timeline"}
+          title={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}
           disabled={!online}
           onClick={(e) => {
             e.currentTarget.blur();
-            void actions.addMedia(item.id);
+            void (generated ? actions.addAtPlayhead(item.id) : actions.addMedia(item.id));
           }}
         >
           <Plus />
         </button>
+        {generated && (
+          <button
+            className="tile-analyze"
+            data-testid="generated-again"
+            title={generated.againTitle}
+            aria-label="Make again"
+            disabled={!online || !generated.canAgain}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.currentTarget.blur();
+              generated.again();
+            }}
+          >
+            <RefreshCw />
+          </button>
+        )}
         {hasSound && !analysis && (
           <button
             className="tile-analyze"
             data-testid="analyze"
-            title="Analyse the sound: loudness and silences"
+            title={ANALYZE_TITLE}
+            aria-label="Analyse the sound"
             disabled={!online}
             onClick={(e) => {
               e.currentTarget.blur();
               void actions.analyzeMedia(item.id);
             }}
           >
-            <Gauge />
+            <AudioWaveform />
           </button>
         )}
         {analysis && (
           <div className="tile-analysis" data-testid="analysis-progress" data-phase={analysis.phase} data-analyzer={analysis.analyzer} title={analysisText(analysis)}>
-            <Gauge />
+            <AudioWaveform />
             <div className="bar">
               <span style={{ width: `${Math.round((analysis.phase === "running" ? analysis.progress : 0) * 100)}%` }} />
             </div>
@@ -177,7 +218,7 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
         {renaming ? <RenameField testId="media-rename" value={item.name} onDone={(name) => (name !== undefined && name.trim() && name !== item.name && void actions.renameMedia(item.id, name), setRenaming(false))} /> : item.name}
       </div>
       <div className="tile-sub" data-testid="tile-meta">
-        {mediaMeta(item)}
+        {generated ? <span className="gen-by">{generated.by}</span> : mediaMeta(item)}
       </div>
     </div>
   );
