@@ -25,8 +25,8 @@ interface UpdateView {
   readonly busy: boolean;
   /** The toast the user closed (Later, or ×), until the status changes. */
   readonly dismissed: UpdateStatus | undefined;
-  /** Restart to update was refused because something started meanwhile. */
-  readonly refused: boolean;
+  /** Restart to update was refused: something started meanwhile ("busy"), or the update couldn't be prepared ("not-ready"). */
+  readonly refused: false | "busy" | "not-ready";
 }
 
 let view: UpdateView = { status: { kind: "idle" }, busy: false, dismissed: undefined, refused: false };
@@ -62,5 +62,5 @@ export const dismissUpdate = () => setView({ dismissed: view.status, refused: fa
 export async function restartToUpdate() {
   if (!(await confirmLeave("quit"))) return;
   const result = await bridge.installUpdate?.();
-  if (result === "busy") setView({ refused: true });
+  if (result === "busy" || result === "not-ready") setView({ refused: result });
 }

@@ -3,9 +3,9 @@
 // to date", downloads a newer version and shows "Uncut 99.0.0 is ready" with Restart to update /
 // Later; an automatic check is silent until the download is ready; a failing feed (as the private
 // repository's 404) shows nothing. A plain test run doesn't check at all.
-// Limit: the test build is ad-hoc signed and the "update" is not an app, so Squirrel.Mac refuses
-// to install it (its error is logged, not shown) and Restart to update stops before quitting
-// (logged "quitAndInstall skipped"): a real install needs a Developer ID build (see D276).
+// Limit: the "update" is not an app, so Squirrel.Mac refuses to stage it (its error is logged, not
+// shown) and Restart to update says it couldn't prepare the update instead of quitting: a real
+// install needs a Developer ID build and a real newer release (see D276).
 // Screenshots: test-output/issue102-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -135,10 +135,17 @@ test("Check for Updates…: up to date, then a newer version downloads: 'Uncut 9
   // The menu again shows it at once (no new download).
   await app.page.evaluate(() => window.uncut?.checkForUpdates?.());
   await app.page.waitForSelector("[data-testid=update-toast][data-kind=downloaded]", { timeout: 5000 });
-  // Restart to update: nothing pending, so it goes to the shell, which (in a test build) stops before quitting.
+  // Squirrel.Mac refused the not-an-app zip (logged, not shown). Restart to update: nothing pending,
+  // so it goes to the shell, which waits for Squirrel's answer and doesn't quit (or stop the server)
+  // when the update wasn't staged; the toast says so.
+  await until(() => app.output().includes("Squirrel.Mac could not stage the update"), 15000, "Squirrel's refusal logged", app);
   await app.page.click("[data-testid=update-restart]");
-  await until(() => app.output().includes("[updater] test run: quitAndInstall skipped"), 5000, "install asked", app);
-  // Squirrel's refusal of the not-an-app zip is logged, never shown.
+  await until(() => app.output().includes("[updater] not installing 99.0.0: Squirrel.Mac has not staged it"), 5000, "install refused", app);
+  await app.page.waitForFunction(() => /Couldn't prepare the update/.test(document.querySelector("[data-testid=update-sub]")?.textContent ?? ""), { timeout: 5000 });
+  await app.page.screenshot({ path: "test-output/issue102-not-staged.png" });
+  assert.doesNotMatch(app.output(), /quitAndInstall skipped|restarting to install/);
+  // Still running, server and all.
+  assert.equal(app.proc.exitCode, null);
   assert.equal(app.errors.filter((e) => /update/i.test(e)).length, 0, app.errors.join("\n"));
   await close(app);
 });
