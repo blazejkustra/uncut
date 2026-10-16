@@ -55,7 +55,11 @@ test("no ·, •, ∙ or ⋅ and no lone * between words in the blog's posts", (
   posts.push(...md("site/content/drafts"));
   const found: Array<string> = [];
   for (const file of posts) {
+    // Prose only: fenced code blocks quote real code, where "a * b" is multiplication.
+    let fenced = false;
     readFileSync(file, "utf8").split("\n").forEach((line, n) => {
+      if (/^\s*```/.test(line)) fenced = !fenced;
+      if (fenced) return;
       if (/[·•∙⋅]/.test(line) || /[A-Za-z0-9)] \* [A-Za-z(]/.test(line)) found.push(`${file}:${n + 1}: ${line.trim().slice(0, 140)}`);
     });
   }
