@@ -22,6 +22,8 @@ import { join } from "node:path";
 export const FPS = 30;
 export const REF_DIR = process.env.UNCUT_ARGENT_REF ?? join(homedir(), "Documents/devrel/video-editor/argent-haiku45-vs-haiku55");
 export const LOGO_SVG = process.env.UNCUT_ARGENT_LOGO ?? join(homedir(), "Documents/devrel/video-editor/studio/library/assets/argent-logo.svg");
+/** The reference's music, from the studio library (Uncut ships no music since D274; imported by path). */
+export const MUSIC = process.env.UNCUT_ARGENT_MUSIC ?? join(homedir(), "Documents/devrel/video-editor/studio/library/music/cozy-3.mp3");
 /** The reference's files this check reads. */
 export const REF = {
   project: join(REF_DIR, "project.json"),
@@ -32,7 +34,7 @@ export const REF = {
 };
 /** Why the check can't run here (the reference or the logo is missing), or false. */
 export function referenceMissing(): string | false {
-  for (const f of [...Object.values(REF), LOGO_SVG]) if (!existsSync(f)) return `the Argent reference isn't on this machine (${f} is missing; set UNCUT_ARGENT_REF=<dir> and UNCUT_ARGENT_LOGO=<svg>)`;
+  for (const f of [...Object.values(REF), LOGO_SVG, MUSIC]) if (!existsSync(f)) return `the Argent reference isn't on this machine (${f} is missing; set UNCUT_ARGENT_REF=<dir> and UNCUT_ARGENT_LOGO=<svg>)`;
   return false;
 }
 
@@ -81,8 +83,8 @@ export const TOTAL = 1184;
 /** Scene boundaries (frames), from the reference's scenes: race ends at 25.194 s, the summary at 35.264 s. */
 export const SCENES = { titleEnd: 111, raceEnd: f(25.644), summaryStart: f(25.194), endStart: f(35.264), skyEnd: f(35.864) };
 
-/** The media ids media_import and music_add give these files in an empty project. */
-export const IDS = { sky: "m-breathe-sky", h45: "m-h45-1-x8", h55: "m-h55b-1-x8", logo: "m-argent-logo-dark", music: "m-lofi-vinyl-e-piano-loop" };
+/** The media ids media_import gives these files in an empty project. */
+export const IDS = { sky: "m-breathe-sky", h45: "m-h45-1-x8", h55: "m-h55b-1-x8", logo: "m-argent-logo-dark", music: "m-cozy-3" };
 
 /** A ui_show/timeline_edit step for the fake claude. */
 export type Step = { tool: string; args?: unknown } | { text: string };
@@ -127,9 +129,7 @@ export function buildTurn(paths: { logo: string }): Array<Step> {
   const edit = (summary: string, ops: Array<unknown>) => ({ tool: "timeline_edit", args: { baseRevision: "$rev", summary, ops } });
   const raceEnd = SCENES.raceEnd;
   return [
-    { tool: "media_import", args: { paths: [REF.sky, REF.h45, REF.h55, paths.logo] } },
-    { tool: "music_list", args: { mood: "lo-fi" } },
-    { tool: "music_add", args: { id: "cozy-3" } },
+    { tool: "media_import", args: { paths: [REF.sky, REF.h45, REF.h55, paths.logo, MUSIC] } },
     { tool: "modules_list", args: { kind: "component" } },
     read,
     edit("The sky and the title card", [
@@ -193,7 +193,7 @@ export function buildTurn(paths: { logo: string }): Array<Step> {
     ]),
     { tool: "project_check", args: {} },
     { tool: "ui_show", args: { frame: 300, select: ["sticker"], panel: "checks" } },
-    { text: "Built the promo: title card, the race with both recordings held on their last frame, the summary table and the end card, with cozy-3 at a −16 LUFS target. Three texts are under 28 px; project_check lists them." },
+    { text: "Built the promo: title card, the race with both recordings held on their last frame, the summary table and the end card, with the lo-fi track at a −16 LUFS target. Three texts are under 28 px; project_check lists them." },
   ];
 }
 

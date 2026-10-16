@@ -3,10 +3,7 @@
 // - project_check returns the project's checks (rule, severity, sentence, items, frame, fix or
 //   hint), filtered by rules and severity; a fix's ops go through timeline_edit as they are and
 //   clear the finding; checks.disabled leaves a rule out;
-// - music_list filters the bundled library by mood, tempo and words; music_add copies a track into
-//   the project's media/ folder (relative path, same bytes as the bundled file), adds it as audio
-//   media on the turn, answers "already in the project" the second time, refuses unknown ids;
-//   timeline_edit puts it on the audio track; Undo turn removes the media;
+// - no bundled music (D274): library_search kind music, source included, is the user's own music;
 // - the tools, their step labels, and the system prompt's taste and music notes.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
-import { MUSIC_TRACKS, projectChecks, type Project } from "../../packages/core/src/index.ts";
+import { projectChecks, type Project } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
 
@@ -154,83 +151,25 @@ test("project_check lists the checks with fixes; a fix through timeline_edit cle
   assert.deepEqual(last.disabled, ["canvas-format"]);
 });
 
-test("music_list filters the library; music_add copies a track into media/ and adds it on the turn; Undo turn removes it", { skip, timeout: 180000 }, async () => {
+test("D274: no bundled music; library_search with source included finds the user's own music, or says to ask", { skip, timeout: 180000 }, async () => {
   const start = results().length;
-  const turn = await ask("add some calm music", [
-    { tool: "music_list", args: {} },
-    { tool: "music_list", args: { mood: "warm" } },
-    { tool: "music_list", args: { tempo: "medium" } },
-    { tool: "music_list", args: { query: "upright" } },
-    { tool: "music_list", args: { tempo: "glacial" } },
-    { tool: "music_add", args: { id: "cozy-4" } },
-    { tool: "music_add", args: { id: "cozy-4" } },
-    { tool: "music_add", args: { id: "cozy-99" } },
-    { tool: "project_read", args: {} },
-    {
-      tool: "timeline_edit",
-      args: { baseRevision: "$rev", summary: "Music under the title", ops: [{ op: "insert_item", track: "audio", item: { id: "music-1", type: "audio", media: "m-sleepy-upright-piano-seamless-loop", in: 0, start: 0, duration: 150, fadeIn: 30, fadeOut: 60 } }] },
-    },
-    { tool: "music_list", args: { query: "sleepy" } },
-  ]);
+  const turn = await ask("add some calm music", [{ tool: "library_search", args: { kind: "music", source: "included" } }]);
   assert.equal(turn.status, "done", turn.error);
-  const mine = results().slice(start);
-  const all = answer(mine[0]).tracks;
-  assert.equal(all.length, MUSIC_TRACKS.length);
-  for (const t of all) {
-    assert.equal(t.license, "CC0-1.0");
-    assert.ok(t.frames === Math.floor(t.seconds * 30) && Math.abs(t.lufs + 16) <= 0.5, JSON.stringify(t));
-    assert.ok(["slow", "medium", "fast", "free"].includes(t.tempo));
-  }
-  assert.ok(answer(mine[1]).tracks.every((t: any) => t.moods.includes("warm")) && answer(mine[1]).tracks.length >= 1);
-  assert.deepEqual(answer(mine[2]).tracks.map((t: any) => t.id), ["cozy-3"]);
-  assert.deepEqual(answer(mine[3]).tracks.map((t: any) => t.id), ["cozy-4"]);
-  assert.equal(mine[4].result.isError, true);
-  // music_add: copied into media/ under its own name, the same bytes as the bundled file; audio media on the turn.
-  const added = answer(mine[5]);
-  assert.equal(added.media, "m-sleepy-upright-piano-seamless-loop");
-  assert.equal(added.path, "media/cozy-4.m4a");
-  const track = MUSIC_TRACKS.find((t) => t.id === "cozy-4")!;
-  assert.equal(added.frames, Math.floor(track.seconds * 30));
-  assert.match(added.next, /"type":"audio","media":"m-sleepy-upright-piano-seamless-loop"/);
-  assert.ok(readFileSync(join(dir, "media", "cozy-4.m4a")).equals(readFileSync(resolve("assets/music/cozy-4.m4a"))));
-  const again = answer(mine[6]);
-  assert.equal(again.media, added.media);
-  assert.match(again.note, /already in the project/);
-  assert.equal(mine[7].result.isError, true);
-  assert.match(mine[7].result.content[0].text, /"cozy-99" isn't one/);
-  assert.equal(answer(mine[9]).ok, true, JSON.stringify(answer(mine[9])));
-  assert.equal(answer(mine[10]).tracks[0].media, added.media, "music_list says it's in the project");
-  const p = onDisk();
-  const media = p.media.find((m) => m.id === added.media)!;
-  assert.deepEqual(media, { id: added.media, kind: "audio", name: track.title, path: "media/cozy-4.m4a", probe: { frames: added.frames, hasAudio: true } });
-  // The real file is at least as long as the frames say.
-  const seconds = Number(execFileSync(FFPROBE!, ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dir, media.path)], { encoding: "utf8" }));
-  assert.ok(seconds * 30 >= added.frames, `${seconds} s`);
-  assert.deepEqual(p.tracks.find((t) => t.id === "audio")!.items.map((i) => i.id), ["music-1"]);
-  // The card: the add is an edit of the turn, with its line.
-  assert.ok(turn.edits.some((e: any) => e.summary === `Added ${track.title} from the music library` && /Added media Sleepy Upright Piano Seamless Loop \(m-sleepy-upright-piano-seamless-loop\)/.test(e.lines[0])), JSON.stringify(turn.edits));
-  // Undo turn: the item and the media go (the copy stays in media/, reused by the next add).
-  await client.ok("agent.undoTurn", { turnId: turn.id });
-  const back = onDisk();
-  assert.ok(!back.media.some((m) => m.id === added.media));
-  assert.deepEqual(back.tracks.find((t) => t.id === "audio")!.items, []);
-  assert.ok(existsSync(join(dir, "media", "cozy-4.m4a")));
+  const r = answer(results().slice(start)[0]);
+  assert.deepEqual(r.yours, []);
+  assert.equal(r.total, 0);
+  assert.match(r.note, /Uncut ships no music: ask the user/);
 });
 
 test("the tools, their labels and the system prompt's taste and music notes", { skip }, () => {
-  for (const name of ["project_check", "music_list", "music_add"]) {
-    assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes(name));
-    assert.ok(mcpTools().some((t) => t.name === name), name);
-  }
+  assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("project_check"));
+  assert.ok(mcpTools().some((t) => t.name === "project_check"));
+  for (const gone of ["music_list", "music_add"]) assert.ok(!(TOOL_NAMES as ReadonlyArray<string>).includes(gone), gone);
   assert.equal(stepLabel("project_check", {}), "Checked the video against the taste checks");
-  assert.equal(stepLabel("music_list", { mood: "calm", tempo: "slow" }), "Looked for calm slow music in the library");
-  assert.equal(stepLabel("music_list", {}), "Looked through the music library");
-  assert.equal(stepLabel("music_add", { id: "cozy-2" }), "Added Dusty rhodes neo soul loop from the music library");
   assert.match(SYSTEM_PROMPT, /run project_check and fix each warning/);
   assert.match(SYSTEM_PROMPT, /words ÷ 3 s \(2 s minimum/);
   assert.match(SYSTEM_PROMPT, /never ·, • or \* between words/);
-  assert.match(AGENT_TEXT, /music_add copies one into the project's media/);
-  assert.match(AGENT_TEXT, /-16 LUFS/);
+  assert.match(AGENT_TEXT, /Uncut ships no music/);
   // K1 (D121): there is no Checks tab to point the user at.
   assert.doesNotMatch(SYSTEM_PROMPT, /Checks tab/);
   assert.doesNotMatch(SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf("- Taste")), /swmansion/);

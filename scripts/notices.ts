@@ -6,7 +6,7 @@
 // npm: the production dependencies of the workspace packages whose code ships (bundled into
 // server.mjs, the renderer or the plugin SDK), followed through node_modules the way Node resolves
 // them; licences from each package.json. Rust: the crates in native/media/Cargo.lock, licences
-// from the local cargo registry when it's there. Music from assets/music/library.json; fonts from
+// from the local cargo registry when it's there. Sound effects from assets/sfx/library.json; fonts from
 // assets/fonts/OFL.txt; three.js from assets/graphic-libs (D193). No author fields (they carry
 // email addresses).
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -106,7 +106,6 @@ const rule = "=".repeat(78);
 const section = (title: string) => `\n${rule}\n${title}\n${rule}\n\n`;
 
 export function render(): string {
-  const library = readJson(join(ROOT, "assets/music/library.json")) as { tracks: Array<{ file: string; title: string; author: string; source: string; license: string; licenseChecked?: string; trimmed?: string }> };
   const electron = readJson(join(ROOT, "node_modules/electron/package.json"));
   const npm = npmPackages();
   const rust = crates();
@@ -119,12 +118,6 @@ export function render(): string {
   s += section("Fonts: DM Sans and DM Mono (SIL Open Font License 1.1)");
   s += "Shipped in the app (inlined in the editor and the renderer, licence in Resources/fonts/OFL.txt).\n\n";
   s += readFileSync(join(ROOT, "assets/fonts/OFL.txt"), "utf8").trimEnd() + "\n";
-
-  s += section("Music library (CC0 1.0, public domain)");
-  s += "Shipped in Resources/music. Each track's licence was checked on its Freesound page.\n\n";
-  for (const t of library.tracks) {
-    s += `${t.file}: "${t.title}" by ${t.author}\n  ${t.source}\n  ${t.license}${t.licenseChecked ? `, checked ${t.licenseChecked}` : ""}${t.trimmed ? `; ${t.trimmed}` : ""}\n`;
-  }
 
   const sfx = readJson(join(ROOT, "assets/sfx/library.json")) as { sounds: Array<{ file: string; title: string; author: string; provider?: string; source: string; sourceFile?: string; license: string; licenseChecked?: string; licenseProof?: string; trimmed?: string }> };
   s += section("Sound effects (CC0 1.0, public domain)");
@@ -143,6 +136,18 @@ export function render(): string {
   s += `three.js ${three} (https://threejs.org), shipped in Resources/graphic-libs (minified, its licence in\n`;
   s += "three.LICENSE.txt beside it) and inlined into graphics that load it. Its licence:\n\n";
   s += readFileSync(join(ROOT, "assets/graphic-libs/three.LICENSE.txt"), "utf8").trimEnd() + "\n";
+
+  // D275: the follow handle's brand marks.
+  const icons = readFileSync(join(ROOT, "packages/core/src/visual/brandIcons.ts"), "utf8");
+  const iconsVersion = icons.match(/simple-icons@(\d+\.\d+\.\d+)/)?.[1];
+  if (!iconsVersion) throw new Error("packages/core/src/visual/brandIcons.ts doesn't name its simple-icons version");
+  const brands = [...icons.matchAll(/title: "([^"]+)"/g)].map((m) => m[1]!);
+  s += section("Brand icons: Simple Icons (CC0 1.0)");
+  s += `The platform logos of the follow handle element (packages/core/src/visual/brandIcons.ts) are SVG\n`;
+  s += `paths and brand colours from Simple Icons, simple-icons@${iconsVersion} (https://github.com/simple-icons/simple-icons),\n`;
+  s += "released under CC0 1.0 Universal (public domain). As Simple Icons' disclaimer says, the logos\n";
+  s += "remain trademarks of their owners; Uncut shows one only to name the platform a handle is on and\n";
+  s += "isn't made by or affiliated with any of them. Included: " + brands.join(", ") + ".\n";
 
   // Issue #50: the providers' marks in the composer, embedded the way t3code does.
   s += section("Provider marks: from t3code (MIT)");

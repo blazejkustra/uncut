@@ -10,17 +10,17 @@ export { LOOK_TOOLS, BIG_EDIT_OPS, bigChange, accessLine } from "./tools/access.
 export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
 export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, COMPACT_ITEMS } from "./tools/summary.ts";
 export { modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
-export { FONT_ERRORS, checksOut, musicOut } from "./tools/outputs.ts";
+export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
 
 // The tools that work today. render_frames came with the export rasteriser (phase 4 chunk 6,
 // D55); media_import, contact_sheet and ui_show with phase 5 chunk 1 (D65); media_analyze with
 // chunk 2 (D66, loudness and silences); the video analyzer and media_rank with chunk 3 (D67);
 // transcript_read with chunk 4 (D68, local whisper.cpp); transcript_edit with chunk 5 (D69, cut by
 // text through core planTextCut); the beats analyzer with chunk 6 (D70); graphic_write with phase 6
-// chunk 2 (D78); captions_make with chunk 5 (D82); project_check, music_list and music_add with
-// chunk 8 (D90, D91); generate_media with phase 7 chunk B (D99); subtitles_export with D105.
+// chunk 2 (D78); captions_make with chunk 5 (D82); project_check with chunk 8
+// (D90; music_list and music_add went with the bundled music, D274); generate_media with phase 7 chunk B (D99); subtitles_export with D105.
 // See DECISIONS.md D51.
-export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "project_check", "music_list", "music_add", "library_search", "library_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "brand_write", "reference_frames", "beat_grid", "shader_write", "skill_read", "media_download", "docs_read", "plan_read"] as const;
+export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "project_check", "library_search", "library_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "brand_write", "reference_frames", "beat_grid", "shader_write", "skill_read", "media_download", "docs_read", "plan_read"] as const;
 
 /** render_frames: at most this many frames per call, and the default width of each. */
 export const MAX_FRAMES = 24;

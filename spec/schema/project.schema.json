@@ -124,7 +124,7 @@
             "creator": { "type": "string", "description": "Sound library: who made it." },
             "creatorUrl": { "type": "string" },
             "landingUrl": { "type": "string", "description": "Sound library: the sound's page." },
-            "provider": { "type": "string", "description": "Sound library: where the file is hosted (freesound, jamendo, ...)." },
+            "provider": { "type": "string", "description": "Sound library: where the file is hosted (freesound, wikimedia_audio, ...)." },
             "fileUrl": { "type": "string", "description": "Sound library: the URL the file was downloaded from." },
             "license": { "enum": ["cc0", "by"], "description": "Sound library: CC0 (no credit needed) or CC BY (credit needed)." },
             "licenseVersion": { "type": "string" },

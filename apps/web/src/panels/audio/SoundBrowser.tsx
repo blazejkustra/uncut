@@ -20,13 +20,12 @@ const SOURCE_LABEL: Readonly<Record<BrowserSource, string>> = {
   folders: "Your folders",
   "music-app": "Music library",
   openverse: "Openverse",
-  jamendo: "Jamendo",
   freesound: "Freesound",
   epidemic: "Epidemic Sound (coming soon)",
 };
-const isOnline = (s: BrowserSource): s is LibrarySource => s === "openverse" || s === "jamendo" || s === "freesound";
+const isOnline = (s: BrowserSource): s is LibrarySource => s === "openverse" || s === "freesound";
 const SOURCES: Readonly<Record<LibraryKind, ReadonlyArray<BrowserSource>>> = {
-  music: ["folders", "music-app", "openverse", "jamendo", "freesound", "epidemic"],
+  music: ["folders", "music-app", "openverse", "freesound", "epidemic"],
   sfx: ["pack", "openverse", "freesound", "folders", "epidemic"],
 };
 const DEFAULT: Readonly<Record<LibraryKind, BrowserSource>> = { music: "openverse", sfx: "pack" };
@@ -72,7 +71,7 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
   const moods = kind === "music" ? MUSIC_GENRES : SFX_CATEGORIES;
   const moodQuery = (id: string | undefined) => moods.find((m) => m.id === id)?.query ?? "";
   const words = (q: string, m: string | undefined) => [q.trim(), kind === "music" || !q.trim() ? moodQuery(m) : ""].filter(Boolean).join(" ");
-  const needsKey = (s: BrowserSource) => (s === "jamendo" || s === "freesound") && !keyed.includes(s);
+  const needsKey = (s: BrowserSource) => s === "freesound" && !keyed.includes(s);
 
   const search = async (text: string, opts: { page?: number; source?: BrowserSource } = {}) => {
     const s = opts.source ?? source;
@@ -165,13 +164,8 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
         <IncludedSfx project={project} online={online} query={query} category={mood} preview={preview} />
       ) : source === "folders" || source === "music-app" ? (
         <FolderSounds kind={kind} mode={source === "music-app" ? "music" : "folders"} project={project} online={online} query={query} preview={preview} />
-      ) : (source === "jamendo" || source === "freesound") && needsKey(source) ? (
-        <KeyRow
-          provider={source}
-          text={source === "jamendo" ? "Jamendo needs a client ID: create a free app at devportal.jamendo.com and paste its client ID here." : "Freesound needs your API key."}
-          placeholder={source === "jamendo" ? "Jamendo client ID" : "Freesound API key"}
-          link={source === "jamendo" ? { href: "https://devportal.jamendo.com", label: "devportal.jamendo.com" } : undefined}
-        />
+      ) : source === "freesound" && needsKey(source) ? (
+        <KeyRow provider={source} text="Freesound needs your API key." placeholder="Freesound API key" />
       ) : isOnline(source) ? (
         <>
           <div className="lib-results" data-testid="library-results" data-busy={busy}>
@@ -219,14 +213,6 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
                   Openverse
                 </a>
                 , not endorsed by Openverse
-              </>
-            ) : source === "jamendo" ? (
-              <>
-                Music from{" "}
-                <a href="https://www.jamendo.com" target="_blank" rel="noreferrer">
-                  Jamendo
-                </a>
-                : only CC0 and CC BY tracks are shown
               </>
             ) : (
               <>

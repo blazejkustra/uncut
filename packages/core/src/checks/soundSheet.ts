@@ -1,5 +1,4 @@
 import { duckEntry } from "../audio/ducking.ts";
-import { libraryTrackOf } from "../audio/music.ts";
 import { bundledSfxOf } from "../audio/library.ts";
 import type { Media, Item, Track, Project, Id } from "../timeline/types.ts";
 import { type CheckContext, audible, isSpeechTrack, isMusicTrack, soundOf, MUSIC_NAME, startOf, textLabel, checkContext, secs } from "./context.ts";
@@ -104,7 +103,14 @@ function sfxKind(m: Media): SfxKind {
 
 export const trackGain = (t: Track) => t.mixer?.gainDb ?? 0;
 
-/** Music items (bundled tracks, files named like music, long sounds on a music track), with their gain. */
+/** A tempo written in a sound's name or file name ("Lofi loop 75 BPM", "beat-120bpm.mp3"), else undefined. */
+export function bpmInName(m: Pick<Media, "name" | "path">): number | undefined {
+  const hit = /(?:^|[^0-9])(\d{2,3})\s*-?\s*bpm\b/i.exec(`${m.name} ${m.path.replace(/\\/g, "/").split("/").pop() ?? ""}`);
+  const bpm = hit ? Number(hit[1]) : NaN;
+  return bpm >= 40 && bpm <= 240 ? bpm : undefined;
+}
+
+/** Music items (files named like music, long sounds on a music track), with their gain and the tempo its name gives. */
 export function musicItems(ctx: CheckContext) {
   const out: Array<{ item: Item; track: Track; start: number; media: Media; gain: number; bpm: number | null | undefined }> = [];
   for (const track of ctx.project.tracks) {
@@ -113,8 +119,7 @@ export function musicItems(ctx: CheckContext) {
     for (const item of track.items) {
       const m = soundOf(ctx, item);
       if (!m || item.type !== "audio" || bundledSfxOf(m)) continue;
-      const lib = libraryTrackOf(m);
-      if (lib || MUSIC_NAME.test(fileName(m)) || (musicTrack && item.duration > 6 * ctx.fps)) out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: lib?.bpm });
+      if (MUSIC_NAME.test(fileName(m)) || (musicTrack && item.duration > 6 * ctx.fps)) out.push({ item, track, start: startOf(ctx, item), media: m, gain: (item.gainDb ?? 0) + trackGain(track), bpm: bpmInName(m) });
     }
   }
   return out;
@@ -128,7 +133,7 @@ export function sfxItems(ctx: CheckContext): Array<PlacedSfx> {
     if (track.kind !== "audio" || !audible(ctx, track) || isSpeechTrack(ctx, track)) continue;
     for (const item of track.items) {
       const m = soundOf(ctx, item);
-      if (!m || item.type !== "audio" || music.has(item.id) || libraryTrackOf(m)) continue;
+      if (!m || item.type !== "audio" || music.has(item.id)) continue;
       const bundled = bundledSfxOf(m);
       const named = SFX_NAME.test(fileName(m)) || SFX_NAME.test(m.name) || MEME_NAME.test(fileName(m)) || SFX_TRACK.test(track.name);
       if (!bundled && !named && item.duration > 3 * ctx.fps) continue;

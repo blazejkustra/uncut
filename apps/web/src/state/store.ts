@@ -17,7 +17,7 @@ export { MAX_NAME_LENGTH } from "./store/types.ts";
 export type { ConnectionState, Project, Notice, AppStateShape, PickerPurpose, RemotePickerRequest, GenerateDraft, SettingsSection } from "./store/types.ts";
 export { pluginRules, pluginRuleList, pluginLooks, textPresets, subscribeApp, useApp, getState, projectOf, online, isRemote } from "./store/core.ts";
 export { plainError } from "./store/server.ts";
-export { brandFileUrl, agentImageUrl, thumbUrl, recentThumbUrl, mediaUrl, proxyUrl, proxyOf, musicUrl, sfxUrl, folderSoundUrl, libraryPreviewUrl, waveformUrl, filmstripUrl, graphicUrl } from "./store/urls.ts";
+export { brandFileUrl, agentImageUrl, thumbUrl, recentThumbUrl, mediaUrl, proxyUrl, proxyOf, sfxUrl, folderSoundUrl, libraryPreviewUrl, waveformUrl, filmstripUrl, graphicUrl } from "./store/urls.ts";
 export { activeAnalyses, activeJobs } from "./store/sync.ts";
 export { setLeaveGate, pendingSaves, revealItem, previewEdits, endPreview, speedPlan, shaderDefs } from "./store/edits.ts";
 export { actions } from "./store/actions.ts";

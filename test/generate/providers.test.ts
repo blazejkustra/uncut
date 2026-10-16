@@ -354,7 +354,7 @@ test("the key store: ciphertext only in keys.json (0600) through safeStorage's s
   };
   const file = join(root, "data", "keys.json");
   const store = keyStore({ file, crypter });
-  assert.deepEqual((await store.list()).map((k) => [k.provider, k.set, k.storage]), [["openai", false, "keychain"], ["google", false, "keychain"], ["elevenlabs", false, "keychain"], ["freesound", false, "keychain"], ["jamendo", false, "keychain"]]);
+  assert.deepEqual((await store.list()).map((k) => [k.provider, k.set, k.storage]), [["openai", false, "keychain"], ["google", false, "keychain"], ["elevenlabs", false, "keychain"], ["freesound", false, "keychain"]]);
   await store.set("openai", KEY);
   await store.set("elevenlabs", "el-key-123");
   const text = readFileSync(file, "utf8");

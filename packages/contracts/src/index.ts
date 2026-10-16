@@ -1,6 +1,6 @@
 // The wire contract between the server and its clients: one RPC group over WebSocket.
 export { WS_PATH, TOKEN_QUERY_PARAM, RPC_METHODS, ServerHello, PING_PATH, UPLOAD_PATH, EXPORT_FILE_PATH, FileEntry, FileListing, FilesError, MediaCoreError, ProjectSnapshot, HistoryEntry, HistoryState, Problem, ProjectErrorReason, ProjectError, EditRefused, Canvas, RecentProject } from "./server.ts";
-export { THUMB_PATH, RECENT_THUMB_PATH, MediaRecentEntry, MEDIA_FILE_PATH, PROXY_PATH, ProxyState, WAVEFORM_PATH, FILMSTRIP_PATH, FILMSTRIP_TILE_H, GRAPHIC_PATH, AGENT_IMAGE_PATH, BRAND_FILE_PATH, AGENT_IMAGE_NAME, MUSIC_FILE_PATH, SFX_FILE_PATH, LIBRARY_PREVIEW_PATH, LIBRARY_FOLDER_PATH, MediaImportResult, ImportJob, SetupStatus, SetupCheck } from "./media.ts";
+export { THUMB_PATH, RECENT_THUMB_PATH, MediaRecentEntry, MEDIA_FILE_PATH, PROXY_PATH, ProxyState, WAVEFORM_PATH, FILMSTRIP_PATH, FILMSTRIP_TILE_H, GRAPHIC_PATH, AGENT_IMAGE_PATH, BRAND_FILE_PATH, AGENT_IMAGE_NAME, SFX_FILE_PATH, LIBRARY_PREVIEW_PATH, LIBRARY_FOLDER_PATH, MediaImportResult, ImportJob, SetupStatus, SetupCheck } from "./media.ts";
 export type { Waveform, FilmstripLayout } from "./media.ts";
 export { PluginInfo, PluginContributions, CatalogEntry, PluginError } from "./plugins.ts";
 export { CaptureDevice, CaptureState, TakeKind, takeUploadName, TAKE_UPLOAD_NAME, MultiLayout, MultiPart, CaptureOrientation, CaptureOptions, CaptureError } from "./capture.ts";

@@ -7,8 +7,7 @@ import { TEXT_STYLES, type TextPreset } from "@uncut/core/looks";
 import { planInsertText } from "@uncut/core/textPlan";
 import { componentInfo } from "@uncut/core/components";
 import { layout } from "@uncut/core/timeline";
-import { mediaIdFor, musicInProject, musicMedia, projectIds, type MusicTrack } from "@uncut/core/music";
-import { libraryMediaOf } from "@uncut/core/library";
+import { libraryMediaOf, mediaIdFor, projectIds } from "@uncut/core/library";
 import { planPlaceMedia, takenIds } from "@uncut/core/arrange";
 import { defaultFrames, defaultSeconds } from "../settings/defaults.ts";
 
@@ -147,54 +146,8 @@ export function planDropMedia(project: ProjectModel, mediaId: string, at: { read
   return { ops: plan.ops, summary: `Add ${media.name} to the timeline`, itemId: first.itemId, start: first.start };
 }
 
-/** Music shorter than this before the video ends isn't worth adding (D91). */
+/** Music shorter than this before the video ends isn't worth adding (D91, D134). */
 const MIN_MUSIC_SECONDS = 3;
-
-/**
- * A library track (D91) on the timeline, in one edit: its add_media (when it isn't in the project
- * yet; `path` is where music.add copied it) and the audio item at the playhead. It plays from the
- * playhead to the video's end at most (the whole track on an empty timeline); under 3 s left is a
- * problem, not a blip. It goes on the first unlocked audio track that is free for that stretch,
- * else on a new "Music" track (never after a voiceover, never longer than the video), and fades in
- * over 1 s and out over 2 s.
- */
-export function planAddMusic(project: ProjectModel, track: MusicTrack, path: string | undefined, frame: number): Planned {
-  const fps = project.canvas.fps;
-  const existing = musicInProject(project, track);
-  const ops: Array<unknown> = [];
-  const taken = new Set<string>();
-  let media = existing;
-  if (!media) {
-    if (!path) return { problem: `${track.title} isn't copied into the project yet.` };
-    media = musicMedia(track, path, fps, projectIds(project));
-    taken.add(media.id);
-    ops.push({ op: "add_media", media });
-  }
-  const frames = media.probe?.frames ?? Math.floor(track.seconds * fps);
-  const { starts, end } = layoutOf(project);
-  const start = Math.max(0, Math.floor(frame));
-  let duration = frames;
-  if (end > 0) {
-    duration = Math.min(frames, end - start);
-    if (duration < MIN_MUSIC_SECONDS * fps) {
-      return { problem: start >= end ? "The playhead is at the end of the video. Move it to where the music should start, then add it." : `Only ${((end - start) / fps).toFixed(1)} s of the video are left after the playhead. Move it earlier to add music there.` };
-    }
-  }
-  const freeOn = (t: Track) => t.items.every((i) => (starts.get(i.id) ?? 0) + i.duration <= start || start + duration <= (starts.get(i.id) ?? 0));
-  let target = project.tracks.find((t) => t.kind === "audio" && t.role !== "main" && !t.locked && freeOn(t));
-  if (!target) {
-    const id = uniqueId(project, "music", taken);
-    taken.add(id);
-    // Audio tracks show under the rest whatever their index; at the end it's the bottom one.
-    ops.push({ op: "add_track", track: { id, kind: "audio", name: "Music" } });
-    target = { id, kind: "audio", name: "Music", items: [] };
-  }
-  const fadeIn = Math.min(fps, Math.floor(duration / 4));
-  const fadeOut = Math.min(2 * fps, Math.floor(duration / 4));
-  const itemId = uniqueId(project, "audio", taken);
-  ops.push({ op: "insert_item", track: target.id, item: { id: itemId, type: "audio", media: media.id, in: 0, duration, start, ...(fadeIn > 0 ? { fadeIn } : {}), ...(fadeOut > 0 ? { fadeOut } : {}) } });
-  return { ops, summary: `Add ${track.title} from the music library`, itemId, start };
-}
 
 /** What library.add answered, plus what the add is (music: fades, at most to the video's end; a sound effect: whole, as it is). */
 export interface LibrarySound {
@@ -212,7 +165,7 @@ export interface LibrarySound {
  * `source` (unless the same library sound is in the project already) and an audio item at the
  * playhead on the first unlocked audio track free for its stretch, else a new track (D124: sounds
  * overlap on tracks of their own). Music plays from the playhead to the video's end at most, with
- * fades, like the bundled tracks (planAddMusic); a sound effect goes in whole, without fades.
+ * fades; a sound effect goes in whole, without fades.
  */
 export function planAddLibrarySound(project: ProjectModel, sound: LibrarySound, frame: number): Planned {
   const fps = project.canvas.fps;

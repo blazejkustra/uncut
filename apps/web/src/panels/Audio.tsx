@@ -1,5 +1,5 @@
 // The Audio and Sound effects tabs (D33, D54, D134, D249, D250): the online library (Openverse
-// without a key, Jamendo and Freesound with the user's key: CC0 and CC BY only), the user's folders
+// without a key, Freesound with the user's key: CC0 and CC BY only), the user's folders
 // and Music library, the bundled CC0 sound-effects pack, and Copy credits for what needs it (D135).
 import { creditsOf, creditsText } from "@uncut/core/library";
 import { Check, Copy, Plus, RefreshCw } from "lucide-react";
@@ -11,7 +11,7 @@ import { SoundBrowser } from "./audio/SoundBrowser.tsx";
 
 /**
  * The Audio tab (D33, D54, D249): music to put under the video, from the user's folders, the Music
- * app's library, Jamendo or Openverse (one search field and a source select). The project's own
+ * app's library or Openverse (one search field and a source select). The project's own
  * sounds live in Media; + imports a file there.
  */
 export function AudioLibrary({ project }: { project: Project }) {

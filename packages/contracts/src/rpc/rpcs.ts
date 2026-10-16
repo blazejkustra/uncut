@@ -68,21 +68,12 @@ export const MediaImportRpc = Rpc.make(RPC_METHODS.mediaImport, {
   error: ProjectError,
 });
 
-// A track of the bundled music library (D91) copied into the open project's media/ folder (an
-// identical copy already there is reused); returns its path relative to the project. The renderer
-// adds the media and the timeline item in one edit.
-export const MusicAddRpc = Rpc.make(RPC_METHODS.musicAdd, {
-  payload: Schema.Struct({ track: Schema.String }),
-  success: Schema.Struct({ path: Schema.String }),
-  error: ProjectError,
-});
-
-// Searches the online library (Openverse, or Freesound / Jamendo with the user's key): CC0 and CC BY only.
+// Searches the online library (Openverse, or Freesound with the user's key): CC0 and CC BY only.
 export const LibrarySearchRpc = Rpc.make(RPC_METHODS.librarySearch, {
   payload: Schema.Struct({
     kind: Schema.Literals(["music", "sfx"]),
     query: Schema.String,
-    source: Schema.optional(Schema.Literals(["openverse", "freesound", "jamendo"])),
+    source: Schema.optional(Schema.Literals(["openverse", "freesound"])),
     license: Schema.optional(Schema.Literals(["cc0", "by"])),
     length: Schema.optional(Schema.Literals(["short", "medium", "long"])),
     songs: Schema.optional(Schema.Boolean),

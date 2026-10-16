@@ -31,10 +31,6 @@ extraResources:
   - from: ../../assets/fonts
     to: fonts
     filter: ["*.woff2", "OFL.txt"]
-  # The bundled CC0 music library (D91): the tracks and library.json (titles, licences).
-  - from: ../../assets/music
-    to: music
-    filter: ["*.m4a", "library.json"]
   # The bundled CC0 sound-effects pack (D134): the sounds and library.json (titles, licences).
   - from: ../../assets/sfx
     to: sfx

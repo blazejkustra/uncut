@@ -97,17 +97,12 @@ test("installs from the dmg, onboards, opens an empty project, imports, and reme
   assert.equal(spawnSync("codesign", ["--verify", "--deep", "--strict", installed]).status, 0, "the copy is validly (ad-hoc) signed");
   assert.ok(!execFileSync("xattr", [installed], { encoding: "utf8" }).includes("com.apple.quarantine"), "copied locally, so not quarantined");
   assert.deepEqual(readFileSync(join(installed, "Contents/Resources/icon.icns")), readFileSync(resolve("apps/desktop/build/icon.icns")), "Uncut's own icon");
-  // The bundled CC0 music library (D91) ships next to the server, the same files as assets/music.
   // Help › Licence and Third-Party Notices open these; Electron's and Chromium's licences ship too (D112).
   assert.ok(readFileSync(join(installed, "Contents/Resources/LICENSE.txt")).equals(readFileSync(resolve("LICENSE"))), "LICENSE shipped");
   assert.ok(readFileSync(join(installed, "Contents/Resources/THIRD_PARTY_NOTICES.txt")).equals(readFileSync(resolve("THIRD_PARTY_NOTICES"))), "notices shipped");
   assert.ok(existsSync(join(installed, "Contents/Resources/licenses/LICENSES.chromium.html")), "Chromium's licences shipped");
-  const library = JSON.parse(readFileSync(join(installed, "Contents/Resources/music/library.json"), "utf8")) as { tracks: Array<{ file: string; license: string }> };
-  assert.equal(library.tracks.length, 5);
-  for (const t of library.tracks) {
-    assert.equal(t.license, "CC0-1.0");
-    assert.ok(readFileSync(join(installed, "Contents/Resources/music", t.file)).equals(readFileSync(resolve("assets/music", t.file))), t.file);
-  }
+  // No bundled music (D274).
+  assert.ok(!existsSync(join(installed, "Contents/Resources/music")), "no music shipped");
   // The bundled CC0 sound-effects pack (D134) too, the same files as assets/sfx.
   const sfx = JSON.parse(readFileSync(join(installed, "Contents/Resources/sfx/library.json"), "utf8")) as { sounds: Array<{ file: string; license: string }> };
   assert.equal(sfx.sounds.length, (JSON.parse(readFileSync(resolve("assets/sfx/library.json"), "utf8")) as { sounds: Array<unknown> }).sounds.length);

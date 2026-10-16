@@ -2,8 +2,8 @@
 // window, muted), its real MCP server and the scripted stand-in for claude (helpers/fake-claude.ts;
 // never the real one) rebuild the promo "Haiku 4.5 vs Haiku 5.5 on the same Argent test" from the
 // reference's own files (helpers/phase6-fixture.ts), and the export is compared with the reference mp4.
-// - Turn 1 (Agent tab): media_import of the recordings and the sky by path and a dark logo, music_list +
-//   music_add (cozy-3), modules_list, four timeline_edits (title card over the sky; the race: two device
+// - Turn 1 (Agent tab): media_import of the recordings, the sky, a dark logo and the
+//   music (the studio library's cozy-3, by path), modules_list, four timeline_edits (title card over the sky; the race: two device
 //   frames whose footage holds its last frame, two agent logs, the wordmark, task line, footnote and a
 //   callout; the compare table; the end card wiping in, the music, a −16 LUFS target), project_check
 //   (three texts under 28 px), ui_show.
@@ -204,9 +204,8 @@ async function exitCheck() {
   const r1 = results();
   for (const r of r1) assert.ok(!r.result.isError, `${r.tool}: ${textOf(r.result)}`);
   const imported = JSON.parse(textOf(r1.find((r) => r.tool === "media_import")!.result));
-  assert.deepEqual(imported.imported.map((m: { id: string }) => m.id), [IDS.sky, IDS.h45, IDS.h55, IDS.logo]);
+  assert.deepEqual(imported.imported.map((m: { id: string }) => m.id), [IDS.sky, IDS.h45, IDS.h55, IDS.logo, IDS.music]);
   assert.deepEqual(imported.imported.slice(0, 3).map((m: { path: string }) => m.path), [REF.sky, REF.h45, REF.h55], "the recordings are referenced in place");
-  assert.equal(JSON.parse(textOf(r1.find((r) => r.tool === "music_add")!.result)).media, IDS.music);
   const check1 = JSON.parse(textOf(r1.filter((r) => r.tool === "project_check").at(-1)!.result));
   console.log(`turn 1 project_check: ${check1.checks.map((c: { rule: string; items?: Array<string> }) => `${c.rule}(${c.items?.join(",") ?? ""})`).join(" ")}`);
   assert.deepEqual(check1.checks.filter((c: { severity: string }) => c.severity === "warn").map((c: { rule: string; items: Array<string> }) => `${c.rule}:${c.items.join()}`).sort(), ["small-text:footnote", "small-text:sum-note", "small-text:task"]);

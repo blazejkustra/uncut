@@ -2,43 +2,21 @@ import { type LibraryState, type SoundFolderInfo, type LibrarySearchResult } fro
 import { bridge } from "../../bridge.ts";
 import { isTransportError } from "../../connection.ts";
 import { getPlayback } from "../../../preview/playback.ts";
-import { musicTrack, musicInProject } from "@uncut/core/music";
 import { type LibraryQuery, libraryMediaOf, MUSIC_LIBRARY_PATH } from "@uncut/core/library";
-import { planAddAtPlayhead, planAddMedia, planAddMusic, planAddLibrarySound } from "../../project.ts";
+import { planAddAtPlayhead, planAddMedia, planAddLibrarySound } from "../../project.ts";
 import { set, state, online, projectOf, isRemote } from "../core.ts";
 import { pickRemote } from "./remote.ts";
 import { addPlanned, adding } from "../edits.ts";
 import { call, plainError } from "../server.ts";
 
-// A library track being copied and added (D91).
-let musicAdding = false;
+// A library sound being downloaded or copied and added (D134).
+let soundAdding = false;
 
 export const mediaActions = {
   /** A generated result → the timeline at the playhead (see planAddAtPlayhead, D99). */
   addAtPlayhead: (mediaId: string) => addPlanned((project) => planAddAtPlayhead(project, mediaId, getPlayback().frame)),
   /** Media tile → timeline (see planAddMedia); the playhead moves to the new item. */
   addMedia: (mediaId: string) => addPlanned((project) => planAddMedia(project, mediaId, getPlayback().frame)),
-  /**
-   * Audio tab library → the track on the timeline (D91): the server copies it into the project's
-   * media/ (unless it's there already), then the media and the item go in as one edit.
-   */
-  async addMusic(trackId: string) {
-    const track = musicTrack(trackId);
-    // One add at a time, from the copy until the edit is in: a double click adds once.
-    if (!track || !state.snapshot || !online() || adding || musicAdding) return;
-    musicAdding = true;
-    try {
-      let path: string | undefined;
-      if (!musicInProject(projectOf(state.snapshot), track)) {
-        const result = await call((c) => c["music.add"]({ track: track.id }));
-        if (!result.ok) return set({ notice: { text: plainError(result.error), transport: isTransportError(result.error) } });
-        path = result.value.path;
-      }
-      await addPlanned((project) => planAddMusic(project, track, path, getPlayback().frame));
-    } finally {
-      musicAdding = false;
-    }
-  },
   /** The sound library's sources and limit (D134). */
   async libraryState(): Promise<LibraryState | undefined> {
     const result = await call((c) => c["library.state"]({}));
@@ -80,8 +58,8 @@ export const mediaActions = {
    * credits) and the item go in as one edit, at the playhead on a free audio track.
    */
   async addLibrarySound(id: string, music: boolean, name: string) {
-    if (!state.snapshot || !online() || adding || musicAdding) return;
-    musicAdding = true;
+    if (!state.snapshot || !online() || adding || soundAdding) return;
+    soundAdding = true;
     set({ libraryAdding: id });
     try {
       const existing = libraryMediaOf(projectOf(state.snapshot), id);
@@ -93,7 +71,7 @@ export const mediaActions = {
       }
       await addPlanned((project) => planAddLibrarySound(project, sound, getPlayback().frame));
     } finally {
-      musicAdding = false;
+      soundAdding = false;
       set({ libraryAdding: undefined });
     }
   },

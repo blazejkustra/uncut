@@ -683,54 +683,8 @@
       "returns": "{ revision, warnings, notes, checks: [{ rule, severity, message, items, frame, seconds, range, fix | hint }], disabled }"
     },
     {
-      "name": "music_list",
-      "description": "The bundled music library: cozy CC0 tracks (lo-fi, Rhodes, piano), each with id, title, moods, bpm and tempo (slow, medium, fast, free), length in seconds and project frames, loudness (normalised to about -16 LUFS), author and licence, and the media id when it's already in the project. Filter by mood, tempo or words.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "mood": {
-            "type": "string",
-            "description": "A mood tag, e.g. warm, calm, lo-fi, upbeat."
-          },
-          "tempo": {
-            "enum": [
-              "slow",
-              "medium",
-              "fast",
-              "free"
-            ],
-            "description": "slow < 80 bpm, medium 80–109, fast from 110, free = no steady beat."
-          },
-          "query": {
-            "type": "string",
-            "description": "Words to find in the title, author or moods."
-          }
-        }
-      },
-      "returns": "{ tracks: [...] }"
-    },
-    {
-      "name": "music_add",
-      "description": "Add a library track (music_list's id) to the project's media: the file is copied into the project's media/ folder (so the project stays portable) and added as audio media, as an edit on your turn. It returns the media id and its length in project frames; then put it on an audio track with timeline_edit (an audio item with fades, often ducked under the voice). A track already in the project returns its media id without copying again.",
-      "inputSchema": {
-        "type": "object",
-        "required": [
-          "id"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "The library track id, e.g. cozy-2."
-          }
-        }
-      },
-      "returns": "{ media, frames, seconds, revision }"
-    },
-    {
       "name": "library_search",
-      "description": "Search the sound library: royalty-free music or sound effects online (Openverse without a key, Freesound or Jamendo when the user stored that key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\" Uncut's bundled CC0 sound effects (designed and meme sounds) plus matching files from the user's own sound folders (`yours`, ids folder:…). Search by what it sounds like or its meme name (spellings and synonyms are understood: whoosh, swipe, ui click, pop, impact, riser, notification, success, glitch, typing, applause, vine boom, fahh, bruh, airhorn, record scratch, sad trombone, rimshot); a meme clip nobody may give away answers with free sound-alikes and says so (`clip`); for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
+      "description": "Search the sound library: royalty-free music or sound effects online (Openverse without a key, Freesound when the user stored that key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\": for sfx Uncut's bundled CC0 sound effects (designed and meme sounds) plus matching files from the user's own sound folders (`yours`, ids folder:…); for music the user's own sound folders and Music library (`yours`; Uncut ships no music, so look there first). Search by what it sounds like or its meme name (spellings and synonyms are understood: whoosh, swipe, ui click, pop, impact, riser, notification, success, glitch, typing, applause, vine boom, fahh, bruh, airhorn, record scratch, sad trombone, rimshot); a meme clip nobody may give away answers with free sound-alikes and says so (`clip`); for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -752,10 +706,9 @@
             "enum": [
               "openverse",
               "freesound",
-              "jamendo",
               "included"
             ],
-            "description": "Default openverse. jamendo: music under CC0 or CC BY, needs the user's Jamendo client ID (Settings › Keys)."
+            "description": "Default openverse. included: the bundled sound effects (sfx) or the user's own music (music)."
           },
           "license": {
             "enum": [
@@ -785,7 +738,7 @@
           }
         }
       },
-      "returns": "{ hits: [{ id, title, creator, seconds, frames, license, tags }], total, page, pages, searched?, clip? } or, for included, { sounds, yours?, clip? }"
+      "returns": "{ hits: [{ id, title, creator, seconds, frames, license, tags }], total, page, pages, searched?, clip? } or, for included, { sounds, yours?, clip? } (sfx) or { yours, total } (music)"
     },
     {
       "name": "library_add",

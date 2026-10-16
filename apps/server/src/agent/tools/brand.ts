@@ -241,7 +241,7 @@ export const makeBrandTools = (ctx: CardsCtx) => {
       const fps = project.canvas.fps;
       const audio = project.tracks.filter((t) => t.kind === "audio").flatMap((t) => t.items.filter((i) => i.type === "audio" && typeof i.media === "string"));
       const item = typeof args.item === "string" ? audio.find((i) => i.id === args.item) : [...audio].sort((a, b) => b.duration - a.duration)[0];
-      if (!item) return textResult(typeof args.item === "string" ? `There's no audio item "${args.item}" on an audio track.` : "There's no music on the timeline yet: add it (music_add or library_add, then timeline_edit) first.", true);
+      if (!item) return textResult(typeof args.item === "string" ? `There's no audio item "${args.item}" on an audio track.` : "There's no music on the timeline yet: add it (library_add or media_import, then timeline_edit) first.", true);
       const m = project.media.find((x) => x.id === item.media);
       if (!m) return textResult(`The media of ${item.id} is missing.`, true);
       const range = args.range as { start?: unknown; end?: unknown } | undefined;

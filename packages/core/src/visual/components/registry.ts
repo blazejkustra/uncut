@@ -68,7 +68,7 @@ const CATEGORY: Readonly<Record<string, readonly [ElementCategory, string]>> = {
   "component.end-card": ["Titles & text", "end outro logo website ending"],
   "component.subscribe": ["Social", "subscribe youtube channel button bell"],
   "component.social-button": ["Social", "like bell follow share comment save button heart"],
-  "component.follow": ["Social", "follow handle username account instagram tiktok youtube x linkedin twitch"],
+  "component.follow": ["Social", "follow handle username account logo youtube instagram tiktok x twitter linkedin facebook threads bluesky mastodon reddit snapchat pinterest twitch kick discord whatsapp telegram github spotify soundcloud podcast vimeo patreon substack medium website email"],
   "component.progress-bar": ["Info", "progress bar loading timer percent"],
   "component.countdown": ["Info", "countdown timer clock seconds"],
   "component.checklist": ["Info", "checklist list todo steps tick tasks"],

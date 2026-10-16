@@ -28,8 +28,6 @@ export interface ServerConfigShape {
   readonly mediaBin: string;
   // Built-in module manifests (spec/modules/builtin). The packaged app ships a copy in Resources.
   readonly modulesDir: string;
-  // The bundled music library (assets/music, D91). The packaged app ships it in Resources/music.
-  readonly musicDir: string;
   // The bundled sound-effects pack (assets/sfx, D134), shipped in Resources/sfx.
   readonly sfxDir: string;
   // The libraries graphics load with uncut:lib/ markers (assets/graphic-libs, D193), shipped in Resources/graphic-libs.
@@ -111,7 +109,7 @@ export const readLaunchOptions = (argv: ReadonlyArray<string>): LaunchOptions =>
 };
 
 /**
- * Inside Uncut.app the bundle is Resources/server/server.mjs, next to Resources/bin, modules, music,
+ * Inside Uncut.app the bundle is Resources/server/server.mjs, next to Resources/bin, modules,
  * plugins and plugin-sdk: a headless server started from an installed app (the SSH helper's command,
  * D111) finds them there without the desktop passing their paths.
  */
@@ -124,7 +122,7 @@ const fromResources = (rel: string, dev: string) => {
 /** Where app state lives: UNCUT_DATA_DIR, else ~/Library/Application Support/Uncut. */
 export const dataDirOf = (env: NodeJS.ProcessEnv = process.env) => env.UNCUT_DATA_DIR || join(homedir(), "Library", "Application Support", "Uncut");
 
-// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_MUSIC_DIR / UNCUT_DATA_DIR / UNCUT_BUNDLED_PLUGINS_DIR
+// The desktop shell passes UNCUT_PORT / UNCUT_MEDIA_BIN / UNCUT_MODULES_DIR / UNCUT_DATA_DIR / UNCUT_BUNDLED_PLUGINS_DIR
 // and the token over the bootstrap fd. Dev fallbacks assume the bundle in apps/server/dist.
 // Run by hand, the server picks a free port and a fresh token (or takes UNCUT_TOKEN) and
 // prints the port, plus any token it generated, on its ready line.
@@ -158,7 +156,6 @@ export const readConfig = (
       env.UNCUT_MEDIA_BIN ||
       fromResources("bin/uncut-media", "../../../native/media/target/release/uncut-media"),
     modulesDir: env.UNCUT_MODULES_DIR || fromResources("modules/builtin", "../../../spec/modules/builtin"),
-    musicDir: env.UNCUT_MUSIC_DIR || fromResources("music", "../../../assets/music"),
     sfxDir: env.UNCUT_SFX_DIR || fromResources("sfx", "../../../assets/sfx"),
     graphicLibsDir: env.UNCUT_GRAPHIC_LIBS_DIR || fromResources("graphic-libs", "../../../assets/graphic-libs"),
     fontsDir: env.UNCUT_FONTS_DIR || fromResources("fonts", "../../../assets/fonts"),

@@ -1,13 +1,11 @@
-// The bundled music library (D91) going into a project: a track is copied into the project's
-// media/ folder (D12: a project that points into the app bundle breaks once it's moved to another
-// Mac or the app is updated), under its own file name, or a numbered one when a different file
-// already has that name. An identical copy already there is reused. Used by the renderer's
-// music.add and the agent's music_add.
+// Sounds going into a project: a bundled sound effect or a file of the user's folders is copied into
+// the project's media/ folder (D12: a project that points into the app bundle breaks once it's moved
+// to another Mac or the app is updated), under its own file name, or a numbered one when a different
+// file already has that name. An identical copy already there is reused. (The bundled music of D91
+// went the same way until D274 removed it.)
 import { randomUUID } from "node:crypto";
 import { copyFile, link, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { extname, join, sep } from "node:path";
-
-import { musicTrack, type MusicTrack } from "@uncut/core/music";
 
 const same = async (a: string, b: string) => {
   const [sa, sb] = await Promise.all([stat(a), stat(b)]);
@@ -28,19 +26,6 @@ function serialised<A>(key: string, run: () => Promise<A>): Promise<A> {
     if (queues.get(key) === settled) queues.delete(key);
   });
   return next;
-}
-
-/**
- * Copies the library track into `<projectDir>/media/` and returns its path relative to the project
- * (media/cozy-2.m4a), or a sentence saying why it couldn't.
- */
-export function copyLibraryTrack(musicDir: string, projectDir: string, id: string): Promise<{ readonly track: MusicTrack; readonly path: string } | { readonly problem: string }> {
-  const track = musicTrack(id);
-  if (!track) return Promise.resolve({ problem: `There's no library track "${id}".` });
-  return serialised(projectDir, async () => {
-    const copied = await copyOnce(join(musicDir, track.file), projectDir, track.file);
-    return "problem" in copied ? copied : { track, path: copied.path };
-  });
 }
 
 /** A bundled sound effect (D134) copied into the project's media/ the same way; its path relative to the project. */
@@ -64,7 +49,7 @@ async function copyOnce(source: string, projectDir: string, file: string, bundle
   try {
     await stat(source);
   } catch {
-    return { problem: bundled ? `The library file ${track.file} is missing from this copy of Uncut.` : `${source} is missing.` };
+    return { problem: bundled ? `The bundled file ${track.file} is missing from this copy of Uncut.` : `${source} is missing.` };
   }
   try {
     const folder = join(projectDir, "media");

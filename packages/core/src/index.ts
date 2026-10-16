@@ -46,9 +46,7 @@ export { brandColourRule, CHECK_IDS, CHECK_RULES, checkRule, disabledChecks, FIL
 export type { SoundProfile } from "./checks/checks.ts";
 export type { Check, CheckContext, CheckFix, CheckRule, CheckSeverity } from "./checks/checks.ts";
 export { LAYOUT_HARD, LAYOUT_RULES } from "./checks/layout.ts";
-export { filterMusic, libraryTrackOf, mediaIdFor, MUSIC_MOODS, MUSIC_TEMPOS, MUSIC_TRACKS, musicInProject, musicMedia, musicPath, musicTempo, musicTrack, projectIds } from "./audio/music.ts";
-export type { MusicTempo, MusicTrack } from "./audio/music.ts";
-export { attributionLine, bundledSfxOf, creditOf, creditsOf, creditsText, filterSfx, hitKey, LIBRARY_LENGTHS, LIBRARY_MODULES, LIBRARY_SOURCE_NAMES, LIBRARY_SOURCES, libraryMediaOf, LICENSE_NAMES, lengthLabel, licenseUrl, limitSentence, mediaCredit, MEME_SOUNDS, MUSIC_GENRES, parseHitKey, SFX_CATEGORIES, SFX_SOUNDS, sfxCredit, sfxSound } from "./audio/library.ts";
+export { attributionLine, bundledSfxOf, creditOf, creditsOf, creditsText, filterSfx, hitKey, LIBRARY_LENGTHS, LIBRARY_MODULES, LIBRARY_SOURCE_NAMES, LIBRARY_SOURCES, libraryMediaOf, LICENSE_NAMES, lengthLabel, licenseUrl, limitSentence, mediaCredit, mediaIdFor, MEME_SOUNDS, MUSIC_GENRES, parseHitKey, projectIds, SFX_CATEGORIES, SFX_SOUNDS, sfxCredit, sfxSound } from "./audio/library.ts";
 export type { Credits, LibraryCredit, LibraryHit, LibraryKind, LibraryLength, LibraryLicense, LibraryQuery, LibrarySource, SfxSound } from "./audio/library.ts";
 export { planReshoot } from "./timeline/reshoot.ts";
 export { fitFadeOut, mediaUses, planFitToVideo, planRemoveMedia, usedMediaIds, videoEnd } from "./timeline/mediaPlan.ts";

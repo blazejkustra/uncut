@@ -20,7 +20,6 @@ export const RPC_METHODS = {
   mediaThumbnails: "media.thumbnails",
   mediaJobs: "media.jobs",
   mediaProxies: "media.proxies",
-  musicAdd: "music.add",
   librarySearch: "library.search",
   libraryAdd: "library.add",
   libraryState: "library.state",

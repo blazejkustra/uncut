@@ -29,7 +29,7 @@ export function estimateOf(g: GeneratorInfo, kind: GenType, size: string | undef
   return kind === "video" ? 1 : 0.05;
 }
 const dollars = (n: number) => `$${n.toFixed(2)}`;
-const PROVIDER: Record<KeyProvider, string> = { openai: "OpenAI", google: "Google", elevenlabs: "ElevenLabs", freesound: "Freesound", jamendo: "Jamendo" };
+const PROVIDER: Record<KeyProvider, string> = { openai: "OpenAI", google: "Google", elevenlabs: "ElevenLabs", freesound: "Freesound" };
 
 const TYPES: ReadonlyArray<{ id: GenType; label: string; noun: string; icon: typeof ImageIcon }> = [
   { id: "image", label: "Picture", noun: "picture", icon: ImageIcon },

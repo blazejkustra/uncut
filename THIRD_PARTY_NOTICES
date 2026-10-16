@@ -109,28 +109,6 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ==============================================================================
-Music library (CC0 1.0, public domain)
-==============================================================================
-
-Shipped in Resources/music. Each track's licence was checked on its Freesound page.
-
-cozy-1.m4a: "Chill Lofi - lost stars" by noel.wav
-  https://freesound.org/people/noel.wav/sounds/680400/
-  CC0-1.0, checked 2026-10-07; First 120 s of 224 s, faded out over the last 3 s
-cozy-2.m4a: "Dusty rhodes neo soul loop" by modcam.music
-  https://freesound.org/people/modcam.music/sounds/676586/
-  CC0-1.0, checked 2026-10-07
-cozy-3.m4a: "Lofi Vinyl E-Piano Loop" by holizna
-  https://freesound.org/people/holizna/sounds/629176/
-  CC0-1.0, checked 2026-10-07
-cozy-4.m4a: "Sleepy Upright Piano Seamless Loop" by blankie.rest
-  https://freesound.org/people/blankie.rest/sounds/859607/
-  CC0-1.0, checked 2026-10-07
-cozy-5.m4a: "Lofi - keepin the pace" by noel.wav
-  https://freesound.org/people/noel.wav/sounds/680399/
-  CC0-1.0, checked 2026-10-07; First 120 s of 202 s, faded out over the last 3 s
-
-==============================================================================
 Sound effects (CC0 1.0, public domain)
 ==============================================================================
 
@@ -395,6 +373,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+==============================================================================
+Brand icons: Simple Icons (CC0 1.0)
+==============================================================================
+
+The platform logos of the follow handle element (packages/core/src/visual/brandIcons.ts) are SVG
+paths and brand colours from Simple Icons, simple-icons@16.33.0 (https://github.com/simple-icons/simple-icons),
+released under CC0 1.0 Universal (public domain). As Simple Icons' disclaimer says, the logos
+remain trademarks of their owners; Uncut shows one only to name the platform a handle is on and
+isn't made by or affiliated with any of them. Included: YouTube, Instagram, TikTok, X, Facebook, Threads, Bluesky, Mastodon, Reddit, Snapchat, Pinterest, Twitch, Kick, Discord, WhatsApp, Telegram, GitHub, Spotify, SoundCloud, Apple Podcasts, Vimeo, Patreon, Substack, Medium.
 
 ==============================================================================
 Provider marks: from t3code (MIT)
