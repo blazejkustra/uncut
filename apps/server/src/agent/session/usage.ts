@@ -8,8 +8,35 @@ export const CLAUDE_CODE_BASE_TOKENS = 20_000;
 /** A rough token count: prose about 4 characters a token, JSON schemas about 2.4. */
 export const estimateTokens = (chars: number, kind: "prose" | "json" = "prose") => Math.round(Math.max(0, chars) / (kind === "json" ? 2.4 : 4));
 
-/** The window a model id implies when claude didn't say: "[1m]" in the id is the 1M window, else 200k. */
-export const windowFor = (model: string | undefined) => (model && /\[1m\]/i.test(model) ? 1_000_000 : 200_000);
+/**
+ * D269 (issue #101): the window a model id says outright: "[1m]" (the 1M-context variant, as the
+ * user picks it or claude's init reports it) is 1M. Anything else is unknown: some models have 1M
+ * natively, so 200k would be a guess. The API's message.model never carries "[1m]".
+ */
+export const windowFor = (model: string | undefined) => (model && /\[1m\]/i.test(model) ? 1_000_000 : undefined);
+
+/**
+ * D269: the model a session runs as claude knows it (init's model, else the user's choice, else the
+ * message's), without a date suffix: the key a result's window is remembered under. "[1m]" stays,
+ * so the 1M and 200k variants of one model don't share a window.
+ */
+export const windowKey = (o: { readonly model?: string | undefined; readonly initModel?: string | undefined; readonly chosen?: string | undefined }) => {
+  const id = o.initModel || o.chosen || o.model;
+  return id ? id.replace(/-\d{8}(?=\[1m\]$|$)/i, "") : undefined;
+};
+
+/**
+ * D269: the window to show with an assistant message's usage, as soon as it's known: "[1m]" on the
+ * model the user chose or claude's init named is 1M; else the window a result already reported for
+ * this model (earlier in this app run); else undefined (the meter shows only the used count until
+ * the turn's result reports modelUsage's contextWindow). Never a guessed 200k.
+ */
+export function knownWindow(o: { readonly model?: string | undefined; readonly initModel?: string | undefined; readonly chosen?: string | undefined; readonly learned?: ReadonlyMap<string, number> }): number | undefined {
+  const marked = windowFor(o.chosen) ?? windowFor(o.initModel);
+  if (marked) return marked;
+  const key = windowKey(o);
+  return key ? o.learned?.get(key) : undefined;
+}
 
 const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 
@@ -49,10 +76,10 @@ export function resultWindow(msg: Record<string, any>, model: string | undefined
 export const systemToolsEstimate = (systemChars: number, toolsJsonChars: number) => CLAUDE_CODE_BASE_TOKENS + estimateTokens(systemChars) + estimateTokens(toolsJsonChars, "json");
 
 /** The meter's numbers: what claude reported, split into estimated parts (the conversation is the rest, never below 0). */
-export function contextOf(o: { readonly used: number; readonly window: number; readonly systemTools: number; readonly message: number; readonly model?: string | undefined }): AgentContext {
+export function contextOf(o: { readonly used: number; readonly window?: number | undefined; readonly systemTools: number; readonly message: number; readonly model?: string | undefined }): AgentContext {
   const systemTools = Math.min(o.systemTools, o.used);
   const message = Math.min(o.message, Math.max(0, o.used - systemTools));
-  return { used: o.used, window: o.window, systemTools, conversation: Math.max(0, o.used - systemTools - message), message, ...(o.model ? { model: o.model } : {}) };
+  return { used: o.used, ...(o.window ? { window: o.window } : {}), systemTools, conversation: Math.max(0, o.used - systemTools - message), message, ...(o.model ? { model: o.model } : {}) };
 }
 
 /** This message's context: what Uncut added to the user's words (the <context>, <editor-context> and other blocks), estimated. */

@@ -3,6 +3,8 @@
 // draft while typing (its words at ~4 characters a token plus the context Uncut adds, estimated
 // like the last message's). The tooltip breaks the total down: system + tools, conversation, this
 // message's context (estimates). Amber from 80 %, red from 95 %. Hidden until claude reported usage.
+// D269 (#101): the window shows once it's known (the model's "[1m]" or the result's modelUsage);
+// until then only the used count ("72k"), the ring empty, never a guessed 200k.
 import { useApp } from "../state/store.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./token-meter.css";
@@ -22,12 +24,15 @@ const RING = 2 * Math.PI * R;
 export function TokenMeter() {
   const { agent, agentDraft } = useApp();
   const c = agent?.context;
-  if (!c || !(c.window > 0)) return null;
-  const share = Math.min(1, c.used / c.window);
+  if (!c || !(c.used > 0)) return null;
+  const window = c.window && c.window > 0 ? c.window : undefined;
+  const share = window ? Math.min(1, c.used / window) : 0;
   const level = share >= 0.95 ? "full" : share >= 0.8 ? "high" : "ok";
   const draft = agentDraft.trim() ? Math.round(agentDraft.trim().length / 4) + c.message : 0;
   const lines = [
-    `Context: ${c.used.toLocaleString("en-US")} of ${c.window.toLocaleString("en-US")} tokens (${Math.round(share * 100)}%), after the agent's last answer`,
+    window
+      ? `Context: ${c.used.toLocaleString("en-US")} of ${window.toLocaleString("en-US")} tokens (${Math.round(share * 100)}%) after the agent's last answer, as Claude Code reported`
+      : `Context: ${c.used.toLocaleString("en-US")} tokens after the agent's last answer (the window shows once Claude Code reports it)`,
     `System prompt + tools: ~${tokens(c.systemTools)} (estimate)`,
     `Conversation: ~${tokens(c.conversation)}`,
     `This message's context: ~${tokens(c.message)} (estimate)`,
@@ -46,7 +51,7 @@ export function TokenMeter() {
           <circle className="fill" cx="7" cy="7" r={R} strokeDasharray={`${share * RING} ${RING}`} />
         </svg>
         <span className="token-meter-text" data-testid="agent-token-used">
-          {tokens(c.used)} / {tokens(c.window)}
+          {window ? `${tokens(c.used)} / ${tokens(window)}` : tokens(c.used)}
         </span>
         {draft > 0 && (
           <span className="token-meter-draft" data-testid="agent-token-draft">
