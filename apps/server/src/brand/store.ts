@@ -108,6 +108,7 @@ export function normKit(raw: unknown, scope: BrandScope, id?: string): BrandKit 
     logos: { ...(light ? { light } : {}), ...(dark ? { dark } : {}), ...(mark ? { mark } : {}) },
     colors,
     fonts,
+    ...(str(k.about, 2000).trim() ? { about: str(k.about, 2000).trim() } : {}),
     tone: str(k.tone, 4000),
     taglines: strs(k.taglines, 20, 200),
     urls: strs(k.urls, 20, 300),

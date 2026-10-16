@@ -41,6 +41,8 @@ export const BrandKit = Schema.Struct({
   logos: Schema.Struct({ light: Schema.optional(Schema.String), dark: Schema.optional(Schema.String), mark: Schema.optional(Schema.String) }),
   colors: Schema.Array(BrandColor),
   fonts: Schema.Array(BrandFont),
+  /** D296: what the product is, in a paragraph (the agent reads it instead of searching the disk or the web). */
+  about: Schema.optional(Schema.String),
   tone: Schema.String,
   taglines: Schema.Array(Schema.String),
   urls: Schema.Array(Schema.String),

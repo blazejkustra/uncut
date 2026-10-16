@@ -40,6 +40,7 @@ export interface KitDraft {
   readonly logos: Partial<Record<LogoSlot, string>>;
   readonly colors: ReadonlyArray<{ readonly hex: string; readonly role: string; readonly name?: string | undefined }>;
   readonly fonts: ReadonlyArray<{ readonly family: string; readonly role: string; readonly weight?: number | undefined; readonly file?: string | undefined }>;
+  readonly about: string;
   readonly tone: string;
   readonly taglines: string;
   readonly urls: string;
@@ -53,6 +54,7 @@ export const draftOfKit = (k: BrandKit): KitDraft => ({
   logos: { ...k.logos },
   colors: k.colors.map((c) => ({ ...c })),
   fonts: k.fonts.map((f) => ({ ...f })),
+  about: k.about ?? "",
   tone: k.tone,
   taglines: k.taglines.join("\n"),
   urls: k.urls.join("\n"),
