@@ -2,7 +2,7 @@ import type { AgentApproval, AgentTurn } from "@uncut/contracts";
 import { TerminalSquare } from "lucide-react";
 import { useState, useEffect } from "react";
 import { actions } from "../../state/store.ts";
-import { useRecorder, refreshAccess, loadSources, getRecorder, startTake } from "../../capture/recorder.ts";
+import { useRecorder, refreshAccess, loadSources, getRecorder, startTake, COUNTDOWN } from "../../capture/recorder.ts";
 
 /** D198: the agent wants to change a kit's colours or fonts: each field before and after; Apply or Keep the kit (no answer in 2 minutes keeps it). */
 export function BrandDiffCard({ approval, brand, online }: { approval: AgentApproval; brand: NonNullable<AgentApproval["brand"]>; online: boolean }) {
@@ -221,7 +221,7 @@ export function ScreenApprovalCard({ approval, screen, online }: { approval: Age
     const accepted = await actions.agentApprove(approval.id, true, source.name);
     if (!accepted) return;
     if (getRecorder().phase !== "idle") return void actions.agentScreenTake(approval.id, { problem: "Another recording is running in Uncut." });
-    void startTake({ mode: "screen", source, withMic, seconds: screen.seconds, agent: { id: approval.id } });
+    void startTake({ mode: "screen", source, withMic, seconds: screen.seconds, countdown: COUNTDOWN, agent: { id: approval.id } });
   };
   const decline = () => {
     setSent(true);

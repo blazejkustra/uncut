@@ -13,6 +13,11 @@ export let mini: BrowserWindow | undefined;
 let miniState: MiniRecorderState | null = null;
 const MINI_SIZE = { width: 320, height: 64 };
 
+/** D267: the mini window says it's listening; it gets the latest state (a take that started at once may have sent it before the page subscribed). */
+export function resendMini() {
+  if (mini && miniState) mini.webContents.send(MINI_RECORDER_STATE_CHANNEL, miniState);
+}
+
 export function showMini(state: MiniRecorderState | null) {
   miniState = state;
   if (!state) {

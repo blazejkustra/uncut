@@ -1,7 +1,7 @@
 // D114 on the packaged app, run invisibly and muted, with Chromium's fake microphone and camera
 // (UNCUT_TEST_MEDIA=fake from launchApp: no real device, no prompt) and a stand-in screen (never
 // desktopCapturer, so no Screen Recording prompt):
-// - Microphone: the level meter moves, Record counts 3-2-1, the timeline plays while recording,
+// - Microphone: the level meter moves, Record starts at once (no 3-2-1, D267), the timeline plays while recording,
 //   Stop puts the voiceover on a Voiceover track at the playhead as long as the recorder measured
 //   (±0.2 s); one ⌘Z takes media, item and track out, ⌘⇧Z puts them back. A take under a second
 //   is discarded; Cancel keeps nothing.
@@ -13,7 +13,7 @@
 // - D238: one recorder: sources toggle on and off, the screen or window is picked in a modal; a
 //   camera take alone is picture only (the microphone is its own source).
 // - D144: the agent's screen_record (scripted claude): the card in the Agent tab preselects the
-//   window it named, Record runs the stand-in take for its seconds with the 3-2-1 and a status
+//   window it named, Record runs the stand-in take for its seconds after a 3-2-1 (kept for the agent, D267) and a status
 //   line, and the take lands in Media as an edit of the turn.
 // Screenshots: test-output/capture-mic.png, capture-recording-mic.png, capture-camera.png,
 // capture-screen.png, capture-denied.png, capture-agent-card.png, capture-agent-recording.png.
@@ -125,11 +125,12 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await page.screenshot({ path: "test-output/capture-mic.png" });
 
-    // Record: 3-2-1, then the timer; the timeline plays from the playhead meanwhile.
+    // Record: the timer straight away (no 3-2-1, D267); the timeline plays from the playhead meanwhile.
+    const clicked = Date.now();
     await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-countdown]");
-    assert.equal(await text(page, "[data-testid=capture-countdown]"), "3");
     await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+    assert.ok(Date.now() - clicked < 2500, `recording started without a countdown (${Date.now() - clicked} ms)`);
+    assert.equal(await page.$("[data-testid=capture-countdown]"), null);
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.playing === "true", { timeout: 10000 }).catch(() => {});
     assert.equal(await page.$eval("[data-testid=preview-frame]", (el) => (el as HTMLElement).dataset.playing), "true", "the timeline plays while recording");
     await page.screenshot({ path: "test-output/capture-recording-mic.png" });
@@ -168,14 +169,15 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     assert.equal(project.media.length, 2);
     assert.equal(project.tracks.find((t: { name: string }) => t.name === "Voiceover").items[0].id, item.id);
 
-    // A take under a second is discarded; Cancel during the countdown keeps nothing.
+    // A take under a second is discarded; Cancel keeps nothing.
     await page.click("[data-testid=capture-take-record]");
     await waitFor(page, "[data-testid=capture-take-stop]", 10000);
     await page.click("[data-testid=capture-take-stop]");
     await waitFor(page, "[data-testid=capture-take-discarded]", 10000);
     assert.match(await text(page, "[data-testid=capture-take-discarded]"), /under a second, so it was discarded/);
     await page.click("[data-testid=capture-take-record]");
-    await waitFor(page, "[data-testid=capture-countdown]");
+    await waitFor(page, "[data-testid=capture-take-timer]", 10000);
+    await sleep(1200);
     await page.click("[data-testid=capture-take-cancel]");
     await page.waitForFunction(() => /Cancelled/.test(document.querySelector("[data-testid=capture-take-discarded]")?.textContent ?? ""), { timeout: 5000 });
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")!.dataset.phase === "idle");
@@ -356,6 +358,8 @@ test("D144: the agent's screen_record asks on a card, the user picks Record, and
     await page.screenshot({ path: "test-output/capture-agent-card.png" });
     await page.click("[data-testid=agent-allow]");
     await waitFor(page, "[data-testid=agent-screen-take]", 10000);
+    // D267: the agent's take keeps its 3-2-1 (the user gets a moment to switch to what's recorded).
+    await page.waitForFunction(() => /Recording in [1-3]/.test(document.querySelector("[data-testid=agent-screen-take]")?.textContent ?? ""), { timeout: 5000 });
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-screen-take]")?.dataset.phase === "recording", { timeout: 10000 });
     await page.screenshot({ path: "test-output/capture-agent-recording.png" });
     // It stops by itself after 1.5 s; the turn finishes with the take in Media.
