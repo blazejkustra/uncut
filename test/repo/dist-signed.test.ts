@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 
-import { DMG_ICONS, DMG_WINDOW } from "../../apps/desktop/scripts/make-dmg-background.ts";
+import { backgroundSvg, DMG_FOOTER, DMG_HEADING, DMG_ICONS, DMG_WINDOW } from "../../apps/desktop/scripts/make-dmg-background.ts";
 import {
   BUILT_DMG_NAME,
   DEFAULT_NOTARY_PROFILE,
@@ -164,6 +164,11 @@ test("the DMG's installer window: background pair, icon layout, volume name, no 
   };
   assert.deepEqual(size("apps/desktop/build/background.png"), DMG_WINDOW);
   assert.deepEqual(size("apps/desktop/build/background@2x.png"), { width: DMG_WINDOW.width * 2, height: DMG_WINDOW.height * 2 });
+  // The light installer page: heading, footer, wordmark, DM Sans embedded; no label plates (labels are black on light).
+  const svg = backgroundSvg("AAAA");
+  assert.equal(DMG_HEADING, "Drag Uncut into Applications.");
+  assert.equal(DMG_FOOTER, "Once copied, open it from Applications.");
+  for (const t of [DMG_HEADING, DMG_FOOTER, ">Uncut</text>", "data:font/woff2;base64,AAAA", `width="${DMG_WINDOW.width}" height="${DMG_WINDOW.height}"`]) assert.ok(svg.includes(t), t);
   const script = readFileSync("apps/desktop/scripts/dist-signed.ts", "utf8");
   assert.match(script, /dmgBuilderArgs\(app, out\)/, "makeDmg lays out the DMG with electron-builder");
   assert.doesNotMatch(script, /osascript|"Finder"|hdiutil", \["create"/, "no Finder scripting (hangs on CI) and no plain hdiutil DMG");
