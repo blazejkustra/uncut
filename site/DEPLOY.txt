@@ -24,7 +24,7 @@ in site/content/blog/<slug>.md.
    in (not from the folder it uploads), so running it from the repo root would ship the pages
    without the middleware:
      cd site && npx wrangler pages deploy out --project-name uncut --branch main
-   A preview first: --branch <name> instead of main gives https://<name>.uncut.pages.dev.
+   A preview first: --branch <name> instead of main gives https://<name>.uncut-2tw.pages.dev.
    Check the result: curl -sI https://uncut.video/ shows set-cookie: uncut_region=... (the function)
    and one content-security-policy with sha256 hashes (the headers).
 
