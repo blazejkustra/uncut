@@ -153,20 +153,32 @@ export function simpleCommand(command: string): { words: Array<string> } | { com
 const FLAGS: Record<string, ReadonlySet<string>> = {
   ls: new Set(["-l", "-a", "-la", "-al", "-lh", "-hl", "-lah", "-alh", "-1", "-h"]),
   cat: new Set(),
-  head: new Set(["-n"]),
-  tail: new Set(["-n"]),
+  // -n and -c take a count (the next word, digits only).
+  head: new Set(["-n", "-c"]),
+  tail: new Set(["-n", "-c"]),
   stat: new Set(),
   mkdir: new Set(["-p"]),
 };
 
+/** Where an allowlisted command may read: the project, and (reads only) the sanctioned folders (D296). */
+export interface ReadZones {
+  readonly project: string;
+  /** The active kit's folder and the bundled graphic libraries: read, never written. Real paths. */
+  readonly sanctioned?: ReadonlyArray<string>;
+}
+
 /**
- * Auto's commands that run without a card when claude asks Uncut (D194, after two security reviews): ls, cat, head,
- * tail and stat of, and mkdir -p of, plain relative paths inside the project (no leading / or ~, no
- * .., no * ? [ ] { } or =), with only the flags in FLAGS (head/tail: -n and a number), never on
- * Uncut's own files. Media work goes through Uncut's tools; ffmpeg, ffprobe, file, wc and the rest
+ * Auto's commands that run without a card when claude asks Uncut (D194, after two security reviews;
+ * issue A/B 2026-10-17): ls, cat, head, tail and stat of paths inside the project or a sanctioned
+ * folder (the active kit, the graphic libraries), and mkdir -p of paths inside the project only.
+ * A path may be relative (to the project) or absolute; never ~, .., * ? [ ] { } or =; it is judged
+ * by its real path (`real`, symlinks followed), so a link can't reach out. Only the flags in FLAGS
+ * (head/tail: -n or -c and a number). Reading Uncut's own files (project.json, …) is fine; making a
+ * folder there isn't. Media work goes through Uncut's tools; ffmpeg, ffprobe, file, wc and the rest
  * always get a card.
  */
-export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, project: string): boolean {
+export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, zones: string | ReadZones): boolean {
+  const { project, sanctioned = [] } = typeof zones === "string" ? { project: zones } : zones;
   const flags = FLAGS[name];
   if (!flags) return false;
   const paths: Array<string> = [];
@@ -174,20 +186,93 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
     const a = args[i]!;
     if (a.startsWith("-")) {
       if (!flags.has(a)) return false;
-      if (a === "-n") {
-        if (!/^\d{1,6}$/.test(args[i + 1] ?? "")) return false;
+      if (a === "-n" || a === "-c") {
+        if (!/^\d{1,9}$/.test(args[i + 1] ?? "")) return false;
         i++;
       }
       continue;
     }
     paths.push(a);
   }
-  const plain = (a: string) => !/^[/~]/.test(a) && !/[*?[\]{}=\\]/.test(a) && !a.split("/").includes("..");
-  const ok = (a: string) => {
+  const plain = (a: string) => a.length > 0 && !a.startsWith("~") && !/[*?[\]{}=\\$`]/.test(a) && !a.split("/").includes("..");
+  const readable = (a: string) => {
     if (!plain(a)) return false;
     const r = real(a);
-    return inside(r, project) && !owned(r, project);
+    return inside(r, project) || sanctioned.some((d) => inside(r, d));
   };
-  if (name === "mkdir") return paths.length > 0 && paths.every((a) => ok(a) && real(a) !== project);
-  return paths.every(ok);
+  if (name === "mkdir") {
+    return paths.length > 0 && paths.every((a) => {
+      if (!plain(a)) return false;
+      const r = real(a);
+      return inside(r, project) && r !== project && !owned(r, project);
+    });
+  }
+  return paths.every(readable);
+}
+
+/**
+ * A line of read-only commands Auto runs without a card: simple commands joined by ;, && or
+ * newlines (no other shell syntax: no pipes, redirects, $, `, subshells, globs or backslashes), each
+ * one allowlisted (reads in the project or a sanctioned folder, mkdir -p in the project), `echo`
+ * and `pwd`, or `cd` into the project or a folder in it (relative paths after it are read from
+ * there). `real(p, base)` is a path's real path against `base`.
+ */
+export function readOnlyLine(command: string, real: (p: string, base: string) => string, zones: ReadZones): boolean {
+  const c = command.trim();
+  if (!c || /[$`(){}<>|\\\r]|<<|\*\*|\bsudo\b/.test(c)) return false;
+  // Only ; && and newlines join commands; a lone & (background) or || isn't taken.
+  const pieces: Array<string> = [];
+  let cur = "";
+  let quote: string | undefined;
+  for (let i = 0; i < c.length; i++) {
+    const ch = c[i]!;
+    if (quote) {
+      cur += ch;
+      if (ch === quote) quote = undefined;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      cur += ch;
+      continue;
+    }
+    if (ch === ";" || ch === "\n") {
+      pieces.push(cur);
+      cur = "";
+      continue;
+    }
+    if (ch === "&") {
+      if (c[i + 1] !== "&") return false;
+      i++;
+      pieces.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  if (quote) return false;
+  pieces.push(cur);
+  const segments = pieces.map((x) => x.trim());
+  if (segments.length > 1 && !segments.at(-1)) segments.pop();
+  if (segments.length > 12 || segments.some((x) => !x)) return false;
+  let cwd = zones.project;
+  for (const segment of segments) {
+    const parsed = simpleCommand(segment);
+    if ("complex" in parsed) return false;
+    const [name = "", ...args] = parsed.words;
+    if (name === "echo" || name === "pwd") {
+      if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) return false;
+      continue;
+    }
+    if (name === "cd") {
+      if (args.length !== 1 || args[0]!.startsWith("-") || args[0]!.startsWith("~") || /[*?[\]{}=]/.test(args[0]!)) return false;
+      const to = real(args[0]!, cwd);
+      // Only into the project: claude's shell keeps its folder between calls, and later calls are judged from the project.
+      if (!inside(to, zones.project)) return false;
+      cwd = to;
+      continue;
+    }
+    if (!allowlisted(name, args, (p) => real(p, cwd), zones)) return false;
+  }
+  return true;
 }
