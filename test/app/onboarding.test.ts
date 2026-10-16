@@ -3,7 +3,7 @@
 // Screenshots: test-output/onboarding-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -51,6 +51,19 @@ const text = (page: Page, id: string) => page.$eval(`[data-testid=${id}]`, (el) 
 const attr = (page: Page, id: string, name: string) => page.$eval(`[data-testid=${id}]`, (el, n) => el.getAttribute(n), name);
 const waitFor = (page: Page, selector: string, timeout = 15000) => page.waitForSelector(selector, { timeout });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Whether this Mac's login shell finds codex, as the app's probe does ($SHELL -ilc from launchd's
+ * bare PATH): Homebrew's cask puts it in /opt/homebrew/bin next to ffmpeg, so it can't be hidden
+ * without hiding the tools the other steps check. The test expects whichever is true here.
+ */
+const codexInShell = () => {
+  const r = spawnSync(process.env.SHELL || "/bin/zsh", ["-ilc", "command -v codex"], {
+    env: { HOME: homedir(), USER: process.env.USER, LOGNAME: process.env.USER, TMPDIR: process.env.TMPDIR, SHELL: process.env.SHELL || "/bin/zsh", PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+    encoding: "utf8",
+    timeout: 20000,
+  });
+  return (r.stdout ?? "").split("\n").some((line) => /^\/\S*\/codex$/.test(line.trim()) && existsSync(line.trim()));
+};
 
 before(async () => {
   if (skip) return;
@@ -97,11 +110,18 @@ test("first launch shows the wizard with real statuses; finishing it is remember
     assert.ok(["ready", "needs-login"].includes(claude!), `Claude Code: ${claude} (${await text(page, "check-claude")})`);
     assert.match(await text(page, "check-claude"), /Version \d+\.\d+/);
   }
-  assert.equal(await attr(page, "check-codex", "data-status"), "missing");
-  assert.equal(await text(page, "chip-codex"), "Not installed");
-  await page.click("[data-testid=copy-codex]");
-  for (let i = 0; i < 20 && !app.output().includes("[test] copied npm install -g @openai/codex"); i++) await sleep(100);
-  assert.ok(app.output().includes("[test] copied npm install -g @openai/codex"));
+  if (codexInShell()) {
+    // Installed here: found, its sign-in not checked (D277), and no install command to copy.
+    assert.equal(await attr(page, "check-codex", "data-status"), "warning");
+    assert.equal(await text(page, "chip-codex"), "Found");
+    assert.equal(await page.$("[data-testid=copy-codex]"), null);
+  } else {
+    assert.equal(await attr(page, "check-codex", "data-status"), "missing");
+    assert.equal(await text(page, "chip-codex"), "Not installed");
+    await page.click("[data-testid=copy-codex]");
+    for (let i = 0; i < 20 && !app.output().includes("[test] copied npm install -g @openai/codex"); i++) await sleep(100);
+    assert.ok(app.output().includes("[test] copied npm install -g @openai/codex"));
+  }
   await page.click("[data-testid=check-again]");
   await waitFor(page, "[data-testid=check-again]:not([disabled])");
   await shot(app, "1-agents");

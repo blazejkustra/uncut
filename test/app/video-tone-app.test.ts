@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -133,6 +134,9 @@ test("D222: a no-op effect changes nothing visible, and the preview shows the fi
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]) } });
   page = app.page;
   await waitForWelcome(page);
+  // D273: the GPU compositor is the default; this checks the DOM path's <video>, scrub canvas and
+  // effects canvas (the GPU path's levels are checked against the export by gpu-compositor-app / issue12).
+  await viewerPrefs(page, { gpu: false });
   await page.click("[data-testid=open-project]");
   await page.waitForSelector("[data-testid=editor]", { timeout: 15000 });
   await page.click("[data-testid=bottom-timeline]");
