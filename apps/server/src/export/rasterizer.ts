@@ -153,7 +153,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     pending.delete(Number(msg.id));
     clearTimeout(p.timer);
     if (msg.ok === true) p.resolve();
-    else p.reject(new Error(`The text renderer failed: ${String(msg.error)}`));
+    else p.reject(new Error(`The text renderer failed: ${typeof msg.error === "string" && msg.error ? msg.error : "it gave no reason"}`));
   });
   child.once("exit", (code, signal) => failAll(new Error(`The text renderer stopped (${signal ?? `code ${code}`}).`)));
 

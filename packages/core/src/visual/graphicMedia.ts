@@ -78,8 +78,9 @@ export function graphicMediaUsed(html: string): Array<string> {
 /**
  * The script graphicDocument puts in a graphic's <head> (before its own bootstrap): window.uncut
  * (frame, image, url) and window.__uncutMedia (ready: the markers' pictures in place and decoded,
- * awaited before the first frame; sweep: called after each frame, lets go of pictures not used
- * lately, so a long graphic doesn't hold every frame it drew).
+ * awaited before the first frame; sweep: called after each frame, forgets pictures not asked for
+ * lately, so a long graphic doesn't keep every frame it drew; it never closes one, which the
+ * graphic may still hold).
  */
 export const GRAPHIC_MEDIA_BOOT = `(() => {
   const MARK = ${MARKER.toString()};
@@ -172,8 +173,10 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
       if (cache.size <= KEEP) return;
       for (const [k, e] of cache) {
         if (e.keep || e.gen >= gen - 1 || cache.size <= KEEP) continue;
+        // Only forgotten, never closed: the graphic may still hold the bitmap (a thumbnail it
+        // fetched once in its setup and draws every frame); a closed one would throw in drawImage.
+        // Chromium counts an ImageBitmap's pixels against the page's memory, so GC frees it.
         cache.delete(k);
-        if (e.bitmap) e.bitmap.then((b) => b.close(), () => {});
       }
     },
   };
