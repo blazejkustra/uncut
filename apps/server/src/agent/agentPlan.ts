@@ -151,7 +151,12 @@ export const PROPOSE_LOCK = "Not done: the storyboard you proposed is waiting fo
 export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly<Record<string, string>>; skills: ReadonlyArray<Pick<BrandSkill, "id" | "name">>; others: ReadonlyArray<{ id: string; name: string }> }, plan: AgentPlan, gate: BuildGate): string {
   const parts: Array<string> = [];
   const b: Array<string> = [];
-  if (brand.kit) b.push(...kitLines(brand.kit, brand.files));
+  if (brand.kit) {
+    b.push(...kitLines(brand.kit, brand.files));
+    // D296: the other kits too, so a product the request names finds its kit (not a disk or web search).
+    const others = brand.others.filter((k) => k.id !== brand.kit!.id);
+    if (others.length) b.push(`Other kits: ${others.map((k) => `"${k.name}" (${k.id})`).join(", ")}; brand_read one when the request names its product.`);
+  }
   else b.push(`No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}. A product the request names: its kit (brand_read) if one matches; else ask_user once, don't search the disk or the web for it.` : " The user has no kits yet."}`);
   // D232: the skills this project uses (read with skill_read or called with /name) by name; the system
   // prompt lists every installed skill, and skill_read gives one's instructions (progressive disclosure).
