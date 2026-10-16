@@ -569,7 +569,7 @@
     },
     {
       "name": "graphic_write",
-      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network; fonts: DM Sans, DM Mono, the brand kit's fonts and installed ones; the project's media by id: await uncut.frame(mediaId, seconds) gives a video's exact frame (or a still) for a canvas, src=\"uncut:media/<id>\" or \"uncut:media/<id>#t=2.5\" in an <img> or CSS url(); render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
+      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network; fonts: DM Sans, DM Mono, the brand kit's fonts and installed ones; the project's media by id: await uncut.frame(mediaId, seconds) gives a video's exact frame (or a still) for a canvas, src=\"uncut:media/<id>\" or \"uncut:media/<id>#t=2.5\" in an <img> or CSS url(); render must finish within 5 s a frame. Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit. A graphic for the whole film is ONE item spanning it, never several items of one file.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -986,7 +986,7 @@
     },
     {
       "name": "storyboard_propose",
-      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (at most 4, drawn from the timeline as it is now). Propose last: finish every change the stills show first (they're what the user approves). While the card waits, timeline_edit, graphic_write and shader_write are refused; unanswered, they stay refused for the rest of the turn, so end it. The answer is approved (maybe with beats the user edited: build those, keeping the copy, logo and end card the stills show), or a change the user asked for (propose again).",
+      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (at most 4, drawn from the timeline as it is now). Propose last: the stills are what the user approves. While it waits, edits are refused (unanswered: all turn, so end it). The answer is approved (maybe with edited beats; keep what the stills show), or a change to make (propose again).",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1272,8 +1272,7 @@
           },
           "about": {
             "type": "string",
-            "maxLength": 2000,
-            "description": "What the product is and does, in a paragraph (from its README or site)."
+            "description": "What the product is."
           },
           "tone": {
             "type": "string"
