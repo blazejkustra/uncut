@@ -1,4 +1,4 @@
-import { AudioLines, AudioWaveform, Image as ImageIcon, Film, Plus, RefreshCw, Sparkles, X } from "lucide-react";
+import { AtSign, AudioLines, AudioWaveform, Image as ImageIcon, Film, Plus, RefreshCw, Sparkles, X } from "lucide-react";
 import React, { useState, useRef, useEffect, type ReactNode } from "react";
 import { timecode } from "../../state/format.ts";
 import { type MediaItem, useApp, isRemote, actions, getState, activeAnalyses, thumbUrl, mediaUrl, proxyOf, proxyUrl } from "../../state/store.ts";
@@ -7,6 +7,9 @@ import { MEDIA_DRAG_TYPE } from "../../timeline/dnd.ts";
 import { openMenu } from "../../timeline/ContextMenu.tsx";
 import { RenameField } from "../../timeline/RenameField.tsx";
 import { analysisText } from "../../state/analysisText.ts";
+import { actionFor, keymap, keyOf } from "../../editor/keymap.ts";
+import { Tooltip } from "../../ui/Tooltip.tsx";
+import "./mediaChat.css";
 
 /** "59.94", "30", "23.98" */
 const fpsLabel = (fps: number) => String(Math.round(fps * 100) / 100);
@@ -54,6 +57,9 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
     e.preventDefault();
     const local = !isRemote();
     openMenu(e.clientX, e.clientY, [
+      // D264 (#77): the media (or a generated picture) as a chip in the Agent tab's composer.
+      { id: "media-add-to-chat", label: "Add to chat", run: () => void actions.addMediaToChat(item.id) },
+      "-",
       ...(generated
         ? [
             { id: "generated-add", label: "Add at playhead", disabled: !online, run: () => void actions.addAtPlayhead(item.id) },
@@ -101,6 +107,16 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(e) => {
+        // D264: the add-to-chat key (⌘L) on the focused tile adds this media, not the timeline's selection.
+        if (e.target === e.currentTarget) {
+          const pressed = keyOf(e.nativeEvent);
+          if (pressed !== undefined && actionFor(keymap.bindings(), pressed) === "addToChat") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!e.repeat) actions.addMediaToChat(item.id);
+            return;
+          }
+        }
         // ⌫ / Delete on the selected tile (not while its name is edited): Remove from project, never the timeline's selection.
         if (e.target !== e.currentTarget || (e.key !== "Backspace" && e.key !== "Delete")) return;
         e.preventDefault();
@@ -171,6 +187,19 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
         >
           <Plus />
         </button>
+        <Tooltip label="Add to chat" shortcut="addToChat">
+          <button
+            className={`tile-chat${generated || (hasSound && !analysis) ? " second" : ""}`}
+            data-testid="media-add-to-chat"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.currentTarget.blur();
+              actions.addMediaToChat(item.id);
+            }}
+          >
+            <AtSign />
+          </button>
+        </Tooltip>
         {generated && (
           <button
             className="tile-analyze"

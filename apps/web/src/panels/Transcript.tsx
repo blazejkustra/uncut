@@ -10,7 +10,8 @@
 // here (the Library's analysis job, with its progress); a missing whisper.cpp or speech model
 // points to Setup.
 import { fillersOf, pausesOf, type EditWord, type Filler, type Pause } from "@uncut/core/transcript";
-import { Captions, Scissors, X } from "lucide-react";
+import { AtSign, Captions, Scissors, X } from "lucide-react";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import { memo, useEffect, useMemo, useRef } from "react";
 
 import { frameTimecode, timecode } from "../state/format.ts";
@@ -18,7 +19,7 @@ import { playback, usePlayback } from "../preview/playback.ts";
 import { layoutOf, type ProjectModel } from "../state/project.ts";
 import { actions, getState, useApp } from "../state/store.ts";
 import { doneTranscripts, getTranscripts, mainSpeechMedia, mediaOnMain, scopeKey, scopeOf, sourceChoices, planRemoveFillers, planRemovePauses, selectedWords, transcriptStore, useTranscripts, wordKey, wordsOfEdit, type MediaTranscript } from "./transcript.ts";
-import { useTranscriptLoading, load, useCutBusy, cutSelectedWords, removeAll } from "./transcriptView/cuts.ts";
+import { useTranscriptLoading, load, useCutBusy, cutSelectedWords, removeAll, addSelectedWordsToChat } from "./transcriptView/cuts.ts";
 import { useThreshold, PAUSE_SHOWN_S, PAUSE_STEPS } from "./transcriptView/threshold.ts";
 import { Untranscribed, CaptionsButton, PlayheadWord } from "./transcriptView/parts.tsx";
 export { cutSelectedWords, makeCaptions, removeAll } from "./transcriptView/cuts.ts";
@@ -307,6 +308,12 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
               <Scissors />
               Cut
             </button>
+            {/* D264 (#77): the words as a chip in the Agent tab's composer. */}
+            <Tooltip label="Add these words to chat" shortcut="addToChat">
+              <button className="icon-btn" data-testid="tx-add-to-chat" onClick={() => addSelectedWordsToChat()}>
+                <AtSign />
+              </button>
+            </Tooltip>
             <button className="icon-btn" data-testid="tx-clear" title="Clear the selection (Esc)" aria-label="Clear the selection" onClick={() => transcriptStore.clear()}>
               <X />
             </button>

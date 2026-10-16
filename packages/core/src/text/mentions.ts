@@ -2,10 +2,12 @@
 // pointed at in the composer (D140, D141). Ids ("m-dji-0005", "title-1") stay in the protocol and
 // the agent's prompt; what the user reads says "DJI_0005" and "Kraków from above".
 import { componentInfo } from "../visual/components.ts";
+import { effectInfo } from "../visual/fx/defs.ts";
+import { transitionName } from "../visual/transitions.ts";
 import { layout } from "../timeline/timeline.ts";
 import type { Item, Project } from "../timeline/types.ts";
 
-export type MentionKind = "media" | "item" | "track" | "marker" | "moment" | "range";
+export type MentionKind = "media" | "item" | "track" | "marker" | "moment" | "range" | "effect" | "transition";
 export interface Mention {
   readonly kind: MentionKind;
   readonly id: string;
@@ -77,6 +79,15 @@ export const mentionLabel = (label: string) => label.replace(/[\r\n<>]+/g, " ").
 
 const secs = (frame: number, fps: number) => `${(frame / fps).toFixed(2)} s`;
 
+// D264 (#77): an effect's mention id is "<item id>/<module>" (an item has each effect once); a
+// transition's is the id of the item it leads into (an item has one transitionIn).
+/** The mention id of an item's effect. */
+export const effectMentionId = (itemId: string, module: string) => `${itemId}/${module}`;
+const parseEffectId = (id: string) => {
+  const at = id.lastIndexOf("/");
+  return at > 0 ? { item: id.slice(0, at), module: id.slice(at + 1) } : undefined;
+};
+
 /**
  * The <context> block for the agent: each chip's label with the real id and what it is, so tools
  * get ids and the user's words keep names. Unknown ids (deleted since) say so.
@@ -88,7 +99,7 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
   const lines: Array<string> = [];
   for (const raw of mentions) {
     const m = { ...raw, label: mentionLabel(raw.label) };
-    const key = `${m.kind}:${m.id}:${m.range?.start ?? ""}:${m.frame ?? ""}`;
+    const key = `${m.kind}:${m.id}:${m.label}:${m.range?.start ?? ""}:${m.frame ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const at = m.kind === "moment" || m.kind === "range" ? "" : `${m.range ? `, frames ${m.range.start}–${m.range.end} (${secs(m.range.start, fps)}–${secs(m.range.end, fps)})` : ""}${m.frame !== undefined && m.kind !== "marker" ? `, picked at frame ${m.frame} (${secs(m.frame, fps)})` : ""}`;
@@ -117,6 +128,29 @@ export function contextBlock(project: Project, mentions: ReadonlyArray<Mention>)
     } else if (m.kind === "range") {
       const r = m.range ?? { start: 0, end: 0 };
       lines.push(`@${m.label} = the stretch from frame ${r.start} to ${r.end} (${secs(r.start, fps)}–${secs(r.end, fps)}, end not included): ${describeAt(project, r.start, Math.max(r.start + 1, r.end))}`);
+    } else if (m.kind === "effect") {
+      const ref = parseEffectId(m.id);
+      const track = ref && project.tracks.find((t) => t.items.some((i) => i.id === ref.item));
+      const item = ref && track?.items.find((i) => i.id === ref.item);
+      const use = ref && item?.effects?.find((e) => e.module === ref.module);
+      if (!ref || !track || !item || !use) {
+        lines.push(`@${m.label} = effect ${ref?.module ?? m.id}${ref ? ` on item ${ref.item}` : ""} (no longer there)`);
+        continue;
+      }
+      const name = effectInfo(use.module)?.name;
+      lines.push(`@${m.label} = effect ${use.module}${name ? ` "${name}"` : ""} on item ${item.id} (${item.type} "${cut(itemName(project, item), 40)}" on track ${track.id}${use.bypass ? ", switched off" : ""})`);
+    } else if (m.kind === "transition") {
+      const track = project.tracks.find((t) => t.items.some((i) => i.id === m.id));
+      const index = track ? track.items.findIndex((i) => i.id === m.id) : -1;
+      const item = track?.items[index];
+      const tr = item?.transitionIn;
+      if (!track || !item || !tr) {
+        lines.push(`@${m.label} = the transition into item ${m.id} (no longer there)`);
+        continue;
+      }
+      const prev = track.items[index - 1];
+      const start = layout(project).starts.get(item.id) ?? 0;
+      lines.push(`@${m.label} = transition ${tr.module} "${transitionName(tr.module)}" (${tr.duration} frames) into item ${item.id}${prev ? ` from item ${prev.id}` : ""} on track ${track.id}, at frame ${start} (${secs(start, fps)}); change it with set_transition on item ${item.id}`);
     } else if (m.kind === "track") {
       const track = project.tracks.find((t) => t.id === m.id);
       lines.push(track ? `@${m.label} = track ${track.id} (${track.kind}${track.role ? `, ${track.role}` : ""}, ${track.items.length} item${track.items.length === 1 ? "" : "s"})` : `@${m.label} = track ${m.id} (no longer in the project)`);
@@ -169,6 +203,11 @@ export function parseMoment(text: string, fps: number): number | undefined {
   return Math.round(seconds * fps);
 }
 
+/** An effect's chip: "Blur on DJI 0042". */
+export const effectLabel = (project: Project, item: Item, name: string) => `${name} on ${itemName(project, item)}`;
+/** A transition's chip: "Crossfade into Harbour". */
+export const transitionLabel = (project: Project, item: Item) => `${item.transitionIn ? transitionName(item.transitionIn.module) : "Cut"} into ${itemName(project, item)}`;
+
 /** What @ offers in the composer: media, tracks, timeline items and markers, by name. */
 export function mentionCandidates(project: Project): Array<Mention & { readonly detail: string }> {
   const fps = project.canvas.fps;
@@ -178,6 +217,16 @@ export function mentionCandidates(project: Project): Array<Mention & { readonly 
     for (const i of t.items) out.push({ kind: "item", id: i.id, label: itemName(project, i), detail: `${t.name ?? t.id}${i.start !== undefined ? `, ${secs(i.start, fps)}` : ""}` });
   }
   for (const t of project.tracks) out.push({ kind: "track", id: t.id, label: t.name ?? t.id, detail: "Track" });
+  // D264 (#77): effects and transitions, as the Inspector's Add to chat names them.
+  for (const t of project.tracks) {
+    for (const i of t.items) {
+      for (const e of i.effects ?? []) {
+        const info = effectInfo(e.module);
+        if (info) out.push({ kind: "effect", id: effectMentionId(i.id, e.module), label: effectLabel(project, i, info.name), detail: "Effect" });
+      }
+      if (i.transitionIn) out.push({ kind: "transition", id: i.id, label: transitionLabel(project, i), detail: "Transition" });
+    }
+  }
   for (const mk of project.markers ?? []) out.push({ kind: "marker", id: `frame:${mk.frame}`, label: mk.label ?? `Marker ${secs(mk.frame, fps)}`, frame: mk.frame, detail: "Marker" });
   return out;
 }

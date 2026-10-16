@@ -59,7 +59,7 @@ function storedTurn(raw: unknown): StoredTurn | undefined {
     status: interrupted ? "error" : (t.status as StoredTurn["status"]),
     items: items.map((i) => (i.status === "running" ? { ...i, status: "error" as const } : i)),
     edits,
-    ...(Array.isArray(t.mentions) ? { mentions: t.mentions.filter((m): m is { kind: AgentMention["kind"]; label: string } => !!m && typeof m === "object" && isString(m.label) && ["media", "item", "track", "marker", "moment", "range"].includes(m.kind)).map((m) => ({ kind: m.kind, label: m.label })) } : {}),
+    ...(Array.isArray(t.mentions) ? { mentions: t.mentions.filter((m): m is { kind: AgentMention["kind"]; label: string } => !!m && typeof m === "object" && isString(m.label) && ["media", "item", "track", "marker", "moment", "range", "effect", "transition"].includes(m.kind)).map((m) => ({ kind: m.kind, label: m.label })) } : {}),
     ...(Array.isArray(t.images) ? { images: t.images.filter((x): x is string => isString(x) && AGENT_IMAGE_NAME.test(x)) } : {}),
     ...(isString(t.model) ? { model: t.model } : {}),
     ...(isString(t.note) ? { note: t.note } : {}),

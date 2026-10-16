@@ -10,6 +10,13 @@ import { itemLabel, type ProjectModel, type Track } from "../state/project.ts";
 import { actions, getState, isRemote } from "../state/store.ts";
 import type { MenuItems } from "./ContextMenu.tsx";
 import { findItem, trackFlag } from "./edit.ts";
+import { keysOf } from "../editor/keymap.ts";
+
+/** A menu row's key hint: the keymap's first key for the action (#78), so a rebinding shows. */
+const keyHint = (id: Parameters<typeof keysOf>[0]) => {
+  const key = keysOf(id)[0];
+  return key ? { shortcut: key } : {};
+};
 
 export interface MenuUi {
   /** Rename the item in place on its clip. */
@@ -45,7 +52,7 @@ export function itemMenu(project: ProjectModel, itemId: string, ui: MenuUi, onli
   const local = !isRemote();
   return [
     // D141: the item as a chip in the Agent tab's composer, with its time range.
-    { id: "add-to-chat", label: many ? `Add ${ids.length} items to chat` : "Add to chat", run: () => ids.forEach((id) => actions.addItemToChat(id)) },
+    { id: "add-to-chat", label: many ? `Add ${ids.length} items to chat` : "Add to chat", ...keyHint("addToChat"), run: () => ids.forEach((id) => actions.addItemToChat(id)) },
     "-",
     { id: "split", label: "Split", shortcut: "S", disabled: off || many || locked || !(frame > start && frame < start + item.duration) || item.type === "captions", run: () => void actions.split() },
     "-",
@@ -117,6 +124,9 @@ export function trackMenu(project: ProjectModel, track: Track, ui: MenuUi, onlin
   const audio = track.kind === "audio";
   const sound = audio || track.items.some((i) => soundMedia(project, i));
   return [
+    // D264 (#77): the track as a chip in the Agent tab's composer.
+    { id: "add-to-chat", label: "Add to chat", run: () => void actions.addTrackToChat(track.id) },
+    "-",
     { id: "track-rename", label: "Rename track", disabled: off || track.locked, run: () => ui.renameTrack(track.id) },
     "-",
     ...(!audio ? [{ id: "track-hide", label: trackFlag(track, "hidden") ? "Show" : "Hide", checked: trackFlag(track, "hidden"), disabled: off, run: () => void actions.toggleTrack(track.id, "hidden") }] : []),
