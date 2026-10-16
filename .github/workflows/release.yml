@@ -109,7 +109,11 @@ jobs:
         if: env.HAS_CERT == 'true' && github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
+        # Uncut-arm64.dmg: the same dmg under a name that never changes, so the website's Download
+        # button can link releases/latest/download/Uncut-arm64.dmg and start the download directly.
+        run: |
+          cp release/Uncut-*-*-arm64.dmg release/Uncut-arm64.dmg
+          gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.dmg.blockmap release/*-mac.zip release/*-mac.zip.blockmap release/latest-mac.yml --draft --title "Uncut $GITHUB_REF_NAME" --generate-notes
       - name: Remove the signing keychain
         if: always() && env.UNCUT_NOTARY_KEYCHAIN != ''
         run: security delete-keychain "$UNCUT_NOTARY_KEYCHAIN"
