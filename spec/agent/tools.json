@@ -613,7 +613,7 @@
     },
     {
       "name": "ui_show",
-      "description": "Point the user at something in the editor: move the playhead to a frame, select an item (the timeline and Inspector follow) and/or open a panel. Use it to show a result, e.g. the playhead on the cut you made with that clip selected. Later also to walk the user through doing an edit (D5).",
+      "description": "Point the user at something in the editor: a frame and/or an item becomes a pill over the preview (\"Agent changed 0:12–0:18\") the user clicks to jump there and select it; it never moves their playhead or selection. panel opens a panel. Use it to show a result, e.g. the cut you made with that clip.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,

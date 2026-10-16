@@ -305,13 +305,13 @@ test("ui_show: one request per call in the agent state, checked against the proj
   ]);
   assert.equal(turn.status, "done", turn.error);
   const [ok, unknown, panel, past] = results as Array<{ isError?: boolean; content: Content }>;
-  assert.equal(textOf(ok!), "Shown: the playhead is at frame 75, clip-c is selected, the inspector panel is open.");
-  assert.equal(turn.items[0].text, "Moved the playhead to frame 75, selected C.mp4, opened the Inspector panel");
+  assert.equal(textOf(ok!), "Shown: a pill over the preview points the user at frame 75 and clip-c (a click jumps there; their playhead and selection stay put), the inspector panel is open.");
+  assert.equal(turn.items[0].text, "Pointed at frame 75 and C.mp4, opened the Inspector panel");
   assert.ok(unknown!.isError);
   assert.match(textOf(unknown!), /There's no timeline item "nope"/);
   assert.ok(panel!.isError);
   assert.match(textOf(panel!), /panel must be one of media, text, elements, audio, inspector, agent/);
-  assert.equal(textOf(past!), "Shown: the project ends at frame 120, so the playhead went there.");
+  assert.equal(textOf(past!), "Shown: a pill over the preview points the user at frame 120, where the project ends (a click jumps there; their playhead and selection stay put).");
   // The state carries the last request, with a new id each time.
   const ui = latest().ui;
   assert.equal(ui.frame, 120);
@@ -477,11 +477,11 @@ test("sheet maths and step labels: frames, the grid, the clock, the turn card's 
   }
   assert.equal(clock(83.5), "1:23.50");
   assert.equal(clock(3723), "1:02:03.00");
-  assert.deepEqual(TOOL_NAMES.slice(-18, -10), ["media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search"]);
+  assert.deepEqual(TOOL_NAMES.slice(-19, -11), ["media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search"]);
   assert.equal(stepLabel("media_import", { path: "/Users/me/Drone/" }), "Imported Drone");
   assert.equal(stepLabel("media_import", { paths: ["/a.mp4", "/b.mp4"] }), "Imported 2 paths");
   assert.equal(stepLabel("contact_sheet", { media: "m-dji", every: 60 }), "Looked over m-dji");
   assert.equal(stepLabel("contact_sheet", {}), "Looked over the edit");
   assert.equal(stepLabel("ui_show", { panel: "agent" }), "Opened the Agent tab");
-  assert.equal(stepLabel("ui_show", { frame: 30, panel: "media" }), "Moved the playhead to frame 30, opened the Media panel");
+  assert.equal(stepLabel("ui_show", { frame: 30, panel: "media" }), "Pointed at frame 30, opened the Media panel");
 });

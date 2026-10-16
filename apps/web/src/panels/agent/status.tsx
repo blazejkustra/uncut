@@ -1,10 +1,8 @@
 import type { SetupCheck } from "@uncut/contracts";
 import { Sparkles, TriangleAlert, Copy, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useApp, actions } from "../../state/store.ts";
+import { actions } from "../../state/store.ts";
 import { useRecorder, clock, stopTake, cancelTake } from "../../capture/recorder.ts";
-import { usePlayback } from "../../preview/playback.ts";
-import { followShown } from "../../state/agentFollow.ts";
 
 // Prompts that work on an empty project: text needs no media (D48).
 const EXAMPLES = [
@@ -12,19 +10,6 @@ const EXAMPLES = [
   "Add a lower third at 2 s that says “Shot from a drone”",
   "Start with a 3 s title “Weekend in the mountains” and end with “Thanks for watching”",
 ];
-
-/** D202: whether the agent's ui_show moves the playhead (only ever when you aren't watching); remembered. */
-export function FollowToggle() {
-  const { agentFollow } = useApp();
-  const playing = usePlayback((s) => s.playing);
-  const on = followShown(agentFollow, playing);
-  return (
-    <button className={`follow-toggle ${on ? "on" : ""}`} role="switch" aria-checked={on} data-testid="agent-follow" data-on={on ? "true" : "false"} title={on ? "The playhead goes to the agent's changes while you aren't watching" : "The agent's changes show as a pill over the preview"} onClick={() => actions.setAgentFollow(!on)}>
-      <span className="follow-dot" />
-      Follow agent
-    </button>
-  );
-}
 
 export function AgentEmpty({ onPick, disabled }: { onPick: (prompt: string) => void; disabled: boolean }) {
   return (

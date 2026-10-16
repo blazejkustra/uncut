@@ -1,8 +1,8 @@
 import { Sparkles, X } from "lucide-react";
 import { useApp, actions } from "../../state/store.ts";
-import { changeLabel } from "../../state/agentFollow.ts";
+import { changeLabel } from "../../state/agentChange.ts";
 
-/** D202: where the agent changed things while the user was watching; a click jumps there. */
+/** D202, D235: where the agent changed things; a click jumps there. */
 export function AgentChangePill({ fps }: { fps: number }) {
   const { agentChange } = useApp();
   if (!agentChange) return null;
