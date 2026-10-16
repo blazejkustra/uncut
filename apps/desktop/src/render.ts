@@ -27,6 +27,7 @@ import { join } from "node:path";
 import * as readline from "node:readline";
 
 import { app, BrowserWindow, nativeImage, protocol, session } from "electron";
+import { handleMedia, isMediaUrl, MEDIA_SCHEME_PRIVILEGES, takeMediaReply } from "./renderMedia.ts";
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
@@ -100,7 +101,7 @@ if (process.argv.includes("--uncut-no-gpu")) app.commandLine.appendSwitch("disab
 // Shader effects (D213) draw with WebGPU, which Chromium gives only to secure pages: their window
 // loads Uncut's own page from this scheme (data: pages aren't secure contexts).
 const SHADER_SCHEME = "uncut-shader";
-protocol.registerSchemesAsPrivileged([{ scheme: SHADER_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: SHADER_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }, MEDIA_SCHEME_PRIVILEGES]);
 /** The shader page: nothing of its own but the runner (apps/web/src/preview/shaderRunner.ts, bundled as shader-runner.js). */
 const SHADER_PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${SHADER_SCHEME}:; connect-src ${SHADER_SCHEME}:">
@@ -163,7 +164,9 @@ async function main() {
   session.defaultSession.setPermissionCheckHandler(() => false);
   // No network for anything drawn here (a graphic's script included): only data: URLs load.
   // The shader page loads only from Uncut's own scheme (served here, from nothing a page names).
-  session.defaultSession.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => callback({ cancel: !details.url.startsWith("data:") && !details.url.startsWith(`${SHADER_SCHEME}://uncut/`) }));
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => callback({ cancel: !details.url.startsWith("data:") && !details.url.startsWith(`${SHADER_SCHEME}://uncut/`) && !isMediaUrl(details.url) }));
+  // D290: a graphic's project media, asked of the server (renderMedia.ts).
+  handleMedia(protocol, reply);
   // The picture of the shader frame being drawn (its input file), fetched by the shader page.
   let shaderInput: Buffer | undefined;
   let runnerJs: string | undefined;
@@ -380,6 +383,7 @@ async function main() {
     } catch {
       return;
     }
+    if (takeMediaReply(request)) return;
     if (!isRequest(request)) return void reply({ id: (request as { id?: unknown })?.id ?? null, ok: false, error: "bad request" });
     chain = chain.then(() =>
       render(request).then(

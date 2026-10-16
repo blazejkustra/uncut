@@ -1,4 +1,4 @@
-import { TOKEN_QUERY_PARAM, BRAND_FILE_PATH, AGENT_IMAGE_PATH, THUMB_PATH, RECENT_THUMB_PATH, MEDIA_FILE_PATH, PROXY_PATH, SFX_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, WAVEFORM_PATH, FILMSTRIP_PATH, GRAPHIC_PATH } from "@uncut/contracts";
+import { TOKEN_QUERY_PARAM, BRAND_FILE_PATH, AGENT_IMAGE_PATH, THUMB_PATH, RECENT_THUMB_PATH, MEDIA_FILE_PATH, PROXY_PATH, SFX_FILE_PATH, LIBRARY_FOLDER_PATH, LIBRARY_PREVIEW_PATH, WAVEFORM_PATH, FILMSTRIP_PATH, GRAPHIC_PATH, GRAPHIC_MEDIA_PATH } from "@uncut/contracts";
 import { serverConnection } from "./server.ts";
 import type { AppStateShape } from "./types.ts";
 import { state } from "./core.ts";
@@ -58,5 +58,15 @@ export const graphicUrl = (src: string) => {
   if (!url) return undefined;
   const u = new URL(url);
   u.searchParams.set(TOKEN_QUERY_PARAM, secret);
+  return u.href;
+};
+/** D290: a picture of a media item for a graphic in the preview (its frame at t seconds, fitting w × h); fetched by this page, never shown to the graphic. */
+export const graphicMediaUrl = (id: string, t: number, w?: number, h?: number) => {
+  const url = serverUrl(GRAPHIC_MEDIA_PATH, id);
+  if (!url) return undefined;
+  const u = new URL(url);
+  u.searchParams.set("t", String(t));
+  if (w) u.searchParams.set("w", String(Math.round(w)));
+  if (h) u.searchParams.set("h", String(Math.round(h)));
   return u.href;
 };

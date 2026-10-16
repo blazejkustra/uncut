@@ -9,6 +9,8 @@ export { alignScreen, bezelSvg, COMPONENT_IMAGE, COMPONENTS, componentBox, compo
 export type { ComponentBlock, ComponentInfo, Device, DeviceFrameRequest, TerminalLine } from "./visual/components.ts";
 export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_LIBS, GRAPHIC_LIBS_DOC, GRAPHIC_SRC, graphicDocument, graphicInfo, graphicLibsUsed, graphicLogosUsed, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, MAX_RASTER_STATES, resolveGraphicBrand, resolveGraphicLibs } from "./visual/graphics.ts";
 export type { GraphicInfo, GraphicLib } from "./visual/graphics.ts";
+export { GRAPHIC_MEDIA_MAX_EDGE, GRAPHIC_MEDIA_SCHEME, graphicMediaFrame, graphicMediaSize, graphicMediaUsed, parseGraphicMediaRequest } from "./visual/graphicMedia.ts";
+export type { GraphicMediaRequest } from "./visual/graphicMedia.ts";
 export { familiesOf, familyKey, FONT_FORMATS, FONT_MIME, fontFaceRules, fontRule, GENERIC_FAMILIES, graphicAskedFamilies, graphicFontFamilies, graphicFontStacks, MAX_GRAPHIC_FONT_BYTES, resolveGraphicFonts, textFamily } from "./visual/fonts.ts";
 export type { FontSource } from "./visual/fonts.ts";
 export { baseBox, canvasBox, clipBox, DEFAULT_KEY_FPS, EASES, fitRect, FITS, hasKeys, hasSpringKeys, isPlainBox, keyAt, keysOf, KEY_PROPS, moveBox } from "./visual/box.ts";

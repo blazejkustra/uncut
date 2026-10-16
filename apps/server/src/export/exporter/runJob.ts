@@ -12,6 +12,7 @@ import { overwritesImported } from "../subtitleSources.ts";
 import { exists, makeTemp, writeLuts, replacesMedia, moveInto, plainFsError } from "./files.ts";
 import { Cancelled, capsOf, untaggedFiles, run, ffmpegError } from "./ffmpeg.ts";
 import { rasterise } from "./rasterise.ts";
+import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts";
 import { track } from "../../telemetry/telemetry.ts";
 import type { EXPORT_FAIL_CODES } from "../../telemetry/events.ts";
 
@@ -29,6 +30,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     const started = Date.now();
     let temp: string | undefined;
     let rasterizer: Rasterizer | undefined;
+    let graphicMedia: GraphicMediaSource | undefined;
     let end: Partial<ExportJob> = { phase: "failed" };
     // Telemetry (D223): where a failed export stopped, as a fixed code (never its message).
     let stage: (typeof EXPORT_FAIL_CODES)[number] = "no-ffmpeg";
@@ -58,7 +60,9 @@ export const makeRunJob = (ctx: RunJobCtx) => {
 
       const command = rasterizerCommand();
       if ("problem" in command) throw new Error(command.problem);
-      rasterizer = await startRasterizer(command);
+      // D290: the pictures of project media its graphics draw, decoded from the originals.
+      graphicMedia = graphicMediaSource({ bin, media: () => project.media, mediaPath, videotoolbox: caps.videotoolboxDecode });
+      rasterizer = await startRasterizer(command, undefined, { media: graphicMedia.file });
       const onAbort = () => void rasterizer?.close();
       signal.addEventListener("abort", onAbort, { once: true });
       const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css);
@@ -164,6 +168,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     } finally {
       // Everything it started and wrote is gone before the job says it's over.
       await rasterizer?.close().catch(() => {});
+      graphicMedia?.close();
       if (temp) await rm(temp, { recursive: true, force: true }).catch(() => {});
     }
     const durationMs = Date.now() - started;

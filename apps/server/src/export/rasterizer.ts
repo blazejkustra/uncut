@@ -72,8 +72,11 @@ const rasterizerEnv = (env: NodeJS.ProcessEnv) => {
   return out;
 };
 
-/** Start a rasteriser and wait until its page is ready. */
-export async function startRasterizer(command: RasterizerCommand, env: NodeJS.ProcessEnv = process.env): Promise<Rasterizer> {
+/** D290: a graphic's media picture as a file the rasteriser reads (export/graphicMedia.ts GraphicMediaSource.file). */
+export type RasterMedia = (req: { readonly id: string; readonly t: number; readonly w?: number; readonly h?: number }) => Promise<{ readonly file: string; readonly type: string }>;
+
+/** Start a rasteriser and wait until its page is ready. `media` answers the pictures its graphics ask for (D290); without it they fail. */
+export async function startRasterizer(command: RasterizerCommand, env: NodeJS.ProcessEnv = process.env, options: { readonly media?: RasterMedia } = {}): Promise<Rasterizer> {
   // Its Chromium profile: ours to remove once it's gone, however it ends.
   const profile = mkdtempSync(join(tmpdir(), `uncut-render-profile-${process.pid}-`));
   let child: ChildProcess;
@@ -114,13 +117,14 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     child.once("exit", (code, signal) => reject(new Error(`The text renderer stopped before it was ready (${signal ?? `code ${code}`}). ${stderr.trim().split("\n").at(-1) ?? ""}`.trim())));
   });
   readline.createInterface({ input: child.stdout! }).on("line", (line) => {
-    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown };
+    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown };
     try {
       msg = JSON.parse(line);
     } catch {
       return;
     }
     if (msg?.uncut !== "render") return;
+    if (msg.media) return void answerMedia(child, msg.media, options.media);
     if (msg.ready === true) return onReady();
     const p = pending.get(Number(msg.id));
     if (!p) return;
@@ -165,4 +169,23 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
         child.stdin!.write(`${JSON.stringify({ id, ...job })}\n`);
       }),
   };
+}
+
+/** D290: answer a graphic's media request ({ sub, id, t, w, h }) on the rasteriser's stdin: { mediaReply: sub, file, type } or { mediaReply: sub, error }. */
+function answerMedia(child: ChildProcess, ask: unknown, media: RasterMedia | undefined) {
+  const r = ask as { sub?: unknown; id?: unknown; t?: unknown; w?: unknown; h?: unknown };
+  const sub = Number(r?.sub);
+  if (!Number.isInteger(sub)) return;
+  const send = (reply: Record<string, unknown>) => {
+    if (child.exitCode === null && child.signalCode === null && child.stdin!.writable) child.stdin!.write(`${JSON.stringify({ mediaReply: sub, ...reply })}\n`);
+  };
+  const size = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : undefined);
+  if (!media) return send({ error: "project media can't be drawn here" });
+  if (typeof r.id !== "string" || typeof r.t !== "number" || !Number.isFinite(r.t)) return send({ error: "bad media request" });
+  const w = size(r.w);
+  const h = size(r.h);
+  media({ id: r.id, t: r.t, ...(w ? { w } : {}), ...(h ? { h } : {}) }).then(
+    (got) => send({ file: got.file, type: got.type }),
+    (error: Error) => send({ error: error.message }),
+  );
 }

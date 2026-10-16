@@ -26,6 +26,7 @@ import * as Proxies from "../media/proxies.ts";
 import * as MediaFiles from "../media/mediaFiles.ts";
 import * as MediaIndex from "../media/mediaIndex.ts";
 import * as GraphicFiles from "../export/graphicFiles.ts";
+import * as GraphicMedia from "../export/graphicMediaRoute.ts";
 import * as Thumbs from "../media/thumbs.ts";
 import * as Waveforms from "../media/waveforms.ts";
 import * as Filmstrips from "../media/filmstrips.ts";
@@ -79,7 +80,7 @@ export const makeServerLayer = (config: Config.ServerConfigShape) => {
     host: config.host,
     port: config.port,
   });
-  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, Thumbs.recentLayer, MediaFiles.layer, GraphicFiles.layer, Waveforms.layer, Filmstrips.layer, AgentBridge.layer, Remote.layer), { disableLogger: true, disableListenLog: true });
+  const layerRoutes = HttpRouter.serve(Layer.mergeAll(Ws.layer, Thumbs.layer, Thumbs.recentLayer, MediaFiles.layer, GraphicFiles.layer, GraphicMedia.layer, Waveforms.layer, Filmstrips.layer, AgentBridge.layer, Remote.layer), { disableLogger: true, disableListenLog: true });
   return Layer.mergeAll(layerRoutes, layerReadyLine).pipe(
     // The agent's media_import goes through the Library's import jobs (D65).
     Layer.provide(Agent.layer),
