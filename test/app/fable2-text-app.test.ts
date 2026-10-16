@@ -165,7 +165,7 @@ test("Fable QA round 2, text: new animations, stickers, image frame fit, caption
   await page.click('[data-testid=param-fit][data-value="contain"]');
   await until(() => itemOnDisk("frame-1")?.props?.fit === "contain", "fit contain saved");
   await seek(100);
-  await sleep(300);
+  await page.waitForFunction(() => /contain/.test(document.querySelector<HTMLElement>('[data-item="frame-1"] img')?.style.objectFit ?? ""), { timeout: 10000 }).catch(() => {});
   assert.match(await page.$eval('[data-item="frame-1"] img', (el) => (el as HTMLElement).style.objectFit), /contain/);
   await shot("[data-testid=preview-frame]", "stickers-frame-contain");
   await page.click('[data-testid=param-fit][data-value="cover"]');
@@ -175,7 +175,7 @@ test("Fable QA round 2, text: new animations, stickers, image frame fit, caption
   await page.keyboard.type("2");
   await page.keyboard.press("Enter");
   await until(() => itemOnDisk("frame-1")?.props?.zoom === 2, "crop zoom saved");
-  await sleep(300);
+  await page.waitForFunction(() => /scale\(2\)/.test(document.querySelector<HTMLElement>('[data-item="frame-1"] img')?.style.transform ?? ""), { timeout: 10000 }).catch(() => {});
   assert.match(await page.$eval('[data-item="frame-1"] img', (el) => (el as HTMLElement).style.transform), /scale\(2\)/);
   await shot("[data-testid=inspector-item]", "stickers-frame-inspector");
 

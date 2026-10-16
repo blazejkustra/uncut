@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE_ARGENT = resolve("test/helpers/fake-argent/argent");
@@ -143,7 +144,7 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     await mini.click("[data-testid=mini-stop]");
     await page.waitForFunction(() => /^Test screen \d{8}-\d{6}\.mp4/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), { timeout: 60000 });
     assert.match(app.output(), /\[test\] mini recorder stop/);
-    for (let i = 0; i < 50 && !/\[test\] mini recorder closed/.test(app.output()); i++) await sleep(100);
+    await eventually(() => /\[test\] mini recorder closed/.test(app.output()));
     assert.match(app.output(), /\[test\] mini recorder closed/);
     assert.ok(onDisk().media.some((m: { source?: { module: string } }) => m.source?.module === "capture.screen"));
     assert.deepEqual(app.errors, []);

@@ -19,6 +19,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 
 import { launchApp, lockApps, unlockApps, waitForWelcome, type LaunchedApp } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { makeClipMedia, PATTERN_PROBE } from "../helpers/clip-fixture.ts";
 
@@ -223,7 +224,7 @@ test("issues 21, 23, 26, 29: scrubbing number fields, the rail's drag and menu, 
     // Away from it, it fades.
     const stage = await box("[data-testid=preview-frame]");
     await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
-    for (let i = 0; i < 50 && (await areaBar()); i++) await sleep(100);
+    await eventually(async () => !(await areaBar()));
     assert.equal(await areaBar(), null, "the bar fades once the pointer has left");
     // The timeline's horizontal bar.
     await page.click("[data-testid=timeline]");

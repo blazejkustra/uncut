@@ -16,6 +16,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { eventually } from "../helpers/wait.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -122,7 +123,7 @@ test("Fable QA round 2 (export, settings, shell): codecs, Advanced, the done dia
   await waitFor("[data-testid=export-reveal]");
   await page.click("[data-testid=export-copy-path]");
   await page.waitForFunction(() => /Copied/.test(document.querySelector("[data-testid=export-copy-path]")?.textContent ?? ""), { timeout: 5000 });
-  for (let i = 0; i < 50 && !app.output().includes(`[test] copied ${high}`); i++) await sleep(100);
+  await eventually(() => app!.output().includes(`[test] copied ${high}`));
   assert.ok(app.output().includes(`[test] copied ${high}`), "the path went to the clipboard");
   await page.screenshot({ path: out("export-done") });
 
@@ -197,11 +198,11 @@ test("Fable QA round 2 (export, settings, shell): codecs, Advanced, the done dia
   await sleep(250);
   assert.equal((await grip("side")).opacity, "0", "no grip until the pointer is there");
   await page.hover("[data-testid=resize-side]");
-  await sleep(250);
+  await eventually(async () => (await grip("side")).opacity === "1", { timeout: 5000 });
   assert.deepEqual(await grip("side"), { opacity: "1", cursor: "col-resize" });
   await page.screenshot({ path: out("shell-resizer") });
   await page.hover("[data-testid=resize-bottom]");
-  await sleep(250);
+  await eventually(async () => (await grip("bottom")).opacity === "1", { timeout: 5000 });
   assert.deepEqual(await grip("bottom"), { opacity: "1", cursor: "row-resize" });
 
   // ---- F25: no how-to line in the Transcript tab ----
@@ -229,7 +230,7 @@ test("Fable QA round 2 (export, settings, shell): codecs, Advanced, the done dia
   await page.click("[data-testid=wizard-skip]");
   await page.waitForFunction(() => !document.querySelector("[data-testid=onboarding]"));
   await waitForWelcome(page);
-  for (let i = 0; i < 20 && !existsSync(join(root, "first", "settings.json")); i++) await sleep(100);
+  await eventually(() => existsSync(join(root, "first", "settings.json")));
   assert.equal(JSON.parse(readFileSync(join(root, "first", "settings.json"), "utf8")).onboarded, true);
   await page.screenshot({ path: out("shell-skipped") });
   await key("Comma", "Meta");
