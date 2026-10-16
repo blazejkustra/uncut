@@ -69,13 +69,6 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
-  // An example goes into the prompt box, ready to send or change. Focus moves there now, so the
-  // next Enter sends it rather than pressing the example again.
-  const pick = (example: string) => {
-    actions.setAgentDraft(example, []);
-    document.getElementById("agent-input")?.focus();
-  };
-
   return (
     <ProjectContext.Provider value={project}>
     <div className="agent" data-testid="agent-panel">
@@ -85,7 +78,8 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
           {agent.warning}
         </p>
       )}
-      {agent?.plan && (
+      {/* An empty plan has no chip: no strip either (it left a bare rule above the empty state). */}
+      {agent?.plan && (agent.plan.brief || agent.plan.storyboard || agent.plan.reviews.length > 0) && (
         <div className="plan-strip agent-strip">
           <span className="spacer" />
           <PlanChip plan={agent.plan} />
@@ -95,7 +89,7 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
         {claude && claude.status !== "ready" && <ClaudeStatus check={claude} checking={setupChecking} />}
         {turns.length === 0 ? (
           <>
-            <AgentEmpty onPick={pick} disabled={blocked || !online} />
+            <AgentEmpty name={project.name} />
             {canRestage && dir && (
               <button
                 className="link-btn agent-stage-back"

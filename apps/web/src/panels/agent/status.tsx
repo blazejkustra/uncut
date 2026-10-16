@@ -1,33 +1,18 @@
 import type { SetupCheck } from "@uncut/contracts";
-import { Sparkles, TriangleAlert, Copy, RefreshCw } from "lucide-react";
+import { TriangleAlert, Copy, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { actions } from "../../state/store.ts";
 import { useRecorder, clock, stopTake, cancelTake } from "../../capture/recorder.ts";
 
-// Prompts that work on an empty project: text needs no media (D48).
-const EXAMPLES = [
-  "Make a 5 s title card that says “Kraków from above”",
-  "Add a lower third at 2 s that says “Shot from a drone”",
-  "Start with a 3 s title “Weekend in the mountains” and end with “Thanks for watching”",
-];
-
-export function AgentEmpty({ onPick, disabled }: { onPick: (prompt: string) => void; disabled: boolean }) {
+// The first thing a new project shows (t3code-style): one question naming the project, no
+// prefilled prompts. The composer below is where the answer goes.
+export function AgentEmpty({ name }: { name: string }) {
   return (
     <div className="agent-empty" data-testid="agent-empty">
-      <div className="empty-icon">
-        <Sparkles />
-      </div>
-      <div className="empty-title">Ask for an edit</div>
-      <div className="agent-empty-sub">
-        The agent sees the timeline and edits it live with your Claude Code login. No media needed to start: it can make titles and text right away. Every turn can be undone.
-      </div>
-      <div className="agent-examples">
-        {EXAMPLES.map((example) => (
-          <button key={example} className="agent-example" data-testid="agent-example" disabled={disabled} onClick={() => onPick(example)}>
-            {example}
-          </button>
-        ))}
-      </div>
+      <h2 className="agent-empty-title">
+        What should we make in <span className="agent-empty-name">{name || "this project"}</span>?
+      </h2>
+      <div className="agent-empty-sub">No media needed to start. Every turn can be undone.</div>
     </div>
   );
 }
