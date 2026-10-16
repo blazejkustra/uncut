@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 import type { Project } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -196,5 +197,5 @@ test("the tools, labels and the system prompt's library note", { skip }, () => {
   }
   assert.equal(stepLabel("library_search", { kind: "music", query: "lofi" }), 'Searched the music library for "lofi"');
   assert.equal(stepLabel("library_add", { id: "sfx:pop" }), "Added a bundled sound effect");
-  assert.match(SYSTEM_PROMPT, /library_search finds royalty-free music and sound effects online/);
+  assert.match(AGENT_TEXT, /library_search finds royalty-free music and sound effects online/);
 });

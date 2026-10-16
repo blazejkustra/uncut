@@ -6,7 +6,7 @@ import { expandPlacement, projectDiff, refusalFixes } from "@uncut/core/agentPla
 import * as Effect from "effect/Effect";
 import { gateOf, gateRefusal } from "../agentPlan.ts";
 import { activeBrand } from "../../brand/store.ts";
-import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_FRAMES, modulesList, musicOut, projectSummary } from "../agentTools.ts";
+import { bigChange, checksOut, FONT_ERRORS, expandArrangeOps, expandCaptionEdits, expandDeviceFrames, expandTextLooks, FRAME_WIDTH, LOOK_TOOLS, MAX_FRAMES, modulesList, musicOut, projectSummary, docsRead } from "../agentTools.ts";
 import { shaderForAgent } from "../../plugins/plugins.ts";
 import { writeProjectShader } from "../agentShaders.ts";
 import { expandShaderEffects } from "@uncut/core/shaders";
@@ -29,7 +29,9 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           r.owner.agentSeen = Math.max(r.owner.agentSeen, v.session.revision);
           r.owner.seen.add(v.session.revision);
           const range = args.range as { start: number; end: number } | undefined;
-          return textResult(args.detail === "full" ? { revision: v.session.revision, project: v.session.project } : projectSummary(v.session.project, v.session.revision, range));
+          // D260 (issue #81): compact JSON; a long project's items as compact lines unless asked for.
+          const items = Array.isArray(args.items) ? args.items.filter((x): x is string => typeof x === "string").slice(0, 100) : undefined;
+          return textResult(JSON.stringify(args.detail === "full" ? { revision: v.session.revision, project: v.session.project } : projectSummary(v.session.project, v.session.revision, range, { ...(args.detail === "items" ? { detail: "items" as const } : {}), ...(items ? { items } : {}) })));
         }
         case "modules_list": {
           const kind = typeof args.kind === "string" ? args.kind : undefined;
@@ -92,6 +94,11 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* brandRead(v, args);
         case "skill_read":
           return yield* skillRead(v, args);
+        case "docs_read": {
+          // D260 (issue #81): an area's reference, on demand instead of in the system prompt.
+          const doc = docsRead(args.topic);
+          return textResult(doc.text, doc.isError);
+        }
         case "brand_write":
           return yield* brandWrite(r, v, args);
         case "reference_frames":

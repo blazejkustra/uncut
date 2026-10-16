@@ -20,6 +20,7 @@ import { fillersOf, isTranscriptResult, parseWhisperJson, pausesOf, sweepStaleTr
 import { transcriptOut, transcriptSummary } from "../../apps/server/src/agent/agentTranscript.ts";
 import { NO_WHISPER } from "../../apps/server/src/analysis/whisper.ts";
 import { SAY_TOKENS, whisperJson, type Token } from "../helpers/whisper-json.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 type AnalysisJob = ReturnType<AnalysisQueue["list"]>[number];
 
@@ -364,8 +365,8 @@ test("the agent's tool: transcript_read is offered over MCP with its schema; the
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("transcript_read"));
   const tool = mcpTools().find((t) => t.name === "transcript_read")!;
   assert.deepEqual(Object.keys((tool.inputSchema as { properties: object }).properties).sort(), ["format", "from", "item", "language", "media", "range"]);
-  assert.match(SYSTEM_PROMPT, /transcript_read gives what's said/);
-  assert.doesNotMatch(SYSTEM_PROMPT, /Transcripts and beats come later/);
+  assert.match(AGENT_TEXT, /What's said in a media file, transcribed on this Mac/);
+  assert.doesNotMatch(AGENT_TEXT, /Transcripts and beats come later/);
   assert.equal(stepLabel("transcript_read", { media: "m-talk" }), "Read the transcript of m-talk");
   assert.equal(stepLabel("transcript_read", { media: "m-talk", from: 1500 }), "Read more of the transcript of m-talk");
   assert.equal(stepLabel("transcript_read", { media: "m-talk", range: { start: 0, end: 300 } }), "Read the transcript of m-talk (frames 0–300)");

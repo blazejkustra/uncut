@@ -121,8 +121,9 @@ test("D194/D214 Auto: web search, fetch, reads, subagents and plain commands run
       "web tools and an allowlisted command are allowed by Uncut without a card",
     );
     assert.match(decisions[0]!.decision.toolUseID ?? "", /^toolu_/, "the answer names the tool call");
-    // The editor context tells a resumed conversation what it can use.
-    assert.match(s.runs()[0]!.prompt, /Tools: Claude Code's own \(WebSearch and WebFetch/);
+    // D260: the system prompt (appended on every spawn, --resume too) says what it can use; messages don't repeat it.
+    assert.match(s.runs()[0]!.system, /Claude Code's own tools: WebSearch and WebFetch/);
+    assert.doesNotMatch(s.runs()[0]!.prompt, /Tools: Claude Code's own/);
     assert.match(s.runs()[0]!.system, /media_download/);
   } finally {
     await s.stop();

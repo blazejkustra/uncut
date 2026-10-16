@@ -11,13 +11,43 @@ import { listFolder, listingWords } from "../agentFootage.ts";
 import { calledSkills, gateOf, planContext, skillBlocks, userMessageText } from "../agentPlan.ts";
 import { readBrand, readPlan, useSkills } from "../../brand/store.ts";
 import { namedFolders, shownPath } from "../agentPermissions.ts";
-import { accessLine, TOOLS_LINE, playheadLine } from "../agentTools.ts";
+import { accessLine, playheadLine } from "../agentTools.ts";
 import { turnLimits } from "../agentLimits.ts";
-import type { Running, StoredTurn } from "./types.ts";
-import { joinNotes, noteFor } from "../turns/notes.ts";
+import type { ClaudeSession, Running, StoredTurn } from "./types.ts";
+import { capNote, joinNotes, noteFor } from "../turns/notes.ts";
 import { findClaude, modelFor, IMAGE_EXT } from "./config.ts";
 import type { AgentShape } from "../agent.ts";
 import type { SpawnCtx } from "./spawn.ts";
+
+/** What a session was last sent of the <brand> and <plan> blocks, and how many messages ago it was sent whole. */
+export interface SentBlocks {
+  readonly brand: string;
+  readonly plan: string;
+  readonly since: number;
+}
+
+/**
+ * D260 (issue #81): per session, the blocks the model has seen (committed: a message claude
+ * answered) and those of the message in flight (pending, committed once claude reads it). A block
+ * that hasn't changed since is one line instead; it's sent whole on a new session (another claude)
+ * and every RESEND_EVERY messages, so a compacted conversation gets it back.
+ */
+const sentBlocks = new WeakMap<ClaudeSession, { committed?: SentBlocks; pending?: { sent: SentBlocks; r: Running } }>();
+export const RESEND_EVERY = 8;
+
+/** The <brand> and <plan> part of a message: blocks that changed whole, unchanged ones as a line each. */
+export function leanPlanBlock(full: string, last: SentBlocks | undefined): { text: string; sent: SentBlocks } {
+  const at = full.indexOf("\n\n<plan>");
+  const brand = at < 0 ? full : full.slice(0, at);
+  const plan = at < 0 ? "" : full.slice(at + 2);
+  if (!last || last.since + 1 >= RESEND_EVERY) return { text: full, sent: { brand, plan, since: 0 } };
+  const parts = [brand === last.brand ? "<brand>\nUnchanged since your last message (brand_read reads the kit again).\n</brand>" : brand];
+  if (plan === last.plan) {
+    if (plan) parts.push("<plan>\nUnchanged since your last message: the same brief, storyboard and last review.\n</plan>");
+  } else parts.push(plan || "<plan>\nThe brief, storyboard and reviews are gone: nothing is planned now.\n</plan>");
+  const changed = brand !== last.brand || plan !== last.plan;
+  return { text: parts.join("\n\n"), sent: changed ? { brand, plan, since: 0 } : { ...last, since: last.since + 1 } };
+}
 
 export const makeSend = (ctx: SpawnCtx) => {
   const { plugins, ensureLoaded, st, config, view, closeSession, spawnSession, persist, publishNow, writeTurn } = ctx;
@@ -61,7 +91,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         .filter((m) => text.includes(`@${m.label}`))
         .slice(0, 50)
         .map((m) => ({ ...m, label: mentionLabel(m.label), id: m.id.slice(0, 200) }));
-      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), TOOLS_LINE, note].filter(Boolean);
+      const context = [frame !== undefined ? playheadLine(project, frame) : "", selected ? `Selected item: ${selected}.` : "", accessLine(access), capNote(note)].filter(Boolean);
       // D194: folders the message names (a pasted path) are offered on a card the first time a tool needs them.
       // D198: and each one is listed in the message (names only), so the agent can't miss one.
       const named = namedFolders(text, v.dir, (p) => {
@@ -121,8 +151,6 @@ export const makeSend = (ctx: SpawnCtx) => {
           return { planBlock: "", skillsBlock: "", called: [] as Array<string> };
         }
       });
-      let message = [userMessageText(text, called), skillsBlock, contextBlock(project, pointed), foldersBlock, planBlock, context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
-
       // The session to use: the live one when it's still this opening's with the same tools, model
       // and effort (D184: another choice starts another claude that resumes the conversation).
       const model = modelFor(askedModel);
@@ -136,6 +164,15 @@ export const makeSend = (ctx: SpawnCtx) => {
         if (typeof started === "string") return yield* new AgentError({ reason: "failed", message: started });
         s = st.session = started;
       }
+      // D260: the brand kit and plan whole only when they changed since this session last saw them.
+      // What it has seen: the last message's blocks once claude read that message (a turn stopped or
+      // failed before claude read it doesn't count).
+      const blocks = sentBlocks.get(s) ?? {};
+      if (blocks.pending?.r.delivered) blocks.committed = blocks.pending.sent;
+      blocks.pending = undefined;
+      sentBlocks.set(s, blocks);
+      const lean = leanPlanBlock(planBlock, blocks.committed);
+      let message = [userMessageText(text, called), skillsBlock, contextBlock(project, pointed), foldersBlock, planBlock ? lean.text : "", context.length ? `<editor-context>\n${context.join("\n")}\n</editor-context>` : ""].filter(Boolean).join("\n\n");
 
       const turnId = `turn-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
       // D184: attached images are kept in .cache/agent-images/ for the card (the cache can be
@@ -208,6 +245,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         toolNames: new Map(),
         downloads: { bytes: 0, count: 0 },
       };
+      if (planBlock) blocks.pending = { sent: lean.sent, r };
       st.running = r;
       persist(owner);
       publishNow();
