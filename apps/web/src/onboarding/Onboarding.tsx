@@ -2,7 +2,7 @@ import { ArrowRight, Check, Clapperboard, RefreshCw, TriangleAlert } from "lucid
 import { useEffect, useState, type ReactNode } from "react";
 
 import { actions, useApp } from "../state/store.ts";
-import { ENVIRONMENTS_LABS_HINT, EnvironmentChip, useEnvironmentsUsable } from "./Environments.tsx";
+import { EnvironmentChip, LabsTip, useEnvironmentsUsable } from "./Environments.tsx";
 import { CheckRow, PendingRow, KeyRows, SpeechModelRow } from "./rows.tsx";
 import { PluginRows } from "./plugins.tsx";
 import { USAGE_DATA_NOTE } from "../settings/telemetry.tsx";
@@ -198,9 +198,17 @@ function EnvironmentSettings() {
           <div className="wiz-sub">{environment.kind === "remote" ? "Agents, ffmpeg, Argent and plugins above are that machine's." : "Add another machine to edit and export there instead."}</div>
         </div>
         <EnvironmentChip />
-        <button className="btn" data-testid="settings-environments-manage" disabled={!usable} title={usable ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => void actions.openEnvironments()}>
+        {usable ? (
+          <button className="btn" data-testid="settings-environments-manage" disabled={!usable} onClick={() => void actions.openEnvironments()}>
           Manage…
         </button>
+        ) : (
+          <LabsTip>
+            <button className="btn" data-testid="settings-environments-manage" disabled={!usable} onClick={() => void actions.openEnvironments()}>
+          Manage…
+        </button>
+          </LabsTip>
+        )}
       </div>
     </div>
   );

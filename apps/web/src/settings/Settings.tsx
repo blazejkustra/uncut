@@ -20,7 +20,7 @@ import { DefaultCaptionStyleRow } from "../inspector/captionStyles.tsx";
 import { UsageDataSettings } from "./telemetry.tsx";
 import { LabsSettings } from "./Labs.tsx";
 import { PluginsSettings } from "./plugins/PluginsSettings.tsx";
-import { ENVIRONMENTS_LABS_HINT, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
+import { LabsTip, useEnvironmentsUsable } from "../onboarding/Environments.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 
 const SECTIONS: ReadonlyArray<{ readonly id: SettingsSection; readonly label: string; readonly icon: typeof X }> = [
@@ -155,9 +155,17 @@ function AppSettings() {
           <button className="btn" data-testid="settings-setup" onClick={() => actions.openSetup()}>
             Agents and setup…
           </button>
-          <button className="btn" data-testid="settings-open-environments" disabled={!environments} title={environments ? undefined : ENVIRONMENTS_LABS_HINT} onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
+          {environments ? (
+            <button className="btn" data-testid="settings-open-environments" disabled={!environments} onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
             Environments…
           </button>
+          ) : (
+            <LabsTip>
+              <button className="btn" data-testid="settings-open-environments" disabled={!environments} onClick={() => (actions.closeSettings(), void actions.openEnvironments())}>
+            Environments…
+          </button>
+            </LabsTip>
+          )}
         </div>
         {!environments && (
           <span className="labs-hint" data-testid="settings-environments-labs">
