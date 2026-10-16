@@ -74,22 +74,16 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
     body = (
       <>
         <h1>Connect your agents</h1>
-        <p className="wiz-lead">Uncut runs on the Claude Code or Codex you already use, with your own subscription. No API keys needed.</p>
+        <p className="wiz-lead">Uncut's agent runs your installed Claude Code, with whatever sign-in it uses. Codex support is coming later.</p>
         <div className="wiz-list">
           {row("claude")}
           {row("codex")}
           {failure}
-          {byId["api-key"] && (
-            <div className="wiz-note warn" data-testid="api-key-warning">
-              <TriangleAlert />
-              {byId["api-key"].detail}
-            </div>
-          )}
           <KeyRows />
           <EnvironmentSettings />
         </div>
         <div className="wiz-foot">
-          <p>One agent is enough. Add more any time in Settings.</p>
+          <p>Claude Code is all the agent needs. Change any of this later in Settings.</p>
           <div className="wiz-btns">
             {recheck}
             <button className="btn primary" data-testid="wizard-continue" onClick={() => go(1)}>

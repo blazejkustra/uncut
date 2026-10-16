@@ -106,7 +106,7 @@ export function ComposerChoices({ dir, provider }: { dir: string; provider: stri
   }, [search, favourites]);
   return (
     <div className="composer-choices" ref={row}>
-      <Tooltip label={`Claude, through ${provider} with your subscription`}>
+      <Tooltip label={`Claude, through your ${provider} and its own sign-in`}>
         <button className={`choice provider ${open === "provider" ? "open" : ""}`} data-testid="agent-provider" data-provider="claude" onClick={() => toggle("provider")}>
           <ProviderMark provider="claude" />
         </button>
@@ -131,7 +131,7 @@ export function ComposerChoices({ dir, provider }: { dir: string; provider: stri
             <ProviderMark provider="claude" size="md" />
             <span className="grow">
               <ProviderWordmark provider="claude" />
-              <span className="choice-detail">Through {provider}, with your subscription</span>
+              <span className="choice-detail">Through your {provider}, with its own sign-in</span>
             </span>
             <Check />
           </button>

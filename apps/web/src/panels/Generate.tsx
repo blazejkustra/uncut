@@ -2,7 +2,7 @@
 // switch at the top, then that type's models with their labs' marks (the wired ones first, then
 // the ones coming soon, whose real options show but can't be used), the prompt in a composer-like
 // box, the model's options as segmented choices and selects (no chips, D263), and one Generate button that says what it costs: your
-// subscription for Claude's, your key for the keyed ones. Progress and Cancel stay here; results go
+// Claude Code for the SVG generator, your key for the keyed ones. Progress and Cancel stay here; results go
 // to Media, marked Generated (GeneratedSection), with Add, Again and Edit prompt.
 import type { GenerateJob, GeneratorInfo, KeyProvider } from "@uncut/contracts";
 import { AudioLines, Check, Film, FolderOpen, Image as ImageIcon, ImagePlus, LoaderCircle, Plus, RefreshCw, Sparkles, X } from "lucide-react";
@@ -20,7 +20,7 @@ const sizeLabel = (s: string) => SIZE_LABEL[s] ?? s.replace("x", "×");
 const CHIP_LABEL: Record<string, string> = { canvas: "Canvas", "1536x1024": "Landscape", "1024x1024": "Square", "1024x1536": "Portrait", "16:9": "16:9", "9:16": "9:16" };
 const chipLabel = (s: string) => CHIP_LABEL[s] ?? s.replace("x", "×");
 
-/** A rough price for the button, in dollars (0 on the subscription). */
+/** A rough price for the button, in dollars (0 for the SVG generator: it runs on the user's Claude Code). */
 export function estimateOf(g: GeneratorInfo, kind: GenType, size: string | undefined, seconds: number | undefined): number {
   if (!g.provider) return 0;
   if (g.id === "generate.veo") return (seconds ?? 4) * 0.4;
@@ -53,7 +53,7 @@ const priceOf = (m: Model) => {
 const subOf = (m: Model) => {
   const g = m.info;
   if (!g) return m.lab;
-  if (!g.provider) return "Uses your Claude subscription";
+  if (!g.provider) return "Uses your Claude Code";
   return `${priceOf(m)}, ${g.ready ? "your key is set" : (g.needs ? g.needs.charAt(0).toLowerCase() + g.needs.slice(1) : `needs your ${PROVIDER[g.provider]} key`)}`;
 };
 
@@ -115,7 +115,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
       data-id={x.id}
       data-ready={x.info?.ready ?? false}
       data-soon={x.soon}
-      title={x.soon ? `${x.name} by ${x.lab}: coming soon` : `${x.name} by ${x.lab}`}
+      title={x.soon ? `${x.name} by ${x.lab}: coming soon` : x.info?.provider ? `${x.name} by ${x.lab}` : `${x.name}, uses your ${x.lab}`}
       onClick={() => setDraft((d) => ({ ...d, generator: x.id, size: undefined, seconds: undefined }))}
     >
       <LabMark brand={x.brand} lab={x.lab} />
@@ -202,7 +202,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
             <kbd>⌘↩</kbd>
           </button>
           <div className="gen-cost small" data-testid="generate-estimate">
-            {m?.soon ? `${m.name} is coming soon` : g?.provider ? `About ${dollars(estimate)}, billed to your ${PROVIDER[g.provider]} key` : "Uses your Claude subscription"}
+            {m?.soon ? `${m.name} is coming soon` : g?.provider ? `About ${dollars(estimate)}, billed to your ${PROVIDER[g.provider]} key` : "Uses your Claude Code"}
           </div>
         </div>
         {running.map((j) => (
@@ -402,7 +402,7 @@ export function GeneratedSection({ project, onEdit, mode, used, selected, onSele
               onRemove={() => onRemove(m)}
               generated={{
                 prompt: draft.prompt,
-                by: by ? `${by.name}, ${by.lab}` : draft.generator,
+                by: by ? (by.credit ?? `${by.name}, ${by.lab}`) : draft.generator,
                 canAgain: ready && !!draft.prompt,
                 againTitle: !draft.prompt ? "No prompt saved" : ready ? "Make another one from the same prompt" : "Needs its key: Settings › Keys",
                 again: () => void actions.startGenerate(draft),

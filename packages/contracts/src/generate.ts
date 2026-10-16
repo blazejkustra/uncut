@@ -66,7 +66,7 @@ export const GenerateJob = Schema.Struct({
   // What it's doing, in words ("Waiting for Veo…").
   status: Schema.optional(Schema.String),
   startedAt: Schema.String,
-  // Estimated cost in US dollars (0: on the subscription).
+  // Estimated cost in US dollars (0: runs on the user's Claude Code, no key).
   estimate: Schema.optional(Schema.Number),
   error: Schema.optional(Schema.String),
   mediaId: Schema.optional(Schema.String),

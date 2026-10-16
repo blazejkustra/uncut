@@ -25,7 +25,7 @@ export function mediaMeta(m: MediaItem) {
 /** What a tile in Media › Generated adds (D240, #74): its prompt and model, Again and Edit prompt. */
 export type GeneratedTileInfo = {
   readonly prompt: string;
-  /** "Drawn by Claude, Anthropic" */
+  /** "GPT Image, OpenAI"; "Made with Claude Code" for the SVG generator */
   readonly by: string;
   /** Again works (the model's key is set and there is a prompt). */
   readonly canAgain: boolean;

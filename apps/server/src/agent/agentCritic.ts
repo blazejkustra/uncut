@@ -11,6 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { userAuthSettings } from "../app/shellEnv.ts";
 import { resultError, resultFailed, turnLimits } from "./agentLimits.ts";
 
 import type { Brief, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
@@ -373,9 +374,14 @@ export function reviewNext(review: Review, turnRound: number = review.round): st
   return `Not passed. ${open} Fix every blocker first, then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
 }
 
-/** The critic's command line: no tools, no MCP servers, no settings, no session kept; Uncut's critic prompt replaces Claude Code's own (no tool talk, no hedging). */
-export function criticArgs(model: string | undefined) {
+/**
+ * The critic's command line: no tools, no MCP servers, no settings, no session kept; Uncut's critic
+ * prompt replaces Claude Code's own (no tool talk, no hedging). D277: but Claude Code's sign-in
+ * settings (apiKeyHelper, cloud refresh commands) from the user's settings, when there are any.
+ */
+export function criticArgs(model: string | undefined, authSettings: Readonly<Record<string, string>> = userAuthSettings(process.env).settings) {
   const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--permission-mode", "dontAsk", "--no-session-persistence", "--system-prompt", CRITIC_SYSTEM];
+  if (Object.keys(authSettings).length) args.push("--settings", JSON.stringify(authSettings));
   if (model) args.push("--model", model);
   return args;
 }

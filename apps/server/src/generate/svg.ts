@@ -1,5 +1,5 @@
 // The key-free generator, generate.svg (D99): pictures and short animations drawn from SVG or
-// HTML, on the user's Claude subscription alone. The agent writes the markup itself and passes it
+// HTML, with the user's Claude Code alone (whatever it signs in with, D277). The agent writes the markup itself and passes it
 // to generate_media (content); from the Generate tab, Uncut asks Claude Code for it once (claude -p
 // with no tools and no MCP servers, the same login and environment as the agent, D41).
 //
@@ -164,10 +164,10 @@ Rules: no external resources (no links, fonts, images or scripts from the networ
 A still: an SVG document with a viewBox of the given size (or an HTML page of that size).
 An animation: either an SVG with CSS or SMIL animations, or an HTML page that defines window.render = (t, info) => { ... } drawing the frame at t seconds (0 to the given length) synchronously; it must look right at any t, drawn out of order. Fill the whole frame with a background colour.`;
 
-/** Asks Claude Code (the subscription, no tools) for the markup. */
+/** Asks Claude Code (its own sign-in, no tools) for the markup. */
 export async function askClaude(input: { readonly prompt: string; readonly kind: "image" | "video"; readonly width: number; readonly height: number; readonly seconds: number }, signal: AbortSignal): Promise<string> {
   const bin = process.env.UNCUT_CLAUDE || (await which("claude", process.env.PATH ?? ""));
-  if (!bin) throw new Error("Claude Code isn't installed: the SVG generator writes its pictures with your Claude subscription (Settings shows how to install it).");
+  if (!bin) throw new Error("Claude Code isn't installed: the SVG generator writes its pictures with your Claude Code (Settings shows how to install it).");
   const ask = `${input.kind === "video" ? `An animation, ${input.seconds} seconds long` : "A still picture"}, ${input.width}x${input.height} pixels.\nWhat to draw: ${input.prompt}`;
   const cwd = await mkdtemp(join(tmpdir(), "uncut-svg-"));
   const args = ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config", "--permission-mode", "dontAsk", "--append-system-prompt", SYSTEM];

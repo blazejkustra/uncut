@@ -57,7 +57,7 @@ async function setup(name: string) {
   const criticLog = join(base, "critic.jsonl");
   writeFileSync(critic, "[]");
   writeFileSync(criticLog, "");
-  const server = await startServer({ env: { UNCUT_DATA_DIR: data, UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_RESULT_LOG: results, FAKE_CRITIC: critic, FAKE_CRITIC_LOG: criticLog, UNCUT_APPROVAL_MS: "8000", UNCUT_ANALYZE_WAIT_MS: "20000" } });
+  const server = await startServer({ env: { UNCUT_DATA_DIR: data, UNCUT_CLAUDE: FAKE, FAKE_PLAN: plan, FAKE_PROMPT_LOG: log, FAKE_RESULT_LOG: results, FAKE_CRITIC: critic, FAKE_CRITIC_LOG: criticLog, UNCUT_APPROVAL_MS: "8000", UNCUT_ANALYZE_WAIT_MS: "20000", OPENAI_API_KEY: "sk-openai-test" } });
   const client = await connect(server.ready.port, server.ready.token);
   const agent = client.subscribe("agent.subscribe");
   const snap = await client.ok("project.create", { parentDir: join(base, "projects"), name: "Promo" });
@@ -355,7 +355,7 @@ test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are c
       assert.equal(run.args[run.args.indexOf("--tools") + 1], "");
       assert.ok(!run.args.includes("--mcp-config") && !run.args.includes("--resume"), run.args.join(" "));
       assert.ok(run.args.includes("--no-session-persistence"));
-      assert.ok(!run.env.includes("ANTHROPIC_API_KEY"));
+      assert.ok(!run.env.includes("OPENAI_API_KEY"), "D277: no generator key for the critic");
       assert.notEqual(run.cwd, s.dir);
       assert.ok(!run.text.includes("BUILDER-SECRET-7"), "no builder message");
       assert.ok(!run.text.includes("editing agent inside Uncut"), "no builder system prompt");

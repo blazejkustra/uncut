@@ -12,21 +12,20 @@ import "./audio.css";
 
 /**
  * Where sounds come from (D249, D250): the bundled pack (sound effects), the user's folders, the
- * Music app's library (music), the online sources, and Epidemic Sound (coming soon, never picked).
+ * Music app's library (music) and the online sources. D277: no Epidemic Sound "coming soon".
  */
-export type BrowserSource = "pack" | "folders" | "music-app" | LibrarySource | "epidemic";
+export type BrowserSource = "pack" | "folders" | "music-app" | LibrarySource;
 const SOURCE_LABEL: Readonly<Record<BrowserSource, string>> = {
   pack: "Uncut sounds",
   folders: "Your folders",
   "music-app": "Music library",
   openverse: "Openverse",
   freesound: "Freesound",
-  epidemic: "Epidemic Sound (coming soon)",
 };
 const isOnline = (s: BrowserSource): s is LibrarySource => s === "openverse" || s === "freesound";
 const SOURCES: Readonly<Record<LibraryKind, ReadonlyArray<BrowserSource>>> = {
-  music: ["folders", "music-app", "openverse", "freesound", "epidemic"],
-  sfx: ["pack", "openverse", "freesound", "folders", "epidemic"],
+  music: ["folders", "music-app", "openverse", "freesound"],
+  sfx: ["pack", "openverse", "freesound", "folders"],
 };
 const DEFAULT: Readonly<Record<LibraryKind, BrowserSource>> = { music: "openverse", sfx: "pack" };
 const SOURCE_KEY = (kind: LibraryKind) => `uncut.library.source.${kind}`;
@@ -34,7 +33,7 @@ const SOURCE_KEY = (kind: LibraryKind) => `uncut.library.source.${kind}`;
 function savedSource(kind: LibraryKind): BrowserSource {
   try {
     const saved = localStorage.getItem(SOURCE_KEY(kind)) as BrowserSource | null;
-    if (saved && saved !== "epidemic" && SOURCES[kind].includes(saved)) return saved;
+    if (saved && SOURCES[kind].includes(saved)) return saved;
   } catch {}
   return DEFAULT[kind];
 }
@@ -88,7 +87,6 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
     setResult((before) => (page > 1 && before && before.words === q && !reply.limit ? { ...reply, hits: [...before.hits, ...reply.hits], words: q } : { ...reply, words: q }));
   };
   const pick = (s: BrowserSource) => {
-    if (s === "epidemic") return;
     setSource(s);
     try {
       localStorage.setItem(SOURCE_KEY(kind), s);
@@ -129,7 +127,7 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
       <div className="lib-selects">
         <select className="field input" data-testid="library-source" aria-label="Source" value={source} onChange={(e) => pick(e.target.value as BrowserSource)}>
           {options.map((s) => (
-            <option key={s} value={s} disabled={s === "epidemic"} data-testid={`library-source-${s}`}>
+            <option key={s} value={s} data-testid={`library-source-${s}`}>
               {SOURCE_LABEL[s]}
             </option>
           ))}
@@ -225,12 +223,6 @@ export function SoundBrowser({ kind, project, online }: { kind: LibraryKind; pro
           </div>
         </>
       ) : null}
-      {kind === "music" && (
-        <button className="lib-soon" data-testid="epidemic-soon" disabled title="Sign in with your Epidemic Sound subscription: coming soon">
-          <span>Epidemic Sound</span>
-          <span className="lib-soon-tag">Coming soon</span>
-        </button>
-      )}
     </div>
   );
 }

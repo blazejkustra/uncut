@@ -155,9 +155,8 @@ test("issues #69 and #70: the Audio tab's sources, the Music library, the grown 
   assert.equal(await page.$("[data-testid=library-view-included]"), null, "no Included");
   assert.equal(await page.$$eval("[data-testid=audio-library] .music-chip", (els) => els.length), 0, "no pills");
   const options = await page.$$eval("[data-testid=library-source] option", (els) => els.map((e) => [(e as HTMLOptionElement).textContent, (e as HTMLOptionElement).disabled]));
-  assert.deepEqual(options, [["Your folders", false], ["Music library", false], ["Openverse", false], ["Epidemic Sound (coming soon)", true]]);
-  assert.match(await text("[data-testid=epidemic-soon]"), /Epidemic Sound\s+Coming soon/);
-  assert.equal(await page.$eval("[data-testid=epidemic-soon]", (el) => (el as HTMLButtonElement).disabled), true);
+  assert.deepEqual(options, [["Your folders", false], ["Music library", false], ["Openverse", false]]);
+  assert.equal(await page.$("[data-testid=epidemic-soon]"), null, "D277: no Epidemic Sound coming soon");
 
   // Music library: asked for, then its DRM-free songs; + copies one into media/.
   await page.click("[data-testid=music-search]", { clickCount: 3 });

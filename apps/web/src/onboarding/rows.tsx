@@ -1,9 +1,18 @@
 import type { SetupCheck, KeyInfo } from "@uncut/contracts";
-import { Film, Sparkle, Terminal, CircleDot, Captions, Check, CircleAlert, Copy, AudioLines, X, Download, TriangleAlert, KeyRound, RefreshCw } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
+import { Film, Terminal, CircleDot, Captions, Check, CircleAlert, Copy, AudioLines, X, Download, TriangleAlert, KeyRound, RefreshCw } from "lucide-react";
+import { useEffect, useState, useRef, type ReactElement, type SVGProps } from "react";
 import { actions, useApp } from "../state/store.ts";
+import { ClaudeMark, OpenAIMark } from "../panels/composer/providerMarks.tsx";
+import { ElevenLabsMark, GoogleMark } from "../panels/generate/marks.tsx";
+import "./rowMarks.css";
 
-const ICONS: Record<string, typeof Film> = { claude: Sparkle, codex: Terminal, argent: CircleDot, ffmpeg: Film, whisper: Captions };
+const ICONS: Record<string, typeof Film> = { argent: CircleDot, ffmpeg: Film, whisper: Captions };
+// D277 (user's call): the agents and the keyed providers show their real marks (the composer's and
+// the Generate tab's); Freesound has none, so it keeps the key icon.
+type Mark = (props: SVGProps<SVGSVGElement>) => ReactElement;
+const CHECK_MARKS: Record<string, Mark> = { claude: ClaudeMark, codex: OpenAIMark };
+const KEY_MARKS: Partial<Record<KeyInfo["provider"], Mark>> = { openai: OpenAIMark, google: GoogleMark, elevenlabs: ElevenLabsMark };
+const RowMark = ({ mark: M, id }: { mark: Mark; id: string }) => <M className="wiz-mark" data-testid={`row-mark-${id}`} aria-hidden focusable="false" />;
 
 const CHIP: Record<SetupCheck["status"], { label: string; className: string; icon: typeof Check }> = {
   ready: { label: "Ready", className: "ok", icon: Check },
@@ -15,6 +24,7 @@ const CHIP: Record<SetupCheck["status"], { label: string; className: string; ico
 
 export function CheckRow({ check }: { check: SetupCheck }) {
   const Icon = ICONS[check.id] ?? Terminal;
+  const mark = CHECK_MARKS[check.id];
   const chip = CHIP[check.status];
   const ChipIcon = chip.icon;
   const found = check.status !== "missing" && check.path !== undefined;
@@ -23,7 +33,7 @@ export function CheckRow({ check }: { check: SetupCheck }) {
   return (
     <div className="wiz-check" data-testid={`check-${check.id}`} data-status={check.status}>
       <div className="wiz-row">
-        <Icon />
+        {mark ? <RowMark mark={mark} id={check.id} /> : <Icon />}
         <div className="grow">
           <div className="wiz-name">
             {check.name}
@@ -168,10 +178,11 @@ function KeyRow({ info: k, offline }: { info: KeyInfo; offline: boolean }) {
     // The field forgets it once it's stored.
     if (ok) setValue("");
   };
+  const mark = KEY_MARKS[k.provider];
   return (
     <div className="wiz-check" data-testid={`key-${k.provider}`} data-set={k.set}>
       <div className="wiz-row">
-        <KeyRound />
+        {mark ? <RowMark mark={mark} id={k.provider} /> : <KeyRound />}
         <div className="grow">
           <div className="wiz-name">{k.name}</div>
           <div className="wiz-sub">

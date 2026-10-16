@@ -39,8 +39,5 @@
 .lib-generate-done .link-btn { display: inline-flex; align-items: center; gap: 4px; }
 .lib-generate-done .link-btn svg.lucide { width: 12px; height: 12px; }
 
-.lib-soon { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 30px; padding: 0 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--dim); font-size: 12px; background: none; cursor: default; }
-.lib-soon:disabled { opacity: 1; }
-.lib-soon-tag { font-size: 11px; color: var(--dim); }
 [data-testid="music-app-summary"] .lib-folder { padding-top: 5px; padding-bottom: 5px; }
 [data-testid="music-app-summary"] .lib-folder-name { white-space: normal; line-height: 1.35; }
