@@ -9,7 +9,9 @@
 // - Screen: the stand-in source, a take into Media (picture only).
 // - Permissions from the test: denied says how to fix it and opens System Settings (logged, not
 //   opened), not asked yet offers to ask.
-// - D143/D144: Screen is the first part (screens and windows grouped, "Record screen").
+// - D143/D144: Screen is the first source (screens and windows grouped, "Record screen").
+// - D238: one recorder: sources toggle on and off, the screen or window is picked in a modal; a
+//   camera take alone is picture only (the microphone is its own source).
 // - D144: the agent's screen_record (scripted claude): the card in the Agent tab preselects the
 //   window it named, Record runs the stand-in take for its seconds with the 3-2-1 and a status
 //   line, and the take lands in Media as an edit of the turn.
@@ -102,17 +104,22 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await goTo(page, 30);
 
     await page.click("[data-testid=rail-capture]");
-    // Screen is the first part (D144), grouped into screens and windows, with "Record screen".
-    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-screen]");
-    assert.deepEqual(await page.$$eval(".capture-modes button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera", "Mac sound", "Multi"]);
-    await waitFor(page, '[data-testid=capture-sources][data-kind="window"] [data-testid=capture-source][data-id="standin:window:1"]');
-    assert.equal(await text(page, "[data-testid=capture-screen] [data-testid=capture-take-record]"), "Record screen");
-    await page.click("[data-testid=capture-mode-voiceover]");
-    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-mic]");
+    // Screen is the first source and on (D144, D238); the picker groups screens and windows; "Record screen".
+    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-screen]");
+    assert.deepEqual(await page.$$eval(".capture-toggles button", (els) => els.map((e) => (e as HTMLElement).innerText.trim())), ["Screen", "Microphone", "Camera", "Mac sound"]);
+    await waitFor(page, '[data-testid=capture-pick-source][data-id="standin:screen:1"]');
+    await page.click("[data-testid=capture-pick-source]");
+    await waitFor(page, '[data-testid=capture-source-picker] [data-testid=capture-sources][data-kind="window"] [data-testid=capture-source][data-id="standin:window:1"]');
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
+    assert.equal(await text(page, "[data-testid=capture-take-record]"), "Record screen");
+    await page.click("[data-testid=capture-src-screen]");
+    await page.click("[data-testid=capture-src-voiceover]");
+    await waitFor(page, "[data-testid=capture-this-mac] [data-testid=capture-card-voiceover]");
     // Chromium's fake microphones are listed and the meter moves (the fake input beeps).
     await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, { timeout: 15000 });
     await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=capture-mic-level]")?.dataset.level ?? 0) > 0.05, { timeout: 15000 });
-    assert.match(await text(page, "[data-testid=capture-mic]"), /Voiceover track at the playhead \(0:01\)/);
+    assert.match(await text(page, "[data-testid=capture-where]"), /Voiceover track at the playhead \(0:01\)/);
     assert.ok(!/[·•∙⋅*]/.test(await text(page, "[data-testid=capture-library]")), "no dots or stars between words");
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await page.screenshot({ path: "test-output/capture-mic.png" });
@@ -195,9 +202,10 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=capture-this-mac]")!.dataset.phase === "idle", { timeout: 5000 });
     assert.equal(onDisk().media.length, 2, "nothing new");
 
-    // Camera: preview, 720p, picture and sound, also on the timeline at the playhead.
-    await page.click("[data-testid=capture-mode-camera]");
-    await waitFor(page, "[data-testid=capture-camera]");
+    // Camera: preview, 720p, picture only (the microphone is its own source), also on the timeline at the playhead.
+    await page.click("[data-testid=capture-src-voiceover]");
+    await page.click("[data-testid=capture-src-camera]");
+    await waitFor(page, "[data-testid=capture-card-camera]");
     await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("[data-testid=capture-camera-preview]")?.videoWidth ?? 0) > 0, { timeout: 15000 });
     await page.click('[data-testid=capture-camera-resolution] [data-value="720p"]');
     await page.waitForFunction(() => (document.querySelector<HTMLVideoElement>("[data-testid=capture-camera-preview]")?.videoHeight ?? 0) === 720, { timeout: 15000 });
@@ -207,11 +215,11 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     await waitFor(page, "[data-testid=capture-take-timer]", 10000);
     await sleep(1000);
     // Leaving the tab mid-take closes the preview but never the take's own stream; back on the
-    // tab, the Camera part (with Stop) shows again.
+    // tab, the camera take (with Stop) shows again.
     await page.click("[data-testid=rail-media]");
     await sleep(500);
     await page.click("[data-testid=rail-capture]");
-    await waitFor(page, "[data-testid=capture-camera] [data-testid=capture-take-stop]");
+    await waitFor(page, "[data-testid=capture-this-mac][data-parts=camera] [data-testid=capture-take-stop]");
     await sleep(1000);
     await page.click("[data-testid=capture-take-stop]");
     await page.waitForFunction(() => /^Camera \d{8}-\d{6}\.mp4 .* and on the timeline at 0:01\.$/.test(document.querySelector("[data-testid=capture-take-saved]")?.textContent ?? ""), { timeout: 60000 });
@@ -220,7 +228,7 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     assert.ok(camera, JSON.stringify(project.media));
     assert.equal(camera.kind, "video");
     const camStreams = streams(join(dir, camera.path));
-    assert.deepEqual(camStreams.map((s) => `${s.codec_type}:${s.codec_name}`).sort(), ["audio:aac", "video:h264"]);
+    assert.deepEqual(camStreams.map((s) => `${s.codec_type}:${s.codec_name}`).sort(), ["video:h264"]);
     assert.equal(camStreams.find((s) => s.codec_type === "video")!.height, 720);
     const camMs = Number(await page.$eval("[data-testid=capture-this-mac]", (el) => (el as HTMLElement).dataset.recordedMs));
     assert.ok(camMs > 2300, `${camMs} ms`);
@@ -231,9 +239,16 @@ test("This Mac: a voiceover lands on a Voiceover track at the playhead (one undo
     assert.equal(placed.start, 30);
 
     // Screen: the stand-in source (tests never list the real screens), picture only, into Media.
-    await page.click("[data-testid=capture-mode-screen]");
-    await waitFor(page, '[data-testid=capture-source][data-id="standin:screen:1"]');
+    await page.click("[data-testid=capture-src-camera]");
+    await page.click("[data-testid=capture-src-screen]");
+    await page.click("[data-testid=capture-pick-source]");
+    await waitFor(page, '[data-testid=capture-source-picker] [data-testid=capture-source][data-id="standin:screen:1"]');
     await page.click('[data-testid=capture-source][data-id="standin:screen:1"]');
+    await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
+    // "On the timeline" is one option for a screen or camera take, remembered: off for this one.
+    assert.equal(await page.$eval("[data-testid=capture-place]", (el) => (el as HTMLInputElement).checked), true);
+    await page.click("[data-testid=capture-place]");
+    assert.match(await text(page, "[data-testid=capture-where]"), /^Goes into Media\.$/);
     await page.screenshot({ path: "test-output/capture-screen.png" });
     await page.click("[data-testid=capture-take-record]");
     await waitFor(page, "[data-testid=capture-take-timer]", 10000);
@@ -273,22 +288,25 @@ test("This Mac: permissions macOS refused say how to fix them and open System Se
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     await page.click("[data-testid=rail-capture]");
-    await page.click("[data-testid=capture-mode-voiceover]");
+    await page.click("[data-testid=capture-src-screen]");
+    await page.click("[data-testid=capture-src-voiceover]");
     await waitFor(page, '[data-testid=capture-access][data-kind="microphone"][data-state="denied"]');
-    assert.match(await text(page, "[data-testid=capture-mic]"), /isn't allowed to use the microphone\. Turn Uncut on in System Settings, Privacy & Security, Microphone/);
-    assert.equal(await page.$("[data-testid=capture-take-record]"), null, "no Record while it's off");
+    assert.match(await text(page, "[data-testid=capture-card-voiceover]"), /isn't allowed to use the microphone\. Turn Uncut on in System Settings, Privacy & Security, Microphone/);
+    assert.equal(await page.$eval("[data-testid=capture-take-record]", (el) => (el as HTMLButtonElement).disabled), true, "no Record while it's off");
     await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await page.screenshot({ path: "test-output/capture-denied.png" });
     await page.click("[data-testid=capture-open-settings-microphone]");
     await sleep(300);
     assert.match(app.output(), /\[test\] open x-apple\.systempreferences:com\.apple\.preference\.security\?Privacy_Microphone/);
 
-    await page.click("[data-testid=capture-mode-camera]");
+    await page.click("[data-testid=capture-src-voiceover]");
+    await page.click("[data-testid=capture-src-camera]");
     await waitFor(page, '[data-testid=capture-access][data-kind="camera"][data-state="not-determined"]');
-    assert.match(await text(page, "[data-testid=capture-camera]"), /Uncut needs the camera/);
+    assert.match(await text(page, "[data-testid=capture-card-camera]"), /Uncut needs the camera/);
     await waitFor(page, "[data-testid=capture-allow-camera]");
 
-    await page.click("[data-testid=capture-mode-screen]");
+    await page.click("[data-testid=capture-src-camera]");
+    await page.click("[data-testid=capture-src-screen]");
     await waitFor(page, '[data-testid=capture-access][data-kind="screen"][data-state="denied"]');
     await page.click("[data-testid=capture-open-settings-screen]");
     await sleep(300);

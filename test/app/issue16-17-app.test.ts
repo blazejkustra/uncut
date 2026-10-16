@@ -1,7 +1,7 @@
 // Issues #16 and #17 (D209) on the packaged app, run invisibly and muted, with Chromium's fake
 // microphone and a stand-in screen (never desktopCapturer or a real device):
 // - #16: a screen's picture (a data: URL, as desktopCapturer gives) shows under the app's CSP; a
-//   window with none shows a placeholder.
+//   window with none shows a placeholder (D238: in the screen picker modal).
 // - #17: the recording bar (big record button, timer, Pause, Stop, Cancel), the level meter with a
 //   peak mark and a dB scale, device pickers and option chips; a paused stretch isn't in the take
 //   or its length; while the screen records, the floating mini recorder opens (its own window),
@@ -64,6 +64,8 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     // #16: the screen's picture loads (a data: URL under the renderer's CSP); the window has none: a placeholder.
     const screenTile = '[data-testid=capture-source][data-id="standin:screen:1"]';
     const windowTile = '[data-testid=capture-source][data-id="standin:window:1"]';
+    await page.waitForSelector("[data-testid=capture-pick-source]", { timeout: 15000 });
+    await page.click("[data-testid=capture-pick-source]");
     await page.waitForSelector(`${screenTile} img`, { timeout: 15000 });
     await page.waitForFunction((sel) => {
       const img = document.querySelector<HTMLImageElement>(`${sel} img`);
@@ -72,11 +74,13 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     assert.equal(await page.$eval(screenTile, (el) => (el as HTMLElement).dataset.picture), "thumbnail");
     assert.equal(await page.$eval(windowTile, (el) => (el as HTMLElement).dataset.picture), "none");
     assert.ok(await page.$(`${windowTile} [data-testid=capture-source-placeholder]`));
-    await page.$eval("[data-testid=capture-this-mac]", (el) => el.scrollIntoView());
     await shot(page, "issue16-sources");
+    await page.click(screenTile);
+    await page.waitForFunction(() => !document.querySelector("[data-testid=capture-source-picker]"));
 
     // #17: the microphone: a styled picker, the meter with a peak mark and a dB scale, option chips.
-    await page.click("[data-testid=capture-mode-voiceover]");
+    await page.click("[data-testid=capture-src-screen]");
+    await page.click("[data-testid=capture-src-voiceover]");
     await page.waitForFunction(() => (document.querySelector<HTMLSelectElement>("[data-testid=capture-mic-device]")?.options.length ?? 0) > 0, { timeout: 15000 });
     assert.ok(await page.$(".picker [data-testid=capture-mic-device]"), "the device list is the app's picker");
     await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=capture-mic-level]")?.dataset.peak ?? 0) > 0.05, { timeout: 15000 });
@@ -116,8 +120,9 @@ test("issues 16, 17: source pictures, the recording bar with pause and a peak me
     assert.ok(!/mini recorder/.test(app.output()), "no mini recorder for a voiceover");
 
     // The screen: the mini recorder opens over everything, shows the timer, and its Stop ends the take.
-    await page.click("[data-testid=capture-mode-screen]");
-    await page.click(screenTile);
+    await page.click("[data-testid=capture-src-voiceover]");
+    await page.click("[data-testid=capture-src-screen]");
+    await page.waitForSelector('[data-testid=capture-pick-source][data-id="standin:screen:1"]');
     await page.click("[data-testid=capture-take-record]");
     await page.waitForSelector("[data-testid=capture-take-timer]", { timeout: 10000 });
     await page.waitForFunction(() => true);
