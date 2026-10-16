@@ -3,9 +3,11 @@
 // to date", downloads a newer version and shows "Uncut 99.0.0 is ready" with Restart to update /
 // Later; an automatic check is silent until the download is ready; a failing feed (as the private
 // repository's 404) shows nothing. A plain test run doesn't check at all.
-// Limit: the "update" is not an app, so Squirrel.Mac refuses to stage it (its error is logged, not
-// shown) and Restart to update says it couldn't prepare the update instead of quitting: a real
-// install needs a Developer ID build and a real newer release (see D276).
+// Limit: the "update" is not an app, so Squirrel.Mac refuses to stage it: without help the ready
+// toast never shows (tested: logged, silent, retried by the next check). The toast tests set
+// UNCUT_TEST_UPDATE_STAGED=1 (test runs only), which takes electron-updater's download as staged, and
+// Restart to update stops before quitting ("quitAndInstall skipped"): a real install needs a
+// Developer ID build and a real newer release (see D276).
 // Screenshots: test-output/issue102-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -98,7 +100,7 @@ test("a plain test run never checks for updates (no feed, never GitHub)", T, asy
 
 test("Check for Updates…: up to date, then a newer version downloads: 'Uncut 99.0.0 is ready', Later, Restart to update", T, async () => {
   offer = VERSION;
-  const { app } = await launch({ UNCUT_UPDATE_FEED: feedUrl });
+  const { app } = await launch({ UNCUT_UPDATE_FEED: feedUrl, UNCUT_TEST_UPDATE_STAGED: "1" });
   await until(() => app.output().includes(`[updater] on: ${feedUrl}`), 10000, "updater on", app);
   // The same function Uncut › Check for Updates… calls.
   await app.page.evaluate(() => window.uncut?.checkForUpdates?.());
@@ -135,18 +137,37 @@ test("Check for Updates…: up to date, then a newer version downloads: 'Uncut 9
   // The menu again shows it at once (no new download).
   await app.page.evaluate(() => window.uncut?.checkForUpdates?.());
   await app.page.waitForSelector("[data-testid=update-toast][data-kind=downloaded]", { timeout: 5000 });
-  // Squirrel.Mac refused the not-an-app zip (logged, not shown). Restart to update: nothing pending,
-  // so it goes to the shell, which waits for Squirrel's answer and doesn't quit (or stop the server)
-  // when the update wasn't staged; the toast says so.
-  await until(() => app.output().includes("Squirrel.Mac could not stage the update"), 15000, "Squirrel's refusal logged", app);
+  // A reloaded page (an environment switch reloads the window) clears a busy left by the page before,
+  // and shows the ready toast again from the shell's status.
+  await app.page.evaluate(() => window.uncut?.setUpdateBusy?.(true));
+  await app.page.reload();
+  await waitForWelcome(app.page);
+  await app.page.waitForSelector("[data-testid=update-toast][data-kind=downloaded]", { timeout: 10000 });
+  // Restart to update: nothing pending, so it goes to the shell at once (not busy any more), which in
+  // a test build stops before quitting; a second click doesn't start a second install.
   await app.page.click("[data-testid=update-restart]");
-  await until(() => app.output().includes("[updater] not installing 99.0.0: Squirrel.Mac has not staged it"), 5000, "install refused", app);
-  await app.page.waitForFunction(() => /Couldn't prepare the update/.test(document.querySelector("[data-testid=update-sub]")?.textContent ?? ""), { timeout: 5000 });
-  await app.page.screenshot({ path: "test-output/issue102-not-staged.png" });
-  assert.doesNotMatch(app.output(), /quitAndInstall skipped|restarting to install/);
-  // Still running, server and all.
-  assert.equal(app.proc.exitCode, null);
+  await until(() => app.output().includes("[updater] test run: quitAndInstall skipped"), 5000, "install asked", app);
+  assert.equal(await app.page.evaluate(() => window.uncut?.installUpdate?.()), "installing");
+  assert.equal((app.output().match(/restarting to install 99\.0\.0/g) ?? []).length, 1, "single-flight");
   assert.equal(app.errors.filter((e) => /update/i.test(e)).length, 0, app.errors.join("\n"));
+  await close(app);
+});
+
+test("Squirrel.Mac refusing the update: no ready toast, logged only, and the next check tries again", T, async () => {
+  offer = "99.0.0";
+  const { app } = await launch({ UNCUT_UPDATE_FEED: feedUrl });
+  await until(() => app.output().includes(`[updater] on: ${feedUrl}`), 10000, "updater on", app);
+  await app.page.evaluate(() => window.uncut?.checkForUpdates?.());
+  await until(() => app.output().includes("Squirrel.Mac could not stage 99.0.0"), 20000, "Squirrel's refusal logged", app);
+  await app.page.waitForSelector("[data-testid=update-toast]", { hidden: true, timeout: 5000 });
+  assert.doesNotMatch(app.output(), /\[updater\] downloaded 99\.0\.0/);
+  assert.equal(await app.page.evaluate(() => window.uncut?.installUpdate?.()), "not-ready");
+  await app.page.screenshot({ path: "test-output/issue102-not-staged.png" });
+  // A later check fetches and offers it to Squirrel again.
+  await app.page.evaluate(() => window.uncut?.checkForUpdates?.());
+  await until(() => (app.output().match(/Squirrel\.Mac could not stage 99\.0\.0/g) ?? []).length >= 2, 20000, "retried", app);
+  assert.equal(await toast(app.page), undefined);
+  assert.equal(app.proc.exitCode, null);
   await close(app);
 });
 
@@ -164,7 +185,7 @@ test("an automatic check is silent until the update is ready; a failing feed sho
   await close(app);
 
   offer = "99.0.0";
-  ({ app } = await launch({ UNCUT_UPDATE_FEED: feedUrl, UNCUT_UPDATE_FIRST_CHECK_MS: "500" }));
+  ({ app } = await launch({ UNCUT_UPDATE_FEED: feedUrl, UNCUT_UPDATE_FIRST_CHECK_MS: "500", UNCUT_TEST_UPDATE_STAGED: "1" }));
   // Checking and downloading show nothing; the ready toast does.
   const seen = new Set<string>();
   for (const end = Date.now() + 20000; Date.now() < end; await new Promise((r) => setTimeout(r, 100))) {

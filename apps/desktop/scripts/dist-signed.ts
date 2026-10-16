@@ -18,7 +18,6 @@
 // --skip-build (package the apps/*/dist already built).
 import { execFileSync, spawnSync } from "node:child_process";
 import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +28,7 @@ import {
   isMachO,
   isMissingProfile,
   latestMacYaml,
+  loadBuildBlockMap,
   notaryAuth,
   notaryCheckArgs,
   notaryLogArgs,
@@ -178,9 +178,7 @@ async function updateFeed(version: string, dmg: string): Promise<Array<string>> 
   const zip = join(dir, updateZipName(version));
   rmSync(zip, { force: true });
   run("ditto", updateZipArgs(appPath, zip), "ditto (update zip)");
-  // app-builder-lib's blockmap builder, from electron-builder's own install (not a direct dependency).
-  const req = createRequire(join(desktop, "node_modules", "electron-builder", "package.json"));
-  const { buildBlockMap } = req("app-builder-lib/out/targets/blockmap/blockmap") as { buildBlockMap: (file: string, compression: "gzip", out: string) => Promise<{ size: number; sha512: string }> };
+  const buildBlockMap = loadBuildBlockMap(desktop);
   const entry = async (file: string): Promise<FeedFile> => {
     const info = await buildBlockMap(file, "gzip", `${file}.blockmap`);
     return { url: file.slice(dir.length + 1), sha512: info.sha512, size: info.size };
