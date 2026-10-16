@@ -1,6 +1,5 @@
 import type { AgentUi, AgentState } from "@uncut/contracts";
-import { getPlayback, playback } from "../../preview/playback.ts";
-import { mayFollow, inputNow, changeRange } from "../agentFollow.ts";
+import { changeRange } from "../agentChange.ts";
 import { layoutOf } from "../project.ts";
 import { state, set, projectOf } from "./core.ts";
 
@@ -34,20 +33,13 @@ export function applyWaitingUi() {
   const snap = state.snapshot;
   if (!ui || !snap || snap.dir !== uiDir || snap.revision < ui.revision) return;
   uiWaiting = undefined;
-  // D202: only an idle user with "Follow agent" on is steered (playhead, selection); someone
-  // watching gets a pill instead. A panel request opens its panel either way (playback goes on).
+  // D202, D235 (issue #64): the agent never moves the playhead or the selection; a frame or an item
+  // becomes the pill "Agent changed 0:12–0:18" the user can click to jump there. A panel request
+  // opens its panel (playback goes on).
   if (ui.panel) set({ panelRequest: { panel: ui.panel, seq: ++panelSeq } });
   if (ui.frame === undefined && ui.select === undefined) return;
-  if (!mayFollow({ saved: state.agentFollow, playing: getPlayback().playing, ...inputNow() })) {
-    const project = projectOf(snap);
-    const { starts } = layoutOf(project);
-    const range = changeRange(project.tracks.map((t) => ({ items: t.items.map((i) => ({ id: i.id, start: starts.get(i.id) ?? i.start ?? 0, duration: i.duration ?? 0 })) })), ui);
-    if (range) return set({ agentChange: { ...range, select: ui.select, seq: ++panelSeq } });
-  }
-  if (ui.frame !== undefined) {
-    playback.pause();
-    playback.seek(ui.frame);
-  }
-  if (ui.select !== undefined) playback.select(ui.select);
-  if (state.agentChange) set({ agentChange: undefined });
+  const project = projectOf(snap);
+  const { starts } = layoutOf(project);
+  const range = changeRange(project.tracks.map((t) => ({ items: t.items.map((i) => ({ id: i.id, start: starts.get(i.id) ?? i.start ?? 0, duration: i.duration ?? 0 })) })), ui);
+  if (range) set({ agentChange: { ...range, select: ui.select, seq: ++panelSeq } });
 }

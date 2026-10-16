@@ -7,7 +7,6 @@
 
 import { bridge } from "./bridge.ts";
 import { connect } from "./connection.ts";
-import { watchInput } from "./agentFollow.ts";
 import { state, set, isRemote } from "./store/core.ts";
 import { runCommand, onKeyDown } from "./store/keys.ts";
 import { setServerConnection, refreshHello, refreshRecents, setConnection, call } from "./store/server.ts";
@@ -51,7 +50,6 @@ export async function start() {
   bridge.onServerExit((message) => !isRemote() && set({ connection: "server-exited", connectionMessage: message }));
   bridge.onMenuCommand(runCommand);
   window.addEventListener("keydown", onKeyDown);
-  watchInput();
   const [appInfo, server] = await Promise.all([bridge.appInfo(), bridge.getServerConnection().then((c) => ({ ok: true as const, c }), (e: Error) => ({ ok: false as const, e }))]);
   set({ appInfo });
   if (!server.ok) {

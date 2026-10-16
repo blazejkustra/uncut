@@ -264,9 +264,6 @@ async function exitCheck() {
   assert.deepEqual(left.map((c) => c.key).sort(), ["small-text:footnote", "small-text:sum-note", "small-text:task"]);
   nextTurn(fixTurn(left.map((c) => ({ rule: c.id, items: [...(c.itemIds ?? [])], fix: c.fix }))));
   const before2 = results().length;
-  // D202: the agent steers the playhead only once the user has left the timeline alone for IDLE_MS
-  // (the Mixer step just used it); otherwise its ui_show is a pill, not a seek.
-  await new Promise((r) => setTimeout(r, 3200));
   const t2 = await send("Fix the remaining checks");
   await turnDone(t2, 120000);
   assert.equal((await turnStatus(t2))[0], "done", (await turnStatus(t2))[1]);
@@ -277,6 +274,9 @@ async function exitCheck() {
   const p2 = onDisk();
   assert.equal(projectChecks(p2).filter((c) => c.severity === "warn").length, 0);
   assert.deepEqual([itemOf(p2, "task")!.style!.size, itemOf(p2, "footnote")!.style!.size, itemOf(p2, "sum-note")!.style!.size], [28, 28, 28]);
+  // D235: the agent's ui_show is a pill; its click jumps there.
+  await page.waitForSelector('[data-testid=agent-change][data-from="840"] [data-testid=agent-change-jump]', { timeout: 10000 });
+  await page.click("[data-testid=agent-change-jump]");
   await page.waitForFunction(() => Number(document.querySelector<HTMLElement>("[data-testid=preview-frame]")?.dataset.frame) === 840, { timeout: 10000 });
   // The race on screen for the editor's screenshot.
   await page.click("[data-testid=tab-agent]");

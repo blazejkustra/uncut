@@ -4,7 +4,6 @@ import { playback, getPlayback } from "../../../preview/playback.ts";
 import { findItem } from "../../../timeline/edit.ts";
 import { momentLabel, itemName } from "@uncut/core/mentions";
 import { agentPrefs, DEFAULT_AGENT_PREFS, skipStoryboardSetting } from "../../agentPrefs.ts";
-import { saveFollow } from "../../agentFollow.ts";
 import { set, state, online, projectOf } from "../core.ts";
 import { call, plainError, uploadOne } from "../server.ts";
 import { applyFromCall } from "../sync.ts";
@@ -45,11 +44,6 @@ export const agentActions = {
   },
   agentCancel: () => call((c) => c["agent.cancel"]({})),
   /** The composer's text and chips (D140). */
-  /** D202: "Follow agent" on or off, remembered on this Mac. */
-  setAgentFollow: (on: boolean) => {
-    saveFollow(on);
-    set({ agentFollow: on });
-  },
   /** D202: the pill's jump: the playhead to where the agent changed things (playback carries on from there), its item selected. */
   agentJump: () => {
     const change = state.agentChange;
