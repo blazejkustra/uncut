@@ -52,6 +52,9 @@ uniform float uPx;
 uniform bool uFlipY;
 uniform float uSoft;
 uniform bool uGamut;
+uniform bool uMasked;
+uniform sampler2D uMask;
+uniform vec2 uBackingF;
 // SMPTE 170M primaries to BT.709's in linear light (BT.709's transfer both ways), as Chromium shows
 // untagged SD video and the export's colorspace filter converts it.
 const mat3 C170 = mat3(0.939542, 0.017772, -0.001622, 0.050181, 0.965793, -0.004370, 0.010277, 0.016435, 1.005991);
@@ -65,6 +68,7 @@ void main() {
   float cover = clamp(0.5 - d / uPx, 0.0, 1.0);
   cover *= clamp((uWipe - vP.x) / uPx + 0.5, 0.0, 1.0);
   if (uIris.z >= 0.0) cover *= clamp((uIris.z - length(vP - uIris.xy)) / uPx + 0.5, 0.0, 1.0);
+  if (uMasked) cover *= texture(uMask, vec2(gl_FragCoord.x, uBackingF.y - gl_FragCoord.y) / uBackingF).a;
   vec4 c;
   if (uSolid) c = uColour;
   else {
@@ -82,9 +86,52 @@ void main() {
   outColor = c*(uOpacity*cover);
 }`;
 
+// Issue #12 (D265): one direction of a Gaussian blur (sigma in backing px) over a whole-canvas
+// texture, premultiplied, transparent outside it (CSS filter: blur()'s edge).
+const BLUR_VERTEX = `#version 300 es
+layout(location = 0) in vec2 aPos;
+out vec2 vUv;
+void main() {
+  vUv = aPos;
+  gl_Position = vec4(aPos*2.0 - 1.0, 0.0, 1.0);
+}`;
+const BLUR_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 outColor;
+uniform sampler2D uTex;
+uniform vec2 uDir;
+uniform float uSigma;
+vec4 at(vec2 uv) {
+  return (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? vec4(0.0) : texture(uTex, uv);
+}
+void main() {
+  vec2 px = uDir / vec2(textureSize(uTex, 0));
+  int r = int(min(ceil(uSigma*3.0), 120.0));
+  float k = -0.5 / (uSigma*uSigma);
+  vec4 sum = at(vUv);
+  float total = 1.0;
+  // Two taps at once, between texels, weighted by their sum (linear filtering does the split).
+  for (int i = 1; i <= 120; i += 2) {
+    if (i > r) break;
+    float w0 = exp(float(i*i)*k);
+    float w1 = i + 1 <= r ? exp(float((i + 1)*(i + 1))*k) : 0.0;
+    float w = w0 + w1;
+    float o = float(i) + w1 / w;
+    sum += (at(vUv + px*o) + at(vUv - px*o))*w;
+    total += 2.0*w;
+  }
+  outColor = sum / total;
+}`;
+
 type Rect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
 /** Where a picture is drawn, and (when it differs) the rect its antialiased edges follow. */
 type Pic = Rect & { readonly edge?: Rect };
+/** A layer's picture: its texture, where it lands, rows bottom-up (a target), sampled soft (moving), SMPTE 170M primaries to convert. */
+type Src = { readonly tex: WebGLTexture; readonly img: Pic; readonly flip: boolean; readonly soft: boolean; readonly gamut: boolean };
+const EVERYWHERE: Rect = { x: -1e5, y: -1e5, w: 2e5, h: 2e5 };
+/** A stand-in layer covering the canvas (a blurred target drawn back). */
+const WHOLE = (size: { w: number; h: number }): GpuPicture => ({ id: "", source: undefined as never, box: { x: 0, y: 0, w: size.w, h: size.h, fit: "fill", scale: 1, opacity: 1, radius: 0, content: { x: 0, y: 0, w: size.w, h: size.h } }, opacity: 1 });
 
 /** Issue #12 (D265): how far apart (device px) a moving picture's four taps are; measured best against the DOM path at 0.25 (0.15 and 0.35 both worse). */
 const SOFT = 0.25;
@@ -110,6 +157,14 @@ export interface GpuPicture {
   readonly fx?: { readonly fx: ClipFx; readonly size: { readonly w: number; readonly h: number }; readonly t: number } | undefined;
   /** D265: a <video> Chromium shows with SMPTE 170M primaries converted to BT.709's (untagged SD); its upload has the values unconverted. */
   readonly gamut?: boolean | undefined;
+  /** D265: the source is a canvas at the picture's effects size (a shader's), stretched over the content rect. */
+  readonly stretch?: boolean | undefined;
+  /** D265: a reveal shape (D133): its outline's rings in canvas px, filled even-odd, clipping the box. */
+  readonly mask?: ReadonlyArray<ReadonlyArray<readonly [number, number]>> | undefined;
+  /** D265: a blur effect (D136): Gaussian sigma in canvas px on the picture, inside its box. */
+  readonly pictureBlur?: number | undefined;
+  /** D265: a blur dissolve (D133): Gaussian sigma in canvas px on the whole box, its edges too. */
+  readonly blur?: number | undefined;
 }
 
 export interface GpuSolid {
@@ -124,7 +179,8 @@ const naturalSize = (s: GpuPicture["source"]) =>
   s instanceof HTMLVideoElement ? { w: s.videoWidth, h: s.videoHeight } : s instanceof HTMLImageElement ? { w: s.naturalWidth, h: s.naturalHeight } : { w: s.width, h: s.height };
 
 /** What a source shows now, so a paused one isn't uploaded again. */
-const frameKey = (s: GpuPicture["source"]) => (s instanceof HTMLVideoElement ? `v${s.currentTime}|${s.paused ? "p" : performance.now()}` : s instanceof HTMLImageElement ? `i${s.currentSrc}` : `c${s.dataset.scrub}|${s.dataset.sample}`);
+const frameKey = (s: GpuPicture["source"]) =>
+  s instanceof HTMLVideoElement ? `v${s.currentTime}|${s.paused ? "p" : performance.now()}` : s instanceof HTMLImageElement ? `i${s.currentSrc}` : s.classList.contains("pv-scrub") ? `c${s.dataset.scrub}|${s.dataset.sample}` : `c${performance.now()}`;
 
 /** Where a picture of size n lands in rect r with an object-fit (centred, as CSS's default object-position). */
 export function fitInto(r: Rect, n: { w: number; h: number }, fit: string): Rect {
@@ -187,6 +243,13 @@ export class GpuCompositor {
   private px = 1;
   private k = 1;
   private placeKey = "";
+  private blurProgram!: WebGLProgram;
+  private bu: Uniforms = {};
+  // Whole-canvas targets for a layer drawn in steps (blurs), made at the backing size when needed.
+  private targets: Array<{ tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number }> = [];
+  // A reveal shape's coverage at the backing size (drawn by a 2D canvas: antialiased as the browser's clip-path).
+  private maskTex: WebGLTexture | undefined;
+  private maskCanvas: OffscreenCanvas | undefined;
   /** The context is lost: the preview draws on the DOM path until it's back. */
   lost = false;
   onRestored: (() => void) | undefined;
@@ -228,7 +291,17 @@ export class GpuCompositor {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`compositor: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
     this.u = {};
-    for (const name of ["uRect", "uBacking", "uK", "uTex", "uSolid", "uColour", "uBox", "uRadius", "uImg", "uEdge", "uOpacity", "uWipe", "uIris", "uPx", "uFlipY", "uSoft", "uGamut"]) this.u[name] = gl.getUniformLocation(program, name);
+    for (const name of ["uRect", "uBacking", "uK", "uTex", "uSolid", "uColour", "uBox", "uRadius", "uImg", "uEdge", "uOpacity", "uWipe", "uIris", "uPx", "uFlipY", "uSoft", "uGamut", "uMasked", "uMask", "uBackingF"]) this.u[name] = gl.getUniformLocation(program, name);
+    const blur = gl.createProgram()!;
+    gl.attachShader(blur, shader(gl.VERTEX_SHADER, BLUR_VERTEX));
+    gl.attachShader(blur, shader(gl.FRAGMENT_SHADER, BLUR_FRAGMENT));
+    gl.linkProgram(blur);
+    if (!gl.getProgramParameter(blur, gl.LINK_STATUS)) throw new Error(`compositor: ${gl.getProgramInfoLog(blur)}`);
+    this.blurProgram = blur;
+    this.bu = {};
+    for (const name of ["uTex", "uDir", "uSigma"]) this.bu[name] = gl.getUniformLocation(blur, name);
+    this.targets = [];
+    this.maskTex = undefined;
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
     this.quad = gl.createBuffer()!;
@@ -292,6 +365,9 @@ export class GpuCompositor {
     gl.uniform1f(this.u.uK!, this.k);
     gl.uniform1f(this.u.uPx!, this.px);
     gl.uniform1i(this.u.uTex!, 0);
+    gl.uniform1i(this.u.uMask!, 1);
+    gl.uniform2f(this.u.uBackingF!, this.canvas.width, this.canvas.height);
+    gl.uniform1i(this.u.uMasked!, 0);
   }
 
   private texture(id: string) {
@@ -394,7 +470,7 @@ export class GpuCompositor {
     if (f?.drawn) return { tex: f.tex, img: p.box.content, flip: true, soft: true, gamut: false };
     const t = this.textures.get(p.id);
     if (!t?.key || !t.n.w) return undefined;
-    return { tex: t.tex, img: this.pictureRect(p, t.n), flip: false, soft: !t.mip, gamut: true };
+    return { tex: t.tex, img: p.stretch ? p.box.content : this.pictureRect(p, t.n), flip: false, soft: !t.mip, gamut: true };
   }
 
   /**
@@ -468,7 +544,7 @@ export class GpuCompositor {
       const h = this.held(p);
       if (!h) return false;
       this.used.add(p.id);
-      this.blit(p, h.tex, h.img, h.flip, h.soft, h.gamut && !!p.gamut);
+      this.layer(p, { tex: h.tex, img: h.img, flip: h.flip, soft: h.soft, gamut: h.gamut && !!p.gamut });
       return true;
     }
     this.used.add(p.id);
@@ -483,30 +559,168 @@ export class GpuCompositor {
       if (!ok) return this.drawPicture({ ...p, fx: undefined });
       target.drawn = true;
       // The effects canvas is stretched over the content rect (as the DOM path's canvas, object-fit fill).
-      this.blit(p, target.tex, p.box.content, true, true);
+      this.layer(p, { tex: target.tex, img: p.box.content, flip: true, soft: true, gamut: false });
       return true;
     }
     const t = this.upload(p.id, p.source);
     if (!t) return false;
-    this.blit(p, t.tex, this.pictureRect(p, t.n), false, !t.mip, !!p.gamut);
+    this.layer(p, { tex: t.tex, img: p.stretch ? p.box.content : this.pictureRect(p, t.n), flip: false, soft: !t.mip, gamut: !!p.gamut });
     return true;
   }
 
-  /** Draws a layer's texture at `img`, clipped to its box. */
-  private blit(p: GpuPicture, tex: WebGLTexture, img: Pic, flip: boolean, soft: boolean, gamut = false) {
+  /**
+   * Draws a layer from its picture: straight onto the canvas, or (D265) in steps through whole-canvas
+   * targets when it's blurred, as the DOM path stacks its CSS: a blur effect on the picture, then the
+   * box's clip (corners, wipe, iris, reveal shape) and opacity, then a blur dissolve on all of it.
+   */
+  private layer(p: GpuPicture, src: Src) {
+    const gl = this.gl;
+    const inner = (p.pictureBlur ?? 0) * this.k;
+    const outer = (p.blur ?? 0) * this.k;
+    if (p.mask) this.drawMask(p.mask);
+    if (inner < 0.3 && outer < 0.3) return this.blit(p, src, true, p.opacity, !!p.mask);
+    let from = src;
+    if (inner >= 0.3) {
+      // Transparent past the picture's own edges (not reaching its box's), as the browser's CSS blur: its edges fade.
+      this.bindTarget(this.target(0));
+      const { edge: _, ...img } = src.img;
+      this.blit(p, { ...src, img }, false, 1, false);
+      this.blurTarget(0, inner);
+      from = this.whole(0);
+    }
+    if (outer >= 0.3) {
+      const i = inner >= 0.3 ? 1 : 0;
+      this.bindTarget(this.target(i));
+      this.blit(p, from, true, p.opacity, !!p.mask);
+      this.blurTarget(i, outer);
+      this.bindTarget(undefined);
+      gl.uniform1i(this.u.uMasked!, 0);
+      return this.blit(WHOLE(this.canvasSize), this.whole(i), false, 1, false);
+    }
+    this.bindTarget(undefined);
+    this.blit(p, from, true, p.opacity, !!p.mask);
+  }
+
+  /** Target i's picture as a source covering the canvas, one texel per backing pixel. */
+  private whole(i: number, edge: Rect = EVERYWHERE): Src {
+    const t = this.targets[i]!;
+    return { tex: t.tex, img: { x: 0, y: 0, w: t.w / this.k, h: t.h / this.k, edge }, flip: true, soft: false, gamut: false };
+  }
+
+  /** A whole-canvas target at the backing size. */
+  private target(i: number) {
+    const gl = this.gl;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    let t = this.targets[i];
+    if (!t) {
+      t = { tex: gl.createTexture()!, fbo: gl.createFramebuffer()!, w: 0, h: 0 };
+      this.targets[i] = t;
+    }
+    if (t.w !== w || t.h !== h) {
+      t.w = w;
+      t.h = h;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, t.tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex, 0);
+    }
+    return t;
+  }
+
+  /** Draws into a target (cleared) or, undefined, the canvas. */
+  private bindTarget(t: { fbo: WebGLFramebuffer } | undefined) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, t?.fbo ?? null);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    if (t) {
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+  }
+
+  /** Target i blurred (Gaussian, sigma in backing px): two passes through target 2, repeated at sigma/√n past what one pass covers (40). */
+  private blurTarget(i: number, sigma: number) {
+    const n = Math.ceil((sigma / 40) ** 2);
+    for (let j = 0; j < n; j++) this.blurOnce(i, sigma / Math.sqrt(n));
+  }
+
+  private blurOnce(i: number, sigma: number) {
+    const gl = this.gl;
+    const a = this.targets[i]!;
+    const tmp = this.target(2);
+    gl.useProgram(this.blurProgram);
+    gl.disable(gl.BLEND);
+    gl.uniform1i(this.bu.uTex!, 0);
+    gl.uniform1f(this.bu.uSigma!, sigma);
+    gl.activeTexture(gl.TEXTURE0);
+    for (const [from, to, dir] of [[a, tmp, [1, 0]], [tmp, a, [0, 1]]] as const) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, to.fbo);
+      gl.bindTexture(gl.TEXTURE_2D, from.tex);
+      gl.uniform2f(this.bu.uDir!, dir[0], dir[1]);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    this.bindOwn();
+  }
+
+  /** A reveal shape's coverage into the mask texture (unit 1), even-odd and antialiased. */
+  private drawMask(rings: NonNullable<GpuPicture["mask"]>) {
+    const gl = this.gl;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    if (!this.maskCanvas || this.maskCanvas.width !== w || this.maskCanvas.height !== h) this.maskCanvas = new OffscreenCanvas(w, h);
+    const ctx = this.maskCanvas.getContext("2d")!;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.setTransform(this.k, 0, 0, this.k, 0, 0);
+    ctx.beginPath();
+    for (const ring of rings) {
+      ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+    }
+    ctx.fillStyle = "#fff";
+    ctx.fill("evenodd");
+    if (!this.maskTex) {
+      this.maskTex = gl.createTexture()!;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.maskCanvas);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
+  /** Draws a picture at `src.img`, clipped to its box (or not, for a blur effect's first step). */
+  private blit(p: GpuPicture, src: Src, clipped: boolean, opacity: number, masked: boolean) {
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    this.clip(p.box, p.wipe, p.iris);
+    gl.bindTexture(gl.TEXTURE_2D, src.tex);
+    if (clipped) this.clip(p.box, p.wipe, p.iris);
+    else this.clip({ x: -1e5, y: -1e5, w: 2e5, h: 2e5 }, undefined, undefined);
+    gl.uniform1i(this.u.uMasked!, masked ? 1 : 0);
     gl.uniform1i(this.u.uSolid!, 0);
+    const img = src.img;
     gl.uniform4f(this.u.uImg!, img.x, img.y, img.w, img.h);
     const e = img.edge ?? img;
     gl.uniform4f(this.u.uEdge!, e.x, e.y, e.w, e.h);
-    gl.uniform1f(this.u.uOpacity!, p.opacity);
-    gl.uniform1i(this.u.uFlipY!, flip ? 1 : 0);
-    gl.uniform1f(this.u.uSoft!, soft ? SOFT : 0);
-    gl.uniform1i(this.u.uGamut!, gamut ? 1 : 0);
+    gl.uniform1f(this.u.uOpacity!, opacity);
+    gl.uniform1i(this.u.uFlipY!, src.flip ? 1 : 0);
+    gl.uniform1f(this.u.uSoft!, src.soft ? SOFT : 0);
+    gl.uniform1i(this.u.uGamut!, src.gamut ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (masked) gl.uniform1i(this.u.uMasked!, 0);
   }
 
   /** A plain-colour background over the whole canvas. */
@@ -514,6 +728,7 @@ export class GpuCompositor {
     const gl = this.gl;
     if (this.lost) return;
     this.clip({ x: 0, y: 0, w: this.canvasSize.w, h: this.canvasSize.h }, undefined, undefined);
+    gl.uniform1i(this.u.uMasked!, 0);
     gl.uniform1i(this.u.uSolid!, 1);
     gl.uniform4f(this.u.uColour!, ...s.colour);
     gl.uniform1f(this.u.uOpacity!, s.opacity);

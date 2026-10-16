@@ -2,7 +2,7 @@ import { heldPast } from "@uncut/core/audio";
 import { type Visual, visualsAt } from "@uncut/core/timeline";
 import { isDrawnComponent, componentHtml } from "@uncut/core/components";
 import { graphicInfo } from "@uncut/core/graphics";
-import { overlaps, irisRadius, maskClipPath } from "@uncut/core/transitions";
+import { overlaps, irisRadius, maskClipPath, maskRings } from "@uncut/core/transitions";
 import { SOLID, solidBackground, canvasBackground, textHtml } from "@uncut/core/render";
 import { PREROLL_S } from "../../audio/audio.ts";
 import { getPlayback } from "../playback.ts";
@@ -11,7 +11,8 @@ import { getState, mediaUrl, graphicUrl } from "../../state/store.ts";
 import { scrubCacheOn } from "../../settings/scrub.ts";
 import { gpuCompositorOn } from "../../settings/gpu.ts";
 import { GpuCompositor, plainColour, type GpuPicture } from "../gpu.ts";
-import { needsPicturePass, fxPictureSize } from "@uncut/core/fx";
+import { needsPicturePass, fxPictureSize, fxSkips } from "@uncut/core/fx";
+import { shaderTime } from "@uncut/core/shaders";
 import { px, transitionCanvas, setBlur, placeBox, placePicture, drive, seek, irisClip, wanted } from "./media.ts";
 
 import { CompositorBase } from "./base.ts";
@@ -311,17 +312,24 @@ export class Compositor extends CompositorBase {
       if (onGpu.has(c.item.id) && c.box) {
         // D221: drawn by the GPU compositor (its effects too); the DOM elements stay, transparent.
         wrap.dataset.gpu = "";
-        this.dropFx(c.item.id);
+        const use = fxSkips(media) ? undefined : this.shaderUseOf(c.item);
+        this.dropFx(c.item.id, !!use);
         const fx = this.effectsOf(c.item);
+        // D265: a shader (D213) still runs on its own canvas (out of sight in the transparent box), the picture the compositor reads.
+        const shaded = use ? this.drawShader(c.item, pic, wrap, use, fxPictureSize(c.box, media.probe), shaderTime(frame, starts.get(c.item.id)!, fps)) : undefined;
         gpuPictures.set(c.item.id, {
           id: c.item.id,
-          source: pic,
+          source: shaded ?? pic,
+          stretch: !!shaded,
           box: c.box,
           opacity: c.opacity,
           wipe: c.wipe,
           iris: c.iris !== undefined ? { x: project.canvas.width / 2, y: project.canvas.height / 2, r: irisRadius(c.iris, project.canvas) } : undefined,
           fx: fx && needsPicturePass(fx) && !this.fxBroken ? { fx, size: fxPictureSize(c.box, media.probe), t: (Math.floor(frame) - starts.get(c.item.id)!) / fps } : undefined,
-          gamut: pic instanceof HTMLVideoElement && this.gamutVideo(pic),
+          gamut: !shaded && pic instanceof HTMLVideoElement && this.gamutVideo(pic),
+          mask: c.mask ? maskRings(c.mask.shape, c.mask.p, project.canvas.width, project.canvas.height) : undefined,
+          blur: c.blur,
+          pictureBlur: fx?.blur,
         });
       } else {
         delete wrap.dataset.gpu;

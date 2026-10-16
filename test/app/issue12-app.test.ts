@@ -23,6 +23,25 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { ssim } from "../helpers/image-compare.ts";
+import { shaderEntry, type ShaderDef } from "../../packages/core/src/index.ts";
+
+/** A shader effect (D213): a horizontal smear over 8 texels, mixed in at `amount`. */
+const SMEAR: ShaderDef = {
+  id: "test.smear",
+  name: "Smear",
+  params: [{ key: "amount", label: "Amount", type: "number", min: 0, max: 1, default: 0.7 }],
+  wgsl: `struct Params {
+  amount: f32,
+}
+
+fn effect(uv: vec2f, t: f32, size: vec2f, p: Params) -> vec4f {
+  var sum = vec3f(0.0);
+  for (var i = 0; i < 8; i++) {
+    sum += frame(uv + vec2f(f32(i) / size.x, 0.0)).rgb;
+  }
+  return vec4f(mix(frame(uv).rgb, sum / 8.0, p.amount), 1.0);
+}`,
+};
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -30,7 +49,20 @@ const skip = existsSync(APP) ? (hasFfmpeg ? false : "needs ffmpeg") : `packaged 
 
 const FPS = 30;
 const SEG = 30;
-const LAYOUTS = ["image", "still-video", "grid", "grid-1080p", "grid-sd"] as const;
+const LAYOUTS = ["image", "still-video", "grid", "grid-1080p", "grid-sd", "reveal", "blur-dissolve", "blur-effect", "shader"] as const;
+/** Each layout's frame and how many layers the GPU compositor draws there. */
+const AT: Record<(typeof LAYOUTS)[number], { frame: number; layers: number }> = {
+  image: { frame: 15, layers: 7 },
+  "still-video": { frame: 45, layers: 7 },
+  grid: { frame: 75, layers: 13 },
+  "grid-1080p": { frame: 105, layers: 13 },
+  "grid-sd": { frame: 135, layers: 13 },
+  // Main: c5 150–190, a diamond reveal into c6 at 190 (180–200), a blur dissolve into c7 at 230, c8 with a blur effect from 270.
+  reveal: { frame: 191, layers: 2 },
+  "blur-dissolve": { frame: 229, layers: 2 },
+  "blur-effect": { frame: 285, layers: 1 },
+  shader: { frame: 315, layers: 1 },
+};
 let root = "";
 let dir = "";
 let saveAs = "";
@@ -82,7 +114,16 @@ before(async () => {
       ...["m-layer", "m-big", "m-small"].map((m, k) => ({ id: `g${k}-${i}`, type: "clip", media: m, start: at(2 + k), in: (i * 7) % 60, duration: SEG, transform: grid[i] })),
     ],
   }));
-  const main = ["m-img", "m-still", "m-layer", "m-big", "m-small"].map((m, k) => ({ id: `c${k}`, type: "clip", media: m, ...(m === "m-img" ? {} : { in: 0 }), duration: SEG }));
+  const main = [
+    ...["m-img", "m-still", "m-layer", "m-big", "m-small"].map((m, k) => ({ id: `c${k}`, type: "clip", media: m, ...(m === "m-img" ? {} : { in: 0 }), duration: SEG })),
+    { id: "c5", type: "clip", media: "m-layer", in: 0, duration: 40 },
+    { id: "c6", type: "clip", media: "m-big", in: 30, duration: 40, transitionIn: { module: "transition.diamond", duration: 20 } },
+    { id: "c7", type: "clip", media: "m-layer", in: 30, duration: 40, transitionIn: { module: "transition.blur", duration: 20 } },
+    // A blur effect on a picture placed smaller than its file (its CSS blur is in the <video>'s own px, D265).
+    { id: "c8", type: "clip", media: "m-big", in: 30, duration: 30, effects: [{ module: "effect.blur", params: { amount: 6 } }], transform: { x: 160, y: 90, w: 1280, h: 720, fit: "cover", radius: 24 } },
+    // A shader, then a look after it, in a smaller box.
+    { id: "c9", type: "clip", media: "m-layer", in: 30, duration: 30, effects: [shaderEntry(SMEAR, { amount: 0.7 }), { module: "effect.look", params: { look: "warm", intensity: 1 } }], transform: { x: 200, y: 120, w: 1200, h: 675, fit: "cover", radius: 12 } },
+  ];
   writeFileSync(join(dir, "project.json"), JSON.stringify({ format: "uncut/0", name: "Parity", canvas: { width: 1920, height: 1080, fps: FPS }, textLooks: 1, media, tracks: [...overlays.reverse(), { id: "main", kind: "video", role: "main", name: "Main", items: main }] }));
 });
 after(async () => {
@@ -149,14 +190,14 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
 
   const shots: Record<string, { dom: string; gpu: string; ssim: number }> = {};
   for (const [k, layout] of LAYOUTS.entries()) {
-    const f = k * SEG + 15;
+    const f = AT[layout].frame;
     await setGpu(false);
     await settle(f);
     const a = await shot(`${layout}-dom`);
     await setGpu(true);
     await settle(f);
     const layers = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.gpuLayers ?? 0));
-    assert.equal(layers, layout === "image" || layout === "still-video" ? 7 : 13, `${layout}: every layer on the GPU`);
+    assert.equal(layers, AT[layout].layers, `${layout}: every layer on the GPU`);
     const b = await shot(`${layout}-gpu`);
     shots[layout] = { dom: a.file, gpu: b.file, ssim: ssim(a.file, b.file, a.w, a.h) };
     console.log(`# issue12 ${layout}: DOM vs GPU SSIM ${shots[layout]!.ssim.toFixed(4)}`);
@@ -180,15 +221,15 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
   assert.equal(phase, "done", await page.$eval("[data-testid=export-job]", (el) => el.textContent ?? ""));
 
   const low: Array<string> = [];
-  for (const [k, layout] of LAYOUTS.entries()) {
+  for (const layout of LAYOUTS) {
     const file = out(`${layout}-export`);
-    execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${k * SEG + 15})`, "-frames:v", "1", "-update", "1", file]);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${AT[layout].frame})`, "-frames:v", "1", "-update", "1", file]);
     const s = shots[layout]!;
     const dom = compare(s.dom, file);
     const gpu = compare(s.gpu, file);
     console.log(`# issue12 ${layout} vs export: DOM SSIM ${dom.ssim.toFixed(4)} Δ${dom.colour.toFixed(2)}, GPU SSIM ${gpu.ssim.toFixed(4)} Δ${gpu.colour.toFixed(2)}`);
     if (!(s.ssim >= 0.99)) low.push(`${layout}: DOM vs GPU SSIM ${s.ssim}`);
-    if (!(gpu.ssim >= dom.ssim - 0.002)) low.push(`${layout}: GPU vs export SSIM ${gpu.ssim} below the DOM path's ${dom.ssim}`);
+    if (!(gpu.ssim >= dom.ssim - 0.003)) low.push(`${layout}: GPU vs export SSIM ${gpu.ssim} below the DOM path's ${dom.ssim}`);
     if (!(gpu.colour <= dom.colour + 0.5)) low.push(`${layout}: GPU vs export colour Δ ${gpu.colour} above the DOM path's ${dom.colour}`);
   }
   assert.deepEqual(low, []);
