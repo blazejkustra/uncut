@@ -2,7 +2,9 @@ appId: com.blazejkustra.uncut
 productName: Uncut
 electronVersion: 44.6.0
 npmRebuild: false
-# No auto-update feed and no publishing from electron-builder: the release workflow uploads the dmg itself.
+# No publishing from electron-builder: the release workflow uploads the dmg itself, and on the signed
+# path the auto-update feed `pnpm dist:signed` makes from the stapled app (zip, blockmaps, latest-mac.yml;
+# #102, D276). The app writes its own app-update.yml (apps/desktop/src/updater), so none is needed here.
 publish: null
 directories:
   output: ../../dist

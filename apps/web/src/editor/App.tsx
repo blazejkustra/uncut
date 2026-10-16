@@ -10,6 +10,7 @@ import { RemoteBrowser } from "../panels/RemoteBrowser.tsx";
 import { Settings } from "../settings/Settings.tsx";
 import { ShortcutsSheet } from "../settings/Shortcuts.tsx";
 import { LeaveDialog } from "../state/leave.tsx";
+import { UpdateToast } from "../ui/UpdateToast.tsx";
 
 type WindowMode = "welcome" | "editor";
 
@@ -57,6 +58,8 @@ export function App() {
       {app.remotePicker && <RemoteBrowser key={app.remotePicker.seq} request={app.remotePicker} />}
       {/* U12: leaving with work in progress asks here, over everything. */}
       <LeaveDialog />
+      {/* #102 (D276): "Uncut X is ready", over every screen. */}
+      <UpdateToast />
     </>
   );
 }

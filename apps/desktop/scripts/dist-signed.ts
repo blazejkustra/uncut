@@ -7,7 +7,9 @@
 //   3. electron-builder signs the app (hardened runtime, secure timestamp, entitlements) into
 //      dist/signed/mac-arm64; every Mach-O inside is checked, then codesign --verify --deep --strict.
 //   4. the app is notarized (zip) and stapled; a DMG is made from it, signed, notarized and stapled.
-//   5. stapler validate and spctl on both, then the DMG goes to release/.
+//   5. stapler validate and spctl on both, then the DMG goes to release/, with the auto-update feed
+//      (#102, D276): a zip of the stapled app (Squirrel.Mac installs from it), a .blockmap for the
+//      zip and the DMG (electron-updater's differential download), and latest-mac.yml.
 // It runs `pnpm build` itself, after the cheap checks, with telemetry's app token (D223) from
 // UNCUT_TELEMETRY_TOKEN or the keychain item "uncut-telemetry-app-token"; without one the build is inert.
 // It never prints credentials: notarytool reads them from the keychain profile, the token goes only
@@ -15,7 +17,8 @@
 // Flags: --sign-only (sign, check and make the DMG, no notarization: nothing goes to Apple);
 // --skip-build (package the apps/*/dist already built).
 import { execFileSync, spawnSync } from "node:child_process";
-import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +28,7 @@ import {
   dmgSignArgs,
   isMachO,
   isMissingProfile,
+  latestMacYaml,
   notaryAuth,
   notaryCheckArgs,
   notaryLogArgs,
@@ -41,6 +45,9 @@ import {
   storeCredentialsHint,
   telemetryToken,
   TELEMETRY_KEYCHAIN_SERVICE,
+  updateZipArgs,
+  updateZipName,
+  type FeedFile,
   type NotaryAuth,
 } from "./signing.ts";
 
@@ -152,12 +159,36 @@ try {
   mkdirSync(dirname(out), { recursive: true });
   copyFileSync(dmg, out);
   const sha = capture("shasum", ["-a", "256", out]).out.split(/\s/)[0];
-  console.log(`\n✓ Developer ID-signed, notarized and stapled:\n  ${out}\n  sha256 ${sha}`);
+  const feed = await updateFeed(version, out);
+  console.log(`\n✓ Developer ID-signed, notarized and stapled:\n  ${out}\n  sha256 ${sha}\nAuto-update feed (upload all of these to the release of tag v${version}):\n  ${feed.join("\n  ")}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
 
 // ---------- steps ----------
+
+/**
+ * #102 (D276): the auto-update feed next to the DMG in release/: the zip of the stapled app, a
+ * blockmap for it and for the DMG (gzip, electron-builder's own code), and latest-mac.yml. Returns
+ * the files made.
+ */
+async function updateFeed(version: string, dmg: string): Promise<Array<string>> {
+  step("Making the auto-update feed (zip, blockmaps, latest-mac.yml)");
+  const dir = dirname(dmg);
+  const zip = join(dir, updateZipName(version));
+  rmSync(zip, { force: true });
+  run("ditto", updateZipArgs(appPath, zip), "ditto (update zip)");
+  // app-builder-lib's blockmap builder, from electron-builder's own install (not a direct dependency).
+  const req = createRequire(join(desktop, "node_modules", "electron-builder", "package.json"));
+  const { buildBlockMap } = req("app-builder-lib/out/targets/blockmap/blockmap") as { buildBlockMap: (file: string, compression: "gzip", out: string) => Promise<{ size: number; sha512: string }> };
+  const entry = async (file: string): Promise<FeedFile> => {
+    const info = await buildBlockMap(file, "gzip", `${file}.blockmap`);
+    return { url: file.slice(dir.length + 1), sha512: info.sha512, size: info.size };
+  };
+  const yml = join(dir, "latest-mac.yml");
+  writeFileSync(yml, latestMacYaml({ version, zip: await entry(zip), dmg: await entry(dmg), releaseDate: new Date() }));
+  return [dmg, `${dmg}.blockmap`, zip, `${zip}.blockmap`, yml];
+}
 
 /** Every Mach-O in the bundle signed by the team, hardened runtime, secure timestamp; then the deep check. */
 function verifyApp(app: string) {

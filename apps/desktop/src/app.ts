@@ -2,10 +2,12 @@ import * as path from "node:path";
 
 import { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, Menu, screen, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebFrameMain } from "electron";
 
-import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_SOURCES_CHANNEL, CHOOSE_DISPLAY_SOURCE_CHANNEL, SYSTEM_AUDIO_CHANNEL, CHOOSE_FOLDER_CHANNEL, CHOOSE_MEDIA_CHANNEL, CHOOSE_SAVE_PATH_CHANNEL, CLOSE_ANSWER_CHANNEL, CLOSE_REQUEST_CHANNEL, COPY_TEXT_CHANNEL, CLIPBOARD_PATHS_CHANNEL, DOWNLOAD_EXPORT_CHANNEL, ENVIRONMENT_ADD_CHANNEL, ENVIRONMENT_REMOVE_CHANNEL, ENVIRONMENT_RENAME_CHANNEL, ENVIRONMENT_STATUS_CHANNEL, ENVIRONMENT_SWITCH_CHANNEL, ENVIRONMENT_TEST_CHANNEL, ENVIRONMENTS_CHANNEL, MEDIA_ACCESS_CHANNEL, MENU_COMMAND_CHANNEL, OPEN_PRIVACY_SETTINGS_CHANNEL, SERVER_CONNECTION_CHANNEL, SERVER_EXIT_CHANNEL, SHOW_IN_FOLDER_CHANNEL, SILENT_AUDIO_CHANNEL, type AppInfo, type AppState, type CloseAnswer, type EnvironmentTest, type FolderPurpose, type MenuCommand, WINDOW_MODE_CHANNEL, MINI_RECORDER_ACTION_CHANNEL, MINI_RECORDER_CHANNEL, type MiniRecorderAction, type MiniRecorderState } from "./ipc.ts";
+import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_SOURCES_CHANNEL, CHOOSE_DISPLAY_SOURCE_CHANNEL, SYSTEM_AUDIO_CHANNEL, CHOOSE_FOLDER_CHANNEL, CHOOSE_MEDIA_CHANNEL, CHOOSE_SAVE_PATH_CHANNEL, CLOSE_ANSWER_CHANNEL, CLOSE_REQUEST_CHANNEL, COPY_TEXT_CHANNEL, CLIPBOARD_PATHS_CHANNEL, DOWNLOAD_EXPORT_CHANNEL, ENVIRONMENT_ADD_CHANNEL, ENVIRONMENT_REMOVE_CHANNEL, ENVIRONMENT_RENAME_CHANNEL, ENVIRONMENT_STATUS_CHANNEL, ENVIRONMENT_SWITCH_CHANNEL, ENVIRONMENT_TEST_CHANNEL, ENVIRONMENTS_CHANNEL, MEDIA_ACCESS_CHANNEL, MENU_COMMAND_CHANNEL, OPEN_PRIVACY_SETTINGS_CHANNEL, SERVER_CONNECTION_CHANNEL, SERVER_EXIT_CHANNEL, SHOW_IN_FOLDER_CHANNEL, SILENT_AUDIO_CHANNEL, type AppInfo, type AppState, type CloseAnswer, type EnvironmentTest, type FolderPurpose, type MenuCommand, WINDOW_MODE_CHANNEL, MINI_RECORDER_ACTION_CHANNEL, MINI_RECORDER_CHANNEL, type MiniRecorderAction, type MiniRecorderState, UPDATE_BUSY_CHANNEL, UPDATE_CHECK_CHANNEL, UPDATE_INSTALL_CHANNEL, UPDATE_STATUS_CHANNEL, type UpdateStatus } from "./ipc.ts";
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
 import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
-import { setAppMenu } from "./menu.ts";
+import { setAppMenu, setUpdateMenu } from "./menu.ts";
+import { disabledLabel } from "./updater/policy.ts";
+import { startUpdater, type Updater } from "./updater/updater.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { allowPermission } from "./permissions.ts";
 import { textMenu } from "./textMenu.ts";
@@ -474,7 +476,53 @@ app.whenReady().then(() => {
   });
   setAppMenu({ projectOpen: false, recents: [], environments: false }, sendMenuCommand);
   createWindow();
+  installUpdates();
 });
+
+// ---- auto-update (#102, D276) ----
+
+let updater: Updater | undefined;
+// What the renderer last said (an export, a recording or an agent turn running), kept until the updater is up.
+let updateBusy = false;
+
+function installUpdates() {
+  void startUpdater({
+    dataDir: process.env.UNCUT_DATA_DIR || app.getPath("userData"),
+    send: (status) => win?.webContents.send(UPDATE_STATUS_CHANNEL, status),
+    // The renderer asked about pending work before it called install; now nothing may hold the quit:
+    // the server is stopped first (will-quit then has nothing to wait for) and the close isn't asked again.
+    beforeInstall: async () => {
+      closeAllowed = true;
+      const stopping = server;
+      setServer(undefined);
+      await Promise.allSettled([stopping?.stop(), closeRelay()]);
+    },
+    onPolicy: (policy) => setUpdateMenu({ enabled: policy.enabled, sublabel: disabledLabel(policy), check: () => updater?.checkNow() }),
+  }).then(
+    (u) => {
+      updater = u;
+      u.setBusy(updateBusy);
+    },
+    (error: Error) => console.log(`[updater] not started: ${error.message}`),
+  );
+  ipcMain.handle(UPDATE_STATUS_CHANNEL, (event): UpdateStatus => {
+    if (!fromAppWindow(event)) throw new Error("not allowed");
+    return updater?.status() ?? { kind: "idle" };
+  });
+  ipcMain.handle(UPDATE_CHECK_CHANNEL, (event) => {
+    if (!fromAppWindow(event)) throw new Error("not allowed");
+    updater?.checkNow();
+  });
+  ipcMain.handle(UPDATE_INSTALL_CHANNEL, (event) => {
+    if (!fromAppWindow(event)) throw new Error("not allowed");
+    return updater?.install() ?? "not-ready";
+  });
+  ipcMain.on(UPDATE_BUSY_CHANNEL, (event, busy: unknown) => {
+    if (!fromAppWindow(event)) return;
+    updateBusy = busy === true;
+    updater?.setBusy(updateBusy);
+  });
+}
 
 // One window for now; closing it ends the app (and the server with it).
 app.on("window-all-closed", () => app.quit());
