@@ -3,7 +3,8 @@
 // sum of one spring per change (continuous at every retarget, settling on the last target), the
 // liquid indicator's leading edge runs ahead, text rises out of its mask line and leaves upward, a
 // flood covers past the corners and takes its time, iris blades close the aperture, the squeeze keeps
-// letters touching, the cursor dips on a click, and every function is a pure function of t.
+// letters touching, the cursor dips on a click, the next shot grows out of a shape (no cut) and a
+// footage frame is asked for at its drawn size or larger, and every function is a pure function of t.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -41,6 +42,10 @@ interface Motion {
   shapeCSS: (s: { x: number; y: number; w: number; h: number; r: number }) => { left: number; top: number; width: number; height: number; borderRadius: number };
   riseCSS: (t: number, o: Record<string, number>) => { height: number; transform: string; visible: boolean };
   swap: (t: number, at: number, o?: Record<string, number>) => Record<"out" | "in", { alpha: number; blur: number; dy: number; visible: boolean }>;
+  grow: (t: number, o: Record<string, unknown>) => { rects: Array<{ x: number; y: number; w: number; h: number; r: number }>; x: number; y: number; w: number; h: number; r: number; scale: number; full: boolean; visible: boolean };
+  growPath: (ctx: unknown, g: { rects: Array<{ x: number; y: number; w: number; h: number; r: number }> }) => void;
+  growCSS: (g: { rects: Array<{ x: number; y: number; w: number; h: number; r: number }> }) => string;
+  frameWidth: (drawn: number, zoom?: number) => number;
 }
 
 const load = (): Motion => {
@@ -301,4 +306,46 @@ test("DOM twins: cameraCSS is apply's matrix, shapeCSS the shape's box, riseCSS 
   const rest = M.riseCSS(2, { at: 0.5, size: 100 });
   assert.ok(!before.visible && rest.visible && near(rest.height, 140, 1e-9));
   assert.match(rest.transform, /^translateY\(-?0(\.\d+)?(e-\d+)?px\)$/);
+});
+
+test("grow: the next shot grows out of a shape into a seed on the kick, then bleeds full on the next; never a blank, never a jump", () => {
+  const W = 1080;
+  const H = 1350;
+  for (const kind of ["inset", "pill", "circle", "strip", "split"]) {
+    const o = { at: 13, full: 13.5, kind, width: W, height: H };
+    assert.ok(!M.grow(12.99, o).visible, `${kind}: nothing before the kick`);
+    const seed = M.grow(13.4, o);
+    assert.ok(seed.visible && !seed.full, `${kind}: a seed shape, the old shot still around it`);
+    assert.ok(M.grow(13.81, o).full, `${kind}: full by the kick plus dur`);
+    assert.ok(seed.scale > 1 && near(M.grow(13.81, o).scale, 1, 1e-9), `${kind}: the picture settles`);
+    // Continuous: no rect edge moves more than a fifth of the frame between 60 fps frames.
+    let prev = M.grow(13, o);
+    for (let f = 1; f <= 60; f++) {
+      const g = M.grow(13 + f / 60, o);
+      g.rects.forEach((r, i) => assert.ok(Math.abs(r.w - prev.rects[i]!.w) < W / 5 && Math.abs(r.h - prev.rects[i]!.h) < H / 5, `${kind} frame ${f}`));
+      prev = g;
+    }
+  }
+  assert.equal(M.grow(13.4, { at: 13, kind: "split" }).rects.length, 2, "split is two halves closing");
+  // It grows out of a rect in the previous shot (a thumbnail, a button), not out of nothing.
+  const origin = { x: 200, y: 1100, w: 160, h: 90, r: 12 };
+  assert.deepEqual({ ...M.grow(13, { at: 13, origin }).rects[0] }, origin);
+  // Clip paths: canvas path has one round rect per rect; CSS is a path() of the same.
+  const calls: Array<string> = [];
+  const ctx = new Proxy({}, { get: (_t, k) => (...a: Array<unknown>) => calls.push(`${String(k)}${a.length}`) });
+  M.growPath(ctx, M.grow(13.4, { at: 13, kind: "split" }));
+  assert.equal(calls.filter((c) => c === "beginPath0").length, 1);
+  assert.equal(calls.filter((c) => c === "closePath0").length, 2);
+  assert.match(M.growCSS(M.grow(13.4, { at: 13, kind: "pill" })), /^path\("M [\d.-]+ [\d.-]+ H .* Z"\)$/);
+  // Pure: same t, same answer.
+  assert.deepEqual(M.grow(13.2, { at: 13, kind: "circle" }), M.grow(13.2, { at: 13, kind: "circle" }));
+});
+
+test("frameWidth: footage is asked for at its drawn size times the zoom or larger, on fixed steps", () => {
+  assert.equal(M.frameWidth(1080), 1080);
+  assert.equal(M.frameWidth(540, 1.8), 1080, "a tile zoomed 1.8x needs 972 px");
+  assert.equal(M.frameWidth(1080, 1.12), 1440);
+  assert.equal(M.frameWidth(300), 360);
+  assert.equal(M.frameWidth(4000), 1920, "capped at uncut.frame's longest edge");
+  for (let w = 10; w < 1900; w += 37) assert.ok(M.frameWidth(w, 1) >= w);
 });

@@ -35,6 +35,16 @@
                                                          // eased; to: "bleed" is the whole frame past every edge. The button grows into
                                                          // the next scene's full shape; never shrink a scene to a dot
      uncutMotion.coverage(s, width, height)              // 0..1: the share of the frame inside shape s (keep it at 0.7 or more on every frame)
+     uncutMotion.grow(t, { at, full, kind, origin, width, height, dur: 0.3 })
+                                                         // { rects, x, y, w, h, r, scale, full, visible }: the next shot's entry in a one-take,
+                                                         // no cut: on the kick at it grows out of origin (a rect in the previous shot, else
+                                                         // its own centre) into a seed shape, kind "inset" | "pill" | "circle" | "strip" | "split",
+                                                         // and on the kick full (default at + 0.5) bleeds past every edge; draw the old shot
+                                                         // under it until full is true. scale (1.12 to 1) eases the new picture in: scale it
+                                                         // about the frame's centre
+     uncutMotion.growPath(ctx, g), uncutMotion.growCSS(g) // that entry as a canvas clip path, or a CSS clip-path for a frame-sized div
+     uncutMotion.frameWidth(drawnWidth, zoom)            // the width to ask uncut.frame for: drawn width x camera zoom (x the content
+                                                         // scale), rounded UP to a fixed step so the cache holds (never upscale footage)
    DOM, CSS and SVG are first class (backdrop-filter, SVG filters, masks, variable-font axes all export):
      uncutMotion.cameraCSS(cam, width, height)           // "matrix(...)" for a world div (transform-origin: 0 0)
      uncutMotion.shapeCSS(s)                             // { left, top, width, height, borderRadius } in px for a div
@@ -183,8 +193,11 @@
     return out;
   }
   function shapePath(ctx, s) {
-    var x = s.x - s.w / 2, y = s.y - s.h / 2, r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2);
     ctx.beginPath();
+    roundRect(ctx, s);
+  }
+  function roundRect(ctx, s) {
+    var x = s.x - s.w / 2, y = s.y - s.h / 2, r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2);
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + s.w, y, x + s.w, y + s.h, r);
     ctx.arcTo(x + s.w, y + s.h, x, y + s.h, r);
@@ -396,6 +409,108 @@
     });
     return clamp(area / (W * H), 0, 1);
   }
+  // A shape-grow entry: the next shot in a one-take never cuts in, it grows out of a shape. Phase 1
+  // (at, dur s): origin to the seed shape; phase 2 (full, dur s): the seed to past every edge.
+  function inRect(px, py, s) {
+    var x0 = s.x - s.w / 2, y0 = s.y - s.h / 2, x1 = s.x + s.w / 2, y1 = s.y + s.h / 2;
+    if (px < x0 || px > x1 || py < y0 || py > y1) return false;
+    var r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2);
+    var cx = clamp(px, x0 + r, x1 - r), cy = clamp(py, y0 + r, y1 - r);
+    return (px - cx) * (px - cx) + (py - cy) * (py - cy) <= r * r + 1e-6;
+  }
+  function growSeeds(kind, W, H, o) {
+    var B = { x: W / 2, y: H / 2, w: W * 1.24, h: H * 1.24, r: 0 };
+    if (kind === "circle") {
+      var d = Math.min(W, H) * 0.6, D = 2 * cover(W / 2, H / 2, W, H);
+      return { from: [{ x: W / 2, y: H / 2, w: 0, h: 0, r: 0 }], seed: [{ x: W / 2, y: H / 2, w: d, h: d, r: d / 2 }], to: [{ x: W / 2, y: H / 2, w: D, h: D, r: D / 2 }] };
+    }
+    if (kind === "pill") {
+      var ph = H * 0.25;
+      return { from: [{ x: W / 2, y: H / 2, w: 0, h: 0, r: 0 }], seed: [{ x: W / 2, y: H / 2, w: W * 0.86, h: ph, r: ph / 2 }], to: [B] };
+    }
+    if (kind === "strip") {
+      var left = o.side === "left", sw = W * 0.65;
+      var edge = left ? -W * 0.12 : W * 1.12;
+      return { from: [{ x: edge, y: H / 2, w: 0, h: H * 1.24, r: 0 }], seed: [{ x: left ? edge + sw / 2 : edge - sw / 2, y: H / 2, w: sw, h: H * 1.24, r: 0 }], to: [B] };
+    }
+    if (kind === "split") {
+      var bw = W * 1.24, top = -H * 0.12, bot = H * 1.12, sh = H * 0.12 + H * 0.46, fh = H * 0.12 + H * 0.52;
+      return {
+        from: [{ x: W / 2, y: top, w: bw, h: 0, r: 0 }, { x: W / 2, y: bot, w: bw, h: 0, r: 0 }],
+        seed: [{ x: W / 2, y: top + sh / 2, w: bw, h: sh, r: 0 }, { x: W / 2, y: bot - sh / 2, w: bw, h: sh, r: 0 }],
+        to: [{ x: W / 2, y: top + fh / 2, w: bw, h: fh, r: 0 }, { x: W / 2, y: bot - fh / 2, w: bw, h: fh, r: 0 }],
+      };
+    }
+    var iw = W * 0.7, ih = H * 0.58;
+    return { from: [{ x: W / 2, y: H / 2, w: 0, h: 0, r: 0 }], seed: [{ x: W / 2, y: H / 2, w: iw, h: ih, r: Math.min(W, H) * 0.024 }], to: [B] };
+  }
+  function grow(t, o) {
+    o = o || {};
+    var W = o.width || 1080;
+    var H = o.height || 1350;
+    var dur = o.dur || 0.3;
+    var at = o.at || 0;
+    var fullAt = o.full === undefined ? at + 0.5 : o.full;
+    var g = growSeeds(o.kind || "inset", W, H, o);
+    var from = o.origin ? [o.origin] : g.from;
+    var p1 = easeInOut((t - at) / dur);
+    var p2 = easeInOut((t - fullAt) / dur);
+    var rects = g.seed.map(function (sd, i) {
+      var a = from[Math.min(i, from.length - 1)], b = g.to[i], out = {};
+      ["x", "y", "w", "h", "r"].forEach(function (f) {
+        out[f] = mix(mix(a[f] || 0, sd[f] || 0, p1), b[f] || 0, p2);
+      });
+      out.r = clamp(out.r, 0, Math.min(out.w, out.h) / 2);
+      return out;
+    });
+    var full = t >= at;
+    for (var gx = 0; gx <= 8 && full; gx++)
+      for (var gy = 0; gy <= 10 && full; gy++) {
+        var px = (gx / 8) * W, py = (gy / 10) * H;
+        full = rects.some(function (s) {
+          return inRect(px, py, s);
+        });
+      }
+    var k = o.scale === undefined ? 1.12 : o.scale;
+    var first = rects[0];
+    return {
+      rects: rects,
+      x: first.x,
+      y: first.y,
+      w: first.w,
+      h: first.h,
+      r: first.r,
+      scale: 1 + (k - 1) * (1 - easeOut((t - at) / (fullAt + dur - at))),
+      full: full,
+      visible: t >= at && rects.some(function (s) {
+        return s.w > 0.5 && s.h > 0.5;
+      }),
+    };
+  }
+  function growPath(ctx, g) {
+    ctx.beginPath();
+    g.rects.forEach(function (s) {
+      roundRect(ctx, s);
+    });
+  }
+  function growCSS(g) {
+    var n = function (v) {
+      return Math.round(v * 100) / 100;
+    };
+    var d = g.rects
+      .map(function (s) {
+        var x = s.x - s.w / 2, y = s.y - s.h / 2, r = clamp(s.r || 0, 0, Math.min(s.w, s.h) / 2), a = " A " + n(r) + " " + n(r) + " 0 0 1 ";
+        return "M " + n(x + r) + " " + n(y) + " H " + n(x + s.w - r) + a + n(x + s.w) + " " + n(y + r) + " V " + n(y + s.h - r) + a + n(x + s.w - r) + " " + n(y + s.h) + " H " + n(x + r) + a + n(x) + " " + n(y + s.h - r) + " V " + n(y + r) + a + n(x + r) + " " + n(y) + " Z";
+      })
+      .join(" ");
+    return 'path("' + d + '")';
+  }
+  var FRAME_STEPS = [360, 540, 720, 1080, 1440, 1920];
+  function frameWidth(drawn, zoom) {
+    var need = (drawn || 0) * (zoom || 1);
+    for (var i = 0; i < FRAME_STEPS.length; i++) if (FRAME_STEPS[i] >= need) return FRAME_STEPS[i];
+    return FRAME_STEPS[FRAME_STEPS.length - 1];
+  }
   function beat(n, o) {
     var bpm = (o && o.bpm) || 120;
     return ((o && o.offset) || 0) + (n * 60) / bpm;
@@ -440,6 +555,10 @@
     morph: morph,
     coverage: coverage,
     swap: swap,
+    grow: grow,
+    growPath: growPath,
+    growCSS: growCSS,
+    frameWidth: frameWidth,
     cameraCSS: cameraCSS,
     shapeCSS: shapeCSS,
     riseCSS: riseCSS,
