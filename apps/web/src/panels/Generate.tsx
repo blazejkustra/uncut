@@ -10,7 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { actions, useApp, type GenerateDraft, type Project } from "../state/store.ts";
 import { MediaTile } from "./library/MediaTile.tsx";
-import { firstModel, modelsFor, TITLE_CARD, TITLE_PREFIX, type GenType, type Model, type ModelOption } from "./generate/catalog.ts";
+import { firstModel, modelsFor, type GenType, type Model, type ModelOption } from "./generate/catalog.ts";
 import { LabMark } from "./generate/marks.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./generate/generate.css";
@@ -36,11 +36,10 @@ const TYPES: ReadonlyArray<{ id: GenType; label: string; noun: string; icon: typ
   { id: "video", label: "Video", noun: "video", icon: Film },
   { id: "audio", label: "Sound", noun: "sound", icon: AudioLines },
 ];
-const PLACEHOLDER: Record<GenType | "title", string> = {
+const PLACEHOLDER: Record<GenType, string> = {
   image: "A flat illustration of a phone on a desk, soft light",
   video: "A logo drawing itself on a dark background",
   audio: "A short whoosh as a card slides in",
-  title: "Launch day, in big white letters on deep blue",
 };
 
 /** Price per item, in a few words (a coming-soon model has none yet). */
@@ -75,18 +74,16 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
   useEffect(() => {
     const d = app.generateDraft;
     if (!d) return;
-    const title = d.generator === "generate.svg" && d.prompt.startsWith(TITLE_PREFIX);
     setType(d.kind === "audio" ? "audio" : d.kind === "video" ? "video" : "image");
-    setDraft({ ...d, generator: title ? TITLE_CARD : d.generator, prompt: title ? d.prompt.slice(TITLE_PREFIX.length) : d.prompt });
+    setDraft(d);
     prompt.current?.focus();
   }, [app.generateDraft?.seq]);
   const models = modelsFor(generators, type);
   const m = models.find((x) => x.id === draft.generator) ?? firstModel(models);
   const g = m?.info;
-  const title = m?.id === TITLE_CARD;
   const size = g && draft.size && g.sizes.includes(draft.size) ? draft.size : g?.sizes[0];
   const seconds = g?.seconds && type !== "image" ? (draft.seconds !== undefined && g.seconds.includes(draft.seconds) ? draft.seconds : g.id === "generate.sound" ? 5 : g.seconds[0]) : undefined;
-  const fullPrompt = title && draft.prompt.trim() ? `${TITLE_PREFIX}${draft.prompt.trim()}` : draft.prompt.trim();
+  const fullPrompt = draft.prompt.trim();
   const jobs = app.generateJobs.filter((j) => j.projectDir === app.snapshot?.dir);
   const running = jobs.filter((j) => j.phase === "running" || j.phase === "importing");
   const last = [...jobs].reverse().find((j) => j.phase === "done" || j.phase === "failed");
@@ -103,7 +100,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
     const first = firstModel(modelsFor(generators, t));
     setDraft((d) => ({ ...d, generator: first?.id ?? d.generator, kind: t, size: undefined, seconds: undefined }));
   };
-  const noun = title ? "title card" : TYPES.find((t) => t.id === type)!.noun;
+  const noun = TYPES.find((t) => t.id === type)!.noun;
   const wired = models.filter((x) => !x.soon);
   const soon = models.filter((x) => x.soon);
   const why = !app.snapshot ? "Open a project first" : m?.soon ? `${m.name} is coming soon` : g && !g.ready ? g.needs : same ? "This one is being made now" : !fullPrompt ? "Describe what to make first" : "Generate (⌘↩)";
@@ -161,7 +158,7 @@ export function GenerateLibrary({ project: _project }: { project: Project }) {
             ref={prompt}
             className="gen-prompt"
             data-testid="generate-prompt"
-            placeholder={PLACEHOLDER[title ? "title" : type]}
+            placeholder={PLACEHOLDER[type]}
             value={draft.prompt}
             maxLength={4000}
             onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
@@ -392,7 +389,7 @@ export function GeneratedSection({ project, onEdit, mode, used, selected, onSele
           const draft = draftOf(m);
           const ready = generators.find((g) => g.id === draft.generator)?.ready !== false;
           const type: GenType = m.kind === "audio" ? "audio" : m.kind === "video" ? "video" : "image";
-          const by = modelsFor(generators, type).find((x) => x.id === (draft.prompt.startsWith(TITLE_PREFIX) && draft.generator === "generate.svg" ? TITLE_CARD : draft.generator));
+          const by = modelsFor(generators, type).find((x) => x.id === draft.generator);
           return (
             <MediaTile
               key={m.id}
