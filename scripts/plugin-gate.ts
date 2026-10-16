@@ -9,6 +9,9 @@ import { API_VERSION } from "../packages/plugin-sdk/src/index.ts";
 import { loadModules, readContributions, type ModuleManifest } from "../packages/core/src/index.ts";
 import { checkManifest, MANIFEST_FILE } from "../apps/server/src/plugins/plugins.ts";
 import { shaderEntries } from "./plugin-shaders.ts";
+import { BUILTIN_IDS, SKILLS_PLUGIN_ID } from "../packages/core/src/skills/skills.ts";
+
+const RESERVED_SKILLS: ReadonlySet<string> = new Set(Object.values(BUILTIN_IDS));
 
 export const REPO = fileURLToPath(new URL("..", import.meta.url));
 export const MAX_FILES = 40;
@@ -59,6 +62,8 @@ export interface GateContext {
   readonly ids: Map<string, string>;
   /** Tool names → plugin id, of the plugins checked before (shared, filled in). */
   readonly tools: Map<string, string>;
+  /** D258: skill names → plugin id, of the plugins checked before (shared, filled in): names aren't namespaced (D232). */
+  readonly skills: Map<string, string>;
 }
 
 export async function gateContext(): Promise<GateContext> {
@@ -69,6 +74,7 @@ export async function gateContext(): Promise<GateContext> {
     taken: new Set(),
     ids: new Map(),
     tools: new Map(),
+    skills: new Map(),
   };
 }
 
@@ -141,6 +147,14 @@ export function checkPluginFolder(dir: string, ctx: GateContext, { template = fa
     const owner = ctx.tools.get(tool.name);
     if (owner && owner !== manifest.id) say(`the tool name ${tool.name} is taken by ${owner}: tool names are unique across plugins.`);
     ctx.tools.set(tool.name, manifest.id);
+  }
+
+  // D258: a skill name is everyone's (the first plugin with it wins, D232), and Uncut's own are reserved (D248).
+  for (const skill of (manifest.contributes as { skills?: Array<{ name: string }> } | undefined)?.skills ?? []) {
+    if (manifest.id !== SKILLS_PLUGIN_ID && RESERVED_SKILLS.has(skill.name)) say(`the skill name ${skill.name} is one of Uncut's own: pick another.`);
+    const owner = ctx.skills.get(skill.name);
+    if (owner && owner !== manifest.id) say(`the skill name ${skill.name} is taken by ${owner}: skill names are unique across plugins.`);
+    ctx.skills.set(skill.name, manifest.id);
   }
 
   const runtime = manifest.runtime as { type: string; command?: string; args?: Array<string> };

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { realpath, readdir, stat, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { readContributions } from "@uncut/core";
 import { BUILTIN_IDS } from "@uncut/core/skills";
 import type { McpTool } from "../../agent/agentTools.ts";
@@ -15,7 +15,7 @@ const RESERVED_SKILLS: ReadonlySet<string> = new Set(Object.values(BUILTIN_IDS))
  * earlier plugin already has is left out with a warning; the plugin's other tools stay.
  */
 export async function discoverPlugins(
-  roots: ReadonlyArray<{ readonly source: PluginSource; readonly dir: string }>,
+  roots: ReadonlyArray<{ readonly source: PluginSource; readonly dir: string; readonly folders?: ReadonlyArray<string> | undefined }>,
   reserved: { readonly moduleIds: ReadonlySet<string>; readonly toolNames: ReadonlySet<string>; readonly moves?: ReadonlySet<string> },
 ): Promise<Discovery> {
   const plugins: Array<FoundPlugin> = [];
@@ -35,8 +35,9 @@ export async function discoverPlugins(
     seenRoots.add(rootDir);
     let names: Array<string>;
     try {
+      // D258: a root with its folders listed (bundled.json's split) has exactly those.
       // Hidden folders and "_" ones (the catalog's _template, D104) are never plugins.
-      names = (await readdir(rootDir)).filter((n) => !n.startsWith(".") && !n.startsWith("_")).sort();
+      names = root.folders ? [...root.folders] : (await readdir(rootDir)).filter((n) => !n.startsWith(".") && !n.startsWith("_")).sort();
     } catch (error) {
       broken.push({ source: root.source, dir: rootDir, id: undefined, name: undefined, problem: `Uncut can't read this plugin folder (${messageOf(error)}).` });
       continue;
@@ -44,7 +45,7 @@ export async function discoverPlugins(
     for (const name of names) {
       let dir: string;
       try {
-        dir = await realpath(join(rootDir, name));
+        dir = await realpath(resolve(rootDir, name));
         if (!(await stat(dir)).isDirectory()) continue;
       } catch {
         continue;

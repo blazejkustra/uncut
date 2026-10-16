@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 
 import type { ShellEnvironment } from "./shellEnv.ts";
 import { besideServer } from "../paths.ts";
+import { pluginLayout, type PluginLayout } from "../plugins/discovery/bundled.ts";
 
 declare const __UNCUT_SERVER_VERSION__: string | undefined;
 
@@ -39,11 +40,14 @@ export interface ServerConfigShape {
   readonly dataDir: string;
   // Plugin folders, searched in this order (D97): UNCUT_PLUGINS_DIR (tests, development), the
   // user's <dataDir>/plugins, then the plugins shipped with the app (Resources/plugins; dev: plugins/).
-  readonly pluginDirs: ReadonlyArray<{ readonly source: "user" | "bundled"; readonly dir: string }>;
+  // D258: `folders`, when set, are the root's plugin folders (bundled.json's split) instead of its subfolders.
+  readonly pluginDirs: ReadonlyArray<{ readonly source: "user" | "bundled"; readonly dir: string; readonly folders?: ReadonlyArray<string> }>;
   /** The plugin SDK plugins on Uncut's Node import (D102): its index.ts and register.ts. */
   readonly pluginSdkDir: string;
   /** The plugin catalog (D103): plugins shipped with Uncut, off until the user enables one (Resources/plugins/catalog; repo plugins/catalog). */
   readonly pluginCatalogDir: string;
+  /** D258: the catalog's plugin folders when the bundled folder has a bundled.json (development: every repo plugin it doesn't list); else pluginCatalogDir's subfolders. */
+  readonly pluginCatalogFolders?: ReadonlyArray<string>;
   // ANTHROPIC_API_KEY was in our environment at startup (D41: it is removed and never passed on).
   readonly apiKeyInEnv: boolean;
   // The login shell's environment, once resolved (undefined when UNCUT_SHELL_ENV=off).
@@ -132,6 +136,15 @@ export const readConfig = (
   headless?: { readonly host?: string | undefined; readonly tokenFile?: string | undefined },
 ): ServerConfigShape => {
   const token = bootstrapToken ?? (env.UNCUT_TOKEN || undefined);
+  const bundledPlugins = env.UNCUT_BUNDLED_PLUGINS_DIR || fromResources("plugins", "../../../plugins");
+  // D258: the repo's bundled.json (development); the packaged app's folder is already laid out and has none.
+  let layout: PluginLayout | undefined;
+  try {
+    layout = pluginLayout(bundledPlugins);
+    for (const problem of layout?.problems ?? []) console.error(`[uncut] ${problem}`);
+  } catch (error) {
+    console.error(`[uncut] ${(error as Error).message} Every plugin folder there ships as before.`);
+  }
   return {
     version: typeof __UNCUT_SERVER_VERSION__ === "string" ? __UNCUT_SERVER_VERSION__ : "0.0.0-dev",
     host: headless?.host || "127.0.0.1",
@@ -153,10 +166,11 @@ export const readConfig = (
     pluginDirs: [
       ...(env.UNCUT_PLUGINS_DIR ? [{ source: "user" as const, dir: env.UNCUT_PLUGINS_DIR }] : []),
       { source: "user" as const, dir: join(dataDirOf(env), "plugins") },
-      { source: "bundled" as const, dir: env.UNCUT_BUNDLED_PLUGINS_DIR || fromResources("plugins", "../../../plugins") },
+      { source: "bundled" as const, dir: bundledPlugins, ...(layout ? { folders: layout.bundled } : {}) },
     ],
     pluginSdkDir: env.UNCUT_PLUGIN_SDK_DIR || fromResources("plugin-sdk", "../../../packages/plugin-sdk/src"),
-    pluginCatalogDir: env.UNCUT_PLUGIN_CATALOG_DIR || join(env.UNCUT_BUNDLED_PLUGINS_DIR || fromResources("plugins", "../../../plugins"), "catalog"),
+    pluginCatalogDir: env.UNCUT_PLUGIN_CATALOG_DIR || join(bundledPlugins, "catalog"),
+    ...(layout && !env.UNCUT_PLUGIN_CATALOG_DIR ? { pluginCatalogFolders: layout.catalog } : {}),
     testFault: env.UNCUT_TEST_FAULT || undefined,
     whisperModelUrl: env.UNCUT_WHISPER_MODEL_URL || undefined,
     apiKeyInEnv: shell.apiKeyInEnv,

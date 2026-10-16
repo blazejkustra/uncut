@@ -112,7 +112,7 @@ function BrowsePlugins({ offline, onClose }: { offline: boolean; onClose: () => 
 }
 
 /** Add plugin…: choose a folder, or paste a git URL (with an optional branch or tag). */
-function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void }) {
+export function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void }) {
   const { pluginInstalling, pluginInstallError } = useApp();
   const [url, setUrl] = useState("");
   const [ref, setRef] = useState("");
@@ -191,7 +191,7 @@ function AddPlugin({ offline, onClose }: { offline: boolean; onClose: () => void
 }
 
 /** What a plugin adds (D103), in words: "Text looks: Soft card. Components: Corner sticker. Checks: …". */
-const addsLine = (c: NonNullable<PluginInfo["contributes"]>) =>
+export const addsLine = (c: NonNullable<PluginInfo["contributes"]>) =>
   [c.looks.length ? `Text looks: ${c.looks.join(", ")}` : "", c.components.length ? `Components: ${c.components.join(", ")}` : "", c.rules.length ? `Checks: ${c.rules.join(", ")}` : "", c.filters?.length ? `Filters: ${c.filters.join(", ")}` : "", c.shaders?.length ? `Shader effects: ${c.shaders.join(", ")}` : "", c.skills?.length ? `Skills: ${c.skills.join(", ")}` : ""].filter(Boolean).join(". ");
 
 /** Where a plugin came from, in words (the approval dialog and the row's tooltip). */
@@ -204,7 +204,7 @@ const originLines = (p: PluginInfo): Array<[string, string]> => {
 };
 
 /** Allowing a plugin (D97): where it came from, what it asks for, and that it runs with your rights. */
-function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
+export function PluginApproval({ plugin: p, offline }: { plugin: PluginInfo; offline: boolean }) {
   const [rights, ...rest] = p.asks;
   // Above Settings (itself a modal), outside its scrolling list.
   return createPortal(

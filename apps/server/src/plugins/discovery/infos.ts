@@ -119,6 +119,8 @@ export function pluginInfos(
       warnings: [...p.warnings],
       ...(contributesOf(p.contributions) ? { contributes: contributesOf(p.contributions)! } : {}),
       ...(skillsHash(p.contributions) ? { skillsHash: skillsHash(p.contributions)! } : {}),
+      ...(typeof p.manifest.author === "string" && p.manifest.author ? { author: p.manifest.author } : {}),
+      runs: p.runs,
       ...originOf(p.id, p.dir),
       ...(removable.has(p.dir) ? { removable: true } : {}),
     })),

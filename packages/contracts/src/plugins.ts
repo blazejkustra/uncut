@@ -29,6 +29,9 @@ export const PluginInfo = Schema.Struct({
   contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
   // D248: a hash of its skills (when it has any): the approval is for these skills; plugins.approve sends it back.
   skillsHash: Schema.optional(Schema.String),
+  // D258 (the marketplace cards): who made it, and whether it runs a program.
+  author: Schema.optional(Schema.String),
+  runs: Schema.optional(Schema.Boolean),
 });
 export type PluginInfo = typeof PluginInfo.Type;
 
@@ -65,6 +68,11 @@ export const CatalogEntry = Schema.Struct({
   contributes: Schema.optional(Schema.Struct({ looks: Schema.Array(Schema.String), components: Schema.Array(Schema.String), rules: Schema.Array(Schema.String), filters: Schema.optional(Schema.Array(Schema.String)), shaders: Schema.optional(Schema.Array(Schema.String)), skills: Schema.optional(Schema.Array(Schema.String)) })),
   // Enabled: a copy is in Uncut's plugins folder (it may still need allowing).
   enabled: Schema.Boolean,
+  // D258 (the marketplace): who made it, what allowing it means (PluginInfo.asks, as if installed),
+  // and, when enabled, whether that copy is allowed.
+  author: Schema.optional(Schema.String),
+  asks: Schema.optional(Schema.Array(Schema.String)),
+  status: Schema.optional(Schema.Literals(["ready", "needs-approval"])),
 });
 export type CatalogEntry = typeof CatalogEntry.Type;
 

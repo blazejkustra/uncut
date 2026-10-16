@@ -30,7 +30,7 @@ import { type PluginResult, errorResult, pluginContext } from "./runtime/result.
 import { type CallExtra, PluginHost } from "./runtime/host.ts";
 import { type FoundPlugin, type Discovery, messageOf } from "./discovery/manifest.ts";
 import { discoverPlugins } from "./discovery/discover.ts";
-import { isApproved, pluginInfos, contributesOf, contributesFor, skillsHash } from "./discovery/infos.ts";
+import { isApproved, pluginInfos, contributesOf, contributesFor, skillsHash, pluginAsks } from "./discovery/infos.ts";
 export { MANIFEST_FILE, DEFAULT_TIMEOUT_S, checkManifest } from "./discovery/manifest.ts";
 export type { PluginSource, ProcessSpec, FoundPlugin, BrokenPlugin, Discovery } from "./discovery/manifest.ts";
 export { MAX_LINE, PluginTimeout, PluginCancelled, DEFAULT_SDK_DIR, PluginProcess } from "./runtime/process.ts";
@@ -167,6 +167,8 @@ export const layer = Layer.effect(
         return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id}.` });
       });
 
+    // The catalog (D103); D258: in development, bundled.json's install-only plugins wherever they are in the repo.
+    const catalogRoot = { source: "user" as const, dir: config.pluginCatalogDir, folders: config.pluginCatalogFolders };
     const byTool = (tool: string) => discovery.plugins.find((p) => p.tools.some((t) => t.name === tool));
 
     // What an interrupted install or removal left behind (D102).
@@ -314,7 +316,8 @@ export const layer = Layer.effect(
         // Enabled: the plugin in use under that id is the copy Uncut made from the catalog (a
         // same-id plugin from git or a folder doesn't count).
         const fromCatalog = (id: string) => installs[id]?.kind === "catalog" && discovery.plugins.some((d) => d.id === id && d.source === "user" && d.dir === installs[id]!.dir);
-        const found = yield* Effect.promise(() => discoverPlugins([{ source: "user", dir: config.pluginCatalogDir }], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
+        const found = yield* Effect.promise(() => discoverPlugins([catalogRoot], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
+        const approvals = yield* settings.pluginApprovals;
         return {
           plugins: found.plugins.map((p): CatalogEntry => ({
             id: p.id,
@@ -327,6 +330,10 @@ export const layer = Layer.effect(
             runs: p.runs,
             ...(contributesOf(p.contributions) ? { contributes: contributesOf(p.contributions)! } : {}),
             enabled: fromCatalog(p.id),
+            // D258: what the marketplace card shows: who made it, what allowing it means, and whether the copy in use is allowed.
+            ...(typeof p.manifest.author === "string" && p.manifest.author ? { author: p.manifest.author } : {}),
+            asks: pluginAsks(p),
+            ...(fromCatalog(p.id) ? { status: discovery.plugins.some((d) => d.id === p.id && d.source === "user" && isApproved(d, approvals[p.id])) ? ("ready" as const) : ("needs-approval" as const) } : {}),
           })),
           problems: found.broken.map((b) => `${b.id ?? b.dir}: ${b.problem}`),
         };
@@ -339,7 +346,7 @@ export const layer = Layer.effect(
         }),
       enable: (id) =>
         Effect.gen(function* () {
-          const found = yield* Effect.promise(() => discoverPlugins([{ source: "user", dir: config.pluginCatalogDir }], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
+          const found = yield* Effect.promise(() => discoverPlugins([catalogRoot], { moduleIds: reserved.moduleIds, toolNames: new Set() }));
           const entry = found.plugins.find((p) => p.id === id);
           if (!entry) return yield* new PluginError({ reason: "unknown-plugin", message: `There's no plugin ${id} in Uncut's catalog.` });
           return yield* self.install({ source: entry.dir, catalog: true });
