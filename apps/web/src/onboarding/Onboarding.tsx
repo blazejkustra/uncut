@@ -6,6 +6,7 @@ import { EnvironmentChip, LabsTip, useEnvironmentsUsable } from "./Environments.
 import { CheckRow, PendingRow, KeyRows, SpeechModelRow } from "./rows.tsx";
 import { PluginRows } from "./plugins.tsx";
 import { declineIfUnanswered, useTelemetry, WizardUsageData } from "../settings/telemetry.tsx";
+import "./wizard.css";
 export { CheckRow, SpeechModelRow, KeyRows } from "./rows.tsx";
 export { PluginRows } from "./plugins.tsx";
 
