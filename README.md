@@ -2,7 +2,7 @@
 
 An AI-first video editor for macOS: it runs your installed Claude Code, which edits with you on a real timeline.
 
-![Uncut editing a launch film: the title "Ship it." over a mountain sunset in the preview, landscape clips in the media panel, a timeline with text, graphics, five clips with transitions and music, and the agent's brief, approved storyboard and passed review](docs/hero.png)
+![Uncut editing a travel film from drone footage: the title "Day four" over a Croatian coast road at golden hour in the preview, the day's clips in the media panel, a timeline with text, graphics, six clips with transitions and music, and the agent's brief, approved storyboard and passed review](docs/hero.png)
 
 ## What it does
 
