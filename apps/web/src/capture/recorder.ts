@@ -10,13 +10,13 @@
 // D210: this Mac's sound (getDisplayMedia's loopback audio through the desktop shell; tests use a
 // tone drawn here) alone, or with the microphone or the screen. D211: a take of more than one
 // source (screen, camera, microphone, this Mac's sound) records each with its own MediaRecorder,
-// all started in the same tick once their devices are open (D267: no 3-2-1 on the Capture tab; the
-// agent's take keeps it); each recorder's start event is measured on the
+// all started in the same tick once their devices are open (D267, D273: no 3-2-1, on the Capture
+// tab or for the agent's take); each recorder's start event is measured on the
 // page's clock and the parts' offsets go to the server, which trims the earlier ones so every part
 // starts together on the timeline. Each part is its own file (capture.saveMulti).
 import type { MultiLayout } from "@uncut/contracts";
 
-export { PEAK_HOLD_MS, levelDb, MIN_TAKE_MS, COUNTDOWN, useRecorder, getRecorder } from "./recorder/state.ts";
+export { PEAK_HOLD_MS, levelDb, MIN_TAKE_MS, useRecorder, getRecorder } from "./recorder/state.ts";
 export type { TakeMode, PartKind, Resolution, Input, RecorderState } from "./recorder/state.ts";
 export { refreshAccess, askAccess, openPrivacySettings, refreshSystemAudio, loadInputs, openMonitor, closeMonitor, openPreview, closePreview, loadSources } from "./recorder/devices.ts";
 export { NO_SYSTEM_SOUND } from "./recorder/streams.ts";

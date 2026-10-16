@@ -1,15 +1,15 @@
-// D221: "Draw the preview on the GPU", remembered on this Mac (localStorage). Off (the default) until
-// its parity tests cover every layer kind: on, one WebGL2 canvas draws the bottom run of video, image
-// and plain-colour layers with their picture effects (preview/gpu.ts); the rest stays on the DOM.
+// D221: "Draw the preview on the GPU", remembered on this Mac (localStorage). On by default (D273):
+// WebGL2 canvases draw every layer they can with its picture effects (preview/gpu.ts), in runs
+// between the layers they can't, which stay on the DOM. Settings › App turns it off ("off" stored).
 import { useSyncExternalStore } from "react";
 
 const KEY = "uncut.preview.gpu";
 
 const read = () => {
   try {
-    return typeof localStorage !== "undefined" && localStorage.getItem(KEY) === "on";
+    return typeof localStorage === "undefined" || localStorage.getItem(KEY) !== "off";
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -21,8 +21,8 @@ export const gpuCompositorOn = () => on;
 export function setGpuCompositorOn(value: boolean) {
   on = value;
   try {
-    if (value) localStorage.setItem(KEY, "on");
-    else localStorage.removeItem(KEY);
+    if (value) localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, "off");
   } catch {}
   for (const l of listeners) l();
 }

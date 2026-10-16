@@ -79,7 +79,7 @@ export const makeGenerateTools = (ctx: AskCtx) => {
 
   /**
    * screen_record (D144): the user is asked on a card (they pick the screen or window, the agent's
-   * suggestion preselected); on Record the renderer records for `seconds` after a 3-2-1, uploads the
+   * suggestion preselected); on Record the renderer records for `seconds` (no 3-2-1, D273), uploads the
    * take and answers with agent.screenTake; it's imported as an edit of this turn. Never silent.
    */
   const screenRecord = (r: Running, v: ProjectView, args: Record<string, unknown>) =>

@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
+import { viewerPrefs } from "../helpers/viewer-prefs.ts";
 import { audioGraph, planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { dbWords } from "../../packages/core/src/timeline/edit-log.ts";
 import { levelY } from "../../apps/web/src/audio/sound.ts";
@@ -113,6 +114,8 @@ test("Mixer: faders, pan, solo, meters, volume keys on the timeline, undo, Histo
   const voiceItem = () => onDisk().tracks.find((t) => t.id === "voice")!.items[0]!;
   try {
     await waitForWelcome(page);
+    // The mix as it is (D273 made At target the default): levels are measured against it.
+    await viewerPrefs(page, { atTarget: false });
     await page.click("[data-testid=open-project]");
     await waitFor(page, "[data-testid=editor]");
     let rev = await revision(page);

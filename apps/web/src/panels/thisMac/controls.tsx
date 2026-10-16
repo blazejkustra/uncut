@@ -105,7 +105,7 @@ function useTakeSeconds() {
  * D209: the recording bar: a big record button; then the timer, the level meter (when the take has
  * sound), Pause, Stop and Cancel; then saving. (D238: the meter before a take is the Microphone
  * card's.) D267: the button stands alone at the top of the tab (no box around it) and a take
- * starts as soon as its devices are open, no 3-2-1 (the agent's take keeps its count).
+ * starts as soon as its devices are open, no 3-2-1 (nor the agent's take, D273).
  */
 export function RecordBar({ mode, disabled, onRecord, label = "Record", meter }: { mode?: TakeMode; disabled: boolean; onRecord: () => void; label?: string; meter: boolean }) {
   const phase = useRecorder((s) => s.phase);

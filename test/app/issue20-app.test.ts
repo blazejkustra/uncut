@@ -157,7 +157,10 @@ test("D213: shader effects in the preview (WebGPU), the Effects tab and the Insp
     throw new Error(`${error.message}: ${JSON.stringify(state)}`);
   });
   assert.equal(await page.$eval("canvas[data-shader=c0]", (el) => (el as HTMLCanvasElement).width), 1280);
-  assert.equal(await page.$eval(".pv-box[data-item=c0] > video", (el) => (el as HTMLElement).style.visibility), "hidden");
+  // The DOM path hides the video under the shader's canvas; on the GPU compositor (the default, D273)
+  // the box is transparent and the compositor draws the shader's canvas in its place (D265).
+  const onGpu = await page.$eval(".pv-box[data-item=c0]", (el) => (el as HTMLElement).dataset.gpu !== undefined);
+  if (!onGpu) assert.equal(await page.$eval(".pv-box[data-item=c0] > video", (el) => (el as HTMLElement).style.visibility), "hidden");
   assert.equal(await page.$("[data-shader-badge=c0]"), null);
   const p0 = out("issue20-preview.png");
   await (await page.$("[data-testid=preview-frame]"))!.screenshot({ path: p0 });

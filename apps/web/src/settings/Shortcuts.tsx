@@ -1,5 +1,5 @@
 import { Lock, Plus, RotateCcw, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ACTIONS,
@@ -73,7 +73,17 @@ export function ShortcutSettings() {
   const [pending, setPending] = useState<Pending | undefined>(undefined);
   const listening = useRef<HTMLDivElement>(null);
   const clashes = conflicts(bindings);
-  const customised = Object.keys(state.overrides).length > 0;
+  const changes = Object.keys(state.overrides).length;
+  const customised = changes > 0;
+  // D273: a preset (or Reset all) replaces the user's own changes, so it asks first when there are any.
+  const [confirm, setConfirm] = useState<{ readonly preset: PresetId; readonly reset: boolean } | undefined>(undefined);
+  const cancelConfirm = useCallback(() => setConfirm(undefined), []);
+  const choose = (preset: PresetId, reset: boolean) => {
+    setPending(undefined);
+    setRecording(undefined);
+    if (customised) setConfirm({ preset, reset });
+    else keymap.set(choosePreset(preset));
+  };
 
   useEffect(() => {
     if (!recording) return;
@@ -226,7 +236,7 @@ export function ShortcutSettings() {
       <div className="shortcut-head">
         <label className="shortcut-preset">
           Preset
-          <select data-testid="shortcut-preset" value={state.preset} onChange={(e) => (setPending(undefined), setRecording(undefined), keymap.set(choosePreset(e.target.value as PresetId)))}>
+          <select data-testid="shortcut-preset" value={state.preset} onChange={(e) => choose(e.target.value as PresetId, false)}>
             {PRESETS.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label}
@@ -236,11 +246,11 @@ export function ShortcutSettings() {
         </label>
         {customised && <span className="muted small" data-testid="shortcut-customised">Customised</span>}
         <span className="grow" />
-        <button className="btn" data-testid="shortcuts-reset-all" disabled={!customised} title="Drop your changes and use the preset's keys" onClick={() => (setPending(undefined), keymap.set(choosePreset(state.preset)))}>
+        <button className="btn" data-testid="shortcuts-reset-all" disabled={!customised} title="Drop your changes and use the preset's keys" onClick={() => choose(state.preset, true)}>
           Reset all
         </button>
       </div>
-      <p className="shortcut-lead">Choosing a preset replaces your changes. Actions the preset has no key for keep Uncut's. Keys set by the menu can't be changed.</p>
+      <p className="shortcut-lead">Choosing a preset replaces your changes (it asks first). Actions the preset has no key for keep Uncut's. Keys set by the menu can't be changed.</p>
       {clashes.length > 0 && (
         <div className="shortcut-clashes" data-testid="shortcut-conflicts" role="status">
           {clashes.map((c) => (
@@ -257,6 +267,56 @@ export function ShortcutSettings() {
             {ACTIONS.filter((a) => a.group === g).map(row)}
           </div>
         ))}
+      </div>
+      {confirm && (
+        <PresetConfirm
+          label={PRESETS.find((p) => p.id === confirm.preset)?.label ?? confirm.preset}
+          reset={confirm.reset}
+          changes={changes}
+          onCancel={cancelConfirm}
+          onReplace={() => {
+            setConfirm(undefined);
+            keymap.set(choosePreset(confirm.preset));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * D273: in the app (like Remove media's, F8), not a system dialog. Esc or a click outside cancels;
+ * while it's open, Esc is its own (Settings under it stays open).
+ */
+function PresetConfirm({ label, reset, changes, onCancel, onReplace }: { label: string; reset: boolean; changes: number; onCancel: () => void; onReplace: () => void }) {
+  useEffect(() => {
+    setRecordingKey(true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onCancel();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      setRecordingKey(false);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [onCancel]);
+  const yours = changes === 1 ? "the 1 shortcut you changed" : `the ${changes} shortcuts you changed`;
+  return (
+    <div className="modal-layer shortcut-confirm-layer" data-testid="shortcut-preset-confirm" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="modal confirm-modal" role="alertdialog" aria-label={reset ? "Reset all shortcuts" : `Use ${label}`}>
+        <div className="confirm-title">{reset ? "Reset all shortcuts?" : `Switch to ${label}?`}</div>
+        <div className="confirm-text">{reset ? `${label}'s keys replace ${yours}.` : `Its keys replace ${yours}.`}</div>
+        <div className="confirm-actions">
+          <button className="btn" data-testid="shortcut-preset-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn primary" data-testid="shortcut-preset-ok" autoFocus onClick={onReplace}>
+            {reset ? "Reset all" : `Use ${label}`}
+          </button>
+        </div>
       </div>
     </div>
   );
