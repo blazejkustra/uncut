@@ -36,6 +36,10 @@ import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";
 const FONT_URLS: Record<FontFile, string> = { "DMSans-Variable.woff2": dmSans, "DMMono-Regular.woff2": dmMonoRegular, "DMMono-Medium.woff2": dmMonoMedium };
 /** How long a graphic's render(t) may take (core GRAPHIC_FRAME_MS). */
 const GRAPHIC_FRAME_MS = 5000;
+/** How many times a capture is tried when Chromium has no frame to copy yet (see capturePage). */
+const CAPTURE_ATTEMPTS = 6;
+/** How long a capture waits for the frame it asked for (see nextPaint). */
+const PAINT_WAIT_MS = 1000;
 
 interface HtmlRequest {
   readonly id: number;
@@ -190,8 +194,39 @@ async function main() {
   // frames come one after another). A render(t) that doesn't finish in time takes the window with it.
   let graphicWin: BrowserWindow | undefined;
   let graphicDoc = "";
+  // A capture can fail with "UnknownVizError" when the offscreen view has no frame of its current
+  // size to copy yet: just after a resize, on a busy machine or a VM's paravirtual GPU (GitHub's
+  // macOS runners, #88). The page is already what was asked for, so ask for a fresh frame and try
+  // again, a few times, before giving up.
+  const capturePage = async (target: BrowserWindow, rect: { x: number; y: number; width: number; height: number }) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await target.webContents.capturePage(rect);
+      } catch (error) {
+        if (attempt >= CAPTURE_ATTEMPTS || !/UnknownVizError/.test((error as Error).message ?? String(error))) throw error;
+        target.webContents.invalidate();
+        await new Promise((done) => setTimeout(done, 40 * attempt));
+      }
+    }
+  };
+  // The two animation frames the page waits for don't promise the browser has a frame with what
+  // was set: on a busy machine (a CI VM, #88) the capture could copy the one before it. So ask for
+  // a fresh frame now and capture once it has painted (capped: a view that never paints still
+  // gets its capture).
+  const nextPaint = (target: BrowserWindow) =>
+    new Promise<void>((done) => {
+      const finish = () => {
+        clearTimeout(timer);
+        target.webContents.off("paint", finish);
+        done();
+      };
+      const timer = setTimeout(finish, PAINT_WAIT_MS);
+      target.webContents.on("paint", finish);
+      target.webContents.invalidate();
+    });
   const capture = async (target: BrowserWindow, r: HtmlRequest | GraphicRequest) => {
-    let image = await target.webContents.capturePage({ x: 0, y: 0, width: r.width, height: r.height });
+    await nextPaint(target);
+    let image = await capturePage(target, { x: 0, y: 0, width: r.width, height: r.height });
     const size = image.getSize();
     if (size.width !== r.width || size.height !== r.height) image = image.resize({ width: r.width, height: r.height, quality: "best" });
     writeFileSync(r.out, /\.jpe?g$/i.test(r.out) ? image.toJPEG(85) : image.toPNG());

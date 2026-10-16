@@ -90,8 +90,10 @@ async function setup(name: string) {
       const { turnId } = await client.ok("agent.send", { prompt, ...extra });
       return turnId as string;
     },
+    // A long scripted turn (the critic test: 21 tool calls, contact sheets, frames and three critic
+    // runs) takes well over a minute on a 3-vCPU CI runner with the rest of the suite running (#88).
     done: async (id: string) => {
-      await agent.until(() => turn(id) && turn(id).status !== "running", 60000);
+      await agent.until(() => turn(id) && turn(id).status !== "running", 150000);
       return turn(id);
     },
     card: async (id: string) => (await agent.until((v) => v?.approval?.turnId === id, 15000), latest().approval),
