@@ -2,8 +2,9 @@
 // not ignored ones, so a new file is checked before it's committed). No one's home folder or temp
 // paths, no email addresses, no Software Mansion domain (the repo is the author's own until it moves), no big
 // files beyond the bundled music and fonts, no footage, nothing that looks like a secret, no .md
-// but README.md and CONTRIBUTING.md at the root and GitHub's pull request template (D253) (the user's
-// rule: other prose stays private), and an MIT LICENSE that every package names.
+// but README.md and CONTRIBUTING.md at the root, GitHub's pull request template (D253) and the
+// website's blog posts, site/content/blog/*.md (the user's rule: other prose stays private), and an
+// MIT LICENSE that every package names.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -12,6 +13,8 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" }).split("\0").filter((f) => f && existsSync(f));
 /** The only Markdown that's published; the scans below cover them like any other text file. */
 const PUBLIC_MD = ["README.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md"];
+/** The blog's posts are published too (the website's content), and only straight in that folder. */
+const BLOG_POST = /^site\/content\/blog\/[a-z0-9-]+\.md$/;
 const BINARY = /\.(m4a|mp3|wav|woff2?|ttf|otf|png|jpe?g|gif|icns|ico|webp)$/i;
 const texts = files.filter((f) => !BINARY.test(f)).map((f) => ({ file: f, text: readFileSync(f, "utf8") }));
 
@@ -51,8 +54,8 @@ test("no email addresses", () => {
   const placeholder = (m: string) => /@(example\.(com|org|net|invalid)|[\w.-]+\.(invalid|local|test))$/i.test(m) || /^git@/.test(m);
   // THIRD_PARTY_NOTICES quotes upstream licences verbatim, copyright lines included (D278). The
   // README's Privacy section names the controller's contact, the one address the author publishes,
-  // and the website's privacy page (site/privacy/index.html) repeats it.
-  const contact = (m: string, file: string) => (file === "README.md" || file === "site/privacy/index.html") && m === ["kustrablazej", "gmail.com"].join("@");
+  // and the website's privacy page (site/src/app/privacy/page.tsx) repeats it.
+  const contact = (m: string, file: string) => (file === "README.md" || file === "site/src/app/privacy/page.tsx") && m === ["kustrablazej", "gmail.com"].join("@");
   const hits = scan(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/, (m, file) => file === "pnpm-lock.yaml" || file === "THIRD_PARTY_NOTICES" || contact(m, file) || placeholder(m))
     // npm scopes (@uncut/core) and versions (react@19.2.6) aren't addresses.
     .filter((h) => !/: @?[\w.-]+@\d/.test(h));
@@ -72,7 +75,7 @@ test("no file over 5 MB but the bundled music and fonts", () => {
 
 test("no footage, no .md, no fixtures", () => {
   assert.deepEqual(files.filter((f) => /\.(mp4|mov|m4v|mkv|avi|webm|mxf|braw|r3d|insv|lrf|dng)$/i.test(f)), [], "footage");
-  assert.deepEqual(files.filter((f) => /\.md$/i.test(f) && !PUBLIC_MD.includes(f)), [], ".md files stay private but README.md, CONTRIBUTING.md and the PR template (the user's rule)");
+  assert.deepEqual(files.filter((f) => /\.md$/i.test(f) && !PUBLIC_MD.includes(f) && !BLOG_POST.test(f)), [], ".md files stay private but README.md, CONTRIBUTING.md, the PR template and the blog's posts (the user's rule)");
   assert.deepEqual(files.filter((f) => f.startsWith("fixtures/") || f.startsWith("planning/")), [], "fixtures and planning");
 });
 

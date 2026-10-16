@@ -1,6 +1,7 @@
 // Google Analytics 4 with Consent Mode v2 and a cookie banner for the EEA, UK and Switzerland (D284).
-// Built by `pnpm site:build` into site/assets/analytics.js. No inline script: this bundle defines
-// gtag, sets the consent defaults and only then injects gtag.js, so the CSP needs no 'unsafe-inline'.
+// Run after hydration by components/Analytics.tsx (start) and components/CookieSettings.tsx (the
+// footer link). No inline script of our own: this module defines gtag, sets the consent defaults and
+// only then injects gtag.js, so the CSP needs no 'unsafe-inline'.
 // The visitor's region comes from the uncut_region cookie the Pages Function sets
 // (site/functions/_middleware.ts); without it (local preview, function not deployed) they count as EU.
 import { CONSENT_KEY, type ConsentChoice, GA_MEASUREMENT_ID, decide, parseConsent, regionFromCookies } from "./consent.ts";
@@ -101,17 +102,20 @@ function openBanner(focus: boolean): void {
   document.head.append(css);
 }
 
-function addSettingsLink(): void {
-  const nav = document.querySelector('footer nav[aria-label="Footer"]');
-  if (!nav || nav.querySelector("[data-cookie-settings]")) return;
-  const a = el("a", "", "Cookie settings");
-  a.href = "#cookie-settings";
-  a.dataset.cookieSettings = "";
-  a.addEventListener("click", (e) => { e.preventDefault(); openBanner(true); });
-  nav.append(a);
+/** Whether the footer shows "Cookie settings" (EU visitors, analytics configured). */
+export function settingsWanted(): boolean {
+  return decide(regionFromCookies(document.cookie), readStored(), id).settings;
 }
 
-function start(): void {
+/** The footer link's action: the banner again, with focus on Accept. */
+export function openSettings(): void {
+  openBanner(true);
+}
+
+let started = false;
+export function start(): void {
+  if (started) return;
+  started = true;
   const region = regionFromCookies(document.cookie);
   const stored = readStored();
   const d = decide(region, stored, id);
@@ -129,9 +133,5 @@ function start(): void {
   window.gtag("config", id);
 
   if (d.load) loadTag();
-  if (d.settings) addSettingsLink();
   if (d.ask) openBanner(false);
 }
-
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
-else start();

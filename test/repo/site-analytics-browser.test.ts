@@ -1,13 +1,17 @@
-// Website analytics consent in a real browser (D284). site/ is served locally with the CSP from
-// site/_headers and the real Pages middleware (site/functions/_middleware.ts) in front of HTML; the
-// country comes from a CF-IPCountry request header. Every request off localhost is aborted and
-// recorded, so nothing reaches Google: the test checks what *would* load, and when.
-// Screenshots: test-output/site-consent-{1440,390}.png. Skipped without Chrome.
+// Website analytics consent in a real browser (D284). The site is built (pnpm site:build, the Next
+// static export in site/out) and served locally with the headers from the generated site/out/_headers
+// (each page's CSP with the hashes of its inline scripts) and the real Pages middleware
+// (site/functions/_middleware.ts) in front of HTML; the country comes from a CF-IPCountry request
+// header. Every request off localhost is aborted and recorded, so nothing reaches Google: the test
+// checks what *would* load, and when. Screenshots: test-output/site-consent-{1440,390}.png.
+// Skipped without Chrome.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import { createHash } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { onRequest } from "../../site/functions/_middleware.ts";
@@ -18,30 +22,58 @@ declare global {
 }
 
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const SITE = new URL("../../site/", import.meta.url).pathname;
-const CSP = readFileSync(join(SITE, "_headers"), "utf8").match(/Content-Security-Policy: (.*)/)![1]!;
-const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
-/** Serve analytics.js with the placeholder ID instead of the real one. */
+const SITE = new URL("../../site/out/", import.meta.url).pathname;
+const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".xml": "application/xml", ".txt": "text/plain" };
+/** Serve the scripts with the placeholder ID instead of the real one. */
 let placeholder = false;
+
+type Rule = { re: RegExp; lines: Array<string> };
+/** site/out/_headers as Cloudflare reads it: path rules (with * splats) and their header lines. */
+function parseHeaders(text: string): Array<Rule> {
+  const rules: Array<Rule> = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim() || line.trimStart().startsWith("#")) continue;
+    if (!/^\s/.test(line)) rules.push({ re: new RegExp("^" + line.trim().replace(/[.+?^$(){}|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$"), lines: [] });
+    else rules.at(-1)!.lines.push(line.trim());
+  }
+  return rules;
+}
+/** The headers for a path: every matching rule in order; "! Name" detaches what an earlier rule set. */
+function headersFor(rules: Array<Rule>, path: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of rules.filter((r) => r.re.test(path))) {
+    for (const l of r.lines) {
+      if (l.startsWith("! ")) delete out[l.slice(2).toLowerCase()];
+      else { const i = l.indexOf(":"); const k = l.slice(0, i).trim().toLowerCase(); const v = l.slice(i + 1).trim(); out[k] = out[k] ? `${out[k]}, ${v}` : v; }
+    }
+  }
+  return out;
+}
+let rules: Array<Rule> = [];
 
 let server: Server, base: string, browser: Browser;
 const skip = !existsSync(CHROME) && "Chrome isn't installed";
 
 before(async () => {
   if (skip) return;
+  // A fresh build, so the test never checks a stale export.
+  execFileSync(process.execPath, [new URL("../../scripts/site-build.ts", import.meta.url).pathname], { stdio: ["ignore", "ignore", "inherit"] });
+  rules = parseHeaders(readFileSync(join(SITE, "_headers"), "utf8"));
   server = createServer(async (req, res) => {
     const url = new URL(req.url!, "http://localhost");
     let path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
     if (path.endsWith("/")) path += "index.html";
     const file = join(SITE, path);
-    if (!file.startsWith(SITE) || !existsSync(file)) { res.writeHead(404).end(); return; }
+    if (!file.startsWith(SITE) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404).end(); return; }
     let body: Buffer = readFileSync(file);
-    if (placeholder && path.endsWith("analytics.js")) body = Buffer.from(body.toString("utf8").replace(GA_MEASUREMENT_ID, "G-XXXXXXXXXX"));
+    if (placeholder && path.endsWith(".js")) body = Buffer.from(body.toString("utf8").replaceAll(GA_MEASUREMENT_ID, "G-XXXXXXXXXX"));
+    const csp = headersFor(rules, url.pathname)["content-security-policy"];
+    assert.ok(csp && !csp.includes(", "), `one CSP for ${url.pathname}`);
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
     const response = await onRequest({
       request: new Request(`http://localhost${req.url}`, { headers }),
-      next: async () => new Response(new Uint8Array(body), { headers: { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "content-security-policy": CSP } }),
+      next: async () => new Response(new Uint8Array(body), { headers: { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "content-security-policy": csp } }),
     });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));
@@ -169,5 +201,34 @@ test("Placeholder measurement ID: nothing loads and no banner, anywhere", { skip
     }
   } finally {
     placeholder = false;
+  }
+});
+
+test("Every page: no CSP violation, no page error, no inline script without its hash; the nav fits at 360 px", { skip }, async () => {
+  for (const path of ["/", "/privacy/", "/blog/", "/blog/uncut-0-0-1/"]) {
+    for (const w of [1440, 360]) {
+      const v = await visitor("US", w, 800);
+      await v.page.goto(`${base}${path}`, { waitUntil: "networkidle0" });
+      await settle(v.page);
+      assert.deepEqual(v.errors, [], `${path} at ${w}`);
+      const nav = await v.page.evaluate(() => {
+        const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+        return { fits: document.documentElement.scrollWidth <= window.innerWidth, gap: r("header.top nav").left - r(".wordmark").right, right: r("header.top nav").right, width: window.innerWidth };
+      });
+      assert.ok(nav.fits && nav.gap > 0 && nav.right <= nav.width, `${path} at ${w}: ${JSON.stringify(nav)}`);
+      await v.page.browserContext().close();
+    }
+  }
+});
+
+test("The CSP has no 'unsafe-inline' or 'unsafe-eval', and every page's own rule lists its inline scripts' hashes", { skip }, () => {
+  const text = readFileSync(join(SITE, "_headers"), "utf8");
+  for (const l of text.split("\n").filter((l) => l.includes("Content-Security-Policy:"))) assert.doesNotMatch(l, /unsafe-(inline|eval)/);
+  for (const path of ["/", "/privacy/", "/blog/", "/blog/uncut-0-0-1/"]) {
+    const page = readFileSync(join(SITE, path, "index.html"), "utf8");
+    const csp = headersFor(rules, path)["content-security-policy"]!;
+    const inline = [...page.matchAll(/<script\b(?![^>]*\bsrc=)(?![^>]*application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/g)];
+    assert.ok(inline.length > 0, path);
+    for (const m of inline) assert.ok(csp.includes(`'sha256-${createHash("sha256").update(m[1]!, "utf8").digest("base64")}'`), `${path}: an inline script without its hash`);
   }
 });

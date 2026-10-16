@@ -30,3 +30,10 @@ apps/desktop/stage/
 
 # wrangler pages dev (site/DEPLOY.txt) state
 .wrangler/
+
+# The website (site/, Next.js): build output, and the blog's posts are published Markdown (they are
+# the site's content), so they're the one exception to *.md above.
+site/.next/
+site/out/
+site/next-env.d.ts
+!/site/content/blog/*.md

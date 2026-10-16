@@ -1,6 +1,6 @@
 // D285: no em dashes (—) and no en dashes used as dashes (" – ") in anything the model or the user
 // reads: the system prompt and docs, tool descriptions and results, module manifests, skills, the
-// app's UI copy, the README and the site. Sentences use a comma, colon, period or parentheses
+// app's UI copy, the README and the website (its pages and blog posts). Sentences use a comma, colon, period or parentheses
 // instead. En dashes in ranges ("2–60 frames", "w12–w18") stay. Code comments, the verbatim
 // licences (THIRD_PARTY_NOTICES) and planning/ aren't scanned.
 import { test } from "node:test";
@@ -17,7 +17,7 @@ const walk = (dir: string, keep: (f: string) => boolean): Array<string> =>
   existsSync(dir) ? (readdirSync(dir, { recursive: true }) as Array<string>).filter((f) => !f.split("/").includes("node_modules") && keep(f)).map((f) => join(dir, f)) : [];
 
 /** Code: string literals, template text and JSX text, comments left out. */
-const CODE = [...walk("apps/server/src", (f) => /\.tsx?$/.test(f)), ...walk("apps/web/src", (f) => /\.tsx?$/.test(f)), ...walk("apps/desktop/src", (f) => /\.tsx?$/.test(f)), ...walk("packages/core/src", (f) => /\.tsx?$/.test(f)), ...walk("plugins", (f) => /\.tsx?$/.test(f))];
+const CODE = [...walk("apps/server/src", (f) => /\.tsx?$/.test(f)), ...walk("apps/web/src", (f) => /\.tsx?$/.test(f)), ...walk("apps/desktop/src", (f) => /\.tsx?$/.test(f)), ...walk("packages/core/src", (f) => /\.tsx?$/.test(f)), ...walk("plugins", (f) => /\.tsx?$/.test(f)), ...walk("site/src", (f) => /\.tsx?$/.test(f))];
 /** Text the model or the user reads as it is. */
 const TEXT = [
   "spec/agent/tools.json",
@@ -25,7 +25,7 @@ const TEXT = [
   ...walk("spec/modules", (f) => f.endsWith(".json")),
   ...walk("plugins", (f) => f.endsWith(".json")),
   "README.md",
-  ...walk("site", (f) => /\.html$/.test(f)),
+  ...walk("site/content", (f) => /\.md$/.test(f)),
 ];
 
 /** Comment lines withoutComments can miss (after a regex literal with a quote in it, say). */

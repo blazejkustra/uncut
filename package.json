@@ -16,7 +16,8 @@
     "build": "pnpm --filter @uncut/web build && pnpm --filter @uncut/server build && pnpm --filter @uncut/desktop build && node native/media/build-release.ts",
     "dist": "pnpm build && pnpm --filter @uncut/desktop dist",
     "dist:signed": "node apps/desktop/scripts/dist-signed.ts",
-    "site:build": "node scripts/site-build.ts && node scripts/site-build-analytics.ts"
+    "site:build": "node scripts/site-build.ts",
+    "site:dev": "pnpm --filter @uncut/site dev"
   },
   "devDependencies": {
     "@types/node": "24.19.1",

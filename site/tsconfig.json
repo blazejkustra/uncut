@@ -2,9 +2,11 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["es2024", "dom", "dom.iterable"],
-    "module": "preserve",
+    "module": "esnext",
     "moduleResolution": "bundler",
-    "types": []
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "plugins": [{ "name": "next" }]
   },
-  "include": ["src"]
+  "include": ["src", "next.config.ts", "next-env.d.ts"]
 }

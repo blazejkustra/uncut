@@ -1,17 +1,18 @@
-// The landing page's only script (built by `pnpm site:build` into site/assets/hero.js):
+// The site's two small browser behaviours, run after hydration by their client components
+// (components/StarButton.tsx, components/HeroFx.tsx):
 //   - the nav's GitHub star count (shown from 10 stars), fetched once per session and cached in
 //     sessionStorage;
 //   - the hero background, a WebGPU shader (heroGpu.ts, a separate chunk loaded only where
 //     navigator.gpu exists). Without WebGPU, or if anything fails, the static CSS gradient under
-//     the canvas stays as it is. Everything works without this script too.
+//     the canvas stays as it is. The pages work without any script too.
 
-const REPO = "blazejkustra/uncut";
+export const REPO = "blazejkustra/uncut";
 const STARS_KEY = "uncut-stars";
 /** Below this the count reads as a sad number, so the button says "Star" instead. */
-const MIN_STARS = 10;
+export const MIN_STARS = 10;
 
 /** 1234 → "1.2k", 999 → "999", 12500 → "12.5k". */
-function formatStars(n: number): string {
+export function formatStars(n: number): string {
   if (n < 1000) return String(n);
   const k = n / 1000;
   return `${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, "")}k`;
@@ -35,9 +36,9 @@ function writeCache(v: number | null) {
   }
 }
 
-async function stars() {
-  const slot = document.querySelector<HTMLElement>("[data-stars]");
-  if (!slot) return;
+/** The repo's star count from the GitHub API (cached for the session), or null when there's no number
+ *  (private, rate-limited, offline) or too few to be worth showing: the button then keeps "Star". */
+export async function fetchStars(): Promise<number | null> {
   let n = readCache();
   if (n === undefined) {
     try {
@@ -49,22 +50,14 @@ async function stars() {
     }
     writeCache(n);
   }
-  // No number (private, rate-limited, offline) or too few to be worth showing: the button keeps
-  // its "Star" label. From MIN_STARS on, the count takes the label's place in the same fixed width.
-  if (typeof n !== "number" || !Number.isFinite(n) || n < MIN_STARS) return;
-  const link = slot.closest("a");
-  const num = slot.querySelector<HTMLElement>(".n");
-  if (!link || !num) return;
-  num.textContent = formatStars(n);
-  slot.hidden = false;
-  link.classList.add("has-stars");
-  link.setAttribute("aria-label", `Star Uncut on GitHub, ${n.toLocaleString("en-US")} stars`);
+  // From MIN_STARS on, the count takes the label's place in the same fixed width.
+  if (typeof n !== "number" || !Number.isFinite(n) || n < MIN_STARS) return null;
+  return n;
 }
 
-async function background() {
-  const hero = document.querySelector<HTMLElement>(".hero");
-  const canvas = hero?.querySelector<HTMLCanvasElement>(".hero-fx canvas");
-  if (!hero || !canvas || !("gpu" in navigator) || !navigator.gpu) return;
+/** Starts the hero's WebGPU background on `canvas`; `hero` gets .fx-live after the first frame. */
+export async function background(hero: HTMLElement, canvas: HTMLCanvasElement): Promise<void> {
+  if (!("gpu" in navigator) || !navigator.gpu) return;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   try {
     const { startHeroGpu } = await import("./heroGpu.ts");
@@ -74,6 +67,3 @@ async function background() {
     // WebGPU missing pieces, a blocked adapter, a shader the driver rejects: keep the gradient.
   }
 }
-
-void stars();
-void background();
