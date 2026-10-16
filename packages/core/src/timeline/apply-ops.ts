@@ -257,9 +257,22 @@ function applyOp(project: Draft, op: Op) {
       project.media = project.media.filter((m) => m.id !== op.media);
       return;
     }
-    case "update_project":
-      merge(project, structuredClone(op.set));
+    case "update_project": {
+      // A2: motionBlur merges field by field (the motion-film skill raises samples alone; on and shutter stay).
+      const set = structuredClone(op.set) as Record<string, unknown>;
+      const blur = set.motionBlur;
+      if (blur && typeof blur === "object") {
+        const next: Record<string, unknown> = { ...((project as { motionBlur?: object }).motionBlur ?? {}) };
+        for (const [k, v] of Object.entries(blur)) {
+          if (UNSAFE_KEYS.has(k)) throw new EditError(`"${k}" can't be set`);
+          if (v === null) delete next[k];
+          else next[k] = v;
+        }
+        set.motionBlur = Object.keys(next).length ? next : null;
+      }
+      merge(project, set as FieldSet);
       return;
+    }
     default:
       throw new EditError(`Unknown op "${(op as { op: unknown }).op}"`);
   }

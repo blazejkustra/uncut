@@ -38,6 +38,8 @@ export const SCAN_WINDOW = 5;
 /** A pop or a jump: this many times its neighbours' difference, and at least POP_MIN (mean |Δ| of 0..1 grey). */
 export const POP_RATIO = 3;
 export const POP_MIN = 0.03;
+/** A jump is also at least this many times the busier side's biggest step (a cut into a fast move). */
+export const JUMP_OVER = 1.5;
 /** Below this mean difference two samples count as the same picture (a hold). */
 export const HOLD_DIFF = 0.0015;
 export const HOLD_MAX_S = 1;
@@ -185,6 +187,63 @@ export async function motionFrames(o: {
   return { byFrame, scanned, planned: new Set(o.scanList).size, cut: rendered.length < order.length };
 }
 
+/** The most sampled steps the refinement narrows down, and its own time budget (ms). */
+export const REFINE_MAX = 16;
+export const REFINE_BUDGET_MS = 20_000;
+
+/**
+ * A1 (rehearsal 4): the scan judged jumps only where it had consecutive frames, the windows around
+ * the storyboard's beats, so three hard cuts mid-beat (13, 14, 15 s) and a black-to-footage jump
+ * (8.5 s) were never seen. This narrows each big step between two sampled frames down to the two
+ * consecutive frames it happens between (bisection: the half that changes more, each round's
+ * midpoints rendered together), then renders two frames on each side of it, so motionScan can judge
+ * it as a jump or as motion. Picks the REFINE_MAX biggest sampled steps over POP_MIN, at most 0.5 s
+ * apart; stops when `until` says so. Returns the grey frames it added.
+ */
+export async function refineJumps(o: {
+  readonly frames: ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>;
+  readonly fps: number;
+  readonly duration: number;
+  readonly render: (frames: ReadonlyArray<number>) => Promise<ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>>;
+  readonly until?: () => boolean;
+  readonly max?: number;
+}): Promise<Array<{ frame: number; gray: Uint8Array }>> {
+  const at = new Map(o.frames.map((x) => [x.frame, x.gray]));
+  const added: Array<{ frame: number; gray: Uint8Array }> = [];
+  const sorted = [...at.keys()].sort((a, b) => a - b);
+  const gapMax = Math.max(2, Math.round(0.5 * o.fps));
+  const steps: Array<{ lo: number; hi: number; d: number }> = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const lo = sorted[i - 1]!, hi = sorted[i]!;
+    if (hi - lo < 2 || hi - lo > gapMax) continue;
+    const d = frameDiff(at.get(lo)!, at.get(hi)!);
+    if (d >= POP_MIN) steps.push({ lo, hi, d });
+  }
+  let live = steps.sort((a, b) => b.d - a.d).slice(0, o.max ?? REFINE_MAX);
+  const fetch = async (frames: Iterable<number>) => {
+    const want = [...new Set(frames)].filter((f) => f >= 0 && f < o.duration && !at.has(f)).sort((a, b) => a - b);
+    if (!want.length || o.until?.()) return !want.length;
+    for (const x of await o.render(want)) if (!at.has(x.frame)) (at.set(x.frame, x.gray), added.push({ frame: x.frame, gray: x.gray }));
+    return true;
+  };
+  // Bisect every live step together, a round of midpoints at a time.
+  while (live.some((s) => s.hi - s.lo > 1)) {
+    const mids = live.filter((s) => s.hi - s.lo > 1).map((s) => ({ s, m: (s.lo + s.hi) >> 1 }));
+    if (!(await fetch(mids.map((x) => x.m)))) return added;
+    // A midpoint that wasn't rendered drops its step.
+    live = live.filter((s) => s.hi - s.lo <= 1 || at.has((s.lo + s.hi) >> 1));
+    for (const { s, m } of mids) {
+      const a = at.get(m);
+      if (!a) continue;
+      if (frameDiff(at.get(s.lo)!, a) >= frameDiff(a, at.get(s.hi)!)) s.hi = m;
+      else s.lo = m;
+    }
+  }
+  // Two frames each side of each narrowed step, for motionScan's neighbours.
+  await fetch(live.flatMap((s) => [s.lo - 2, s.lo - 1, s.hi + 1, s.hi + 2]));
+  return added;
+}
+
 /** Mean absolute difference of two grey frames, 0..1. */
 export function frameDiff(a: Uint8Array, b: Uint8Array): number {
   const n = Math.min(a.length, b.length);
@@ -253,10 +312,20 @@ export function motionScan(input: ReadonlyArray<{ readonly frame: number; readon
   const jumps: Array<MotionEvent> = [];
   for (const [f, d] of step) {
     if (popFrames.has(f) || popFrames.has(f + 1) || d < min) continue;
-    const near = [step.get(f - 2), step.get(f - 1), step.get(f + 1), step.get(f + 2)].filter((v): v is number => v !== undefined);
-    if (!near.length) continue;
-    const base = Math.max(Math.max(...near), typical);
-    if (d >= ratio * base) jumps.push({ frame: f + 1, diff: round(d), ratio: round(d / base, 1) });
+    // A cut is judged against the calmer side: the shot it cuts into may move fast from its first
+    // frame (A1 13 s: a 19 % cut into a push-in easing out from 7 %/frame), so the quieter side sets
+    // the bar (POP_RATIO), and the busier one only needs to be clearly smaller (JUMP_OVER), which a
+    // smooth move never is (an ease changes a few % frame to frame).
+    const side = (xs: ReadonlyArray<number | undefined>) => {
+      const ys = xs.filter((v): v is number => v !== undefined);
+      return ys.length ? Math.max(...ys) : undefined;
+    };
+    const before = side([step.get(f - 2), step.get(f - 1)]);
+    const after = side([step.get(f + 1), step.get(f + 2)]);
+    if (before === undefined && after === undefined) continue;
+    const calm = Math.max(Math.min(before ?? Infinity, after ?? Infinity), typical);
+    const busy = Math.max(before ?? 0, after ?? 0);
+    if (d >= ratio * calm && d >= JUMP_OVER * busy) jumps.push({ frame: f + 1, diff: round(d), ratio: round(d / calm, 1) });
   }
   jumps.sort((a, b) => a.frame - b.frame);
   // Holds: runs of samples (at most 0.5 s apart) that don't change.
@@ -292,7 +361,7 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
 /**
  * The scan as review findings (rule "motion"): pops always; one-frame jumps and holds over a second
  * when the film is one take (a cut is fine elsewhere, an end card may hold); the seam when it loops.
- * At most 8, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
+ * At most 10, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
  */
 export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean } = {}): Array<CriticFinding> {
   // D297: in a motion film (hard) a pop, a one-frame jump (a cut) and a broken seam fail the round.
@@ -302,21 +371,22 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
     out.push({ rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
   }
   if (o.oneTake) {
-    for (const j of scan.jumps.slice(0, 2)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
+    for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
     for (const h of scan.holds.slice(0, 2)) out.push({ rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${((h.end - h.start) / fps).toFixed(1)} s): a hold over 1 s.` });
   }
   if (o.loop && seamBroken(scan)) out.push({ rule: "motion", key: "motion:seam:0", frame: 0, hard, message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.` });
-  return out.slice(0, 8);
+  return out.slice(0, 10);
 }
 
 /** What a scan cut short by the time budget says (in the facts and the tool's result). */
 export const budgetLine = (covered: number, planned: number) => `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
 
 /** The scan for the critic, as facts (in <motion>). */
-export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean; readonly planned?: number }): Array<string> {
+export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean; readonly planned?: number; readonly covered?: number }): Array<string> {
+  const covered = scanned.covered ?? scan.frames;
   const lines = [
-    ...(scanned.planned !== undefined && scan.frames < scanned.planned ? [budgetLine(scan.frames, scanned.planned)] : []),
-    `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, and an even sampling of the rest"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
+    ...(scanned.planned !== undefined && covered < scanned.planned ? [budgetLine(covered, scanned.planned)] : []),
+    `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, an even sampling of the rest, and each big change between two samples narrowed down to the frame it happens on"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
   lines.push(scan.pops.length ? `Single-frame pops: ${scan.pops.map((p) => `f ${p.frame} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops found.");
   if (scan.jumps.length) lines.push(`One-frame jumps (cuts, or changes that took one frame): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %)`).join(", ")}.`);
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");

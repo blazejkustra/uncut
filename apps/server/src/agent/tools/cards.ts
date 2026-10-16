@@ -18,7 +18,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, refineJumps, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
@@ -29,7 +29,9 @@ import type { GenerateCtx } from "./generate.ts";
  */
 export function runFacts(beats: number | undefined, reviews: ReadonlyArray<{ readonly round: number; readonly blockers?: ReadonlyArray<unknown> }>): string {
   const rounds = reviews.map((x) => `round ${x.round}: ${x.blockers?.length ? `${x.blockers.length} blocker${x.blockers.length === 1 ? "" : "s"}, not passed` : "no blockers"}`);
-  return `This run's facts, for any number or status the film shows about its own making: the storyboard has ${beats ?? "no"} beat${beats === 1 ? "" : "s"}; this is review ${reviews.length + 1}${rounds.length ? ` (before it: ${rounds.join("; ")})` : ", the first"}. A beat count, review result, round or timing on screen that differs from these is invented: a defect.`;
+  // A2: "the storyboard has no beats" read as a fact when none was proposed yet (the film was built first).
+  const board = beats ? `the storyboard has ${beats} beat${beats === 1 ? "" : "s"}` : "no storyboard has been proposed yet (so its beat count isn't known)";
+  return `This run's facts, for any number or status the film shows about its own making: ${board}; this is review ${reviews.length + 1}${rounds.length ? ` (before it: ${rounds.join("; ")})` : ", the first"}, and its own result isn't known while you judge it. A beat count, review result, round or timing on screen that states something these contradict is invented; when the brief scripted it, say "the brief asks for X, but this run shows Y" and give the true version.`;
 }
 
 /**
@@ -365,7 +367,27 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 const { w, h } = scanSize(project.canvas);
                 if (ffmpeg && got.scanned.length > 2) {
                   const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, got.scanned.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
-                  scan = motionScan(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), fps);
+                  const sampled = got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! }));
+                  // A1: a cut between two sampled frames, narrowed down to the frame it happens on.
+                  const refineUntil = Date.now() + REFINE_BUDGET_MS;
+                  const refined = scanList.length === duration ? [] : yield* Effect.tryPromise({
+                    try: (signal) => {
+                      const sig = AbortSignal.any([signal, r.abort.signal]);
+                      return refineJumps({
+                        frames: sampled,
+                        fps,
+                        duration,
+                        until: () => Date.now() > refineUntil || sig.aborted,
+                        render: async (frames) => {
+                          const shot = await Effect.runPromise(session.render(frames, STRIP_CELL, { until: () => Date.now() > refineUntil }), { signal: sig });
+                          const gs = await grayFrames(ffmpeg, shot.map((x) => x.jpeg), w, h, sig);
+                          return shot.map((x, i) => ({ frame: x.frame, gray: gs[i]! }));
+                        },
+                      });
+                    },
+                    catch: (e) => e as Error,
+                  }).pipe(Effect.catch(() => Effect.succeed([] as Array<{ frame: number; gray: Uint8Array }>)));
+                  scan = motionScan([...sampled, ...refined], fps);
                   // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
                   const di = dropBeat(sb?.beats);
                   if (di !== undefined) drop = dropLine(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), clampF(sb!.beats[di]!.start * fps), fps);
@@ -383,7 +405,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                     if (xs.length) flat.push({ label: st.label, at: st.at, flat: xs[xs.length >> 1]!, ...(mid ? { canvas: mid.share, level: mid.level } : {}) });
                   }
                 }
-                return { images: stripImages, scan, flat, drop, planned: got.planned, cut: got.cut };
+                return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut };
               }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
               return { mine, evidence, motion };
             }),
@@ -431,9 +453,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.id === BUILTIN_IDS.film) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
       // D292: the time budget left some of the scan's frames out.
-      const cut = "planned" in motion && motion.scan && motion.scan.frames < motion.planned ? budgetLine(motion.scan.frames, motion.planned) : undefined;
+      // (Counted on the sampled frames: the refinement's added frames don't make up for a cut.)
+      const cut = "planned" in motion && motion.scan && motion.cut ? budgetLine(Math.min(motion.scanned, motion.planned), motion.planned) : undefined;
       const motionFacts = [
-        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...("planned" in motion ? { planned: motion.planned } : {}) }) : [`${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : `No frame-difference scan (${scanMissing}).`} ${UNMEASURED}`]),
+        ...(motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration && !cut, ...(cut && "planned" in motion ? { planned: motion.planned, covered: motion.scanned } : {}) }) : [`${"problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : `No frame-difference scan (${scanMissing}).`} ${UNMEASURED}`]),
         ...flatLines(flatStrips, fps, intent.footage),
         ...("drop" in motion && motion.drop ? [motion.drop] : []),
         ...beatWordLines(sb?.beats),

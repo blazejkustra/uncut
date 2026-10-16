@@ -288,6 +288,13 @@ export function describeOp(op: Op, project: Project, hint?: string): string {
         const off = (op.set.checks as { readonly disabled?: unknown } | null)?.disabled;
         return Array.isArray(off) && off.length ? `Set the checks turned off to ${off.join(", ")}` : "Turned every check back on";
       }
+      // D291: the export's motion blur (merged field by field).
+      if (keys.length === 1 && keys[0] === "motionBlur") {
+        const b = op.set.motionBlur as { readonly on?: unknown; readonly samples?: unknown; readonly shutter?: unknown } | null;
+        if (!b) return "Set motion blur back to its defaults";
+        const parts = [typeof b.on === "boolean" ? (b.on ? "on" : "off") : "", typeof b.samples === "number" ? `${b.samples} samples` : "", typeof b.shutter === "number" ? `${b.shutter}° shutter` : ""].filter(Boolean);
+        return parts.length ? `Set motion blur: ${parts.join(", ")}` : "Changed motion blur";
+      }
       return `Changed project ${keys.join(", ")}`;
     }
     default:

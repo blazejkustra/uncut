@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
-import { itemMotionBlur, loadModules, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
+import { applyEdit, createSession, describeOp, itemMotionBlur, loadModules, validateOps, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { streamsLayer } from "../../apps/server/src/export/exporter/rasterise.ts";
 
@@ -106,4 +106,22 @@ test("the project schema takes motionBlur on the project and on an item", () => 
   assert.deepEqual(validateProject(ok, modules).filter((p) => /motionBlur/.test(JSON.stringify(p))), []);
   const bad = project({ motionBlur: { samples: 1 } as Project["motionBlur"] });
   assert.ok(validateProject(bad, modules).some((p) => /motionBlur/.test(JSON.stringify(p))), "samples below 2 is refused");
+});
+
+// A2: the motion-film skill says update_project {"motionBlur":{"samples":12}}; the edit schema refused it.
+test("update_project takes motionBlur, merges it field by field and keeps the project's bounds", () => {
+  const ops = [{ op: "update_project", set: { motionBlur: { samples: 12 } } }];
+  assert.deepEqual(validateOps(ops), []);
+  assert.ok(validateOps([{ op: "update_project", set: { motionBlur: { samples: 1 } } }]).length, "samples below 2");
+  assert.ok(validateOps([{ op: "update_project", set: { motionBlur: { samples: 17 } } }]).length, "samples over 16");
+  assert.ok(validateOps([{ op: "update_project", set: { motionBlur: { shutter: 400 } } }]).length, "shutter over 360");
+  assert.ok(validateOps([{ op: "update_project", set: { motionBlur: { blur: 3 } } }]).length, "an unknown field");
+  const start = createSession(project({ motionBlur: { on: true, shutter: 270 } }));
+  const after = applyEdit(start, { actor: "agent", ops: ops as never }, (p) => validateProject(p, modules));
+  assert.deepEqual(after.project.motionBlur, { on: true, shutter: 270, samples: 12 }, "on and shutter kept");
+  assert.equal(projectMotionBlur(after.project).samples, 12);
+  const cleared = applyEdit(after, { actor: "agent", ops: [{ op: "update_project", set: { motionBlur: { shutter: null } } }] as never });
+  assert.deepEqual(cleared.project.motionBlur, { on: true, samples: 12 });
+  assert.equal(applyEdit(cleared, { actor: "agent", ops: [{ op: "update_project", set: { motionBlur: null } }] as never }).project.motionBlur, undefined);
+  assert.equal(describeOp(ops[0] as never, start.project), "Set motion blur: 12 samples");
 });

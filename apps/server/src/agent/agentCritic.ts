@@ -82,8 +82,8 @@ Sound, blindfold first: read the <sound> sheet alone before looking at the frame
 The editor follows the skills in <skill-checklists>: check every line on the frames; a line the video fails is a defect (or a blocker when it is one of the kinds above), quoting the line.
 Uncut's layout checks are listed as facts about the project: confirm what you see.
 Motion over time: stills can't show timing, so you also get frame strips (a row of consecutive moments 1/12 s apart around each scene change, left to right) and Uncut's frame-difference scan in <motion>. From the strips judge whether each change lands on its beat (the storyboard's and the sound sheet's times), whether moves ease in and settle or snap, and whether text swapping inside a moving shape overlaps. The scan's pops (a frame unlike both its neighbours), one-frame jumps, holds over 1 s and the loop seam are measured, not guessed: confirm them on the strips and frames, and judge them as motion defects (a pop is always one; a cut or a hold is one only when the brief or the skills ask for one take with no holds).
-Scale and words (in <motion>): Uncut measures how much of each strip's frames is flat background and the canvas around the picture; in a footage-first film, over 35 % at most scene changes means the footage sits small on an empty canvas: mark motion down for a card of footage on flat black with a caption under it. A UI-first film is one hero element at a time on a calm canvas: mark it down when the hero is muddy (dark panels on a near-black canvas, edges lost), cluttered (several panels at once), or the line it's about is cut mid-word at the frame's edge. Judge scale and sizes by the film's own direction (the brief, the storyboard, the skills), not by fixed numbers. Text ghosting into stacked copies (motion blur over a big jump in one frame) is a motion defect. Around the drop, check its strip: the reveal lands on the drop, not before. The storyboard's words are each beat's approved text: read them in that beat's frames; missing, cut or different words are a readability defect quoting both. Numbers and statuses a film shows about its own making (beat counts, review results, timings) must match this run's facts in <motion>; an invented one is an invented blocker quoting both.
-From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim.
+Scale and words (in <motion>): Uncut measures how much of each strip's frames is flat background and the canvas around the picture; in a footage-first film, over 35 % at most scene changes means the footage sits small on an empty canvas: mark motion down for a card of footage on flat black with a caption under it. A UI-first film is one hero element at a time on a calm canvas: mark it down when the hero is muddy (dark panels on a near-black canvas, edges lost), cluttered (several panels at once), or the line it's about is cut mid-word at the frame's edge. Judge scale and sizes by the film's own direction (the brief, the storyboard, the skills), not by fixed numbers. Text ghosting into stacked copies (motion blur over a big jump in one frame) is a motion defect. Around the drop, check its strip: the reveal lands on the drop, not before. The storyboard's words are each beat's approved text: read them in that beat's frames; missing, cut or different words are a readability defect quoting both. Numbers and statuses a film shows about its own making (beat counts, review results, timings) must match this run's facts in <motion>: honesty first. One that states something false is an invented blocker, even when the brief scripted it. When the brief explicitly asks for such a fact and this run didn't produce it, say so in these words: "the brief asks for X, but this run shows Y", and give the true version to show instead (the real count or result, or the step without a result); a true text that differs from the brief's script is a brand defect with that wording, never a blocker.
+From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim. A fix you mark false fails the round like a blocker: your summary must agree (never "no blockers" while a claimed fix is unverified).
 Answer with one JSON object and nothing else:
 {"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...}},
  "blockers":[{"kind":"placeholder","what":"one sentence","at":3.2}],
@@ -349,7 +349,7 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
     round: ctx.round,
     scores,
     defects,
-    ...(answer.summary ? { notes: answer.summary } : {}),
+    ...(answer.summary ? { notes: agreeingNotes(answer.summary, blockers) } : {}),
     by: "critic",
     blockers,
     evidence: answer.evidence,
@@ -363,6 +363,26 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
     at: new Date().toISOString(),
     turnId: ctx.turnId,
   };
+}
+
+const NO_BLOCKERS = /\bno blockers?\b[^,.;]*?(?:,?\s*(?:and|but)\s+|[,;:]\s*|\.\s*|$)/i;
+const KIND_WORDS: Readonly<Record<string, string>> = { "unverified-fix": "claimed fix not seen" };
+
+/**
+ * The critic's summary as the card shows it, agreeing with the round's blockers (rehearsal 4: round
+ * 3 said "No blockers" under a "3 blockers" header, because Uncut adds a blocker for each claimed fix
+ * the critic didn't verify, and its layout and motion blockers, after the critic wrote it). With
+ * blockers, a "no blockers" clause goes and the count with its kinds leads.
+ */
+export function agreeingNotes(summary: string, blockers: ReadonlyArray<{ readonly kind: string }>): string {
+  if (!blockers.length) return summary;
+  const counts = new Map<string, number>();
+  for (const b of blockers) counts.set(b.kind, (counts.get(b.kind) ?? 0) + 1);
+  const kinds = [...counts].map(([k, n]) => `${KIND_WORDS[k] ?? k}${n > 1 ? ` ×${n}` : ""}`).join(", ");
+  const lead = `${blockers.length} blocker${blockers.length === 1 ? "" : "s"} (${kinds}).`;
+  const rest = summary.replace(NO_BLOCKERS, "").trim();
+  if (rest === summary.trim() && new RegExp(`^${blockers.length} blockers?\\b`, "i").test(rest)) return summary;
+  return rest ? `${lead} ${rest.charAt(0).toUpperCase()}${rest.slice(1)}` : lead;
 }
 
 /** A saved review's rubric (its levels), for reviewNext and the cards; none before D217. */

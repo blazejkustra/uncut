@@ -119,7 +119,7 @@
         },
         {
           "type": "object",
-          "description": "Change project-level fields: name, canvas, theme, scenes, markers or master. master is replaced whole: gainDb is the master volume (-60..12 dB, after the tracks are summed, D83), loudness {targetLufs} (the export dialog's default target, D87: -14 Normal, -16 Quieter, -23 Broadcast or another number), effects ([{module: audio.limiter, params: {ceilingDb}}] changes the master limiter, on by default at -1 dBTP; {bypass: true} turns it off, D86). checks {disabled: [rule ids]} turns taste checks off for the project (D90; replaced whole, null removes it).",
+          "description": "Change project-level fields: name, canvas, theme, scenes, markers or master. master is replaced whole: gainDb is the master volume (-60..12 dB, after the tracks are summed, D83), loudness {targetLufs} (the export dialog's default target, D87: -14 Normal, -16 Quieter, -23 Broadcast or another number), effects ([{module: audio.limiter, params: {ceilingDb}}] changes the master limiter, on by default at -1 dBTP; {bypass: true} turns it off, D86). checks {disabled: [rule ids]} turns taste checks off for the project (D90; replaced whole, null removes it). motionBlur {on, samples 2-16, shutter 1-360} is the export's motion blur (D291): merged field by field (null removes one), so {\"motionBlur\":{\"samples\":12}} keeps on and shutter.",
           "required": ["op", "set"],
           "additionalProperties": false,
           "properties": {
@@ -127,7 +127,8 @@
             "set": {
               "type": "object",
               "minProperties": 1,
-              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "master", "checks"] }
+              "propertyNames": { "enum": ["name", "canvas", "theme", "scenes", "markers", "master", "checks", "motionBlur"] },
+              "properties": { "motionBlur": { "type": ["object", "null"], "additionalProperties": false, "properties": { "on": { "type": ["boolean", "null"] }, "samples": { "type": ["integer", "null"], "minimum": 2, "maximum": 16 }, "shutter": { "type": ["number", "null"], "minimum": 1, "maximum": 360 } } } }
             }
           }
         }

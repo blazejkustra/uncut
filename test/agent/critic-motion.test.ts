@@ -14,8 +14,8 @@ import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
-import { CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
+import { JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -353,7 +353,8 @@ test("D297: the drop's strip and fact, UI-first intent, the canvas around the pi
   assert.match(lines, /beat 1 30 % at grey 241/);
   // The run's facts.
   assert.match(runFacts(12, [{ round: 1, blockers: [1, 2] }, { round: 2, blockers: [] }]), /12 beats; this is review 3 \(before it: round 1: 2 blockers, not passed; round 2: no blockers\)/);
-  assert.match(runFacts(undefined, []), /no beats; this is review 1, the first/);
+  assert.match(runFacts(undefined, []), /no storyboard has been proposed yet .*; this is review 1, the first/);
+  assert.match(runFacts(8, []), /the brief asks for X, but this run shows Y/);
   assert.match(CRITIC_SYSTEM, /one hero element at a time on a calm canvas[\s\S]*this run's facts/);
 });
 
@@ -374,4 +375,118 @@ test("D297: the film's checklist wins, no motion craft with it, the ui sound pro
   assert.ok(!rubric.hardKinds.includes("sound"), "never a blocker");
   assert.match(soundProfileText("ui"), /one soft effect per real cursor press, drag or morph/);
   assert.match(UNMEASURED, /don't mark anything down/);
+});
+
+// Rehearsal 4 (A1): four hard cuts the scan never saw, three mid-beat and one into a push-in that
+// eases out fast. Grey frames like A1's: a cut of 19 % followed by 7 %, 6.8 %, 6.4 %… per frame.
+function cutFilm(n: number, cuts: ReadonlyArray<number>, easeAfter: ReadonlyArray<number> = []) {
+  const size = 64 * 80;
+  const out: Array<{ frame: number; gray: Uint8Array }> = [];
+  for (let f = 0; f < n; f++) {
+    const shot = cuts.filter((c) => f >= c).length;
+    const since = f - Math.max(0, ...cuts.filter((c) => f >= c));
+    // A push-in easing out: the picture keeps changing a lot each frame, less every frame.
+    // (A1's numbers: the cut changes 19 % of the picture, the frames after it 7 %, 4.4 %, 2.7 %…, so
+    // against its busier neighbour the cut is under 3×.) It cuts to the same picture, brighter.
+    const into = easeAfter.includes(cuts[shot - 1] ?? -1);
+    const eased = into ? Math.round(48 * 0.63 ** since) : 0;
+    const look = into ? shot - 1 : shot;
+    const g = new Uint8Array(size);
+    for (let i = 0; i < size; i++) g[i] = ((((i % 64) * (3 + look * 2) + Math.floor(i / 64) * look * 5 + f) % 100) + 20) + eased;
+    out.push({ frame: f, gray: g });
+  }
+  return out;
+}
+
+test("A1: hard cuts between the sampled frames are found, a cut into a fast move too, and smooth motion isn't", async () => {
+  const fps = 60;
+  const n = 900;
+  const cuts = [130, 389, 449, 509];
+  const frames = cutFilm(n, cuts, [389]);
+  const at = new Map(frames.map((x) => [x.frame, x.gray]));
+  // The every-frame scan: every cut, the one into the eased move included (it was judged against the move).
+  assert.deepEqual(motionScan(frames, fps).jumps.map((j) => j.frame), cuts);
+  const step = (f: number) => frameDiff(at.get(f - 1)!, at.get(f)!);
+  assert.ok(step(389) < 3 * step(390) && step(389) >= JUMP_OVER * step(390), `${step(389)} then ${step(390)}: the old rule (3× the busier side) missed it`);
+  // As review_submit samples it: anchors at the beats (none near the cuts), windows and an even sampling.
+  const anchors = motionAnchors([{ start: 0 }, { start: 4 }, { start: 12 }], fps, n);
+  const plan = scanPlan(anchors, fps, n, 80);
+  assert.ok(cuts.every((c) => !(plan.includes(c - 1) && plan.includes(c))), "no cut has both its frames sampled");
+  const sampled = plan.map((f) => ({ frame: f, gray: at.get(f)! }));
+  assert.deepEqual(motionScan(sampled, fps).jumps, [], "the sampling alone misses them (the A1 bug)");
+  let calls = 0;
+  const added = await refineJumps({ frames: sampled, fps, duration: n, render: async (fs) => (calls++, fs.map((f) => ({ frame: f, gray: at.get(f)! }))) });
+  assert.deepEqual(motionScan([...sampled, ...added], fps).jumps.map((j) => j.frame), cuts);
+  assert.ok(added.length <= 16 * 10 && calls <= 8, `${added.length} frames in ${calls} renders`);
+  // Out of time: it stops, adding nothing more.
+  assert.deepEqual(await refineJumps({ frames: sampled, fps, duration: n, until: () => true, render: async () => assert.fail("rendered past the budget") }), []);
+  // Smooth motion only: nothing narrowed down is a jump.
+  const smooth = cutFilm(n, []);
+  const sAt = new Map(smooth.map((x) => [x.frame, x.gray]));
+  const sSampled = plan.map((f) => ({ frame: f, gray: sAt.get(f)! }));
+  const sAdded = await refineJumps({ frames: sSampled, fps, duration: n, render: async (fs) => fs.map((f) => ({ frame: f, gray: sAt.get(f)! })) });
+  assert.deepEqual(motionScan([...sSampled, ...sAdded], fps).jumps, []);
+});
+
+test("the card's summary agrees with the round's blockers", () => {
+  const unseen = [{ kind: "unverified-fix" }, { kind: "unverified-fix" }, { kind: "unverified-fix" }];
+  assert.equal(
+    agreeingNotes("No blockers, and the drop, floods and loop seam are strong, but two measured holds over 1 s remain.", unseen),
+    "3 blockers (claimed fix not seen ×3). The drop, floods and loop seam are strong, but two measured holds over 1 s remain.",
+  );
+  assert.equal(agreeingNotes("No blockers remain. Motion is below the bar.", [{ kind: "motion" }]), "1 blocker (motion). Motion is below the bar.");
+  assert.equal(agreeingNotes("Clean and on brand.", []), "Clean and on brand.");
+  assert.equal(agreeingNotes("The card shows an invented result.", [{ kind: "invented" }]), "1 blocker (invented). The card shows an invented result.");
+  // criticReview: an unverified claim makes a blocker, and the notes say so.
+  const review = criticReview(
+    { scores: { hook: 8, readability: 8, motion: 8, variety: 8, sound: 8, brand: 8 }, evidence: {}, blockers: [], defects: [], fixes: [{ defect: "d1", verified: false, note: "still holds" }], summary: "No blockers, and it lands.", unproven: [] },
+    { round: 3, claims: [{ defect: "d1", what: "moved the cursor", at: 19 }], checks: [], determinism: { checked: [], differed: [] }, looked: { sheet: true, phone: true }, revision: 1, turnId: "t", fps: 60 },
+  );
+  assert.equal(review.blockers?.length, 1);
+  assert.equal(review.notes, "1 blocker (claimed fix not seen). It lands.");
+  assert.match(CRITIC_SYSTEM, /never "no blockers" while a claimed fix is unverified/);
+  // The brief's scripted facts: honesty first, and the message says what to show instead.
+  assert.match(CRITIC_SYSTEM, /"the brief asks for X, but this run shows Y", and give the true version/);
+  assert.match(CRITIC_SYSTEM, /a true text that differs from the brief's script is a brand defect/);
+});
+
+const CUT_GRAPHIC = `<div id="bg" style="position:absolute;inset:0"></div>
+<div id="box" style="position:absolute;left:40px;top:150px;width:160px;height:160px;border-radius:24px"></div>
+<script>
+const shots = [["#e9e7e2", "#111"], ["#1d3b5a", "#f2c14e"], ["#3a3a3a", "#e05a47"]];
+window.render = (t, info) => {
+  const k = info.frame >= 151 ? 2 : info.frame >= 70 ? 1 : 0;
+  document.getElementById("bg").style.background = shots[k][0];
+  const box = document.getElementById("box");
+  box.style.background = shots[k][1];
+  box.style.transform = "translateX(" + (Math.sin(t * 2) * 60 + 60) + "px)";
+};
+</script>`;
+
+test("a rendered film with real cuts mid-beat: review_submit's sampling plus the refinement finds each one", { skip, timeout: 180000 }, async () => {
+  const libs = await loadGraphicLibs(resolve("assets/graphic-libs"));
+  const fps = 30;
+  const n = 240;
+  const project = { format: "uncut/0", name: "Cuts", canvas: { width: 400, height: 500, fps }, media: [], tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src: "graphics/cuts.html", start: 0, duration: n }] }] } as unknown as Project;
+  const graphics = new Map([["graphics/cuts.html", resolveGraphicLibs(CUT_GRAPHIC, libs)]]);
+  const anchors = motionAnchors([{ start: 0 }, { start: 4 }], fps, n);
+  const plan = scanPlan(anchors, fps, n, 60);
+  assert.ok(!plan.includes(69) || !plan.includes(70));
+  const session = await openFrameSession("ffmpeg", project, () => "", graphics, new AbortController().signal, undefined, { downscale: true });
+  try {
+    const { w, h } = scanSize(project.canvas);
+    const grey = async (frames: ReadonlyArray<number>) => {
+      const shot = await session.render(frames, STRIP_CELL);
+      const gs = await grayFrames("ffmpeg", shot.map((x) => x.jpeg), w, h);
+      return shot.map((x, i) => ({ frame: x.frame, gray: gs[i]! }));
+    };
+    const sampled = await grey(plan);
+    assert.deepEqual(motionScan(sampled, fps).jumps, []);
+    const added = await refineJumps({ frames: sampled, fps, duration: n, render: grey });
+    const scan = motionScan([...sampled, ...added], fps);
+    assert.deepEqual(scan.jumps.map((j) => j.frame), [70, 151], JSON.stringify(scan.jumps));
+    assert.deepEqual(scan.pops, []);
+  } finally {
+    await session.close();
+  }
 });
