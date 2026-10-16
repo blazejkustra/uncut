@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy | Uncut</title>
+<meta name="description" content="What Uncut sends, when, and where it goes.">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="canonical" href="https://uncut.video/privacy/">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/DMSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="wordmark" href="/" aria-label="Uncut home">
+      <svg viewBox="280 230 464 562" aria-hidden="true" focusable="false">
+        <defs>
+          <mask id="cut-top" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+            <rect width="1024" height="1024" fill="#fff"/>
+            <path d="M270 506 L466 403" stroke="#000" stroke-width="26"/>
+          </mask>
+        </defs>
+        <path d="M368 318 V560 A144 144 0 0 0 656 560 V318" fill="none" stroke="currentColor" stroke-width="128" stroke-linecap="round" mask="url(#cut-top)"/>
+      </svg>
+      <span>Uncut</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="/">Home</a>
+      <a href="https://github.com/blazejkustra/uncut">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <article class="doc">
+    <h1>Privacy</h1>
+    <p class="meta">The Uncut app</p>
+
+    <h2>Who is responsible</h2>
+    <p>Uncut is made by Błażej Kustra, who is the controller for the usage data below. Contact: <a href="mailto:kustrablazej@gmail.com">kustrablazej@gmail.com</a>.</p>
+    <p>This website has no analytics, no trackers and no cookies.</p>
+
+    <h2>Usage data</h2>
+    <p><strong>Usage data is off unless you turn it on.</strong> The first time you open Uncut, the setup asks (an unticked checkbox; skipping the setup is a no), and an install that never answered is asked once. Nothing is sent before you say yes, not even the app starting. Change your answer any time in Settings › App › Usage data; <code>DO_NOT_TRACK=1</code> or <code>UNCUT_TELEMETRY=off</code> also keeps it off. Builds made from source send nothing either way.</p>
+    <p>When it's on, Uncut sends only these events, each with the app version, macOS or Linux, the processor type, a session id and a random install id made when you said yes (not linked to your name or derived from your Mac; delete <code>install-id</code> in Uncut's data folder for a new one):</p>
+    <ul>
+      <li><code>app:start</code>: the app started (and whether it runs headless).</li>
+      <li><code>app:crash</code>: which process crashed, the error's class name and code, and a fingerprint of the top stack frames with folders and messages removed.</li>
+      <li><code>export:complete</code>, <code>export:fail</code>, <code>export:cancel</code>: how long the export took, its length, quality, codec, encoder, size and frame rate, whether it was a range or had subtitles, or the stage that failed.</li>
+      <li><code>agent:turn</code>, <code>agent:fail</code>: whether an agent turn finished, failed or was cancelled, how long it took, how many edits and steps, or a fixed word for why it failed (usage limit, rate limit, signed out and so on).</li>
+    </ul>
+    <p>Never your footage, frames, transcripts, prompts, file names, paths or error messages. The events go through a Cloudflare Worker (it keeps no request logs and doesn't forward your IP address) to Grafana Cloud's logs service in the EU, where they are kept for 14 days (the plan's retention) and then deleted.</p>
+
+    <h2>What else leaves your Mac</h2>
+    <p>Only when you use it:</p>
+    <ul>
+      <li><strong>The agent.</strong> Uncut runs your own Claude Code, which sends Anthropic what the agent works with: your prompts, frames from your video, transcripts, file and project names, under your Claude Code account and Anthropic's terms.</li>
+      <li><strong>Generators.</strong> Image, video and voice generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.</li>
+      <li><strong>Sound search.</strong> Searching for sounds online sends the search words to Openverse, or to Freesound with your key.</li>
+      <li><strong>Downloads.</strong> The speech model comes from Hugging Face; updates are checked for and downloaded from GitHub, which sees your IP address and the app version.</li>
+    </ul>
+    <p>Uncut is not made by or affiliated with Anthropic.</p>
+  </article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Uncut is MIT licensed. Not affiliated with Anthropic.</p>
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="https://github.com/blazejkustra/uncut">GitHub</a>
+      <a href="https://github.com/blazejkustra/uncut/blob/main/LICENSE">Licence</a>
+      <a href="https://github.com/blazejkustra/uncut/blob/main/THIRD_PARTY_NOTICES">Third-party notices</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
