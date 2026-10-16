@@ -74,7 +74,17 @@ test("⌘Z works after quitting and reopening; the History tab lists, previews a
   await page.click("[data-testid=rail-text]");
   await page.click('[data-testid=text-preset][data-preset="title"]');
   await until(() => texts().length === 1, "the title");
+  // End goes to the timeline's end once the editor has the title (it's on disk first; a slow runner's
+  // editor can still be at an empty timeline, and the lower third then lands before it, #89).
+  await page.waitForFunction(() => {
+    const tc = document.querySelector("[data-testid=timecode]")?.textContent ?? "";
+    return !/\/ 00:00:00:00$/.test(tc);
+  }, { timeout: 10000 });
   await page.keyboard.press("End");
+  await page.waitForFunction(() => {
+    const [at, end] = (document.querySelector("[data-testid=timecode]")?.textContent ?? "").split(" / ");
+    return !!end && at === end;
+  }, { timeout: 10000 });
   await page.click('[data-testid=text-preset][data-preset="lower-third"]');
   await until(() => texts().length === 2, "the lower third");
   assert.deepEqual(texts(), ["Title", "Lower third"]);

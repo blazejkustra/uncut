@@ -1,8 +1,8 @@
 // Runs one shard of the whole test suite for CI (#89, D254): the fast tests (test/*, but test/app)
 // and the packaged-app tests (test/app), split over `--of` shards by their recorded durations
 // (test/durations.json; a file not in it counts as the median of its kind), longest first onto the
-// lightest shard. The fast files run two at a time (node --test's default on a 3-core runner) and
-// count half their time; then the app files run one after another (the Electron tests take turns on
+// lightest shard. The fast files run three at a time (one per core of the runner) and
+// count a third of their time; then the app files run one after another (the Electron tests take turns on
 // one machine anyway, test/helpers/app.ts). Each file is its own `node --test`, so every file's time
 // and result is known. Writes test-output/shard-<n>.json (durations for the next update of
 // test/durations.json) and a table to $GITHUB_STEP_SUMMARY.
@@ -27,7 +27,7 @@ const listOnly = process.argv.includes("--list");
 if (!Number.isInteger(shard) || !Number.isInteger(of) || of < 1 || shard < 0 || shard >= of) throw new Error(`bad --shard ${shard} --of ${of}`);
 
 /** Fast files run this many at a time. */
-const FAST_AT_ONCE = 2;
+const FAST_AT_ONCE = 3;
 /** An app launch can take longer than on a laptop on a 3-core runner; only the app files get it. */
 const APP_ENV = { UNCUT_TEST_LAUNCH_MS: process.env.UNCUT_TEST_LAUNCH_MS ?? "120000" };
 
