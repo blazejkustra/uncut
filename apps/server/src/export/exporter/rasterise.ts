@@ -1,8 +1,8 @@
 // Drawing an export's raster layers with the rasteriser (a step of the export job).
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { link, mkdir, open, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { link, mkdir, open, statfs } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { graphicInfo, type Media, type Project } from "@uncut/core";
@@ -12,12 +12,42 @@ import { type Rasterizer, type RasterJob } from "../rasterizer.ts";
 import { Cancelled, ffmpegError, run } from "./ffmpeg.ts";
 import { withMedia } from "./graphics.ts";
 
-/** The ffmpeg that turns a streamed layer's raw frames into its PNG sequence (D291). */
+/** The ffmpeg that turns a streamed layer's raw frames into its lossless video (D291). */
 export interface SequenceFfmpeg {
   readonly bin: string;
   /** Its major version (`-fps_mode` from 5.1 on; `-vsync` before). */
   readonly major?: number | undefined;
+  /** The bytes free for the export's temp folder (a test passes a tiny number); `statfs` by default. */
+  readonly freeBytes?: ((dir: string) => Promise<number>) | undefined;
 }
+
+/**
+ * The share of its raw BGRA size a streamed layer's FFV1 video is assumed to take, for the free-space
+ * check (D291). Measured (1080×1350): drone footage drawn by a graphic 0.22, a moving gradient with
+ * shapes 0.057, text-like shapes on transparency 0.034. A graphic may draw footage, grainier than
+ * that: twice the worst measured. Text and components are mostly transparent: about twice the
+ * gradient. Erring higher would refuse exports that fit (a minute of captions isn't gigabytes);
+ * a disk that fills anyway is said plainly (`diskFull`).
+ */
+export const STREAM_RATIO = { graphic: 0.45, raster: 0.1 } as const;
+
+const freeBytesOf = async (dir: string) => {
+  const s = await statfs(dir);
+  return s.bavail * s.bsize;
+};
+
+const gb = (bytes: number) => `${(bytes / 1e9).toFixed(bytes < 1e9 ? 2 : 1)} GB`;
+
+/** ffmpeg's or the file system's "disk full" (D291). */
+const NO_SPACE = /No space left on device|ENOSPC/i;
+const diskFull = (folder: string) => `The disk filled up in ${folder} while the export drew its graphics. Free some space, then export again.`;
+
+/**
+ * The FFV1 arguments for a streamed layer (D291): intra-only (`-g 1`), range coder with the large
+ * context, 16 slices (encoded in parallel; ~11 ms a 1080×1350 footage frame on an M-series Mac,
+ * under the rasteriser's ~15 ms) or one for a picture too small for 16.
+ */
+export const ffv1Args = (width: number, height: number) => ["-c:v", "ffv1", "-level", "3", "-coder", "1", "-context", "1", "-g", "1", "-slices", Math.min(width, height) >= 64 ? "16" : "1"];
 
 /** Requests sent ahead of the one being drawn (D291): the rasteriser's round trips overlap its drawing. */
 const IN_FLIGHT = 4;
@@ -37,12 +67,18 @@ export const streamsLayer = (layer: VisualLayer) => {
 /** Draw every raster layer (and the canvas colour) with the rasteriser, into `dir`. */
 export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal, css: string = RASTER_CSS, ff?: SequenceFfmpeg) => {
   const { width, height } = plan.canvas;
+  // Without an ffmpeg to stream into (render_frames' few frames), every layer is drawn as PNGs.
+  const streamed = (layer: VisualLayer) => !!ff && streamsLayer(layer);
+  // D291: the streamed layers stay on disk until the final encode; refused before anything is drawn when they can't fit.
+  const need = plan.visuals.reduce((sum, l) => (streamed(l) ? sum + (l.f1 - l.f0) * width * height * 4 * (l.kind === "graphic" ? STREAM_RATIO.graphic : STREAM_RATIO.raster) : sum), 0);
+  if (need > 0) {
+    const free = await (ff!.freeBytes ?? freeBytesOf)(dir);
+    if (free < need) throw new Error(`This export needs about ${gb(need)} free in ${dirname(dir)} for its graphics; there's ${gb(free)}.`);
+  }
   const background = join(dir, "background.png");
   await r.render({ width, height, css, html: plan.backgroundHtml, out: background });
   const rasters = new Map<VisualLayer, RasterOutput>();
   const urls = new Map<string, string>();
-  // Without an ffmpeg to stream into (render_frames' few frames), every layer is drawn as PNGs.
-  const streamed = (layer: VisualLayer) => !!ff && streamsLayer(layer);
   // Every distinct look of the layers not streamed drawn once (D79 review: slices and layers share looks), then linked per layer.
   const drawnLooks = new Map<string, string>();
   const looks = [...new Set(plan.visuals.flatMap((l) => (l.kind === "raster" && !streamed(l) ? l.states : [])))];
@@ -121,24 +157,25 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
 type SeqFrame = Extract<RasterJob, { kind: "seq-graphic" | "seq-html" | "seq-hold" }>;
 
 /**
- * One layer streamed (D291): a FIFO, an ffmpeg reading raw frames from it into the layer's PNG
- * sequence, and the rasteriser writing them (`draw` sends each frame, a few requests ahead): one
- * straight-alpha BGRA frame per frame (motion blur's sub-frames already averaged by the
- * rasteriser; ffmpeg 8's unpremultiply filter can't be relied on for it). Memory stays bounded:
- * the FIFO blocks the rasteriser while ffmpeg catches up.
+ * One layer streamed (D291): a FIFO, an ffmpeg reading raw frames from it into the layer's one
+ * lossless video (FFV1 in Matroska, straight BGRA as it comes: no conversion, alpha exact; a few
+ * times smaller than the PNG sequence it replaces), and the rasteriser writing them (`draw` sends
+ * each frame, a few requests ahead): one straight-alpha BGRA frame per frame (motion blur's
+ * sub-frames already averaged by the rasteriser; ffmpeg 8's unpremultiply filter can't be relied
+ * on for it). Memory stays bounded: the FIFO blocks the rasteriser while ffmpeg catches up.
  */
 async function streamLayer(r: Rasterizer, ff: SequenceFfmpeg, layer: VisualLayer, o: { dir: string; k: number; width: number; height: number; fps: number; css: string; signal: AbortSignal }, draw: (send: (job: SeqFrame, onError?: (e: Error) => never) => Promise<void>) => Promise<void>): Promise<RasterOutput> {
   const frames = layer.f1 - layer.f0;
+  const name = `"${layer.item.name ?? layer.item.id}"`;
   const fifo = join(o.dir, `l${o.k}.fifo`);
   await promisify(execFile)("mkfifo", [fifo]);
-  const folder = join(o.dir, `l${o.k}`);
-  await mkdir(folder);
+  const file = join(o.dir, `l${o.k}.mkv`);
   const stop = new AbortController();
   const onAbort = () => stop.abort();
   o.signal.addEventListener("abort", onAbort, { once: true });
   const passthrough = ff.major !== undefined && ff.major < 5 ? ["-vsync", "passthrough"] : ["-fps_mode", "passthrough"];
   let ended = false;
-  const encoding = run(ff.bin, ["-hide_banner", "-nostdin", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", `${o.width}x${o.height}`, "-framerate", String(o.fps), "-i", fifo, ...passthrough, "-c:v", "png", "-compression_level", "1", "-start_number", "0", join(folder, "%06d.png")], stop.signal).finally(() => {
+  const encoding = run(ff.bin, ["-hide_banner", "-nostdin", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", `${o.width}x${o.height}`, "-framerate", String(o.fps), "-i", fifo, ...passthrough, ...ffv1Args(o.width, o.height), "-pix_fmt", "bgra", "-f", "matroska", file], stop.signal).finally(() => {
     // An ffmpeg gone before the rasteriser opened the FIFO would leave it waiting for a reader:
     // open and close the read side, so its next write fails instead (EPIPE).
     if (!ended) void open(fifo, constants.O_RDONLY | constants.O_NONBLOCK).then((fh) => fh.close(), () => {});
@@ -162,15 +199,21 @@ async function streamLayer(r: Rasterizer, ff: SequenceFfmpeg, layer: VisualLayer
   } catch (error) {
     ended = true;
     await Promise.allSettled(pending);
+    // An ffmpeg that stopped on a full disk shows to the rasteriser as a broken pipe: said as what it is.
+    const gone = await Promise.race([encoding.catch(() => undefined), new Promise<undefined>((done) => setTimeout(done, 200, undefined))]);
     stop.abort();
     await r.render({ kind: "seq-close" }).catch(() => {});
-    throw o.signal.aborted ? new Cancelled() : error;
+    if (o.signal.aborted) throw new Cancelled();
+    if (gone && gone.code !== 0 && NO_SPACE.test(gone.stderr)) throw new Error(diskFull(dirname(o.dir)));
+    throw error;
   } finally {
     o.signal.removeEventListener("abort", onAbort);
   }
   const done = await encoding;
-  if (done.code !== 0) throw new Error(`ffmpeg couldn't take the frames of "${layer.item.name ?? layer.item.id}": ${ffmpegError(done.stderr)}`);
-  const written = (await readdir(folder)).length;
-  if (written !== frames) throw new Error(`The frames of "${layer.item.name ?? layer.item.id}" came out ${written}, not ${frames}.`);
-  return { kind: "sequence", pattern: join(folder, "%06d.png") };
+  if (done.code !== 0) throw new Error(NO_SPACE.test(done.stderr) ? diskFull(dirname(o.dir)) : `ffmpeg couldn't take the frames of ${name}: ${ffmpegError(done.stderr)}`);
+  // Its frames counted from the file (one packet each, intra-only: copied, not decoded).
+  const counted = await run(ff.bin, ["-hide_banner", "-nostdin", "-v", "error", "-nostats", "-i", file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-progress", "pipe:1", "-"], o.signal);
+  const written = Number([...counted.stdout.matchAll(/^frame=(\d+)/gm)].pop()?.[1] ?? NaN);
+  if (counted.code !== 0 || written !== frames) throw new Error(`The frames of ${name} came out ${Number.isNaN(written) ? "unreadable" : written}, not ${frames}.`);
+  return { kind: "video", file, frames };
 }

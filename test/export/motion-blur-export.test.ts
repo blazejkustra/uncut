@@ -1,5 +1,5 @@
 // D291 through the real rasteriser (apps/desktop render.ts) and ffmpeg:
-// - a graphic past 360 frames is streamed (raw BGRA into a FIFO, ffmpeg makes the PNG sequence):
+// - a graphic past 360 frames is streamed (raw BGRA into a FIFO, ffmpeg makes its lossless video):
 //   every frame drawn and drawn at its own t (the frame number is the picture's colour), nothing
 //   held, and the same pixels when exported twice;
 // - straight alpha: a half-transparent streamed frame matches the PNG path's frame;
@@ -87,8 +87,8 @@ async function streamed(html: string, name: string, motionBlur = false): Promise
   const { rasters } = await rasterise(raster, plan, project, () => "", dir, new AbortController().signal, undefined, { bin: FFMPEG });
   const layer = plan.visuals.find((l) => l.kind === "graphic")!;
   const out = rasters.get(layer);
-  assert.ok(out?.kind === "sequence", "streamed into a sequence");
-  return { plan, layer, frames: rgbaOf(out.pattern) };
+  assert.ok(out?.kind === "video", "streamed into one video");
+  return { plan, layer, frames: rgbaOf(out.file) };
 }
 
 const frameOf = (frames: Buffer, i: number) => frames.subarray(i * W * H * 4, (i + 1) * W * H * 4);
@@ -141,7 +141,7 @@ test("motion blur: each frame the mean of its sub-frames on premultiplied colour
   assert.ok(fl.some((l) => l.kind === "graphic" && l.frames[0] === l.frames[1]), "it holds frames before its start");
   for (const l of fl) {
     const o = rasters.get(l)!;
-    const n = o.kind === "sequence" ? rgbaOf(o.pattern).length / (W * H * 4) : 1;
+    const n = o.kind === "video" ? rgbaOf(o.file).length / (W * H * 4) : o.kind === "sequence" ? rgbaOf(o.pattern).length / (W * H * 4) : 1;
     assert.equal(n, l.f1 - l.f0, "one frame per frame, held ones too");
   }
   for (const i of [1, 10, 101]) {
