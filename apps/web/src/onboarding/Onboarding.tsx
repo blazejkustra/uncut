@@ -5,7 +5,7 @@ import { actions, useApp } from "../state/store.ts";
 import { EnvironmentChip, LabsTip, useEnvironmentsUsable } from "./Environments.tsx";
 import { CheckRow, PendingRow, KeyRows, SpeechModelRow } from "./rows.tsx";
 import { PluginRows } from "./plugins.tsx";
-import { declineIfUnanswered, useTelemetry, WizardUsageData } from "../settings/telemetry.tsx";
+import { WizardUsageData } from "../settings/telemetry.tsx";
 import "./wizard.css";
 export { CheckRow, SpeechModelRow, KeyRows } from "./rows.tsx";
 export { PluginRows } from "./plugins.tsx";
@@ -28,16 +28,9 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
     setStep(0);
     requestAnimationFrame(() => document.querySelector("[data-testid=keys]")?.scrollIntoView({ block: "center" }));
   }, [setupFocus]);
-  // D278: leaving the wizard (finished or skipped) without a yes to usage data is a no (the answer is
-  // loaded up front so that holds even when it's skipped from the first step).
-  useTelemetry();
-  const finish = (how: "stay" | "new-project") => {
-    void declineIfUnanswered();
-    void actions.finishSetup(how);
-  };
   // Escape skips (and remembers it), wherever focus is.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && finish("stay");
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && void actions.finishSetup("stay");
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -141,10 +134,10 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
           </div>
         </div>
         <div className="wiz-foot">
-          {/* D278: the first-run question about usage data, unticked (opt-in). */}
+          {/* D283: one quiet line about anonymous usage data (turned off in Settings › App). */}
           <WizardUsageData />
           <div className="wiz-btns">
-            <button className="btn primary" data-testid="wizard-new-project" onClick={() => finish("new-project")}>
+            <button className="btn primary" data-testid="wizard-new-project" onClick={() => void actions.finishSetup("new-project")}>
               New project
               <ArrowRight />
             </button>
@@ -175,7 +168,7 @@ export function Onboarding({ standalone }: { standalone: boolean }) {
             ))}
           </ol>
           {/* F32 (D175): one way past the whole wizard, on every step; Settings › App reopens it. */}
-          <button className="btn ghost wiz-skip" data-testid="wizard-skip" onClick={() => finish("stay")}>
+          <button className="btn ghost wiz-skip" data-testid="wizard-skip" onClick={() => void actions.finishSetup("stay")}>
             Skip setup
           </button>
         </div>

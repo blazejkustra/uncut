@@ -17,3 +17,11 @@ GRAFANA_OTLP_URL = "https://otlp-gateway-prod-eu-north-0.grafana.net/otlp"
 name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 60, period = 60 }
+
+# Daily unique users (D283): one random salt per UTC day, kept only here with a 26 h TTL, never a
+# secret that lives longer. Create it with `wrangler kv namespace create VISITOR_SALTS` and put the
+# printed id below, then uncomment (an id isn't a credential). Without this binding the Worker runs
+# as before and adds no visitor_day.
+# [[kv_namespaces]]
+# binding = "VISITOR_SALTS"
+# id = "<the id printed by wrangler kv namespace create>"

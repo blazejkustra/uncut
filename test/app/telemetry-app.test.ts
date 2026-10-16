@@ -1,7 +1,7 @@
 // Issue #13 (D223) on the packaged app: telemetry pointed at a local collector (never the real
-// endpoint). After a yes (opt-in, D278; the first-launch question is test/app/issue103-app.test.ts)
-// it sends app:start with the random install id; Settings › App › Usage data turns it off and that
-// holds across launches; DO_NOT_TRACK locks it off. Screenshots: test-output/telemetry-*.png.
+// endpoint). Anonymous and on by default (D283; the wizard's line is test/app/issue103-privacy-app.test.ts):
+// it sends app:start with no identifier; Settings › App › Usage data turns it off and that holds
+// across launches; DO_NOT_TRACK locks it off. Screenshots: test-output/telemetry-*.png.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
@@ -51,6 +51,8 @@ const openUsageData = async (page: Page) => {
     const box = document.querySelector<HTMLInputElement>("[data-testid=settings-telemetry]");
     return box && (!box.disabled || /DO_NOT_TRACK|UNCUT_TELEMETRY|no telemetry token/.test(document.querySelector("[data-testid=settings-telemetry-note]")?.textContent ?? ""));
   }, { timeout: 10000 });
+  await page.$eval("[data-testid=settings-telemetry]", (el) => el.scrollIntoView({ block: "center" }));
+  await new Promise((r) => setTimeout(r, 300));
 };
 const checkbox = (page: Page) => page.$eval("[data-testid=settings-telemetry]", (el) => ({ checked: (el as HTMLInputElement).checked, disabled: (el as HTMLInputElement).disabled }));
 
@@ -79,23 +81,23 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("after a yes app:start reaches the collector; the Settings toggle turns telemetry off for good", T, async () => {
+test("by default app:start reaches the collector with no identifier; the Settings toggle turns telemetry off for good", T, async () => {
   mkdirSync(data, { recursive: true });
-  writeFileSync(join(data, "settings.json"), JSON.stringify({ onboarded: true, telemetry: { enabled: true } }));
+  writeFileSync(join(data, "settings.json"), JSON.stringify({ onboarded: true }));
   let app = await launch();
   // The first batch goes out within the SDK's 10 s delay (or at quit).
   await until(() => events().some((e) => e.name === "app:start"), 20000, "app:start");
   assert.ok(bodies.every((b) => b.auth === `Bearer ${TOKEN}`));
   const start = events().find((e) => e.name === "app:start")!;
-  assert.match(String(start.attrs.distinct_id), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(start.attrs.runtime, "electron");
   assert.equal(start.attrs.headless, false);
-  assert.equal(readFileSync(join(data, "install-id"), "utf8").trim(), start.attrs.distinct_id);
-  assert.ok(!existsSync(join(data, "telemetry-id")), "no hardware-derived id");
+  for (const e of events()) for (const k of Object.keys(e.attrs)) assert.ok(["app_version", "arch", "event.name", "headless", "os", "runtime", "process", "error_name", "crash_fingerprint", "code", "fatal"].includes(k), `unexpected attribute ${k}`);
+  assert.ok(!existsSync(join(data, "install-id")) && !existsSync(join(data, "telemetry-id")), "no id file");
   for (const { body } of bodies) assert.doesNotMatch(body, new RegExp(root.replace(/[/.]/g, "\\$&")));
 
   await openUsageData(app.page);
   assert.deepEqual(await checkbox(app.page), { checked: true, disabled: false });
+  assert.match(await app.page.$eval("[data-testid=settings-telemetry]", (el) => (el.closest("label") as HTMLElement).innerText), /Send anonymous usage data and crash reports/);
   assert.match(await app.page.$eval("[data-testid=settings-telemetry-note]", (el) => el.textContent ?? ""), /Never your footage, prompts, file names or paths/);
   await app.page.screenshot({ path: "test-output/telemetry-settings-on.png" });
   await app.page.click("[data-testid=settings-telemetry]");

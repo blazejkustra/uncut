@@ -44,16 +44,16 @@ pnpm test:app    # the packaged-app tests (run pnpm dist first)
 
 Uncut is made by Błażej Kustra, who is the controller for the usage data below. Contact: kustrablazej@gmail.com.
 
-**Usage data is off unless you turn it on.** The first time you open Uncut, the setup asks (an unticked checkbox; skipping the setup is a no), and an install that never answered is asked once. Nothing is sent before you say yes, not even the app starting. Change your answer any time in Settings › App › Usage data; `DO_NOT_TRACK=1` or `UNCUT_TELEMETRY=off` also keeps it off. Builds made from source send nothing either way.
+**Usage data is anonymous and on by default.** Uncut sends a few counts so we know how many people use it and what breaks. No identifier of any kind is sent: no install id, no session id, nothing derived from your Mac, your name or your account. Turn it off any time in Settings › App › Usage data (it stays off), or set `DO_NOT_TRACK=1` or `UNCUT_TELEMETRY=off`; then nothing is sent. Builds made from source send nothing either way. The legal basis is our legitimate interest in knowing how Uncut is used and fixing crashes; turning it off is your objection, and it takes effect at once.
 
-When it's on, Uncut sends only these events, each with the app version, macOS or Linux, the processor type, a session id and a random install id made when you said yes (not linked to your name or derived from your Mac; delete `install-id` in Uncut's data folder for a new one):
+Uncut sends only these events, each with the app version, macOS or Linux, the processor type and whether it runs in the desktop app:
 
 - `app:start`: the app started (and whether it runs headless).
 - `app:crash`: which process crashed, the error's class name and code, and a fingerprint of the top stack frames with folders and messages removed.
 - `export:complete`, `export:fail`, `export:cancel`: how long the export took, its length, quality, codec, encoder, size and frame rate, whether it was a range or had subtitles, or the stage that failed.
 - `agent:turn`, `agent:fail`: whether an agent turn finished, failed or was cancelled, how long it took, how many edits and steps, or a fixed word for why it failed (usage limit, rate limit, signed out and so on).
 
-Never your footage, frames, transcripts, prompts, file names, paths or error messages. The events go through a Cloudflare Worker (it keeps no request logs and doesn't forward your IP address) to Grafana Cloud's logs service in the EU, where they are kept for 14 days (the plan's retention) and then deleted.
+Never your footage, frames, transcripts, prompts, file names, paths or error messages. The events go through a Cloudflare Worker to Grafana Cloud's logs service in the EU, where they are kept for 14 days (the plan's retention) and then deleted. The Worker keeps no request logs and doesn't forward your IP address. To count daily users, our server computes a one-way hash of your IP address with a key that is replaced every day, then discards the IP; it can't be linked across days or to you.
 
 What else leaves your Mac, and only when you use it:
 

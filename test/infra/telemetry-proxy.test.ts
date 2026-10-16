@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import worker, { handleRequest, memoryLimiter, MAX_BODY_BYTES, MAX_RECORDS, type Deps, type Env, type RateLimiter } from "../../infra/telemetry-proxy/src/index.ts";
+import worker, { dailySalt, handleRequest, memoryLimiter, MAX_BODY_BYTES, MAX_RECORDS, SALT_TTL_S, visitorOf, type Deps, type Env, type RateLimiter, type SaltStore } from "../../infra/telemetry-proxy/src/index.ts";
 
 const APP_TOKEN = "a".repeat(64);
 const NEXT_TOKEN = "b".repeat(64);
@@ -211,3 +211,80 @@ test("the default export is a Workers module with a fetch handler", async () => 
   const res = await worker.fetch(req({ method: "GET" }), env());
   assert.equal(res.status, 405);
 });
+
+// ---- daily unique users (D283) ----
+
+/** An in-memory KV that records what was put and with which TTL. */
+function kv() {
+  const data = new Map<string, string>();
+  const puts: Array<{ key: string; ttl: number }> = [];
+  const store: SaltStore = {
+    get: async (key) => data.get(key) ?? null,
+    put: async (key, value, { expirationTtl }) => {
+      data.set(key, value);
+      puts.push({ key, ttl: expirationTtl });
+    },
+  };
+  return { store, data, puts };
+}
+const day1 = new Date("2026-10-16T08:00:00Z");
+const day1Late = new Date("2026-10-16T23:59:59Z");
+const day2 = new Date("2026-10-17T00:00:01Z");
+const forwarded = (up: ReturnType<typeof upstream>, i = 0) => JSON.parse(new TextDecoder().decode(up.calls[i]!.init.body as Uint8Array)) as { resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ attributes: Array<{ key: string; value: { stringValue: string } }> }> }> }> };
+const visitors = (up: ReturnType<typeof upstream>, i = 0) => forwarded(up, i).resourceLogs.flatMap((rl) => rl.scopeLogs.flatMap((sl) => sl.logRecords.map((lr) => lr.attributes.find((a) => a.key === "visitor_day")?.value.stringValue)));
+async function send(e: Env, now: Date, ip = "203.0.113.7", records = 2) {
+  const up = upstream();
+  const res = await handleRequest(req({ body: payload(records), headers: { "cf-connecting-ip": ip } }), e, { upstreamFetch: up.fetch, now: () => now });
+  assert.equal(res.status, 204);
+  return up;
+}
+
+test("the daily salt is random, one per UTC day, stored with a ~1-day TTL", async () => {
+  const k = kv();
+  const a = await dailySalt(k.store, day1);
+  assert.match(a!, /^[0-9a-f]{64}$/);
+  assert.equal(await dailySalt(k.store, day1Late), a, "the same all day");
+  const b = await dailySalt(k.store, day2);
+  assert.notEqual(b, a, "a new one the next day");
+  assert.deepEqual(k.puts, [{ key: "salt:2026-10-16", ttl: SALT_TTL_S }, { key: "salt:2026-10-17", ttl: SALT_TTL_S }]);
+  assert.ok(SALT_TTL_S <= 26 * 3600 && SALT_TTL_S >= 24 * 3600);
+  // Not derived from the date: two stores make different salts for the same day.
+  assert.notEqual(await dailySalt(kv().store, day1), a);
+  assert.equal(await dailySalt(undefined, day1), undefined);
+  assert.equal(await dailySalt({ get: async () => { throw new Error("kv down"); }, put: async () => {} }, day1), undefined);
+});
+
+test("visitor_day: same IP same day the same value, another day or IP another; the IP never goes upstream", async () => {
+  const k = kv();
+  const e = env({ VISITOR_SALTS: k.store });
+  const a = await send(e, day1);
+  const [v1, v2] = visitors(a);
+  assert.match(v1!, /^[0-9a-f]{16}$/);
+  assert.equal(v2, v1, "every record of the request");
+  assert.deepEqual(visitors(await send(e, day1Late)), [v1, v1], "same IP, same day");
+  assert.notEqual(visitors(await send(e, day1, "198.51.100.9"))[0], v1, "another IP");
+  assert.notEqual(visitors(await send(e, day2))[0], v1, "the next day");
+  assert.equal(v1, await visitorOf(k.data.get("salt:2026-10-16")!, "203.0.113.7"));
+  const body = new TextDecoder().decode(a.calls[0]!.init.body as Uint8Array);
+  assert.doesNotMatch(body, /203\.0\.113\.7/);
+  assert.equal(new Headers(a.calls[0]!.init.headers).get("cf-connecting-ip"), null);
+});
+
+test("without KV (or with KV failing) no visitor_day is added and the body passes as sent", async () => {
+  const up = await send(env(), day1);
+  assert.deepEqual(visitors(up), [undefined, undefined]);
+  assert.equal(new TextDecoder().decode(up.calls[0]!.init.body as Uint8Array), payload(2));
+  const broken: SaltStore = { get: async () => null, put: async () => { throw new Error("kv down"); } };
+  assert.deepEqual(visitors(await send(env({ VISITOR_SALTS: broken }), day1)), [undefined, undefined]);
+});
+
+test("a visitor_day sent by the client is replaced, never forwarded as is", async () => {
+  const k = kv();
+  const body = JSON.stringify({ resourceLogs: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: "uncut" } }] }, scopeLogs: [{ logRecords: [{ body: { stringValue: "app:start" }, attributes: [{ key: "visitor_day", value: { stringValue: "forged" } }] }] }] }] });
+  const up = upstream();
+  await handleRequest(req({ body }), env({ VISITOR_SALTS: k.store }), { upstreamFetch: up.fetch, now: () => day1 });
+  const attrs = forwarded(up).resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!.attributes.filter((a) => a.key === "visitor_day");
+  assert.equal(attrs.length, 1);
+  assert.notEqual(attrs[0]!.value.stringValue, "forged");
+});
+
