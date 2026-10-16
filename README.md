@@ -49,7 +49,8 @@ pnpm test:fast      # typecheck and every test outside test/app
 pnpm test           # everything, including the packaged-app tests (run pnpm dist first)
 pnpm dist           # an ad-hoc signed .app and dmg in dist/
 pnpm dist:signed    # a Developer ID signed, notarized dmg in release/
-pnpm site:build     # the website's script, site/assets/hero.js
+pnpm site:dev       # the website (site/, Next.js) at localhost:3000
+pnpm site:build     # its static export in site/out, ready for Cloudflare Pages (site/DEPLOY.txt)
 ```
 
 **Releases.** Bump the version in `apps/desktop/package.json`, then push a signed tag that matches it (`git tag -s v0.0.2 && git push origin v0.0.2`). CI builds, signs and notarizes the dmg with the auto-update feed and drafts a GitHub release. Publish the draft and installed apps pick up the update.

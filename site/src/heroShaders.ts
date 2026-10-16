@@ -1,6 +1,6 @@
 // The hero background's shaders, written with TypeGPU: the params struct and the bind group layout
-// typed with typegpu/data, the passes as WGSL-bodied tgpu functions. `pnpm site:build` resolves them
-// to WGSL here in Node (heroWgsl) and bakes the result into the page's script, so the browser runs
+// typed with typegpu/data, the passes as WGSL-bodied tgpu functions. The site build (next.config.ts)
+// resolves them to WGSL here in Node (heroWgsl) and bakes the result into the page's script, so the browser runs
 // plain WebGPU and never downloads TypeGPU (or needs eval). Two passes per frame:
 //   1. trail: a small fixed-size texture (ping-pong) that remembers where the pointer went. Each
 //      frame it is advected along a slow curl-noise flow, blurred a little and faded, and the

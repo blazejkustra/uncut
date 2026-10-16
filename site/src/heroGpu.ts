@@ -1,9 +1,12 @@
 // The hero's WebGPU background at runtime: plain WebGPU drawing the two passes heroShaders.ts
-// defines with TypeGPU. `pnpm site:build` resolves those to WGSL in Node and injects them here as
-// __HERO__, so this chunk stays a few KB and TypeGPU never ships to the browser (nor needs eval).
+// defines with TypeGPU. next.config.ts resolves those to WGSL in Node at build time and injects them
+// here as __HERO__, so this chunk stays a few KB and TypeGPU never ships to the browser (nor needs eval).
 // Loaded only where navigator.gpu exists (hero.ts imports this chunk lazily).
 
-declare const __HERO__: { readonly trail: string; readonly composite: string; readonly simW: number; readonly simH: number; readonly floats: number };
+type Hero = { readonly trail: string; readonly composite: string; readonly simW: number; readonly simH: number; readonly floats: number };
+// Turbopack inlines a define's value as a string literal (the JSON); webpack would inline it as code.
+declare const __HERO__: string | Hero;
+const HERO: Hero = typeof __HERO__ === "string" ? (JSON.parse(__HERO__) as Hero) : __HERO__;
 
 const MAX_DPR = 1.5;
 /** The canvas is drawn at this fraction of CSS size × DPR: soft glows lose nothing to it. */
@@ -28,7 +31,7 @@ export async function startHeroGpu(canvas: HTMLCanvasElement, hero: HTMLElement,
   const context = canvas.getContext("webgpu") as GPUCanvasContext | null;
   if (!context) return false;
   context.configure({ device, format, alphaMode: "premultiplied" });
-  const { trail, composite, simW, simH, floats: FLOATS } = __HERO__;
+  const { trail, composite, simW, simH, floats: FLOATS } = HERO;
 
   const paramsBuf = device.createBuffer({ size: FLOATS * 4, usage: UNIFORM | COPY_DST });
   const floats = new Float32Array(FLOATS);

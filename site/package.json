@@ -1,0 +1,35 @@
+{
+  "name": "@uncut/site",
+  "version": "0.0.1",
+  "description": "uncut.video: the landing page, privacy notice and blog (Next.js, static export for Cloudflare Pages).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build"
+  },
+  "dependencies": {
+    "gray-matter": "4.0.3",
+    "next": "16.3.8",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typegpu": "0.12.6",
+    "typescript": "5.9.3"
+  },
+  "license": "MIT",
+  "homepage": "https://uncut.video",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blazejkustra/uncut.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blazejkustra/uncut/issues"
+  }
+}

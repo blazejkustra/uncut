@@ -1,5 +1,8 @@
+# Template for site/out/_headers: scripts/site-build.ts adds the sha256 of every inline script Next
+# emits to script-src (here, the 404 page's; below, a rule per page with its own). No 'unsafe-inline',
+# no 'unsafe-eval'.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; connect-src 'self' https://api.github.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; style-src 'self'; font-src 'self'; img-src 'self' https://*.google-analytics.com https://www.googletagmanager.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; connect-src 'self' https://api.github.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; style-src 'self'; font-src 'self'; img-src 'self' https://*.google-analytics.com https://www.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
@@ -7,20 +10,18 @@
   Cross-Origin-Opener-Policy: same-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
+# Next's scripts and styles have content hashes in their names: cache them for a year.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
 /assets/*
   Cache-Control: public, max-age=604800
 
-# Scripts and styles keep stable names, so browsers must check for a new version on every visit
-# (tiny files; an ETag makes the check a 304). Images and fonts keep their long cache.
-/assets/*.js
+/assets/fonts/*
   ! Cache-Control
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: public, max-age=31536000, immutable
 
-/styles.css
-  Cache-Control: public, max-age=0, must-revalidate
-
+# The banner's stylesheet keeps a stable name, so browsers check for a new version on every visit
+# (a tiny file; an ETag makes the check a 304).
 /analytics.css
   Cache-Control: public, max-age=0, must-revalidate
-
-/assets/fonts/*
-  Cache-Control: public, max-age=31536000, immutable

@@ -1,29 +1,33 @@
 Deploying uncut.video (Cloudflare Pages)
 
-The site is static files in this folder plus one Pages Function (functions/_middleware.ts, the
-analytics region cookie, D284). Scripts are built locally (pnpm site:build) and committed.
+site/ is a Next.js app built as a static export (output: "export") into site/out, plus one Pages
+Function (site/functions/_middleware.ts, the analytics region cookie, D284). Blog posts are Markdown
+in site/content/blog/<slug>.md.
 
-1. Preview locally:
-     cd site && python3 -m http.server 8000
-   then open http://localhost:8000/ (no function: you count as an EU visitor and see the banner).
-   With the function: cd site && npx wrangler pages dev . --port 8788
-   (add ?region=other or ?region=eu to the URL to try either case).
+1. Build (from the repo root):
+     pnpm site:build
+   This runs `next build` and writes site/out/_headers from site/_headers: the CSP of each page gets
+   the sha256 of each inline script Next emits, so there is no 'unsafe-inline'. site/out/_routes.json
+   (from site/public) keeps the function on HTML pages only. Rebuild before every deploy: the hashes
+   change with every build.
 
-2. Log in to Cloudflare once:
+2. Preview locally, with the function and the headers (from site/):
+     cd site && npx wrangler pages dev out --port 8788
+   then open http://localhost:8788/ (add ?region=other or ?region=eu to try either case; without
+   a country header you count as EU and see the banner). `pnpm site:dev` is the quick dev server,
+   without the function or the headers.
+
+3. Log in to Cloudflare once:
      npx wrangler login
 
-3. Create the Pages project once (from the repo root):
+4. Deploy, from site/ every time. wrangler takes the function from ./functions in the folder it runs
+   in (not from the folder it uploads), so running it from the repo root would ship the pages
+   without the middleware:
+     cd site && npx wrangler pages deploy out --project-name uncut --branch main
+   A preview first: --branch <name> instead of main gives https://<name>.uncut.pages.dev.
+   Check the result: curl -sI https://uncut.video/ shows set-cookie: uncut_region=... (the function)
+   and one content-security-policy with sha256 hashes (the headers).
+
+5. The project and the domain (done once already):
      npx wrangler pages project create uncut --production-branch main
-
-4. Deploy (from site/, every time; wrangler only picks up ./functions from the folder it runs in):
-     cd site && npx wrangler pages deploy . --project-name uncut --branch main
-
-   The site is then live at https://uncut.pages.dev. _headers in this folder sets the
-   security headers; DEPLOY.txt itself is served too, which is harmless.
-
-5. Attach the domain once:
-   Cloudflare dashboard > Workers & Pages > uncut > Custom domains > Set up a custom domain,
-   enter uncut.video and confirm. If the uncut.video zone is on the same Cloudflare account,
-   Cloudflare adds the DNS record itself; otherwise add the CNAME it shows
-   (uncut.video -> uncut.pages.dev) at the registrar. Repeat for www.uncut.video if wanted,
-   then add a redirect rule from www to the apex.
+   Cloudflare dashboard > Workers & Pages > uncut > Custom domains: uncut.video.
