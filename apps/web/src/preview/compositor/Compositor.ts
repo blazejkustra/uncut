@@ -103,10 +103,8 @@ export class Compositor extends CompositorBase {
     if (gpuOn) for (const r of this.fxPool.splice(0)) r.dispose();
     if (gpuOn && !this.gpu) {
       try {
-        this.gpu = new GpuCompositor();
+        this.gpu = new GpuCompositor(this.mediaLayer);
         this.gpu.onRestored = () => this.render();
-        this.gpu.canvas.style.zIndex = "0";
-        this.mediaLayer.prepend(this.gpu.canvas);
       } catch {
         this.gpuBroken = true;
       }
@@ -114,10 +112,8 @@ export class Compositor extends CompositorBase {
     const onGpu = new Set<string>();
     this.onGpu = onGpu;
     if (gpuOn && this.gpu && !this.gpu.lost) {
-      for (const v of drawn) {
-        if (!this.gpuCan(v, project)) break;
-        onGpu.add(v.item.id);
-      }
+      // D265: every layer it can draw, in runs between the layers it can't (each run its own canvas).
+      for (const v of drawn) if (this.gpuCan(v, project)) onGpu.add(v.item.id);
     }
     const gpuPictures = new Map<string, GpuPicture>();
     const layered = drawn.filter((v) => v.item.type !== "text");
@@ -429,12 +425,19 @@ export class Compositor extends CompositorBase {
         // a cut) keeps the last frame up a moment instead of a transparent hole over the black frame.
         if (!this.gpu.holds(gpuPictures.values(), place)) {
           this.gpu.begin(place);
+          let last: number | undefined;
           for (const v of drawn) {
-            if (!onGpu.has(v.item.id)) break;
+            if (!onGpu.has(v.item.id)) {
+              if (last !== undefined) this.gpu.flush(last);
+              last = undefined;
+              continue;
+            }
             const p = gpuPictures.get(v.item.id);
             if (p) this.gpu.drawPicture(p);
             else if (v.item.type === "component") this.gpu.drawSolid({ id: v.item.id, colour: plainColour(solidBackground(v.item, project))!, opacity: v.opacity });
+            last = z.get(v.item.id)!;
           }
+          if (last !== undefined) this.gpu.flush(last);
           // Issue #12 (D265): the next clips' pictures, so a cut has one to hold while its <video> seeks.
           for (const ahead of aheads) {
             const el = this.els.get(ahead.id);

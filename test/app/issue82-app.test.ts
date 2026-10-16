@@ -132,7 +132,7 @@ async function play(label: string, from: number, ms: number) {
   const origin = await page.evaluate(() => performance.timeOrigin);
   // D241: renders where the GPU compositor kept the last frame up (a layer had nothing to draw yet).
   const held = await page.$eval("[data-testid=preview-frame]", (el) => Number((el as HTMLElement).dataset.gpuHeld ?? 0));
-  const heldBy = await page.evaluate(() => document.querySelector<HTMLElement>("canvas[data-gpu-compositor]")?.dataset.heldBy ?? "");
+  const heldBy = await page.evaluate(() => document.querySelector<HTMLElement>("canvas[data-gpu-compositor=\"0\"]")?.dataset.heldBy ?? "");
   const rect = await page.$eval("[data-testid=preview-frame]", (el) => {
     const r = el.getBoundingClientRect();
     return { x: r.x / innerWidth, y: r.y / innerHeight, w: r.width / innerWidth, h: r.height / innerHeight };
