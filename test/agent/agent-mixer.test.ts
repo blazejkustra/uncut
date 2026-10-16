@@ -13,6 +13,7 @@ import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { panGains } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
@@ -153,11 +154,11 @@ test("the agent pans the music, solos the voice and sets the master volume; the 
 });
 
 test("the system prompt: pan, solo and the master volume are heard, with an example; nothing says pan isn't heard", { skip }, () => {
-  assert.doesNotMatch(SYSTEM_PROMPT, /pan (are|is) saved but not heard|pan are saved/);
-  assert.match(SYSTEM_PROMPT, /mixer\.pan places it from -1 \(left\)/);
-  assert.match(SYSTEM_PROMPT, /mixer\.solo: if any track is soloed, only soloed tracks sound, in the preview and in the export/);
-  assert.match(SYSTEM_PROMPT, /"op":"update_project","set":\{"master":\{"gainDb":-3\}\}/);
-  assert.match(SYSTEM_PROMPT, /track volume, pan, mute and solo, track effects \(EQ, compressor, voice\), ducking, the master volume and the master limiter/);
+  assert.doesNotMatch(AGENT_TEXT, /pan (are|is) saved but not heard|pan are saved/);
+  assert.match(AGENT_TEXT, /mixer\.pan from -1 \(left\)/);
+  assert.match(AGENT_TEXT, /mixer\.solo \(if any track is soloed, only soloed tracks sound, in the preview and the export/);
+  assert.match(AGENT_TEXT, /"op":"update_project","set":\{"master":\{"gainDb":-3\}\}/);
+  assert.match(AGENT_TEXT, /track volume, pan, mute and solo, track effects \(EQ, compressor, voice, noise removal\), ducking, the master volume and the master limiter/);
   const prompt = JSON.parse(readFileSync(join(root, "prompts.jsonl"), "utf8").trim().split("\n")[0]!);
-  assert.match(prompt.system ?? "", /mixer\.pan/, "the CLI gets it");
+  assert.match(prompt.system ?? "", /docs_read \{topic\}[^\n]*sound/, "the CLI is told where the sound reference is");
 });

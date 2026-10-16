@@ -14,6 +14,7 @@ import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.
 import { drums, writeWav } from "../helpers/beats-audio.ts";
 import { beatGrid, gateOf, gateRefusal, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, LOOK_TOOLS } from "../../apps/server/src/agent/agentTools.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -117,8 +118,9 @@ test("the tools, labels, Look only set and the prompt's production process", () 
   assert.equal(stepLabel("storyboard_propose", { beats: BEATS }), "Proposed a storyboard of 2 beats");
   assert.equal(stepLabel("review_submit", { scores: { hook: 9, readability: 7 } }), "Asked the critic for a review");
   assert.equal(stepLabel("review_submit", { fixes: [{ defect: "d1", what: "x" }] }), "Asked the critic to check 1 fix");
-  for (const want of [/ask_user/, /brief_write/, /storyboard_propose/, /review_submit/, /beat_grid/, /never invent a logo/i, /hard lines/, /You don't score your own work/, /at most 3 rounds/i, /reference_frames/, /spring/]) assert.match(SYSTEM_PROMPT, want);
-  assert.ok(!/[·•]/.test(SYSTEM_PROMPT.replace(/never ·, • or \*/, "")), "no dot separators in the prompt");
+  for (const want of [/ask_user/, /brief_write/, /storyboard_propose/, /review_submit/, /beat_grid/, /never invent a logo/i, /hard lines/, /You don't score your own work/, /at most 3 rounds/i, /reference_frames/, /spring/]) assert.match(AGENT_TEXT, want);
+  assert.match(SYSTEM_PROMPT, /follows the production process: docs_read production first/);
+  assert.ok(!/[·•]/.test(AGENT_TEXT.replace(/never ·, • or \*/, "")), "no dot separators in the prompt");
 });
 
 test("pure parts: question, gate, verdict, context and the beat grid", () => {

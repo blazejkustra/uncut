@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "project_read",
-      "description": "Read the project. 'summary' gives tracks, items with start and length, scenes, media and the revision; 'full' gives project.json. Long videos: pass a range.",
+      "description": "Read the project and its revision (pass it as timeline_edit's baseRevision). 'summary' (default) gives the canvas, media, tracks with their mixer and items, the master and notes; a long project's items come as compact lines (id, type, start, duration, media, text) unless you pass range or items. 'items' gives every field of every item (or of the ids in items): read an item this way before update_item, which replaces style, transform and effects whole. 'full' gives project.json.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -12,11 +12,20 @@
           "detail": {
             "enum": [
               "summary",
+              "items",
               "full"
             ]
           },
           "range": {
             "$ref": "#/$defs/range"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "description": "Only these items, with every field."
           }
         }
       },
@@ -24,7 +33,7 @@
     },
     {
       "name": "timeline_edit",
-      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The main track (D215) takes any picture: clips, components, graphics and text (a text there is a title card in the spine: it ripples and takes transitions, with no footage needed). {\"op\":\"put_on_main\", \"item\": ...} (see $defs/putOnMain) puts a picture off Main onto it at the nearest cut, and a multi-source take with it: its picture on Main, its microphone and other parts linked under it (they follow its moves, trims, ripple and transcript cuts). The mix (D83–D88): update_track's mixer {gainDb, pan -1..1, mute, solo, effects} (replaced whole) and update_project's master {gainDb, loudness {targetLufs}, effects} are heard in the preview and mixed the same way in the export. mixer.effects is the track's chain in order: audio.eq (lowCutHz, highCutHz, low/mid/high gainDb and Hz, midQ), audio.compressor (thresholdDb, ratio, attackMs, releaseMs, makeupDb), audio.voice-enhance (amount: high-pass + presence + gentle compression), audio.denoise (amount: noise removal), audio.duck (under [key track ids], amountDb, attackMs, releaseMs, thresholdDb: the track goes down while a key track has speech, from its measured loudness); each entry may be {\"bypass\":true}. master.effects holds audio.limiter {ceilingDb} only to change or bypass the limiter (on by default at -1 dBTP); master.loudness.targetLufs is the export dialog's default target (-14 Normal, -16 Quieter, -23 Broadcast, or another number). Looks and effects on a clip (D136) are its effects list, set with update_item: effect.look {look, intensity 0-1}, effect.color (Adjust: exposure in stops, contrast, saturation, temperature, tint, highlights, shadows, vibrance, -1 to 1) and effect.blur, effect.sharpen, effect.vignette, effect.grain, effect.glow, effect.rgb-split, effect.pixelate, effect.mirror, effect.posterize, effect.invert, effect.shake, effect.zoom-pulse, effect.letterbox; modules_list kind \"effect\" gives each one's params. Overlaps (D206): {\"op\":\"place_item\", \"track\", \"item\" (a new item, or an id to move), \"start\", \"place\": \"after\" | \"free-track\" | \"ripple\"} (see $defs/placeItem) puts it where asked when that's free, else after the item in the way, on another track of that kind that is free there (a new one when none is), or pushes that track's later items along; the result's placed says where each went. A set_transition with allowTrim: true (see $defs/setTransitionTrim) trims exactly the spare media an overlapping transition lacks; without it, a lack is refused with the frames missing. dryRun: true checks the edit and returns the planned ops, lines, diff (added, removed, moved items) and conflicts without changing anything. A refusal gives each problem a fix (a start frame, a track, a free id): use it as it is.",
+      "description": "Apply edit ops atomically. Pass the revision you last read; if the user changed the same items since then, the edit is refused and you get the user's changes. One call is one undo step inside your turn. Besides the edit ops, {\"op\":\"insert_device_frame\", ...} (see $defs/insertDeviceFrame) puts a device frame with footage under it: the clip on a video track with its box on the frame's screen, the frame on the track above; {\"op\":\"insert_text\", \"look\": ...} (see $defs/insertText) adds text in a look (a text-style module) on a free text track. {\"op\":\"edit_captions\", \"item\": ...} (see $defs/editCaptions) fixes caption words, card starts and settings. {\"op\":\"detach_audio\", \"item\": ...} (see $defs/detachAudio) moves a clip's sound to its own audio item and mutes the clip; {\"op\":\"set_speed\", \"item\": ..., \"speed\": 2} (see $defs/setSpeed) changes a clip's or audio item's speed, and its length with it. The main track takes any picture: clips, components, graphics and text (a text there is a title card in the spine: it ripples and takes transitions, with no footage needed). {\"op\":\"put_on_main\", \"item\": ...} (see $defs/putOnMain) puts a picture off Main onto it at the nearest cut, and a multi-source take with it: its picture on Main, its microphone and other parts linked under it (they follow its moves, trims, ripple and transcript cuts). The mix: update_track's mixer {gainDb, pan, mute, solo, effects} and update_project's master {gainDb, loudness, effects} (docs_read sound has the fields and effects). Looks and effects on a clip are its effects list, set with update_item (docs_read picture; modules_list kind \"effect\" gives params). Overlaps: {\"op\":\"place_item\", \"track\", \"item\" (a new item, or an id to move), \"start\", \"place\": \"after\" | \"free-track\" | \"ripple\"} (see $defs/placeItem) puts it where asked when that's free, else after the item in the way, on another track of that kind that is free there (a new one when none is), or pushes that track's later items along; the result's placed says where each went. A set_transition with allowTrim: true (see $defs/setTransitionTrim) trims exactly the spare media an overlapping transition lacks; without it, a lack is refused with the frames missing. dryRun: true checks the edit and returns the planned ops, lines, diff (added, removed, moved items) and conflicts without changing anything. A refusal gives each problem a fix (a start frame, a track, a free id): use it as it is.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -129,7 +138,7 @@
     },
     {
       "name": "media_analyze",
-      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. 'transcript': the speech transcribed on this Mac (a summary: language, word, filler and pause counts; transcript_read gives the words). 'beats' (also 'rhythm', 'onsets', 'tempo'): tempo (bpm), a confidence 0-1 and the beats in project frames of the media (the first ones, or those in range with the onsets there). Description comes later.",
+      "description": "Analyse a media file. 'loudness' (also 'silence'): integrated loudness (LUFS), loudness range, true peak and the silences (below -40 dB for at least 0.3 s). 'video' (also 'shots', 'motion', 'stability'): cuts, frozen stretches and, per second, stability (no camera shake), sharpness, exposure and a cleanScore 0-1, with the best stretch inside one shot. Frames in the answer are usable as in. Runs on demand and waits up to about a minute; if the answer says running, call again with the same arguments (it joins the job). Results are cached in .cache/ by the file's content, so asking twice is free. 'transcript': the speech transcribed on this Mac (a summary: language, word, filler and pause counts; transcript_read gives the words). 'beats' (also 'rhythm', 'onsets', 'tempo'): tempo (bpm), a confidence 0-1 and the beats in project frames of the media (the first ones, or those in range with the onsets there).",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -225,7 +234,7 @@
           },
           "item": {
             "type": "string",
-            "description": "D215: an item id on any track instead of media: the transcript of the file its speech is (its own sound, or its take's microphone)."
+            "description": "An item id on any track instead of media: the transcript of the file its speech is (its own sound, or its take's microphone)."
           },
           "range": {
             "$ref": "#/$defs/range",
@@ -254,7 +263,7 @@
     },
     {
       "name": "transcript_edit",
-      "description": "Cut by text: remove words (ranges of transcript_read's word ids), pauses (at least min seconds) and/or hesitation fillers (um, uh, yyy, eee; never the 'maybe' ones) of a media file from every main-track clip that uses it (or whose linked microphone does), as one edit on your turn (Undo turn reverts it). Respects each clip's in, length and speed; the main track closes up, items on other tracks don't move. With item (D215) it cuts that item instead, wherever it is: on Main as above (that clip only); a sound linked to a main clip cuts that clip; on another track the item and the pieces of the same file on its track are cut in place and close up, its group's other parts (a take's camera, screen) get the same cuts, and the main track doesn't move. A media that no main clip plays is cut where it plays. Cuts snap to frames and keep a couple of frames next to the words that stay; adjacent cuts merge; words no longer in the edit are skipped with a note. dryRun returns the plan without changing anything. Gets the transcript like transcript_read (it may have to be made first: if it answers running, call again).",
+      "description": "Cut by text: remove words (ranges of transcript_read's word ids), pauses (at least min seconds) and/or hesitation fillers (um, uh, yyy, eee; never the 'maybe' ones) of a media file from every main-track clip that uses it (or whose linked microphone does), as one edit on your turn (Undo turn reverts it). Respects each clip's in, length and speed; the main track closes up, items on other tracks don't move. With item it cuts that item instead, wherever it is: on Main as above (that clip only); a sound linked to a main clip cuts that clip; on another track the item and the pieces of the same file on its track are cut in place and close up, its group's other parts (a take's camera, screen) get the same cuts, and the main track doesn't move. A media that no main clip plays is cut where it plays. Cuts snap to frames and keep a couple of frames next to the words that stay; adjacent cuts merge; words no longer in the edit are skipped with a note. dryRun returns the plan without changing anything. Gets the transcript like transcript_read (it may have to be made first: if it answers running, call again).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -265,7 +274,7 @@
           },
           "item": {
             "type": "string",
-            "description": "D215: cut this item (any track) and what belongs to it instead of every main clip of the media; word ids are its speech's transcript_read ids (transcript_read with the same item)."
+            "description": "Cut this item (any track) and what belongs to it instead of every main clip of the media; word ids are its speech's transcript_read ids (transcript_read with the same item)."
           },
           "remove": {
             "type": "array",
@@ -321,7 +330,7 @@
     },
     {
       "name": "captions_make",
-      "description": "Captions from a media file's transcript (D82): a captions item on its own text track that follows the main-track clips using the media (or a main clip's linked microphone; D215: a media no main clip plays is followed wherever it plays, each item at its own start, item picks it from any clip or sound), so later cuts, trims, splits and transcript_edit removals keep it in sync and removed words disappear. Words are grouped into cards (1-2 lines, a new card after a pause, a sentence end or the length limits). mode line shows a card at a time, word also accents the speaking word (karaoke), single shows one word at a time. If the media already has captions they're remade from the transcript (corrections kept when the words are the same). Gets the transcript like transcript_read (if it answers running, call again). Fix words, force card starts or change settings afterwards with timeline_edit's edit_captions op; restyle with update_item style (as on text).",
+      "description": "Captions from a media file's transcript: a captions item on its own text track that follows the main-track clips using the media (or a main clip's linked microphone: a media no main clip plays is followed wherever it plays, each item at its own start, item picks it from any clip or sound), so later cuts, trims, splits and transcript_edit removals keep it in sync and removed words disappear. Words are grouped into cards (1-2 lines, a new card after a pause, a sentence end or the length limits). mode line shows a card at a time, word also accents the speaking word (karaoke), single shows one word at a time. If the media already has captions they're remade from the transcript (corrections kept when the words are the same). Gets the transcript like transcript_read (if it answers running, call again). Fix words, force card starts or change settings afterwards with timeline_edit's edit_captions op; restyle with update_item style (as on text).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -332,7 +341,7 @@
           },
           "item": {
             "type": "string",
-            "description": "D215: an item id on any track instead of media: captions of its speech (its own sound, or its take's microphone)."
+            "description": "An item id on any track instead of media: captions of its speech (its own sound, or its take's microphone)."
           },
           "mode": {
             "enum": [
@@ -389,7 +398,7 @@
     },
     {
       "name": "subtitles_export",
-      "description": "Subtitles as a file (D105): the cards every captions item draws (corrections applied, hidden words and fillers left out, word and single modes as whole cards) and the text items of \"Subtitles\" tracks (an imported .srt / .vtt), merged by time, at the edit's times after cuts. Writes SubRip (.srt) or WebVTT (.vtt); no video is rendered. Refused when there are no captions or subtitles, or when the file exists (pass overwrite).",
+      "description": "Subtitles as a file: the cards every captions item draws (corrections applied, hidden words and fillers left out, word and single modes as whole cards) and the text items of \"Subtitles\" tracks (an imported .srt / .vtt), merged by time, at the edit's times after cuts. Writes SubRip (.srt) or WebVTT (.vtt); no video is rendered. Refused when there are no captions or subtitles, or when the file exists (pass overwrite).",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -415,7 +424,7 @@
     },
     {
       "name": "media_import",
-      "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed; a file inside another Uncut project (from media_search) is copied into this project's media/imports so the other project can move or go (D205). At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
+      "description": "Add footage, music or images from disk to the project's media. Pass path or paths: a file, a folder (the media files directly inside it, not subfolders), or a list of paths. Files are referenced where they are, never copied or changed; a file inside another Uncut project (from media_search) is copied into this project's media/imports so the other project can move or go. At most 50 files per call. Waits for the import and returns each new media entry with its length, size, fps and whether it has sound, plus what was skipped or failed and why. Undo turn removes what it imported.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -472,7 +481,7 @@
     },
     {
       "name": "generate_media",
-      "description": "Make an image, video or sound with a generator (D99) into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo and generate.sound bill the user's own API key; without it the result says which key is needed. Over $1 waits for the user to allow it on a card in the Agent tab.",
+      "description": "Make an image, video or sound with a generator into Media › Generated, with its prompt, as an edit of this turn. generate.svg is free: pass the SVG or HTML you wrote as content (kind image: a still; kind video: an animation up to 12 s). generate.gpt-image, generate.veo and generate.sound bill the user's own API key; without it the result says which key is needed. Over $1 waits for the user to allow it on a card in the Agent tab.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -552,7 +561,7 @@
     },
     {
       "name": "graphic_write",
-      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do (D78). The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network, no other files, system fonts only; render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
+      "description": "Write a graphic item's HTML into the project's graphics/ folder, for what the components can't do. The HTML defines render(t, info), called every frame with t = seconds from the item's start and info {frame, fps, duration, width, height, props}; it draws into a transparent canvas-size page. No network, no other files, system fonts only; render must finish within 5 s a frame; the export draws at most 360 distinct frames of one graphic (longer ones hold frames). Files are never overwritten: to change a graphic, write a new name and point the item at it. Then insert {\"type\":\"graphic\",\"src\":\"graphics/<name>\"} on a video track with timeline_edit.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -578,7 +587,7 @@
     },
     {
       "name": "shader_write",
-      "description": "Write a GPU shader effect for clips (D213) into the project's shaders/ folder, for a look no effect gives (modules_list kind \"effect\" lists the ones there are). It's a TypeGPU function: your params (typed, with ranges) and the WGSL body of (uv, t, size, p) -> vec4f, called at every pixel: uv is 0-1 from the top-left, t seconds from the clip's start (the only clock: no randomness), size the picture in px, p the params; frame(uv) reads the clip's picture. Return the pixel's colour (alpha is ignored). Limits: no loop or while; for loops count a var up by one between whole-number literals (at most 64 steps, 4 loops, two deep); no storage, atomics, pointers or attributes; nothing named uncut*; 16 KB. Uncut checks it, compiles it and draws it once on a sample picture (the answer shows it), then saves it as project.<name>, overwriting an earlier one of that name. Apply it with timeline_edit: {\"module\":\"effect.shader\",\"params\":{\"shader\":\"project.<name>\",\"values\":{...}}} in the clip's effects.",
+      "description": "Write a GPU shader effect for clips into the project's shaders/ folder, for a look no effect gives (modules_list kind \"effect\" lists the ones there are). It's a TypeGPU function: your params (typed, with ranges) and the WGSL body of (uv, t, size, p) -> vec4f, called at every pixel: uv is 0-1 from the top-left, t seconds from the clip's start (the only clock: no randomness), size the picture in px, p the params; frame(uv) reads the clip's picture. Return the pixel's colour (alpha is ignored). Limits: no loop or while; for loops count a var up by one between whole-number literals (at most 64 steps, 4 loops, two deep); no storage, atomics, pointers or attributes; nothing named uncut*; 16 KB. Uncut checks it, compiles it and draws it once on a sample picture (the answer shows it), then saves it as project.<name>, overwriting an earlier one of that name. Apply it with timeline_edit: {\"module\":\"effect.shader\",\"params\":{\"shader\":\"project.<name>\",\"values\":{...}}} in the clip's effects.",
       "inputSchema": {
         "type": "object",
         "required": ["name", "body"],
@@ -650,7 +659,7 @@
     },
     {
       "name": "project_check",
-      "description": "Taste checks on the current project (D90), the same list core projectChecks finds: text read time (words ÷ 3 s, 2 s minimum, after the in move), the last text holding 3 s, no new text in the last 2 s, trailing periods, dots or stars between words, filler phrases, frame 1 empty or fading in from black, more than two texts at once, more than one typeface, text under 28 px (at a 1080 px shorter side), text at the frame's edge, mixed footage speeds, the same entrance on every text, long transitions, blank stretches, no sound, music that starts or stops cold, music not ducked under speech, a canvas other than 4:5 (info). Each finding has the rule id, severity (warn or info), one sentence, the item ids, the frame (and range) to look at, and either fix (ops you can send as they are with timeline_edit, with a summary) or a hint. Checks never block the export; rules the project turned off (checks.disabled) are left out.",
+      "description": "Taste checks on the current project, the same list core projectChecks finds: text read time (words ÷ 3 s, 2 s minimum, after the in move), the last text holding 3 s, no new text in the last 2 s, trailing periods, dots or stars between words, filler phrases, frame 1 empty or fading in from black, more than two texts at once, more than one typeface, text under 28 px (at a 1080 px shorter side), text at the frame's edge, mixed footage speeds, the same entrance on every text, long transitions, blank stretches, no sound, music that starts or stops cold, music not ducked under speech, a canvas other than 4:5 (info). Each finding has the rule id, severity (warn or info), one sentence, the item ids, the frame (and range) to look at, and either fix (ops you can send as they are with timeline_edit, with a summary) or a hint. Checks never block the export; rules the project turned off (checks.disabled) are left out.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -675,7 +684,7 @@
     },
     {
       "name": "music_list",
-      "description": "The bundled music library (D91): cozy CC0 tracks (lo-fi, Rhodes, piano), each with id, title, moods, bpm and tempo (slow, medium, fast, free), length in seconds and project frames, loudness (normalised to about -16 LUFS), author and licence, and the media id when it's already in the project. Filter by mood, tempo or words.",
+      "description": "The bundled music library: cozy CC0 tracks (lo-fi, Rhodes, piano), each with id, title, moods, bpm and tempo (slow, medium, fast, free), length in seconds and project frames, loudness (normalised to about -16 LUFS), author and licence, and the media id when it's already in the project. Filter by mood, tempo or words.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -721,7 +730,7 @@
     },
     {
       "name": "library_search",
-      "description": "Search the sound library (D134): royalty-free music or sound effects online (Openverse without a key, or Freesound when the user stored a Freesound key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\" Uncut's bundled CC0 sound effects (designed and meme sounds, D208) plus matching files from the user's own sound folders (`yours`, ids folder:…). Search by what it sounds like or its meme name (spellings and synonyms are understood: whoosh, swipe, ui click, pop, impact, riser, notification, success, glitch, typing, applause, vine boom, fahh, bruh, airhorn, record scratch, sad trombone, rimshot); a meme clip nobody may give away answers with free sound-alikes and says so (`clip`); for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
+      "description": "Search the sound library: royalty-free music or sound effects online (Openverse without a key, Freesound or Jamendo when the user stored that key), CC0 and CC BY only (both allow commercial use; CC BY needs credit, project_read lists it), or with source \"included\" Uncut's bundled CC0 sound effects (designed and meme sounds) plus matching files from the user's own sound folders (`yours`, ids folder:…). Search by what it sounds like or its meme name (spellings and synonyms are understood: whoosh, swipe, ui click, pop, impact, riser, notification, success, glitch, typing, applause, vine boom, fahh, bruh, airhorn, record scratch, sad trombone, rimshot); a meme clip nobody may give away answers with free sound-alikes and says so (`clip`); for music a genre or mood (lofi, ambient, cinematic, upbeat piano) and songs true for full songs. Openverse allows 20 searches a minute and 200 a day for everyone on this connection, cached for 30 minutes: search with purpose, don't page through results needlessly.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -743,9 +752,10 @@
             "enum": [
               "openverse",
               "freesound",
+              "jamendo",
               "included"
             ],
-            "description": "Default openverse."
+            "description": "Default openverse. jamendo: music under CC0 or CC BY, needs the user's Jamendo client ID (Settings › Keys)."
           },
           "license": {
             "enum": [
@@ -797,7 +807,7 @@
     },
     {
       "name": "screen_record",
-      "description": "Record the user's screen or a window (a browser window shows as its page title) on this Mac for some seconds, as media of this turn (D144). The user is always asked first on a card in the Agent tab, where they pick the screen or window (yours preselected by name) and can say no; nothing is ever recorded without their Record. The result gives the media id and the source's name, or that the user said no.",
+      "description": "Record the user's screen or a window (a browser window shows as its page title) on this Mac for some seconds, as media of this turn. The user is always asked first on a card in the Agent tab, where they pick the screen or window (yours preselected by name) and can say no; nothing is ever recorded without their Record. The result gives the media id and the source's name, or that the user said no.",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -827,7 +837,7 @@
     },
     {
       "name": "argent_boot",
-      "description": "Boot an iOS simulator or Android emulator with Argent so you can record the app (D204). Without device it lists the bootable ones by name (and the running ones). With a device (an id or a name from that list) the user is asked on a card in the Agent tab first (the device, its platform and what happens next): nothing boots without their Boot. A device the user allowed once in this chat boots again without asking. Not in Look only. After it boots, record with argent_record {device, bundleId (the app to open), flow or seconds}.",
+      "description": "Boot an iOS simulator or Android emulator with Argent so you can record the app. Without device it lists the bootable ones by name (and the running ones). With a device (an id or a name from that list) the user is asked on a card in the Agent tab first (the device, its platform and what happens next): nothing boots without their Boot. A device the user allowed once in this chat boots again without asking. Not in Look only. After it boots, record with argent_record {device, bundleId (the app to open), flow or seconds}.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -850,7 +860,7 @@
     },
     {
       "name": "media_search",
-      "description": "Search the user's media from their other projects on this Mac (D205): captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and when it was made. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
+      "description": "Search the user's media from their other projects on this Mac: captures (simulator and screen recordings), imports and generations, newest first, each with its path, kind, length, project, device or app and when it was made. Bring one in with media_import {path} (a file inside another project is copied into this one's media/imports; others are referenced). Search here before drawing a placeholder for product footage.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -1143,8 +1153,33 @@
       "returns": "the critic's round: scores with evidence, blockers and defects with ids, each claimed fix verified or not, the determinism check and what to do next"
     },
     {
+      "name": "docs_read",
+      "description": "Uncut's reference for one area: how its items and fields fit together, with exact JSON examples and limits. production: the brand, brief, storyboard, build, sound and critic steps for a new video, skills, styles from a reference; text: text items, looks, style fields, animations; picture: backgrounds, clip boxes and keys, transitions, looks, effects, shaders, what the preview draws; sound: volume, fades, mixer, track effects, ducking, limiter, loudness, music; components: end cards, terminals, charts, device frames; graphics: graphic_write, its libraries, generate_media; footage: import, scanning, takes, transcripts, captions, subtitles, recording. Read a topic before you first work in that area in a conversation.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "topic"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "topic": {
+            "enum": [
+              "production",
+              "text",
+              "picture",
+              "sound",
+              "components",
+              "graphics",
+              "footage"
+            ]
+          }
+        }
+      },
+      "returns": "the topic's reference text"
+    },
+    {
       "name": "skill_read",
-      "description": "Read an installed skill's instructions (D232): a recipe from a plugin (Uncut's own: launch promo, product demo, motion craft, sound design, brand application, make a brand kit and more). The system prompt's Skills list has every skill by name and when it fits; read one before you start a task it fits, then follow every rule in it. The project then uses it: the critic checks its review checklist.",
+      "description": "Read an installed skill's instructions: a recipe from a plugin (Uncut's own: launch promo, product demo, motion craft, sound design, brand application, make a brand kit and more). The system prompt's Skills list has every skill by name and when it fits; read one before you start a task it fits, then follow every rule in it. The project then uses it: the critic checks its review checklist.",
       "inputSchema": {
         "type": "object",
         "required": ["name"],
@@ -1421,7 +1456,7 @@
         "duration"
       ],
       "additionalProperties": false,
-      "description": "Text in a look (a text-style module, D80), as one op: the item gets the look's size, weight, position and in/out moves (the rest of the look, e.g. its outline, shadow or box, applies while the item doesn't set those fields), plus the looks it comes with (a kicker above a title) on their own text tracks; it goes on the top-most text track free for [start, start + duration), else a new one on top.",
+      "description": "Text in a look (a text-style module), as one op: the item gets the look's size, weight, position and in/out moves (the rest of the look, e.g. its outline, shadow or box, applies while the item doesn't set those fields), plus the looks it comes with (a kicker above a title) on their own text tracks; it goes on the top-most text track free for [start, start + duration), else a new one on top.",
       "properties": {
         "op": {
           "const": "insert_text"
@@ -1501,7 +1536,7 @@
         "item"
       ],
       "additionalProperties": false,
-      "description": "Put on Main (D215): a picture off the main track (a clip, component, graphic or text) goes into it at the cut nearest frame (default: where it is), and what comes after ripples. A take's parts (its group: microphone, Mac sound, the other picture) over exactly its stretch become linked to it (linkedTo, their own in points kept) and stay on their tracks under it, following it from then on; a sound of a take puts the take's picture (the screen, else the camera) on Main. The track it leaves empty goes.",
+      "description": "Put on Main: a picture off the main track (a clip, component, graphic or text) goes into it at the cut nearest frame (default: where it is), and what comes after ripples. A take's parts (its group: microphone, Mac sound, the other picture) over exactly its stretch become linked to it (linkedTo, their own in points kept) and stay on their tracks under it, following it from then on; a sound of a take puts the take's picture (the screen, else the camera) on Main. The track it leaves empty goes.",
       "properties": {
         "op": {
           "const": "put_on_main"
@@ -1524,7 +1559,7 @@
         "item"
       ],
       "additionalProperties": false,
-      "description": "Detach audio (D123): the clip's sound becomes an audio item (same media, in point, speed and start; the clip's volume, fades and volume keys move to it) on the first audio track free for that stretch (or a new one, or `track`), and the clip gets mute: true. Captions and transcript cuts keep following the clip on main.",
+      "description": "Detach audio: the clip's sound becomes an audio item (same media, in point, speed and start; the clip's volume, fades and volume keys move to it) on the first audio track free for that stretch (or a new one, or `track`), and the clip gets mute: true. Captions and transcript cuts keep following the clip on main.",
       "properties": {
         "op": {
           "const": "detach_audio"
@@ -1551,7 +1586,7 @@
         "speed"
       ],
       "additionalProperties": false,
-      "description": "Change the speed of a clip or an audio item (D125): 0.1 to 10 (2 = twice as fast). It keeps playing the same stretch of its media, so its duration becomes duration x old speed / new speed (main clips after it ripple; on a free track the next item must leave room). keepPitch false lets the pitch follow the speed (like tape); true keeps it (the default).",
+      "description": "Change the speed of a clip or an audio item: 0.1 to 10 (2 = twice as fast). It keeps playing the same stretch of its media, so its duration becomes duration x old speed / new speed (main clips after it ripple; on a free track the next item must leave room). keepPitch false lets the pitch follow the speed (like tape); true keeps it (the default).",
       "properties": {
         "op": {
           "const": "set_speed"
@@ -1576,7 +1611,7 @@
         "item"
       ],
       "additionalProperties": false,
-      "description": "Change a captions item (D82) as one op: fix words (by transcript_read's word id; \"\" hides a word, null goes back to the transcript's), force a new card at a word (or stop forcing one), switch the mode, change the grouping or hide fillers. It becomes one update_item.",
+      "description": "Change a captions item as one op: fix words (by transcript_read's word id; \"\" hides a word, null goes back to the transcript's), force a new card at a word (or stop forcing one), switch the mode, change the grouping or hide fillers. It becomes one update_item.",
       "properties": {
         "op": {
           "const": "edit_captions"
@@ -1759,7 +1794,7 @@
         "place"
       ],
       "additionalProperties": false,
-      "description": "Place an item without fighting overlaps (D206). On a free track: at start when that stretch is free; otherwise place \"after\" puts it at the first free frame after what is in the way, \"free-track\" keeps the start on another track of the same kind that is free there (a new track next to it when none is), \"ripple\" moves the track's items from start on later by what is needed. On the main track it goes in at index (or the cut at start) and the rest ripples.",
+      "description": "Place an item without fighting overlaps. On a free track: at start when that stretch is free; otherwise place \"after\" puts it at the first free frame after what is in the way, \"free-track\" keeps the start on another track of the same kind that is free there (a new track next to it when none is), \"ripple\" moves the track's items from start on later by what is needed. On the main track it goes in at index (or the cut at start) and the rest ripples.",
       "properties": {
         "op": {
           "const": "place_item"
@@ -1807,7 +1842,7 @@
         "allowTrim"
       ],
       "additionalProperties": false,
-      "description": "set_transition that may trim the clips at the cut (D206): an overlapping transition needs spare media on both sides (half its length); allowTrim: true trims exactly what is missing off the incoming clip's start and the outgoing clip's end before it is set.",
+      "description": "set_transition that may trim the clips at the cut: an overlapping transition needs spare media on both sides (half its length); allowTrim: true trims exactly what is missing off the incoming clip's start and the outgoing clip's end before it is set.",
       "properties": {
         "op": {
           "const": "set_transition"

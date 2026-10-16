@@ -17,6 +17,7 @@ import { SYSTEM_PROMPT } from "../../apps/server/src/agent/agentTools.ts";
 import { clipShader, loadModules, validateProject, type Project } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { makeColours } from "../helpers/fx-fixture.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
@@ -128,7 +129,7 @@ test("D213: modules_list shows the shader effects with params; timeline_edit app
   assert.deepEqual(use?.values, { amplitude: 0.02, wavelength: 0.12, speed: 8, centerX: 0.5, centerY: 0.5 });
   assert.match(JSON.parse(text(mine[3])).refused, /There's no shader effect "typegpu\.effects\.nope"\. Known: .*typegpu\.effects\.ripple/);
   assert.match(JSON.parse(text(mine[4])).refused, /Ripple: "amplitude" takes a number from 0 to 0\.05/);
-  assert.match(SYSTEM_PROMPT, /Shader effects \(D213\)/);
+  assert.match(AGENT_TEXT, /Shader effects: modules_list kind "effect"/);
 });
 
 test("D213: shader_write keeps project.<name> after trying it; it applies by id; render_frames draws it; the plugin removed, the clip still carries its effect", { skip, timeout: 180000 }, async () => {

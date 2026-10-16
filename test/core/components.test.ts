@@ -43,6 +43,7 @@ import { svgSize } from "../../apps/server/src/export/svg.ts";
 import { planAddComponent, planAlignScreen, planComponentProps, planDevice, planScreenFootage, screenClipOf } from "../../apps/web/src/preview/components.ts";
 import { clipState, planClipBox } from "../../apps/web/src/timeline/clip.ts";
 import { itemLabel } from "../../apps/web/src/state/project.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const BUILTIN = fileURLToPath(new URL("../../spec/modules/builtin/", import.meta.url));
 const modules = await loadModules(BUILTIN);
@@ -98,7 +99,7 @@ test("every built-in component manifest is drawn by core's registry or listed as
     assert.ok(bad.some((e) => e.code === "params"), `${c.id}: an unknown prop is refused`);
   }
   // Only the terminal, the agent log and the compare table change from frame to frame.
-  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.lower-third", "component.progress-bar", "component.countdown", "component.subscribe", "component.sticker", "component.terminal", "component.agent-log", "component.compare-table"]);
+  assert.deepEqual(COMPONENTS.filter((c) => c.block.animated).map((c) => c.id), ["component.lower-third", "component.callout", "component.progress-bar", "component.countdown", "component.subscribe", "component.sticker", "component.quote", "component.before-after", "component.social-button", "component.follow", "component.checklist", "component.rating", "component.price-tag", "component.map-pin", "component.terminal", "component.agent-log", "component.compare-table"]);
   // Every device has a frame size and a screen inside it.
   assert.deepEqual([...DEVICES].sort(), [...(modules.get("component.device-frame")!.params as { properties: { device: { enum: Array<string> } } }).properties.device.enum].sort());
   for (const d of DEVICES) {
@@ -415,10 +416,10 @@ test("the agent: modules_list shows components with params and placement, truthf
   assert.ok((TOOL_NAMES as ReadonlyArray<string>).includes("graphic_write") && tools.some((t) => t.name === "graphic_write"));
   assert.equal(stepLabel("graphic_write", { name: "counter.html" }), "Wrote the graphic counter.html");
   // The prompt says what draws (and what doesn't).
-  for (const c of COMPONENTS) assert.ok(SYSTEM_PROMPT.includes(c.id), c.id);
-  assert.match(SYSTEM_PROMPT, /insert_device_frame/);
-  assert.match(SYSTEM_PROMPT, /graphic_write/);
-  assert.match(SYSTEM_PROMPT, /component\.follow-card, component\.steps, component\.zoom-pan\) and effect\.stabilize are saved but don't draw yet/);
+  for (const c of COMPONENTS) assert.ok(AGENT_TEXT.includes(c.id), c.id);
+  assert.match(AGENT_TEXT, /insert_device_frame/);
+  assert.match(AGENT_TEXT, /graphic_write/);
+  assert.match(AGENT_TEXT, /component\.follow-card, component\.steps, component\.zoom-pan\) and effect\.stabilize are saved but don't draw yet/);
   // The edit log names components.
   assert.equal(describeOp({ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90 } }, p), "Added end card end-1 on track overlay");
   const withCard = apply(p, [{ op: "insert_item", track: "overlay", item: { id: "end-1", type: "component", component: "component.end-card", start: 0, duration: 90, props: { title: "x" } } }]);

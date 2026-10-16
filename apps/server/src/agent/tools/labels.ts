@@ -144,6 +144,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       const n = Array.isArray(args.fixes) ? args.fixes.length : 0;
       return n ? `Asked the critic to check ${n} fix${n === 1 ? "" : "es"}` : "Asked the critic for a review";
     }
+    case "docs_read":
+      return typeof args.topic === "string" && args.topic.trim() ? `Read the ${clip(args.topic.trim(), 30)} reference` : "Read the reference";
     case "skill_read":
       return typeof args.name === "string" && args.name.trim() ? `Read the skill ${clip(args.name.trim(), 60)}` : "Read a skill";
     case "brand_read":
@@ -292,7 +294,7 @@ export function doingLabel(tool: string, input: unknown, plugin?: string, projec
  */
 export function partialFields(json: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const re = /"(name|summary|path|media|source|device|kind|generator|query|mode|id|folder|panel|question|file|kit|url|command|file_path|pattern|description)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
+  const re = /"(name|topic|summary|path|media|source|device|kind|generator|query|mode|id|folder|panel|question|file|kit|url|command|file_path|pattern|description)"\s*:\s*"((?:[^"\\]|\\.){0,200})"/g;
   for (let m = re.exec(json); m; m = re.exec(json)) {
     if (out[m[1]!] !== undefined) continue;
     try {

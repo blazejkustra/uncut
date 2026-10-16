@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import { fingerprint, writeCached } from "../../apps/server/src/analysis/analysis.ts";
 import { expandCaptionEdits, mcpTools, stepLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
@@ -196,7 +197,7 @@ test("captions_make's schema, edit_captions in timeline_edit, labels and the pro
   assert.ok((edit.inputSchema as any).$defs.editCaptions);
   assert.equal(stepLabel("captions_make", { media: "m-a" }), "Made captions for m-a");
   assert.equal(stepLabel("captions_make", { mode: "single" }), "Made one-word captions");
-  assert.match(SYSTEM_PROMPT, /captions_make makes captions/);
-  assert.match(SYSTEM_PROMPT, /"op":"edit_captions"/);
+  assert.match(AGENT_TEXT, /captions_make mode "line"/);
+  assert.match(AGENT_TEXT, /"op":"edit_captions"/);
   assert.deepEqual(expandCaptionEdits({ format: "uncut/0", name: "x", canvas: { width: 10, height: 10, fps: 30 }, media: [], tracks: [] }, [{ op: "delete_item", item: "a" }]), { ops: [{ op: "delete_item", item: "a" }] });
 });

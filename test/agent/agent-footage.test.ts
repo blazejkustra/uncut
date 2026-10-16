@@ -477,7 +477,7 @@ test("sheet maths and step labels: frames, the grid, the clock, the turn card's 
   }
   assert.equal(clock(83.5), "1:23.50");
   assert.equal(clock(3723), "1:02:03.00");
-  assert.deepEqual(TOOL_NAMES.slice(-19, -11), ["media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search"]);
+  assert.deepEqual(TOOL_NAMES.slice(-20, -12), ["media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search"]);
   assert.equal(stepLabel("media_import", { path: "/Users/me/Drone/" }), "Imported Drone");
   assert.equal(stepLabel("media_import", { paths: ["/a.mp4", "/b.mp4"] }), "Imported 2 paths");
   assert.equal(stepLabel("contact_sheet", { media: "m-dji", every: 60 }), "Looked over m-dji");

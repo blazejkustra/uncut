@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 import { MUSIC_TRACKS, projectChecks, type Project } from "../../packages/core/src/index.ts";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
+import { AGENT_TEXT } from "../helpers/agentText.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -228,8 +229,8 @@ test("the tools, their labels and the system prompt's taste and music notes", { 
   assert.match(SYSTEM_PROMPT, /run project_check and fix each warning/);
   assert.match(SYSTEM_PROMPT, /words ÷ 3 s \(2 s minimum/);
   assert.match(SYSTEM_PROMPT, /never ·, • or \* between words/);
-  assert.match(SYSTEM_PROMPT, /music_add copies one into the project's media/);
-  assert.match(SYSTEM_PROMPT, /-16 LUFS/);
+  assert.match(AGENT_TEXT, /music_add copies one into the project's media/);
+  assert.match(AGENT_TEXT, /-16 LUFS/);
   // K1 (D121): there is no Checks tab to point the user at.
   assert.doesNotMatch(SYSTEM_PROMPT, /Checks tab/);
   assert.doesNotMatch(SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf("- Taste")), /swmansion/);

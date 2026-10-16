@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { defsFor, mcpTools, SYSTEM_PROMPT, TOOLS_LINE, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
+import { ALL_DOCS, defsFor, mcpTools, SYSTEM_PROMPT, TOOL_NAMES } from "../../apps/server/src/agent/agentTools.ts";
 import { gateOf, gateRefusal, planContext, userMessageText } from "../../apps/server/src/agent/agentPlan.ts";
 import toolsSpec from "../../spec/agent/tools.json" with { type: "json" };
 
@@ -48,11 +48,11 @@ test("#81: each tool carries only the defs it reaches, and the whole list stays 
   for (const t of tools) if (t.name !== "timeline_edit") assert.ok(JSON.stringify(t.inputSchema.$defs ?? {}).length < 2_000, `${t.name}'s defs`);
 });
 
-test("#81: every Uncut tool the prompt or the tools line names is served", () => {
+test("#81: every Uncut tool the prompt or the docs name is served", () => {
   const served = new Set(mcpTools().map((t) => t.name));
   assert.ok(served.has("media_download"));
   assert.equal(served.size, TOOL_NAMES.length, "every listed name has its spec");
-  const text = `${SYSTEM_PROMPT}\n${TOOLS_LINE}`;
+  const text = `${SYSTEM_PROMPT}\n${ALL_DOCS}`;
   // Full names (mcp__uncut__x).
   for (const [, name] of text.matchAll(/mcp__uncut__([a-z_]+)/g)) assert.ok(served.has(name!), `mcp__uncut__${name} isn't served`);
   // Short names: every tool the spec defines that the prompt mentions.
@@ -60,8 +60,8 @@ test("#81: every Uncut tool the prompt or the tools line names is served", () =>
 });
 
 test("#81: the prompt's example end card names no real product", () => {
-  assert.ok(!/"title":"Argent"|npx @swmansion\/argent/.test(SYSTEM_PROMPT));
-  assert.match(SYSTEM_PROMPT, /component\.end-card[^\n]*"title":"<product name>"/);
+  assert.ok(!/"title":"Argent"|npx @swmansion\/argent/.test(`${SYSTEM_PROMPT}\n${ALL_DOCS}`));
+  assert.match(ALL_DOCS, /component\.end-card[^\n]*"title":"<product name>"/);
 });
 
 test("#84: the gate holds only the turn that is planning; later small edits go ahead", () => {
