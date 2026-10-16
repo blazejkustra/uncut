@@ -132,6 +132,9 @@ test("the fake yt-dlp with these arguments: title, progress and the file come ba
   const root = fakeDir();
   const saved = { ...process.env };
   try {
+    // The plugin host gives the plugin (and so yt-dlp) an env without Uncut's variables; this calls
+    // runYtDlp with the test's own env, so the test runner's (UNCUT_TEST_LAUNCH_MS on CI, #89) go first.
+    for (const key of Object.keys(process.env)) if (key.startsWith("UNCUT_")) delete process.env[key];
     Object.assign(process.env, { FAKE_YTDLP_VIDEO: join(root, "video.mp4"), FAKE_YTDLP_AUDIO: join(root, "audio.m4a"), FAKE_YTDLP_TITLE: "Sunset: over/the sea", FAKE_YTDLP_LOG: join(root, "log") });
     for (const kind of ["video", "audio"] as const) {
       const lines: Array<ReturnType<typeof parseLine>> = [];
