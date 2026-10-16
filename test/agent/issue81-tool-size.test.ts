@@ -37,7 +37,7 @@ test("D285: the edit ops stay strict in the schema; every op's shape is in the d
   // docs_read edits has every op with its shape, and the prompt names the topic.
   assert.equal(DOCS.edits.body, EDITS_DOC);
   for (const op of [...CORE_OPS, ...CONVENIENCE_OPS]) assert.ok(EDITS_DOC.includes(OP_SHAPES[op]!), op);
-  assert.match(SYSTEM_PROMPT, /edits \(every timeline_edit op\)/);
+  assert.match(SYSTEM_PROMPT, /edits \(every timeline_edit op's fields/);
   assert.match(edit.description, /docs_read edits/);
   // A shape spells out required and optional fields and enums.
   assert.equal(OP_SHAPES.trim_item, '{"op":"trim_item", item, edge: "start"|"end", frames}');
@@ -87,13 +87,22 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
           edit([{ op: "insert_text", text: "Hi", start: 0, duration: 60 }]),
           edit([{ op: "trim_item", item: "x", edge: "middle", frames: 3 }]),
           edit([{ op: "insert_text", look: "text.big-title", text: "Hi", start: 0, duration: 60 }]),
+          edit([{ op: "insert_item", track: "text", item: { id: "t1", type: "text", text: "Shake", start: 60, duration: 240 } }]),
+          // A keyframed shake: the dry run used to echo every op back (20k chars in a real session).
+          { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Shake", dryRun: true, ops: [{ op: "update_item", item: "t1", set: { keys: Array.from({ length: 60 }, (_, i) => ({ frame: i * 4, x: (i % 7) - 3, y: (i % 5) - 2, scale: 1.04, ease: "linear" })) } }] } },
+          { tool: "modules_list", args: {} },
+          { tool: "modules_list", args: { ids: ["effect.color", "nope.module"] } },
+          { tool: "library_search", args: { kind: "sfx", source: "included" } },
+          { tool: "render_frames", args: { frames: [0] } },
+          { tool: "render_frames", args: { frames: Array.from({ length: 13 }, (_, i) => i) } },
         ],
       ]),
     );
     const { turnId } = await client.ok("agent.send", { prompt: "add a title" });
     await agent.until(() => agent.values.at(-1)?.turns.find((t: { id: string }) => t.id === turnId)?.status !== "running", 20000);
-    const out = readFileSync(results, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((x) => x.tool === "timeline_edit").map((x) => ({ isError: !!x.result.isError, body: JSON.parse(x.result.content[0].text) }));
-    assert.equal(out.length, 4);
+    const all = readFileSync(results, "utf8").trim().split("\n").map((l) => JSON.parse(l)) as Array<{ tool: string; result: { isError?: boolean; content: Array<{ type: string; text?: string; data?: string }> } }>;
+    const out = all.filter((x) => x.tool === "timeline_edit").map((x) => ({ isError: !!x.result.isError, size: x.result.content[0]!.text!.length, body: JSON.parse(x.result.content[0]!.text!) }));
+    assert.equal(out.length, 6);
     assert.ok(out[0]!.isError);
     assert.match(out[0]!.body.refused, /unknown op "add_text".*insert_text/);
     assert.ok(out[1]!.isError);
@@ -104,6 +113,32 @@ test("D285: timeline_edit refuses a wrong shape with the shape it takes, and sti
     assert.match(out[2]!.body.shapes, /trim_item takes \{"op":"trim_item", item, edge: "start"\|"end", frames\}/);
     assert.equal(out[3]!.isError, false, JSON.stringify(out[3]!.body));
     assert.equal(out[3]!.body.ok, true);
+    // The dry run: lines and the diff, not the ops back.
+    assert.equal(out[5]!.body.dryRun, true, JSON.stringify(out[5]!.body));
+    assert.equal(out[5]!.body.ops, undefined);
+    assert.equal(out[5]!.body.lines.length, 1);
+    assert.ok(out[5]!.size < 1_000, `the dry run answered ${out[5]!.size} chars: ${JSON.stringify(out[5]!.body)}`);
+    // modules_list: an index without arguments, whole modules by id.
+    const [index, byId] = all.filter((x) => x.tool === "modules_list").map((x) => x.result.content[0]!.text!);
+    assert.ok(index!.length < 10_000, `the modules index is ${index!.length} chars: ${index}`);
+    const parsed = JSON.parse(index!);
+    assert.match(parsed.modules.effect["effect.color"], /Exposure/);
+    assert.doesNotMatch(index!, /\bD\d{2,3}\b/, "no decision ids in module purposes");
+    const whole = JSON.parse(byId!);
+    assert.equal(whole.modules[0].id, "effect.color");
+    assert.ok(whole.modules[0].params.properties.exposure);
+    assert.deepEqual(whole.unknown, ["nope.module"]);
+    // library_search's bundled sounds: at most 16, the rest a "more" line.
+    const sounds = JSON.parse(all.find((x) => x.tool === "library_search")!.result.content[0]!.text!);
+    assert.equal(sounds.sounds.length, 16);
+    assert.match(sounds.more, /more of \d+: narrow it with query or category/);
+    assert.ok(JSON.stringify(sounds).length < 4_000, `library_search answered ${JSON.stringify(sounds).length} chars`);
+    // render_frames: 768 px on the longest side by default, 12 frames a call at most.
+    const [one, many] = all.filter((x) => x.tool === "render_frames");
+    assert.match(one!.result.content[0]!.text!, /at 768×432/);
+    assert.equal(one!.result.content.filter((c) => c.type === "image").length, 1);
+    assert.equal(many!.result.isError, true);
+    assert.match(many!.result.content[0]!.text!, /frames must be 1 to 12/);
   } finally {
     client.close();
     await server.stop();

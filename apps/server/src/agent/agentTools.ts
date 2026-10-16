@@ -9,7 +9,7 @@ export { stepLabel, shownUrl, doingLabel, partialFields } from "./tools/labels.t
 export { LOOK_TOOLS, BIG_EDIT_OPS, bigChange, accessLine } from "./tools/access.ts";
 export { DOCS, DOC_TOPICS, docsRead, ALL_DOCS } from "./agentDocs.ts";
 export { projectSummary, MAX_CAPTION_CARDS, captionsSummary, expandCaptionEdits, COMPACT_ITEMS } from "./tools/summary.ts";
-export { modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
+export { modulesIndex, modulesList, expandDeviceFrames, expandTextLooks, expandArrangeOps } from "./tools/expand.ts";
 export { FONT_ERRORS, checksOut } from "./tools/outputs.ts";
 export { withoutDecisionIds } from "./tools/decisionIds.ts";
 import { withoutDecisionIds, scrubDescriptions } from "./tools/decisionIds.ts";
@@ -25,9 +25,12 @@ import { CONVENIENCE_LINES, opsSchema } from "./tools/opShapes.ts";
 // See DECISIONS.md D51.
 export const TOOL_NAMES = ["project_read", "timeline_edit", "modules_list", "render_frames", "media_analyze", "media_rank", "transcript_read", "transcript_edit", "captions_make", "subtitles_export", "project_check", "library_search", "library_add", "media_import", "contact_sheet", "ui_show", "graphic_write", "generate_media", "screen_record", "argent_boot", "media_search", "ask_user", "brief_write", "storyboard_propose", "review_submit", "brand_read", "brand_write", "reference_frames", "beat_grid", "shader_write", "skill_read", "media_download", "docs_read", "plan_read"] as const;
 
-/** render_frames: at most this many frames per call, and the default width of each. */
-export const MAX_FRAMES = 24;
-export const FRAME_WIDTH = 960;
+/**
+ * render_frames: at most this many frames per call, and the default longest side of each (D285:
+ * 768 px judges composition and costs about a third of the image tokens a 960 px wide 4:5 frame did).
+ */
+export const MAX_FRAMES = 12;
+export const FRAME_EDGE = 768;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 export interface McpTool {
@@ -119,9 +122,9 @@ The edit model:
 - Ids are lowercase letters, digits and dashes, unique across the project. Locked tracks and items ("locked": true) are off limits; hidden tracks don't show in the preview but still sound.
 
 Tools:
-- Uncut's tools are mcp__uncut__<name> (this prompt says project_read for mcp__uncut__project_read); all are available directly. Their descriptions carry the details; modules_list gives every installed module's params.
+- Uncut's tools are mcp__uncut__<name> (this prompt says project_read for mcp__uncut__project_read); all are available directly. Their descriptions carry the details; modules_list lists the installed modules, and with a kind gives their params.
 - plan_read gives the brief, the storyboard's beats and the last review's defect ids again (a message's <plan> may just say "Unchanged").
-- docs_read {topic} gives an area's reference with exact fields and examples: edits (every timeline_edit op), production, text, picture, sound, components, graphics, footage. Read the topic before you first work in that area in this conversation, instead of guessing fields.
+- docs_read {topic} gives an area's reference with exact fields and examples: edits (every timeline_edit op's fields, when the tool's own list isn't enough), production, text, picture, sound, components, graphics, footage. Read the topic before you first work in that area in this conversation, instead of guessing fields.
 - You also have Claude Code's own tools: WebSearch and WebFetch, Read, Glob and Grep (files on this Mac), Bash, Write and Edit, Task (subagents). Your working folder is the project folder. Look up what you can instead of asking: for a product, its site and docs (what it does, its tagline, real copy, logo, screenshots); the files and folders the user points at. media_download {url} brings a real asset (a logo, a screenshot, a demo video) into Media. Change the project only with Uncut's tools, never by editing project.json; Bash and file writes are for what Uncut's tools can't do.
 - The access line in <editor-context> decides what runs freely and what waits for the user's Allow on a card; a refusal is final for that call.
 

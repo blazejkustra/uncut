@@ -1,6 +1,7 @@
 // The modules list and the timeline_edit ops expanded before they're applied.
 import { type ModuleManifest, DRAWN_MOVES, DRAWN_TRANSITIONS, DRAWN_COMPONENTS, HEARD_EFFECTS, TEXT_STYLES, type Modules, UNDRAWN_COMPONENTS, type Project, applyEdit, createSession, type Op, planDeviceFrame, type Device, type TextLook, planInsertText } from "@uncut/core";
 import { planPutOnMain, takenIds, planDetachAudio, planSetSpeed } from "@uncut/core/arrange";
+import { withoutDecisionIds } from "./decisionIds.ts";
 
 // The preview shows these today; other modules are valid in project.json but don't draw yet.
 const SHOWN_IN_PREVIEW = (m: ModuleManifest) => m.kind === "text-style" || (DRAWN_MOVES as ReadonlyArray<string>).includes(m.id) || DRAWN_TRANSITIONS.includes(m.id) || DRAWN_COMPONENTS.includes(m.id) || HEARD_EFFECTS.includes(m.id);
@@ -33,6 +34,34 @@ export function modulesList(modules: Modules, kind?: string) {
       ...(UNDRAWN_COMPONENTS[m.id] ? { notDrawn: UNDRAWN_COMPONENTS[m.id] } : {}),
       showsInPreview: SHOWN_IN_PREVIEW(m),
     }));
+}
+
+/** A module's purpose in one short line: its description's first clause, no decision ids. */
+const purpose = (text: string) => {
+  const first = withoutDecisionIds(text).split(/(?<=\.)\s|;\s|:\s/)[0]!.replace(/\.$/, "");
+  return first.length > 90 ? `${first.slice(0, 88).replace(/\s\S*$/, "")}…` : first;
+};
+
+/**
+ * D285 (issue #81): modules_list without a kind: every module's id and purpose by kind, plugins
+ * (approval, warnings) as they are, and how to get the details. The whole list was ~70k chars.
+ */
+export function modulesIndex(listed: ReadonlyArray<Record<string, unknown>>) {
+  const modules: Record<string, Record<string, string>> = {};
+  const plugins: Array<Record<string, unknown>> = [];
+  for (const m of listed) {
+    if (m.plugin === true || m.skipped) {
+      // A plugin as the index shows it: what it is and whether it may run; its contributions (skills
+      // are in the system prompt, looks and components under their kind) come with kind or ids.
+      const { contributes: _c, capabilities: _cap, version: _v, description, ...rest } = m;
+      plugins.push({ ...rest, ...(typeof description === "string" && description ? { description: purpose(description) } : {}) });
+      continue;
+    }
+    const kind = String(m.kind ?? "other");
+    const text = typeof m.description === "string" && m.description ? m.description : String(m.name ?? m.id);
+    (modules[kind] ??= {})[String(m.id)] = `${purpose(text)}${m.showsInPreview === false ? " (not drawn in the preview)" : ""}${m.source === "project" || m.source === "plugin" ? ` (a shader effect from ${m.source === "project" ? "this project" : "a plugin"})` : ""}`;
+  }
+  return { modules, ...(plugins.length ? { plugins } : {}), next: 'modules_list {"kind": "effect"} gives that kind\'s modules with their params; {"ids": ["effect.color"]} gives just those, whole (a plugin with what it contributes).' };
 }
 
 /** An insert_device_frame op as the agent writes it (spec/agent/tools.json $defs/insertDeviceFrame). */
