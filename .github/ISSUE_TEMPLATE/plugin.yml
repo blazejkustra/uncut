@@ -1,5 +1,5 @@
-name: Plugin proposal
-description: Propose a plugin for the catalog (plugins/catalog), or ask for help writing one.
+name: Plugin submission
+description: Submit or propose a plugin for the catalog (plugins/catalog), or ask for help writing one.
 labels: ["plugin"]
 body:
   - type: markdown
