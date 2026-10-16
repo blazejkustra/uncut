@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { viewerPrefs } from "../helpers/viewer-prefs.ts";
-import { NO_REAL_AUDIO, check } from "../helpers/capabilities.ts";
+import { NO_REAL_AUDIO } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const FAKE = resolve("test/helpers/fake-claude.ts");
@@ -125,7 +125,7 @@ after(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and volume, fades and mute are audible, one undo step each", { skip, timeout: 240000 }, async () => {
+test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and volume, fades and mute are audible, one undo step each", { skip: skip || NO_REAL_AUDIO, timeout: 240000 }, async () => {
   const dir = join(root, "Sound.uncut");
   const app = await launchApp({
     command: APP,
@@ -219,7 +219,7 @@ test("sound: a clip's audio plays, music from the Audio tab gets a waveform, and
     const fadingIn = await listen(page, 6, { settle: 350, n: 5 });
     assert.ok(fadingIn.every((s) => s.frame < 60), "sampled inside the fade in");
     fadeCheck(fadingIn, (f) => Math.min(1, f / 60), "fade in");
-    check(NO_REAL_AUDIO, fadingIn.at(-1)!.rms > fadingIn[0]!.rms + 0.02, `the fade in is rising: RMS ${fadingIn[0]!.rms.toFixed(3)} → ${fadingIn.at(-1)!.rms.toFixed(3)}`);
+    assert.ok(fadingIn.at(-1)!.rms > fadingIn[0]!.rms + 0.02, "rising");
     fadeCheck(await listen(page, 100, { n: 3 }), () => 1, "steady");
     const fadingOut = await listen(page, 186, { settle: 350, n: 5 });
     assert.ok(fadingOut.every((s) => s.frame >= 180 && s.frame < 240), "sampled inside the fade out");
