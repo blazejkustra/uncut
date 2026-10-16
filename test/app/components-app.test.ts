@@ -21,6 +21,7 @@ import { RENDER_CSS, textHtml, type Item, type Project } from "../../packages/co
 import { rasterizerCommand, startRasterizer } from "../../apps/server/src/export/rasterizer.ts";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -329,7 +330,7 @@ test("components: the Elements grid, drag onto the canvas, the params Inspector,
     execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${f})`, "-frames:v", "1", "-update", "1", exported]);
     const score = ssim(shots.get(f)!, exported);
     console.log(`  frame ${f}: export vs preview SSIM ${score.toFixed(4)} (screenshots in ${space})`);
-    assert.ok(score >= min, `frame ${f}: SSIM ${score}`);
+    check(NO_REAL_GPU, score >= min, `frame ${f}: SSIM ${score}`);
   }
   assert.deepEqual(app.errors, []);
 });

@@ -1,5 +1,5 @@
 # Every push to main and every PR (#89, D290): typecheck + the fast tests (everything but test/app),
-# and the packaged-app tests (test/app) split over 6 parallel jobs, each building the app itself.
+# and the packaged-app tests (test/app) split over 4 parallel jobs, each building the app itself.
 # Tests that need what GitHub's macOS VM doesn't have (a real GPU for preview = export pixel parity,
 # a real audio device, a big screen, the footage, the real claude/argent) skip with their reason
 # (test/helpers/capabilities.ts).
@@ -10,6 +10,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Nightly too (was app-tests.yml): the same run on main, so a flake shows up without a push.
+  schedule:
+    - cron: "17 3 * * *"
 
 permissions:
   contents: read
@@ -64,13 +67,13 @@ jobs:
           retention-days: 7
 
   app:
-    name: app tests ${{ matrix.shard }}/6
+    name: app tests ${{ matrix.shard }}/4
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     env:
       # 3 vCPUs: a launch or the first screen can take longer than on a laptop.
       UNCUT_TEST_LAUNCH_MS: "120000"
@@ -106,8 +109,8 @@ jobs:
           system_profiler SPAudioDataType || true
           defaults read com.apple.universalaccess reduceMotion 2>&1 || true
       - run: pnpm dist
-      - name: Run shard ${{ matrix.shard }} of 6
-        run: node scripts/test-app-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 6
+      - name: Run shard ${{ matrix.shard }} of 4
+        run: node scripts/test-app-shard.ts --shard $(( ${{ matrix.shard }} - 1 )) --of 4
       - name: Keep the test output
         if: always()
         uses: actions/upload-artifact@v4
@@ -116,5 +119,6 @@ jobs:
           path: |
             test-output/**/*.png
             test-output/shard-*.json
+            test-output/skipped-checks.txt
           if-no-files-found: ignore
           retention-days: 7

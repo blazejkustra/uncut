@@ -374,6 +374,8 @@ async function exitCheck() {
   await page.waitForFunction(() => !(document.querySelector("[data-testid=undo]") as HTMLButtonElement).disabled, { timeout: 10000 });
   await cmdZ();
   await until(() => same(onDisk(), p0), "⌘Z after reopening to restore the project before the turn");
+  // The file is written before the editor hears the undo landed: ⇧⌘Z only once Redo is on (#89, a slow runner).
+  await page.waitForFunction(() => !(document.querySelector("[data-testid=redo]") as HTMLButtonElement).disabled, { timeout: 10000 });
   await cmdZ(true);
   await until(() => same(onDisk(), p1), "⇧⌘Z to bring the turn back");
   await page.click("[data-testid=tab-agent]");

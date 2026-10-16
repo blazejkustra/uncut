@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { viewerPrefs } from "../helpers/viewer-prefs.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -193,5 +194,5 @@ test("D222: a no-op effect changes nothing visible, and the preview shows the fi
     if (worst(plain, expected) > 3) problems.push(`${c.name}: the <video> vs the file's levels, ${worst(plain, expected).toFixed(1)} apart`);
     if (worst(canvas, expected) > 3) problems.push(`${c.name}: the scrub canvas vs the file's levels, ${worst(canvas, expected).toFixed(1)} apart`);
   }
-  assert.deepEqual(problems, []);
+  check(NO_REAL_GPU, problems.length === 0, `levels: ${problems.join("; ")}`);
 });

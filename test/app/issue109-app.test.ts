@@ -18,6 +18,7 @@ import type { Item, Project } from "../../packages/core/src/index.ts";
 import { BRAND_ICONS } from "../../packages/core/src/visual/brandIcons.ts";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -234,7 +235,7 @@ test("issue 109: Follow card and Steps in Elements, drawn, edited in the Inspect
     execFileSync("ffmpeg", ["-v", "error", "-y", "-i", saveAs, "-vf", `select=eq(n\\,${f})`, "-frames:v", "1", "-update", "1", exported]);
     const score = ssim(shots.get(f)!, exported);
     console.log(`  frame ${f}: export vs preview SSIM ${score.toFixed(4)} (screenshots in ${space})`);
-    assert.ok(score >= 0.97, `frame ${f}: SSIM ${score}`);
+    check(NO_REAL_GPU, score >= 0.97, `frame ${f}: SSIM ${score}`);
   }
   assert.deepEqual(app.errors, []);
 });

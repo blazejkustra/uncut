@@ -25,7 +25,7 @@ test("background mode needs UNCUT_TEST_BACKGROUND=1 together with UNCUT_CDP", ()
 test("D216: tests draw as on a 2x sRGB screen on the primary display; a release user's app follows its display", () => {
   assert.deepEqual([...TEST_DISPLAY_ARGS], ["--force-device-scale-factor=2", "--force-color-profile=srgb"]);
   // Real argv from the helper (appendSwitch is too late for the browser's display on macOS), never from the app itself.
-  assert.match(source("../helpers/app.ts"), /spawn\(command, \[\.\.\.TEST_DISPLAY_ARGS, \.\.\.args\]/);
+  assert.match(source("../helpers/app.ts"), /spawn\(command, \[\.\.\.TEST_DISPLAY_ARGS, "--force-prefers-no-reduced-motion", \.\.\.args\]/);
   assert.doesNotMatch(desktopApp(), /appendSwitch\("force-(color-profile|device-scale-factor)/);
   assert.deepEqual(centredIn({ x: 0, y: 33, width: 1512, height: 949 }, { width: 760, height: 720 }), { x: 376, y: 148 });
   assert.deepEqual(centredIn({ x: -211, y: -1050, width: 1920, height: 1050 }, { width: 2000, height: 1200 }), { x: -211, y: -1050 }, "bigger than the area: its corner");

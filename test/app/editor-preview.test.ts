@@ -507,7 +507,9 @@ test("a relinked file and another project with the same media ids show their own
   c = await colour("switched");
   assert.ok(isRed(c), `red in the other project: ${c}`);
   // Nothing asked the server for media that isn't in the open project (that would be a 404 here).
-  assert.deepEqual(app.errors, []);
+  // A 503 is "not now, try later": a filmstrip still being made when its project closed (the open
+  // switched projects mid-strip on a slow machine, #89), not a request for the wrong media.
+  assert.deepEqual(app.errors.filter((e) => !/status of 503/.test(e)), []);
   await app.close();
   apps.delete(app);
 });

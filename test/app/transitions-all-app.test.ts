@@ -23,6 +23,7 @@ import type { Item, Project } from "../../packages/core/src/timeline/types.ts";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { writeProject } from "../helpers/export-fixture.ts";
 import { makeClipMedia, PATTERN_PROBE, SPLIT_PROBE } from "../helpers/clip-fixture.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -171,7 +172,7 @@ test("D133: every new transition drawn in the preview mid-way matches the export
     if (!(score >= 0.97)) low.push(`${t.id} at ${frame}: ${score}`);
   }
   console.log(`  export vs preview SSIM (screenshots in ${space}):\n    ${scores.join("\n    ")}`);
-  assert.deepEqual(low, []);
+  check(NO_REAL_GPU, low.length === 0, `preview vs export: ${low.join("; ")}`);
   await page.keyboard.press("Escape");
 
   // The panel: all tiles, thumbnails still until hovered (D240).

@@ -24,6 +24,7 @@ import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { ssim } from "../helpers/image-compare.ts";
 import { shaderEntry, type ShaderDef } from "../../packages/core/src/index.ts";
+import { NO_REAL_GPU, check } from "../helpers/capabilities.ts";
 
 /** A shader effect (D213): a horizontal smear over 8 texels, mixed in at `amount`. */
 const SMEAR: ShaderDef = {
@@ -245,7 +246,7 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
   console.log(`# issue12 interleaved playback: ${played.layers} layers on the GPU in ${played.runs} runs; rAF median ${median.toFixed(1)} ms, p90 ${raf[Math.floor(raf.length * 0.9)]!.toFixed(1)} ms, ${raf.filter((x) => x > 25).length} frames > 25 ms`);
   assert.equal(played.layers, 13);
   assert.equal(played.runs, 12, "a run under each text (the main clip and overlay 0 share the first)");
-  assert.ok(median < 12, `animation frames every ${median} ms`);
+  check(NO_REAL_GPU, median < 12, `animation frames every ${median} ms`);
   await setGpu(false);
 
   // Export (Standard, loudness off).
@@ -278,6 +279,6 @@ test("issue #12: the GPU compositor draws video and image layers as the DOM path
     if (!(gpu.ssim >= dom.ssim - 0.003)) low.push(`${layout}: GPU vs export SSIM ${gpu.ssim} below the DOM path's ${dom.ssim}`);
     if (!(gpu.colour <= dom.colour + 0.5)) low.push(`${layout}: GPU vs export colour Δ ${gpu.colour} above the DOM path's ${dom.colour}`);
   }
-  assert.deepEqual(low, []);
+  check(NO_REAL_GPU, low.length === 0, `GPU compositor vs DOM vs export: ${low.join("; ")}`);
   assert.deepEqual(app.errors, []);
 });

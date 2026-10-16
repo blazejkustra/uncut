@@ -54,9 +54,18 @@ if (listOnly) {
   process.exit(0);
 }
 
+// Skipped tests (the spec reporter's "﹣ name # reason" lines), for the summary.
+const skippedTests: Array<string> = [];
 const runFile = (file: string) =>
   new Promise<number>((done) => {
-    const child = spawn(process.execPath, ["--test", "--test-reporter=spec", file], { stdio: "inherit" });
+    const child = spawn(process.execPath, ["--test", "--test-reporter=spec", file], { stdio: ["ignore", "pipe", "inherit"] });
+    let rest = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      process.stdout.write(chunk);
+      const lines = (rest + chunk.toString()).split("\n");
+      rest = lines.pop() ?? "";
+      for (const line of lines) if (/^\s*﹣ /.test(line)) skippedTests.push(`${file}: ${line.trim().slice(2)}`);
+    });
     child.once("exit", (code, signal) => done(code ?? (signal ? 1 : 0)));
   });
 
@@ -87,6 +96,14 @@ for (const file of mine.files) {
 }
 
 mkdirSync("test-output", { recursive: true });
+// test/helpers/capabilities.ts's check() lists what it didn't check here.
+const skippedChecks = () => {
+  try {
+    return [...new Set(readFileSync("test-output/skipped-checks.txt", "utf8").trim().split("\n").filter(Boolean))];
+  } catch {
+    return [];
+  }
+};
 writeFileSync(`test-output/shard-${shard}.json`, `${JSON.stringify(Object.fromEntries(results.map((r) => [r.file, r.seconds])), null, 1)}\n`);
 const failed = results.filter((r) => !r.ok);
 const flaky = results.filter((r) => r.ok && r.tries > 1);
@@ -99,6 +116,8 @@ const summary = [
   "|---|---|---|",
   ...results.map((r) => `| ${r.file} | ${r.ok ? (r.tries > 1 ? `flaky (${r.tries} tries)` : "ok") : "**failed**"} | ${r.seconds} |`),
   "",
+  ...(skippedTests.length ? ["<details><summary>Skipped tests</summary>", "", ...skippedTests.map((l) => `- ${l}`), "", "</details>", ""] : []),
+  ...(skippedChecks().length ? ["<details><summary>Checks not run on this machine</summary>", "", ...skippedChecks().map((l) => `- ${l}`), "", "</details>", ""] : []),
 ].join("\n");
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
 console.log(summary);

@@ -21,6 +21,7 @@ import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import { launchApp, lockApps, unlockApps, type LaunchedApp, waitForWelcome } from "../helpers/app.ts";
 import { ssim } from "../helpers/image-compare.ts";
+import { NO_REAL_GPU } from "../helpers/capabilities.ts";
 
 const APP = resolve("dist/mac-arm64/Uncut.app/Contents/MacOS/Uncut");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -304,7 +305,7 @@ async function frameShot(name: string) {
   return { file: out(name), w: w!, h: h! };
 }
 
-test("D221: scrubbing shows the exact frame, faster from the frame cache than <video> seeks; parity and the memory bound", { skip, timeout: 900000 }, async () => {
+test("D221: scrubbing shows the exact frame, faster from the frame cache than <video> seeks; parity and the memory bound", { skip: skip || NO_REAL_GPU, timeout: 900000 }, async () => {
   app = await launchApp({ command: APP, env: { UNCUT_DATA_DIR: join(root, "data"), UNCUT_TEST_DIALOG: JSON.stringify([dir]), UNCUT_PROXIES: "on" } });
   page = app.page;
   await waitForWelcome(page);

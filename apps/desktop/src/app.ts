@@ -185,6 +185,10 @@ function createWindow() {
     // D209: compact while no project is open; setWindowMode switches to the editor's size.
     minWidth: WINDOW_MODES.welcome.minWidth,
     minHeight: WINDOW_MODES.welcome.minHeight,
+    // Tests (UNCUT_CDP) get the window size they ask for even on a small screen (#89: GitHub's
+    // macOS runners have a 1280×800-ish display, which clamped the editor and pushed the timeline's
+    // lower tracks off the window). A release user's window stays within the screen.
+    enableLargerThanScreen: Boolean(process.env.UNCUT_CDP),
     title: "Uncut",
     titleBarStyle: "hiddenInset",
     backgroundColor: "#0a0a0a",
