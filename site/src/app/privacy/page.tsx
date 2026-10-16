@@ -1,12 +1,13 @@
 // The privacy notice for the app and this website (was site/privacy/index.html).
 import type { Metadata } from "next";
+import { alternates } from "../../lib/site.ts";
 import SiteFooter from "../../components/SiteFooter.tsx";
 import SiteHeader from "../../components/SiteHeader.tsx";
 
 export const metadata: Metadata = {
   title: "Privacy",
   description: "What Uncut sends, when, and where it goes.",
-  alternates: { canonical: "/privacy/" },
+  alternates: alternates("/privacy/"),
 };
 
 export default function Privacy() {

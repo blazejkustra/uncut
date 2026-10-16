@@ -7,7 +7,7 @@ import Markdown from "../../../components/Markdown.tsx";
 import SiteFooter from "../../../components/SiteFooter.tsx";
 import SiteHeader from "../../../components/SiteHeader.tsx";
 import { formatDate, getAllPosts, getPost } from "../../../lib/posts.ts";
-import { SITE_NAME, SITE_URL } from "../../../lib/site.ts";
+import { alternates, SITE_NAME, SITE_URL } from "../../../lib/site.ts";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: post.title,
     description: post.description,
-    alternates: { canonical: `/blog/${post.slug}/` },
+    alternates: alternates(`/blog/${post.slug}/`),
     openGraph: { type: "article", title: post.title, description: post.description, url, siteName: SITE_NAME, publishedTime: post.date, modifiedTime: post.updated ?? post.date, images: [{ url: image, width: 1200, height: 750, alt: post.imageAlt ?? post.title }] },
     twitter: { card: "summary_large_image", title: post.title, description: post.description, images: [image] },
   };

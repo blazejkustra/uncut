@@ -4,14 +4,14 @@ import JsonLd from "../../components/JsonLd.tsx";
 import SiteFooter from "../../components/SiteFooter.tsx";
 import SiteHeader from "../../components/SiteHeader.tsx";
 import { formatDate, getAllPosts } from "../../lib/posts.ts";
-import { SITE_NAME, SITE_URL } from "../../lib/site.ts";
+import { alternates, SITE_NAME, SITE_URL } from "../../lib/site.ts";
 
 const DESCRIPTION = "Releases and notes from building Uncut, the video editor for the Mac with an agent built in.";
 
 export const metadata: Metadata = {
   title: "Blog",
   description: DESCRIPTION,
-  alternates: { canonical: "/blog/" },
+  alternates: alternates("/blog/"),
   openGraph: { type: "website", title: "Uncut blog", description: DESCRIPTION, url: `${SITE_URL}/blog/`, images: [`${SITE_URL}/assets/img/og.jpg`] },
   twitter: { card: "summary_large_image" },
 };
