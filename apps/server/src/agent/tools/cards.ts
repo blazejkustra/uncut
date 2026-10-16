@@ -1,6 +1,7 @@
 // The production process's cards (U7-U9, U15-U17, U19; D186-D191): ask_user, brief_write, storyboard_propose, review_submit.
 import { createHash } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
 import { CHECK_IDS, fontRule, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout } from "@uncut/core";
@@ -21,6 +22,10 @@ import { budgetLine, grayFrames, motionAnchors, motionFindings, motionFrames, mo
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
+
+/** D295: storyboard_propose renders at most this many stills, this wide. */
+export const MAX_STILLS = 4;
+const STILL_WIDTH = 480;
 
 export const makeCardTools = (ctx: GenerateCtx) => {
   const { persist, publish, config, textResult, askUser, exporter } = ctx;
@@ -109,9 +114,44 @@ export const makeCardTools = (ctx: GenerateCtx) => {
   /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
   const storyboardPropose = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
-      const beats = normBeats(args.beats);
+      const raw = Array.isArray(args.beats) ? args.beats : [];
+      // D295: a beat's still is a timeline frame; Uncut renders it and the card shows it with the beat.
+      const asked = raw.map((b) => (b && typeof b === "object" ? (b as Record<string, unknown>).still : undefined));
+      const beats = normBeats(raw.map((b) => (b && typeof b === "object" ? { ...(b as Record<string, unknown>), still: undefined } : b)));
       if (!beats.length) return textResult("beats is the shot list: each {start, end (seconds), title, entry, exit, purpose, assets, sound}.", true);
       const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 600) : "";
+      const wanted = asked.flatMap((f, i) => (f === undefined ? [] : [[i, f] as const]));
+      if (wanted.length > MAX_STILLS || wanted.some(([, f]) => !Number.isInteger(f) || (f as number) < 0)) return textResult(`still is a timeline frame (an integer from 0) on at most ${MAX_STILLS} beats.`, true);
+      if (wanted.length) {
+        const canvas = v.session.project.canvas;
+        const width = Math.min(canvas.width, STILL_WIDTH);
+        const rendered = yield* exporter.renderFrames(wanted.map(([, f]) => f as number), width).pipe(
+          Effect.map((list) => ({ ok: true as const, list })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
+        );
+        if (!rendered.ok) return textResult(`Couldn't render the stills: ${rendered.message}. Fix that, or propose without still.`, true);
+        r.stills = (r.stills ?? 0) + 1;
+        const folder = join(v.dir, ".cache", "agent-images");
+        const names = yield* Effect.promise(async () => {
+          try {
+            await mkdir(folder, { recursive: true });
+            const out: Array<string> = [];
+            for (const [k, frame] of rendered.list.entries()) {
+              const name = `${r.turn.id}-s${r.stills! % 100}-${k}.jpg`;
+              await writeFile(join(folder, name), frame.jpeg);
+              out.push(name);
+            }
+            return out;
+          } catch (error) {
+            console.error(`[uncut] couldn't keep the storyboard stills in ${folder}: ${(error as Error).message}`);
+            return [] as Array<string>;
+          }
+        });
+        names.forEach((name, k) => {
+          const i = wanted[k]![0];
+          if (beats[i]) beats[i] = { ...beats[i]!, still: name };
+        });
+      }
       const write = (sb: Storyboard) => Effect.promise(() => writeStoryboard(v.dir, sb).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), sb)));
       r.planned = true;
       if (r.skipStoryboard) {

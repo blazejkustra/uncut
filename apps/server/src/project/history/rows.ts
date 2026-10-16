@@ -70,6 +70,8 @@ export interface TurnRecord {
 export interface AgentRecord {
   readonly sessionId: string | undefined;
   readonly pendingNote: string | undefined;
+  /** D295: when the current chat started (New chat), if one did. */
+  readonly threadStart: string | undefined;
   readonly turns: ReadonlyArray<unknown>;
   /** When agent/turns.json was moved in, if it was. */
   readonly migratedAt: string | undefined;

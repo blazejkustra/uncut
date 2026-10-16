@@ -33,8 +33,67 @@ export interface TurnLimits {
   readonly announced: Set<string>;
   rateLimited: boolean;
   authFailed: boolean;
+  // An assistant message's billing_error (no credit, a spend limit) and its words.
+  billingFailed?: boolean;
+  billingText?: string;
 }
 export const turnLimits = (): TurnLimits => ({ rejected: new Map(), announced: new Set(), rateLimited: false, authFailed: false });
+
+/**
+ * Which sign-in claude used: keySource is its init message's apiKeySource ("ANTHROPIC_API_KEY",
+ * "apiKeyHelper", "/login managed key", "none", "oauth", or a settings scope: "user", "project",
+ * "org", "temporary"); keyWhere is where Uncut sees an ANTHROPIC_API_KEY come from (shellEnv's
+ * apiKeySource). Names and places only, never a key's value. Nothing here changes the sign-in (D277).
+ */
+export interface AuthInfo {
+  readonly keySource?: string | undefined;
+  readonly keyWhere?: "environment" | "settings" | undefined;
+}
+
+const SUBSCRIPTION = new Set(["none", "oauth"]);
+/** True when claude used an API key (any source), not a Claude account sign-in. */
+const usedKey = (auth: AuthInfo | undefined) => !!auth?.keySource && !SUBSCRIPTION.has(auth.keySource);
+
+/** The key claude used, in words: "ANTHROPIC_API_KEY from the environment", "the key from its apiKeyHelper setting". */
+const keyWords = (auth: AuthInfo): string => {
+  switch (auth.keySource) {
+    case "ANTHROPIC_API_KEY":
+      return auth.keyWhere === "settings" ? "ANTHROPIC_API_KEY from Claude Code's settings (the env block of settings.json)" : "ANTHROPIC_API_KEY from the environment";
+    case "apiKeyHelper":
+      return "the key from its apiKeyHelper setting";
+    case "/login managed key":
+      return "the API key from its Anthropic Console login";
+    default:
+      return `an API key from its ${auth.keySource} settings`;
+  }
+};
+
+/** How to get back to a working sign-in from the key claude used. */
+const keyWayOut = (auth: AuthInfo, fix: string): string => {
+  switch (auth.keySource) {
+    case "ANTHROPIC_API_KEY":
+      return auth.keyWhere === "settings" ? `Remove it from settings.json to use your Claude subscription, or ${fix} that key.` : `Unset it to use your Claude subscription, or ${fix} that key.`;
+    case "apiKeyHelper":
+      return `Remove apiKeyHelper from Claude Code's settings to use your Claude subscription, or ${fix} that key.`;
+    case "/login managed key":
+      return `Run \`claude auth login\` in Terminal and sign in with your Claude subscription, or ${fix} that Console account's key.`;
+    default:
+      return `Remove it to use your Claude subscription, or ${fix} that key.`;
+  }
+};
+
+/** Which sign-in an auth or billing error came from, as a sentence (empty when claude didn't say). */
+export const authNote = (kind: "credit" | "rejected", auth: AuthInfo | undefined): string => {
+  if (!auth?.keySource) return "";
+  if (!usedKey(auth)) {
+    return kind === "credit"
+      ? "Claude Code used your Claude account sign-in (no API key), so your plan's usage or extra-usage credit ran out: check Settings, Usage on claude.ai, or wait for the limit to reset."
+      : "";
+  }
+  return kind === "credit" ? `Claude Code used ${keyWords(auth)}, which has no credit. ${keyWayOut(auth, "top up")}` : `Claude Code used ${keyWords(auth)}, which was rejected. ${keyWayOut(auth, "replace")}`;
+};
+
+const BILLING = /credit balance is too low|insufficient credit|billing|spend limit reached|out of credits?/i;
 
 /** "2h 5m", "45m", "3h" (t3code's formatClaudeUsageLimitWait). */
 export const formatWait = (waitMs: number): string => {
@@ -105,9 +164,20 @@ const SIGNED_OUT = /not logged in|please run \/login|run \/login|invalid api key
  * limit (a rejected window or a rate_limit assistant error, with a 429 or no API status), 529,
  * 429, then the terminal reason.
  */
-export const resultError = (msg: Record<string, any>, limits: TurnLimits, nowMs: number, configDir?: string): string | undefined => {
+export const resultError = (msg: Record<string, any>, limits: TurnLimits, nowMs: number, configDir?: string, auth?: AuthInfo): string | undefined => {
   const said = [typeof msg.result === "string" ? msg.result : "", ...(Array.isArray(msg.errors) ? msg.errors.filter((e: unknown) => typeof e === "string") : [])].join(" ");
-  if (limits.authFailed || SIGNED_OUT.test(said)) return signedOutMessage(configDir);
+  if (limits.authFailed || SIGNED_OUT.test(said)) {
+    // An API key that was rejected isn't a sign-out: say which key it was.
+    if (usedKey(auth)) return `Claude Code's API key was rejected${said.trim() ? ` ("${said.trim().slice(0, 200)}")` : ""}. ${authNote("rejected", auth)}`;
+    return signedOutMessage(configDir);
+  }
+  // A billing error (no credit on the key, a spend limit): claude's own words and which sign-in it was.
+  const billingWords = [limits.billingText ?? "", said].find((x) => BILLING.test(x));
+  if (limits.billingFailed || billingWords) {
+    const words = (billingWords ?? limits.billingText ?? said).trim().slice(0, 200) || "Billing error";
+    const note = authNote("credit", auth);
+    return `Claude's API refused the request: "${words}".${note ? ` ${note}` : " Check the credit of the account Claude Code signs in with."}`;
+  }
   const status = typeof msg.api_error_status === "number" ? msg.api_error_status : undefined;
   const reason = typeof msg.terminal_reason === "string" ? msg.terminal_reason : undefined;
   const limited =

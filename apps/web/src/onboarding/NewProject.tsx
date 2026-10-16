@@ -1,6 +1,7 @@
 // The New project form (D209, issue #15): eight presets and a Custom card (width, height with an
-// aspect lock, frame rate, background colour), and "Match first clip" (the first video brought
-// in sets the size and frame rate; the server does it in that import's edit).
+// aspect lock, background colour), a frame rate for either (D295: a preset sets it, the select
+// overrides it), and "Match first clip" (the first video brought in sets the size and frame rate;
+// the server does it in that import's edit). Cancel and Create stay pinned under the scroll (D295).
 import { ArrowRight, Link2, Link2Off, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
@@ -41,7 +42,13 @@ export function NewProject() {
     if (!w || !h) return undefined;
     return { width: w, height: h, fps, ...(background !== DEFAULT_BACKGROUND ? { background } : {}) };
   };
-  const canvas = custom ? customCanvas() : CANVAS_PRESETS.find((p) => p.id === preset)!.canvas;
+  const canvas = custom ? customCanvas() : { ...CANVAS_PRESETS.find((p) => p.id === preset)!.canvas, fps };
+  /** A preset brings its own frame rate; the select changes it afterwards. */
+  const pickPreset = (id: string) => {
+    const p = CANVAS_PRESETS.find((x) => x.id === id);
+    if (p) setFps(p.canvas.fps);
+    setPreset(id);
+  };
 
   /** One side typed: with the lock on, the other follows the locked ratio. */
   const typed = (which: "w" | "h", text: string) => {
@@ -63,7 +70,6 @@ export function NewProject() {
     if (from) {
       setWidth(String(from.width));
       setHeight(String(from.height));
-      setFps(from.fps);
       setRatio(from.width / from.height);
     }
     setPreset(CUSTOM);
@@ -100,7 +106,7 @@ export function NewProject() {
       <p className="wiz-lead">Pick a shape. You can change it later.</p>
       <div className="wiz-cards four presets">
         {CANVAS_PRESETS.map((p) => (
-          <button type="button" key={p.id} className={`wiz-card ${p.id === preset ? "active" : ""}`} data-preset={p.id} onClick={() => setPreset(p.id)}>
+          <button type="button" key={p.id} className={`wiz-card ${p.id === preset ? "active" : ""}`} data-preset={p.id} onClick={() => pickPreset(p.id)}>
             <div className="wiz-shape-box">
               <div className="wiz-shape" style={{ aspectRatio: `${p.canvas.width} / ${p.canvas.height}` }} />
             </div>
@@ -108,7 +114,7 @@ export function NewProject() {
             <span>
               {p.ratio}, {p.canvas.width}×{p.canvas.height}
             </span>
-            <span>{fpsLabel(p.canvas.fps)}</span>
+            <span>{fpsLabel(p.id === preset ? fps : p.canvas.fps)}</span>
           </button>
         ))}
       </div>
@@ -116,7 +122,7 @@ export function NewProject() {
         <SlidersHorizontal />
         <span className="custom-card-text">
           Custom
-          <span>{custom && canvas ? canvasLabel(canvas) : "Your own size, frame rate and background"}</span>
+          <span>{custom && canvas ? canvasLabel(canvas) : "Your own size and background"}</span>
         </span>
       </button>
       {custom && (
@@ -134,22 +140,24 @@ export function NewProject() {
             <span>Height</span>
             <input data-testid="custom-height" inputMode="numeric" value={height} onChange={(e) => typed("h", e.target.value)} onBlur={() => sideOf(height) && setHeight(String(sideOf(height)))} />
           </label>
-          <label className="wiz-mini">
-            <span>Frame rate</span>
-            <select data-testid="custom-fps" value={String(fps)} onChange={(e) => setFps(Number(e.target.value) as Canvas["fps"])}>
-              {FPS_CHOICES.map((r) => (
-                <option key={r} value={String(r)}>
-                  {fpsLabel(r)}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="wiz-mini colour">
             <span>Background</span>
             <input type="color" data-testid="custom-background" value={background} onChange={(e) => setBackground(e.target.value)} />
           </label>
         </div>
       )}
+      <div className="fps-row">
+        <label className="wiz-mini">
+          <span>Frame rate</span>
+          <select data-testid="custom-fps" value={String(fps)} onChange={(e) => setFps(Number(e.target.value) as Canvas["fps"])}>
+            {FPS_CHOICES.map((r) => (
+              <option key={r} value={String(r)}>
+                {fpsLabel(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <label className="wiz-toggle" title="The first video you bring in sets the size and frame rate, while the timeline is still empty">
         <input type="checkbox" data-testid="match-first-clip" checked={match} onChange={(e) => setMatch(e.target.checked)} />
         Match first clip
@@ -179,7 +187,7 @@ export function NewProject() {
           {error}
         </div>
       )}
-      <div className="wiz-foot">
+      <div className="wiz-foot new-project-foot" data-testid="new-project-foot">
         <button type="button" className="btn ghost" onClick={actions.hideNewProject}>
           Cancel
         </button>

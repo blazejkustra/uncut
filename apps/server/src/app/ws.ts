@@ -130,6 +130,7 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.brandImport]: ({ kit, scope, source }) => brand.importFiles(kit, scope, source),
     [RPC_METHODS.agentScreenTake]: (answer) => agent.screenTake(answer),
     [RPC_METHODS.agentRestoreCleanup]: ({ turnId }) => agent.restoreCleanup(turnId),
+    [RPC_METHODS.agentNewThread]: () => agent.newThread,
     // D205: the user's media index (other projects' captures, imports and generations).
     [RPC_METHODS.mediaRecent]: (opts) => Effect.map(mediaIndex.search(opts), (found) => ({ entries: found.map(shownEntry) })),
     [RPC_METHODS.mediaRecentImport]: ({ id }) =>

@@ -269,6 +269,52 @@ test("a stored session that's gone (no conversation found) starts fresh once, an
   }
 });
 
+test("D295: New chat: refused while a turn runs; then the idle claude ends, the next message starts a fresh conversation (no --resume); the chat's start is published and kept across a restart", { skip, timeout: 90000 }, async () => {
+  const s = await setup("new-thread");
+  try {
+    await s.ask("one", [{ tool: "project_read" }]);
+    await s.ask("two", [{ tool: "project_read" }]);
+    const { pid } = s.runs()[1]!;
+    assert.equal(s.runs()[1]!.resume, "fake-session");
+    // While a turn runs, no new chat.
+    const busy = await s.start("three", [{ sleep: 1500 }, { text: "done" }]);
+    const refused = await s.client.fail("agent.newThread");
+    assert.equal(refused.reason, "busy");
+    await s.done(busy);
+    const before = Date.now();
+    const { threadStart } = await s.client.ok("agent.newThread");
+    assert.ok(Date.parse(threadStart) >= before - 1000, threadStart);
+    await s.agent.until((st) => st?.threadStart === threadStart);
+    assert.ok(await gone(pid), "the old conversation's claude ends");
+    const t = await s.ask("four", [{ tool: "project_read" }, { text: "fresh" }]);
+    assert.equal(t.status, "done", t.error);
+    const last = s.runs().at(-1)!;
+    assert.equal(last.resume, null, "a fresh conversation");
+    assert.notEqual(last.pid, pid);
+    assert.match(last.prompt, /^four/);
+    // Every turn stays in the history; only the panel folds the earlier ones.
+    const st = s.agent.values.at(-1);
+    assert.deepEqual(st.turns.map((x: { prompt: string }) => x.prompt), ["one", "two", "three", "four"]);
+    assert.deepEqual(st.turns.filter((x: { startedAt: string }) => Date.parse(x.startedAt) >= Date.parse(threadStart)).map((x: { prompt: string }) => x.prompt), ["four"]);
+    // Saved: another server opening the project publishes the same start, and the next message after that resumes the new conversation.
+    s.client.close();
+    await s.server.stop();
+    const base = join(root, "new-thread");
+    const again = await startServer({ env: { UNCUT_DATA_DIR: join(base, "data"), UNCUT_CLAUDE: FAKE, FAKE_PLAN: join(base, "plan.json"), FAKE_PROMPT_LOG: join(base, "prompts.jsonl"), FAKE_TOOLS_LOG: join(base, "tools.jsonl") } });
+    const client = await connect(again.ready.port, again.ready.token);
+    try {
+      const agent = client.subscribe("agent.subscribe");
+      await client.ok("project.open", { dir: s.dir });
+      await agent.until((v) => v?.dir === s.dir && v.threadStart === threadStart && v.turns.length === 4);
+    } finally {
+      client.close();
+      await again.stop();
+    }
+  } finally {
+    await s.stop().catch(() => {});
+  }
+});
+
 test("@mentions: claude gets the labels with a <context> block of real ids; the card keeps the labels; step labels say names (AG5)", { skip, timeout: 60000 }, async () => {
   const s = await setup("mentions");
   try {

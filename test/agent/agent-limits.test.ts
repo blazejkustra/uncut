@@ -61,6 +61,37 @@ test("resultError: usage limit with the latest reset, 429, 529, give-ups, sign-i
   assert.match(signedOutMessage("/x/.claude"), /CLAUDE_CONFIG_DIR is "\/x\/\.claude"/);
 });
 
+test("auth and billing errors say which sign-in Claude Code used (its init's apiKeySource), never a key", () => {
+  // The rehearsal's failure: a gave-up result after "Credit balance is too low" on an environment key.
+  const credit = { subtype: "success", is_error: true, terminal_reason: "api_error", result: "Credit balance is too low" };
+  assert.equal(
+    resultError(credit, turnLimits(), NOW, undefined, { keySource: "ANTHROPIC_API_KEY", keyWhere: "environment" }),
+    `Claude's API refused the request: "Credit balance is too low". Claude Code used ANTHROPIC_API_KEY from the environment, which has no credit. Unset it to use your Claude subscription, or top up that key.`,
+  );
+  assert.match(resultError(credit, turnLimits(), NOW, undefined, { keySource: "ANTHROPIC_API_KEY", keyWhere: "settings" }) ?? "", /ANTHROPIC_API_KEY from Claude Code's settings .*Remove it from settings\.json to use your Claude subscription, or top up that key\./);
+  assert.match(resultError(credit, turnLimits(), NOW, undefined, { keySource: "apiKeyHelper" }) ?? "", /the key from its apiKeyHelper setting, which has no credit\. Remove apiKeyHelper/);
+  assert.match(resultError(credit, turnLimits(), NOW, undefined, { keySource: "/login managed key" }) ?? "", /API key from its Anthropic Console login, which has no credit\. Run `claude auth login`/);
+  // The subscription case: no API key, so the plan's usage or extra-usage credit ran out.
+  assert.match(resultError(credit, turnLimits(), NOW, undefined, { keySource: "none" }) ?? "", /"Credit balance is too low"\. Claude Code used your Claude account sign-in \(no API key\).*claude\.ai/);
+  // No apiKeySource (an older claude): the words and a generic hint.
+  assert.match(resultError(credit, turnLimits(), NOW) ?? "", /^Claude's API refused the request: "Credit balance is too low"\. Check the credit/);
+  // A billing_error on an assistant message carries the words when the result only says it gave up.
+  const billed = turnLimits();
+  billed.billingFailed = true;
+  billed.billingText = "Your credit balance is too low to access the Anthropic API.";
+  assert.match(resultError({ is_error: true, terminal_reason: "api_error", result: "" }, billed, NOW, undefined, { keySource: "ANTHROPIC_API_KEY" }) ?? "", /^Claude's API refused the request: "Your credit balance is too low to access the Anthropic API\."\. Claude Code used ANTHROPIC_API_KEY from the environment/);
+  // A rejected key isn't "not signed in": it names the key.
+  const bad = turnLimits();
+  bad.authFailed = true;
+  assert.equal(
+    resultError({ is_error: true, result: "Invalid API key · Fix external API key" }, bad, NOW, undefined, { keySource: "ANTHROPIC_API_KEY", keyWhere: "environment" }),
+    `Claude Code's API key was rejected ("Invalid API key · Fix external API key"). Claude Code used ANTHROPIC_API_KEY from the environment, which was rejected. Unset it to use your Claude subscription, or replace that key.`,
+  );
+  assert.equal(resultError({ is_error: true, result: "Not logged in" }, turnLimits(), NOW, "/c", { keySource: "none" }), signedOutMessage("/c"));
+  // Never a key's value: only names and places.
+  assert.doesNotMatch(resultError(credit, turnLimits(), NOW, undefined, { keySource: "ANTHROPIC_API_KEY" }) ?? "", /sk-ant/);
+});
+
 test("resultFailed: a success result that still failed", () => {
   assert.equal(resultFailed({ subtype: "success", is_error: false }), false);
   assert.equal(resultFailed({ subtype: "success", is_error: false, terminal_reason: "completed" }), false);

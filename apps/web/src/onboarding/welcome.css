@@ -21,3 +21,13 @@
   #root .welcome-main { padding-left: 24px; padding-right: 24px; }
   #root .welcome-foot { padding-left: 24px; padding-right: 24px; }
 }
+/* D295: Cancel and Create stay in view, pinned to the bottom of the scrolling body above the status
+   foot, however tall the form gets (Custom open, a short window). */
+#root .welcome-main[data-new-project="true"] { padding-bottom: 0; }
+#root .new-project-foot { position: sticky; bottom: 0; z-index: 1; margin: 16px -40px 0; padding: 12px 40px 14px; background: var(--panel); border-top: 1px solid var(--border); }
+#root .fps-row { display: flex; margin-top: 8px; }
+@media (max-width: 640px) {
+  #root .new-project-foot { margin-left: -24px; margin-right: -24px; padding-left: 24px; padding-right: 24px; }
+}
+/* Scrolling a field into view (Tab, a click) keeps it above the pinned foot. */
+#root .welcome-body:has(.new-project-foot) { scroll-padding-bottom: 76px; }

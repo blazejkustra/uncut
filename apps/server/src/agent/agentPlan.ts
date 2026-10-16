@@ -270,6 +270,24 @@ export interface GridItem {
 }
 
 /**
+ * The drop (D295): the downbeat after which the next 2 bars (8 beats) carry the most onset strength
+ * compared with the 2 bars before it, in the media's seconds; undefined unless that's at least 1.5
+ * times as much (and the first 2 bars can't be one: nothing came before them).
+ */
+export function dropOf(beats: ReadonlyArray<number>, phase: number, onsets: ReadonlyArray<{ t: number; strength: number }>): { seconds: number; rise: number } | undefined {
+  if (beats.length < 16) return undefined;
+  const energy = (from: number, to: number) => onsets.reduce((sum, o) => (o.t >= from && o.t < to ? sum + o.strength : sum), 0);
+  let best: { seconds: number; rise: number } | undefined;
+  for (let i = phase + 8; i + 8 <= beats.length; i += 4) {
+    const before = energy(beats[i - 8]!, beats[i]!);
+    const after = energy(beats[i]!, i + 8 < beats.length ? beats[i + 8]! : Infinity);
+    const rise = after / Math.max(before, 0.5);
+    if (rise >= 1.5 && (!best || rise > best.rise)) best = { seconds: beats[i]!, rise: Math.round(rise * 10) / 10 };
+  }
+  return best;
+}
+
+/**
  * The beat grid in timeline frames (D191): beats, downbeats (one beat in 4: the phase whose beats
  * carry the most onset strength) and the strongest hits, inside the item; snaps of the given
  * frames to the nearest beat and downbeat.
@@ -300,6 +318,9 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 24)
     .sort((a, b) => a.frame - b.frame);
+  const drop = dropOf(beatsS, phase, onsets);
+  // The drop counts anywhere in the item, a range or not.
+  const inClip = (seconds: number) => toTl(seconds) >= item.start && toTl(seconds) < end;
   const nearest = (list: ReadonlyArray<number>, f: number) => list.reduce<number | undefined>((acc, x) => (acc === undefined || Math.abs(x - f) < Math.abs(acc - f) ? x : acc), undefined);
   const snaps = (snap ?? []).map((f) => {
     const beat = nearest(beats, f);
@@ -314,7 +335,9 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
     beats: beats.slice(0, 400),
     downbeats: downbeats.slice(0, 120),
     hits,
+    // The downbeat where the music gets much busier (the drop), when there is one inside the item.
+    drop: drop && inClip(drop.seconds) ? { frame: toTl(drop.seconds), rise: drop.rise } : null,
     ...(snaps.length ? { snaps } : {}),
-    note: "Timeline frames. Put cuts and state changes on beats, big moments (the reveal, the logo, the end card) on downbeats, and start a whoosh or hit sound 1 to 2 frames before the frame it hits. off is how far the beat is from your frame (move it by that).",
+    note: "Timeline frames. Put cuts and state changes on beats, big moments (the reveal, the logo, the end card) on downbeats, and start a whoosh or hit sound 1 to 2 frames before the frame it hits. off is how far the beat is from your frame (move it by that). drop is the downbeat where the next 2 bars carry the most more onset energy than the 2 before (rise: how many times more), null when nothing rises 1.5 times: land the reveal there.",
   };
 }

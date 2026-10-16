@@ -482,6 +482,11 @@ input[type="range"], input[type="checkbox"], input[type="color"], input[type="ra
 .manual-note-head { display: flex; align-items: center; gap: 6px; color: var(--fg); }
 .manual-note-head svg.lucide { width: 12px; height: 12px; }
 .manual-note-line { padding-left: 18px; line-height: 1.4; }
+/* D295: media imports folded into one line that opens to the files. */
+.manual-note-toggle { display: flex; align-items: center; gap: 2px; padding: 0 0 0 4px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.manual-note-toggle:hover { color: var(--fg); }
+.manual-note-toggle svg.lucide { width: 12px; height: 12px; }
+.manual-note-files { max-height: 160px; overflow: auto; }
 /* D203: a turn is a stream of messages (no card around them), then a compact footer. */
 .turn { display: flex; flex-direction: column; gap: 5px; padding: 2px 0 0; }
 .turn.undone, .turn-foot.undone { opacity: 0.55; }
@@ -1483,6 +1488,8 @@ body.tile-dragging, body.tile-dragging * { cursor: grabbing !important; user-sel
 .beats { display: flex; flex-direction: column; gap: 6px; }
 .beat { padding: 6px 8px; border-left: 2px solid var(--select); background: var(--panel); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.35; }
 .beat-head { display: flex; gap: 8px; align-items: baseline; }
+/* D295: a beat's still from storyboard_propose, above its words, at the canvas's shape. */
+.beat-still { display: block; width: 100%; max-width: 220px; height: auto; border-radius: var(--radius-sm); margin-bottom: 4px; background: var(--bg); }
 .beat-time { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none; }
 .beat.editing { gap: 4px; }
 .beat-fields { display: flex; gap: 4px; }
@@ -1583,6 +1590,13 @@ div.card-head { cursor: default; }
 .agent-change .icon-btn svg { width: 12px; height: 12px; }
 .agent-strip { align-items: center; gap: 8px; }
 .agent-strip .spacer { flex: 1; }
+/* D295: New chat, and the earlier chat folded above the current one. */
+.agent-strip { justify-content: flex-start; padding-left: 8px; }
+.agent-new-chat svg.lucide { width: 15px; height: 15px; }
+.agent-earlier { align-self: center; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.agent-earlier svg.lucide { width: 12px; height: 12px; }
+.agent-thread-divider { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--dim); }
+.agent-thread-divider::before, .agent-thread-divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .plan-chip-wrap { display: flex; }
 /* D203: a call that edited, an import row with its thumbnails, the "Latest" button. */
 .edit-step, .media-step { cursor: pointer; color: var(--fg); }

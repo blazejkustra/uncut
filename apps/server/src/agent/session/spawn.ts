@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
 import { type Access, sessionSettings } from "../agentPermissions.ts";
-import { settingsArg, userAuthSettings } from "../../app/shellEnv.ts";
+import { apiKeySource, settingsArg, userAuthSettings } from "../../app/shellEnv.ts";
 import { onRateLimit, resultError, resultFailed } from "../agentLimits.ts";
 import { besideServer } from "../../paths.ts";
 import type { Loaded, Running, ClaudeSession } from "./types.ts";
@@ -39,6 +39,9 @@ let promptSnapshotRefused = false;
 export const makeSpawn = (ctx: StreamCtx) => {
   const { persist, closeSession, canUseTool, st, publishNow, watchData, delivered, onStream, onAssistant, finish, noteContext, turnCleanup, publish, config, bridgeUrl, sessions } = ctx;
 
+  /** Which sign-in claude used (its init's apiKeySource) and where Uncut sees ANTHROPIC_API_KEY come from: presence only. */
+  const authOf = (s: ClaudeSession) => ({ keySource: s.apiKeySource, keyWhere: apiKeySource(process.env) });
+
   /** One stream-json line from a session's claude. */
   const onLine = (s: ClaudeSession, line: string) => {
     let msg: Record<string, any>;
@@ -50,6 +53,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     if (msg.type === "system" && msg.subtype === "init") {
       s.gotInit = true;
       if (isString(msg.model)) s.initModel = msg.model;
+      if (isString(msg.apiKeySource)) s.apiKeySource = msg.apiKeySource;
       if (isString(msg.session_id) && msg.session_id !== s.owner.sessionId) {
         s.owner.sessionId = msg.session_id;
         persist(s.owner);
@@ -91,6 +95,12 @@ export const makeSpawn = (ctx: StreamCtx) => {
     if (msg.type === "assistant" && !msg.parent_tool_use_id) {
       r.limits.rateLimited = msg.error === "rate_limit";
       if (msg.error === "authentication_failed") r.limits.authFailed = true;
+      // A billing error (no credit on the key, a spend limit): its words, e.g. "Credit balance is too low".
+      if (msg.error === "billing_error") {
+        r.limits.billingFailed = true;
+        const said = (Array.isArray(msg.message?.content) ? (msg.message.content as Array<Record<string, unknown>>) : []).flatMap((c) => (c?.type === "text" && isString(c.text) ? [c.text] : [])).join(" ").trim();
+        if (said) r.limits.billingText = said.slice(0, 300);
+      }
     }
     // D194: what the turn did with the web and read from files, the subagents' work included.
     watchData(r, msg);
@@ -137,7 +147,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       }
       const why = (isString(msg.result) && msg.result.trim()) || (Array.isArray(msg.errors) && msg.errors.filter(isString).join(" ")) || msg.subtype || "it reported an error";
       // D218: a usage limit, rate limit, overload or sign-in problem in words (like t3code), else claude's own.
-      return finish(r, { status: "error", error: resultError(msg, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR) ?? `Claude Code stopped: ${why}` });
+      return finish(r, { status: "error", error: resultError(msg, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR, authOf(s)) ?? `Claude Code stopped: ${why}` });
     }
   };
 
@@ -319,7 +329,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
       }
       // It died mid-turn (a crash, a kill): the next message starts another with --resume.
       const why = s.stderr.trim().split("\n").slice(-3).join(" ") || `exit code ${code}`;
-      return finish(r, { status: "error", error: resultError({ result: why }, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR) ?? `Claude Code stopped: ${why}` });
+      return finish(r, { status: "error", error: resultError({ result: why }, r.limits, Date.now(), process.env.CLAUDE_CONFIG_DIR, authOf(s)) ?? `Claude Code stopped: ${why}` });
     };
     child.once("error", (error) => settle(null, error));
     child.once("close", (code) => settle(code));

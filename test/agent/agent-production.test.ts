@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { drums, writeWav } from "../helpers/beats-audio.ts";
-import { beatGrid, gateOf, gateRefusal, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
+import { beatGrid, dropOf, gateOf, gateRefusal, planContext, questionOf } from "../../apps/server/src/agent/agentPlan.ts";
 import { mcpTools, stepLabel, SYSTEM_PROMPT, LOOK_TOOLS } from "../../apps/server/src/agent/agentTools.ts";
 import { AGENT_TEXT } from "../helpers/agentText.ts";
 
@@ -142,6 +142,14 @@ test("pure parts: question, gate, verdict, context and the beat grid", () => {
   assert.deepEqual(g.beats.slice(0, 3), [36, 51, 66]);
   assert.deepEqual(g.downbeats.slice(0, 2), [51, 111], "every 4th beat, the accented phase");
   assert.deepEqual(g.snaps, [{ frame: 50, beat: 51, off: 1, downbeat: 51 }]);
+  assert.equal(g.drop, null, "an even track has no drop");
+  // D295: 4 quiet bars, then every beat hits hard: the drop is the first loud downbeat (beat 16, 8.2 s).
+  const long = Array.from({ length: 32 }, (_, i) => 0.2 + i * 0.5);
+  const build = long.map((t, i) => ({ t, strength: i < 16 ? (i % 4 === 0 ? 0.5 : 0.1) : 1 }));
+  assert.deepEqual(dropOf(long, 0, build), { seconds: 8.2, rise: 5 });
+  const d = beatGrid({ hasAudio: true, bpm: 120, confidence: 0.9, beats: long, onsets: build }, { id: "music-1", media: "m", start: 0, in: 0, duration: 600, speed: 1 }, 30);
+  assert.deepEqual(d.drop, { frame: 246, rise: 5 });
+  assert.ok(d.downbeats.includes(246));
 });
 
 test("U8/U15/U9: ask_user is answered, the brief is saved, the build waits for the storyboard, approved with edits", { skip, timeout: 120000 }, async () => {
@@ -209,6 +217,39 @@ test("U8/U15/U9: ask_user is answered, the brief is saved, the build waits for t
     await s.ask("next", [{ text: "ok" }]);
     const last = s.prompts().at(-1)!.prompt;
     assert.match(last, /<plan>[\s\S]*Brief:[\s\S]*film: Argent Cloud runs[\s\S]*Storyboard \(approved\)[\s\S]*1\. 0–2 s The claim/);
+    s.results();
+  } finally {
+    await s.stop();
+  }
+});
+
+test("D295: storyboard_propose renders a still per beat for the card, kept through the approval; more than 4 is refused", { skip, timeout: 120000 }, async () => {
+  const s = await setup("stills");
+  try {
+    // Before a brief there's no gate: the title goes on the timeline so the stills have something to show.
+    const placed = await s.ask("place the title", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "The title", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }]);
+    assert.equal(placed.edits.length, 1, placed.error);
+    s.results();
+    const many = BEATS.concat(BEATS, BEATS).map((b, i) => ({ ...b, still: i * 5 }));
+    await s.ask("too many", [{ tool: "storyboard_propose", args: { summary: "Six stills", beats: many } }]);
+    const [tooMany] = s.results();
+    assert.equal(tooMany!.result.isError, true);
+    assert.match(textOf(tooMany!.result), /at most 4 beats/);
+    const id = await s.start("storyboard", [{ tool: "storyboard_propose", args: { summary: "Beat 1 and 2 with stills", beats: [{ ...BEATS[0], still: 0 }, { ...BEATS[1], still: 30 }] } }]);
+    const card = await s.card(id);
+    const stills = card.storyboard.beats.map((b: { still?: string }) => b.still);
+    assert.equal(stills.length, 2);
+    for (const name of stills) {
+      assert.match(name, new RegExp(`^${id}-s1-\\d\\.jpg$`));
+      const jpeg = readFileSync(join(s.dir, ".cache", "agent-images", name));
+      assert.equal(jpeg.subarray(0, 2).toString("hex"), "ffd8", "a JPEG");
+    }
+    await s.client.ok("agent.approve", { id: card.id, allow: true, beats: card.storyboard.beats.map((b: object, i: number) => (i === 0 ? { ...b, title: "The claim" } : b)) });
+    const t = await s.done(id);
+    assert.equal(t.status, "done", t.error);
+    const file = JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8"));
+    assert.equal(file.status, "approved");
+    assert.deepEqual(file.beats.map((b: { still?: string }) => b.still), stills, "the user's edit keeps the stills");
     s.results();
   } finally {
     await s.stop();

@@ -174,6 +174,10 @@ export const MediaRecentImportRpc = Rpc.make(RPC_METHODS.mediaRecentImport, {
   error: ProjectError,
 });
 
+// D295: a new chat: the next message starts a fresh Claude conversation; earlier turns stay in the
+// history (undo still works) and the panel folds them away. Refused while a turn runs.
+export const AgentNewThreadRpc = Rpc.make(RPC_METHODS.agentNewThread, { payload: Empty, success: Schema.Struct({ threadStart: Schema.String }), error: AgentError });
+
 // D206: puts back the graphics a turn's clean-up moved to the trash (those still there).
 export const AgentRestoreCleanupRpc = Rpc.make(RPC_METHODS.agentRestoreCleanup, {
   payload: Schema.Struct({ turnId: Schema.String }),

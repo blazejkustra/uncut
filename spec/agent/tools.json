@@ -986,7 +986,7 @@
     },
     {
       "name": "storyboard_propose",
-      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on. The answer is approved (maybe with beats the user edited: build those), or a change the user asked for (propose again).",
+      "description": "Propose the storyboard / shot list for the user to approve on a card before you build (it waits up to 15 minutes). Each beat: start and end in seconds, entry and exit states, purpose, real assets, the sound it lands on, and optionally still: a timeline frame Uncut renders and shows on the card with that beat (at most 4, drawn from the timeline as it is now). The answer is approved (maybe with beats the user edited: build those), or a change the user asked for (propose again).",
       "inputSchema": {
         "type": "object",
         "required": [
@@ -1056,6 +1056,11 @@
                   "type": "string",
                   "maxLength": 200,
                   "description": "The beat, downbeat or hit it lands on."
+                },
+                "still": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "A timeline frame to render as this beat's still on the card."
                 }
               }
             }
@@ -1374,7 +1379,7 @@
     },
     {
       "name": "beat_grid",
-      "description": "The beat grid of the music on the timeline in timeline frames: tempo, beats, downbeats (bar starts, the strongest beat of each 4) and the strongest hits, from the beats analysis; with snap, each frame you give with the nearest beat and downbeat, to put cuts and state changes on the beat and big moments on a downbeat.",
+      "description": "The beat grid of the music on the timeline in timeline frames: tempo, beats, downbeats (bar starts, the strongest beat of each 4), the strongest hits and the drop (the downbeat where the music gets much busier, or null), from the beats analysis; with snap, each frame you give with the nearest beat and downbeat, to put cuts and state changes on the beat and big moments on a downbeat.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
