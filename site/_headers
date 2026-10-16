@@ -10,5 +10,17 @@
 /assets/*
   Cache-Control: public, max-age=604800
 
+# Scripts and styles keep stable names, so browsers must check for a new version on every visit
+# (tiny files; an ETag makes the check a 304). Images and fonts keep their long cache.
+/assets/*.js
+  ! Cache-Control
+  Cache-Control: public, max-age=0, must-revalidate
+
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+/analytics.css
+  Cache-Control: public, max-age=0, must-revalidate
+
 /assets/fonts/*
   Cache-Control: public, max-age=31536000, immutable
