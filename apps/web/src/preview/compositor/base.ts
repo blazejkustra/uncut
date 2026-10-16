@@ -161,8 +161,8 @@ export abstract class CompositorBase {
   }
 
   /** A clip's effects canvas and overlay off the canvas (its picture element shown again). */
-  protected dropFx(id: string) {
-    this.dropShader(id);
+  protected dropFx(id: string, keepShader = false) {
+    if (!keepShader) this.dropShader(id);
     if (this.fxCanvas.has(id) || this.fxCopies.has(id)) {
       this.releaseFx(id);
       const el = this.els.get(id);
@@ -603,22 +603,22 @@ export abstract class CompositorBase {
 
   /**
    * D221: whether the GPU compositor can draw a layer as the DOM path does: a video or image clip
-   * (box, fit, radius, opacity, a wipe or an iris; picture effects without blur or overlays; no shader,
-   * no reveal shape, no blur dissolve) or a plain-colour background with no transition styling.
+   * (box, fit, radius, opacity, a wipe, an iris or a reveal shape, a blur dissolve; picture effects and
+   * blur and a shader, not overlays) or a plain-colour background with no transition styling.
    */
   protected gpuCan(v: Visual, project: ProjectModel): boolean {
     const item = v.item;
-    if (v.mask || v.blur) return false;
-    if (item.type === "component" && item.component === SOLID) return v.wipe === undefined && v.iris === undefined && !v.shift && !v.shiftY && v.zoom === undefined && !!plainColour(solidBackground(item, project));
+    if (item.type === "component" && item.component === SOLID) return !v.mask && !v.blur && v.wipe === undefined && v.iris === undefined && !v.shift && !v.shiftY && v.zoom === undefined && !!plainColour(solidBackground(item, project));
     if (item.type !== "clip" || !v.box) return false;
     const media = project.media.find((m) => m.id === item.media);
     if (!media || media.kind === "audio" || fxSkips(media)) return false;
     const el = this.els.get(item.id);
     if (el instanceof HTMLVideoElement && el.error) return false;
     if (this.boxes.get(item.id)?.querySelector("[data-missing]")) return false;
-    if (this.shaderUseOf(item)) return false;
+    // D265: a shader draws on its own WebGPU canvas, which the compositor then reads as the picture.
+    if (this.shaderUseOf(item) && shaderProblem()) return false;
     const fx = this.effectsOf(item);
-    return !fx || (!fx.blur && !hasOverlay(fx));
+    return !fx || !hasOverlay(fx);
   }
 
   render() {
