@@ -17,6 +17,8 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
+import { grayFrames, motionAnchors, motionFindings, motionIntent, motionLines, motionScan, scanPlan, scanSize, SCAN_RENDER_WIDTH, STRIP_CELL, stripLayout, stripPlan, type MotionScan } from "../criticMotion.ts";
+import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
 
@@ -246,10 +248,42 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)), sound: rubric.sound })
         .map((c) => ({ rule: c.id, key: c.key, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), ...(c.range ? { range: c.range } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)) }));
       const brand = yield* Effect.promise(() => activeBrand(brandDirs(v)).catch(() => ({ files: {} as Record<string, string>, skills: [] as Array<BrandSkill> }) as { kit?: BrandKit; files: Record<string, string>; skills: Array<BrandSkill> }));
+      // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
+      // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
+      const intent = motionIntent({ skills: brand.skills.map((x) => x.name), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n") });
+      const anchors = motionAnchors(sb?.beats, fps, duration);
+      const strips = stripPlan(anchors, fps, duration);
+      const scanList = scanPlan(anchors, fps, duration);
+      const aspect = project.canvas.width / project.canvas.height;
+      const motion = yield* Effect.gen(function* () {
+        const stripFrames = [...new Set(strips.flatMap((x) => x.frames))].sort((a, b) => a - b);
+        const rendered = yield* exporter.renderFrames(stripFrames, STRIP_CELL);
+        const byFrame = new Map(rendered.map((f) => [f.frame, f.jpeg]));
+        const stripImages: Array<CriticImage> = [];
+        for (const st of strips) {
+          const cells = st.frames.flatMap((f) => (byFrame.has(f) ? [{ jpeg: byFrame.get(f)!, caption: `f ${f}   ${clock(f / fps)}` }] : []));
+          if (!cells.length) continue;
+          const jpeg = yield* exporter.sheetImage(cells, stripLayout(cells.length, aspect));
+          stripImages.push({ label: `frame strip around ${st.label} (f ${st.at}, ${(st.at / fps).toFixed(2)} s): frames ${st.frames.join(", ")} left to right, ${Math.round(1000 / 12)} ms apart`, jpeg });
+        }
+        let scan: MotionScan | undefined;
+        const ffmpeg = yield* Effect.promise(async () => (await config.shellReady, which("ffmpeg", process.env.PATH ?? "")));
+        if (ffmpeg && scanList.length > 2) {
+          const frames = yield* exporter.renderFrames(scanList, SCAN_RENDER_WIDTH);
+          const { w, h } = scanSize(project.canvas);
+          const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, frames.map((f) => f.jpeg), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
+          scan = motionScan(frames.map((f, i) => ({ frame: f.frame, gray: grays[i]! })), fps);
+        }
+        return { images: stripImages, scan };
+      }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
+      images.push(...motion.images);
+      const motionChecks = motion.scan ? motionFindings(motion.scan, fps, intent) : [];
+      checks.push(...motionChecks);
+      const motionFacts = motion.scan ? motionLines(motion.scan, fps, { consecutive: scanList.length === duration }) : ["problem" in motion ? `The frame-difference scan couldn't run: ${motion.problem}` : "No frame-difference scan (ffmpeg isn't on PATH)."];
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
-      const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: brand.skills.map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended };
+      const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: brand.skills.map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended, motion: { lines: motionFacts, strips: motion.images.length } };
       const bin = yield* Effect.promise(() => findClaude());
       if (!bin) return textResult("Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.", true);
       const answer = yield* Effect.tryPromise({ try: (signal) => runCritic({ bin, env: sessionEnv(process.env), model: r.session.model, message: criticMessage(input), signal: AbortSignal.any([signal, r.abort.signal]) }), catch: (e) => e as Error }).pipe(
@@ -275,6 +309,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         blockers: review.blockers,
         defects: review.defects,
         ...(review.fixes ? { fixes: review.fixes } : {}),
+        motion: { strips: motion.images.length, ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
         next: reviewNext(review, round),
       });

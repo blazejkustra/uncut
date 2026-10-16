@@ -136,8 +136,8 @@ export interface Rubric {
  * sound") take a category out; an active skill makes its category required (Launch promo the hook,
  * Motion craft the motion, Sound design the sound, Brand application the brand with a kit). Style
  * blockers fail a round only when the video asks for them: off-brand colour when brand is required,
- * sound when the sound profile is strict. Without a type: everything required and every kind a blocker, as
- * before.
+ * sound when the sound profile is strict. Motion film (D292) makes the motion required too.
+ * Without a type: everything required and every kind a blocker, as before.
  */
 export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skills?: ReadonlyArray<string>; readonly hasKit?: boolean } = {}): Rubric {
   const skills = skillIdsOf(o.skills ?? []);
@@ -150,7 +150,7 @@ export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skill
   const row = TABLE[type];
   const levels = Object.fromEntries(RUBRIC_CATEGORIES.map((k, i) => [k, row[i]!])) as Record<RubricCategory, RubricLevel>;
   if (skills.includes("launch-promo")) levels.hook = R;
-  if (skills.includes("motion-craft")) levels.motion = R;
+  if (skills.includes("motion-craft") || skills.includes("motion-film")) levels.motion = R;
   if (skills.includes("sound-design")) levels.sound = R;
   if (skills.includes("brand-application")) levels.brand = R;
   const w = words(brief);

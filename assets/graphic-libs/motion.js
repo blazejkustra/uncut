@@ -1,0 +1,248 @@
+/* uncutMotion (Uncut, MIT): one-take motion film helpers for graphics (D292). Load it with the
+   marker uncut:lib/motion.js (a script tag with that src). Every function is a pure function of its
+   arguments (time in seconds): no state, no timers, so render(t) can be called in any order.
+     uncutMotion.spring(t, "spring.snap")                  // closed-form step response, 0 → 1 (same as uncutSpring)
+     uncutMotion.springs(t, [{ at: 0, to: 0 }, { at: 1, to: 200 }, { at: 1.4, to: 80 }], "spring.snap")
+                                                         // sum of one spring per target change: retargets stay continuous
+     uncutMotion.edges(t, [{ at: 0, left: 0, right: 100 }, { at: 1, left: 200, right: 300 }], { lead: "spring.snap", trail: "spring.settle" })
+                                                         // { left, right }: the leading edge rides the faster spring (liquid tab indicator, toggle knob)
+     uncutMotion.rise(t, { at: 0.5, out: 2, height: 80 }) // { y, visible }: text rising out of a mask line (wrap it in overflow: hidden), and leaving upward
+     uncutMotion.flood(t, { at, x, y, r, width, height, dur: 0.3, until, to: { x, y, r } })
+                                                         // { x, y, r, full }: a circle that overscales past the frame's corners, then contracts into the next shape
+     uncutMotion.cover(x, y, width, height)              // the radius that covers the frame from (x, y), 6 % past the farthest corner
+     uncutMotion.iris(open, { x, y, r, blades: 6, turn }) // blade polygons [[x, y], ...]: open 1 = no blades in the circle, 0 = closed
+     uncutMotion.squeeze(xs, widths, anchor, f)           // [{ x, scale }]: letters pulled toward anchor by f (1 = as set, 0 = in the anchor), widths follow
+     uncutMotion.cursor(t, [{ at, x, y, click }], { spring })  // { x, y, scale, down }: a drawn cursor's path with real presses
+     uncutMotion.camera(t, [{ at, x, y, zoom }], spring)  // { x, y, zoom }: screen-studio zoom keys; scale the cursor with zoom
+     uncutMotion.beat(n, { bpm: 120, offset: 0 })         // seconds of beat n
+     uncutMotion.loop(t, duration)                        // t wrapped into [0, duration): the last frame meets the first
+     uncutMotion.ease.inOut(p), .out(p), .in(p)           // cubic eases for opacity or colour
+     uncutMotion.mix(a, b, p), uncutMotion.clamp(v, lo, hi), uncutMotion.mixColor("#000000", "#ffffff", p)
+*/
+(function () {
+  "use strict";
+  var PRESETS = {
+    "spring.snap": { stiffness: 400, damping: 36 },
+    "spring.settle": { stiffness: 170, damping: 20 },
+    "spring.land": { stiffness: 220, damping: 17 },
+    "spring.bounce": { stiffness: 300, damping: 9 },
+    spring: { stiffness: 170, damping: 20 },
+  };
+  function params(p) {
+    var s = typeof p === "string" ? PRESETS[p] || PRESETS.spring : p || PRESETS["spring.snap"];
+    var k = typeof s.stiffness === "number" && s.stiffness > 0 ? s.stiffness : 170;
+    var c = typeof s.damping === "number" && s.damping >= 0 ? s.damping : 20;
+    var m = typeof s.mass === "number" && s.mass > 0 ? s.mass : 1;
+    var v = typeof s.velocity === "number" && Number.isFinite(s.velocity) ? s.velocity : 0;
+    return { k: k, c: c, m: m, v: v };
+  }
+  // The damped spring's step response (0 at t <= 0, settling at 1), as in packages/core/src/visual/spring.ts.
+  function spring(t, preset) {
+    var p = params(preset);
+    if (!(t > 0)) return 0;
+    var w0 = Math.sqrt(p.k / p.m);
+    var zeta = p.c / (2 * Math.sqrt(p.k * p.m));
+    if (Math.abs(zeta - 1) < 1e-6) return 1 + (-1 + (p.v - w0) * t) * Math.exp(-w0 * t);
+    if (zeta < 1) {
+      var wd = w0 * Math.sqrt(1 - zeta * zeta);
+      var b = (p.v - zeta * w0) / wd;
+      return 1 + Math.exp(-zeta * w0 * t) * (-Math.cos(wd * t) + b * Math.sin(wd * t));
+    }
+    var root = w0 * Math.sqrt(zeta * zeta - 1);
+    var r1 = -zeta * w0 + root;
+    var r2 = -zeta * w0 - root;
+    var c2 = (p.v + r1) / (r2 - r1);
+    var c1 = -1 - c2;
+    return 1 + c1 * Math.exp(r1 * t) + c2 * Math.exp(r2 * t);
+  }
+  function sorted(keys) {
+    return (keys || []).slice().sort(function (a, b) {
+      return a.at - b.at;
+    });
+  }
+  // A value with many targets: the first key's value, plus one spring per change, each from its own key's time.
+  function springs(t, keys, preset, field) {
+    var ks = sorted(keys);
+    if (!ks.length) return 0;
+    var f = field || "to";
+    var v = ks[0][f];
+    for (var i = 1; i < ks.length; i++) {
+      var d = ks[i][f] - ks[i - 1][f];
+      if (d) v += d * spring(t - ks[i].at, ks[i].spring || preset);
+    }
+    return v;
+  }
+  // Two edges of one shape: on each change, the edge moving in the direction of travel leads (faster spring).
+  function edges(t, keys, o) {
+    var ks = sorted(keys);
+    var lead = (o && o.lead) || "spring.snap";
+    var trail = (o && o.trail) || { stiffness: 140, damping: 22 };
+    if (!ks.length) return { left: 0, right: 0 };
+    var left = ks[0].left;
+    var right = ks[0].right;
+    for (var i = 1; i < ks.length; i++) {
+      var dl = ks[i].left - ks[i - 1].left;
+      var dr = ks[i].right - ks[i - 1].right;
+      var forward = dl + dr >= 0;
+      left += dl * spring(t - ks[i].at, forward ? trail : lead);
+      right += dr * spring(t - ks[i].at, forward ? lead : trail);
+    }
+    return { left: left, right: right };
+  }
+  // Text rising out of a mask line: y is the offset inside an overflow: hidden box of `height`.
+  function rise(t, o) {
+    var h = o.height || 100;
+    var s = o.spring || "spring.snap";
+    var y = h * (1 - spring(t - o.at, s));
+    if (o.out !== undefined) y -= h * spring(t - o.out, o.outSpring || s);
+    return { y: y, visible: t >= o.at && (o.out === undefined || y > -h + 0.5) };
+  }
+  function cover(x, y, w, h) {
+    var dx = Math.max(x, w - x);
+    var dy = Math.max(y, h - y);
+    return Math.sqrt(dx * dx + dy * dy) * 1.06;
+  }
+  function easeInOut(p) {
+    p = p <= 0 ? 0 : p >= 1 ? 1 : p;
+    return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  }
+  function easeOut(p) {
+    p = p <= 0 ? 0 : p >= 1 ? 1 : p;
+    return 1 - Math.pow(1 - p, 3);
+  }
+  function easeIn(p) {
+    p = p <= 0 ? 0 : p >= 1 ? 1 : p;
+    return p * p * p;
+  }
+  // A flood: the shape grows past the corners in `dur` s (it never covers half the frame in one
+  // frame), stays full until `until`, then contracts into `to` over `dur`.
+  function flood(t, o) {
+    var dur = o.dur || 0.3;
+    var R = cover(o.x, o.y, o.width, o.height);
+    var p = easeInOut((t - o.at) / dur);
+    var x = o.x, y = o.y, r = o.r + (R - o.r) * p;
+    if (o.until !== undefined && o.to && t > o.until) {
+      var q = easeInOut((t - o.until) / dur);
+      var R2 = cover(o.to.x, o.to.y, o.width, o.height);
+      x = o.to.x;
+      y = o.to.y;
+      r = R2 + (o.to.r - R2) * q;
+    }
+    return { x: x, y: y, r: r, full: r >= cover(x, y, o.width, o.height) / 1.06 };
+  }
+  // Iris: `blades` blades around a regular polygon aperture. Each blade is its two aperture vertices,
+  // both edge extensions out to the circle, and the short arc between them.
+  function iris(open, o) {
+    var n = Math.max(3, Math.round(o.blades || 6));
+    var R = o.r;
+    var a = Math.max(0, Math.min(1, open)) * R * 1.0001;
+    var turn = (o.turn === undefined ? Math.PI / 3 : o.turn) * (1 - Math.max(0, Math.min(1, open)));
+    var V = [];
+    for (var i = 0; i < n; i++) {
+      var ang = (i / n) * Math.PI * 2 + turn;
+      V.push([o.x + Math.cos(ang) * a, o.y + Math.sin(ang) * a]);
+    }
+    // Where the ray from p along d leaves the circle.
+    function hit(p, d) {
+      var px = p[0] - o.x, py = p[1] - o.y;
+      var len = Math.hypot(d[0], d[1]) || 1;
+      var ux = d[0] / len, uy = d[1] / len;
+      var b = px * ux + py * uy;
+      var c = px * px + py * py - R * R;
+      var s = -b + Math.sqrt(Math.max(0, b * b - c));
+      return [p[0] + ux * s, p[1] + uy * s];
+    }
+    var blades = [];
+    for (var j = 0; j < n; j++) {
+      var A = V[j], B = V[(j + 1) % n], P = V[(j - 1 + n) % n];
+      // At open 0 every vertex is the centre: the edge direction comes from the angles.
+      var angA = (j / n) * Math.PI * 2 + turn, angB = ((j + 1) / n) * Math.PI * 2 + turn, angP = ((j - 1) / n) * Math.PI * 2 + turn;
+      var dAB = a > 1e-6 ? [B[0] - A[0], B[1] - A[1]] : [Math.cos(angB) - Math.cos(angA), Math.sin(angB) - Math.sin(angA)];
+      var dPA = a > 1e-6 ? [A[0] - P[0], A[1] - P[1]] : [Math.cos(angA) - Math.cos(angP), Math.sin(angA) - Math.sin(angP)];
+      var Q1 = hit(B, dAB);
+      var Q0 = hit(A, dPA);
+      var poly = [A, B, Q1];
+      // The short arc from Q1 back to Q0.
+      var a1 = Math.atan2(Q1[1] - o.y, Q1[0] - o.x);
+      var a0 = Math.atan2(Q0[1] - o.y, Q0[0] - o.x);
+      var da = a0 - a1;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      for (var k = 1; k < 8; k++) poly.push([o.x + Math.cos(a1 + (da * k) / 8) * R, o.y + Math.sin(a1 + (da * k) / 8) * R]);
+      poly.push(Q0);
+      blades.push(poly);
+    }
+    return blades;
+  }
+  // Wordmark squeeze into its own period: every letter moves toward the anchor by the same factor
+  // and its drawn width follows, so neighbours stay touching.
+  function squeeze(xs, widths, anchor, f) {
+    var out = [];
+    for (var i = 0; i < xs.length; i++) out.push({ x: anchor + (xs[i] - anchor) * f, scale: f, width: (widths[i] || 0) * f });
+    return out;
+  }
+  // A drawn cursor: x and y ride springs from waypoint to waypoint; a click dips the scale and comes back.
+  function cursor(t, path, o) {
+    var s = (o && o.spring) || { stiffness: 120, damping: 22 };
+    var ks = sorted(path);
+    var x = springs(t, ks, s, "x");
+    var y = springs(t, ks, s, "y");
+    var scale = 1;
+    var down = false;
+    for (var i = 0; i < ks.length; i++) {
+      if (!ks[i].click) continue;
+      var c = ks[i].click === true ? ks[i].at : ks[i].click;
+      var hold = ks[i].hold || 0.12;
+      if (t >= c && t < c + hold) down = true;
+      scale -= 0.12 * (spring(t - c, "spring.snap") - spring(t - c - hold, "spring.snap"));
+    }
+    return { x: x, y: y, scale: scale, down: down };
+  }
+  function camera(t, keys, preset) {
+    var ks = sorted(keys);
+    var s = preset || "spring.settle";
+    return { x: springs(t, ks, s, "x"), y: springs(t, ks, s, "y"), zoom: springs(t, ks, s, "zoom") };
+  }
+  function beat(n, o) {
+    var bpm = (o && o.bpm) || 120;
+    return ((o && o.offset) || 0) + (n * 60) / bpm;
+  }
+  function loop(t, d) {
+    return d > 0 ? ((t % d) + d) % d : t;
+  }
+  function mix(a, b, p) {
+    return a + (b - a) * p;
+  }
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+  function hex(c) {
+    var h = String(c).replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function mixColor(a, b, p) {
+    var A = hex(a), B = hex(b), q = clamp(p, 0, 1);
+    return "rgb(" + Math.round(mix(A[0], B[0], q)) + ", " + Math.round(mix(A[1], B[1], q)) + ", " + Math.round(mix(A[2], B[2], q)) + ")";
+  }
+  window.uncutMotion = {
+    spring: spring,
+    springs: springs,
+    edges: edges,
+    rise: rise,
+    flood: flood,
+    cover: cover,
+    iris: iris,
+    squeeze: squeeze,
+    cursor: cursor,
+    camera: camera,
+    beat: beat,
+    loop: loop,
+    ease: { inOut: easeInOut, out: easeOut, in: easeIn },
+    mix: mix,
+    clamp: clamp,
+    mixColor: mixColor,
+    presets: PRESETS,
+  };
+})();

@@ -37,7 +37,7 @@ after(() => {
 test("Uncut's own skills (the bundled uncut.skills plugin): names, a review checklist each, short bodies, no dots or stars between words", () => {
   const all = bundledSkills();
   assert.deepEqual(all.map((s) => s.name), Object.values(BUILTIN_IDS));
-  assert.equal(all.length, 10);
+  assert.equal(all.length, 11);
   for (const s of all) {
     assert.ok(/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name) && s.title && s.description && s.plugin === "uncut.skills", s.name);
     const list = skillChecklist(s.instructions);
@@ -86,7 +86,7 @@ test("the store (D232): a plugin's skills listed read-only, never saved, deleted
   writeFileSync(join(dataDir, "brand", "skills", "builtin-sound-design.json"), JSON.stringify({ id: "builtin-sound-design", name: "Hacked", description: "", body: "boom everywhere" }));
   await saveSkill(dirs, { id: "my-promo", name: "My promo", scope: "global", description: "", body: "Review checklist\n- Mine" });
   const state = await readBrand(dirs);
-  assert.equal(state.skills.filter((s) => s.plugin === "uncut.skills").length, 10);
+  assert.equal(state.skills.filter((s) => s.plugin === "uncut.skills").length, 11);
   const sound = state.skills.find((s) => s.id === BUILTIN_IDS.sound)!;
   assert.equal(sound.name, "Sound design");
   assert.equal(sound.builtin, true);

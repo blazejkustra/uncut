@@ -20,6 +20,8 @@ export const BUILTIN_IDS = {
   brand: "brand-application",
   /** D232: the skill "Make from reference" in the Brand tab calls. */
   brandKit: "make-brand-kit",
+  /** D292: a one-take, never-cut motion film on the beat (render(t) graphics, uncut:lib/motion.js). */
+  film: "motion-film",
 } as const;
 
 /** The bundled plugin that ships Uncut's own skills (D232). */
@@ -102,7 +104,8 @@ const BRAND_TYPES: ReadonlySet<string> = new Set(["launch-promo", "product-demo"
  * explainer over 45 s, titles, social when it has several aspect ratios or asks for cut-downs; a
  * brief with no type and nothing found: Launch promo); Motion craft only for videos with motion
  * graphics (a promo, an explainer, a social cut, a music video, titles), Sound design for a promo or
- * a product video, Brand application with a kit for a branded type. In the order they're listed in.
+ * a product video, Brand application with a kit for a branded type; Motion film (D292) after the kinds
+ * when the brief asks for one take, no cuts, a morph or a seamless loop. In the order they're listed in.
  */
 export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: { readonly hasKit?: boolean } = {}): Array<string> {
   const type = isVideoType(brief.type) ? brief.type : undefined;
@@ -114,6 +117,7 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   const demo = has(/\bdemo|walk ?-?through|tutorial|how to use|screen ?(record|cap)|recording|capture|\bui\b|app flow|onboarding|feature tour/i, ...words, brief.assets);
   const explainer = has(/explain|how it works|under the hood|architecture|concept|diagram|why it|deep dive/i, ...words);
   const titles = has(/title sequence|titles|kinetic|typograph|lyric|type-?only|text-?only|manifesto|opener|intro sequence/i, ...words);
+  const oneTake = has(/one[- ]take|never cut|no cuts|one continuous (shot|take)|motion film|motion study|one shape|morph(s|ing)?\b|keynote[- ]style|seamless loop/i, ...words);
   const launch = has(/launch|announc|release|teaser|promo|introduc|coming soon|is here|now available|\bship|\bv\d|version \d/i, ...words);
   const formats = (brief.formats ?? []).map(ratio).filter((x): x is number => x !== undefined);
   const kinds = new Set(formats.map((r) => (r < 0.7 ? "tall" : r < 0.9 ? "4:5" : r < 1.1 ? "square" : "wide")));
@@ -130,7 +134,7 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   const motion = type ? MOTION_TYPES.has(type) || kindsPicked.some((k) => k === BUILTIN_IDS.launch || k === BUILTIN_IDS.titles) : true;
   const sound = type ? SOUND_TYPES.has(type) || kindsPicked.includes(BUILTIN_IDS.launch) : true;
   const brand = !!o.hasKit && (!type || BRAND_TYPES.has(type));
-  const out = [...kindsPicked, ...(motion ? [BUILTIN_IDS.motion] : []), ...(sound ? [BUILTIN_IDS.sound] : []), ...(brand ? [BUILTIN_IDS.brand] : [])];
+  const out = [...kindsPicked, ...(oneTake ? [BUILTIN_IDS.film] : []), ...(motion ? [BUILTIN_IDS.motion] : []), ...(sound ? [BUILTIN_IDS.sound] : []), ...(brand ? [BUILTIN_IDS.brand] : [])];
   if (multi && !out.includes(BUILTIN_IDS.social)) out.splice(kindsPicked.length, 0, BUILTIN_IDS.social);
   return out;
 }
