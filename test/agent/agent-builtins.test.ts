@@ -250,6 +250,7 @@ test("D194 media_download: a picture from the web (redirect followed) lands in m
   const web: Server = createServer((req, res) => {
     if (req.url === "/go") return void res.writeHead(302, { location: "/files/logo.png" }).end();
     if (req.url === "/clip.mp4") return void res.writeHead(200, { "content-type": "video/mp4" }).end("#EXTM3U\nhttps://evil.example/a.ts\n");
+    if (req.url === "/fonts/geist.woff2") return void res.writeHead(200, { "content-type": "font/woff2" }).end(Buffer.from("wOF2 a font"));
     if (req.url === "/files/logo.png") return void res.writeHead(200, { "content-type": "image/png", "content-length": String(PNG.length) }).end(PNG);
     res.writeHead(200, { "content-type": "text/html" }).end("<html></html>");
   });
@@ -261,6 +262,7 @@ test("D194 media_download: a picture from the web (redirect followed) lands in m
       { tool: "media_download", args: { url: `http://127.0.0.1:${port}/go`, name: "Argent logo" } },
       { tool: "media_download", args: { url: `http://127.0.0.1:${port}/about` } },
       { tool: "media_download", args: { url: `http://127.0.0.1:${port}/clip.mp4` } },
+      { tool: "media_download", args: { url: `http://127.0.0.1:${port}/fonts/geist.woff2`, name: "Geist" } },
     ]);
     const t = await s.done(id);
     assert.equal(t.status, "done", t.error);
@@ -274,7 +276,10 @@ test("D194 media_download: a picture from the web (redirect followed) lands in m
     const file = join(s.dir, "media", "downloads", "Argent logo.png");
     assert.ok(existsSync(file), "saved under its name");
     assert.deepEqual(readFileSync(file), PNG);
-    assert.equal(t.edits.length, 1, "the import is an edit of the turn");
+    // A font file goes to the project's fonts folder (not Media), its family named after it.
+    assert.equal(steps[3].status, "done", steps[3].error);
+    assert.ok(existsSync(join(s.dir, "fonts", "Geist.woff2")), "the font in fonts/");
+    assert.equal(t.edits.length, 1, "the import is an edit of the turn (the font isn't media)");
     const project = JSON.parse(readFileSync(join(s.dir, "project.json"), "utf8"));
     assert.ok(project.media.some((m: any) => m.name === "Argent logo" && m.path.endsWith("Argent logo.png")), JSON.stringify(project.media));
     const look = await s.done(await s.start("again", [{ tool: "media_download", args: { url: `http://127.0.0.1:${port}/files/logo.png` } }], { access: "look" }));

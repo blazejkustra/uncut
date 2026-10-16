@@ -99,6 +99,21 @@ export function graphicFontFamilies(html: string): Array<string> {
   return [...seen.values()];
 }
 
+/**
+ * The families a graphic declares itself: an @font-face whose src is a data: URL (the only fonts
+ * its CSP loads). Those are drawn in that font, so they're never missing.
+ */
+export function graphicDeclaredFamilies(html: string): Array<string> {
+  const seen = new Map<string, string>();
+  for (const m of html.matchAll(/@font-face\s*\{([^}]*)\}/gi)) {
+    const body = m[1]!;
+    if (!/src\s*:[^;]*url\(\s*["']?data:/i.test(body)) continue;
+    const family = /font-family\s*:\s*(["']?)([^;"']+)\1/i.exec(body)?.[2]?.trim();
+    if (family && SAFE_FAMILY.test(family) && !seen.has(familyKey(family))) seen.set(familyKey(family), family);
+  }
+  return [...seen.values()];
+}
+
 /** The family each stack asks for first (what the author meant), generics left out, each once. */
 export function graphicAskedFamilies(html: string): Array<string> {
   const seen = new Map<string, string>();
@@ -200,7 +215,9 @@ export function fontRule(available: (family: string) => boolean, graphics: Reado
       for (const [src, items] of users) {
         const html = graphics.get(src);
         if (html === undefined) continue;
-        const missing = graphicAskedFamilies(html).filter((f) => !ok(f));
+        // A family the graphic declares itself (its own @font-face with a data: font) is there.
+        const own = new Set(graphicDeclaredFamilies(html).map(familyKey));
+        const missing = graphicAskedFamilies(html).filter((f) => !ok(f) && !own.has(familyKey(f)));
         if (!missing.length) continue;
         out.push({ key: `font-missing:${src}`, message: `The graphic ${src} asks for ${missing.map((f) => `"${f}"`).join(", ")}, which ${missing.length === 1 ? "isn't" : "aren't"} bundled, in the brand kit or installed on this Mac: its text falls back to another font.`, itemIds: items.map((i) => i.id), frame: Math.min(...items.map((i) => i.at)), hint: fix });
       }

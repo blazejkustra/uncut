@@ -70,6 +70,38 @@ export async function kitFontSources(kit: BrandKit | undefined, files: Readonly<
   return out;
 }
 
+/** A project's own fonts folder (media_download puts font files there): <project>/fonts. */
+export const projectFontsDir = (projectDir: string) => join(projectDir, "fonts");
+const WEIGHTS: ReadonlyArray<[RegExp, string]> = [[/thin|hairline/i, "100"], [/extra-?light|ultra-?light/i, "200"], [/light/i, "300"], [/medium/i, "500"], [/semi-?bold|demi-?bold/i, "600"], [/extra-?bold|ultra-?bold/i, "800"], [/black|heavy/i, "900"], [/bold/i, "700"], [/regular|normal|book/i, "400"]];
+
+/**
+ * The faces in a project's fonts folder: a TrueType or OpenType file by its own family name, any
+ * file (WOFF2 too) by its file name before the first dash ("Geist-Bold.woff2": Geist, weight 700;
+ * no weight word or "Variable": the whole range).
+ */
+export async function projectFontSources(projectDir: string | undefined): Promise<Array<FontSource>> {
+  if (!projectDir) return [];
+  const dir = projectFontsDir(projectDir);
+  const names = await readdir(dir).catch(() => [] as Array<string>);
+  const out: Array<FontSource> = [];
+  for (const name of names.sort()) {
+    const format = FONT_FORMATS[extname(name).toLowerCase()];
+    if (!format || name.startsWith(".")) continue;
+    const path = join(dir, name);
+    const url = await fileUrl(path, FONT_MIME[format], MAX_KIT_FONT_BYTES);
+    if (!url) continue;
+    const stem = name.slice(0, -extname(name).length);
+    const [head = stem, ...rest] = stem.split("-");
+    const own = format === "truetype" || format === "opentype" ? (await fontFileFamilies(path))[0] : undefined;
+    const family = (own ?? head.replace(/[_]+/g, " ")).trim();
+    if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(family)) continue;
+    const style = rest.join("-");
+    const weight = /variable/i.test(style) ? undefined : WEIGHTS.find(([re]) => re.test(style))?.[1];
+    out.push({ family, ...(weight ? { weight } : {}), ...(/italic/i.test(style) ? { style: "italic" as const } : {}), format, url });
+  }
+  return out;
+}
+
 const LOGO_MIME: Readonly<Record<string, string>> = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
 /** The kit's logos as data: URLs by slot (for uncut:brand/logo-… in graphics). */
 export async function kitLogoUrls(kit: BrandKit | undefined, files: Readonly<Record<string, string>>): Promise<Partial<Record<"light" | "dark" | "mark", string>>> {
@@ -195,7 +227,9 @@ export interface ProjectFonts {
  */
 export async function projectFonts(fontsDir: string, dirs: BrandDirs, installed = false): Promise<ProjectFonts> {
   const brand = await activeBrand(dirs).catch(() => ({ files: {} as Record<string, string> }) as { kit?: BrandKit; files: Record<string, string> });
-  const [base, kit, logos, system] = await Promise.all([bundledFontSources(fontsDir), kitFontSources(brand.kit, brand.files), kitLogoUrls(brand.kit, brand.files), installed ? installedFamilies() : Promise.resolve(new Set<string>())]);
+  const [base, kitFaces, own, logos, system] = await Promise.all([bundledFontSources(fontsDir), kitFontSources(brand.kit, brand.files), projectFontSources(dirs.projectDir), kitLogoUrls(brand.kit, brand.files), installed ? installedFamilies() : Promise.resolve(new Set<string>())]);
+  // The project's own fonts folder (media_download of a font file) counts like the kit's files.
+  const kit = [...kitFaces, ...own];
   const have = new Set([...base, ...kit].map((s) => familyKey(s.family)));
   const available = (family: string) => have.has(familyKey(family)) || system.has(familyKey(family));
   return { sources: [...base, ...kit], kitCss: fontFaceRules(kit), logos, available, kitMissing: (brand.kit?.fonts ?? []).map((f) => f.family).filter((f) => !available(f)) };

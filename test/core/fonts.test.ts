@@ -128,3 +128,35 @@ function font(w, s, fam) { ctx.font = \`\${w} \${s}px \${fam || SANS}\`; }
   assert.match(tight, /font-family:"DM Mono";font-style/);
   assert.match(tight, /the font Kit Sans left out/);
 });
+
+test("a family the graphic declares itself (@font-face with a data: URL) isn't missing; one with an outside URL still is", () => {
+  const project = { format: "uncut/0", name: "P", canvas: { width: 100, height: 100, fps: 30 }, media: [], tracks: [{ id: "v", kind: "video", items: [{ id: "g", type: "graphic", src: "graphics/g.html", start: 0, duration: 30 }, { id: "h", type: "graphic", src: "graphics/h.html", start: 0, duration: 30 }] }] } as unknown as Project;
+  const graphics = new Map([
+    ["graphics/g.html", `<style>@font-face{font-family:"Geist";font-weight:100 900;src:url(data:font/woff2;base64,AAAA) format("woff2")}</style><script>ctx.font = "600 40px 'Geist', sans-serif";</script>`],
+    ["graphics/h.html", `<style>@font-face { font-family: 'Archivo'; src: url("https://fonts.example/archivo.woff2") }</style><script>ctx.font = "40px Archivo";</script>`],
+  ]);
+  const found = projectChecks(project, { rules: [fontRule(() => false, graphics)] }).filter((c) => c.id === "font-missing");
+  assert.deepEqual(found.map((c) => c.key), ["font-missing:graphics/h.html"]);
+});
+
+test("a project's fonts folder: faces by the file's name before its first dash, with a weight word or the whole range", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { projectFontSources, projectFonts } = await import("../../apps/server/src/export/fonts.ts");
+  const dir = mkdtempSync(join(tmpdir(), "uncut-project-fonts-"));
+  try {
+    mkdirSync(join(dir, "fonts"));
+    writeFileSync(join(dir, "fonts", "Geist-Variable.woff2"), Buffer.from("wOF2fake"));
+    writeFileSync(join(dir, "fonts", "Archivo-Bold.woff2"), Buffer.from("wOF2fake"));
+    writeFileSync(join(dir, "fonts", "notes.txt"), "x");
+    const faces = await projectFontSources(dir);
+    assert.deepEqual(faces.map((f) => [f.family, f.weight]), [["Archivo", "700"], ["Geist", undefined]]);
+    const fonts = await projectFonts("assets/fonts", { dataDir: join(dir, "data"), projectDir: dir });
+    assert.ok(fonts.available("Geist") && fonts.available("archivo"));
+    assert.match(fonts.kitCss, /font-family:"Geist"/, "text items get them in the rasteriser's CSS too");
+    assert.match(resolveGraphicFonts(`<script>ctx.font = "40px Geist";</script>`, fonts.sources), /@font-face\{font-family:"Geist"/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
