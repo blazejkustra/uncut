@@ -15,9 +15,11 @@ import { Stage } from "../preview/Preview.tsx";
 import { actions, projectOf, useApp, type Project } from "../state/store.ts";
 import { Timeline } from "../timeline/Timeline.tsx";
 import { ErrorToast } from "../ui/Toast.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import { ContextMenuHost } from "../timeline/ContextMenu.tsx";
 import { LinkImportHost } from "../panels/library/ImportLinkDialog.tsx";
 import { useEditorKeys } from "./keys.ts";
+import { keysOf, type ShortcutId } from "./keymap.ts";
 import { AgentStage } from "./AgentStage.tsx";
 import { markDocked, stage, stageWanted, useStageDismissed, type StageDismissal } from "./agentStage.ts";
 import { layoutStyle, panels, panelShown, panelsStyle, rememberSideTab, useLayout, usePanels, type Hideable, type Panels } from "./layout.ts";
@@ -105,9 +107,11 @@ export function Editor({ snapshot }: { snapshot: ProjectSnapshot }) {
           <div className="banner warn" data-testid="history-note">
             <TriangleAlert />
             <span className="banner-text">{historyProblem}</span>
-            <button className="icon-btn" title="Dismiss" onClick={() => setDismissedProblem(`${snapshot.dir}\n${historyProblem}`)}>
-              <X />
-            </button>
+            <Tooltip label="Dismiss">
+              <button className="icon-btn" onClick={() => setDismissedProblem(`${snapshot.dir}\n${historyProblem}`)}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
         )}
         {notice && !changedOnDisk && (
@@ -188,35 +192,41 @@ function Bottom({ project }: { project: Project }) {
   return bottom === "mixer" ? <MixerPanel project={project} /> : <Timeline project={project} />;
 }
 
-const TOGGLES: ReadonlyArray<{ panel: Hideable; icon: typeof PanelLeft; label: string; keys: string }> = [
-  { panel: "lib", icon: PanelLeft, label: "left panel", keys: "⇧⌘L" },
-  { panel: "bottom", icon: PanelBottom, label: "timeline", keys: "⇧⌘T" },
-  { panel: "side", icon: PanelRight, label: "right panel", keys: "⇧⌘I" },
+const TOGGLES: ReadonlyArray<{ panel: Hideable; icon: typeof PanelLeft; label: string; shortcut: ShortcutId }> = [
+  { panel: "lib", icon: PanelLeft, label: "left panel", shortcut: "toggleLeft" },
+  { panel: "bottom", icon: PanelBottom, label: "timeline", shortcut: "toggleTimeline" },
+  { panel: "side", icon: PanelRight, label: "right panel", shortcut: "toggleRight" },
 ];
 
 /** #76 (D256): the top bar's way to hide and bring back each part, and focus mode: always visible. */
 function LayoutToggles({ shown }: { shown: Panels }) {
   if (shown.focus)
     return (
-      <button className="focus-exit" data-testid="focus-exit" title="Leave focus mode (⇧⌘F)" onClick={() => panels.focus(false)}>
-        <Minimize2 />
-        Leave focus
-        <kbd>⇧⌘F</kbd>
-      </button>
+      <Tooltip label="Leave focus mode" shortcut="focusMode">
+        <button className="focus-exit" data-testid="focus-exit" onClick={() => panels.focus(false)}>
+          <Minimize2 />
+          Leave focus
+          <kbd>{keysOf("focusMode")[0]}</kbd>
+        </button>
+      </Tooltip>
     );
   return (
     <div className="layout-toggles" role="group" aria-label="Panels">
-      {TOGGLES.map(({ panel, icon: Icon, label, keys }) => {
+      {TOGGLES.map(({ panel, icon: Icon, label, shortcut }) => {
         const on = panelShown(shown, panel);
         return (
-          <button key={panel} className="icon-btn" data-testid={`toggle-${panel}`} aria-pressed={on} title={`${on ? "Hide" : "Show"} the ${label} (${keys})`} onClick={() => panels.toggle(panel)}>
-            <Icon />
-          </button>
+          <Tooltip key={panel} label={`${on ? "Hide" : "Show"} the ${label}`} shortcut={shortcut}>
+            <button className="icon-btn" data-testid={`toggle-${panel}`} aria-pressed={on} onClick={() => panels.toggle(panel)}>
+              <Icon />
+            </button>
+          </Tooltip>
         );
       })}
-      <button className="icon-btn" data-testid="toggle-focus" aria-pressed={false} title="Focus mode: only the preview and the agent (⇧⌘F)" onClick={() => panels.focus(true)}>
-        <Focus />
-      </button>
+      <Tooltip label="Focus mode: only the preview and the agent" shortcut="focusMode">
+        <button className="icon-btn" data-testid="toggle-focus" aria-pressed={false} onClick={() => panels.focus(true)}>
+          <Focus />
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -241,22 +251,31 @@ function TopBar({ snapshot, project, online, unsaved, shown }: { snapshot: Proje
         {unsaved ? <TriangleAlert /> : online ? <Check /> : <RefreshCw />}
         {unsaved ? "Not saved" : online ? "Saved" : "Offline"}
       </div>
-      <button className="icon-btn" title={snapshot.canUndo || !snapshot.undoStop ? "Undo (⌘Z)" : snapshot.undoStop} data-testid="undo" disabled={!online || !snapshot.canUndo} onClick={() => void actions.undo()}>
-        <Undo2 />
-      </button>
-      <button className="icon-btn" title="Redo (⇧⌘Z)" data-testid="redo" disabled={!online || !snapshot.canRedo} onClick={() => void actions.redo()}>
-        <Redo2 />
-      </button>
+      {/* Nothing left to undo in this opening: the tip says why (the Tooltip shows on a disabled button too). */}
+      <Tooltip label={snapshot.canUndo || !snapshot.undoStop ? "Undo" : snapshot.undoStop} {...(snapshot.canUndo || !snapshot.undoStop ? { shortcut: "undo" as const } : {})}>
+        <button className="icon-btn" data-testid="undo" aria-label="Undo" disabled={!online || !snapshot.canUndo} onClick={() => void actions.undo()}>
+          <Undo2 />
+        </button>
+      </Tooltip>
+      <Tooltip label="Redo" shortcut="redo">
+        <button className="icon-btn" data-testid="redo" disabled={!online || !snapshot.canRedo} onClick={() => void actions.redo()}>
+          <Redo2 />
+        </button>
+      </Tooltip>
       <button className="btn export-btn" title="Export the video (⌘E)" data-testid="export-button" data-running={running} disabled={!online} onClick={actions.openExport}>
         <Share />
         {running && job ? (job.phase === "rendering" ? `Exporting ${Math.round(job.progress * 100)}%` : "Exporting…") : "Export"}
       </button>
-      <button className="icon-btn" title="Settings (⌘,)" data-testid="open-settings" onClick={() => actions.openSettings()}>
-        <SettingsIcon />
-      </button>
-      <button className="icon-btn" title="Close project (⌘W)" data-testid="close-project" disabled={!online} onClick={() => void actions.closeProject()}>
-        <X />
-      </button>
+      <Tooltip label="Settings" shortcut="settings">
+        <button className="icon-btn" data-testid="open-settings" onClick={() => actions.openSettings()}>
+          <SettingsIcon />
+        </button>
+      </Tooltip>
+      <Tooltip label="Close project" shortcut="close">
+        <button className="icon-btn" data-testid="close-project" disabled={!online} onClick={() => void actions.closeProject()}>
+          <X />
+        </button>
+      </Tooltip>
     </header>
   );
 }

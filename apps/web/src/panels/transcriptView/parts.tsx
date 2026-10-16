@@ -10,6 +10,7 @@ import type { ProjectModel } from "../../state/project.ts";
 import { useApp, activeAnalyses, actions } from "../../state/store.ts";
 import { wordKey } from "../transcript.ts";
 import { captionChoice, makeCaptions } from "./cuts.ts";
+import { Tooltip } from "../../ui/Tooltip.tsx";
 
 /**
  * The Captions row (#59): what's there and one button; the choices (how they show, the look) open in
@@ -87,9 +88,11 @@ export function Untranscribed({ mediaId, name, online, whisperReady, checking, m
       <div className="tx-state busy" data-testid="tx-progress" data-phase={job.phase}>
         <div className="tx-state-row">
           <span className="tx-state-text">{analysisText(job)}</span>
-          <button className="icon-btn" data-testid="tx-cancel" title="Stop transcribing" aria-label="Stop transcribing" disabled={!online} onClick={() => void actions.cancelAnalysis(job.id)}>
-            <X />
-          </button>
+          <Tooltip label="Stop transcribing">
+            <button className="icon-btn" data-testid="tx-cancel" aria-label="Stop transcribing" disabled={!online} onClick={() => void actions.cancelAnalysis(job.id)}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
         <div className="tx-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <span style={{ width: `${pct}%` }} />
