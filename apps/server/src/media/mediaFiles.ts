@@ -164,13 +164,11 @@ export const layer = Layer.unwrap(
           const url = authorised(request);
           if (!url) return unauthorized();
           const id = decode(url.pathname.slice(MEDIA_FILE_PATH.length + 1));
-          const open = yield* projects.current;
-          if (!open || !id || !MEDIA_ID.test(id)) return notFound();
-          // Only a file the open project references, found by its media id.
-          const media = (open.project as { media?: ReadonlyArray<{ id: string; path: string }> }).media ?? [];
-          const entry = media.find((m) => m.id === id);
-          if (!entry || typeof entry.path !== "string") return notFound();
-          return yield* serveFile(request, isAbsolute(entry.path) ? entry.path : resolve(open.dir, entry.path));
+          if (!id || !MEDIA_ID.test(id)) return notFound();
+          // Only a file the open project references (or did before an undo, #65), found by its media id.
+          const found = yield* projects.mediaEntry(id);
+          if (!found) return notFound();
+          return yield* serveFile(request, isAbsolute(found.entry.path) ? found.entry.path : resolve(found.dir, found.entry.path));
         }),
       ),
       // D212: the preview proxy of a media item of the open project, only once it is made from the file as it is.

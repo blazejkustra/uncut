@@ -42,7 +42,7 @@ const get = (path: string, { auth = token as string | null, range }: { auth?: st
 
 test("serves the project's media with ranges, and nothing else", T, async () => {
   assert.equal((await get("/media/file/m-clip-one")).status, 404, "nothing open yet");
-  await client!.ok("project.create", { parentDir: root, name: "Files" });
+  const created = (await client!.ok("project.create", { parentDir: root, name: "Files" })) as { dir: string };
   await client!.ok("project.edit", {
     ops: [{ op: "add_media", media: { id: "m-clip-one", kind: "video", name: "Clip One.MP4", path: clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } } }],
   });
@@ -104,10 +104,15 @@ test("serves the project's media with ranges, and nothing else", T, async () => 
   }
   await client!.ok("project.undo");
 
-  // Once the media is gone from the project (undo), its file is no longer served.
+  // #65 (D263): an undo takes the media out but its file stays (redo brings it back), so this
+  // opening of the project keeps serving it; the preview may still be loading it in that moment.
   await client!.ok("project.undo");
-  assert.equal((await get("/media/file/m-clip-one")).status, 404);
-  await client!.ok("project.redo");
+  assert.equal((await get("/media/file/m-clip-one")).status, 200, "served after the undo, same opening");
+  assert.equal((await get("/media/waveform/m-clip-one")).status, 404, "a removed clip without sound still has no waveform");
+  // Another opening of the project only serves what it lists.
+  await client!.ok("project.open", { dir: created.dir });
+  assert.equal((await get("/media/file/m-clip-one")).status, 404, "not listed by this opening");
+  await client!.ok("project.edit", { ops: [{ op: "add_media", media: { id: "m-clip-one", kind: "video", name: "Clip One.MP4", path: clip, probe: { frames: 60, fps: 30, width: 320, height: 240, hasAudio: false } } }] });
   // An empty file is served as empty (a range on it can't be satisfied).
   writeFileSync(clip, "");
   const empty = await get("/media/file/m-clip-one");

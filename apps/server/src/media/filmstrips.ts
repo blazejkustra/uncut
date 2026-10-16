@@ -307,10 +307,12 @@ export const layer = Layer.unwrap(
           return HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
         }
         const id = decode(url.value.pathname.slice(FILMSTRIP_PATH.length + 1));
-        const open = yield* projects.current;
-        if (!open || !id || !MEDIA_ID.test(id)) return notFound();
-        const media = ((open.project as { media?: ReadonlyArray<MediaEntry> }).media ?? []).find((m) => m.id === id);
-        if (!media || typeof media.path !== "string") return notFound();
+        if (!id || !MEDIA_ID.test(id)) return notFound();
+        // A media item of the open project, or one an undo just took out (#65: its file stays, redo brings it back).
+        const found = yield* projects.mediaEntry(id);
+        if (!found) return notFound();
+        const open = { dir: found.dir };
+        const media = found.entry as unknown as MediaEntry;
         // Stills keep their one poster.
         if (media.kind !== "video") return notFound("Not a video");
         const path = isAbsolute(media.path) ? media.path : resolve(open.dir, media.path);
