@@ -11,6 +11,7 @@ import { analysisText } from "../state/analysisText.ts";
 import { actions, activeAnalyses, useApp } from "../state/store.ts";
 import { dbLabel, planFade, planGain } from "../audio/sound.ts";
 import { showDraft, send, NumberField, Slider, Group } from "./fields.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 export function AudioEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
   const fps = project.canvas.fps;
@@ -89,9 +90,11 @@ function BeatsGroup({ project, item }: { project: ProjectModel; item: Item }) {
             <div className="bar">
               <span style={{ width: `${Math.round((job.phase === "running" ? job.progress : 0) * 100)}%` }} />
             </div>
-            <button className="icon-btn" data-testid="insp-beats-cancel" title="Stop finding the beats" disabled={!online} onClick={() => void actions.cancelAnalysis(job.id)}>
-              <X />
-            </button>
+            <Tooltip label="Stop finding the beats">
+              <button className="icon-btn" data-testid="insp-beats-cancel" disabled={!online} onClick={() => void actions.cancelAnalysis(job.id)}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
         ) : entry === null || entry === undefined || entry === "failed" ? (
           <button className="btn" data-testid="insp-find-beats" disabled={!online || entry === undefined} onClick={() => void actions.analyzeBeats(media.id)}>

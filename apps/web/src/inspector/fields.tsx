@@ -10,6 +10,7 @@ import { getPlayback, playback, type PreviewDraft } from "../preview/playback.ts
 import { type ProjectModel } from "../state/project.ts";
 import { actions, endPreview, getState, previewEdits } from "../state/store.ts";
 import { swatches } from "../preview/text.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 
 /** How long typing has to pause before it's saved (it's also saved on blur and ⌘Enter). */
@@ -213,20 +214,22 @@ export function ColorPicker({ project, value, onPick, testId, disabled }: { proj
   return (
     <div className="swatches">
       {swatches(project).map((s) => (
-        <button
-          key={s.value}
-          className={`swatch ${value === s.value ? "active" : ""}`}
-          data-testid={testId}
-          data-color={s.value}
-          title={s.label}
-          disabled={disabled}
-          style={{ background: s.css }}
-          onClick={() => onPick(s.value, true)}
-        />
+        <Tooltip key={s.value} label={s.label}>
+          <button
+            className={`swatch ${value === s.value ? "active" : ""}`}
+            data-testid={testId}
+            data-color={s.value}
+            disabled={disabled}
+            style={{ background: s.css }}
+            onClick={() => onPick(s.value, true)}
+          />
+        </Tooltip>
       ))}
-      <label className="swatch custom" title="Custom colour">
-        <input type="color" data-testid={`${testId}-custom`} value={hex} disabled={disabled} onChange={(e) => onPick(e.target.value.toUpperCase(), false)} />
-      </label>
+      <Tooltip label="Custom colour">
+        <label className="swatch custom">
+          <input type="color" data-testid={`${testId}-custom`} value={hex} disabled={disabled} onChange={(e) => onPick(e.target.value.toUpperCase(), false)} />
+        </label>
+      </Tooltip>
     </div>
   );
 }

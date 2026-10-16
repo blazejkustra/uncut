@@ -9,6 +9,7 @@ import { autoMaxChars, CAPTION_MODE_NAMES, CAPTION_MODES, captionCardAt, caption
 import { TextStyleTab } from "./text.tsx";
 import { CaptionStyleGallery } from "./captionStyles.tsx";
 import { send, NumberField, Tabs, Group } from "./fields.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 export function CaptionsEditor({ project, item, locked }: { project: ProjectModel; item: Item; locked: boolean }) {
   const [tab, setTab] = useState<"captions" | "style">("captions");
@@ -101,14 +102,18 @@ function CaptionsTab({ project, item, disabled }: { project: ProjectModel; item:
               return (
                 <span key={index} className="cap-word">
                   {i > 0 && shown && (
-                    <button className={`cap-break ${(item.breaks ?? []).includes(index) ? "on" : ""}`} data-testid="cap-break" data-index={index} disabled={disabled} title="Start a new card at this word" onClick={() => edit({ breaks: [{ index, on: true }] })}>
-                      ↵
-                    </button>
+                    <Tooltip label="Start a new card at this word">
+                      <button className={`cap-break ${(item.breaks ?? []).includes(index) ? "on" : ""}`} data-testid="cap-break" data-index={index} disabled={disabled} onClick={() => edit({ breaks: [{ index, on: true }] })}>
+                        ↵
+                      </button>
+                    </Tooltip>
                   )}
                   {i === 0 && (item.breaks ?? []).includes(index) && (
-                    <button className="cap-break on" data-testid="cap-join" data-index={index} disabled={disabled} title="Join this card to the one before" onClick={() => edit({ breaks: [{ index, on: false }] })}>
-                      ↵
-                    </button>
+                    <Tooltip label="Join this card to the one before">
+                      <button className="cap-break on" data-testid="cap-join" data-index={index} disabled={disabled} onClick={() => edit({ breaks: [{ index, on: false }] })}>
+                        ↵
+                      </button>
+                    </Tooltip>
                   )}
                   {shown ? (
                     <CaptionWord key={`${index}:${text}`} index={index} value={text} original={original} disabled={disabled} onCommit={(t) => edit({ words: [{ index, text: t }] })} />

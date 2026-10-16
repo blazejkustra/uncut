@@ -179,6 +179,26 @@ test("#75 #76: the agent centre stage on a new project, docking; hideable panels
   assert.ok(Math.abs(s.height - (stage0.height + bottom0.height)) < 3, `the preview takes the timeline's room (${stage0.height} → ${s.height})`);
   await shot(page, "panels-hidden");
 
+  // The top bar's toggles name their part and its fixed View key in the shared tooltip (#86, D256).
+  const tipOf = async (sel: string) => {
+    await page.mouse.move(5, 5);
+    await page.waitForFunction(() => !document.querySelector("[data-testid=tooltip]"), { timeout: 3000 });
+    await sleep(700);
+    assert.equal(await page.$eval(sel, (el) => el.getAttribute("title")), null, `${sel}: no native title`);
+    await page.hover(sel);
+    await waitFor(page, "[data-testid=tooltip]");
+    return page.$eval("[data-testid=tooltip]", (el) => ({ label: el.querySelector(".tooltip-label")?.textContent ?? "", keys: [...el.querySelectorAll("kbd")].map((k) => k.textContent ?? "") }));
+  };
+  assert.deepEqual(await tipOf("[data-testid=toggle-side]"), { label: "Show the right panel", keys: ["⇧⌘I"] });
+  assert.deepEqual(await tipOf("[data-testid=toggle-lib]"), { label: "Show the left panel", keys: ["⇧⌘L"] });
+  assert.deepEqual(await tipOf("[data-testid=toggle-bottom]"), { label: "Show the timeline", keys: ["⇧⌘T"] });
+  assert.deepEqual(await tipOf("[data-testid=toggle-focus]"), { label: "Focus mode: only the preview and the agent", keys: ["⇧⌘F"] });
+  await shot(page, "toggle-tooltip");
+  // A disabled control shows its tip too (Redo with nothing to redo).
+  assert.equal(await page.$eval("[data-testid=redo]", (el) => (el as HTMLButtonElement).disabled), true);
+  assert.deepEqual(await tipOf("[data-testid=redo]"), { label: "Redo", keys: ["⇧⌘Z"] });
+  await page.mouse.move(5, 5);
+
   // The top bar's buttons bring each one back.
   await page.click("[data-testid=toggle-side]");
   await sleep(450);

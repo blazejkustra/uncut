@@ -13,6 +13,7 @@ import { type ProjectModel } from "../state/project.ts";
 import { swatches } from "../preview/text.ts";
 import { useSettle } from "./fields.tsx";
 import { setSectionOpen, useSectionOpen } from "./sections.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 /**
  * A titled block of properties; the header can collapse it and hold an action (add, remove). With
@@ -45,9 +46,11 @@ export function Prop({ label, children, onReset, testId }: { label: string; chil
       <span className="prop-k">{label}</span>
       <div className="prop-v">{children}</div>
       {onReset ? (
-        <button className="prop-reset" title="Reset" aria-label={`Reset ${label}`} data-testid={testId ? `${testId}-reset` : undefined} onClick={onReset}>
-          <RotateCcw />
-        </button>
+        <Tooltip label={`Reset ${label}`}>
+          <button className="prop-reset" data-testid={testId ? `${testId}-reset` : undefined} onClick={onReset}>
+            <RotateCcw />
+          </button>
+        </Tooltip>
       ) : (
         <span className="prop-reset-gap" />
       )}
@@ -190,11 +193,20 @@ export function SliderNum({ value, min, max, step = 1, unit, testId, disabled, o
 export function Segmented<T extends string>({ options, value, onChange, testId, disabled, attr = "value" }: { options: ReadonlyArray<readonly [T, ReactNode, string?]>; value: T | undefined; onChange: (v: T) => void; testId: string; disabled?: boolean; attr?: string }) {
   return (
     <div className="pseg" role="group">
-      {options.map(([v, content, title]) => (
-        <button key={v} className={value === v ? "active" : ""} data-testid={testId} {...{ [`data-${attr}`]: v }} title={title} aria-label={title} aria-pressed={value === v} disabled={disabled} onClick={() => value !== v && onChange(v)}>
-          {content}
-        </button>
-      ))}
+      {options.map(([v, content, title]) => {
+        const button = (
+          <button key={v} className={value === v ? "active" : ""} data-testid={testId} {...{ [`data-${attr}`]: v }} aria-label={title} aria-pressed={value === v} disabled={disabled} onClick={() => value !== v && onChange(v)}>
+            {content}
+          </button>
+        );
+        return title ? (
+          <Tooltip key={v} label={title}>
+            {button}
+          </Tooltip>
+        ) : (
+          button
+        );
+      })}
     </div>
   );
 }
@@ -282,7 +294,9 @@ export function ColorField({ project, value, fallback = "#FFFFFF", onPick, testI
   };
   return (
     <div className="cfield">
-      <button ref={anchor} className="cfield-swatch" data-testid={`${testId}-swatch`} title={base} disabled={disabled} style={{ ["--c" as string]: css, ["--a" as string]: String(a) }} onClick={() => setOpen(!open)} />
+      <Tooltip label={base}>
+        <button ref={anchor} className="cfield-swatch" data-testid={`${testId}-swatch`} disabled={disabled} style={{ ["--c" as string]: css, ["--a" as string]: String(a) }} onClick={() => setOpen(!open)} />
+      </Tooltip>
       <input
         className="cfield-hex"
         data-testid={`${testId}-hex`}
@@ -320,11 +334,15 @@ export function ColorField({ project, value, fallback = "#FFFFFF", onPick, testI
         <Popover anchor={anchor.current} onClose={() => setOpen(false)} testId={`${testId}-popover`} width={224}>
           <div className="ppop-swatches">
             {swatches(project).map((s) => (
-              <button key={s.value} className={`swatch ${base === s.value ? "active" : ""}`} data-testid={testId} data-color={s.value} title={s.label} disabled={disabled} style={{ background: s.css }} onClick={() => pickBase(s.value, true)} />
+              <Tooltip key={s.value} label={s.label}>
+                <button className={`swatch ${base === s.value ? "active" : ""}`} data-testid={testId} data-color={s.value} disabled={disabled} style={{ background: s.css }} onClick={() => pickBase(s.value, true)} />
+              </Tooltip>
             ))}
-            <label className="swatch custom" title="Custom colour">
-              <input type="color" data-testid={`${testId}-custom`} value={hex} disabled={disabled} onChange={(e) => pickBase(e.target.value.toUpperCase(), false)} />
-            </label>
+            <Tooltip label="Custom colour">
+              <label className="swatch custom">
+                <input type="color" data-testid={`${testId}-custom`} value={hex} disabled={disabled} onChange={(e) => pickBase(e.target.value.toUpperCase(), false)} />
+              </label>
+            </Tooltip>
           </div>
         </Popover>
       )}

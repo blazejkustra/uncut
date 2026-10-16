@@ -13,6 +13,7 @@ import { ClaudeStatus, AgentEmpty, AgentTakeLine } from "./agent/status.tsx";
 import { TurnCard } from "./agent/TurnCard.tsx";
 import { projectEmpty, stage, useStageDismissed } from "../editor/agentStage.ts";
 import { panels } from "../editor/layout.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 export function AgentPanel({ project, online }: { project: Project; online: boolean }) {
   const { agent, setupChecks, setupChecking, agentError, snapshot } = useApp();
@@ -129,9 +130,11 @@ export function AgentPanel({ project, online }: { project: Project; online: bool
       {agentError && (
         <div className="agent-error inline-error small" data-testid="agent-error">
           <span>{agentError}</span>
-          <button className="icon-btn" title="Dismiss" onClick={actions.dismissAgentError}>
-            <X />
-          </button>
+          <Tooltip label="Dismiss">
+            <button className="icon-btn" onClick={actions.dismissAgentError}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
       )}
       <Composer project={project} online={online} blocked={blocked} turns={turns} running={running} provider={agent?.provider ?? "Claude Code"} />

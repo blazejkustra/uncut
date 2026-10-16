@@ -8,6 +8,7 @@ import { getPlayback, playback, usePlayback, type PreviewDraft } from "../previe
 import { clipState, EASE_NAMES, keyEase, keyFrames, keyState, nearbyKey, planClipBox, planHold, planKeyEase, planLoop, planResetBox, planToggleKey, PROP_NAMES, type BoxPatch } from "../timeline/clip.ts";
 import { type ProjectModel } from "../state/project.ts";
 import { showDraft, send, NumberField, Slider, Group } from "./fields.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 const FITS: ReadonlyArray<readonly [Fit, string, string]> = [
   ["contain", "Contain", "All of the picture inside the box"],
@@ -20,17 +21,18 @@ function KeyButton({ project, item, prop, local, inside, disabled }: { project: 
   const state = keyState(item, prop, local);
   const title = !inside ? "Move the playhead over the clip to add a key" : state === "on" ? `Remove the ${PROP_NAMES[prop]} key at the playhead` : `Add a ${PROP_NAMES[prop]} key at the playhead`;
   return (
-    <button
-      className={`icon-btn key-btn ${state}`}
-      data-testid="insp-key"
-      data-prop={prop}
-      data-state={state}
-      title={title}
-      disabled={disabled || !inside}
-      onClick={() => send((p) => planToggleKey(p, item.id, prop, getPlayback().frame))}
-    >
-      <Diamond />
-    </button>
+    <Tooltip label={title}>
+      <button
+        className={`icon-btn key-btn ${state}`}
+        data-testid="insp-key"
+        data-prop={prop}
+        data-state={state}
+        disabled={disabled || !inside}
+        onClick={() => send((p) => planToggleKey(p, item.id, prop, getPlayback().frame))}
+      >
+        <Diamond />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -164,13 +166,17 @@ function KeysGroup({ project, item, local, inside, locked }: { project: ProjectM
   return (
     <Group label={`Keys (${frames.length})`}>
       <div className="field-row key-nav" data-testid="insp-keys" data-count={frames.length}>
-        <button className="icon-btn" data-testid="insp-key-prev" title="Previous key ([)" disabled={!frames.some((f) => start + f < at)} onClick={() => go(-1)}>
-          <ChevronLeft />
-        </button>
+        <Tooltip label="Previous key" shortcut="prevKey">
+          <button className="icon-btn" data-testid="insp-key-prev" disabled={!frames.some((f) => start + f < at)} onClick={() => go(-1)}>
+            <ChevronLeft />
+          </button>
+        </Tooltip>
         <span className="mono small" data-testid="insp-key-at">{ease ? `Key at ${(local / project.canvas.fps).toFixed(2)} s` : "Between keys"}</span>
-        <button className="icon-btn" data-testid="insp-key-next" title="Next key (])" disabled={!frames.some((f) => start + f > at)} onClick={() => go(1)}>
-          <ChevronRight />
-        </button>
+        <Tooltip label="Next key" shortcut="nextKey">
+          <button className="icon-btn" data-testid="insp-key-next" disabled={!frames.some((f) => start + f > at)} onClick={() => go(1)}>
+            <ChevronRight />
+          </button>
+        </Tooltip>
       </div>
       {ease && (
         <div className="seg ease" role="group" aria-label="Ease to the next key" data-testid="insp-key-ease" data-ease={ease}>
