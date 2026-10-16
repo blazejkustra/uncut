@@ -4,41 +4,55 @@ An AI-first video editor for macOS: it runs your installed Claude Code, which ed
 
 ![Uncut editing a travel film from drone footage: the title "Day four" over a Croatian coast road at golden hour in the preview, the day's clips in the media panel, a timeline with text, graphics, six clips with transitions and music, and the agent's brief, approved storyboard and passed review](docs/hero.png)
 
+## Download
+
+**[Download Uncut for macOS](https://github.com/blazejkustra/uncut/releases/latest/download/Uncut-arm64.dmg)** (Apple silicon, macOS 13 or later). Signed and notarized, and it updates itself from [GitHub releases](https://github.com/blazejkustra/uncut/releases). Website: [uncut.video](https://uncut.video).
+
+On first launch Uncut checks what it needs and shows how to install anything missing:
+
+- **[Claude Code](https://claude.com/claude-code)**, installed and signed in. Uncut uses whatever sign-in Claude Code has: a Claude subscription, an API key, or Bedrock, Vertex AI or Foundry. Usage is billed the way your Claude Code usage normally is.
+- **ffmpeg**: `brew install ffmpeg`.
+- **whisper.cpp** (optional, for transcripts): `brew install whisper-cpp`.
+- **[Argent](https://www.npmjs.com/package/@swmansion/argent)** (optional, to record simulators, emulators and apps): `npx @swmansion/argent@latest init -y`.
+
 ## What it does
 
-- **An agent that plans before it cuts.** It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step.
-- **A real timeline.** Tracks, trims, splits, snapping, keyframes, a mixer with ducking, keyboard-first editing.
-- **Effects, looks and transitions.** Filters, colour looks, text animations and animated components like terminals, device frames and end cards.
-- **Captions and subtitles.** Local transcription with whisper.cpp, burned-in or word-by-word captions, SRT and WebVTT in and out.
-- **Capture.** Record iOS simulators, Android emulators, web and desktop apps through [Argent](https://www.npmjs.com/package/@swmansion/argent), or your screen, camera and mic.
-- **Plugins.** Looks, components, checks and agent tools in a folder, with a catalog in [`plugins/catalog`](plugins/catalog).
+- **An agent that plans before it cuts.** It writes a brief and a storyboard for you to approve, builds the edit, then an independent critic reviews it. Every turn is one undoable step, and a meter shows how full the agent's context is.
+- **A real timeline.** Tracks, trims, splits, snapping, keyframes, speed, and keyboard-first editing with Uncut, Premiere Pro, DaVinci Resolve or Final Cut Pro shortcuts.
+- **Transcript editing.** Local transcription with whisper.cpp; cut by the words, or remove fillers and long pauses in one go.
+- **Captions and subtitles.** Burned-in or word-by-word captions, SRT and WebVTT in and out.
+- **Text, graphics and elements.** Text looks and animations, animated components (terminals, device frames, end cards), elements like follow handles with platform marks, and brand kits with your logos, colours and fonts.
+- **Sound.** The Uncut sounds pack, your own sound folders, your Music library, and online search on Openverse or Freesound (with your own key). A mixer with ducking under speech and loudness targets for export.
+- **Effects, looks and transitions.** Filters, colour looks and GPU shader effects, with the preview drawn on the GPU by default.
+- **Capture.** Record your screen, camera and mic, or iOS simulators, Android emulators and apps through Argent, straight into the project.
+- **Generators with your own keys.** Images with GPT Image, video with Veo, sound effects with ElevenLabs, with a cost estimate before you send.
+- **Plugins and skills.** Looks, components, checks, shader effects, skills and agent tools in a folder, with a marketplace in Settings › Plugins (from [`plugins/catalog`](plugins/catalog)). Skills are recipes the agent loads; type `/` in the composer to use one.
+- **Export.** H.264 or HEVC at the quality you pick, a range or the whole edit, with optional subtitles.
+- **Labs.** Environments: pair a remote Uncut server and edit on another machine.
 
-Everything runs on your Mac. The agent runs your installed Claude Code with whatever sign-in it uses (a Claude account, an API key or a cloud provider), billed to you as Claude Code usage normally is. Uncut is not made by or affiliated with Anthropic.
+Coming soon: [issues labelled coming-soon](https://github.com/blazejkustra/uncut/issues?q=is%3Aissue+label%3Acoming-soon), including [Codex as a second agent](https://github.com/blazejkustra/uncut/issues/106) and generated [music](https://github.com/blazejkustra/uncut/issues/107) and [voiceover](https://github.com/blazejkustra/uncut/issues/108).
 
-## Install
+## Development
 
-No signed builds yet, so build from source. You need an Apple Silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg (`brew install ffmpeg`). For the agent, install and sign in to [Claude Code](https://claude.com/claude-code) (any sign-in it supports); for transcription, `brew install whisper-cpp`.
+You need an Apple silicon Mac, Node 24, pnpm (through corepack), Rust and ffmpeg.
 
 ```sh
 git clone https://github.com/blazejkustra/uncut
 cd uncut
 corepack enable
 pnpm install
+pnpm dev            # builds the media core, server and shell, opens the app
 ```
-
-## Run
 
 ```sh
-pnpm dev     # builds the media core, server and shell, opens the app
-pnpm dist    # an ad-hoc signed .app and dmg in dist/
+pnpm test:fast      # typecheck and every test outside test/app
+pnpm test           # everything, including the packaged-app tests (run pnpm dist first)
+pnpm dist           # an ad-hoc signed .app and dmg in dist/
+pnpm dist:signed    # a Developer ID signed, notarized dmg in release/
+pnpm site:build     # the website's script, site/assets/hero.js
 ```
 
-## Tests
-
-```sh
-pnpm test:fast   # typecheck and everything but the packaged-app tests
-pnpm test:app    # the packaged-app tests (run pnpm dist first)
-```
+**Releases.** Bump the version in `apps/desktop/package.json`, then push a signed tag that matches it (`git tag -s v0.0.2 && git push origin v0.0.2`). CI builds, signs and notarizes the dmg with the auto-update feed and drafts a GitHub release. Publish the draft and installed apps pick up the update.
 
 ## Privacy
 
@@ -57,10 +71,12 @@ Never your footage, frames, transcripts, prompts, file names, paths or error mes
 
 What else leaves your Mac, and only when you use it:
 
-- **The agent.** Uncut runs your own Claude Code, which sends Anthropic what the agent works with: your prompts, frames from your video, transcripts, file and project names, under your Claude Code account and Anthropic's terms.
-- **Generators.** Image, video and voice generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
+- **The agent.** Uncut runs your own Claude Code, which sends Anthropic (or the cloud provider you use with it) what the agent works with: your prompts, frames from your video, transcripts, file and project names, under your Claude Code account and its terms.
+- **Generators.** Image, video and sound effect generators send your prompts (and any image you give them) to OpenAI, Google or ElevenLabs with your own API keys, under their terms.
 - **Sound search.** Searching for sounds online sends the search words to Openverse, or to Freesound with your key.
 - **Downloads.** The speech model comes from Hugging Face; updates are checked for and downloaded from GitHub, which sees your IP address and the app version.
+
+**The website.** [uncut.video](https://uncut.video) uses Google Analytics 4. Visitors from the EEA, the UK and Switzerland see a cookie banner, and Google Analytics loads only if they accept. Details are in the [website's privacy notice](https://uncut.video/privacy/).
 
 ## Contributing
 
@@ -68,4 +84,4 @@ Bug reports, fixes and plugins are welcome. See [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
+MIT, see [LICENSE](LICENSE). Bundled fonts, sound effects, icons and packages, with their licences, are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Not affiliated with Anthropic or OpenAI.
