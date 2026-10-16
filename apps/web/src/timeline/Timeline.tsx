@@ -47,6 +47,8 @@ import { makeScrubMarquee } from "./gestures/scrubMarquee.ts";
 import { makeLaneDrop } from "./gestures/laneDrop.ts";
 import { type BladeHover, makeToolPress } from "./gestures/toolPress.ts";
 import { setTool, TOOLS, useTool, type Tool } from "./tools.ts";
+import { shortcutKeys } from "../editor/keys.ts";
+import { Tooltip } from "../ui/Tooltip.tsx";
 
 const TOOL_ICONS: Readonly<Record<Tool, React.ComponentType>> = { select: MousePointer2, blade: Slice, hand: Hand };
 
@@ -211,53 +213,57 @@ export function Timeline({ project }: { project: ProjectModel }) {
           {TOOLS.map((t) => {
             const Icon = TOOL_ICONS[t.id];
             return (
-              <button key={t.id} className={`icon-btn ${tool === t.id ? "on" : ""}`} role="radio" aria-checked={tool === t.id} aria-pressed={tool === t.id} data-testid={`tool-${t.id}`} title={t.label} onClick={() => setTool(t.id)}>
-                <Icon />
-              </button>
+              <Tooltip key={t.id} label={t.label} keys={[t.key.toUpperCase()]}>
+                <button className={`icon-btn ${tool === t.id ? "on" : ""}`} role="radio" aria-checked={tool === t.id} aria-pressed={tool === t.id} data-testid={`tool-${t.id}`} onClick={() => setTool(t.id)}>
+                  <Icon />
+                </button>
+              </Tooltip>
             );
           })}
         </div>
         <div className="toolbar-sep" />
-        <button className="icon-btn" data-testid="split" title="Split at the playhead (S)" disabled={!online || empty} onClick={() => void actions.split()}>
-          <Scissors />
-        </button>
-        <button
-          className="icon-btn"
-          data-testid="delete-item"
-          title={selectedCut ? "Remove the selected transition (⌫)" : "Delete the selected item (⌫)"}
-          disabled={!online || !(selected || (selectedCut && findItem(project, selectedCut)?.item.transitionIn))}
-          onClick={() => void actions.deleteSelected()}
-        >
-          <Trash2 />
-        </button>
-        <button
-          className={`icon-btn ${snapping ? "on" : ""}`}
-          data-testid="snap-toggle"
-          aria-pressed={snapping}
-          title={snapping ? "Snapping on (hold ⌘ while dragging to skip)" : "Snapping off"}
-          onClick={playback.toggleSnapping}
-        >
-          <Magnet />
-        </button>
-        <button
-          className={`icon-btn ${linkOverlays ? "on" : ""}`}
-          data-testid="link-overlays"
-          aria-pressed={linkOverlays}
-          title={linkOverlays ? "Overlays follow the footage under them when a main clip's speed or length changes" : "Overlays stay put when main clips change"}
-          onClick={playback.toggleLinkOverlays}
-        >
-          <Link2 />
-        </button>
+        {/* #86 (D239): each icon's tooltip names it and shows its key, read from the keymap. */}
+        <Tooltip label="Split at the playhead" keys={shortcutKeys("split")}>
+          <button className="icon-btn" data-testid="split" disabled={!online || empty} onClick={() => void actions.split()}>
+            <Scissors />
+          </button>
+        </Tooltip>
+        <Tooltip label={selectedCut ? "Remove the selected transition" : "Delete the selected item"} keys={shortcutKeys("delete", 0)}>
+          <button
+            className="icon-btn"
+            data-testid="delete-item"
+            disabled={!online || !(selected || (selectedCut && findItem(project, selectedCut)?.item.transitionIn))}
+            onClick={() => void actions.deleteSelected()}
+          >
+            <Trash2 />
+          </button>
+        </Tooltip>
+        <Tooltip label={snapping ? "Snapping on (hold ⌘ while dragging to skip)" : "Snapping off"}>
+          <button className={`icon-btn ${snapping ? "on" : ""}`} data-testid="snap-toggle" aria-pressed={snapping} onClick={playback.toggleSnapping}>
+            <Magnet />
+          </button>
+        </Tooltip>
+        <Tooltip label={linkOverlays ? "Linked: overlays follow the footage under them when a main clip's speed or length changes" : "Unlinked: overlays stay put when main clips change"}>
+          <button className={`icon-btn ${linkOverlays ? "on" : ""}`} data-testid="link-overlays" aria-pressed={linkOverlays} onClick={playback.toggleLinkOverlays}>
+            <Link2 />
+          </button>
+        </Tooltip>
         <div className="toolbar-sep" />
-        <button className="icon-btn" data-testid="zoom-out" title="Zoom out (⌘−)" onClick={playback.zoomOut}>
-          <ZoomOut />
-        </button>
-        <button className="icon-btn" data-testid="zoom-in" title="Zoom in (⌘+)" onClick={playback.zoomIn}>
-          <ZoomIn />
-        </button>
-        <button className="icon-btn" data-testid="zoom-fit" title="Fit the project (⌘0)" onClick={playback.zoomFit}>
-          <ChevronsLeftRight />
-        </button>
+        <Tooltip label="Zoom out" keys={shortcutKeys("zoom", 1)}>
+          <button className="icon-btn" data-testid="zoom-out" onClick={playback.zoomOut}>
+            <ZoomOut />
+          </button>
+        </Tooltip>
+        <Tooltip label="Zoom in" keys={shortcutKeys("zoom", 0)}>
+          <button className="icon-btn" data-testid="zoom-in" onClick={playback.zoomIn}>
+            <ZoomIn />
+          </button>
+        </Tooltip>
+        <Tooltip label="Fit the project" keys={shortcutKeys("fit")}>
+          <button className="icon-btn" data-testid="zoom-fit" onClick={playback.zoomFit}>
+            <ChevronsLeftRight />
+          </button>
+        </Tooltip>
       </div>
       <div className="bottom-body" ref={bodyRef}>
         <div className="tl" data-testid="timeline" data-ppf={ppf} data-zoom={zoom} style={{ ["--tl-view-h" as string]: `${viewHeight}px` }}>
