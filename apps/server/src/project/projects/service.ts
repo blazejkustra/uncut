@@ -29,6 +29,15 @@ export interface OpenProject {
   pushedForTurn: string | undefined;
 }
 
+/** A media entry as the media routes read it (the project's own fields, loosely typed). */
+export interface MediaRecord {
+  readonly id: string;
+  readonly path: string;
+  readonly kind?: string;
+  readonly probe?: { readonly frames?: number; readonly fps?: number; readonly hasAudio?: boolean };
+  readonly [key: string]: unknown;
+}
+
 export interface UnloggedChange {
   readonly revision: number;
   readonly what: string;
@@ -85,6 +94,11 @@ export interface ProjectsShape {
     plan: (project: unknown, dir: string) => Effect.Effect<{ ops: ReadonlyArray<unknown>; summary: string } | undefined, E>,
     agent?: { readonly turnId: string },
   ) => Effect.Effect<ProjectSnapshot | undefined, ProjectError | EditRefused | E>;
+  /**
+   * #65 (D263): a media item of the open project by id, for the media routes: one it lists, or one
+   * this opening listed before an undo (or another edit) took it out; its file stays on disk.
+   */
+  readonly mediaEntry: (id: string) => Effect.Effect<{ readonly dir: string; readonly entry: MediaRecord; readonly removed: boolean } | undefined>;
   /** The current snapshot (null: nothing open), then every change. */
   readonly changes: Stream.Stream<ProjectSnapshot | null>;
   readonly edit: (input: {

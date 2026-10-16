@@ -23,11 +23,11 @@ import { ProjectFormat } from "./format.ts";
 import { HistoryDb, type NewRow, type Row } from "./history.ts";
 import { sameJson } from "./jsonPatch.ts";
 import { Recents } from "./recents.ts";
-import { Projects, type OpenProject, type UnloggedChange, emptyProject, MATCH_FIRST_CLIP } from "./projects/service.ts";
+import { Projects, type MediaRecord, type OpenProject, type UnloggedChange, emptyProject, MATCH_FIRST_CLIP } from "./projects/service.ts";
 import { makeEditUnlocked } from "./projects/edit.ts";
 import { EXTERNAL_STOP, COMPACTED_STOP, HISTORY_LISTED, projectError, serialize, ioError, externalLines, EXTERNAL_LABEL, refused, validName, GITIGNORE } from "./projects/helpers.ts";
 export { MATCH_FIRST_CLIP, Projects, DEFAULT_CANVAS, emptyProject } from "./projects/service.ts";
-export type { UnloggedChange, ProjectView, AgentEditInput, Canvas, ProjectsShape } from "./projects/service.ts";
+export type { MediaRecord, UnloggedChange, ProjectView, AgentEditInput, Canvas, ProjectsShape } from "./projects/service.ts";
 export { HISTORY_LISTED, externalLines, MAX_NAME_LENGTH, GITIGNORE } from "./projects/helpers.ts";
 
 export const layer = Layer.effect(
@@ -46,9 +46,19 @@ export const layer = Layer.effect(
     const updates = yield* SubscriptionRef.make<ProjectSnapshot | null>(null);
     const historyUpdates = yield* SubscriptionRef.make<HistoryState | null>(null);
     // Tell subscribers what is open now. Called after every change, inside the same lock.
-    const publish = Effect.suspend(() =>
-      Effect.andThen(SubscriptionRef.set(updates, current ? snapshot(current) : null), SubscriptionRef.set(historyUpdates, current ? historyOf(current) : null)),
-    );
+    // #65 (D263): every media entry this opening of the project has listed. Undo takes media out
+    // of the project but never deletes its file (redo brings it back), and the preview may still
+    // be fetching it in that moment: the media routes keep serving such a file instead of a 404.
+    let seenMedia: { openId: number; byId: Map<string, MediaRecord> } = { openId: -1, byId: new Map() };
+    const noteMedia = () => {
+      if (!current) return;
+      if (seenMedia.openId !== current.openId) seenMedia = { openId: current.openId, byId: new Map() };
+      for (const m of (current.session.project as unknown as { media?: ReadonlyArray<MediaRecord> }).media ?? []) if (typeof m?.id === "string" && typeof m.path === "string") seenMedia.byId.set(m.id, m);
+    };
+    const publish = Effect.suspend(() => {
+      noteMedia();
+      return Effect.andThen(SubscriptionRef.set(updates, current ? snapshot(current) : null), SubscriptionRef.set(historyUpdates, current ? historyOf(current) : null));
+    });
 
     // Why ⌘Z can't go further, when the reason is worth saying (not just "nothing done yet").
     const undoStop = (p: OpenProject): string | undefined => {
@@ -342,6 +352,13 @@ export const layer = Layer.effect(
 
       currentDir: Effect.sync(() => current?.dir),
       current: Effect.sync(() => (current ? { dir: current.dir, openId: current.openId, project: current.session.project } : undefined)),
+      mediaEntry: (id: string) =>
+        Effect.sync(() => {
+          if (!current) return undefined;
+          const now = ((current.session.project as unknown as { media?: ReadonlyArray<MediaRecord> }).media ?? []).find((m) => m.id === id);
+          const entry = now ?? (seenMedia.openId === current.openId ? seenMedia.byId.get(id) : undefined);
+          return entry && typeof entry.path === "string" ? { dir: current.dir, entry, removed: !now } : undefined;
+        }),
 
       reload: lock.withPermits(1)(
         Effect.gen(function* () {

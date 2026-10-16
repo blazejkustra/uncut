@@ -217,10 +217,12 @@ export const layer = Layer.unwrap(
           return HttpServerResponse.text("Unauthorized", { status: 401, headers: CORS });
         }
         const id = decode(url.value.pathname.slice(WAVEFORM_PATH.length + 1));
-        const open = yield* projects.current;
-        if (!open || !id || !MEDIA_ID.test(id)) return notFound();
-        const media = ((open.project as { media?: ReadonlyArray<{ id: string; kind?: string; path: string; probe?: { hasAudio?: boolean } }> }).media ?? []).find((m) => m.id === id);
-        if (!media || typeof media.path !== "string") return notFound();
+        if (!id || !MEDIA_ID.test(id)) return notFound();
+        // A media item of the open project, or one an undo just took out (#65: its file stays, redo brings it back).
+        const found = yield* projects.mediaEntry(id);
+        if (!found) return notFound();
+        const open = { dir: found.dir };
+        const media = found.entry;
         if (media.kind === "image" || (media.kind === "video" && media.probe?.hasAudio === false)) return notFound("No sound");
         const path = isAbsolute(media.path) ? media.path : resolve(open.dir, media.path);
         const dir = open.dir;
