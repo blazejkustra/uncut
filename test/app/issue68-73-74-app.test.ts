@@ -109,8 +109,11 @@ test("issues #68, #73, #74: transitions preview on hover only, no filters or len
     await page.hover(`${talk} .thumb`);
     const analyze = await page.$eval(`${talk} [data-testid=analyze]`, (el) => ({ title: (el as HTMLElement).title, label: el.getAttribute("aria-label"), icon: el.querySelector("svg")!.getAttribute("class") }));
     assert.match(analyze.icon ?? "", /lucide-audio-waveform/);
-    assert.match(analyze.title, /^Analyse the sound: find its silences and loudness/);
+    assert.equal(analyze.title, "", "the shared Tooltip, not a native title (#86)");
     assert.equal(analyze.label, "Analyse the sound");
+    await page.hover(`${talk} [data-testid=analyze]`);
+    await page.waitForSelector("[data-testid=tooltip]", { timeout: 3000 });
+    assert.match(await page.$eval("[data-testid=tooltip] .tooltip-label", (el) => el.textContent ?? ""), /^Analyse the sound: find its silences and loudness/);
     assert.equal(await page.$("[data-testid=media-tile][data-id=m-red] [data-testid=analyze]"), null, "no Analyze on a clip without sound");
     assert.equal(await page.$("[data-testid=library] .lucide-gauge"), null, "no speedometer icon in Media");
 

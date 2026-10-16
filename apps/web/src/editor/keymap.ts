@@ -6,11 +6,11 @@
 // A key is written the way the app shows it: modifiers in macOS order (⌃⌥⇧⌘) then the key ("⇧⌘Z",
 // "S", "Space", "←", "⌫"). For a printed character that ⇧ already changes ("?", "+") the ⇧ is
 // part of the character. With ⌥ the key is read from the physical key (⌥; not "…").
-// Menu keys (⌘Z, ⌘N, ⌘O, ⌘E, ⌘W, ⌘,, and ⌘A/⌘C/⌘X/⌘V which text fields share) stay fixed: the
-// macOS menu shows them from main (menu.ts), which has no keymap.
+// Menu keys (⌘Z, ⌘N, ⌘O, ⌘E, ⌘W, ⌘,, ⌘A/⌘C/⌘X/⌘V which text fields share, and the View menu's
+// ⇧⌘L/⇧⌘I/⇧⌘T/⇧⌘F) stay fixed: the macOS menu shows them from main (menu.ts), which has no keymap.
 import { useSyncExternalStore } from "react";
 
-export type ShortcutGroup = "Playback" | "Edit" | "Timeline" | "App";
+export type ShortcutGroup = "Playback" | "Edit" | "Timeline" | "View" | "App";
 
 /** The actions a user can rebind. */
 export const ACTION_IDS = [
@@ -47,7 +47,24 @@ export const ACTION_IDS = [
 export type ActionId = (typeof ACTION_IDS)[number];
 
 /** Rows shown but not rebindable: menu keys (fixed) and pointer gestures (not keys). */
-export type FixedId = "selectAll" | "copy" | "cut" | "paste" | "undo" | "redo" | "export" | "settings" | "close" | "exitFull" | "zoomPointer" | "scrollSideways" | "clickSelect";
+export type FixedId =
+  | "selectAll"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "undo"
+  | "redo"
+  | "toggleLeft"
+  | "toggleRight"
+  | "toggleTimeline"
+  | "focusMode"
+  | "export"
+  | "settings"
+  | "close"
+  | "exitFull"
+  | "zoomPointer"
+  | "scrollSideways"
+  | "clickSelect";
 export type ShortcutId = ActionId | FixedId;
 
 export interface ActionDef {
@@ -99,6 +116,11 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   { id: "zoomPointer", group: "Timeline", keys: ["⌘ scroll", "Pinch"], does: "Zoom the timeline around the pointer", fixed: "pointer" },
   { id: "scrollSideways", group: "Timeline", keys: ["⇧ scroll"], does: "Scroll the timeline sideways", fixed: "pointer" },
   { id: "clickSelect", group: "Timeline", keys: ["⇧ click", "⌘ click"], does: "Select a range, add or remove one item", fixed: "pointer" },
+  // D256 (#76): the View menu's layout keys, handled with the menu's others (store/keys.ts).
+  { id: "toggleLeft", group: "View", keys: ["⇧⌘L"], does: "Hide or show the left panel", fixed: "menu" },
+  { id: "toggleRight", group: "View", keys: ["⇧⌘I"], does: "Hide or show the right panel", fixed: "menu" },
+  { id: "toggleTimeline", group: "View", keys: ["⇧⌘T"], does: "Hide or show the timeline", fixed: "menu" },
+  { id: "focusMode", group: "View", keys: ["⇧⌘F"], does: "Focus mode: only the preview and the agent", fixed: "menu" },
   { id: "export", group: "App", keys: ["⌘E"], does: "Export", fixed: "menu" },
   { id: "settings", group: "App", keys: ["⌘,"], does: "Settings", fixed: "menu" },
   // D264 (#77): the selection (timeline items, or words in the Transcript) as chips in the composer.

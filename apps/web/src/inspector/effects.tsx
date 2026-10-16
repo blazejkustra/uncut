@@ -69,9 +69,11 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
           action={
             <>
             <Power item={item} module={LOOK} off={look.bypass === true} name="the filter" testId="insp-filter-power" disabled={locked} />
-            <button className="icon-btn" title="Remove the filter" data-testid="insp-filter-remove" disabled={locked} onClick={() => send((p) => planSetLook(p, item.id, undefined))}>
-              <X />
-            </button>
+            <Tooltip label="Remove the filter">
+              <button className="icon-btn" data-testid="insp-filter-remove" disabled={locked} onClick={() => send((p) => planSetLook(p, item.id, undefined))}>
+                <X />
+              </button>
+            </Tooltip>
             </>
           }
         >
@@ -89,9 +91,11 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
             <>
               <Power item={item} module={ADJUST} off={adjustEntry.bypass === true} name="the adjustments" testId="insp-adjust-power" disabled={locked} />
               {adjusted && (
-                <button className="icon-btn" title="Reset all" data-testid="insp-adjust-reset" disabled={locked} onClick={() => send((p) => planAdjust(p, item.id, "reset"))}>
-                  <RotateCcw />
-                </button>
+                <Tooltip label="Reset all">
+                  <button className="icon-btn" data-testid="insp-adjust-reset" disabled={locked} onClick={() => send((p) => planAdjust(p, item.id, "reset"))}>
+                    <RotateCcw />
+                  </button>
+                </Tooltip>
               )}
             </>
           ) : undefined
@@ -124,9 +128,11 @@ export function EffectsEditor({ project, item, locked }: { project: ProjectModel
                     </button>
                   </Tooltip>
                   <Power item={item} module={e.module} off={e.bypass === true} name={info.name.toLowerCase()} testId="insp-effect-power" disabled={locked} />
-                  <button className="icon-btn" title={`Remove ${info.name.toLowerCase()}`} data-testid="insp-effect-remove" disabled={locked} onClick={() => send((p) => planRemoveEffect(p, item.id, e.module))}>
-                    <X />
-                  </button>
+                  <Tooltip label={`Remove ${info.name.toLowerCase()}`}>
+                    <button className="icon-btn" data-testid="insp-effect-remove" disabled={locked} onClick={() => send((p) => planRemoveEffect(p, item.id, e.module))}>
+                      <X />
+                    </button>
+                  </Tooltip>
                 </div>
                 {info.params.map((d) => (
                   <Prop key={d.key} label={d.name} testId={`insp-effect-${d.key}`} onReset={params[d.key] !== d.default && !locked ? () => send((p) => planEffect(p, item.id, e.module, { [d.key]: d.default })) : undefined}>
@@ -156,9 +162,11 @@ function ShaderEditor({ project, item, locked }: { project: ProjectModel; item: 
       action={
         <>
           <Power item={item} module={SHADER} off={entry.bypass === true} name="the shader effect" testId="insp-shader-power" disabled={locked} />
-          <button className="icon-btn" title={`Remove ${def.name}`} data-testid="insp-shader-remove" disabled={locked} onClick={() => send((p) => planShader(p, item.id, undefined))}>
-            <X />
-          </button>
+          <Tooltip label={`Remove ${def.name}`}>
+            <button className="icon-btn" data-testid="insp-shader-remove" disabled={locked} onClick={() => send((p) => planShader(p, item.id, undefined))}>
+              <X />
+            </button>
+          </Tooltip>
         </>
       }
     >

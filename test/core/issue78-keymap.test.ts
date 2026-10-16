@@ -81,6 +81,11 @@ test("rebinding: free key, taken key (replace or swap), menu key refused, clear,
   assert.deepEqual(checkKey(bindingsOf(s), "split", "⌘Z"), { kind: "reserved", by: "Undo" });
   assert.equal(checkKey(bindingsOf(s), "split", "⌘Q").kind, "reserved");
   assert.equal(assignKey(s, "split", "⌘Z", 0), s);
+  // D256: the View menu's layout keys are menu keys too.
+  for (const [k, by] of [["⇧⌘L", "Hide or show the left panel"], ["⇧⌘I", "Hide or show the right panel"], ["⇧⌘T", "Hide or show the timeline"], ["⇧⌘F", "Focus mode: only the preview and the agent"]] as const) {
+    assert.deepEqual(checkKey(bindingsOf(s), "split", k), { kind: "reserved", by });
+    assert.equal(assignKey(s, "split", k, 0), s);
+  }
   // Clear, remove one, reset.
   assert.deepEqual(bindingsOf(clearAction(s, "split")).split, []);
   assert.deepEqual(bindingsOf(removeKey(s, "split", 1)).split, ["X"]);

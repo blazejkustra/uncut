@@ -314,9 +314,11 @@ export function TranscriptPanel({ project, dir }: { project: ProjectModel; dir: 
                 <AtSign />
               </button>
             </Tooltip>
-            <button className="icon-btn" data-testid="tx-clear" title="Clear the selection (Esc)" aria-label="Clear the selection" onClick={() => transcriptStore.clear()}>
-              <X />
-            </button>
+            <Tooltip label="Clear the selection" keys={["Esc"]}>
+              <button className="icon-btn" data-testid="tx-clear" aria-label="Clear the selection" onClick={() => transcriptStore.clear()}>
+                <X />
+              </button>
+            </Tooltip>
           </>
         )}
       </div>

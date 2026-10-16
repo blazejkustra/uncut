@@ -178,6 +178,25 @@ test("issue #78: rebind split, use the new key, switch to Premiere Pro, tooltip 
   await waitFor("[data-testid=shortcuts-sheet]");
   const sheetSplit = await page.$$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row][data-action=split] kbd", (els) => els.map((e) => e.textContent ?? ""));
   assert.deepEqual(sheetSplit, ["⌘K"]);
+  // D256: the View menu's layout keys are on the sheet too, fixed.
+  const viewKeys = await page.$$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row]", (rows) =>
+    rows.filter((r) => ["toggleLeft", "toggleRight", "toggleTimeline", "focusMode"].includes(r.getAttribute("data-action") ?? "")).map((r) => [...r.querySelectorAll("kbd")].map((k) => k.textContent).join(" ")),
+  );
+  assert.deepEqual(viewKeys, ["⇧⌘L", "⇧⌘I", "⇧⌘T", "⇧⌘F"]);
+  await page.$eval("[data-testid=shortcuts-sheet] [data-testid=shortcut-row][data-action=focusMode]", (el) => el.scrollIntoView({ block: "center" }));
+  await sleep(200);
+  await page.screenshot({ path: out("sheet-view-keys") });
   await page.keyboard.press("Escape");
+  // ...and in Settings › Shortcuts with a lock, nothing to record.
+  await openShortcuts();
+  for (const id of ["toggleLeft", "toggleRight", "toggleTimeline", "focusMode"]) {
+    const row = `[data-testid=shortcut-row][data-action=${id}]`;
+    assert.ok(await page.$(`${row}.fixed .shortcut-lock`), `${id}: locked`);
+    assert.equal(await page.$(`${row} [data-testid=shortcut-add]`), null, `${id}: no + to record`);
+  }
+  await page.$eval("[data-testid=shortcut-row][data-action=focusMode]", (el) => el.scrollIntoView({ block: "center" }));
+  await sleep(200);
+  await page.screenshot({ path: out("view-keys-locked") });
+  await closeSettings();
   assert.deepEqual(app!.errors, []);
 });

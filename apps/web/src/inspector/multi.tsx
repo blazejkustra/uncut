@@ -110,9 +110,11 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
             remember="filter"
             action={
               anyLook ? (
-                <button className="icon-btn" title="Remove the filter from all" data-testid="multi-filter-remove" onClick={() => send(all(fxClips.filter((i) => lookOf(i)), (p, id) => planSetLook(p, id, undefined), (k) => `Remove the filter from ${k} clips`))}>
-                  <X />
-                </button>
+                <Tooltip label="Remove the filter from all">
+                  <button className="icon-btn" data-testid="multi-filter-remove" onClick={() => send(all(fxClips.filter((i) => lookOf(i)), (p, id) => planSetLook(p, id, undefined), (k) => `Remove the filter from ${k} clips`))}>
+                    <X />
+                  </button>
+                </Tooltip>
               ) : undefined
             }
           >
@@ -142,9 +144,11 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
             remember="adjust"
             action={
               adjusted ? (
-                <button className="icon-btn" title="Reset all" data-testid="multi-adjust-reset" onClick={() => send(all(fxClips, (p, id) => planAdjust(p, id, "reset"), (k) => `Reset the adjustments of ${k} clips`))}>
-                  <RotateCcw />
-                </button>
+                <Tooltip label="Reset all">
+                  <button className="icon-btn" data-testid="multi-adjust-reset" onClick={() => send(all(fxClips, (p, id) => planAdjust(p, id, "reset"), (k) => `Reset the adjustments of ${k} clips`))}>
+                    <RotateCcw />
+                  </button>
+                </Tooltip>
               ) : undefined
             }
           >
@@ -176,9 +180,11 @@ export function MultiInspector({ project, ids }: { project: ProjectModel; ids: R
                       <span>
                         {info.name} <span className="muted small">{having.length === fxClips.length ? "all" : `${having.length} of ${fxClips.length}`}</span>
                       </span>
-                      <button className="icon-btn" title={`Remove ${info.name.toLowerCase()} from all`} data-testid="multi-effect-remove" onClick={() => send(all(having, (p, id) => planRemoveEffect(p, id, module), (k) => `Remove ${info.name.toLowerCase()} from ${k} clips`))}>
-                        <X />
-                      </button>
+                      <Tooltip label={`Remove ${info.name.toLowerCase()} from all`}>
+                        <button className="icon-btn" data-testid="multi-effect-remove" onClick={() => send(all(having, (p, id) => planRemoveEffect(p, id, module), (k) => `Remove ${info.name.toLowerCase()} from ${k} clips`))}>
+                          <X />
+                        </button>
+                      </Tooltip>
                     </div>
                     {info.params.map((d) => (
                       <Prop key={d.key} label={d.name} testId={`multi-effect-${d.key}`}>

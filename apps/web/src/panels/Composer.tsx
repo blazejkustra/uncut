@@ -20,6 +20,7 @@ import { isAttachable, quotePaths, sortPasted } from "./pasted.ts";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ComposerChoices } from "./composer/Choices.tsx";
 import { TokenMeter } from "./TokenMeter.tsx";
+import { Tooltip } from "../ui/Tooltip.tsx";
 import "./skills/skills.css";
 export { ACCESS_INFO, ProviderMark } from "./composer/Choices.tsx";
 
@@ -246,9 +247,11 @@ export function Composer({ project, online, blocked, turns, running, provider }:
       {queued && (
         <div className="composer-queued" data-testid="agent-queued">
           <span className="ellipsis">Queued: {queued.prompt}</span>
-          <button className="icon-btn" title="Don't send it" data-testid="agent-unqueue" onClick={() => actions.agentQueue(undefined)}>
-            <X />
-          </button>
+          <Tooltip label="Don't send it">
+            <button className="icon-btn" data-testid="agent-unqueue" onClick={() => actions.agentQueue(undefined)}>
+              <X />
+            </button>
+          </Tooltip>
         </div>
       )}
       {pickerOpen && (
@@ -306,9 +309,11 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           {images.map((img, i) => (
             <div key={i} className="composer-image" data-testid="agent-attachment" title={img.name}>
               <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name} />
-              <button className="icon-btn" title="Remove" data-testid="agent-attachment-remove" onClick={() => actions.setAgentImages(images.filter((_, j) => j !== i))}>
-                <X />
-              </button>
+              <Tooltip label="Remove">
+                <button className="icon-btn" data-testid="agent-attachment-remove" onClick={() => actions.setAgentImages(images.filter((_, j) => j !== i))}>
+                  <X />
+                </button>
+              </Tooltip>
             </div>
           ))}
         </div>
@@ -427,36 +432,43 @@ export function Composer({ project, online, blocked, turns, running, provider }:
             e.target.value = "";
           }}
         />
-        <button className="icon-btn composer-at" title="Attach images (or paste or drop them)" data-testid="agent-attach" disabled={!online || blocked} onClick={() => fileInput.current?.click()}>
-          <Paperclip />
-        </button>
-        <button
-          className="icon-btn composer-at"
-          title="Point at media, a clip, a track or a marker"
-          data-testid="agent-at"
-          disabled={!online || blocked}
-          onClick={() => {
-            const el = input.current;
-            if (!el) return;
-            const pos = el.selectionStart;
-            const pad = pos > 0 && !/\s/.test(draft[pos - 1]!) ? " @" : "@";
-            caretTo.current = pos + pad.length;
-            setDraft(draft.slice(0, pos) + pad + draft.slice(pos));
-            el.focus();
-          }}
-        >
-          <AtSign />
-        </button>
+        <Tooltip label="Attach images (or paste or drop them)">
+          <button className="icon-btn composer-at" data-testid="agent-attach" disabled={!online || blocked} onClick={() => fileInput.current?.click()}>
+            <Paperclip />
+          </button>
+        </Tooltip>
+        <Tooltip label="Point at media, a clip, a track or a marker">
+          <button
+            className="icon-btn composer-at"
+            data-testid="agent-at"
+            disabled={!online || blocked}
+            onClick={() => {
+              const el = input.current;
+              if (!el) return;
+              const pos = el.selectionStart;
+              const pad = pos > 0 && !/\s/.test(draft[pos - 1]!) ? " @" : "@";
+              caretTo.current = pos + pad.length;
+              setDraft(draft.slice(0, pos) + pad + draft.slice(pos));
+              el.focus();
+            }}
+          >
+            <AtSign />
+          </button>
+        </Tooltip>
         {snapshot && <ComposerChoices dir={snapshot.dir} provider={provider} />}
         <span className="composer-spacer" />
         {running ? (
-          <button className="send stop" data-testid="agent-stop" title="Stop" disabled={!online} onClick={() => void actions.agentCancel()}>
-            <Square />
-          </button>
+          <Tooltip label="Stop">
+            <button className="send stop" data-testid="agent-stop" disabled={!online} onClick={() => void actions.agentCancel()}>
+              <Square />
+            </button>
+          </Tooltip>
         ) : (
-          <button className="send" data-testid="agent-send" title="Send (Enter)" disabled={!draft.trim() || !online || blocked} onClick={() => void send()}>
-            <ArrowUp />
-          </button>
+          <Tooltip label="Send" keys={["↩"]}>
+            <button className="send" data-testid="agent-send" disabled={!draft.trim() || !online || blocked} onClick={() => void send()}>
+              <ArrowUp />
+            </button>
+          </Tooltip>
         )}
       </div>
     </div>

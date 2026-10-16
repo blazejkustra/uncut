@@ -175,18 +175,19 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
             {timecode(Math.round(seconds * fps), fps).replace(/^00:/, "")}
           </span>
         )}
-        <button
-          className="tile-add"
-          data-testid={generated ? "generated-add" : "add-to-timeline"}
-          title={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}
-          disabled={!online}
-          onClick={(e) => {
-            e.currentTarget.blur();
-            void (generated ? actions.addAtPlayhead(item.id) : actions.addMedia(item.id));
-          }}
-        >
-          <Plus />
-        </button>
+        <Tooltip label={generated ? "Put it on the timeline at the playhead" : item.kind === "audio" ? "Add to the audio track" : "Add to the end of the main track"}>
+          <button
+            className="tile-add"
+            data-testid={generated ? "generated-add" : "add-to-timeline"}
+            disabled={!online}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              void (generated ? actions.addAtPlayhead(item.id) : actions.addMedia(item.id));
+            }}
+          >
+            <Plus />
+          </button>
+        </Tooltip>
         <Tooltip label="Add to chat" shortcut="addToChat">
           <button
             className={`tile-chat${generated || (hasSound && !analysis) ? " second" : ""}`}
@@ -201,35 +202,37 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
           </button>
         </Tooltip>
         {generated && (
-          <button
-            className="tile-analyze"
-            data-testid="generated-again"
-            title={generated.againTitle}
-            aria-label="Make again"
-            disabled={!online || !generated.canAgain}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.currentTarget.blur();
-              generated.again();
-            }}
-          >
-            <RefreshCw />
-          </button>
+          <Tooltip label={generated.againTitle}>
+            <button
+              className="tile-analyze"
+              data-testid="generated-again"
+              aria-label="Make again"
+              disabled={!online || !generated.canAgain}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.currentTarget.blur();
+                generated.again();
+              }}
+            >
+              <RefreshCw />
+            </button>
+          </Tooltip>
         )}
         {hasSound && !analysis && (
-          <button
-            className="tile-analyze"
-            data-testid="analyze"
-            title={ANALYZE_TITLE}
-            aria-label="Analyse the sound"
-            disabled={!online}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              void actions.analyzeMedia(item.id);
-            }}
-          >
-            <AudioWaveform />
-          </button>
+          <Tooltip label={ANALYZE_TITLE}>
+            <button
+              className="tile-analyze"
+              data-testid="analyze"
+              aria-label="Analyse the sound"
+              disabled={!online}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                void actions.analyzeMedia(item.id);
+              }}
+            >
+              <AudioWaveform />
+            </button>
+          </Tooltip>
         )}
         {analysis && (
           <div className="tile-analysis" data-testid="analysis-progress" data-phase={analysis.phase} data-analyzer={analysis.analyzer} title={analysisText(analysis)}>
@@ -237,9 +240,11 @@ export function MediaTile({ item, fps, online, used, selected, onSelect, onRemov
             <div className="bar">
               <span style={{ width: `${Math.round((analysis.phase === "running" ? analysis.progress : 0) * 100)}%` }} />
             </div>
-            <button className="tile-analysis-cancel" data-testid="analysis-cancel" title="Stop the analysis" disabled={!online} onClick={() => void actions.cancelAnalysis(analysis.id)}>
-              <X />
-            </button>
+            <Tooltip label="Stop the analysis">
+              <button className="tile-analysis-cancel" data-testid="analysis-cancel" disabled={!online} onClick={() => void actions.cancelAnalysis(analysis.id)}>
+                <X />
+              </button>
+            </Tooltip>
           </div>
         )}
       </div>
