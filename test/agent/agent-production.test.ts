@@ -223,6 +223,17 @@ test("U15: a storyboard sent back with a note keeps the build waiting; the Plan 
     const sbStep = t.items.filter((i: any) => i.kind === "step");
     assert.match(sbStep.at(-1).error, /asked for changes to the storyboard \("Open on the dashboard, not the logo"\)/);
     assert.equal(t.items.find((i: any) => i.kind === "card").card.outcome, "declined");
+    // D237 (review finding 3): a later turn can't build the declined storyboard's scenes, but a small edit goes ahead.
+    const scene = [1, 2, 3].map((n) => ({ op: "insert_item", track: "text", item: { ...TITLE, id: `scene-${n}`, start: n * 60 } }));
+    const big = await s.ask("build it anyway", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scenes 1 to 3", ops: scene } }]);
+    assert.equal(big.edits.length, 0);
+    assert.match(big.items.filter((i: any) => i.kind === "step").at(-1).error, /adds 3 items, which is building the planned video[\s\S]*ask_user[\s\S]*storyboard_propose/);
+    const small = await s.ask("add a title", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "A title", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }]);
+    assert.equal(small.edits.length, 1, small.items.map((i: any) => i.error).join(" "));
+    const tweak = await s.ask("make the title bigger", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Bigger title", ops: [{ op: "update_item", item: "title-1", set: { style: { ...TITLE.style, size: 120 } } }] } }]);
+    assert.equal(tweak.edits.length, 1, tweak.items.map((i: any) => i.error).join(" "));
+    await s.ask("undo", [{ tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Remove title", ops: [{ op: "delete_item", item: "title-1" }] } }]);
+    s.results();
     // The user approves it on the Plan card (agent.planSave): the build goes through.
     const plan = s.latest().plan;
     const saved = await s.client.ok("agent.planSave", { storyboard: { ...plan.storyboard, status: "approved" } });
