@@ -217,6 +217,8 @@ test("issues #69 and #70: the Audio tab's sources, Jamendo and the Music library
   assert.ok(!readFileSync(join(dir, "project.json"), "utf8").includes(CLIENT), "the client ID never in the project");
 
   // Music library: asked for, then its DRM-free songs; + copies one into media/.
+  await page.click("[data-testid=music-search]", { clickCount: 3 });
+  await page.keyboard.press("Backspace");
   await page.select("[data-testid=library-source]", "music-app");
   await waitFor("[data-testid=music-app-connect]");
   await page.click("[data-testid=music-app-connect]");
