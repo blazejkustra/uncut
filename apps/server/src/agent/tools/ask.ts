@@ -4,7 +4,9 @@ import { AGENT_UI_PANELS, type AgentApproval, type Storyboard, type AgentQuestio
 import { layout } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { QUESTION_MS } from "../agentPlan.ts";
+import { join } from "node:path";
 import { decide, realPath, shownPath } from "../agentPermissions.ts";
+import { BRAND_ID, globalBrandDir, projectBrandDir, readActive } from "../../brand/store.ts";
 import { downloadToProject } from "../agentDownload.ts";
 import type { ProjectView } from "../../project/projects.ts";
 import type { Running, ClaudeSession } from "../session/types.ts";
@@ -13,8 +15,15 @@ import { DOWNLOADS_PER_TURN, DOWNLOAD_BYTES_PER_TURN } from "./common.ts";
 import type { McpResult, CardAnswer } from "../agent.ts";
 import type { TranscriptCtx } from "./transcript.ts";
 
+/** D296: the folders read without a card (agentPermissions sanctioned): the active kit's, wherever it is, and the bundled graphic libraries; real paths. */
+export const sanctionedDirs = (config: { readonly dataDir: string; readonly graphicLibsDir: string }, projectDir: string, kit: string | null): Array<string> => {
+  const dirs = [realPath(config.graphicLibsDir, projectDir)];
+  if (kit && BRAND_ID.test(kit)) dirs.push(realPath(join(globalBrandDir(config.dataDir), "kits", kit), projectDir), realPath(join(projectBrandDir(projectDir), "kits", kit), projectDir));
+  return dirs;
+};
+
 export const makeAskTools = (ctx: TranscriptCtx) => {
-  const { textResult, publish, testRun, approvalMs, st, mediaImport } = ctx;
+  const { textResult, publish, testRun, approvalMs, st, mediaImport, config } = ctx;
 
   let uiCount = 0;
   const uiShow = (r: Running, v: ProjectView, args: Record<string, unknown>): McpResult => {
@@ -137,54 +146,68 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     // D194: approvals can't be trusted without the handshake: fail closed.
     if (s.initFailed) return deny("Not done: Uncut couldn't set up approvals with Claude Code (it didn't answer initialize), so nothing that needs the user's OK runs in this session. Say what you would do.");
     const project = realPath(r.owner.dir, r.owner.dir);
-    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted });
-    const first = decide(tool, input, ctx());
-    if (first.kind === "allow") return allow();
-    if (first.kind === "deny") return deny(first.message);
-    // Its card is the one open (cards are shown one at a time).
-    let showing = false;
-    const close = () => {
-      if (showing && st.approval?.card.permission && st.approval.card.turnId === r.turn.id) st.approval.answer("stopped");
-    };
-    // claude gave up on it (an interrupt): no answer, and its card goes.
+    // D296: the active kit's folder (the user's, or the project's own) and the bundled graphic
+    // libraries are read without a card: Uncut points the agent at them.
+    let sanctioned: ReadonlyArray<string> = [];
+    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, sanctioned, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted });
+    // claude may give up on it while the kit is looked up: then it's not answered at all.
     s.prompts.set(requestId, () => {
       answered = true;
       s.prompts.delete(requestId);
-      close();
     });
-    const ask = async () => {
+    void readActive(r.owner.dir)
+      .then((active) => (sanctioned = sanctionedDirs(config, r.owner.dir, active.kit)), () => {})
+      .then(() => decideFirst());
+    const decideFirst = () => {
       if (answered) return;
-      // Another card may be open (a question, a spend): this one waits for it.
-      while (st.approval && !r.abort.signal.aborted && !answered) await new Promise((done) => setTimeout(done, 150));
-      if (answered) return;
-      if (r.abort.signal.aborted) return deny("Not done: the turn was stopped.");
-      // An "Always" given on the card before may cover it now.
-      const d = decide(tool, input, ctx());
-      if (d.kind === "allow") return allow();
-      if (d.kind === "deny") return deny(d.message);
-      let always = false;
-      showing = true;
-      const answer = await Effect.runPromise(
-        askUser(r, d.title, 0, undefined, (_card, _a, _source, extra) => {
-          always = extra?.always === true && !!d.grant;
-        }, undefined, { permission: { tool, target: d.target, ...(d.why ? { why: d.why } : {}), always: !!d.grant } }),
-      ).finally(() => (showing = false));
-      if (answered) return;
-      if (answer === "allow") {
-        // A confirmed folder becomes a root of this chat (and --add-dir from the next message); other grants are remembered as they are.
-        if (always && d.grant?.startsWith("Root:")) {
-          const dir = d.grant.slice(5);
-          if (!r.owner.dirs.includes(dir) && r.owner.dirs.length < 16) r.owner.dirs.push(dir);
-        } else if (always && d.grant) r.owner.grants.add(d.grant);
-        return allow();
-      }
-      if (answer === "stopped") return deny("Not done: the turn was stopped.");
-      return deny(`Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`);
+      const first = decide(tool, input, ctx());
+      if (first.kind === "allow") return allow();
+      if (first.kind === "deny") return deny(first.message);
+      // Its card is the one open (cards are shown one at a time).
+      let showing = false;
+      const close = () => {
+        if (showing && st.approval?.card.permission && st.approval.card.turnId === r.turn.id) st.approval.answer("stopped");
+      };
+      // claude gave up on it (an interrupt): no answer, and its card goes.
+      s.prompts.set(requestId, () => {
+        answered = true;
+        s.prompts.delete(requestId);
+        close();
+      });
+      const ask = async () => {
+        if (answered) return;
+        // Another card may be open (a question, a spend): this one waits for it.
+        while (st.approval && !r.abort.signal.aborted && !answered) await new Promise((done) => setTimeout(done, 150));
+        if (answered) return;
+        if (r.abort.signal.aborted) return deny("Not done: the turn was stopped.");
+        // An "Always" given on the card before may cover it now.
+        const d = decide(tool, input, ctx());
+        if (d.kind === "allow") return allow();
+        if (d.kind === "deny") return deny(d.message);
+        let always = false;
+        showing = true;
+        const answer = await Effect.runPromise(
+          askUser(r, d.title, 0, undefined, (_card, _a, _source, extra) => {
+            always = extra?.always === true && !!d.grant;
+          }, undefined, { permission: { tool, target: d.target, ...(d.why ? { why: d.why } : {}), always: !!d.grant } }),
+        ).finally(() => (showing = false));
+        if (answered) return;
+        if (answer === "allow") {
+          // A confirmed folder becomes a root of this chat (and --add-dir from the next message); other grants are remembered as they are.
+          if (always && d.grant?.startsWith("Root:")) {
+            const dir = d.grant.slice(5);
+            if (!r.owner.dirs.includes(dir) && r.owner.dirs.length < 16) r.owner.dirs.push(dir);
+          } else if (always && d.grant) r.owner.grants.add(d.grant);
+          return allow();
+        }
+        if (answer === "stopped") return deny("Not done: the turn was stopped.");
+        return deny(`Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`);
+      };
+      r.permissionQueue = r.permissionQueue.then(ask, ask).catch((error) => {
+        console.error(`[uncut] permission prompt for ${tool} failed: ${(error as Error).message}`);
+        deny("Not done: Uncut couldn't ask the user.");
+      });
     };
-    r.permissionQueue = r.permissionQueue.then(ask, ask).catch((error) => {
-      console.error(`[uncut] permission prompt for ${tool} failed: ${(error as Error).message}`);
-      deny("Not done: Uncut couldn't ask the user.");
-    });
   };
 
   return { askUser, mediaDownload, uiShow, canUseTool };

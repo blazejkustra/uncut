@@ -357,3 +357,26 @@ test("D219 claude's deny rules keep Uncut's data folder and other apps' data out
   for (const command of ["ls /tmp/u/data-projects/p", "ls /tmp/u/database"]) assert.ok(!denied(other, command), command);
   assert.ok(!denyRules().some((r) => r.includes("server-token")), "no data folder given: just the Application Support rules");
 });
+
+test("D296: the active brand kit's folder and the bundled graphic libraries are read without a card; writes there and everything else stay gated", async () => {
+  const { sanctionedDirs } = await import("../../apps/server/src/agent/tools/ask.ts");
+  const DATA = `${HOME}/Library/Application Support/Uncut`;
+  const LIBS = "/Applications/Uncut.app/Contents/Resources/graphic-libs";
+  const dirs = sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT, "uncut");
+  assert.ok(dirs.includes(`${DATA}/brand/kits/uncut`) && dirs.includes(LIBS), JSON.stringify(dirs));
+  assert.deepEqual(sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT, null), [LIBS], "no kit: only the libraries");
+  assert.deepEqual(sanctionedDirs({ dataDir: DATA, graphicLibsDir: LIBS }, PROJECT, "../x"), [LIBS], "a kit id that isn't one is no folder");
+  const sanctioned = [`${DATA}/brand/kits/uncut`, LIBS];
+  for (const access of ["look", "ask", "auto"] as const) {
+    assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/uncut/ui-editor.webp` }, access, { sanctioned }), "allow");
+    assert.equal(kind("Read", { file_path: `${LIBS}/motion.js` }, access, { sanctioned }), "allow");
+    assert.equal(kind("Glob", { pattern: "*", path: `${DATA}/brand/kits/uncut` }, access, { sanctioned }), "allow");
+    assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/other/logo.svg` }, access, { sanctioned }), "ask", "another kit still asks");
+    assert.equal(kind("Read", { file_path: `${DATA}/server-token` }, access, { sanctioned }), "ask");
+    assert.equal(kind("Read", { file_path: `${DATA}/brand/kits/uncut/../../../settings.json` }, access, { sanctioned }), "ask", "no climbing out");
+    assert.notEqual(kind("Write", { file_path: `${DATA}/brand/kits/uncut/kit.json`, content: "{}" }, access, { sanctioned }), "allow", "never written");
+    assert.notEqual(kind("Edit", { file_path: `${LIBS}/motion.js` }, access, { sanctioned }), "allow");
+  }
+  // After the web (Ask first, Look only), like a confirmed folder: a card again.
+  assert.equal(kind("Read", { file_path: `${LIBS}/motion.js` }, "ask", { sanctioned, webUsed: true }), "ask");
+});
