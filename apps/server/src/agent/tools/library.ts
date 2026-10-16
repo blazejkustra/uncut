@@ -197,7 +197,7 @@ export const makeLibraryTools = (ctx: BrandCtx) => {
         pages: result.pages,
         // D285: the best HITS_SHOWN, each with what picks one (frames, licence, a few tags), and how to see more.
         hits: result.hits.slice(0, HITS_SHOWN).map((h) => ({ id: hitKey(h), title: h.title.slice(0, 70), creator: h.creator.slice(0, 40), ...(h.seconds ? { frames: Math.round(h.seconds * fps) } : {}), license: h.license === "by" ? `CC BY ${h.licenseVersion}` : "CC0", tags: h.tags.slice(0, 3) })),
-        ...(result.total > Math.min(result.hits.length, HITS_SHOWN) ? { more: `${result.total - Math.min(result.hits.length, HITS_SHOWN)} more: a sharper query first${result.pages > result.page ? `, else page ${result.page + 1}` : ""}.` } : {}),
+        ...(result.total > Math.min(result.hits.length, HITS_SHOWN) ? { more: `${result.total - Math.min(result.hits.length, HITS_SHOWN)} more not shown: search again with a sharper query${result.pages > result.page ? ` (page ${result.page + 1} starts after this page's ${result.hits.length} results, not after these ${Math.min(result.hits.length, HITS_SHOWN)})` : ""}.` } : {}),
         ...(result.searched ? { searched: result.searched } : {}),
         ...(result.note ? { clip: result.note } : {}),
         note: "CC BY sounds need credit in the video's description (project_read lists credits). library_add downloads one into the project.",

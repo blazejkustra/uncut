@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { withoutComments } from "./ui-separators.test.ts";
+import { withoutComments } from "../helpers/withoutComments.ts";
 
 /** An em dash in any spelling, or an en dash with a space on either side (a dash, not a range). */
 const DASH = /—|&mdash;|&#8212;|&#x2014;|\\u2014|\s–|–\s|\s&ndash;|&ndash;\s|&#8211;\s|\s&#8211;/i;

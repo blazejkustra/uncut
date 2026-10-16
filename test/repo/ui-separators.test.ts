@@ -8,44 +8,11 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { withoutComments } from "../helpers/withoutComments.ts";
+
 const WEB = "apps/web/src";
 const SERVER = "apps/server/src";
 const SERVER_UI = ["app/setup.ts", "plugins/plugins.ts", "plugins/discovery/discover.ts", "plugins/discovery/infos.ts", "plugins/discovery/manifest.ts", "plugins/runtime/host.ts", "plugins/runtime/process.ts", "plugins/runtime/result.ts", "analysis/whisper.ts", "analysis/whisperModels.ts", "analysis/transcription.ts", "media/media.ts", "export/exporter.ts", "export/exporter/duckEnvelopes.ts", "export/exporter/ffmpeg.ts", "export/exporter/files.ts", "export/exporter/frames.ts", "export/exporter/graphics.ts", "export/exporter/rasterise.ts", "export/exporter/runJob.ts", "export/exporter/sheets.ts", "export/exporter/subtitles.ts", "analysis/analysis.ts", "analysis/loudness/loudness.ts", "analysis/queue/cache.ts", "analysis/queue/queue.ts", "agent/agent.ts", "agent/session/config.ts", "agent/session/core.ts", "agent/session/send.ts", "agent/session/spawn.ts", "agent/session/stale.ts", "agent/session/stream.ts", "agent/tools/ask.ts", "agent/tools/brand.ts", "agent/tools/cards.ts", "agent/tools/common.ts", "agent/tools/generate.ts", "agent/tools/library.ts", "agent/tools/media.ts", "agent/tools/run.ts", "agent/tools/transcript.ts", "agent/turns/history.ts", "agent/turns/notes.ts", "media/mediaLibrary/helpers.ts", "media/mediaLibrary/service.ts"];
-
-/** The source with comments blanked (line and block), strings and code kept. */
-export function withoutComments(source: string): string {
-  let out = "";
-  let i = 0;
-  let quote: string | undefined;
-  while (i < source.length) {
-    const c = source[i]!;
-    const next = source[i + 1];
-    if (quote) {
-      out += c;
-      if (c === "\\") {
-        out += next ?? "";
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = undefined;
-      i++;
-      continue;
-    }
-    if (c === "/" && next === "/") {
-      while (i < source.length && source[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && next === "*") {
-      const end = source.indexOf("*/", i + 2);
-      i = end === -1 ? source.length : end + 2;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") quote = c;
-    out += c;
-    i++;
-  }
-  return out;
-}
 
 /** Text in string literals and template literals (without their ${} parts). */
 const literals = (code: string) => [...code.matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g)].map((m) => m[0].replace(/\$\{[^}]*\}/g, " "));

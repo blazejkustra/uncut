@@ -25,7 +25,7 @@ export function modulesList(modules: Modules, kind?: string) {
       kind: m.kind,
       name: m.name,
       source: "builtin",
-      ...(typeof m.description === "string" ? { description: m.description } : {}),
+      ...(typeof m.description === "string" ? { description: withoutDecisionIds(m.description) } : {}),
       ...(m.params ? { params: m.params } : {}),
       ...(m.transition ? { transition: m.transition } : {}),
       ...(m.kind === "text-style" && textStyleLook(m.id) ? { look: textStyleLook(m.id) } : {}),
