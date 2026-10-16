@@ -272,6 +272,7 @@
           "properties": {
             "type": { "const": "graphic" },
             "src": { "type": "string", "pattern": "^graphics/[A-Za-z0-9][A-Za-z0-9._-]{0,80}\\.html$", "description": "Agent-written HTML/CSS exposing render(t), in the project's graphics/ folder." },
+            "in": { "$ref": "#/$defs/frame", "description": "Frames of the graphic before what this item shows (a trimmed start, a split's second half): render(t) gets t from there." },
             "props": { "type": "object" }
           },
           "required": ["src"]

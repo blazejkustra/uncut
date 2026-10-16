@@ -46,10 +46,18 @@ export interface GraphicInfo {
   readonly props: { readonly [key: string]: unknown };
 }
 
-export const graphicInfo = (item: Pick<Item, "duration" | "props">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps: number }, local: number): GraphicInfo => ({
+/**
+ * The graphic's own frame shown `local` frames into its item: from the item's `in` (frames of the
+ * graphic before what the item shows: a cut-off start, a split's second half, a range export's
+ * slice), held at the item's first and last frame before and after it.
+ */
+export const graphicLocal = (item: Pick<Item, "duration" | "in">, local: number): number => (item.in ?? 0) + Math.max(0, Math.min(item.duration - 1, local));
+
+/** What render(t, info) gets at the graphic's own frame `local` (graphicLocal); its duration counts from the graphic's start, `in` included. */
+export const graphicInfo = (item: Pick<Item, "duration" | "props" | "in">, canvas: Pick<Canvas, "width" | "height"> & { readonly fps: number }, local: number): GraphicInfo => ({
   frame: local,
   fps: canvas.fps,
-  duration: item.duration,
+  duration: (item.in ?? 0) + item.duration,
   width: canvas.width,
   height: canvas.height,
   props: item.props ?? {},

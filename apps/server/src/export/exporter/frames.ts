@@ -1,6 +1,6 @@
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { type Project, type Media, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
+import { type Project, type Media, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
 import { clipShader, shaderParamBytes, shaderModuleCode, shaderFrameBytes, shaderTime } from "@uncut/core/shaders";
 import { RASTER_CSS, planExport, mediaToken, sourceFramePick, svgClipHtml, untaggedFilter, blurFilters, placementOf, fxGraph, boxGraph } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
@@ -171,7 +171,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
             continue;
           }
           const png = join(temp, `w${W}-f${f}-${k}-g.png`);
-          const at = Math.max(0, Math.min(v.item.duration - 1, local));
+          const at = graphicLocal(v.item, local);
           await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...small });
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }

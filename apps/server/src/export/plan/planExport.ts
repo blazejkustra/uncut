@@ -1,4 +1,4 @@
-import { type Media, type SpeechEnvelope, type Project, layout, type Item, itemMotionBlur, subFrameTimes, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, trackStages, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
+import { type Media, type SpeechEnvelope, type Project, layout, type Item, itemMotionBlur, subFrameTimes, isSubtitleTrack, SOLID, isDrawnComponent, spanOf, maskOf, transitionAt, blurs, IRIS, reveals, movesIncoming, movesOutgoing, moveBox, canvasBox, isSvg, clipBox, graphicDocument, graphicLocal, fxBox, clipFx, fxSkips, clipShader, needsPicturePass, isPlainBox, baseBox, fitRect, colourLut, sourceAt, hasOverlay, fxOverlayHtml, animationAt, componentBox, componentParts, textHtml, solidHtml, wrapComponent, dipsOf, mixNote, duckCurves, trackAudible, duckNote, soundMedia, trackStages, panGains, trackPan, audioSpan, duckKeysIn, heldPast, canvasBackground, masterGain, masterLimiter } from "@uncut/core";
 import { type ExportPlan, mediaToken, type VisualLayer, type LayerFx, type Ramp, type AudioLayer, type GainModel } from "./types.ts";
 import { capStates, opacityRamps, splitAt, placementOf, svgClipHtml, splitLoop } from "./layers.ts";
 import { mergeableCues, captionLayers, subtitleLayers } from "./captions.ts";
@@ -119,10 +119,11 @@ export function planExport(project: Project, { mediaPath, width, height, graphic
           return;
         }
         // Every frame drawn (D291); before its start and past its end it holds its first and last.
-        const frames = Array.from({ length: f1 - f0 }, (_, k) => Math.max(0, Math.min(item.duration - 1, f0 + k - start)));
+        // Its own frames run from its `in` (a range export's slice, a split's second half).
+        const frames = Array.from({ length: f1 - f0 }, (_, k) => graphicLocal(item, f0 + k - start));
         // Motion blur (D291): each frame's sub-frames; a held frame stays sharp.
         const blur = itemMotionBlur(item, project, motionBlur);
-        const motion = blur ? { ...blur, ts: frames.map((local, k) => subFrameTimes(local, fps, blur, local !== f0 + k - start)) } : undefined;
+        const motion = blur ? { ...blur, ts: frames.map((local, k) => subFrameTimes(local, fps, blur, local !== (item.in ?? 0) + f0 + k - start)) } : undefined;
         const opacity = typeof item.transform?.opacity === "number" ? Math.min(1, Math.max(0, item.transform.opacity)) : 1;
         visuals.push(...split({ ...base, ...canvasGeometry, ...(opacity !== 1 ? { alpha: Array.from({ length: f1 - f0 }, () => opacity) } : {}), kind: "graphic", doc: graphicDocument(html, project.canvas), frames, ...(motion ? { motion } : {}) }, canvasStill));
         return;

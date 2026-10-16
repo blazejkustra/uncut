@@ -1,7 +1,7 @@
 import { heldPast } from "@uncut/core/audio";
 import { type Visual, visualsAt } from "@uncut/core/timeline";
 import { isDrawnComponent, componentHtml } from "@uncut/core/components";
-import { graphicInfo } from "@uncut/core/graphics";
+import { graphicInfo, graphicLocal } from "@uncut/core/graphics";
 import { overlaps, irisRadius, maskClipPath, maskRings } from "@uncut/core/transitions";
 import { SOLID, solidBackground, canvasBackground, textHtml } from "@uncut/core/render";
 import { PREROLL_S } from "../../audio/audio.ts";
@@ -277,7 +277,7 @@ export class Compositor extends CompositorBase {
       g.wrap.style.visibility = v.visible ? "" : "hidden";
       transitionCanvas(g.wrap, v, project.canvas);
       if (g.loaded) {
-        const local = Math.max(0, Math.min(v.item.duration - 1, whole - starts.get(v.item.id)!));
+        const local = graphicLocal(v.item, whole - starts.get(v.item.id)!);
         const info = graphicInfo(v.item, project.canvas, local);
         // Anything render(t, info) is given: a new length or canvas draws again too.
         const sent = JSON.stringify([local, info]);
