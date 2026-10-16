@@ -112,6 +112,8 @@ function syncShell() {
     // D245: the menu's Environments… is disabled while the Labs flag is off (and a remote isn't active).
     environments: environmentsUsable(flagOn("environments"), state.environment.kind),
     panels: { lib: panelShown(panels.get(), "lib"), side: panelShown(panels.get(), "side"), bottom: panelShown(panels.get(), "bottom"), focus: panels.get().focus },
+    // #94 (D263): File › Import from Link… only while its Labs flag is on.
+    importLink: flagOn("importFromLink"),
   });
   document.title = state.snapshot ? projectOf(state.snapshot).name : "Uncut";
 }
