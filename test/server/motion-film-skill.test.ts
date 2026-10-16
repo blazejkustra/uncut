@@ -33,7 +33,12 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   assert.match(body, /don't ask/);
   assert.match(body, /ask_user only when something essential is missing/);
   assert.match(body, /never a rounded "about 120 BPM"/);
-  assert.match(body, /^Pick the path from the brief and the media\n- Footage first[\s\S]*\n- UI first/m);
+  // D296: UI first is the main path for a product film (showcase the program); footage first is the short second.
+  assert.match(body, /^Pick the path from the brief and the media\n- UI first, the main path for a product or launch film: showcase the program[\s\S]*\n- Footage first, only when/m);
+  // D296: scale and boldness, measurable; kits first; one item; the lock.
+  assert.match(body, /^Scale \(both paths\)\n/m);
+  for (const want of [/70 % of its area or more, edges within about 6 %/, /full-bleed again and again/, /9 % of the frame's height or more/, /Never a card on flat black with a small caption under it/, /A flood morphs the current shape into the next scene's shape/, /at least every 2 beats/, /The busiest section is busy/, /no hold over 1 s, even in a loop\) and springs back into frame 0/, /Never search the disk or the web for the product; no kit matches: ask_user once/, /ONE item spanning it/, /propose last: while it waits nothing can change/, /Footage appears only inside the UI/, /never zooms in until it goes soft/]) assert.match(body, want);
+  for (const re of [/70 %/, /9 %/, /caption under a card/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 8 && checklist.length <= 12, `${checklist.length} lines`);
   for (const re of [/every beat/, /pop/, /1 s/, /frame 0 and the last frame match/, /overscales/]) assert.ok(checklist.some((l) => re.test(l)), String(re));
