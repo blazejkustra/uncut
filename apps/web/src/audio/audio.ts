@@ -354,6 +354,8 @@ export class Mix extends MixGraph {
     for (const id of [...this.buses.keys()]) this.dropBus(id);
     void this.ctx?.close().catch(() => {});
     this.ctx = undefined;
+    void this.spare?.close().catch(() => {});
+    this.spare = undefined;
   }
 
   state(): MixState {

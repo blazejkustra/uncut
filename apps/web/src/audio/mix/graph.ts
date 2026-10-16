@@ -12,6 +12,10 @@ import { getDuckState } from "../ducking.ts";
 import { previewLoudnessGain } from "../loudnessPreview.ts";
 import { type Capture, type Levels, type StereoLevel, levelOf, SILENT, type CaptureResult, sinkOf } from "./levels.ts";
 
+// Background test runs play to no device: no sound, and no output latency between the clock and the
+// captured mix (Bluetooth headphones as the default output add ~0.25 s).
+const newContext = () => new AudioContext({ latencyHint: "interactive", ...(bridge.silentAudio ? { sinkId: { type: "none" } } : {}) } as AudioContextOptions);
+
 export class MixGraph {
   protected ctx: AudioContext | undefined;
   protected master: GainNode | undefined;
@@ -34,13 +38,30 @@ export class MixGraph {
   protected marks: Array<{ t: number; frame: number }> = [];
   protected readonly routes = new WeakMap<HTMLMediaElement, Route>();
 
+  /** An AudioContext made ahead of the first play (prepare()), suspended until graph() takes it. */
+  protected spare: AudioContext | undefined;
+
+  /**
+   * Issue #55: make the AudioContext before the first play. Making one blocks the page for 90 ms
+   * (near 300 ms on a busy machine), which was a hitch in the first frame of playback. It waits
+   * suspended (no audio device kept busy) and becomes the graph's context on first use.
+   */
+  prepare() {
+    if (this.ctx || this.spare) return;
+    try {
+      this.spare = newContext();
+      void this.spare.suspend().catch(() => {});
+    } catch {
+      this.spare = undefined;
+    }
+  }
+
   /** The audio graph, made on first use (an AudioContext can't be made before the page runs). */
   protected graph() {
     if (!this.ctx) {
       try {
-        // Background test runs play to no device: no sound, and no output latency between the
-        // clock and the captured mix (Bluetooth headphones as the default output add ~0.25 s).
-        const ctx = new AudioContext({ latencyHint: "interactive", ...(bridge.silentAudio ? { sinkId: { type: "none" } } : {}) } as AudioContextOptions);
+        const ctx = this.spare ?? newContext();
+        this.spare = undefined;
         // Noise removal's worklet (D246): its chains pass through until it has loaded, then rebuild.
         void loadDenoise(ctx);
         const master = ctx.createGain();

@@ -95,8 +95,11 @@ export abstract class CompositorBase {
     this.offRunner = whenRunner(() => this.render());
     playback.setFollower((f) => this.follow(f));
     setCurrentMix(this.mix);
+    // Issue #55: the mix's AudioContext made while idle, not in the first frame of playback.
+    this.prepareIdle = requestIdleCallback(() => this.mix.prepare(), { timeout: 3000 });
     previewStats.compositors++;
   }
+  private prepareIdle: number;
 
   destroy() {
     this.unsubscribe();
@@ -110,6 +113,7 @@ export abstract class CompositorBase {
     for (const el of this.solids.values()) el.remove();
     this.solids.clear();
     this.clearOverlays();
+    cancelIdleCallback(this.prepareIdle);
     this.mix.destroy();
     setCurrentMix(undefined);
     clearTimeout(this.settleTimer);
@@ -463,7 +467,7 @@ export abstract class CompositorBase {
       video.addEventListener("seeked", () => {
         // Issue #55: a drift seek while playing has landed: how long it took aims the next one.
         const ps = playSeek.get(video);
-        if (ps?.from !== undefined) playSeek.set(video, { at: ps.at, lead: Math.min(0.5, (performance.now() - ps.from) / 1000) });
+        if (ps?.from !== undefined) playSeek.set(video, { at: ps.at, lead: Math.min(0.5, (performance.now() - ps.from) / 1000), blind: ps.blind });
         // The target was set before the length was known: clamp it now, then chase it once more.
         const want = wanted.has(video) ? reachable(video, wanted.get(video)!) : undefined;
         if (want !== undefined && Math.abs(video.currentTime - want) > 0.004) {
