@@ -98,7 +98,7 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
   ensureCss(doc);
   // scale, blur and dim are applied on every call, outside the key: a camera that scales a part doesn't
   // rebuild it. The editor's panels are live (see liveEditor): their props stay out of its key too.
-  const stable: Record<string, unknown> = { ...o, scale: undefined, blur: undefined, dim: undefined };
+  const stable: Record<string, unknown> = { ...o, scale: undefined, blur: undefined, dim: undefined, time: undefined };
   if (name === "editor") for (const k of EDITOR_LIVE_PROPS) stable[k] = undefined;
   const key = `${name}\n${keyOf(stable)}`;
   let wrap = host.firstElementChild as Root | null;
@@ -144,7 +144,19 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
   const root = rootOf(wrap);
   if (name === "editor") liveEditor(root, o);
   placeElements(name, root, o);
+  spin(root, o.time);
   return root;
+}
+
+/** A running step's spinner turns with t (time: the graphic's t, s), never on the wall clock: a CSS animation doesn't advance in an export. */
+function spin(root: HTMLElement, time: unknown): void {
+  const turn = typeof time === "number" && Number.isFinite(time) ? ((time / 0.9) % 1) * 360 : 0;
+  for (const el of root.querySelectorAll(".spin")) {
+    const st = (el as SVGElement).style;
+    st.animation = "none";
+    st.transformOrigin = "50% 50%";
+    st.transform = `rotate(${turn.toFixed(2)}deg)`;
+  }
 }
 
 /** The editor's props that update its panels in place on every call (each panel rebuilt only when its own props change). */
@@ -750,7 +762,7 @@ interface PieceKey {
   readonly background?: string;
   /** The shell's press (uncutMotion.click's .button, 0.95 pressed). */
   readonly press?: number;
-  /** This key's transition into it (s, default the sequence's dur, 0.5). */
+  /** This key's transition into it (s, default the sequence's dur, 0.9: a calm move, then a hold the viewer can read). */
   readonly dur?: number;
   /** In a morph, the content fitted whole in the shell ("contain", the default) or covering it ("cover", the default for a picture: preview.frame). */
   readonly fit?: "contain" | "cover";
@@ -788,13 +800,13 @@ function mixRgba(a: string, b: string, p: number): string {
   return `rgba(${Math.round(v[0]!)}, ${Math.round(v[1]!)}, ${Math.round(v[2]!)}, ${Math.round(v[3]! * 1000) / 1000})`;
 }
 
-/** The morph's ease: a critically damped spring from rest, normalised to land exactly at 1 (no overshoot, no lurch). */
+/** The morph's ease, a calm glide measured on the reference films (pacing round): it eases off rest
+ *  (top speed a third of the way in), then slows down for longer than it sped up (about 1.7x) and
+ *  lands at 1 with no overshoot: velocity 12p(1 - p)^2, so 10 to 90 % of the travel takes 54 % of dur. */
 function settle(p: number): number {
   if (p <= 0) return 0;
   if (p >= 1) return 1;
-  const k = 7.4;
-  const f = (x: number) => 1 - (1 + x) * Math.exp(-x);
-  return f(k * p) / f(k);
+  return p * p * (6 - 8 * p + 3 * p * p);
 }
 
 const smooth = (p: number) => {
@@ -1059,7 +1071,7 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
   while (shell.children.length > keys.length) shell.lastElementChild!.remove();
   let j = 0;
   for (let i = 0; i < keys.length; i++) if (num(keys[i]!.at, 0) <= t) j = i;
-  const dur = (k: PieceKey) => Math.max(0.05, num(k.dur, num(o?.dur, 0.5)));
+  const dur = (k: PieceKey) => Math.max(0.05, num(k.dur, num(o?.dur, 0.9)));
   const from = j > 0 && t < num(keys[j]!.at, 0) + dur(keys[j]!) ? j - 1 : -1;
   const raw = from >= 0 ? (t - num(keys[j]!.at, 0)) / dur(keys[j]!) : 1;
   const p = settle(raw);
@@ -1132,7 +1144,7 @@ type FlyLayer = HTMLElement & { __snaps?: Map<string, { key: string; node: HTMLE
 
 interface Flight {
   readonly at: number;
-  /** The flight's length (s, default 0.7). */
+  /** The flight's length (s, default 0.9). */
   readonly dur?: number;
   /** Where it starts: an element on screen (a media tile, a piece's text), a rect in host px, or a piece key (a big free piece, shown at rest before at). */
   readonly from: Element | Rect | PieceKey;
@@ -1211,7 +1223,7 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   const box = layer.firstElementChild as HTMLElement;
   const slotA = box.children[0] as Holder;
   const slotB = box.children[1] as HTMLElement;
-  const dur = Math.max(0.05, num(f.dur, 0.7));
+  const dur = Math.max(0.05, num(f.dur, 0.9));
   const raw = (t - f.at) / dur;
   const to = isElement(f.to) ? f.to : null;
   const from = isElement(f.from) ? f.from : null;

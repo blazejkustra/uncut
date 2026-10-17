@@ -25,10 +25,10 @@ interface Motion {
   squeeze: (xs: Array<number>, widths: Array<number>, anchor: number, f: number) => Array<{ x: number; scale: number; width: number }>;
   cursor: (t: number, path: Array<Record<string, unknown>>, o?: unknown) => { x: number; y: number; scale: number; down: boolean };
   click: (t: number, o: Record<string, unknown> | Array<Record<string, unknown>>) => Record<"x" | "y" | "scale" | "press" | "button" | "start" | "arrive" | "pressAt" | "fire" | "release" | "end", number> & { down: boolean; fired: boolean };
-  camera: (t: number, keys: Array<Record<string, number>>, s?: unknown, o?: { drift?: number }) => { x: number; y: number; zoom: number };
+  camera: (t: number, keys: Array<Record<string, number | undefined>>, s?: unknown, o?: { drift?: number; height?: number; dur?: number }) => { x: number; y: number; zoom: number };
   beat: (n: number, o?: { bpm?: number; offset?: number }) => number;
   loop: (t: number, d: number) => number;
-  ease: { inOut: (p: number) => number };
+  ease: { inOut: (p: number) => number; glide: (p: number) => number };
   mixColor: (a: string, b: string, p: number) => string;
   shape: (t: number, keys: Array<Record<string, unknown>>, o?: Record<string, unknown>) => { x: number; y: number; w: number; h: number; r: number; full: boolean };
   shapePath: (ctx: unknown, s: { x: number; y: number; w: number; h: number; r: number }) => void;
@@ -352,14 +352,14 @@ test("morph grows a button into the next scene's full shape in dur s; coverage m
   assert.ok(prev > 0.85);
 });
 
-test("swap: the old content leaves first, then the new arrives, each quick and with its own timing", () => {
+test("swap: the old content leaves first, then the new arrives, each with its own calm timing (0.16 s out, 0.06 s gap, 0.26 s in)", () => {
   const before = M.swap(0.9, 1);
   assert.ok(before.out.alpha === 1 && before.out.blur === 0 && before.out.visible && !before.in.visible);
-  const mid = M.swap(1.12, 1);
+  const mid = M.swap(1.19, 1);
   assert.ok(!mid.out.visible && !mid.in.visible, "the gap: neither overlaps the other");
-  const arriving = M.swap(1.2, 1);
+  const arriving = M.swap(1.3, 1);
   assert.ok(arriving.in.visible && arriving.in.alpha < 1 && arriving.in.blur > 0 && arriving.in.dy > 0);
-  const done = M.swap(1.3, 1);
+  const done = M.swap(1.49, 1);
   assert.ok(done.in.alpha === 1 && done.in.blur === 0 && done.in.dy === 0);
 });
 
@@ -384,10 +384,11 @@ test("grow (review): a full before at doesn't stick the scale at 1.12; dur 0 cut
     assert.ok(on.full && near(on.scale, 1, 1e-9), `dur ${dur}: full and settled on at`);
     for (const r of on.rects) for (const v of [r.x, r.y, r.w, r.h, r.r]) assert.ok(Number.isFinite(v), `dur ${dur}: no NaN`);
   }
-  // dur 0 with the default full (at + 0.5): the seed at once, the bleed at once on full.
+  // dur 0 with the default full (at + 0.6): the seed at once, the bleed at once on full.
   const seed = M.grow(2.01, { at: 2, dur: 0 });
-  assert.ok(seed.visible && !seed.full && M.grow(2.5, { at: 2, dur: 0 }).full);
-  assert.ok(near(M.grow(2.1, { at: 2 }).w, M.grow(2.1, { at: 2, dur: undefined }).w, 1e-9), "no dur: 0.3 s as before");
+  assert.ok(seed.visible && !seed.full && !M.grow(2.59, { at: 2, dur: 0 }).full && M.grow(2.6, { at: 2, dur: 0 }).full);
+  assert.ok(near(M.grow(2.1, { at: 2 }).w, M.grow(2.1, { at: 2, dur: undefined }).w, 1e-9), "no dur: the default (0.4 s)");
+  assert.ok(near(M.grow(2.2, { at: 2 }).w, M.grow(2.2, { at: 2, dur: 0.4 }).w, 1e-9), "the default is 0.4 s");
 });
 
 test("grow: the next shot grows out of a shape into a seed on the kick, then bleeds full on the next; never a blank, never a jump", () => {
@@ -398,8 +399,8 @@ test("grow: the next shot grows out of a shape into a seed on the kick, then ble
     assert.ok(!M.grow(12.99, o).visible, `${kind}: nothing before the kick`);
     const seed = M.grow(13.4, o);
     assert.ok(seed.visible && !seed.full, `${kind}: a seed shape, the old shot still around it`);
-    assert.ok(M.grow(13.81, o).full, `${kind}: full by the kick plus dur`);
-    assert.ok(seed.scale > 1 && near(M.grow(13.81, o).scale, 1, 1e-9), `${kind}: the picture settles`);
+    assert.ok(M.grow(13.91, o).full, `${kind}: full by the kick plus dur`);
+    assert.ok(seed.scale > 1 && near(M.grow(13.91, o).scale, 1, 1e-9), `${kind}: the picture settles`);
     // Continuous: no rect edge moves more than a fifth of the frame between 60 fps frames.
     let prev = M.grow(13, o);
     for (let f = 1; f <= 60; f++) {
@@ -462,4 +463,47 @@ test("frameWidth: footage is asked for at its drawn size times the zoom or large
   assert.equal(M.frameWidth(300), 360);
   assert.equal(M.frameWidth(4000), 1920, "capped at uncut.frame's longest edge");
   for (let w = 10; w < 1900; w += 37) assert.ok(M.frameWidth(w, 1) >= w);
+});
+
+// Pacing round (the user found demo v3 "a bit too dynamic or too hasty"): measured at 60 fps on the
+// reference films, a move speeds up for about 0.2 s and slows down 1.6 to 1.8x as long, peaking near
+// 1.3 frame heights/s, the camera's zoom near 1.2 ln/s at most; v3's camera peaked twice as fast.
+test("calm defaults: the glide eases off and slows down longer than it sped up; the camera glides, slower for a bigger push, no overshoot", () => {
+  const g = M.ease.glide;
+  assert.equal(g(0), 0);
+  assert.equal(g(1), 1);
+  assert.equal(g(-1), 0);
+  assert.equal(g(2), 1);
+  const v = (p: number) => (g(p + 1e-4) - g(p - 1e-4)) / 2e-4;
+  let peak = 0;
+  for (let p = 0.01; p < 1; p += 0.01) if (v(p) > v(peak)) peak = p;
+  assert.ok(Math.abs(peak - 1 / 3) < 0.02, `top speed a third in (${peak})`);
+  const tenth = v(peak) / 10;
+  let a = 0, b = 1;
+  while (v(a) < tenth) a += 0.001;
+  while (v(b - 0.001) < tenth) b -= 0.001;
+  const ratio = (b - peak) / (peak - a);
+  assert.ok(ratio > 1.5 && ratio < 1.9, `slows down ${ratio.toFixed(2)}x as long as it speeds up`);
+  // The camera: by default each move is a glide of 0.9 s or more; a 4x push takes longer, its zoom never faster than about 1.2 ln/s.
+  const keys = [{ at: 0, x: 500, y: 400, zoom: 1 }, { at: 1, zoom: 2 }, { at: 4, zoom: 8 }];
+  const lz = (t: number) => Math.log(M.camera(t, keys).zoom);
+  assert.ok(near(lz(1), 0, 1e-12) && lz(1.9) < Math.log(2) - 1e-4 && near(lz(2.05), Math.log(2), 1e-9), "about 1 s for a 2x push");
+  assert.ok(near(Math.log(M.camera(1.9, [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, zoom: 1.5 }]).zoom), Math.log(1.5), 1e-9), "0.9 s for a small one");
+  let fastest = 0;
+  for (let t = 0; t < 7; t += 1 / 60) {
+    const z = lz(t + 1 / 60) - lz(t);
+    assert.ok(z >= -1e-12, `no overshoot back at ${t.toFixed(2)}`);
+    fastest = Math.max(fastest, z * 60);
+  }
+  assert.ok(fastest <= 1.25, `zoom peaks at ${fastest.toFixed(2)} ln/s`);
+  assert.ok(lz(5.6) < Math.log(8) - 0.01 && near(lz(6.1), Math.log(8), 1e-9), "the 4x push takes longer than 0.9 s, at most 2 s");
+  // A key's dur wins; o.height slows a long pan; a spring name keeps the spring camera.
+  assert.ok(near(M.camera(1.3, [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, x: 100, dur: 0.3 }]).x, 100, 1e-9));
+  const pan = [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 0, x: 0 }, { at: 1, x: 2700 }];
+  assert.ok(M.camera(1.9, pan, undefined, { height: 1350 }).x < 2700 - 1 && near(M.camera(1.9, pan).x, 2700, 1e-9), "a 2-frame-height pan glides longer with o.height");
+  assert.ok(near(M.camera(1.15, keys, "spring.settle").zoom, Math.exp(Math.log(2) * M.spring(0.15, "spring.settle")), 1e-9));
+  // Pure and continuous through a retarget mid-move.
+  const re = [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, x: 300 }, { at: 1.4, x: -200 }];
+  for (let t = 0.9; t < 3; t += 1 / 60) assert.ok(Math.abs(M.camera(t + 1 / 60, re).x - M.camera(t, re).x) < 15, `continuous at ${t.toFixed(2)}`);
+  assert.deepEqual(M.camera(1.234, re), M.camera(1.234, re));
 });

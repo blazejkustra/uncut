@@ -159,7 +159,7 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
    desktop-sized window: that reads as a screen recording. Or the whole program as the STAGE: the
    editor mounted live (its panels follow props every frame), blurred behind a big hero piece, then
    in focus while a camera (uncutMotion.camera) pushes into the region where the work happens.
-     uncutUI.sequence(host, t, keys, { dur: 0.5 })    // ONE shell carried through keys (call it every frame):
+     uncutUI.sequence(host, t, keys, { dur: 0.9 })    // ONE shell carried through keys (call it every frame):
        keys: [{ at, piece: "composer", props }, { at: 2, piece: "message", props, carry: [["input", "text"]] }, ...]
        piece: "part.slot" (or "part"); props: the part's props below; index: the nth match. Big by default:
        centred in the host, 86 % of its width, its words type px tall (default 4.8 % of the host's height:
@@ -168,18 +168,19 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        radius, background, color (restyles); theme: "light" (white surfaces, dark words) or the app's dark;
        press: the shell's scale (uncutMotion.click's .button); fit: "contain" | "cover" (default cover for
        preview.frame); shadow: false; dur: its morph; from: "down" (default), "up", "left", "right", "none".
-       From each key's at the shell's centre, size, radius and colour travel to it in dur s (critically damped:
-       no overshoot) while the new content pushes in from its side out of a blur and the old leaves by the
-       other, both at one uniform scale (never two legible pictures at once); carry: selectors (or [old's,
-       new's]) that travel instead, the prompt shrinking into its message. A leaving preview frame stays put,
-       cropped by the shell. The same piece twice (one more step) grows without a swap. Pure in t.
+       From each key's at the shell's centre, size, radius and colour travel to it in dur s (a calm glide:
+       eases off, slows down longer than it sped up, no overshoot) while the new content pushes in from its
+       side out of a blur and the old leaves by the other, both at one uniform scale (never two legible
+       pictures at once); carry: selectors (or [old's, new's]) that travel instead, the prompt shrinking
+       into its message. A leaving preview frame stays put, cropped by the shell. The same piece twice (one more step) grows without a swap. Pure in t.
        Returns { x, y, w, h, r, p, key, el, type } (el: the shown piece's element, for find and rectIn).
      uncutUI.piece(host, "export.high", { props, width, x, y, ... })  // one piece alone (sequence's key at rest)
      uncutUI.mount(host, "editor", { width: 1440, height: 1000, blur, dim, ...props })  // the program as a live stage:
        call it every frame; each panel is rebuilt only when its props change (clips moving, steps growing,
        the playhead, an export's progress). blur (px on screen at its scale) and dim (0..1): the program
-       behind a hero. width, height: the window it lays out in (the real responsive layout).
-     uncutUI.fly(fx, t, { at, dur: 0.7, from, to, arc, leave, fit, id })  // one element travelling into its place,
+       behind a hero. width, height: the window it lays out in (the real responsive layout). time: t, so a
+       running step's spinner turns (pass it every frame).
+     uncutUI.fly(fx, t, { at, dur: 0.9, from, to, arc, leave, fit, id })  // one element travelling into its place,
        call it every frame for every flight: from a piece key (the big hero composer, shown at rest before at,
        its Send pressed), an element (a media tile, the prompt's text) or a rect, to an element in the stage
        (the editor's composer, a timeline clip, the preview's frame); rect, radius and colour travel on an arc
@@ -187,7 +188,8 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        element is hidden until it lands, then the real one shows. leave: the from element goes at at (the
        prompt leaving the composer); fit: "cover" (default) | "contain" (text into a bubble); id: one per
        flight in the air. fx: a layer above the stage's camera (rects are measured on screen, so a moving
-       camera is fine). Returns { x, y, w, h, p, el } (el: the hero piece's element while it is up).
+       camera is fine), best once the camera has settled; several flights go one after another, each
+       leaving as the last lands. Returns { x, y, w, h, p, el } (el: the hero piece's element while it is up).
      uncutUI.rectIn(el, host)                         // { x, y, w, h }: an element's rect in host px (aim a click at Send)
      uncutUI.mount(host, name, props)                 // a whole part (returns its root): rarely, briefly
      uncutUI.parts()                                  // editor, topbar, agent, message, turn, review, timeline, preview,
