@@ -47,7 +47,7 @@ import { join } from "node:path";
 import * as readline from "node:readline";
 
 import { app, BrowserWindow, nativeImage, protocol, session } from "electron";
-import { handleMedia, isMediaUrl, MEDIA_SCHEME_PRIVILEGES, takeMediaReply } from "./renderMedia.ts";
+import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaWaiting, takeMediaReply } from "./renderMedia.ts";
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
@@ -428,8 +428,23 @@ async function main() {
       }
     })();
     let timer: NodeJS.Timeout | undefined;
+    // Round 3's A2: a frame waiting on project media (uncut.frame of footage not decoded yet: a
+    // timeline of thumbnails) waits for it too, up to the media's own deadline more; the error says
+    // which time and which media it was waiting for.
+    const budget = GRAPHIC_FRAME_MS * ts.length;
+    const started = Date.now();
+    const expired = (reject: (e: Error) => void) => {
+      const media = mediaWaiting();
+      if (media.length && Date.now() - started < budget + MEDIA_MS) {
+        timer = setTimeout(() => expired(reject), 250);
+        return;
+      }
+      const at = ts.length ? ` at ${ts[0]!.toFixed(2)} s` : "";
+      const why = media.length ? `, still waiting for project media (${media.slice(0, 3).map((x) => `${x.id} at ${x.t.toFixed(2)} s`).join(", ")}${media.length > 3 ? ` and ${media.length - 3} more` : ""}): ask uncut.frame for fewer or smaller pictures per frame, or reuse them` : " (a script that never ends, or a frame waiting on too many uncut.frame pictures?)";
+      reject(new Error(`${name}the graphic took longer than ${budget / 1000} s to load and draw a frame${at}${why}`));
+    };
     try {
-      await Promise.race([work, new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${name}the graphic took longer than ${GRAPHIC_FRAME_MS / 1000} s to load and draw a frame (a script that never ends?)`)), GRAPHIC_FRAME_MS * ts.length)))]);
+      await Promise.race([work, new Promise<never>((_, reject) => (timer = setTimeout(() => expired(reject), budget)))]);
     } catch (error) {
       // Stuck or broken: the next frame starts from a fresh window.
       work.catch(() => {});
