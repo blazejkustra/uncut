@@ -1464,6 +1464,80 @@ function piece(host: HTMLElement, id: string, props?: Omit<PieceKey, "piece" | "
   return sequence(host, 0, [{ ...(props || {}), piece: id, at: 0 }]).el;
 }
 
+/**
+ * A camera key that makes el's words read (el, or a list framed together: the message and the steps):
+ * { x, y, zoom } in host px (uncutMotion.camera's keys, the host being the world div the camera
+ * moves) centred on el's words (their text and icons, not its
+ * box), zoomed until their font is o.text of the frame's height (default 0.048, a piece's words: their
+ * letters then stand about 3.5 % tall) unless that would push
+ * them past the safe inset. Returns { x, y, zoom, text, fits }: text is the share the words get, fits
+ * false when they're too wide for that zoom (the zoom is capped so they stay whole, and text says how
+ * small they stay): a desktop panel can't carry the moment there, set it large as a piece instead.
+ * Every film framed the agent panel's whole width (zoom = 1080 / its 440 px), its 12 px steps 2 % of
+ * the height and the near-empty dark column filling the frame. o: { width: 1080, height: 1350, text,
+ * safe: 72, pad: 8 } (frame px; pad: host px around the words).
+ */
+function frameText(target: Element | ReadonlyArray<Element>, host: HTMLElement, o?: { readonly width?: number; readonly height?: number; readonly text?: number; readonly safe?: number; readonly pad?: number }): { x: number; y: number; zoom: number; text: number; fits: boolean } {
+  const W = num(o?.width, 1080);
+  const H = num(o?.height, 1350);
+  const want = num(o?.text, 0.048);
+  const safe = Math.max(0, Math.min(num(o?.safe, 72), W / 2 - 1, H / 2 - 1));
+  const pad = num(o?.pad, 8);
+  // Several elements (the message and the steps under it) are framed together.
+  const els = (isElement(target) ? [target as Element] : [...(target as ReadonlyArray<Element>)]).filter(Boolean);
+  const doc = host.ownerDocument;
+  const view = doc.defaultView;
+  const hb = host.getBoundingClientRect();
+  const hs = host.offsetWidth ? hb.width / host.offsetWidth : 1;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const grow = (r: DOMRect) => {
+    if (!r.width || !r.height) return;
+    x0 = Math.min(x0, (r.left - hb.left) / hs);
+    y0 = Math.min(y0, (r.top - hb.top) / hs);
+    x1 = Math.max(x1, (r.right - hb.left) / hs);
+    y1 = Math.max(y1, (r.bottom - hb.top) / hs);
+  };
+  // The words' font in host px, weighted by their length, and their extent (with the icons beside them).
+  const sizes: Array<[number, number]> = [];
+  for (const el of els) {
+    const walk = doc.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const text = (n.nodeValue || "").trim();
+      const p = n.parentElement;
+      if (!text || !p) continue;
+      const cs = view ? view.getComputedStyle(p) : null;
+      if (cs && (cs.visibility === "hidden" || cs.display === "none" || cs.opacity === "0")) continue;
+      const range = doc.createRange();
+      range.selectNodeContents(n);
+      const rects = range.getClientRects();
+      if (!rects.length) continue;
+      for (let i = 0; i < rects.length; i++) grow(rects[i]!);
+      const pr = p.getBoundingClientRect();
+      const k = p.offsetWidth ? pr.width / p.offsetWidth : 1;
+      sizes.push([(parseFloat(cs ? cs.fontSize : "12") || 12) * (k / hs), text.length]);
+    }
+    el.querySelectorAll("svg").forEach((s) => grow(s.getBoundingClientRect()));
+  }
+  if (!sizes.length) {
+    for (const el of els) grow(el.getBoundingClientRect());
+    sizes.push([12, 1]);
+  }
+  if (!Number.isFinite(x0)) return { x: 0, y: 0, zoom: 1, text: 0, fits: false };
+  sizes.sort((a, b) => a[0] - b[0]);
+  const total = sizes.reduce((s, x) => s + x[1], 0);
+  let acc = 0;
+  let font = sizes[sizes.length - 1]![0];
+  for (const [px, n] of sizes) if ((acc += n) >= total / 2) {
+    font = px;
+    break;
+  }
+  const bw = x1 - x0 + 2 * pad, bh = y1 - y0 + 2 * pad;
+  const zText = (want * H) / Math.max(1, font);
+  const zFit = Math.min((W - 2 * safe) / Math.max(1, bw), (H - 2 * safe) / Math.max(1, bh));
+  const zoom = Math.min(zText, zFit);
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, zoom, text: Math.round(((font * zoom) / H) * 10000) / 10000, fits: zText <= zFit + 1e-9 };
+}
+
 /** An element's rect in host px { x, y, w, h } (its top-left; a cursor's target, a headline pinned to a piece). */
 function rectIn(el: Element, host: HTMLElement): { x: number; y: number; w: number; h: number } {
   const a = el.getBoundingClientRect();
