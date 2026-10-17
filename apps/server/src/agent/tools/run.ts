@@ -17,6 +17,7 @@ import { noteFor } from "../turns/notes.ts";
 import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
+import { legibilityNote } from "../agentLegibility.ts";
 
 /** How long render_frames may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_RENDER_MS = 15_000;
@@ -83,7 +84,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const width = Math.max(64, Math.round(canvas.width * scale));
           // The frames, then the export's graphics rehearsed on the same rasteriser (every frame in
           // order, as the export runs them): a graphic that breaks only on a long run shows here.
-          const rendered = yield* exporter.frameSession((session) => Effect.all([session.render(frames as Array<number>, width), session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined)))])).pipe(
+          const rendered = yield* exporter.frameSession((session) => Effect.all([session.render(frames as Array<number>, width, { census: true }), session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined)))])).pipe(
             Effect.map(([list, rehearsal]) => ({ ok: true as const, list, rehearsal })),
             Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
           );
@@ -96,9 +97,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // What a frame leaves out (a graphic it couldn't read, D78), once each.
           clamped.push(...new Set(rendered.list.flatMap((r) => r.notes ?? [])));
           const rehearsal = rendered.rehearsal?.failure ? ` ${rehearsalLine(rendered.rehearsal)}` : "";
+          const legible = legibilityNote(rendered.list, canvas.height);
           return {
             content: [
-              { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}` },
+              { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}${legible ? ` ${legible}` : ""}` },
               ...rendered.list.map((r) => ({ type: "image" as const, data: r.jpeg.toString("base64"), mimeType: "image/jpeg" })),
             ],
           };

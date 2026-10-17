@@ -1,7 +1,7 @@
 // The running turn's live output: publishing, the turn's end, claude's streamed and full messages.
 import type { Project } from "@uncut/core";
 import { friendlyText } from "@uncut/core/mentions";
-import { doingLabel, partialFields, stepLabel } from "../agentTools.ts";
+import { doingLabel, partialFields, stepLabel, TOOL_NAMES } from "../agentTools.ts";
 import type { Running, ClaudeSession, StoredTurn } from "./types.ts";
 import { isString, resultText } from "../turns/history.ts";
 import { STREAM_PUBLISH_MS, idleMs, canonical } from "./config.ts";
@@ -233,6 +233,7 @@ export const makeStream = (ctx: RunCtx) => {
     for (const c of content as Array<Record<string, any>>) {
       if (c?.type === "tool_use" && isString(c.name)) {
         r.toolNames.set(String(c.id), c.name);
+        if ((TOOL_NAMES as ReadonlyArray<string>).includes(c.name)) (r.bareCalls ??= []).push(c.name);
         if (c.name === "WebSearch" || c.name === "WebFetch") r.owner.webUsed = true;
       } else if (msg.type === "user" && c?.type === "tool_result") {
         const name = r.toolNames.get(String(c.tool_use_id)) ?? "";

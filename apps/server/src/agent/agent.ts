@@ -68,6 +68,20 @@ export { noteFor, joinNotes, mediaHeardOnMain, speechOfItem } from "./turns/note
 export { TURN_DIR_PREFIX, cleanStaleTurns } from "./session/stale.ts";
 
 /** An MCP tools/call result. */
+/**
+ * A call the model made by an Uncut tool's bare name (graphic_write) failed in Claude Code with "No
+ * such tool available" before reaching Uncut (T3: a new film file never written, the agent carrying
+ * on as if it were). That message can't be changed, so the next Uncut result says what happened and
+ * the full name to call.
+ */
+export function withBareNote<T extends McpResult>(r: { bareCalls?: Array<string> }, result: T): T {
+  const bare = [...new Set(r.bareCalls ?? [])];
+  if (!bare.length) return result;
+  r.bareCalls = [];
+  const text = `Note: your call${bare.length === 1 ? "" : "s"} to ${bare.join(", ")} by the short name failed ("No such tool available") and did nothing. Uncut's tools are called by their full name: ${bare.map((x) => `mcp__uncut__${x}`).join(", ")}. Make ${bare.length === 1 ? "that call" : "those calls"} again with the full name if you still need ${bare.length === 1 ? "it" : "them"}.`;
+  return { ...result, content: [...result.content, { type: "text", text }] };
+}
+
 export interface McpResult {
   readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "image"; readonly data: string; readonly mimeType: string }>;
   readonly isError?: boolean;
@@ -332,6 +346,7 @@ export const layer = Layer.effect(
           else if (process.env.UNCUT_AGENT_DEBUG) console.error(`[uncut] agent call ${String(name)} wasn't announced in turn ${r.gen}'s stream (run anyway)`);
           return allowed(r, String(name).replace(/^mcp__uncut__/, ""), input).pipe(
             Effect.flatMap((refusal) => (refusal ? Effect.succeed(refusal) : runTool(r, String(name), input))),
+            Effect.map((result) => withBareNote(r, result)),
             Effect.tap(() => Effect.sync(publishNow)),
           );
         }),

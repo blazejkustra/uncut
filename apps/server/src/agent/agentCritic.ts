@@ -16,7 +16,8 @@ import { resultError, resultFailed, turnLimits } from "./agentLimits.ts";
 
 import type { Brief, IntendedFinding, Review, ReviewScores, Storyboard } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
-import { soundProfileText } from "@uncut/core";
+import { soundProfileText, SMALL_TEXT } from "@uncut/core";
+import { legibleFix } from "./agentLegibility.ts";
 import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCategory } from "@uncut/core/skills";
 
 /** The critic's bar: every score at least this. */
@@ -508,7 +509,11 @@ export function reviewNext(review: Review, turnRound: number = review.round, mor
   // Round 4's A2: text cut at the frame edge during camera pushes, three rounds running: the safe inset and the one call that keeps a box inside it.
   const edged = (review.blockers ?? []).filter((b) => b.kind === "overflow" && /\bedge|\bcut\b|clip|crop|off[- ]?(screen|frame)/i.test(b.what ?? ""));
   const edge = edged.length && frame ? ` Text cut at the frame edge (${edged.map((b) => b.id).join(", ")}): the safe area is ${frame.safe} px in from every edge (x ${frame.safe} to ${frame.width - frame.safe}, y ${frame.safe} to ${frame.height - frame.safe} on ${frame.width}x${frame.height}). At each one's frame, find the box whose words cross it (the card, button or label it names) and keep that whole box inside the inset on every frame of the move, its tightest zoom included: frame with uncutMotion.frameRect(left, top, w, h, { width, height, safe: ${frame.safe}, keep: [boxLeft, boxTop, boxW, boxH] }) (or fit: true, safe: ${frame.safe} to show the whole dialog), not a bigger zoom; then render_frames the move's tightest frames.` : "";
-  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${edge}${det}`.trim();
+  // T3: three rounds each fixed the one desktop-scale moment blocked and left the rest small: name the
+  // measured words, the one call that sets them large, and say to fix every small moment at once.
+  const small = (review.blockers ?? []).filter((b) => b.kind === "illegible");
+  const tiny = small.length && frame ? ` Text too small (${small.map((b) => b.id).join(", ")}): at each one's frame, find the line it names (its place above says what Uncut measured there). ${legibleFix(frame.height)} Then render_frames those frames: its note lists every word still under ${SMALL_TEXT * 100} %; fix every moment it lists, not only the one blocked.` : "";
+  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${edge}${tiny}${det}`.trim();
   const o: ReviewOutlook = typeof more === "boolean" ? { more, why: `round ${turnRound} of at most ${REVIEW_ROUNDS_MAX}` } : more;
   if (!o.more) return `That was round ${turnRound} in this turn, the last one (${o.why}; past ${REVIEW_ROUNDS} rounds a turn goes on only while it converges: fewer or different blockers, or none left with scores rising, up to ${REVIEW_ROUNDS_MAX}): stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
   return `Not passed. Another round is open (${o.why}). ${open} Fix every blocker first (at its moment, in the graphic named, as its Fix says), then the scores under the bar and the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;

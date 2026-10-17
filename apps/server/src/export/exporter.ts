@@ -69,7 +69,7 @@ export interface ExportInput {
 /** D292: a frame session's renders (exporter/frames.ts openFrameSession), as effects. */
 export interface FrameSessionShape {
   /** As renderFrames; `until` is asked before each frame and, once true, the rest are left out. */
-  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly motionBlur?: boolean }) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly motionBlur?: boolean; readonly census?: boolean }) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
   /** As sheetImage, drawn by the session's rasteriser. */
   readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
   /** The export's graphics rehearsed on the session's rasteriser (exporter/rehearse.ts), within `budgetMs`. */

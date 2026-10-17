@@ -50,6 +50,7 @@ import { app, BrowserWindow, nativeImage, protocol, session } from "electron";
 import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaActive, mediaAnswered, mediaWaiting, takeMediaReply } from "./renderMedia.ts";
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
+import { GRAPHIC_CENSUS } from "../../../packages/core/src/visual/census.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
 import dmMonoRegular from "../../../assets/fonts/DMMono-Regular.woff2";
 import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";
@@ -132,6 +133,8 @@ interface GraphicRequest {
   /** D292: as HtmlRequest's. */
   readonly outWidth?: number;
   readonly outHeight?: number;
+  /** The text census (packages/core census.ts) after the frame: words whose letters stand under this share of the height come back with the reply. */
+  readonly census?: number;
 }
 interface ShaderRequest {
   readonly id: number;
@@ -275,7 +278,7 @@ const isRequest = (v: unknown): v is Request => {
     if ((r.kind !== undefined && r.kind !== "graphic") || !within(r.outWidth, r.width!) || !within(r.outHeight, r.height!)) return false;
   }
   if (r.kind === "graphic")
-    return typeof r.doc === "string" && typeof r.t === "number" && Number.isFinite(r.t) && (r.name === undefined || typeof r.name === "string") && (r.ts === undefined || (Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t))));
+    return typeof r.doc === "string" && typeof r.t === "number" && Number.isFinite(r.t) && (r.name === undefined || typeof r.name === "string") && (r.census === undefined || (typeof r.census === "number" && r.census > 0 && r.census < 1)) && (r.ts === undefined || (Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t))));
   if ((r.kind as unknown) === "shader") {
     const sr = v as Partial<ShaderRequest>;
     const floats = (a: unknown, max: number) => Array.isArray(a) && a.length <= max && a.every((x) => typeof x === "number" && Number.isFinite(x));
@@ -708,6 +711,17 @@ async function main() {
   const render = async (r: Request) => {
     if (r.kind !== undefined && r.kind !== "graphic" && r.kind !== "graphic-run" && r.kind !== "shader" && r.kind !== "shader-probe") return renderSeq(r);
     if (r.kind === "graphic-run") return runGraphic(r);
+    if (r.kind === "graphic" && r.census !== undefined) {
+      // The census reads the page as the frame left it (the last sub-frame's state with blur).
+      await drawGraphic(r);
+      const gw = graphicWin;
+      if (!gw || gw.isDestroyed()) return undefined;
+      const census: unknown = await gw.webContents.executeJavaScript(`(${GRAPHIC_CENSUS})(${r.width}, ${r.height}, ${r.census})`).catch(() => undefined);
+      return { census };
+    }
+    return drawGraphic(r);
+  };
+  const drawGraphic = async (r: HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest): Promise<void> => {
     if (r.kind === "graphic" && r.ts && r.ts.length > 1) {
       // Motion blur's sub-frames averaged on premultiplied colour, as seq-graphic does (the export's frame).
       const s = { width: r.width, height: r.height };
@@ -743,7 +757,7 @@ async function main() {
     if (!isRequest(request)) return void reply({ id: (request as { id?: unknown })?.id ?? null, ok: false, error: "bad request" });
     chain = chain.then(() =>
       render(request).then(
-        () => void reply({ id: request.id, ok: true }),
+        (done) => void reply({ id: request.id, ok: true, ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}) }),
         (error: unknown) => void reply({ id: request.id, ok: false, error: messageOf(error) }),
       ),
     );
