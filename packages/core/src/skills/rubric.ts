@@ -119,9 +119,9 @@ const MUSIC_ONLY = /\b(music|song|track|soundtrack) only\b|\bonly (the |a |one )
 
 /**
  * The sound profile for a brief and the project's skills: the user's own words first (the request,
- * then the brief's), then the Sound design skill, then the type. Music only wins over the motion
- * film's ui profile: a skill default never asks for effects the user ruled out (T2, A2r8's critics
- * scored the silence down and asked for clicks).
+ * then the brief's), then the Sound design skill, then the type. Music only wins over every default:
+ * nothing asks for effects the user ruled out (T2, A2r8: the request said music only, the profile
+ * never read it, and the critics scored the silence down and asked for clicks).
  */
 export function soundProfileFor(brief: RubricBrief | undefined, skills: ReadonlyArray<string> = [], request?: string): SoundProfile {
   skills = skillIdsOf(skills);
