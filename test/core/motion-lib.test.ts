@@ -417,6 +417,34 @@ test("grow: the next shot grows out of a shape into a seed on the kick, then ble
   assert.deepEqual(M.grow(13.2, { at: 13, kind: "circle" }), M.grow(13.2, { at: 13, kind: "circle" }));
 });
 
+// Round 4's A2: three rounds of text cut at the frame edge during pushes into the Export dialog.
+test("frameRect safe and keep: a fit lands inside the safe inset; a cover push keeps a text box whole inside it", () => {
+  const W = 1080;
+  const H = 1350;
+  const S = 72;
+  const inside = (cam: { x: number; y: number; zoom: number }, l: number, t: number, w: number, h: number) => {
+    const [a, b] = M.toScreen(cam, l, t, W, H);
+    const [c, d] = M.toScreen(cam, l + w, t + h, W, H);
+    return a >= S - 1e-6 && b >= S - 1e-6 && c <= W - S + 1e-6 && d <= H - S + 1e-6;
+  };
+  // fit with safe: the dialog's edges sit at the inset (width-limited here).
+  const fit = M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true, safe: S });
+  assert.ok(inside(fit, 300, 200, 800, 500));
+  assert.ok(near(M.toScreen(fit, 300, 200, W, H)[0], S, 1e-6), "the fit edge lands on the inset");
+  // cover of the dialog crops its left card; keep slides and zooms out so that card's text stays whole.
+  const card: [number, number, number, number] = [310, 400, 260, 120];
+  const plain = M.frameRect(300, 200, 800, 500, { width: W, height: H });
+  assert.ok(!inside(plain, ...card), "plain cover cuts the left card");
+  const kept = M.frameRect(300, 200, 800, 500, { width: W, height: H, safe: S, keep: card });
+  assert.ok(inside(kept, ...card), `kept: ${JSON.stringify(kept)}`);
+  assert.ok(kept.zoom <= plain.zoom + 1e-9);
+  // A box too wide for the inset at the cover zoom: the zoom drops until it fits.
+  const wide = M.frameRect(300, 200, 800, 500, { width: W, height: H, safe: S, keep: [300, 300, 800, 100] });
+  assert.ok(inside(wide, 300, 300, 800, 100) && near(wide.zoom, (W - 2 * S) / 800, 1e-9));
+  // No safe, no keep: unchanged.
+  assert.deepEqual(M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true }), M.frameRect(300, 200, 800, 500, { width: W, height: H, fit: true, safe: 0 }));
+});
+
 test("frameWidth: footage is asked for at its drawn size times the zoom or larger, on fixed steps", () => {
   assert.equal(M.frameWidth(1080), 1080);
   assert.equal(M.frameWidth(540, 1.8), 1080, "a tile zoomed 1.8x needs 972 px");

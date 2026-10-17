@@ -137,7 +137,7 @@ test("review rounds: past 3 only while the blockers go down or change, never pas
   assert.equal(mayReviewAgain([b(5), b(4), b(2)]), true, "shrinking");
   assert.equal(mayReviewAgain([b(5), b(4), b(4)]), false, "stalled");
   assert.equal(mayReviewAgain([b(5), b(2), b(3)]), false, "grew");
-  assert.equal(mayReviewAgain([b(5), b(2), b(0)]), false, "no blockers left (scores under the bar don't keep it going)");
+  assert.equal(mayReviewAgain([b(5), b(2), b(0)]), true, "blockers fell to 0 with scores under the bar: go on (round 4's A1)");
   assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6), b(5)]), true);
   assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6), b(5), b(4)]), false, "the ceiling");
   // The turn's own count rules (review): a round whose review couldn't be saved still counts.
@@ -147,9 +147,42 @@ test("review rounds: past 3 only while the blockers go down or change, never pas
   assert.equal(mayReviewAgain([b(5), b(5)], 3), false, "3 run (one unsaved): past the floor, nothing shows it converging");
   assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6)], 4), true, "all saved and shrinking");
   const r = criticReview(parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "blank", what: "Empty frame", at: 4.2 }] })) as never, ctx);
-  assert.match(reviewNext(r, 3, true), /Not passed\. Round 3: the blockers went down or moved on, so you get another round \(at most 6/);
-  assert.match(reviewNext(r, 4, false), /round 4 in this turn, the last one \(past 3 rounds a turn goes on only while the blockers go down or change, up to 6\): stop fixing/);
+  assert.match(reviewNext(r, 3, true), /Not passed\. Another round is open \(round 3 of at most 6\)/);
+  assert.match(reviewNext(r, 4, false), /round 4 in this turn, the last one \(round 4 of at most 6; past 3 rounds a turn goes on only while it converges/);
   assert.match(reviewNext(r, 3), /the last one/, "the default stays 3");
+});
+
+// Round 4's A1: blockers 4, 2, 0 with motion 7 < 8 stopped at round 3 and the agent said "the round 3 limit".
+test("review rounds: no blockers left but under the bar goes on when blockers fell or scores rose, and says why", async () => {
+  const { reviewOutlook } = await import("../../apps/server/src/agent/agentCritic.ts");
+  const round = (n: number, motion: number) => ({ passed: false, blockers: Array.from({ length: n }, (_, i) => ({ at: i })), scores: { hook: 8, readability: 8, motion, variety: 8, sound: 8, brand: 8 } });
+  const a1 = reviewOutlook([round(4, 5), round(2, 6), round(0, 7)]);
+  assert.equal(a1.more, true);
+  assert.equal(a1.why, "round 3 of at most 6: the blockers fell to 0 but motion 7 < 8 is under the bar, so round 4 of 6 is available");
+  const rose = reviewOutlook([round(4, 5), round(2, 6), round(0, 6), round(0, 7)]);
+  assert.equal(rose.more, true, rose.why);
+  assert.match(rose.why, /no blockers and the scores came closer to the bar \(motion 6 < 8 before, motion 7 < 8 now\), so round 5 of 6/);
+  const flat = reviewOutlook([round(4, 5), round(2, 6), round(0, 7), round(0, 7)]);
+  assert.deepEqual(flat, { more: false, why: "round 4 of at most 6: no blockers, but the scores under the bar didn't improve (motion 7 < 8)" });
+  assert.match(reviewOutlook([round(3, 5), round(2, 5), round(2, 5)]).why, /the same blockers came back$/);
+  assert.match(reviewOutlook([round(1, 5), round(2, 5), round(3, 5)]).why, /the blockers grew from 2 to 3$/);
+  assert.match(reviewOutlook([round(0, 5), round(0, 6), round(0, 7), round(0, 7.5), round(0, 7.8), round(0, 7.9)]).why, /6 rounds is the cap$/);
+  assert.match(reviewOutlook([round(4, 5)]).why, /the first 3 are always open, so round 2 is available/);
+  // The why reaches the builder in next, both ways.
+  const r = criticReview(parseCritic(JSON.stringify({ scores: { ...all(8), motion: ev(7) } })) as never, ctx);
+  assert.match(reviewNext(r, 3, a1), /Another round is open \(round 3 of at most 6: the blockers fell to 0 but motion 7 < 8 is under the bar, so round 4 of 6 is available\)/);
+  assert.match(reviewNext(r, 4, flat), /the last one \(round 4 of at most 6: no blockers, but the scores under the bar didn't improve/);
+});
+
+// Round 4's A2: blockers 1, 2, 3, all text cut at the frame edge during pushes into the Export dialog.
+test("reviewNext: a blocker of text cut at the frame edge names the safe inset and frameRect's keep", () => {
+  const r = criticReview(parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "overflow", what: "The High preset card is cut at the left frame edge: 'igh'.", at: 22.8 }, { kind: "blank", what: "Empty frame", at: 4 }] })) as never, ctx);
+  const next = reviewNext(r, 1, true, undefined, { width: 1080, height: 1350, safe: 72 });
+  assert.match(next, /Text cut at the frame edge \(d1\): the safe area is 72 px in from every edge \(x 72 to 1008, y 72 to 1278 on 1080x1350\)/);
+  assert.match(next, /uncutMotion\.frameRect\(left, top, w, h, \{ width, height, safe: 72, keep: \[boxLeft, boxTop, boxW, boxH\] \}\)/);
+  assert.doesNotMatch(reviewNext(r, 1, true), /safe area/, "no frame given, no hint");
+  const other = criticReview(parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "overflow", what: "The headline runs out of its box", at: 2 }] })) as never, ctx);
+  assert.doesNotMatch(reviewNext(other, 1, true, undefined, { width: 1080, height: 1350, safe: 72 }), /safe area/, "only frame-edge cuts");
 });
 
 test("the critic's prompt: near-empty frames are blank; a wide shot of the whole editor is a readability defect", () => {

@@ -23,33 +23,64 @@ import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCatego
 export const REVIEW_PASS = 8;
 /** At most this many review rounds in a turn. */
 export const REVIEW_ROUNDS = 3;
-/** Rehearsal 4: past REVIEW_ROUNDS a turn keeps reviewing while its blockers go down or change (mayReviewAgain), up to this many rounds. */
+/** Rehearsal 4: past REVIEW_ROUNDS a turn keeps reviewing while it converges (reviewOutlook), up to this many rounds. */
 export const REVIEW_ROUNDS_MAX = 6;
 
 /** A blocker's moment, to compare rounds (ids renumber each round): its time to 0.5 s, else its kind and words. */
 const blockerMoment = (b: { readonly kind?: string; readonly what?: string; readonly at?: number }) => (typeof b.at === "number" ? `@${Math.round(b.at * 2) / 2}` : `${b.kind ?? ""}:${b.what ?? ""}`);
 
+type RoundLike = { readonly passed?: boolean; readonly blockers?: ReadonlyArray<{ readonly kind?: string; readonly what?: string; readonly at?: number }>; readonly scores?: Partial<Record<string, number>>; readonly rubric?: unknown };
+/** Whether another review round is open, and the reason in words the builder sees after each round. */
+export interface ReviewOutlook {
+  readonly more: boolean;
+  readonly why: string;
+}
+
+/** A round's scores under the bar, "motion 7 < 8", and their total shortfall in points. */
+function underBar(round: RoundLike) {
+  const rb = round.rubric && typeof round.rubric === "object" ? { levels: round.rubric as Record<Category, "required" | "optional" | "na"> } : undefined;
+  const low = scoredOf(rb).flatMap((k) => {
+    const v = round.scores?.[k], bar = barOf(rb, k) ?? 0;
+    return typeof v === "number" && v < bar ? [{ k, v, bar }] : [];
+  });
+  return { words: low.map((l) => `${l.k} ${l.v} < ${l.bar}`).join(", "), short: low.reduce((a, l) => a + l.bar - l.v, 0) };
+}
+
 /**
  * Whether a turn may run another review round after these (its saved rounds, in order) when it has
- * run `done` rounds (the turn's own count: a round whose review couldn't be saved still counts):
- * always under REVIEW_ROUNDS; never at REVIEW_ROUNDS_MAX; in between only while the last round still
- * has blockers and is making progress on the round before it: fewer blockers, or (round 3's A/B:
- * 4, 1, 1 and 1, 2, 2 each fixed one and stopped) no more of them at other moments (one fixed, the
- * next found), and only when every round is saved (an unsaved one can't show that). A pass, the same
- * blockers again or more of them stop it.
+ * run `done` rounds (the turn's own count: a round whose review couldn't be saved still counts), and
+ * why: always under REVIEW_ROUNDS; never at REVIEW_ROUNDS_MAX; in between only while it converges,
+ * and only when every round is saved (an unsaved one can't show that). Converging: fewer blockers,
+ * or (round 3's A/B: 4, 1, 1 and 1, 2, 2 each fixed one and stopped) as many at other moments; with
+ * none left (round 4's A1: 4, 2, 0 and motion 7 < 8 stopped at 3), blockers that fell to 0 or scores
+ * closer to the bar. A pass, the same blockers again, more of them, or no blockers and no score
+ * gained stop it.
  */
-export function mayReviewAgain(rounds: ReadonlyArray<{ readonly passed?: boolean; readonly blockers?: ReadonlyArray<{ readonly kind?: string; readonly what?: string; readonly at?: number }> }>, done: number = rounds.length): boolean {
-  if (done >= REVIEW_ROUNDS_MAX || rounds.length >= REVIEW_ROUNDS_MAX) return false;
-  if (done < REVIEW_ROUNDS) return true;
-  if (rounds.length < done) return false;
-  const last = rounds.at(-1)!, before = rounds.at(-2);
-  const n = (x: { readonly blockers?: ReadonlyArray<unknown> } | undefined) => x?.blockers?.length ?? 0;
-  if (last.passed || n(last) === 0 || !before || n(last) > n(before)) return false;
-  if (n(last) < n(before)) return true;
+export function reviewOutlook(rounds: ReadonlyArray<RoundLike>, done: number = rounds.length): ReviewOutlook {
+  const cap = REVIEW_ROUNDS_MAX;
+  const of = `round ${done} of at most ${cap}`;
+  const last = rounds.at(-1), before = rounds.at(-2);
+  if (done >= cap || rounds.length >= cap) return { more: false, why: `${of}: ${cap} rounds is the cap` };
+  if (done < REVIEW_ROUNDS) return { more: true, why: `${of}: the first ${REVIEW_ROUNDS} are always open, so round ${done + 1} is available` };
+  if (last?.passed && rounds.length >= done) return { more: false, why: `${of}: it passed` };
+  if (rounds.length < done || !last || !before) return { more: false, why: `${of}: a round's review couldn't be saved, so nothing shows it converging` };
+  const n = (x: RoundLike) => x.blockers?.length ?? 0;
+  const next = `round ${done + 1} of ${cap} is available`;
+  if (n(last) > n(before)) return { more: false, why: `${of}: the blockers grew from ${n(before)} to ${n(last)}` };
+  if (n(last) === 0) {
+    const was = underBar(before), now = underBar(last);
+    if (n(before) > 0) return { more: true, why: `${of}: the blockers fell to 0 but ${now.words || "a score"} is under the bar, so ${next}` };
+    if (now.short < was.short) return { more: true, why: `${of}: no blockers and the scores came closer to the bar (${was.words || "none"} before, ${now.words || "none"} now), so ${next}` };
+    return { more: false, why: `${of}: no blockers, but the scores under the bar didn't improve (${now.words || "none"})` };
+  }
+  if (n(last) < n(before)) return { more: true, why: `${of}: the blockers fell from ${n(before)} to ${n(last)}, so ${next}` };
   const was = new Set((before.blockers ?? []).map(blockerMoment));
   const now = new Set((last.blockers ?? []).map(blockerMoment));
-  return now.size !== was.size || [...now].some((m) => !was.has(m));
+  if (now.size !== was.size || [...now].some((m) => !was.has(m))) return { more: true, why: `${of}: as many blockers but at other moments (the last ones fixed, new ones found), so ${next}` };
+  return { more: false, why: `${of}: the same blockers came back` };
 }
+/** reviewOutlook's yes or no. */
+export const mayReviewAgain = (rounds: ReadonlyArray<RoundLike>, done: number = rounds.length): boolean => reviewOutlook(rounds, done).more;
 /** A score whose category has a blocker is at most this. */
 export const BLOCKER_CAP = 5;
 /** A score with no frames cited is at most this (it can't pass). */
@@ -456,7 +487,7 @@ const levelsOf = (review: Review) => (review.rubric ? { levels: review.rubric as
  * (its frame, the graphic drawing it and that graphic's own time, the frames to render), so each
  * blocker comes with where to look and the critic's fix.
  */
-export function reviewNext(review: Review, turnRound: number = review.round, more: boolean = turnRound < REVIEW_ROUNDS, where?: (at: number) => string | undefined): string {
+export function reviewNext(review: Review, turnRound: number = review.round, more: boolean | ReviewOutlook = turnRound < REVIEW_ROUNDS, where?: (at: number) => string | undefined, frame?: { readonly width: number; readonly height: number; readonly safe: number }): string {
   const rb = levelsOf(review);
   const scored = scoredOf(rb);
   const low = scored.filter((k) => (review.scores[k] ?? 0) < (barOf(rb, k) ?? 0));
@@ -469,10 +500,13 @@ export function reviewNext(review: Review, turnRound: number = review.round, mor
   const na = rb ? REVIEW_SCORES.filter((k) => rb.levels[k] === "na") : [];
   const naText = na.length ? ` Not scored for this video: ${na.join(", ")}.` : "";
   if (review.passed) return `Uncut's critic passed it (${scores}).${naText} Run project_check, fix its warnings, then tell the user in a line or two; the scores are the critic's, not yours.`;
-  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${det}`.trim();
-  if (!more) return `That was round ${turnRound} in this turn, the last one${turnRound >= REVIEW_ROUNDS ? ` (past ${REVIEW_ROUNDS} rounds a turn goes on only while the blockers go down or change, up to ${REVIEW_ROUNDS_MAX})` : ""}: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
-  const extra = turnRound >= REVIEW_ROUNDS ? `Round ${turnRound}: the blockers went down or moved on, so you get another round (at most ${REVIEW_ROUNDS_MAX}, and only while they keep going down or changing; the same ones again stop it). ` : "";
-  return `Not passed. ${extra}${open} Fix every blocker first (at its moment, in the graphic named, as its Fix says), then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
+  // Round 4's A2: text cut at the frame edge during camera pushes, three rounds running: the safe inset and the one call that keeps a box inside it.
+  const edged = (review.blockers ?? []).filter((b) => b.kind === "overflow" && /\bedge|\bcut\b|clip|crop|off[- ]?(screen|frame)/i.test(b.what ?? ""));
+  const edge = edged.length && frame ? ` Text cut at the frame edge (${edged.map((b) => b.id).join(", ")}): the safe area is ${frame.safe} px in from every edge (x ${frame.safe} to ${frame.width - frame.safe}, y ${frame.safe} to ${frame.height - frame.safe} on ${frame.width}x${frame.height}). At each one's frame, find the box whose words cross it (the card, button or label it names) and keep that whole box inside the inset on every frame of the move, its tightest zoom included: frame with uncutMotion.frameRect(left, top, w, h, { width, height, safe: ${frame.safe}, keep: [boxLeft, boxTop, boxW, boxH] }) (or fit: true, safe: ${frame.safe} to show the whole dialog), not a bigger zoom; then render_frames the move's tightest frames.` : "";
+  const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${edge}${det}`.trim();
+  const o: ReviewOutlook = typeof more === "boolean" ? { more, why: `round ${turnRound} of at most ${REVIEW_ROUNDS_MAX}` } : more;
+  if (!o.more) return `That was round ${turnRound} in this turn, the last one (${o.why}; past ${REVIEW_ROUNDS} rounds a turn goes on only while it converges: fewer or different blockers, or none left with scores rising, up to ${REVIEW_ROUNDS_MAX}): stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
+  return `Not passed. Another round is open (${o.why}). ${open} Fix every blocker first (at its moment, in the graphic named, as its Fix says), then the scores under the bar and the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
 }
 
 /**

@@ -31,10 +31,14 @@
                                                          // missing x, y or zoom keeps the previous key's;
                                                          // { drift: 0.015 } as a 4th argument: no hold is still, zoom
                                                          // creeps 1.5 % from each key to the next (a key's own drift wins)
-     uncutMotion.frameRect(left, top, w, h, { width, height, fit, pad, align })
+     uncutMotion.frameRect(left, top, w, h, { width, height, fit, pad, align, safe, keep })
                                                          // a camera key { x, y, zoom } that frames a UI rect (world px, top-left):
                                                          // by default it COVERS the frame (the UI surface is the frame, the overflow
-                                                         // cropped at align { x, y }, 0.5 = centred); fit: true shows all of it, pad px around
+                                                         // cropped at align { x, y }, 0.5 = centred); fit: true shows all of it, pad px around;
+                                                         // safe: screen px kept clear at every edge (the safe margin, canvas min side / 15,
+                                                         // 72 at 1080 x 1350): with fit the rect lands inside it (cover: pass keep); keep: [left, top, w, h], a
+                                                         // box (a dialog's text, a button) that must stay whole inside that inset, zooming
+                                                         // out and sliding as needed: "push in on this dialog, its words uncut" is one call
      uncutMotion.apply(ctx, cam, width, height)          // ctx.transform for that camera (save first): draw the UI in world px after it
      uncutMotion.toScreen(cam, x, y, width, height)      // [sx, sy]: a world point on screen (the cursor, a headline pinned to the UI)
      uncutMotion.morph(t, from, to, { at, dur: 0.3 })     // { x, y, w, h, r, p, full }: rect to rect (centres, corner radius) in dur s,
@@ -399,23 +403,35 @@
     return sum;
   }
   // A camera key framing a UI rect (left, top, w, h in world px): cover (default) fills the frame
-  // with it, cropping the overflow at align; fit shows all of it with pad px around.
+  // with it, cropping the overflow at align; fit shows all of it with pad px around. Round 4's A2:
+  // pushes into a dialog cut its button and card text at the frame edge three rounds running, so
+  // safe (screen px at each edge) and keep (a world box that stays whole inside that inset).
   function frameRect(left, top, w, h, o) {
     o = o || {};
     var W = o.width || 1080;
     var H = o.height || 1350;
     var pad = o.pad || 0;
+    var s = Math.max(0, Math.min(o.safe || 0, W / 2 - 1, H / 2 - 1));
     var al = o.align || {};
     var ax = al.x === undefined ? 0.5 : al.x;
     var ay = al.y === undefined ? 0.5 : al.y;
-    var zw = W / Math.max(1, w + 2 * pad);
-    var zh = H / Math.max(1, h + 2 * pad);
+    var zw = (o.fit ? W - 2 * s : W) / Math.max(1, w + 2 * pad);
+    var zh = (o.fit ? H - 2 * s : H) / Math.max(1, h + 2 * pad);
     var zoom = o.fit ? Math.min(zw, zh) : Math.max(zw, zh);
+    var k = o.keep;
+    if (k) zoom = Math.min(zoom, (W - 2 * s) / Math.max(1, k[2]), (H - 2 * s) / Math.max(1, k[3]));
     var vw = W / zoom;
     var vh = H / zoom;
     // The visible window slides inside the rect (cover) or centres on it (fit) along align.
     var x = left + (o.fit ? w / 2 : vw / 2 + (w - vw) * ax);
     var y = top + (o.fit ? h / 2 : vh / 2 + (h - vh) * ay);
+    if (k) {
+      // Then slides just enough that the kept box sits inside the inset.
+      var hx = (W / 2 - s) / zoom;
+      var hy = (H / 2 - s) / zoom;
+      x = Math.min(Math.max(x, k[0] + k[2] - hx), k[0] + hx);
+      y = Math.min(Math.max(y, k[1] + k[3] - hy), k[1] + hy);
+    }
     return { x: x, y: y, zoom: zoom };
   }
   function apply(ctx, cam, W, H) {
