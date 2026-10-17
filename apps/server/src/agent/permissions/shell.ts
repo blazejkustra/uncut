@@ -183,6 +183,9 @@ const FLAGS: Record<string, ReadonlySet<string>> = {
   mkdir: new Set(["-p"]),
 };
 
+/** wc's flags when it reads files (allowlisted): counts only, never --files0-from. */
+const WC_FLAGS: ReadonlySet<string> = new Set(["-l", "-w", "-c", "-m", "-lc", "-cl", "-wc", "-cw", "-lw", "-wl", "-lwc"]);
+
 /** Where an allowlisted command may read: the project, and (reads only) the sanctioned folders (D296). */
 export interface ReadZones {
   readonly project: string;
@@ -201,13 +204,15 @@ export interface ReadZones {
  * A path may be relative (to the project) or absolute; never ~, .., * ? [ ] { } or =; it is judged
  * by its real path (`real`, symlinks followed), so a link can't reach out. Only the flags in FLAGS
  * (head/tail: -n or -c and a number). Reading Uncut's own files (project.json, …) is fine; making a
- * folder there isn't. Media work goes through Uncut's tools; ffmpeg, ffprobe, file, wc and the rest
- * always get a card (a cp only runs without one as copyIntoProject judges it).
+ * folder there isn't. wc -l/-w/-c/-m of such files counts what cat would print (Auto's A/B: a
+ * `cat f | head -c 300; echo; wc -c f` line was refused for its wc; `echo` was already a read),
+ * never --files0-from or another flag. Media work goes through Uncut's tools; ffmpeg, ffprobe, file
+ * and the rest always get a card (a cp only runs without one as copyIntoProject judges it).
  */
 export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, zones: string | ReadZones): boolean {
   const { project, sanctioned = [], readable: extra } = typeof zones === "string" ? { project: zones, readable: undefined } : zones;
   const flags = FLAGS[name];
-  if (!flags && name !== "grep") return false;
+  if (!flags && name !== "grep" && name !== "wc") return false;
   const paths: Array<string> = [];
   for (let i = 0; i < args.length && flags; i++) {
     const a = args[i]!;
@@ -248,6 +253,11 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
     }
     const files = e ? words : words.slice(1);
     return files.length > 0 && files.every(readable);
+  }
+  // wc of files: its counting flags only (-c here is bytes, not head's count), then one or more files.
+  if (name === "wc") {
+    const files = args.filter((a) => !WC_FLAGS.has(a));
+    return files.length > 0 && files.every((a) => !a.startsWith("-") && readable(a));
   }
   if (name === "mkdir") {
     return paths.length > 0 && paths.every((a) => {
