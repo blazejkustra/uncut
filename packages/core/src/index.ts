@@ -7,7 +7,7 @@ export { describeOp, effectsWords, manualEditsNote } from "./timeline/edit-log.t
 export { animationAt, moveEase, moveFades, wordProgress, zoomScale, dipId, dipOpacity, dipsOf, DRAWN_MOVES, isSvg, layout, pictureMedia, spanOf, transitionAt, visualsAt } from "./timeline/timeline.ts";
 export { alignScreen, bezelSvg, COMPONENT_IMAGE, COMPONENTS, componentBox, componentDefaults, componentRest, componentHtml, componentInfo, componentParts, wrapComponent, componentScale, deviceSpec, DEVICES, DRAWN_COMPONENTS, FRAME_COLOR, isDrawnComponent, naturalSize, planDeviceFrame, screenKeys, screenRect, screenTransform, terminalState, agentLogState, UNDRAWN_COMPONENTS } from "./visual/components.ts";
 export type { ComponentBlock, ComponentInfo, Device, DeviceFrameRequest, TerminalLine } from "./visual/components.ts";
-export { GRAPHIC_CENSUS, SMALL_TEXT, LETTER_SHARE, censusOf, censusList, type Census, type CensusRun } from "./visual/census.ts";
+export { GRAPHIC_CENSUS, SMALL_TEXT, LETTER_SHARE, censusOf, censusList, softCause, softList, type Census, type CensusRun, type SoftRun } from "./visual/census.ts";
 export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_LIBS, GRAPHIC_LIBS_DOC, GRAPHIC_SRC, graphicDocument, graphicInfo, graphicLocal, graphicLibsUsed, graphicLogosUsed, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, resolveGraphicBrand, resolveGraphicLibs } from "./visual/graphics.ts";
 export type { GraphicInfo, GraphicLib } from "./visual/graphics.ts";
 export { itemMotionBlur, MOTION_BLUR_DEFAULTS, MOTION_BLUR_SAMPLES, motionBlurDefault, projectMotionBlur, subFrameTimes } from "./visual/motionBlur.ts";

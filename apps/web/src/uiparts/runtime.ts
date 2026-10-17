@@ -1203,6 +1203,14 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
   const p = settle(raw);
   // Shown before building: a piece is measured as laid out.
   holders.forEach((hd, i) => (hd.style.display = i === j || i === from ? "block" : "none"));
+  // Which key each holder is, and which side of a swap: the text census (core census.ts) names a word
+  // blurred or faded by the swap ("the swap into export.high at 22.52 s"), not the graphic's own style.
+  holders.forEach((hd, i) => {
+    hd.setAttribute("data-uncut-piece", keys[i]!.piece);
+    hd.setAttribute("data-uncut-at", String(num(keys[i]!.at, 0)));
+    hd.setAttribute("data-uncut-dur", String(dur(keys[i]!)));
+    hd.setAttribute("data-uncut-swap", from < 0 ? "" : i === j ? "in" : i === from ? "out" : "");
+  });
   const bj = buildPiece(holders[j]!, keys[j]!);
   const boxJ = keyBox(keys[j]!, bj);
   let box: Box = boxJ;
