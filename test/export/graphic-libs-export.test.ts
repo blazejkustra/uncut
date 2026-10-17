@@ -74,6 +74,43 @@ window.render = (t, info) => {
 };
 </script>`;
 
+// Uncut's own UI parts (uncut:lib/ui.js) as live DOM, animated from t: the composer typing
+// with its caret and a pressed Send, the timeline's clips and playhead, the export's progress, the
+// review's bars filling, a canvas of the graphic's own in the preview's frame, the pointer. On the
+// first frame every slot of every part must resolve (a missing one fails the frame).
+const UI = `<div id="stage" style="position:absolute;left:0;top:0;width:640px;height:360px;background:#f1f0ed;overflow:hidden"></div>
+<script src="uncut:lib/motion.js"></script>
+<script src="uncut:lib/ui.js"></script>
+<script>
+const stage = document.getElementById("stage");
+const host = (x, y) => { const d = document.createElement("div"); d.style.cssText = "position:absolute;left:" + x + "px;top:" + y + "px"; stage.appendChild(d); return d; };
+const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110) };
+const pic = document.createElement("canvas");
+pic.width = 108; pic.height = 135;
+let checked = false;
+window.render = (t) => {
+  if (!checked) {
+    const scratch = host(0, 0);
+    for (const n of uncutUI.parts()) {
+      const root = uncutUI.mount(scratch, n);
+      for (const s of uncutUI.slots(n)) if (!uncutUI.find(root, s)) throw new Error(n + ": no slot " + s);
+    }
+    scratch.remove();
+    checked = true;
+  }
+  const prompt = "Make a 28 s launch film for Uncut on the beat";
+  uncutUI.mount(at.composer, "composer", { scale: 0.5, text: prompt.slice(0, Math.floor(t * 24)), caret: true, press: { send: t > 1.2 ? 0.95 : 1 } });
+  uncutUI.mount(at.review, "review", { scale: 0.42, progress: Math.min(1, t / 1.5) });
+  uncutUI.mount(at.timeline, "timeline", { scale: 0.2, playhead: t * 3, clips: [{ track: "Main", start: 0, duration: 3 + t, name: "DJI 0055", selected: true }, { track: "Main", start: 3.1 + t, duration: 4, name: "DJI 0063" }] });
+  uncutUI.mount(at.exportProgress, "exportProgress", { scale: 0.5, progress: Math.min(1, t / 3), eta: 30 - t * 10 });
+  const ctx = pic.getContext("2d");
+  ctx.fillStyle = "hsl(" + Math.round(t * 90) + ", 70%, 50%)";
+  ctx.fillRect(0, 0, 108, 135);
+  uncutUI.mount(at.preview, "preview", { scale: 0.15, frame: pic, time: t });
+  uncutUI.cursor(stage, { x: 120 + t * 40, y: 90, scale: t > 1.2 && t < 1.35 ? 0.85 : 1, size: 18 });
+};
+</script>`;
+
 /** The preview stand-in: an Electron main that loads the host page, asks for each frame and captures it. */
 const PREVIEW_MAIN = `
 const { app, BrowserWindow } = require("electron");
@@ -119,7 +156,7 @@ let port: number;
 let raster: Rasterizer;
 const project = {
   canvas,
-  tracks: [{ items: [{ type: "graphic", src: "graphics/cube.html", duration: 90 }, { type: "graphic", src: "graphics/confetti.html", duration: 90 }] }],
+  tracks: [{ items: [{ type: "graphic", src: "graphics/cube.html", duration: 90 }, { type: "graphic", src: "graphics/confetti.html", duration: 90 }, { type: "graphic", src: "graphics/ui.html", duration: 90 }] }],
 } as unknown as Project;
 
 before(async () => {
@@ -129,6 +166,7 @@ before(async () => {
   mkdirSync(join(dir, "graphics"), { recursive: true });
   writeFileSync(join(dir, "graphics", "cube.html"), CUBE);
   writeFileSync(join(dir, "graphics", "confetti.html"), CONFETTI);
+  writeFileSync(join(dir, "graphics", "ui.html"), UI);
   // Both sides read the graphics the one way (readGraphics + the bundled libraries) and wrap them in graphicDocument.
   const graphics = await readGraphics(dir, project, await loadGraphicLibs(resolve("assets/graphic-libs")));
   docs = new Map([...graphics].map(([src, html]) => [src, graphicDocument(html, canvas)]));
@@ -186,8 +224,8 @@ async function previewFrames(src: string, frames: ReadonlyArray<{ local: number;
   assert.equal(code, 0, `preview run failed: ${output}`);
 }
 
-test("a three.js cube and a confetti burst: the export draws the same pixels twice, and what the preview's iframe draws", { skip, timeout: 120000 }, async (t) => {
-  for (const [src, local, minOpaque] of [["graphics/cube.html", 20, 0.08], ["graphics/confetti.html", 24, 0.01]] as const) {
+test("a three.js cube, a confetti burst and Uncut's UI parts: the export draws the same pixels twice, and what the preview's iframe draws", { skip, timeout: 120000 }, async (t) => {
+  for (const [src, local, minOpaque] of [["graphics/cube.html", 20, 0.08], ["graphics/confetti.html", 24, 0.01], ["graphics/ui.html", 40, 0.99]] as const) {
     const name = src.slice("graphics/".length, -".html".length);
     const a = join(root, `${name}-export-a.png`);
     const b = join(root, `${name}-export-b.png`);

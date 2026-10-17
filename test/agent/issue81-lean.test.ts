@@ -152,7 +152,7 @@ test("docs_read graphics carries the bundled libraries' own API (their headers),
   assert.equal(out.isError, false);
   assert.ok(out.text.startsWith(DOCS.graphics.body));
   // Every library's header, word for word (the library file is the one source of its API).
-  for (const name of ["motion.js", "spring.js", "random.js", "confetti.js", "globe.js"]) {
+  for (const name of ["motion.js", "spring.js", "random.js", "confetti.js", "globe.js", "ui.js"]) {
     const header = libraryHeader(libs[name]!);
     assert.ok(header && out.text.includes(header), name);
   }
@@ -163,6 +163,8 @@ test("docs_read graphics carries the bundled libraries' own API (their headers),
   for (const [, key] of api.matchAll(/^    ([A-Za-z]\w*): (?!\{)/gm)) assert.ok(out.text.includes(`uncutMotion.${key}`), key);
   assert.match(out.text, /uncutMotion\.ease\.inOut\(p\)/);
   assert.match(out.text, /uncutGlobe\.project\(ctx, t, lat, lon, options\)/);
+  assert.match(out.text, /uncutUI\.mount\(host, name, props\)/, "the UI parts' API too");
+  assert.ok(!out.text.includes("var DATA"), "ui.js's captured markup isn't pasted");
   assert.ok(!out.text.includes("Ec.exports"), "three.js's code isn't pasted");
   assert.equal(docsRead("sound", libs).text, DOCS.sound.body, "other topics unchanged");
   assert.match(SYSTEM_PROMPT, /never search the disk/);
