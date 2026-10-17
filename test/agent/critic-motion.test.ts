@@ -111,9 +111,56 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   assert.equal(motionIntent({ skills: ["motion-film"], words: "DJI 0050 drone footage" }).footage, true);
   assert.equal(motionIntent({ skills: [], words: "", hasFootage: true }).footage, true);
   const lines = motionLines(scan, fps, { consecutive: true });
-  assert.match(lines.join("\n"), /Single-frame pops: f 20 \(0\.67 s/);
+  assert.match(lines.join("\n"), /Single-frame pops and flashes \([^)]*\): f 20 \(0\.67 s/);
   assert.match(lines.join("\n"), /Holds over 1 s with nothing changing: f 60 to f 99/);
   assert.match(lines.join("\n"), /Loop seam: .* a visible jump if it loops/);
+});
+
+// A1r8 (12.98 and 15.48 s): the next shot drawn whole for two frames before its grow began, then the
+// old shot again. A pop needs one frame and a jump a picture that stays: a flash is its own rule.
+test("the scan: a 2-frame flash (the picture goes back) is a pop with a span; a cut and back later, a longer run, a cut are not", () => {
+  const fps = 60;
+  const size = 64 * 80;
+  // The old shot drifting slowly; `other` frames show a different shot (another texture).
+  const shots = (n: number, other: (f: number) => boolean) => Array.from({ length: n }, (_, f) => {
+    const g = new Uint8Array(size);
+    for (let i = 0; i < size; i++) g[i] = other(f) ? (((i >> 6) * 7 + (i % 64) * 5) % 180) + 40 : (((i % 64) * 2 + f) % 200) + 20;
+    return { frame: f, gray: g };
+  });
+  const flash = motionScan(shots(90, (f) => f === 30 || f === 31), fps);
+  assert.deepEqual(flash.pops.map((p) => [p.frame, p.span]), [[30, 2]]);
+  assert.ok(flash.pops[0]!.ratio >= 3);
+  assert.deepEqual(flash.jumps, [], "its edges aren't jumps");
+  const found = motionFindings(flash, fps, { oneTake: true, hard: true });
+  assert.deepEqual(found.map((f) => [f.key, f.hard]), [["motion:pop:30", true]]);
+  assert.match(found[0]!.message, /2-frame flash at f 30 to f 31 \(0\.50 s\)/);
+  assert.deepEqual(found[0]!.range, { start: 30, end: 31 });
+  assert.match(motionLines(flash, fps, { consecutive: true }).join("\n"), /f 30 to f 31 \(0\.50 s/);
+  // Three frames at 60 fps still flash (0.05 s); four are a shot, its in and out two jumps.
+  assert.deepEqual(motionScan(shots(90, (f) => f >= 30 && f <= 32), fps).pops.map((p) => p.span), [3]);
+  const four = motionScan(shots(90, (f) => f >= 30 && f <= 33), fps);
+  assert.deepEqual([four.pops.length, four.jumps.map((j) => j.frame)], [0, [30, 34]]);
+  // A cut that stays: a jump, no flash. A single frame: still the plain pop.
+  const cut = motionScan(shots(90, (f) => f >= 30), fps);
+  assert.deepEqual([cut.pops.length, cut.jumps.map((j) => j.frame)], [0, [30]]);
+  assert.deepEqual(motionScan(shots(90, (f) => f === 30), fps).pops.map((p) => [p.frame, p.span]), [[30, undefined]]);
+  // Sparse samples (the frames before and after missing) aren't judged.
+  assert.deepEqual(motionScan(shots(90, (f) => f === 30 || f === 31).filter((x) => x.frame !== 29), fps).pops, []);
+});
+
+test("the scan: a sampled frame of a 2-frame flash is narrowed by refineJumps and found (A1r8: f 780 and 930 were samples)", async () => {
+  const fps = 60;
+  const size = 64 * 80;
+  const all = Array.from({ length: 120 }, (_, f) => {
+    const g = new Uint8Array(size);
+    const other = f === 79 || f === 80;
+    for (let i = 0; i < size; i++) g[i] = other ? (((i >> 6) * 7 + (i % 64) * 5) % 180) + 40 : (((i % 64) * 2 + f) % 200) + 20;
+    return { frame: f, gray: g };
+  });
+  const sampled = all.filter((x) => x.frame % 10 === 0);
+  assert.deepEqual(motionScan(sampled, fps).pops, [], "samples alone can't judge it");
+  const added = await refineJumps({ frames: sampled, fps, duration: all.length, render: async (fs) => fs.map((f) => all[f]!) });
+  assert.deepEqual(motionScan([...sampled, ...added], fps).pops.map((p) => [p.frame, p.span]), [[79, 2]]);
 });
 
 // Blind round 3: the references' first real change lands by 0.6 s; Uncut's light films drifted under a
@@ -172,7 +219,7 @@ test("the critic gets the strips and the scan in <motion>; pops become review de
   assert.match(text, /Image 1: frame strip around beat 1/);
   assert.match(CRITIC_SYSTEM, /frame strips/);
   assert.match(CRITIC_SYSTEM, /single-frame|a frame unlike both its neighbours/);
-  assert.match(text, /changes land on the music's beats, no single-frame pops, no hold over 1 s/, "the rubric judges timing, pops, holds and the seam");
+  assert.match(text, /changes land on the music's beats, no single-frame pops or few-frame flashes, no hold over 1 s/, "the rubric judges timing, pops, holds and the seam");
   const answer = { scores: { hook: 9, readability: 9, motion: 9, variety: 9, sound: 9, brand: 9 }, evidence: {}, blockers: [], defects: [], fixes: [], summary: "", unproven: [] };
   const review = criticReview(answer, { round: 1, claims: [], checks, determinism: { checked: [], differed: [] }, looked: { sheet: true, phone: true }, revision: 1, turnId: "t", fps: 30 });
   const pop = review.defects.find((d) => (d as { kind?: string }).kind === "motion");

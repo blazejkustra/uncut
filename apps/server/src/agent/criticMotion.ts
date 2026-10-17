@@ -38,6 +38,15 @@ export const SCAN_WINDOW = 5;
 /** A pop or a jump: this many times its neighbours' difference, and at least POP_MIN (mean |Δ| of 0..1 grey). */
 export const POP_RATIO = 3;
 export const POP_MIN = 0.03;
+/**
+ * A flash: a run of 2 to FLASH_S worth of frames unlike the frames on both sides, which agree with
+ * each other (the picture returns), its way in and out each POP_RATIO times the return and the run's
+ * own steps. A1r8 (12.98 and 15.48 s): the next shot full-bleed for two frames before its grow began
+ * (in 19.6 and 25.6 %, out the same, return 0.4 and 0.2 %, still inside); a pop needs one frame and a
+ * jump a picture that stays, so neither saw it. None in the references (2.mp4, 3.mp4) or in the
+ * earlier films A1 to A2r5, B1, B2.
+ */
+export const FLASH_S = 0.05;
 /** A jump is also at least this many times the busier side's biggest step (a cut into a fast move). */
 export const JUMP_OVER = 1.5;
 /**
@@ -415,7 +424,7 @@ export interface MotionEvent {
 }
 export interface MotionScan {
   readonly frames: number;
-  /** Single-frame pops: a frame unlike both neighbours, which agree. */
+  /** Pops: a frame unlike both neighbours, which agree; a flash (span: 2 to FLASH_S worth of frames) is a short run of them. */
   readonly pops: ReadonlyArray<MotionEvent>;
   /** One-frame jumps: the picture changes a lot between two frames and little around them (a cut, a one-frame flood). */
   readonly jumps: ReadonlyArray<MotionEvent>;
@@ -470,6 +479,31 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
       popFrames.add(x.frame);
     }
   }
+  // Flashes (FLASH_S): frames f..f + n - 1 unlike f - 1 and f + n, which agree.
+  const flashMax = Math.max(2, Math.floor(FLASH_S * fps));
+  for (const x of fr) {
+    const f = x.frame;
+    if (popFrames.has(f)) continue;
+    const enter = step.get(f - 1);
+    if (enter === undefined || enter < min) continue;
+    for (let n = 2; n <= flashMax; n++) {
+      const last = f + n - 1;
+      const leave = step.get(last);
+      const after = at.get(last + 1);
+      if (leave === undefined || !after) break;
+      let inner = 0;
+      for (let k = f; k < last; k++) inner = Math.max(inner, step.get(k) ?? Infinity);
+      if (!Number.isFinite(inner)) break;
+      const d = Math.min(enter, leave);
+      const base = Math.max(frameDiff(at.get(f - 1)!, after), inner, typical);
+      if (d >= min && d >= ratio * base && ![...Array(n).keys()].some((k) => popFrames.has(f + k))) {
+        pops.push({ frame: f, diff: round(d), ratio: round(d / base, 1), span: n });
+        for (let k = 0; k < n; k++) popFrames.add(f + k);
+        break;
+      }
+    }
+  }
+  pops.sort((a, b) => a.frame - b.frame);
   const jumps: Array<MotionEvent> = [];
   for (const [f, d] of step) {
     if (popFrames.has(f) || popFrames.has(f + 1) || d < min) continue;
@@ -620,7 +654,9 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   const hard = !!o.hard;
   const out: Array<CriticFinding> = [];
   for (const p of [...scan.pops].sort((a, b) => b.ratio - a.ratio).slice(0, 4)) {
-    out.push({ rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
+    out.push(p.span
+      ? { rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, range: { start: p.frame, end: p.frame + p.span - 1 }, hard, message: `A ${p.span}-frame flash at f ${p.frame} to f ${p.frame + p.span - 1} (${secs(p.frame, fps)}): those frames differ from the frames on both sides ${p.ratio}× as much as those differ from each other (mean change ${(p.diff * 100).toFixed(1)} %): something shows for ${p.span} frames and the picture goes back, like the next shot drawn whole before its transition starts. Check the frames' branches: the state the transition starts from must be drawn from its first frame on.` }
+      : { rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
   }
   if (o.oneTake) {
     for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: j.span ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.` : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
@@ -669,7 +705,7 @@ export function motionLines(scan: MotionScan, fps: number, scanned: { readonly c
   const lines = [
     ...(scanned.planned !== undefined && covered < scanned.planned ? [budgetLine(covered, scanned.planned)] : []),
     `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, an even sampling of the rest, and each big change between two samples narrowed down to the frame it happens on"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
-  lines.push(scan.pops.length ? `Single-frame pops: ${scan.pops.map((p) => `f ${p.frame} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops found.");
+  lines.push(scan.pops.length ? `Single-frame pops and flashes (a few frames unlike the frames on both sides, the picture going back): ${scan.pops.map((p) => `f ${p.frame}${p.span ? ` to f ${p.frame + p.span - 1}` : ""} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops or flashes found.");
   if (scan.jumps.length) lines.push(`One-frame jumps and quick swaps (cuts, or changes that took one frame or under ${BURST_S} s between still frames): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %${j.span ? `, over ${j.span} frames` : ""})`).join(", ")}.`);
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");
   const empties = emptyRuns(scan, fps);
