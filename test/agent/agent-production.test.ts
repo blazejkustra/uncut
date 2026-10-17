@@ -613,9 +613,12 @@ test("round 2's A2: nobody can answer, so the storyboard approves itself; a buil
   const s = await setup("unattended");
   try {
     const built = [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }, { tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }, { tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 2", ops: [{ op: "insert_item", track: "text", item: { ...TITLE, id: "title-2", start: 60 } }] } }];
-    const id = await s.start("Make a launch film. I can't answer questions, decide yourself.", built);
+    // Only in Auto: in Ask first the user is there to approve it.
+    await s.ask("storyboard", [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }], { access: "ask" });
+    assert.match(textOf(s.results()[0]!.result), /approve "self" is for a run in Auto[\s\S]*Ask first/);
+    const id = await s.start("Make a launch film. I can't answer questions, decide yourself.", built, { access: "auto" });
     // The reminder is a message of its own to the same claude: the fake plays the next turn for it.
-    writeFileSync(join(s.base, "plan.json"), JSON.stringify([built, [{ text: "Running the critic loop now." }]]));
+    writeFileSync(join(s.base, "plan.json"), JSON.stringify([[{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }], built, [{ text: "Running the critic loop now." }]]));
     const t = await s.done(id);
     assert.equal(t.status, "done", t.error);
     const answer = jsonOf(s.results()[0]!.result);
@@ -625,8 +628,8 @@ test("round 2's A2: nobody can answer, so the storyboard approves itself; a buil
     assert.equal(t.items.find((i: any) => i.kind === "card").card.outcome, "self");
     assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).approvedBy, "agent");
     const prompts = s.prompts();
-    assert.equal(prompts.length, 2, "the message, then the reminder");
-    assert.match(prompts[1]!.prompt, /Uncut's critic hasn't reviewed it; no review_submit ran[\s\S]*review_submit/);
+    assert.equal(prompts.length, 3, "the Ask first message, the message, then the reminder");
+    assert.match(prompts[2]!.prompt, /Uncut's critic hasn't reviewed it; no review_submit ran[\s\S]*review_submit/);
     assert.match(t.items.filter((i: any) => i.kind === "text").map((i: any) => i.text).join(" "), /Running the critic loop now/);
     // The next message's plan says who approved it.
     await s.ask("go on", [{ text: "ok" }]);

@@ -316,7 +316,9 @@ test("D194/D214 the SDK's initialize handshake goes first; the secret deny rules
     for (const run of runs) {
       const settings = JSON.parse(flagValue(run.argv, "--settings")!);
       const deny: Array<string> = settings.permissions.deny;
-      for (const rule of ["Read(~/.ssh/**)", "Edit(~/.ssh/**)", "Bash(*/.ssh/*)", "Bash(*~/.ssh*)", "Read(~/.aws/**)", "Read(~/Library/Keychains/**)", "Read(~/.claude/**)", "Read(~/.config/gh/**)", "Read(//**/.env)", "Bash(* .env*)"]) assert.ok(deny.includes(rule), rule);
+      for (const rule of ["Read(~/.ssh/**)", "Edit(~/.ssh/**)", "Bash(*/.ssh/*)", "Bash(*~/.ssh*)", "Read(~/.aws/**)", "Read(~/Library/Keychains/**)", "Edit(~/.claude/**)", "Read(~/.config/gh/**)", "Read(//**/.env)", "Bash(* .env*)"]) assert.ok(deny.includes(rule), rule);
+      // Round 2's A2: reads of ~/.claude come to Uncut (only the project's saved tool output is read).
+      assert.ok(settings.permissions.ask.includes("Read(~/.claude/**)") && !deny.includes("Read(~/.claude/**)"));
     }
   } finally {
     await s.stop();
