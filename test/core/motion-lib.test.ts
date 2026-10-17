@@ -24,7 +24,7 @@ interface Motion {
   iris: (open: number, o: { x: number; y: number; r: number; blades?: number }) => Array<Array<Pt>>;
   squeeze: (xs: Array<number>, widths: Array<number>, anchor: number, f: number) => Array<{ x: number; scale: number; width: number }>;
   cursor: (t: number, path: Array<Record<string, unknown>>, o?: unknown) => { x: number; y: number; scale: number; down: boolean };
-  camera: (t: number, keys: Array<Record<string, number>>, s?: unknown) => { x: number; y: number; zoom: number };
+  camera: (t: number, keys: Array<Record<string, number>>, s?: unknown, o?: { drift?: number }) => { x: number; y: number; zoom: number };
   beat: (n: number, o?: { bpm?: number; offset?: number }) => number;
   loop: (t: number, d: number) => number;
   ease: { inOut: (p: number) => number };
@@ -260,6 +260,24 @@ test("frameRect covers the frame with a UI rect; apply and toScreen agree; camer
   const lin = 1 + 3 * M.spring(0.15, "spring.settle");
   assert.ok(near(Math.log(z.zoom), Math.log(4) * M.spring(0.15, "spring.settle"), 1e-9) && z.zoom < lin, `${z.zoom} vs linear ${lin}`);
   assert.ok(near(z.x, 540, 1e-9) && near(z.y, 675, 1e-9), "x and y carried over");
+});
+
+// Blind round 3: still holds read as dead next to the references; drift keeps a hold alive without
+// a breathing loop, stays continuous through the next move and leaves the loop seam alone.
+test("camera drift: zoom creeps from key to key, springs away under the next move, continuous, none after the last key", () => {
+  const keys: Array<Record<string, number>> = [{ at: 0, x: 540, y: 675, zoom: 2 }, { at: 2, zoom: 3 }, { at: 4, zoom: 2 }];
+  const o = { drift: 0.02 };
+  const plain = (t: number) => M.camera(t, keys, "spring.settle").zoom;
+  const drifted = (t: number) => M.camera(t, keys, "spring.settle", o).zoom;
+  assert.equal(drifted(0), plain(0), "nothing at the first key");
+  assert.ok(near(drifted(1) / plain(1), Math.sqrt(1.02), 1e-6), "halfway through the hold, half the creep (log space)");
+  assert.ok(near(drifted(2) / plain(2), 1.02, 1e-6), "the whole creep at the next key");
+  assert.ok(drifted(1.5) > drifted(1) && drifted(1) > drifted(0.5), "always moving in a hold");
+  assert.ok(near(drifted(6), plain(6), 1e-3) && near(M.camera(9, keys, "spring.settle", o).zoom, 2, 1e-3), "after the last key it settles where the key says (the seam)");
+  const creep = (t: number) => Math.log(drifted(t) / plain(t));
+  for (let f = 1; f < 6 * 60; f++) assert.ok(Math.abs(creep(f / 60) - creep((f - 1) / 60)) < 0.002, `the creep never jumps (f ${f})`);
+  assert.equal(M.camera(1, [{ at: 0, x: 0, y: 0, zoom: 1, drift: 0 }, { at: 2, zoom: 1 }], undefined, o).zoom, 1, "a key's drift: 0 opts its hold out");
+  assert.deepEqual(M.camera(1, keys, "spring.settle"), M.camera(1, keys, "spring.settle", {}), "no drift by default");
 });
 
 test("morph grows a button into the next scene's full shape in dur s; coverage measures it", () => {

@@ -68,6 +68,16 @@ export const EMPTY_MIN_S = 0.2;
  */
 export const FAST_STEP = 0.06;
 export const FAST_RUN = 3;
+/**
+ * The open: the first real change is OPEN_MOVE or more of the picture changing between two samples
+ * about OPEN_WINDOW_S apart. Blind round 3: the references' first change lands at 0.58 to 0.6 s (a
+ * headline folding into a pill, a button reacting to the cursor); the films judged static for their
+ * first 2 s land at 1.5 to 1.9 s, though a slow camera drift ran under them (under 1 % per window).
+ * Later than OPEN_MAX_S is a finding in a one-take film.
+ */
+export const OPEN_MOVE = 0.015;
+export const OPEN_WINDOW_S = 0.15;
+export const OPEN_MAX_S = 1;
 
 export interface MotionAnchor {
   readonly frame: number;
@@ -394,6 +404,11 @@ export interface MotionScan {
   readonly emptyMeasured: boolean;
   /** Fast moves (frames, the steps' first and last frame) and their biggest step. */
   readonly fast: ReadonlyArray<{ readonly start: number; readonly end: number; readonly peak: number }>;
+  /**
+   * The open (when the samples reach OPEN_MAX_S): the first sample by which OPEN_MOVE of the picture
+   * changed over about OPEN_WINDOW_S, if any within the first 2 s, and the biggest such change before OPEN_MAX_S.
+   */
+  readonly open?: { readonly frame?: number; readonly peak: number };
   /** The loop seam: the last frame against frame 0, and the typical frame-to-frame difference. */
   readonly seam?: { readonly diff: number; readonly typical: number };
   readonly typical: number;
@@ -506,11 +521,39 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     }
   }
   if (fs && fs.n >= FAST_RUN) fast.push({ start: fs.start, end: fs.end, peak: round(fs.peak) });
+  const open = openMove(fr, fps);
   const first = fr[0];
   const last = fr.at(-1);
   const seam = first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical) } : undefined;
-  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured, fast, ...(seam ? { seam } : {}), typical: round(typical) };
+  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured, fast, ...(open ? { open } : {}), ...(seam ? { seam } : {}), typical: round(typical) };
 }
+
+/**
+ * The open's first real change (MotionScan.open): each sample in the first 2 s against the latest
+ * sample at least OPEN_WINDOW_S before it (at most twice that), so every frame or a sampling every
+ * 0.15 s measure the same window. Undefined when the samples start late or stop before OPEN_MAX_S.
+ */
+function openMove(fr: ReadonlyArray<ScanFrame>, fps: number): MotionScan["open"] {
+  const win = Math.max(1, Math.round(OPEN_WINDOW_S * fps));
+  const until = Math.round(OPEN_MAX_S * fps);
+  const head = fr.filter((x) => x.frame <= 2 * fps);
+  if (head[0]?.frame !== 0 || head.at(-1)!.frame < until) return undefined;
+  let frame: number | undefined;
+  let peak = 0;
+  for (let i = 1, j = 0; i < head.length; i++) {
+    const b = head[i]!;
+    while (j + 1 < i && head[j + 1]!.frame <= b.frame - win) j++;
+    const a = head[j]!;
+    if (b.frame - a.frame < win || b.frame - a.frame > 2 * win) continue;
+    const d = frameDiff(a.gray, b.gray);
+    if (b.frame <= until) peak = Math.max(peak, d);
+    if (frame === undefined && d >= OPEN_MOVE) frame = b.frame;
+  }
+  return { ...(frame !== undefined ? { frame } : {}), peak: round(peak) };
+}
+
+/** Whether the open is static: its first real change comes after OPEN_MAX_S (or not in the first 2 s). */
+export const openLate = (scan: MotionScan, fps: number) => !!scan.open && (scan.open.frame === undefined || scan.open.frame > OPEN_MAX_S * fps);
 
 const round = (v: number, digits = 4) => Math.round(v * 10 ** digits) / 10 ** digits;
 const secs = (f: number, fps: number) => `${(f / fps).toFixed(2)} s`;
@@ -534,6 +577,11 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   if (o.oneTake) {
     for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
     for (const h of scan.holds.slice(0, 2)) out.push({ rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${((h.end - h.start) / fps).toFixed(1)} s): a hold over 1 s.` });
+  }
+  // Blind round 3: a motionless first 1.5 to 2 s under a hook headline (drift only) read as a soft hook.
+  if (o.oneTake && openLate(scan, fps)) {
+    const at = scan.open!.frame;
+    out.push({ rule: "motion", key: "motion:open:0", frame: 0, range: { start: 0, end: at ?? Math.round(2 * fps) }, hard: false, message: `A static open: ${at === undefined ? "nothing really changes in the first 2 s" : `the first real change lands at f ${at} (${secs(at, fps)})`}; until ${OPEN_MAX_S} s at most ${(scan.open!.peak * 100).toFixed(1)} % of the picture changes in ${OPEN_WINDOW_S} s (a drift is not a change). Make frame 0 move: the headline folding into the hero, the cursor's first click or keystroke landing by about 0.5 s.` });
   }
   // Rehearsal 4: nearly empty frames (A1 22.1 s, A2 4.2 s and 24 s) survived three rounds as a critic opinion.
   for (const e of o.oneTake ? emptyRuns(scan, fps).slice(0, 2) : []) {
@@ -579,6 +627,7 @@ export function motionLines(scan: MotionScan, fps: number, scanned: { readonly c
   const empties = emptyRuns(scan, fps);
   if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No nearly empty stretch.");
   if (scan.fast.length) lines.push(`Very fast moves (${Math.round(FAST_STEP * 100)} % or more of the picture changing every frame for ${FAST_RUN}+ frames; the export's motion blur may stack them into copies; the other frames here are sharp, so judge that on the strips drawn with the project's motion blur when they are among the images): ${scan.fast.slice(0, 6).map((m) => `f ${m.start} to f ${m.end}`).join(", ")}.`);
+  if (scan.open) lines.push(`The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${openLate(scan, fps) ? ", a static open" : ""}.`);
   if (scan.seam) lines.push(`Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`);
   return lines;
 }
