@@ -5,7 +5,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Effect from "effect/Effect";
-import { type Access, sessionSettings } from "../agentPermissions.ts";
+import { type Access, claudeConfigDirs, sessionSettings } from "../agentPermissions.ts";
 import { apiKeySource, settingsArg, userAuthSettings } from "../../app/shellEnv.ts";
 import { onRateLimit, resultError, resultFailed } from "../agentLimits.ts";
 import { besideServer } from "../../paths.ts";
@@ -237,7 +237,7 @@ export const makeSpawn = (ctx: StreamCtx) => {
     // D277 review: the user's sign-in commands go in a 0600 file in the session's folder, not on argv.
     let settings: string;
     try {
-      settings = settingsArg(dir, JSON.parse(sessionSettings({ access, projects, dataDir: config.dataDir })), userAuthSettings(process.env).settings);
+      settings = settingsArg(dir, JSON.parse(sessionSettings({ access, projects, dataDir: config.dataDir, claudeConfig: claudeConfigDirs() })), userAuthSettings(process.env).settings);
     } catch (error) {
       rmSync(dir, { recursive: true, force: true });
       return `Can't prepare the agent's settings: ${(error as Error).message}`;

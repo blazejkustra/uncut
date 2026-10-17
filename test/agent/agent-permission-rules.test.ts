@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { ACCESS_NAME, pinnedToProject, appDataAskRules, appDataRules, autoAskRules, ownFileAskRules, decide, denyRules, mentionedDirs, ownFileRules, permissionMode, sessionSettings, rootProblem, shellSegments, simpleCommand, webAddressProblem, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
+import { ACCESS_NAME, claudeConfigDirs, pinnedToProject, appDataAskRules, appDataRules, autoAskRules, ownFileAskRules, decide, denyRules, mentionedDirs, ownFileRules, permissionMode, sessionSettings, rootProblem, shellSegments, simpleCommand, webAddressProblem, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
 import { doingLabel, stepLabel } from "../../apps/server/src/agent/agentTools.ts";
 import { safeName, sniff } from "../../apps/server/src/agent/agentDownload.ts";
 
@@ -574,10 +574,45 @@ test("round 2's A2: Claude Code's saved tool output of this project is read; the
   assert.ok(settings.permissions.deny.includes("Edit(~/.claude/**)"));
   assert.ok(!settings.permissions.deny.some((r: string) => r.startsWith("Read(~/.claude/") || r === "Bash(*/.claude/*)"));
   for (const rule of ["Read(~/.claude/**)", "Bash(*/.claude/*)"]) assert.ok(settings.permissions.ask.includes(rule), rule);
-  assert.ok(denyRules().includes("Read(~/.claude.json)"), "~/.claude.json stays a secret");
+  assert.ok(denyRules().includes("Read(~/.claude.json*)") && denyRules().includes("Edit(~/.claude.json*)"), "~/.claude.json and its backups stay secret");
+  assert.ok(denyRules().includes("Read(~/.netrc)"), "other secret files are matched exactly");
   // A ~/.claude that is a link (dotfiles): judged by its real path like everything it's compared with.
   const linked = { realpath: (p: string) => p.replace(`${HOME}/.claude`, `${HOME}/dotfiles/claude`) };
   assert.equal(kind("Read", { file_path: `${out}/b4vwce.txt` }, "auto", linked), "allow", "its saved output still read");
   assert.equal(kind("Read", { file_path: `${HOME}/.claude/.credentials.json` }, "auto", linked), "deny", "refused, not a card");
   assert.equal(kind("Bash", { command: `cat ${out}/b4vwce.txt` }, "auto", linked), "allow");
+});
+
+test("CLAUDE_CONFIG_DIR: Claude Code's folder there is judged like ~/.claude (rules at its real path too), and ~/.claude's rules stay", () => {
+  const CC = "/Volumes/Work/claude-config";
+  const REAL = "/Volumes/Work/dotfiles/claude";
+  const realpath = (p: string) => p.replace(CC, REAL);
+  assert.deepEqual(claudeConfigDirs({}, HOME, realpath), []);
+  assert.deepEqual(claudeConfigDirs({ CLAUDE_CONFIG_DIR: " " }, HOME, realpath), []);
+  assert.deepEqual(claudeConfigDirs({ CLAUDE_CONFIG_DIR: CC }, HOME, realpath), [CC, REAL]);
+  assert.deepEqual(claudeConfigDirs({ CLAUDE_CONFIG_DIR: "~/.cc" }, HOME, (p) => p), [`${HOME}/.cc`]);
+  const dirs = [CC, REAL];
+  const settings = JSON.parse(sessionSettings({ access: "auto", projects: [PROJECT], claudeConfig: dirs })).permissions;
+  for (const d of dirs) {
+    for (const rule of [`Edit(/${d}/**)`, `Read(/${d}/.claude.json*)`]) assert.ok(settings.deny.includes(rule), rule);
+    for (const rule of [`Read(/${d}/**)`, `Bash(*${d}/*)`, `Bash(*${d})`]) assert.ok(settings.ask.includes(rule), rule);
+  }
+  for (const rule of ["Edit(~/.claude/**)", "Read(~/.claude.json*)"]) assert.ok(settings.deny.includes(rule), `keeps ${rule}`);
+  assert.ok(settings.ask.includes("Read(~/.claude/**)"));
+  const ask = JSON.parse(sessionSettings({ access: "ask", claudeConfig: dirs })).permissions;
+  assert.ok(ask.deny.includes(`Read(/${CC}/.claude.json*)`) && ask.ask.includes(`Read(/${REAL}/**)`), "every access");
+  // decide: only this project's saved tool output is read there; the rest is refused, never written.
+  const out = `${CC}/projects/-Users-me-Movies-Promo/8af91a57/tool-results`;
+  const extra = { claudeConfig: dirs, realpath };
+  for (const access of ["look", "ask", "auto"] as const) {
+    assert.equal(kind("Read", { file_path: `${out}/b4vwce.txt` }, access, extra), "allow", access);
+    assert.equal(kind("Read", { file_path: `${CC}/settings.json` }, access, extra), "deny", access);
+    assert.equal(kind("Read", { file_path: `${REAL}/projects/-Users-me-Movies-Promo/8af91a57.jsonl` }, access, extra), "deny", "a conversation, by its real path");
+    assert.equal(kind("Read", { file_path: `${HOME}/.claude/settings.json` }, access, extra), "deny", "~/.claude still refused");
+  }
+  assert.equal(kind("Write", { file_path: `${CC}/settings.json`, content: "{}" }, "auto", extra), "deny");
+  assert.equal(kind("Bash", { command: `cat ${out}/b4vwce.txt` }, "auto", extra), "allow");
+  for (const command of [`cat ${CC}/settings.json`, `python3 x.py ${REAL}/projects`]) assert.equal(kind("Bash", { command }, "auto", extra), "deny", command);
+  // Without it, that folder is just outside the project.
+  assert.equal(kind("Read", { file_path: `${CC}/settings.json` }, "auto", { realpath }), "ask");
 });

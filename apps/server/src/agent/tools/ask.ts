@@ -5,7 +5,7 @@ import { layout } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { QUESTION_MS } from "../agentPlan.ts";
 import { join } from "node:path";
-import { decide, inside, realPath, shownPath } from "../agentPermissions.ts";
+import { claudeConfigDirs, decide, inside, realPath, shownPath } from "../agentPermissions.ts";
 import { BRAND_ID, globalBrandDir, readActive } from "../../brand/store.ts";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
@@ -199,7 +199,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     // D296: the active kit's folder (the user's, or the project's own) and the bundled graphic
     // libraries are read without a card: Uncut points the agent at them.
     let sanctioned: ReadonlyArray<string> = [];
-    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, sanctioned, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted, dataDir: config.dataDir });
+    const ctx = () => ({ access: r.access, project, roots: r.owner.dirs, sanctioned, candidates: r.owner.mentioned, grants: r.owner.grants, webUsed: r.owner.webUsed, tainted: r.owner.tainted, dataDir: config.dataDir, claudeConfig: claudeConfigDirs() });
     // claude may give up on it while the kit is looked up: then it's not answered at all.
     s.prompts.set(requestId, () => {
       answered = true;

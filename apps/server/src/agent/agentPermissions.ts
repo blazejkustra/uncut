@@ -15,7 +15,7 @@ import { simpleCommand, destructive, readOnlyLine, pinnedToProject } from "./per
 import { CLAUDE_DIR } from "./permissions/settings.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
-export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders } from "./permissions/paths.ts";
+export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders, claudeConfigDirs } from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
 export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, allowlisted, pinnedToProject } from "./permissions/shell.ts";
 export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
@@ -64,6 +64,8 @@ export interface PermissionContext {
   /** Secret-looking strings read from files in this turn: a WebFetch URL carrying one asks. */
   readonly tainted?: ReadonlySet<string>;
   readonly realpath?: (p: string) => string;
+  /** CLAUDE_CONFIG_DIR (claudeConfigDirs: as set and its real path): Claude Code's folder there is judged like ~/.claude. */
+  readonly claudeConfig?: ReadonlyArray<string>;
   /** Uncut's data folder (D219): a command naming it, or any app's data, is refused unless it only reads a sanctioned folder. */
   readonly dataDir?: string;
 }
@@ -101,14 +103,19 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   // saves a large result there and tells the agent to read it); the rest is other conversations and
   // settings. Claude names a project's folder by its path with every other character a dash.
   // By its real path, as the paths it's compared with are (a ~/.claude linked from a dotfiles folder).
-  const claudeDir = real(join(home, CLAUDE_DIR), home);
-  const results = join(claudeDir, "projects", project.replace(/[^A-Za-z0-9]/g, "-"));
-  const toolOutput = (r: string) => {
-    if (!inside(r, results)) return false;
-    const segs = relative(results, r).split(sep);
-    return segs.length >= 2 && segs[1] === "tool-results" && !segs.includes("..");
-  };
-  const claudeRefusal: Decision = { kind: "deny", message: `Not done: ~/${CLAUDE_DIR} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.` };
+  // CLAUDE_CONFIG_DIR, when set, is Claude Code's folder (its projects/ too); ~/.claude is judged the same either way.
+  const configDirs = [...new Set((ctx.claudeConfig ?? []).map((d) => real(d, home)))];
+  const claudeDirs = [real(join(home, CLAUDE_DIR), home), ...configDirs];
+  const inClaude = (r: string) => claudeDirs.some((d) => inside(r, d));
+  const resultDirs = claudeDirs.map((d) => join(d, "projects", project.replace(/[^A-Za-z0-9]/g, "-")));
+  const toolOutput = (r: string) =>
+    resultDirs.some((results) => {
+      if (!inside(r, results)) return false;
+      const segs = relative(results, r).split(sep);
+      return segs.length >= 2 && segs[1] === "tool-results" && !segs.includes("..");
+    });
+  const configNamed = (command: string) => [...(ctx.claudeConfig ?? []), ...configDirs].some((d) => command.includes(d.replace(/\/+$/, "")));
+  const claudeRefusal: Decision = { kind: "deny", message: `Not done: ${configDirs.length ? `Claude Code's folder (~/${CLAUDE_DIR}, and CLAUDE_CONFIG_DIR)` : `~/${CLAUDE_DIR}`} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.` };
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
 
@@ -141,7 +148,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const base = p ? real(p) : project;
     for (const raw of paths) {
       const r = raw === p || raw === "." ? real(raw) : real(raw, base);
-      if (inside(r, claudeDir)) {
+      if (inClaude(r)) {
         if (toolOutput(r)) continue;
         return claudeRefusal;
       }
@@ -161,6 +168,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (!p) return { kind: "deny", message: "Not done: no file path." };
     const r = real(p);
     if (owned(r, project)) return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is Uncut's own file; writing it by hand would fight the open project. Change the project with timeline_edit and the other Uncut tools.` };
+    if (inClaude(r)) return { kind: "deny", message: `Not done: ${shownPath(r, project, home)} is in Claude Code's own folder (settings and other conversations), which is never written.` };
     const z = zone(r);
     if (z === "cache") return { kind: "allow" };
     // The active kit's folder and the bundled libraries are only read (D296): never written, not even on a card.
@@ -199,7 +207,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow", updatedInput } : { kind: "ask", title: "Run a command", target, grant, updatedInput };
     }
     // Anything else naming Claude Code's folder: refused (its deny rules did that before they became ask rules).
-    if (/(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/.test(command)) return claudeRefusal;
+    if (/(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/.test(command) || configNamed(command)) return claudeRefusal;
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
     if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: "Not done: commands don't touch apps' data (~/Library/Application Support) except reading the active brand kit's files and Uncut's graphic libraries with ls, cat, head, tail or stat (piped into head, tail, grep, wc, sort, uniq or a jq path at most; no redirects). Use Read for those files, and Uncut's tools for the rest." };
