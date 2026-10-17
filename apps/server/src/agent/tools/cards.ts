@@ -413,7 +413,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 const sheet = yield* session.sheet(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), sheetLayout(list.length, aspect));
                 const phone = yield* session.render(phoneFrames, phoneWidth);
                 const fixed = fixFrames.length ? yield* session.render(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720)) : [];
-                return { ok: true as const, sheet, shown: list.map((f) => f.frame), census: list.map((f) => ({ frame: f.frame, ...(f.small ? { small: f.small } : {}), ...(f.measured !== undefined ? { measured: f.measured } : {}) })), phone, fixed };
+                return { ok: true as const, sheet, shown: list.map((f) => f.frame), census: list.map((f) => ({ frame: f.frame, ...(f.small ? { small: f.small } : {}), ...(f.measured !== undefined ? { measured: f.measured } : {}), ...(f.unseen ? { unseen: f.unseen } : {}) })), phone, fixed };
               }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
               if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
               const motion = yield* Effect.gen(function* () {

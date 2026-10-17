@@ -14,10 +14,15 @@ export interface CensusRun {
   readonly text: string;
   readonly share: number;
 }
-/** A frame's census: the runs under the floor (the biggest first, at most 40) and how many runs were measured. */
+/**
+ * A frame's census: the runs under the floor (the biggest first, at most 40), how many runs were
+ * measured, and `unseen`: canvases, images and videos on screen (each over 1 % of the frame) whose
+ * words, if any, the census can't read, so "no small text" can't be claimed for them.
+ */
 export interface Census {
   readonly small: ReadonlyArray<CensusRun>;
   readonly measured: number;
+  readonly unseen?: number;
 }
 
 /**
@@ -42,6 +47,8 @@ export const GRAPHIC_CENSUS = `function (W, H, floor) {
     return s;
   }
   function scaleOf(el) {
+    // SVG text: its viewBox scales it too, which offsetWidth doesn't see.
+    if (el instanceof SVGElement && el.getScreenCTM) { var c = el.getScreenCTM(); if (c) return Math.hypot(c.a, c.b); }
     for (var e = el; e && e.nodeType === 1; e = e.parentElement) {
       if (e.offsetWidth > 0) { var b = e.getBoundingClientRect(); if (b.width > 0) return b.width / e.offsetWidth; }
     }
@@ -82,21 +89,31 @@ export const GRAPHIC_CENSUS = `function (W, H, floor) {
     var was = runs.get(key);
     if (was === undefined || share < was) runs.set(key, share);
   }
+  var unseen = 0;
+  var pics = document.querySelectorAll("canvas, img, video, image, object, embed, iframe");
+  for (var k = 0; k < pics.length; k++) {
+    var q = pics[k];
+    var b = q.getBoundingClientRect();
+    var vis = Math.max(0, Math.min(b.right, W) - Math.max(b.left, 0)) * Math.max(0, Math.min(b.bottom, H) - Math.max(b.top, 0));
+    if (vis < W * H * 0.01) continue;
+    var ps = look(q);
+    if (ps.ok && getComputedStyle(q).visibility !== "hidden") unseen++;
+  }
   var small = [];
   runs.forEach(function (share, text) { small.push({ text: text, share: Math.round(share * 1000) / 10 }); });
   small.sort(function (a, b) { return b.share - a.share; });
-  return { small: small.slice(0, 40), measured: measured };
+  return { small: small.slice(0, 40), measured: measured, unseen: unseen };
 }`;
 
 /** A census back from the rasteriser, checked (it crossed a process boundary). */
 export function censusOf(v: unknown): Census | undefined {
-  const c = v as { small?: unknown; measured?: unknown } | null;
+  const c = v as { small?: unknown; measured?: unknown; unseen?: unknown } | null;
   if (!c || typeof c !== "object" || !Array.isArray(c.small) || typeof c.measured !== "number") return undefined;
   const small = c.small
     .filter((x): x is CensusRun => !!x && typeof (x as CensusRun).text === "string" && typeof (x as CensusRun).share === "number" && Number.isFinite((x as CensusRun).share))
     .slice(0, 40)
     .map((x) => ({ text: x.text.slice(0, 60), share: x.share }));
-  return { small, measured: c.measured };
+  return { small, measured: c.measured, ...(typeof c.unseen === "number" && c.unseen > 0 ? { unseen: c.unseen } : {}) };
 }
 
 /** Runs as a short list: the biggest first (the moment's lines before the chrome), at most `max`, then how many more. */

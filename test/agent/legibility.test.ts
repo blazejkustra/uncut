@@ -48,11 +48,16 @@ test("review_submit: one finding with every small frame (never a blocker), the c
   assert.match(f!.message, /Small text in 2 of the contact sheet's frames .*f 315 \(5\.3 s\): .*f 1260 \(21\.0 s\): "Hook in 2 s" 1\.9 %/);
   assert.match(f!.message, /fix them all in this round, not one per round/);
   assert.match(legibilityFacts(list, 60)[0]!, /Words measured on the graphics .*f 315 \(5\.3 s\)/);
-  assert.match(legibilityFacts([{ frame: 1, small: [], measured: 4 }], 60)[0]!, /none under 3 % in the 1 contact-sheet frames/);
+  assert.match(legibilityFacts([{ frame: 1, small: [], measured: 4 }], 60)[0]!, /none under 3 % among the DOM words of the 1 contact-sheet frames measured\./);
+  assert.match(legibilityFacts([{ frame: 1, small: [], measured: 4, unseen: 1 }], 60)[0]!, /1 frames also show canvases, images or unmeasured graphics: their words are unknown/);
+  assert.match(legibilityFacts([{ frame: 1, measured: 0, unseen: 2 }], 60)[0]!, /weren't measured.*canvas/, "only a canvas: said, never 'none under'");
+  assert.equal(censusNear([{ frame: 420, small: [], measured: 0 }], 7, 60), undefined, "nothing measured is no claim");
+  assert.match(censusNear([{ frame: 420, small: [], measured: 3, unseen: 1 }], 7, 60)!, /no graphic word under 3 % \(text drawn on a canvas/);
+  assert.match(legibilityNote([{ frame: 9, unseen: 1 }], 1350)!, /^On frame 9, text drawn on a canvas/);
   assert.deepEqual(legibilityFacts([{ frame: 1 }], 60), [], "no graphics measured: no fact");
   assert.deepEqual(legibilityFindings([{ frame: 1, small: [], measured: 4 }], 60, 1350), []);
   assert.match(censusNear(list, 21.1, 60)!, /measured at f 1260: "Hook in 2 s" 1\.9 %/);
-  assert.match(censusNear(list, 7, 60)!, /measured at f 420: no word under 3 %/);
+  assert.match(censusNear(list, 7, 60)!, /measured at f 420: no graphic word under 3 %/);
   assert.equal(censusNear(list, 12, 60), undefined, "nothing measured within half a second");
 });
 
@@ -98,6 +103,15 @@ test("A1-noskill3: the user's own 'one take' makes cuts fail the round with the 
   assert.ok(hard.length >= 3 && hard.every((x) => x.hard), "cuts block");
   const soft = motionFindings(scan, fps, { ...brief, hard: false || brief.asked }).filter((x) => x.key?.startsWith("motion:jump"));
   assert.ok(soft.length >= 3 && soft.every((x) => !x.hard), "without the ask or the skill, cuts are findings");
+});
+
+test("one take in the request: asked conservatively, negations, alternatives and crops aren't", () => {
+  const ask = (request: string) => motionIntent({ skills: [], words: "", request }).asked;
+  for (const yes of ["one take on the beat", "One-take launch film", "a single continuous shot", "one unbroken camera move", "no cuts", "never cut, keep it flowing", "without any cuts", "do not cut between scenes", "with no hard cuts", "single take", "Make a film.\n\nThen, this turn: make it one take"])
+    assert.equal(ask(yes), true, yes);
+  for (const no of ["not one take", "It doesn't need to be one take", "one take or cuts, your call", "cuts or one take, up to you", "never cut off the text at the edge", "don't cut out the logo", "One take. Actually, cuts are fine.", "one take\n\nThen, this turn: add a hard cut at the drop", "fast cuts on the beat", "the Uncut launch film", "one-shot a promo for Uncut", "no cutscenes", "jedno ujęcie"])
+    assert.equal(ask(no), false, no);
+  assert.equal(motionIntent({ skills: [], words: "Cuts on the beat, not one take" }).oneTake, false, "the brief's words read the same way");
 });
 
 test("a still frame over STILL_MAX_S in a motion film is a finding, the longest holds listed first", () => {

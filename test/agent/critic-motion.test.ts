@@ -830,6 +830,9 @@ test("a quick swap (a cut spread over a few frames) is a jump with its span; a f
   assert.match(finding!.message, /^Quick swap at f 203 \(3\.38 s\): 2\d\.\d % of the picture changes in 4 frames \(0\.07 s\)[\s\S]*that is a cut/);
   assert.equal(finding!.hard, true);
   assert.match(motionLines(scan, fps, { consecutive: true }).join("\n"), /f 203 \(3\.38 s, 2\d %, over 4 frames\)/);
+  // The reference 2.mp4's iris at 26.5 s: the same burst closing into a nearly empty canvas is an exit, not a cut.
+  const closed = frames.map((x) => (x.frame >= 205 ? { ...x, bare: { content: 0.0005, parts: 1, empty: true } } : x));
+  assert.deepEqual(motionScan(closed, fps).jumps, []);
   // As review_submit samples it (every 12th frame): the narrowing widens to the swap's still sides.
   const at = new Map(frames.map((x) => [x.frame, x.gray]));
   const sampled = frames.filter((x) => x.frame % 12 === 5);

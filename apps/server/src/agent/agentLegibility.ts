@@ -12,7 +12,12 @@ export interface CensusFrame {
   readonly frame: number;
   readonly small?: ReadonlyArray<CensusRun>;
   readonly measured?: number;
+  /** Canvases, images or videos (or a zoomed or fading graphic) on the frame whose words the census can't read. */
+  readonly unseen?: number;
 }
+
+/** What the census can't see, said wherever it would otherwise sound complete. */
+const UNSEEN = "text drawn on a canvas, in an image or video, or in a zoomed or fading graphic isn't measured: judge it by eye";
 
 /** The smallest uncutUI type (px) whose letters reach SMALL_TEXT on a canvas this tall. */
 export const minType = (height: number) => Math.ceil((SMALL_TEXT / LETTER_SHARE) * height);
@@ -26,26 +31,29 @@ const frames = (list: ReadonlyArray<CensusFrame>) => list.filter((f) => f.small?
 /** render_frames' note: each frame's words under the floor, then the fix; undefined when none (or no census). */
 export function legibilityNote(list: ReadonlyArray<CensusFrame>, height: number): string | undefined {
   const small = frames(list);
-  if (!small.length) return undefined;
+  const blind = list.filter((f) => f.unseen).map((f) => f.frame);
+  const caveat = blind.length ? ` On frame${blind.length === 1 ? "" : "s"} ${blind.slice(0, 6).join(", ")}${blind.length > 6 ? " …" : ""}, ${UNSEEN}.` : "";
+  if (!small.length) return caveat ? caveat.trim() : undefined;
   const lines = small.slice(0, 6).map((f) => `frame ${f.frame}: ${censusList(f.small!, 4)}`);
-  return `Small text, measured on the graphics' words (letters' height as % of the frame's height; words a viewer must read need ${SMALL_TEXT * 100} %): ${lines.join("; ")}${small.length > 6 ? `; ${small.length - 6} more frames` : ""}. ${legibleFix(height)}`;
+  return `Small text, measured on the graphics' words (letters' height as % of the frame's height; words a viewer must read need ${SMALL_TEXT * 100} %): ${lines.join("; ")}${small.length > 6 ? `; ${small.length - 6} more frames` : ""}. ${legibleFix(height)}${caveat}`;
 }
 
 /** The census near a moment (seconds): the closest measured frame within half a second, as "measured there: …". */
 export function censusNear(list: ReadonlyArray<CensusFrame>, at: number, fps: number): string | undefined {
   const f = at * fps;
-  const near = list.filter((x) => x.measured !== undefined && Math.abs(x.frame - f) <= fps / 2).sort((a, b) => Math.abs(a.frame - f) - Math.abs(b.frame - f))[0];
+  const near = list.filter((x) => (x.measured ?? 0) > 0 && Math.abs(x.frame - f) <= fps / 2).sort((a, b) => Math.abs(a.frame - f) - Math.abs(b.frame - f))[0];
   if (!near) return undefined;
-  return near.small?.length ? `measured at f ${near.frame}: ${censusList(near.small, 3)}` : `measured at f ${near.frame}: no word under ${SMALL_TEXT * 100} %`;
+  return near.small?.length ? `measured at f ${near.frame}: ${censusList(near.small, 3)}` : `measured at f ${near.frame}: no graphic word under ${SMALL_TEXT * 100} %${near.unseen ? ` (${UNSEEN})` : ""}`;
 }
 
 /** The critic's fact line (in <motion>): the sheet's frames with words under the floor, or that none has. */
 export function legibilityFacts(list: ReadonlyArray<CensusFrame>, fps: number): Array<string> {
   const measured = list.filter((f) => (f.measured ?? 0) > 0);
-  if (!measured.length) return [];
+  const blind = list.filter((f) => f.unseen).length;
+  if (!measured.length) return blind ? [`Words on the graphics weren't measured in the contact sheet (${UNSEEN}).`] : [];
   const small = frames(measured);
-  const head = `Words measured on the graphics (DOM text on screen, not faded or blurred; letters' height as % of the frame's height; ${SMALL_TEXT * 100} % is the floor for words a viewer must read; canvas-drawn text isn't measured)`;
-  if (!small.length) return [`${head}: none under ${SMALL_TEXT * 100} % in the ${measured.length} contact-sheet frames.`];
+  const head = `Words measured on the graphics (DOM text on screen, not faded or blurred; letters' height as % of the frame's height; ${SMALL_TEXT * 100} % is the floor for words a viewer must read; ${UNSEEN})`;
+  if (!small.length) return [`${head}: none under ${SMALL_TEXT * 100} % among the DOM words of the ${measured.length} contact-sheet frames measured${blind ? ` (${blind} frames also show canvases, images or unmeasured graphics: their words are unknown)` : ""}.`];
   return [`${head}: ${small.map((f) => `f ${f.frame} (${(f.frame / fps).toFixed(1)} s): ${censusList(f.small!, 3)}`).join("; ")}. Small labels and chrome around the moment's subject are texture; the line the moment is about isn't.`];
 }
 
