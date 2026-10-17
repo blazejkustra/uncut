@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 
 import type { ExportPlan, VisualLayer } from "../exportPlan.ts";
-import type { Rasterizer } from "../rasterizer.ts";
+import { type Rasterizer, RENDER_TIMEOUT_MS } from "../rasterizer.ts";
 
 /**
  * At most this many frames, and this many render(t) calls (motion blur's sub-frames count), per
@@ -61,6 +61,15 @@ const remember = (key: string, result: Rehearsal, budgetMs: number) => {
   done.set(key, { result, budgetMs });
   return result;
 };
+// A graphic that stalled (a request past the rasteriser's own deadline), by the same key: said again
+// at once rather than waiting out the deadline on every call; a changed graphic has another key.
+const stalls = new Map<string, Rehearsal>();
+const rememberStall = (key: string, result: Rehearsal) => {
+  stalls.delete(key);
+  if (stalls.size >= DONE_MAX) stalls.delete(stalls.keys().next().value!);
+  stalls.set(key, result);
+  return result;
+};
 // The canvas and fps too: render(t, info) gets them (a canvas or fps change reruns it), as do the item's in and duration.
 const keyOf = (layers: ReadonlyArray<GraphicLayer>, plan: ExportPlan) => {
   const h = createHash("sha256").update(JSON.stringify([plan.canvas.width, plan.canvas.height, plan.fps]));
@@ -81,6 +90,8 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
   const end = layers.reduce((s, l) => Math.max(s, l.f1 / fps), 0);
   if (!total) return { covered: 0, total: 0, reached: end };
   const key = keyOf(layers, plan);
+  const stalledBefore = stalls.get(key);
+  if (stalledBefore) return stalledBefore;
   const before = done.get(key);
   if (before && (before.result.failure || before.result.covered >= total || before.budgetMs >= o.budgetMs)) return before.result;
   const deadline = now() + o.budgetMs;
@@ -94,16 +105,21 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
     const list = calls[k]!;
     for (let a = 0; a < list.length; ) {
       if (o.signal?.aborted) return { covered, total, reached };
-      if (now() > deadline) return remember(key, { covered, total, reached }, o.budgetMs);
+      // Each request waits at most what's left of the budget (and never past the rasteriser's own deadline).
+      const left = deadline - now();
+      if (left <= 0) return remember(key, { covered, total, reached }, o.budgetMs);
+      const capped = left < RENDER_TIMEOUT_MS;
       let b = a + 1;
       for (let calls = list[a]!.ts.length; b < list.length && b - a < REHEARSE_CHUNK && calls + list[b]!.ts.length <= REHEARSE_CALLS; b++) calls += list[b]!.ts.length;
       const chunk = list.slice(a, b);
       a = b;
       try {
-        await r.render({ kind: "graphic-run", width, height, doc: layer.doc, info, frames: chunk.map((c) => c.local), ...(layer.motion ? { ts: chunk.map((c) => c.ts) } : {}), name, fresh });
+        await r.render({ kind: "graphic-run", width, height, doc: layer.doc, info, frames: chunk.map((c) => c.local), ...(layer.motion ? { ts: chunk.map((c) => c.ts) } : {}), name, fresh }, { timeoutMs: left });
       } catch (error) {
         const message = (error as Error).message ?? String(error);
-        if (STALLED.test(message)) return { covered, total, reached, stalled: true };
+        // Cut short by the budget: the time budget ran out (as between requests). Past the
+        // rasteriser's own deadline: a stall, remembered for this graphic.
+        if (STALLED.test(message)) return capped ? remember(key, { covered, total, reached }, o.budgetMs) : rememberStall(key, { covered, total, reached, stalled: true });
         // Stopped (the turn, the session closed under it): the rasteriser's "stopped" isn't the graphic's failure.
         if (o.signal?.aborted) return { covered, total, reached };
         const m = /at its frame (\d+(?:\.\d+)?): ([\s\S]*)$/.exec(message);

@@ -81,15 +81,18 @@ export interface RasterOutSize {
 }
 
 export interface Rasterizer {
-  /** Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). */
-  readonly render: (job: RasterJob) => Promise<void>;
+  /**
+   * Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). `timeoutMs`: a
+   * shorter wait than the usual deadline (RENDER_TIMEOUT_MS), never a longer one.
+   */
+  readonly render: (job: RasterJob, o?: { readonly timeoutMs?: number }) => Promise<void>;
   /** Stop it (SIGKILL if it doesn't go within a second). Resolves once it's gone. */
   readonly close: () => Promise<void>;
   readonly pid: number | undefined;
 }
 
 const READY_TIMEOUT_MS = 20_000;
-const RENDER_TIMEOUT_MS = 30_000;
+export const RENDER_TIMEOUT_MS = 30_000;
 
 /** The environment it runs in: ours without the server's own settings and the test hooks. */
 const rasterizerEnv = (env: NodeJS.ProcessEnv) => {
@@ -186,14 +189,15 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
   return {
     pid: child.pid,
     close,
-    render: (job) =>
+    render: (job, o) =>
       new Promise<void>((resolve, reject) => {
         if (failed) return reject(failed);
         const id = ++next;
+        const wait = o?.timeoutMs !== undefined && Number.isFinite(o.timeoutMs) ? Math.max(0, Math.min(RENDER_TIMEOUT_MS, o.timeoutMs)) : RENDER_TIMEOUT_MS;
         const timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error("The text renderer took too long."));
-        }, RENDER_TIMEOUT_MS);
+        }, wait);
         pending.set(id, { resolve, reject, timer });
         child.stdin!.write(`${JSON.stringify({ id, ...job })}\n`);
       }),

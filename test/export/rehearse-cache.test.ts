@@ -63,3 +63,53 @@ test("a crash that names no frame is said once, not kept; a frame's own failure 
   assert.equal(calls, 0, "the graphic's own failure is kept");
   assert.match(kept.failure ?? "", /boom/);
 });
+
+const longPlan = (doc: string, frames: number): ExportPlan =>
+  ({
+    fps: 30,
+    canvas: { width: 64, height: 80 },
+    visuals: [{ kind: "graphic", doc, f0: 0, f1: frames, frames: Array.from({ length: frames }, (_, i) => i), item: { id: "g", src: "graphics/g.html", duration: frames } }],
+  }) as unknown as ExportPlan;
+
+test("each request waits at most what's left of the budget, so a 15 s budget stays about 15 s", async () => {
+  let clock = 0;
+  const waits: Array<number | undefined> = [];
+  // Each request takes 14 s on the clock; one that would outlast its own wait is cut there.
+  const r = fake(async (_job, o) => {
+    waits.push(o?.timeoutMs);
+    if (o?.timeoutMs !== undefined && o.timeoutMs < 14_000) {
+      clock += o.timeoutMs;
+      throw new Error("The text renderer took too long.");
+    }
+    clock += 14_000;
+  });
+  const doc = `<p>budget ${Math.random()}</p>`;
+  const got = await rehearseGraphics(r, longPlan(doc, 180), { budgetMs: 15_000, now: () => clock });
+  assert.deepEqual(waits, [15_000, 1_000], "the second request gets the 1 s left");
+  assert.ok(clock <= 15_000, `took ${clock} ms`);
+  assert.equal(got.stalled, undefined, "the budget ran out, not a stall");
+  assert.equal(got.covered, 60);
+  assert.ok(got.covered < got.total);
+});
+
+test("a stall (past the renderer's own deadline) is remembered for the same graphic; a changed graphic rehearses again", async () => {
+  let calls = 0;
+  const waits: Array<number | undefined> = [];
+  const stalling = fake(async (_job, o) => {
+    calls++;
+    waits.push(o?.timeoutMs);
+    throw new Error("The text renderer took too long.");
+  });
+  const doc = `<p>stall ${Math.random()}</p>`;
+  const first = await rehearseGraphics(stalling, planOf(doc), { budgetMs: 60_000 });
+  assert.equal(first.stalled, true);
+  assert.equal(calls, 1);
+  assert.ok((waits[0] ?? 0) >= 30_000, "a budget past the renderer's deadline doesn't shorten the wait");
+  const again = await rehearseGraphics(stalling, planOf(doc), { budgetMs: 120_000 });
+  assert.equal(again.stalled, true);
+  assert.equal(calls, 1, "the stall is said again without waiting it out");
+  let fine = 0;
+  const changed = await rehearseGraphics(fake(async () => void fine++), planOf(`${doc}<i>fixed</i>`), { budgetMs: 60_000 });
+  assert.equal(fine, 1, "a changed graphic is rehearsed");
+  assert.equal(changed.covered, 10);
+});
