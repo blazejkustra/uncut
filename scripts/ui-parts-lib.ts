@@ -139,6 +139,8 @@ export function runtimeJs(source: string): string {
     .replace(/^[ \t]*\/\/.*$/gm, "")
     .replace(/^export \{\};\s*$/m, "")
     .replace(/[ \t]+$/gm, "")
+    // The blanks stripped types leave inside a line (an annotation becomes spaces before ) = , ; { or =>).
+    .replace(/(?<=\S) {2,}(?=[)=,;{\]}]|=>)/g, (m, at: number, all: string) => (/[)\]]/.test(all[at + m.length]!) ? "" : " "))
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   // Line-based stripping can't see inside a template literal: one spanning lines must come through as written.
@@ -154,7 +156,9 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
    clips, the filter slider, the preview, Export, Saved), set LARGE on a calm canvas (60 to 90 % of
    the width, its text 4.5 % of the frame's height or more), each one morphing into the next. A whole
    panel only briefly, and only when its words read on a phone; never a camera panning over a
-   desktop-sized window: that reads as a screen recording.
+   desktop-sized window: that reads as a screen recording. Or the whole program as the STAGE: the
+   editor mounted live (its panels follow props every frame), blurred behind a big hero piece, then
+   in focus while a camera (uncutMotion.camera) pushes into the region where the work happens.
      uncutUI.sequence(host, t, keys, { dur: 0.5 })    // ONE shell carried through keys (call it every frame):
        keys: [{ at, piece: "composer", props }, { at: 2, piece: "message", props, carry: [["input", "text"]] }, ...]
        piece: "part.slot" (or "part"); props: the part's props below; index: the nth match. Big by default:
@@ -171,6 +175,19 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        cropped by the shell. The same piece twice (one more step) grows without a swap. Pure in t.
        Returns { x, y, w, h, r, p, key, el, type } (el: the shown piece's element, for find and rectIn).
      uncutUI.piece(host, "export.high", { props, width, x, y, ... })  // one piece alone (sequence's key at rest)
+     uncutUI.mount(host, "editor", { width: 1440, height: 1000, blur, dim, ...props })  // the program as a live stage:
+       call it every frame; each panel is rebuilt only when its props change (clips moving, steps growing,
+       the playhead, an export's progress). blur (px on screen at its scale) and dim (0..1): the program
+       behind a hero. width, height: the window it lays out in (the real responsive layout).
+     uncutUI.fly(fx, t, { at, dur: 0.7, from, to, arc, leave, fit, id })  // one element travelling into its place,
+       call it every frame for every flight: from a piece key (the big hero composer, shown at rest before at,
+       its Send pressed), an element (a media tile, the prompt's text) or a rect, to an element in the stage
+       (the editor's composer, a timeline clip, the preview's frame); rect, radius and colour travel on an arc
+       (host px, negative: up) while the start's look hands over to the landing element's own; the landing
+       element is hidden until it lands, then the real one shows. leave: the from element goes at at (the
+       prompt leaving the composer); fit: "cover" (default) | "contain" (text into a bubble); id: one per
+       flight in the air. fx: a layer above the stage's camera (rects are measured on screen, so a moving
+       camera is fine). Returns { x, y, w, h, p, el } (el: the hero piece's element while it is up).
      uncutUI.rectIn(el, host)                         // { x, y, w, h }: an element's rect in host px (aim a click at Send)
      uncutUI.mount(host, name, props)                 // a whole part (returns its root): rarely, briefly
      uncutUI.parts()                                  // editor, topbar, agent, message, turn, review, timeline, preview,
@@ -193,21 +210,25 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        review: scores { hook, readability, motion, variety, sound, brand } (0 to 10), progress 0..1, status, title
        timeline: clips: [{ track: "Main" | "Text" | "Graphics" | "Audio" | "Sound effects" | index, start, duration
          (s), name, image, selected, color }]: the whole timeline (it starts empty); playhead (s)
-       preview: frame (your canvas or img: it fills the frame), time (s: the timecode)
+       preview: frame (your canvas or img: it fills the frame), time (s: the timecode), duration (s: the
+         length after it; an editor's is its clips' end), canvas ("1080×1350, 60 fps")
        inspector: title (the clip's name), filter (the look's name on its slider), amount (0 to 100),
          filter: false, effects: false (those sections out)
        effects: active (the look picked: "warm"; none: ""), target ("On DJI 0063")
-       export: quality ("draft" | "standard" | "high"), file ("Launch film.mp4"), motionBlur
+       export: quality ("draft" | "standard" | "high"), file ("Launch film.mp4"), motionBlur, duration (s: the range)
        exportProgress: progress 0..1 ("Rendering... 42%"), eta (s left)
-       topbar: exportLabel ("Exporting 42%")
+       topbar: exportLabel ("Exporting 42%"), title (the project's name)
        agent (the side panel), editor (the window, 1920 x 900): the parts inside by name ({ composer: { text } });
-         editor: media: [{ name, meta, image }] (the library's tiles)
+         editor: media: [{ name, meta, image, duration }] (the library's tiles), side: "inspector" (that tab, its
+         props: inspector), library: "effects" (that panel, props: effects), export or exportProgress (that dialog
+         over the window); a running step (turn: done) shows the app's spinner
    An image is a data: or blob: URL: await uncut.url(id, seconds) once before the first frame (an uncut:media/
    marker only resolves in the graphic's own HTML). No run fact of the fixture shows unless you pass it: no prompt
    in a message, no clips, media tiles, steps, reply, edit count or review card in a turn (review: true
    is a blank card), no export progress; the review says "Reviewing" with empty bars, no round, model,
-   time or time left. Sample labels that stay until you pass yours: the project's title, the clip's name
-   in inspector and effects (title, target), the 28 s length on the preview's timecode and the ruler. Run facts are real or absent: pass a result,
+   time or time left; the project's title, length and canvas, a tile's length badge and the clip named in the
+   Inspector and Effects start blank too (topbar title, preview duration and canvas, media duration,
+   inspector title, effects target, export duration). Run facts are real or absent: pass a result,
    round, score or timing only from this run's real results (review_submit, beat_grid), never invented.
      uncutUI.cursor(host, { x, y, scale, size: 28 })  // the macOS pointer, its tip at (x, y) in host px
      uncutUI.timecode(seconds, fps), uncutUI.css()    // "00:00:12:30"; the parts' CSS (added once by mount)
@@ -254,6 +275,7 @@ window.uncutUI = {
   findAll: findAll,
   piece: piece,
   sequence: sequence,
+  fly: fly,
   rectIn: rectIn,
   cursor: cursor,
   timecode: timecode,

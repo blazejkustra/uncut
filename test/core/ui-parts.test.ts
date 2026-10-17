@@ -47,7 +47,9 @@ test("no invented run facts in the parts: the fixture's markup states no timing,
   // The runtime blanks what the capture can't avoid (the review's result, round, scores; the plan's
   // state; the turn's status; the export's time left) before the graphic's props, which alone add facts.
   const code = runtimeJs(readFileSync(resolve("apps/web/src/uiparts/runtime.ts"), "utf8"));
-  assert.match(code, /neutral\(root\);\s*applyProps\(name, root, o\)/);
+  assert.match(code, /neutral\(root\);\s*applyProps\(name, root, name === "editor" \? \{ media: o\.media \} : o\)/);
+  // The editor's panels get their props right after (liveEditor), each from its blanked markup.
+  assert.match(code, /function liveEditor[\s\S]*neutral\(el\)/);
   for (const want of [/"Reviewing"/, /\.plan-state/, /\.turn-status/, /\.export-status \.muted/]) assert.match(code, want);
   assert.match(UI_HEADER, /Run facts are real or absent/);
   assert.doesNotMatch(UI_HEADER, /status \("Passed"/);
@@ -109,7 +111,8 @@ test("the data can't close its script, repeated icons are pooled, and the whole 
   assert.deepEqual(pool, ['<svg a="1"></svg>', "data:image/png;base64,AAAA"]);
   assert.equal(parts.a!.html, '<i>\u00010\u0002\u00010\u0002<img src="\u00011\u0002"></i>');
   // The pieces runtime and the Effects tab's look thumbnails (JPEG) brought it near 300 KB; the whole document with every library stays under MAX_GRAPHIC_DOC_BYTES (graphic-libs.test.ts).
-  assert.ok(Buffer.byteLength(LIB) < 310_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
+  // The live editor stage and fly (round 7) took it past 310 KB.
+  assert.ok(Buffer.byteLength(LIB) < 320_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
 });
 
 test("runtimeJs drops whole-line comments only: code after a leading /* */ stays, a multi-line template literal can't be cut", () => {

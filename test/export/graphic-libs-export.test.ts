@@ -84,7 +84,7 @@ const UI = `<div id="stage" style="position:absolute;left:0;top:0;width:640px;he
 <script>
 const stage = document.getElementById("stage");
 const host = (x, y) => { const d = document.createElement("div"); d.style.cssText = "position:absolute;left:" + x + "px;top:" + y + "px"; stage.appendChild(d); return d; };
-const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110), seq: host(0, 0), carry: host(0, 0), frame: host(0, 0), piece: host(0, 0) };
+const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110), seq: host(0, 0), carry: host(0, 0), frame: host(0, 0), piece: host(0, 0), stage: host(470, 250) };
 const pic = document.createElement("canvas");
 pic.width = 108; pic.height = 135;
 const pic2 = document.createElement("canvas");
@@ -103,7 +103,7 @@ window.render = (t) => {
       for (const s of uncutUI.slots(n)) if (!uncutUI.find(full, s)) throw new Error(n + ": no slot " + s);
       const root = uncutUI.mount(scratch, n);
       // Mounted without props, no part states a run fact (a result, round, score, model, time).
-      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh|Rendering… \\d|Wrote graphic/);
+      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh|Rendering… \\d|Wrote graphic|Launch film|DJI 0063|00:00:28/);
       if (said) throw new Error(n + ": states " + said[0] + " without props");
       // Asked for, the turn's review card is a blank one too: the fixture's result and scores never come back with it.
       if (n === "turn" && (/Passed|round \\d/.test(full.textContent) || uncutUI.findAll(full, ".score-value").some((v) => v.textContent))) throw new Error("turn: review: true shows the fixture's result or scores");
@@ -129,6 +129,12 @@ window.render = (t) => {
   uncutUI.sequence(at.carry, t, [{ at: 0, piece: "composer", props: { text: prompt }, width: 200, type: 12, x: 110, y: 300 }, { at: 1.2, piece: "message", props: { text: prompt }, carry: [["input", "text"]], from: "left", theme: "light", width: 180, type: 12, x: 120, y: 310 }]);
   uncutUI.sequence(at.frame, t, [{ at: 0, piece: "preview.frame", props: { frame: pic2 }, width: 120, x: 560, y: 300 }, { at: 1.2, piece: "exportProgress.job", props: { progress: Math.min(1, t / 3) }, from: "right", width: 140, type: 10, x: 560, y: 300 }]);
   uncutUI.piece(at.piece, "topbar.saved", { width: 90, x: 590, y: 30 });
+  // The program as a live stage, blurred then in focus: steps, clips and the playhead moving, the Inspector
+  // tab and the export running over it; mid-flight at frame 40, the hero composer docking into its slot
+  // and a media tile flying onto the timeline as its clip.
+  const ed = uncutUI.mount(at.stage, "editor", { width: 1200, height: 800, scale: 0.12, blur: 2 * Math.max(0, 1 - t), dim: 0.3 * Math.max(0, 1 - t), media: [{ name: "A", meta: "Video", image: pic2.toDataURL(), duration: 12 }], topbar: { title: "Film" }, turn: { steps: ["Read the brand kit", "Found the beats"].slice(0, 1 + (t > 0.5)), done: t > 0.8 ? 2 : 0 }, timeline: { clips: t > 0.3 ? [{ track: "Main", start: 0, duration: 2 + t, name: "A" }] : [], playhead: t }, side: t > 1.1 ? "inspector" : undefined, inspector: { title: "A", filter: "Warm", amount: 50 }, exportProgress: t > 1.3 ? { progress: t / 3 } : undefined });
+  uncutUI.fly(stage, t, { id: "dock", at: 0.4, dur: 0.6, from: { piece: "composer", props: { text: prompt }, width: 150, type: 9, x: 520, y: 200 }, to: uncutUI.find(ed, "composer") });
+  uncutUI.fly(stage, t, { id: "tile", at: 0.35, dur: 0.6, from: ed.querySelector('[data-testid="media-tile"] .thumb'), to: ed.querySelector(".tl-lane.main .clip"), arc: -20 });
   uncutUI.cursor(stage, { x: 120 + t * 40, y: 90, scale: t > 1.2 && t < 1.35 ? 0.85 : 1, size: 18 });
 };
 </script>`;
