@@ -39,7 +39,7 @@ const SLOTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   inspector: { title: ".insp-title", filter: '[data-testid="insp-filter"]', amount: '[data-testid="insp-filter-intensity"]', effects: '[data-testid="insp-effects"]', effect: '[data-testid="insp-effect"]', transform: '[data-testid="insp-sec-transform"]' },
   effects: { search: ".tr-search", target: '[data-testid="effects-target"]', filters: '[data-testid="filters-grid"]', tile: '[data-testid="filter-tile"]', none: '[data-look="none"]', natural: '[data-look="natural"]', warm: '[data-look="warm"]', cool: '[data-look="cool"]', vintage: '[data-look="vintage"]', film: '[data-look="film"]', bw: '[data-look="bw"]', vivid: '[data-look="vivid"]' },
   export: { close: ".export-head .icon-btn", draft: '[data-testid="quality-draft"]', standard: '[data-testid="quality-standard"]', high: '[data-testid="quality-high"]', file: '[data-testid="export-name"]', motionBlur: 'input[type="checkbox"]', cancel: ".wiz-foot .btn.ghost", export: ".wiz-foot .btn.primary" },
-  exportProgress: { progress: ".export-status", bar: ".export-bar", fill: ".export-bar > div", cancel: '[data-testid="export-cancel"]' },
+  exportProgress: { job: '[data-testid="export-job"]', progress: ".export-status", bar: ".export-bar", fill: ".export-bar > div", cancel: '[data-testid="export-cancel"]' },
   topbar: { export: ".export-btn", saved: ".saved", title: ".project-title" },
   agent: { tabs: ".tabs", thread: ".agent-thread", composer: ".composer", send: ".send", plan: ".plan-chip-btn" },
   editor: { topbar: ".topbar", export: ".export-btn", rail: ".rail", library: ".library", preview: ".stage", frame: ".frame", side: ".side", composer: ".composer", send: ".send", thread: ".agent-thread", timeline: ".bottom", playhead: ".playhead" },
@@ -222,6 +222,8 @@ function neutral(root: HTMLElement) {
     el.removeAttribute("title");
   }
   for (const el of findAll(root, ".export-status .muted")) el.textContent = "";
+  // The export's file, folder and settings line is the fixture's.
+  for (const el of findAll(root, '[data-testid="export-job-where"]')) el.remove();
   // The fixture's prose and counts: the turn's reply, its edit count, the critic's card inside a
   // turn (props bring them back), the media library's sample files (editor: media).
   for (const el of root.querySelectorAll('.turn .reply, .turn-edits, .turn .card-item, .turn .edit-row, [data-testid="media-tile"], .tl-lane .clip')) el.remove();
@@ -575,6 +577,9 @@ interface Built {
   readonly h: number;
   readonly bg: string;
   readonly radius: number;
+  /** The slot's font size in the app (px) and its part's name. */
+  readonly font: number;
+  readonly name: string;
 }
 type Holder = HTMLElement & { __pieceKey?: string; __built?: Built };
 
@@ -584,10 +589,10 @@ interface PieceKey {
   readonly piece: string;
   readonly props?: Props;
   readonly index?: number;
-  /** Centre in host px (default: the box's top-left at the host's origin). */
+  /** Centre in host px (default: the host's centre). */
   readonly x?: number;
   readonly y?: number;
-  /** Width in host px (default: its size in the app); height: a taller or wider shell, the content fitted inside. */
+  /** Width in host px (default: 86 % of the host's, unless scale or size is given); height: a taller or wider shell, the content fitted inside. */
   readonly width?: number;
   readonly height?: number;
   readonly scale?: number;
@@ -604,7 +609,18 @@ interface PieceKey {
   readonly dur?: number;
   /** In a morph, the content fitted whole in the shell ("contain", the default) or covering it ("cover", the default for a picture: preview.frame). */
   readonly fit?: "contain" | "cover";
+  /** The piece's text height on the canvas, host px (default 4.8 % of the host's height; 0: as the app sets it): it picks size.width, so the words wrap and set large. */
+  readonly type?: number;
+  /** "light": the piece in light colours (white surfaces, dark words), else the app's dark. */
+  readonly theme?: "light" | "dark";
+  /** The piece's text colour (a restyle: a dim label made to read). */
+  readonly color?: string;
+  /** Where the outgoing piece leaves to and this one comes from, as it pushes the last out of the shell: "up" (default), "down", "left", "right", or "none" (in place). */
+  readonly from?: "up" | "down" | "left" | "right" | "none";
+  /** Elements that carry over from the key before instead of swapping: a selector in both, or [before's, this one's]; each travels and scales from where it was to where it lands (the prompt into its message, the Send arrow). */
+  readonly carry?: ReadonlyArray<string | readonly [string, string]>;
 }
+
 
 const PIECE_SHELL = "display:contents;";
 
@@ -641,35 +657,55 @@ const smooth = (p: number) => {
   return q * q * (3 - 2 * q);
 };
 
+/** A key with its host's defaults: centred, 86 % of the host's width, its words 4.8 % of the host's height. */
+function resolveKey(k: PieceKey, host: HTMLElement): PieceKey {
+  const W = host.offsetWidth || 1080;
+  const H = host.offsetHeight || 1350;
+  const own = typeof k.size?.width === "number";
+  const width = typeof k.width === "number" ? k.width : typeof k.scale === "number" || own ? undefined : W * 0.86;
+  const type = own || covers(k) || width === undefined ? 0 : num(k.type, H * 0.048);
+  return { ...k, x: num(k.x, W / 2), y: num(k.y, H / 2), width, type };
+}
+
 /**
  * Builds piece `id` ("part.slot", or "part" for the whole part) in holder, cached by its props: the
  * part is built whole (its props applied, so a typed composer or a step's label is right), the
  * slot measured as the app lays it out, then everything around it unboxed (display: contents keeps
- * the selectors and the inherited type) and the slot pinned to that size.
+ * the selectors and the inherited type) and the slot pinned to its size: the app's, size, or the
+ * width at which its text sets at type px once the piece is width px wide.
  */
 function buildPiece(holder: Holder, k: PieceKey): Built {
   const [name, slot] = [k.piece.split(".")[0]!, k.piece.split(".").slice(1).join(".")];
   const props = k.props || {};
-  const key = `${k.piece}\n${k.index ?? 0}\n${k.pad ?? ""}\n${k.radius ?? ""}\n${k.background ?? ""}\n${keyOf(k.size ?? {})}\n${keyOf(props)}`;
+  const typed = num(k.type, 0) > 0 && typeof k.width === "number";
+  const key = `${k.piece}\n${k.index ?? 0}\n${k.pad ?? ""}\n${k.radius ?? ""}\n${k.background ?? ""}\n${k.theme ?? ""}\n${k.color ?? ""}\n${typed ? `${k.width}/${k.type}` : ""}\n${keyOf(k.size ?? {})}\n${keyOf(props)}`;
   if (holder.__pieceKey === key && holder.__built) return holder.__built;
   const scratch = holder.ownerDocument.createElement("div");
   scratch.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none";
   holder.replaceChildren(scratch);
   const root = mount(scratch, name, { ...props, background: "none", scale: 1 });
   const wrap = scratch.firstElementChild as HTMLElement;
+  const theme = k.theme === "light";
+  wrap.classList.toggle("uncut-ui-light", theme);
   const el = slot ? findAll(root, slot, name)[k.index ?? 0] : root;
   if (!el) throw new Error(`uncutUI: no piece "${k.piece}"${k.index ? ` #${k.index}` : ""} (slots of ${name}: ${slots(name).join(", ")})`);
   const view = holder.ownerDocument.defaultView!;
-  const w = num(k.size?.width, el.offsetWidth);
-  let h = num(k.size?.height, el.offsetHeight);
   const cs = view.getComputedStyle(el);
   // Read now: the style is live, and the slot is restyled below.
   const ownBg = cs.backgroundColor;
   const ownRadius = parseFloat(cs.borderTopLeftRadius) || 0;
+  // The words' size: the first element holding text of its own (a step's label, not the list's).
+  let lead: Element = el;
+  for (let n: Element | null = el; n; n = nextEl(n, el))
+    if ([...n.childNodes].some((c) => c.nodeType === 3 && /\S/.test(c.textContent || ""))) {
+      lead = n;
+      break;
+    }
+  const font = parseFloat(view.getComputedStyle(lead).fontSize) || 13;
   const own = rgba(ownBg);
   // An opaque slot with square corners (a timeline lane, a panel section) sits in a padded, rounded shell of its colour.
   const opaque = !!own && own[3] >= 0.99 && ownRadius > 0;
-  let behind = own && own[3] >= 0.99 ? ownBg : part(name).backdrop || "rgb(10, 10, 10)";
+  let behind = own && own[3] >= 0.99 ? ownBg : theme ? "rgb(255, 255, 255)" : part(name).backdrop || "rgb(10, 10, 10)";
   if (!(own && own[3] >= 0.99))
     for (let p = el.parentElement; p && p !== scratch; p = p.parentElement) {
       const c = rgba(view.getComputedStyle(p).backgroundColor);
@@ -680,6 +716,9 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
     }
   const radius = num(k.radius, opaque ? ownRadius : Math.min(18, Math.max(10, el.offsetHeight * 0.2)));
   const pad = num(k.pad, opaque ? 0 : Math.round(Math.min(18, Math.max(10, el.offsetHeight * 0.25))));
+  // type: the layout width at which font px reads as type px in a width px shell.
+  const w = typed ? Math.max(48, Math.round((k.width! * font) / k.type! - pad * 2)) : num(k.size?.width, el.offsetWidth);
+  let h = num(k.size?.height, el.offsetHeight);
   // Unbox the path from the part's wrapper to the slot; drop everything beside it.
   for (let at: HTMLElement = el; at !== wrap; ) {
     const parent = at.parentElement as HTMLElement;
@@ -692,13 +731,14 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
   const st = el.style;
   st.boxSizing = "border-box";
   st.width = `${w}px`;
-  st.height = typeof k.size?.width === "number" && typeof k.size?.height !== "number" ? "auto" : `${h}px`;
+  st.height = (typed || typeof k.size?.width === "number") && typeof k.size?.height !== "number" ? "auto" : `${h}px`;
   st.margin = "0";
   st.position = "relative";
   st.left = st.top = st.right = st.bottom = "auto";
   st.flex = "none";
   st.maxWidth = st.maxHeight = "none";
   if (opaque) st.boxShadow = "none";
+  if (k.color) st.color = k.color;
   if (st.height === "auto") {
     // A new width: its height as it lays out at that width, pinned.
     // (Children all positioned, a lane: it keeps the app's height.)
@@ -710,10 +750,17 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
   node.style.cssText = `position:absolute;left:0;top:0;width:${w + pad * 2}px;height:${h + pad * 2}px;padding:${pad}px;box-sizing:border-box;transform-origin:0 0`;
   node.appendChild(wrap);
   holder.replaceChildren(node);
-  const built: Built = { node, el, w: w + pad * 2, h: h + pad * 2, bg: k.background ?? (opaque ? ownBg : behind), radius };
+  const built: Built = { node, el, w: w + pad * 2, h: h + pad * 2, bg: k.background ?? (opaque ? ownBg : behind), radius, font, name };
   holder.__pieceKey = key;
   holder.__built = built;
   return built;
+}
+
+/** The element after n in document order inside root, or null. */
+function nextEl(n: Element, root: Element): Element | null {
+  if (n.firstElementChild) return n.firstElementChild;
+  for (let at: Element | null = n; at && at !== root; at = at.parentElement) if (at.nextElementSibling) return at.nextElementSibling;
+  return null;
 }
 
 interface Box {
@@ -732,11 +779,14 @@ function keyBox(k: PieceKey, b: Built): Box {
   return { x: typeof k.x === "number" ? k.x : w / 2, y: typeof k.y === "number" ? k.y : h / 2, w, h, r: b.radius * s };
 }
 
-/** Place a built piece's content fitted (one uniform scale, never stretched) and centred in a w x h shell. */
-function fitInto(b: Built, w: number, h: number, alpha: number, blur: number, dy: number, cover?: boolean) {
-  const s = cover ? Math.max(w / b.w, h / b.h) : Math.min(w / b.w, h / b.h);
+/** A built piece's content scale fitted in a w x h shell (one uniform scale, never stretched). */
+const fitScale = (b: Built, w: number, h: number, cover?: boolean) => (cover ? Math.max(w / b.w, h / b.h) : Math.min(w / b.w, h / b.h));
+
+/** Place a built piece's content fitted and centred in a w x h shell, moved by (dx, dy) and scaled by z about its centre. */
+function fitInto(b: Built, w: number, h: number, alpha: number, blur: number, dx: number, dy: number, cover?: boolean, z?: number) {
+  const s = fitScale(b, w, h, cover) * num(z, 1);
   const st = b.node.style;
-  st.transform = `translate(${(w - b.w * s) / 2}px, ${(h - b.h * s) / 2 + dy}px) scale(${s})`;
+  st.transform = `translate(${(w - b.w * s) / 2 + dx}px, ${(h - b.h * s) / 2 + dy}px) scale(${s})`;
   st.opacity = String(Math.round(alpha * 1000) / 1000);
   st.filter = blur > 0.05 ? `blur(${(blur / Math.max(s, 0.01)).toFixed(2)}px)` : "none";
   st.visibility = alpha > 0.001 ? "visible" : "hidden";
@@ -744,24 +794,111 @@ function fitInto(b: Built, w: number, h: number, alpha: number, blur: number, dy
 
 const covers = (k: PieceKey) => (k.fit ? k.fit === "cover" : /\.frame$/.test(k.piece));
 
+const DIRS: Readonly<Record<string, readonly [number, number]>> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0], none: [0, 0] };
+
+/** An element's rect in its piece's content px (the piece unscaled). */
+function localRect(el: Element, node: HTMLElement): Box {
+  const a = el.getBoundingClientRect();
+  const b = node.getBoundingClientRect();
+  const s = node.offsetWidth ? b.width / node.offsetWidth : 1;
+  return { x: (a.left - b.left) / s, y: (a.top - b.top) / s, w: a.width / s, h: a.height / s, r: 0 };
+}
+
+/** Where a piece's content sits at rest in box: its scale and top-left, host px. */
+function restAt(b: Built, box: Box, cover: boolean) {
+  const s = fitScale(b, box.w, box.h, cover);
+  return { s, x: box.x - box.w / 2 + (box.w - b.w * s) / 2, y: box.y - box.h / 2 + (box.h - b.h * s) / 2 };
+}
+
+type Carrier = HTMLElement & { __from?: Built; __to?: Built; __spec?: string };
+
 /**
- * One shell carried through the keys: each key a piece where it sits; from each key's at it morphs
- * from the key before (dur s, a critically damped ease): the shell's centre, size, corner radius and
- * colour travel as one object while the old content leaves (fading, lifting, a few px of blur) and
- * the new one arrives inside it, both fitted at one uniform scale (text never stretches). The same
- * piece twice (another width, more steps) resizes without a crossfade. Pure in t. Returns the shell's
- * box { x, y, w, h, r }, p (0..1 in a morph, 1 at rest), the key index shown and its element.
+ * The carried elements of a morph: each pair drawn once, outside both pieces (a copy of each piece
+ * with only that element visible), travelling from where it sat in the last piece to where it lands
+ * in this one, its scale following the box; the two copies hand over midway (same words, same wrap:
+ * no double image). The originals are hidden meanwhile.
  */
-function sequence(host: HTMLElement, t: number, keys: ReadonlyArray<PieceKey>, o?: { readonly dur?: number }): { x: number; y: number; w: number; h: number; r: number; p: number; key: number; el: HTMLElement } {
-  if (!keys.length) throw new Error("uncutUI.sequence: no keys");
+function carry(host: HTMLElement, kf: PieceKey, kj: PieceKey, bf: Built, bj: Built, boxF: Box, boxJ: Box, p: number, raw: number, hidden: Array<HTMLElement>) {
+  const doc = host.ownerDocument;
+  let layer = host.querySelector(":scope > .uncut-ui-carry") as Carrier | null;
+  if (!layer) {
+    layer = doc.createElement("div") as Carrier;
+    layer.className = "uncut-ui-carry";
+    host.appendChild(layer);
+  }
+  const pairs = (kj.carry || []).map((c) => (typeof c === "string" ? [c, c] : c) as readonly [string, string]);
+  const found = pairs.map(([a, b]) => [find(bf.el, a, bf.name), find(bj.el, b, bj.name)] as const).filter((x): x is readonly [HTMLElement, HTMLElement] => !!x[0] && !!x[1]);
+  if (!found.length || raw >= 1) {
+    layer.style.display = "none";
+    return;
+  }
+  layer.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:2";
+  const spec = JSON.stringify(pairs);
+  if (layer.__from !== bf || layer.__to !== bj || layer.__spec !== spec) {
+    layer.replaceChildren();
+    found.forEach(([fe, te], i) => {
+      for (const [b, e] of [[bf, fe], [bj, te]] as const) {
+        e.setAttribute("data-uncut-carry", String(i));
+        const c = b.node.cloneNode(true) as HTMLElement;
+        e.removeAttribute("data-uncut-carry");
+        c.querySelector(`[data-uncut-carry="${i}"]`)?.setAttribute("style", `${c.querySelector(`[data-uncut-carry="${i}"]`)?.getAttribute("style") || ""};visibility:visible`);
+        layer!.appendChild(c);
+      }
+    });
+    layer.__from = bf;
+    layer.__to = bj;
+    layer.__spec = spec;
+  }
+  const rf = restAt(bf, boxF, covers(kf));
+  const rj = restAt(bj, boxJ, covers(kj));
+  const hand = smooth((raw - 0.4) / 0.12);
+  found.forEach(([fe, te], i) => {
+    const lf = localRect(fe, bf.node);
+    const lj = localRect(te, bj.node);
+    const A = { x: rf.x + lf.x * rf.s, y: rf.y + lf.y * rf.s, w: lf.w * rf.s };
+    const B = { x: rj.x + lj.x * rj.s, y: rj.y + lj.y * rj.s, w: lj.w * rj.s };
+    const cur = { x: A.x + (B.x - A.x) * p, y: A.y + (B.y - A.y) * p, w: A.w + (B.w - A.w) * p };
+    const sides: ReadonlyArray<readonly [Box, number, number]> = [[lf, (rf.s * cur.w) / Math.max(A.w, 0.01), 1 - hand], [lj, (rj.s * cur.w) / Math.max(B.w, 0.01), hand]];
+    sides.forEach(([l, s, alpha], side) => {
+      const c = layer!.children[i * 2 + side] as HTMLElement;
+      c.style.transform = `translate(${cur.x - l.x * s}px, ${cur.y - l.y * s}px) scale(${s})`;
+      c.style.opacity = String(Math.round(alpha * 1000) / 1000);
+      c.style.filter = "none";
+      c.style.visibility = "hidden";
+    });
+    for (const e of [fe, te]) {
+      e.style.visibility = "hidden";
+      hidden.push(e);
+    }
+  });
+  layer.style.display = "block";
+}
+
+type Hiding = HTMLElement & { __hidden?: Array<HTMLElement> };
+
+/**
+ * One shell carried through the keys: each key a piece where it sits (by default centred in the
+ * host, 86 % of its width, its words 4.8 % of its height); from each key's at it morphs from the key
+ * before (dur s, a critically damped ease): the shell's centre, size, corner radius and colour
+ * travel as one object while the new content pushes the old out of it (from: the side it enters
+ * from, the old leaving by the other, both fitted at one uniform scale, text never stretched), and
+ * carry elements travel to their place in the new piece. The same piece twice (another width, more
+ * steps) resizes without a swap. Pure in t. Returns the shell's box { x, y, w, h, r }, p (0..1 in a
+ * morph, 1 at rest), the key index shown, its element and the text's height on the canvas (type).
+ */
+function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>, o?: { readonly dur?: number }): { x: number; y: number; w: number; h: number; r: number; p: number; key: number; el: HTMLElement; type: number } {
+  if (!keyList.length) throw new Error("uncutUI.sequence: no keys");
   const doc = host.ownerDocument;
   ensureCss(doc);
-  let shell = host.querySelector(":scope > .uncut-ui-shell") as HTMLElement | null;
+  const keys = keyList.map((k) => resolveKey(k, host));
+  let shell = host.querySelector(":scope > .uncut-ui-shell") as Hiding | null;
   if (!shell) {
-    shell = doc.createElement("div");
+    shell = doc.createElement("div") as Hiding;
     shell.className = "uncut-ui-shell";
-    host.appendChild(shell);
+    host.insertBefore(shell, host.querySelector(":scope > .uncut-ui-carry"));
   }
+  for (const e of shell.__hidden || []) e.style.visibility = "";
+  const hidden: Array<HTMLElement> = (shell.__hidden = []);
   const holders: Array<Holder> = [];
   for (let i = 0; i < keys.length; i++) {
     let hd = shell.children[i] as Holder | undefined;
@@ -786,21 +923,44 @@ function sequence(host: HTMLElement, t: number, keys: ReadonlyArray<PieceKey>, o
   let box: Box = boxJ;
   let bg = bj.bg;
   let press = num(keys[j]!.press, 1);
+  let carried = false;
   if (from >= 0) {
-    const bf = buildPiece(holders[from]!, keys[from]!);
-    const boxF = keyBox(keys[from]!, bf);
+    const kf = keys[from]!;
+    const kj = keys[j]!;
+    const bf = buildPiece(holders[from]!, kf);
+    const boxF = keyBox(kf, bf);
     box = { x: boxF.x + (boxJ.x - boxF.x) * p, y: boxF.y + (boxJ.y - boxF.y) * p, w: boxF.w + (boxJ.w - boxF.w) * p, h: boxF.h + (boxJ.h - boxF.h) * p, r: boxF.r + (boxJ.r - boxF.r) * p };
     bg = mixRgba(bf.bg, bj.bg, p);
-    press = num(keys[from]!.press, 1) + (press - num(keys[from]!.press, 1)) * p;
-    const same = keys[from]!.piece === keys[j]!.piece && (keys[from]!.index ?? 0) === (keys[j]!.index ?? 0);
+    press = num(kf.press, 1) + (press - num(kf.press, 1)) * p;
+    const same = kf.piece === kj.piece && (kf.index ?? 0) === (kj.index ?? 0) && kf.theme === kj.theme;
     holders[from]!.style.display = same ? "none" : "block";
     if (!same) {
-      // A swap inside the travelling shell: the new content arrives over 12 to 38 % of the morph while
-      // the old leaves over 8 to 36 % (lifting, a few px of blur), so one of them always holds the shell.
-      const out = (raw - 0.08) / 0.28;
-      fitInto(bf, box.w, box.h, 1 - smooth(out), 3 * Math.max(0, Math.min(1, out)), -0.03 * box.h * smooth(out), covers(keys[from]!));
-      const inn = (raw - 0.12) / 0.26;
-      fitInto(bj, box.w, box.h, smooth(inn), 3 * (1 - Math.min(1, Math.max(0, inn))), 0.03 * box.h * (1 - smooth(inn)), covers(keys[j]!));
+      // A push inside the travelling shell, as the reference films swap a control: the old content
+      // drifts toward the far side, blurring hard and fading by a third of the morph; the new comes
+      // in from its side (from) out of the same blur. Between, the shell holds only soft shapes of
+      // its colour: never two legible pictures on each other. A picture that leaves (a preview frame)
+      // stays put on the canvas, cropped by the shrinking shell, and gives way once the shell is nearly there.
+      const [dx, dy] = DIRS[kj.from || "down"] || DIRS.down!;
+      const out = smooth((raw - 0.04) / 0.3);
+      const go = out * out;
+      const blurOut = 14 * smooth(raw / 0.3);
+      if (covers(kf)) {
+        const rf = restAt(bf, boxF, true);
+        const st = bf.node.style;
+        const fade = smooth((raw - 0.3) / 0.35);
+        st.transform = `translate(${rf.x - (box.x - box.w / 2)}px, ${rf.y - (box.y - box.h / 2)}px) scale(${rf.s})`;
+        st.opacity = String(Math.round((1 - fade) * 1000) / 1000);
+        st.filter = "none";
+        st.visibility = fade < 0.999 ? "visible" : "hidden";
+      } else fitInto(bf, box.w, box.h, 1 - out, blurOut, -dx * 0.35 * box.w * go, -dy * 0.35 * box.h * go, false, 1 - 0.06 * out);
+      const pic = covers(kj);
+      const inn = pic ? smooth((raw - 0.08) / 0.27) : smooth((raw - 0.18) / 0.3);
+      const arrive = 1 - settle(Math.max(0, (raw - 0.08) / 0.92));
+      fitInto(bj, box.w, box.h, inn, (pic ? 8 : 14) * (1 - smooth((raw - (pic ? 0.1 : 0.16)) / 0.45)), dx * 0.35 * box.w * arrive, dy * 0.35 * box.h * arrive, covers(kj), 1 + 0.05 * arrive);
+      if (kj.carry?.length) {
+        carry(host, kf, kj, bf, bj, boxF, boxJ, p, raw, hidden);
+        carried = true;
+      }
     } else {
       // The same piece grown or shrunk (a row added): the content at its new scale, anchored at the
       // shell's top, which reveals it as it grows.
@@ -811,9 +971,13 @@ function sequence(host: HTMLElement, t: number, keys: ReadonlyArray<PieceKey>, o
       st.filter = "none";
       st.visibility = "visible";
     }
-  } else fitInto(bj, box.w, box.h, 1, 0, 0);
-  shell.style.cssText = `position:absolute;left:${box.x - box.w / 2}px;top:${box.y - box.h / 2}px;width:${box.w}px;height:${box.h}px;border-radius:${Math.min(box.r, box.w / 2, box.h / 2)}px;background:${bg};overflow:hidden;transform:scale(${press});transform-origin:50% 50%${keys[j]!.shadow === false ? "" : ";box-shadow:0 1px 2px rgb(0 0 0 / 8%), 0 14px 40px rgb(0 0 0 / 14%)"}`;
-  return { x: box.x, y: box.y, w: box.w, h: box.h, r: box.r, p: from >= 0 ? p : 1, key: j, el: bj.el };
+  } else fitInto(bj, box.w, box.h, 1, 0, 0, 0, covers(keys[j]!));
+  if (!carried) {
+    const layer = host.querySelector(":scope > .uncut-ui-carry") as HTMLElement | null;
+    if (layer) layer.style.display = "none";
+  }
+  shell.style.cssText = `position:absolute;left:${box.x - box.w / 2}px;top:${box.y - box.h / 2}px;width:${box.w}px;height:${box.h}px;border-radius:${Math.min(box.r, box.w / 2, box.h / 2)}px;background:${bg};overflow:hidden;transform:scale(${press});transform-origin:50% 50%${keys[j]!.shadow === false || (from >= 0 && keys[from]!.shadow === false && raw < 0.6) ? "" : ";box-shadow:0 1px 2px rgb(0 0 0 / 8%), 0 14px 40px rgb(0 0 0 / 14%)"}`;
+  return { x: box.x, y: box.y, w: box.w, h: box.h, r: box.r, p: from >= 0 ? p : 1, key: j, el: bj.el, type: (bj.font * boxJ.w) / bj.w };
 }
 
 /** One piece on its own: sequence with one key (the same pixels as that key at rest). Returns the slot's element. */

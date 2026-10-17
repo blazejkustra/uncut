@@ -89,8 +89,8 @@ function rootBody(selectors: ReadonlyArray<string>, body: string): string {
     .join("; ");
 }
 
-/** Uncut's own additions to the parts' CSS: the composer's caret. */
-const EXTRA_CSS = ".uncut-ui{text-align:left;-webkit-font-smoothing:antialiased}.uncut-ui .uncut-ui-caret{display:inline-block;width:1.5px;height:1.2em;margin:0 -1.5px 0 0;vertical-align:-0.25em;background:var(--fg)}";
+/** Uncut's own additions to the parts' CSS: the composer's caret; a piece's light theme (literal colours made of --fg's opposite). */
+const EXTRA_CSS = ".uncut-ui{text-align:left;-webkit-font-smoothing:antialiased}.uncut-ui .uncut-ui-caret{display:inline-block;width:1.5px;height:1.2em;margin:0 -1.5px 0 0;vertical-align:-0.25em;background:var(--fg)}.uncut-ui.uncut-ui-light{--bg:#fff;--panel:#fff;--panel-2:#fff;--raised:#efeeea;--border:#00000010;--border-strong:#0000001c;--fg:#111;--muted:#62625e;--dim:#9a9993;--select-soft:#6d8cff24;color-scheme:light;color:var(--fg)}.uncut-ui.uncut-ui-light .send:not(:disabled){color:#fff}.uncut-ui.uncut-ui-light .clip{border-color:#0000001a}";
 
 /** A rule body without transitions or animations: they run on the wall clock, and a graphic's frame is a function of t alone. */
 function timeless(body: string): string {
@@ -131,7 +131,10 @@ export function partsOf(capture: Capture): Record<string, SceneCapture["parts"][
 
 /** The runtime's source as plain JS (types stripped, the module marker removed). */
 export function runtimeJs(source: string): string {
+  // Its comments stay in runtime.ts (the header is the agent's API): whole-line ones are dropped.
   return stripTypeScriptTypes(source)
+    .replace(/^[ \t]*\/\*\*?[\s\S]*?\*\/[ \t]*$/gm, "")
+    .replace(/^[ \t]*\/\/.*$/gm, "")
     .replace(/^export \{\};\s*$/m, "")
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
@@ -144,21 +147,24 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
    size). Load it with the marker uncut:lib/ui.js (a script tag with that src). Dark, as the app.
    Build the film from PIECES: one element of the UI on its own (the composer, a step row, a lane of
    clips, the filter slider, the preview, Export, Saved), set LARGE on a calm canvas (60 to 90 % of
-   the width, its text 3.5 % of the frame's height or more), each one morphing into the next. A whole
+   the width, its text 4.5 % of the frame's height or more), each one morphing into the next. A whole
    panel only briefly, and only when its words read on a phone; never a camera panning over a
    desktop-sized window: that reads as a screen recording.
      uncutUI.sequence(host, t, keys, { dur: 0.5 })    // ONE shell carried through keys (call it every frame):
-       keys: [{ at, piece: "composer", props, size: { width: 300 }, width: 920, x: 540, y: 675 }, { at: 2, piece: "turn.steps", ... }]
-       piece: "part.slot" (or "part"); props: the part's props below; index: the nth match; x, y: its centre
-       in host px; width: its width in host px; size: its own layout size in app px (narrower wraps its text,
-       so it sets larger: the composer at 300 shown 920 wide); height: a taller or wider shell; pad, radius,
-       background (its shell's, default the piece's own look); press: the shell's scale (uncutMotion.click's
-       .button); fit: "contain" | "cover" (default cover for preview.frame); shadow: false; dur: its morph.
+       keys: [{ at, piece: "composer", props }, { at: 2, piece: "message", props, carry: [["input", "text"]] }, ...]
+       piece: "part.slot" (or "part"); props: the part's props below; index: the nth match. Big by default:
+       centred in the host, 86 % of its width, its words type px tall (default 4.8 % of the host's height:
+       the layout narrows so they wrap and set large). x, y: its centre; width: host px; type: words' height
+       (0: the app's); size: its own layout size in app px instead; height: a taller or wider shell; pad,
+       radius, background, color (restyles); theme: "light" (white surfaces, dark words) or the app's dark;
+       press: the shell's scale (uncutMotion.click's .button); fit: "contain" | "cover" (default cover for
+       preview.frame); shadow: false; dur: its morph; from: "down" (default), "up", "left", "right", "none".
        From each key's at the shell's centre, size, radius and colour travel to it in dur s (critically damped:
-       no overshoot) while the old content leaves and the new one arrives inside it, both at one uniform
-       scale (text never stretches): the send button's composer becomes the agent's steps, a step becomes the
-       lane its clips land on. The same piece twice (one more step) grows without a crossfade. Pure in t.
-       Returns { x, y, w, h, r, p, key, el } (el: the shown piece's element, for find and rectIn).
+       no overshoot) while the new content pushes in from its side out of a blur and the old leaves by the
+       other, both at one uniform scale (never two legible pictures at once); carry: selectors (or [old's,
+       new's]) that travel instead, the prompt shrinking into its message. A leaving preview frame stays put,
+       cropped by the shell. The same piece twice (one more step) grows without a swap. Pure in t.
+       Returns { x, y, w, h, r, p, key, el, type } (el: the shown piece's element, for find and rectIn).
      uncutUI.piece(host, "export.high", { props, width, x, y, ... })  // one piece alone (sequence's key at rest)
      uncutUI.rectIn(el, host)                         // { x, y, w, h }: an element's rect in host px (aim a click at Send)
      uncutUI.mount(host, name, props)                 // a whole part (returns its root): rarely, briefly
@@ -170,7 +176,7 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
      turn.review; storyboard.beat, storyboard.approve; review.score; timeline.main, timeline.lane, timeline.clip,
      timeline.playhead; preview.frame, preview.play; inspector.amount (a filter's slider), inspector.effect,
      inspector.filter; effects.warm (any look: natural, cool, vintage, film, bw, vivid), effects.tile, effects.filters;
-     export.draft, export.standard, export.high, export.export; exportProgress.progress, exportProgress.bar;
+     export.draft, export.standard, export.high, export.export; exportProgress.job (status and bar), exportProgress.progress, exportProgress.bar;
      topbar.export, topbar.saved, topbar.title.
    Props (every part): text { slot: "..." }; press { slot: scale }; highlight, hide (keeps its room), remove (slot
    or [slots]); background (mount: "none" or a colour behind a part that isn't opaque). Each part's own:
