@@ -47,7 +47,7 @@ import { join } from "node:path";
 import * as readline from "node:readline";
 
 import { app, BrowserWindow, nativeImage, protocol, session } from "electron";
-import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaWaiting, takeMediaReply } from "./renderMedia.ts";
+import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaActive, mediaAnswered, mediaWaiting, takeMediaReply } from "./renderMedia.ts";
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
@@ -57,6 +57,16 @@ import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";
 const FONT_URLS: Record<FontFile, string> = { "DMSans-Variable.woff2": dmSans, "DMMono-Regular.woff2": dmMonoRegular, "DMMono-Medium.woff2": dmMonoMedium };
 /** How long a graphic's render(t) may take (core GRAPHIC_FRAME_MS). */
 const GRAPHIC_FRAME_MS = 5000;
+/**
+ * Past GRAPHIC_FRAME_MS a frame still fetching project media (a request in flight, or one asked or
+ * answered within MEDIA_IDLE_MS: pictures fetched one after another) keeps going, up to MEDIA_MS
+ * more but never past GRAPHIC_CAP_MS, under the server's own 30 s (rasterizer.ts
+ * RENDER_TIMEOUT_MS), so the error naming the slow phase is the one that comes back.
+ */
+const MEDIA_IDLE_MS = 1500;
+const GRAPHIC_CAP_MS = 27_000;
+/** How long the page gets to answer "what are you doing?" once a frame is late: no answer is a script that never yields. */
+const PROBE_MS = 400;
 /** How many times a capture is tried when Chromium has no frame to copy yet (see capturePage). */
 const CAPTURE_ATTEMPTS = 6;
 /** How long a capture waits for the frame it asked for (see nextPaint). */
@@ -404,47 +414,92 @@ async function main() {
     }
     const gw = graphicWin;
     const name = r.name ? `${r.name}: ` : "";
+    // Where the frame is, for the error when it's late: the first frame of a document just loaded
+    // runs the graphic's own setup (fonts, libraries, thumbnails fetched), the usual slow one.
+    let phase: "load" | "first" | "render" | "capture" = "render";
+    let fresh = false;
     const work = (async () => {
       const [w, h] = gw.getContentSize();
       if (w !== r.width || h !== r.height + 1) gw.setContentSize(r.width, r.height + 1);
       if (graphicDoc !== r.doc) {
         graphicDoc = "";
+        fresh = true;
+        phase = "load";
         await gw.loadURL(`data:text/html;base64,${Buffer.from(r.doc).toString("base64")}`);
         gw.webContents.setZoomFactor(1);
         graphicDoc = r.doc;
       }
       if (!take) {
-        for (const [i, t] of ts.entries()) if (i === 0 || t !== ts[i - 1]) await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}, true).then(() => true)`);
+        for (const [i, t] of ts.entries()) {
+          if (i > 0 && t === ts[i - 1]) continue;
+          phase = fresh && i === 0 ? "first" : "render";
+          await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}, true).then(() => true)`);
+        }
         return;
       }
       let image: Electron.NativeImage | undefined;
       for (const [i, t] of ts.entries()) {
         if (!image || t !== ts[i - 1]) {
           const expected = nextMark();
+          phase = fresh && !image ? "first" : "render";
           await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}).then(() => ${setSentinel(r.height, expected)})`);
+          phase = "capture";
           image = await grab(gw, r.width, r.height, expected);
         }
         await take(image);
       }
     })();
     let timer: NodeJS.Timeout | undefined;
-    // Round 3's A2: a frame waiting on project media (uncut.frame of footage not decoded yet: a
-    // timeline of thumbnails) waits for it too, up to the media's own deadline more; the error says
-    // which time and which media it was waiting for.
+    // Round 3's A2: a frame fetching project media (uncut.frame of footage not decoded yet: a
+    // timeline of thumbnails) keeps going while it does (see MEDIA_IDLE_MS, GRAPHIC_CAP_MS). A late
+    // frame asks the page what it's doing, and the error names the phase: the page loading, its
+    // script never yielding, pictures still coming, or a promise that never settles.
     const budget = GRAPHIC_FRAME_MS * ts.length;
+    const cap = Math.max(budget, Math.min(budget + MEDIA_MS, GRAPHIC_CAP_MS));
     const started = Date.now();
-    const expired = (reject: (e: Error) => void) => {
-      const media = mediaWaiting();
-      if (media.length && Date.now() - started < budget + MEDIA_MS) {
-        timer = setTimeout(() => expired(reject), 250);
+    const answeredBefore = mediaAnswered();
+    type Probe = { readonly fonts?: string; readonly doc?: string; readonly pending?: number } | undefined;
+    const probe = (): Promise<Probe> => {
+      if (gw.isDestroyed()) return Promise.resolve(undefined);
+      const asked = gw.webContents
+        .executeJavaScript(`({ fonts: document.fonts.status, doc: document.readyState, pending: window.__uncutMedia && window.__uncutMedia.stats ? window.__uncutMedia.stats().pending : 0 })`)
+        .then((x: Probe) => x ?? {}, () => undefined);
+      let wait: NodeJS.Timeout | undefined;
+      return Promise.race([asked, new Promise<undefined>((done) => (wait = setTimeout(() => done(undefined), PROBE_MS)))]).finally(() => clearTimeout(wait));
+    };
+    let settled = false;
+    const expired = async (reject: (e: Error) => void) => {
+      if (settled) return;
+      const page = await probe();
+      if (settled) return;
+      const elapsed = Date.now() - started;
+      const fetching = mediaActive(MEDIA_IDLE_MS) || (page?.pending ?? 0) > 0;
+      if (fetching && elapsed < cap) {
+        timer = setTimeout(() => void expired(reject), 250);
         return;
       }
+      const media = mediaWaiting();
+      const got = mediaAnswered() - answeredBefore;
       const at = ts.length ? ` at ${ts[0]!.toFixed(2)} s` : "";
-      const why = media.length ? `, still waiting for project media (${media.slice(0, 3).map((x) => `${x.id} at ${x.t.toFixed(2)} s`).join(", ")}${media.length > 3 ? ` and ${media.length - 3} more` : ""}): ask uncut.frame for fewer or smaller pictures per frame, or reuse them` : " (a script that never ends, or a frame waiting on too many uncut.frame pictures?)";
-      reject(new Error(`${name}the graphic took longer than ${budget / 1000} s to load and draw a frame${at}${why}`));
+      const which = phase === "load" || phase === "first" ? `${at} (its first frame, the document just loaded)` : at;
+      const pictures = got ? `; ${got} project picture${got === 1 ? "" : "s"} (uncut.frame) came in during it` : "";
+      const pendingList = media.length ? `${media.slice(0, 3).map((x) => `${x.id} at ${x.t.toFixed(2)} s`).join(", ")}${media.length > 3 ? ` and ${media.length - 3} more` : ""}` : "";
+      const why = fetching
+        ? `: it was still fetching project media${pendingList ? ` (${pendingList})` : ""}${pictures}: ask uncut.frame for fewer or smaller pictures, fetch them together (Promise.all) rather than one after another, or fetch them once and reuse them`
+        : !page
+          ? `: its script never yielded (an endless loop, or heavy synchronous work${phase === "load" ? " in a top-level script" : " in render(t)"})${pictures}`
+          : phase === "load"
+            ? `: the page was still loading (document ${page.doc ?? "?"}, fonts ${page.fonts ?? "?"})`
+            : phase === "capture"
+              ? ": render(t) was done but the frame never reached the capture (the machine too busy?)"
+              : page.fonts === "loading"
+                ? `: render(t) was waiting for fonts to load${pictures}`
+                : `: render(t) was waiting on a promise that never settled, with no project picture pending${pictures} (a script that never ends, or a frame waiting on too many uncut.frame pictures?)`;
+      const secs = elapsed > budget + 1000 ? Math.floor(elapsed / 1000) : budget / 1000;
+      reject(new Error(`${name}the graphic took longer than ${secs} s to load and draw a frame${which}${why}`));
     };
     try {
-      await Promise.race([work, new Promise<never>((_, reject) => (timer = setTimeout(() => expired(reject), budget)))]);
+      await Promise.race([work, new Promise<never>((_, reject) => (timer = setTimeout(() => void expired(reject), budget)))]);
     } catch (error) {
       // Stuck or broken: the next frame starts from a fresh window.
       work.catch(() => {});
@@ -454,6 +509,7 @@ async function main() {
       const message = messageOf(error);
       throw message.startsWith(name) ? (error instanceof Error ? error : new Error(message)) : new Error(`${name}${message}`);
     } finally {
+      settled = true;
       clearTimeout(timer);
     }
   };

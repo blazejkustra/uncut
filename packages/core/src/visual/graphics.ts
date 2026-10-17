@@ -10,7 +10,9 @@
 // Sans and DM Mono, the brand kit's font files (both declared inside the document when it names
 // them, D198, fonts.ts resolveGraphicFonts) and the fonts installed on this Mac; every face is
 // loaded before the first render(t), so canvas text isn't drawn in a fallback; render(t) must draw synchronously or return a promise
-// that settles within GRAPHIC_FRAME_MS; the export draws every frame (D291: streamed raw to ffmpeg,
+// that settles within GRAPHIC_FRAME_MS, or longer only while it is fetching project media
+// (uncut.frame: the rasteriser waits while pictures keep coming, up to about 27 s, under the
+// server's 30 s; desktop render.ts GRAPHIC_CAP_MS); the export draws every frame (D291: streamed raw to ffmpeg,
 // with motion blur's sub-frames when it's on; the preview draws no blur); the file is read
 // when the export starts or the preview loads it (write a new file to change a graphic: graphic_write
 // never overwrites, so earlier revisions keep their look).
