@@ -4,7 +4,7 @@
 // the song's tempo and drop from a cached beat analysis only.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -42,6 +42,24 @@ test("the user's templates: saved as Markdown, listed after the built-ins by nam
   await deleteTemplate(data, "zed");
   assert.equal(existsSync(file), false);
   assert.ok(!(await listTemplates(data)).some((t) => t.id === "zed"));
+});
+
+test("the templates folder: a symlink or an oversized file is never listed, and a save never writes through a link", async () => {
+  const data = join(root, "data-links");
+  mkdirSync(templatesDir(data), { recursive: true });
+  const secret = join(root, "secret.txt");
+  writeFileSync(secret, "PRIVATE KEY");
+  symlinkSync(secret, join(templatesDir(data), "linked.md"));
+  writeFileSync(join(templatesDir(data), "huge.md"), "x".repeat(400_000));
+  mkdirSync(join(templatesDir(data), "folder.md"));
+  const ids = (await listTemplates(data)).map((t) => t.id);
+  assert.ok(!ids.includes("linked") && !ids.includes("huge") && !ids.includes("folder"), ids.join(","));
+  await assert.rejects(saveTemplate(data, { id: "linked", name: "Linked", description: "", body: "overwrite" }), /isn't a plain file/);
+  assert.equal(readFileSync(secret, "utf8"), "PRIVATE KEY");
+  // Delete removes the link, never its target.
+  await deleteTemplate(data, "linked");
+  assert.equal(readFileSync(secret, "utf8"), "PRIVATE KEY");
+  await assert.rejects(saveTemplate(data, { id: "big", name: "Big", description: "", body: "x".repeat(40_001) }), /at most/);
 });
 
 const beats120: BeatsResult = {
