@@ -844,3 +844,32 @@ test("round 9: cp into the project on disk: a link at the destination or among a
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("review of 6dc1722: a cp glob can't smuggle a flag (a file named -R) or match a name its judge missed (? and an emoji)", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-6dc-")));
+  try {
+    const home = join(root, "home");
+    const project = join(home, "p.uncut");
+    const data = join(home, "Library", "Application Support", "Uncut");
+    for (const dir of [join(project, "d", "sub"), join(project, "e"), data]) mkdirSync(dir, { recursive: true });
+    writeFileSync(join(project, "project.json"), "{}");
+    writeFileSync(join(project, "d", "sub", "project.json"), "EVIL");
+    writeFileSync(join(project, "d", "-R"), "");
+    writeFileSync(join(data, "server-token"), "SECRET");
+    writeFileSync(join(project, "e", "x"), "X");
+    symlinkSync(join(data, "server-token"), join(project, "e", "\u{1F600}"));
+    for (const sh of ["/bin/zsh", "/bin/bash"]) {
+      for (const line of [`cd d && cp * sub/ ${project}/`, `cd d && cp -p * ${project}/.work/`, `cd e && cp ? ${project}/`, `cd e && cp ?? ${project}/`]) {
+        const r = decide("Bash", { command: line }, { project, roots: [], home, access: "auto", grants: new Set(), dataDir: data });
+        if (r.kind === "allow") execFileSync(sh, ["-c", (r.updatedInput as { command: string }).command], { stdio: "ignore" });
+        assert.notEqual(r.kind, "allow", `${sh}: ${line}`);
+      }
+    }
+    assert.equal(execFileSync("/bin/cat", [join(project, "project.json")], { encoding: "utf8" }), "{}");
+    // Plain globs still copy.
+    const ok = decide("Bash", { command: `cd e && cp x* ${project}/` }, { project, roots: [], home, access: "auto", grants: new Set(), dataDir: data });
+    assert.equal(ok.kind, "allow");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
