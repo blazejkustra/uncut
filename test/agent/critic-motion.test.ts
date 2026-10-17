@@ -746,3 +746,35 @@ test("the blurred strip's label says it's the project's motion blur, not a claim
   // The critic is told to judge the strips by that label.
   assert.ok(CRITIC_SYSTEM.includes("drawn WITH the project's motion blur") && label.includes("drawn WITH the project's motion blur"));
 });
+
+// Round 4's A1: at 18.05 s the footage swapped to the agent panel in 4 frames (the export's steps,
+// at the scan's 64 px: 2.6, 4.9, 8.7, 8.6 %, then 1 %), a cut to a blind judge that no one-frame
+// rule saw; the same film's designed grows peak at 3 to 4 % over 7 to 10 frames.
+test("a quick swap (a cut spread over a few frames) is a jump with its span; a fast designed grow isn't", async () => {
+  const fps = 60;
+  const n = 400;
+  const px = 4000;
+  const steps = Array.from({ length: n - 1 }, (_, i) => 0.003 + (i % 3) * 0.001);
+  [0.026, 0.049, 0.087, 0.086].forEach((d, i) => (steps[200 + i] = d));
+  [0.01, 0.012, 0.016, 0.02, 0.025, 0.032, 0.025, 0.009].forEach((d, i) => (steps[300 + i] = d));
+  // Each step flips that share of the pixels (black to white, then back), so frameDiff is the step.
+  const gray = new Uint8Array(px);
+  let p = 0;
+  const frames: Array<ScanFrame> = [{ frame: 0, gray: gray.slice() }];
+  for (let f = 0; f < n - 1; f++) {
+    for (let k = Math.round(steps[f]! * px); k > 0; k--, p = (p + 1) % px) gray[p] = 255 - gray[p]!;
+    frames.push({ frame: f + 1, gray: gray.slice() });
+  }
+  const scan = motionScan(frames, fps);
+  assert.deepEqual(scan.jumps.map((j) => [j.frame, j.span]), [[203, 4]]);
+  assert.ok(scan.jumps[0]!.diff > 0.2, `${scan.jumps[0]!.diff}: the whole swap's change`);
+  const [finding] = motionFindings(scan, fps, { oneTake: true, hard: true }).filter((x) => x.key?.startsWith("motion:jump"));
+  assert.match(finding!.message, /^Quick swap at f 203 \(3\.38 s\): 2\d\.\d % of the picture changes in 4 frames \(0\.07 s\)[\s\S]*that is a cut/);
+  assert.equal(finding!.hard, true);
+  assert.match(motionLines(scan, fps, { consecutive: true }).join("\n"), /f 203 \(3\.38 s, 2\d %, over 4 frames\)/);
+  // As review_submit samples it (every 12th frame): the narrowing widens to the swap's still sides.
+  const at = new Map(frames.map((x) => [x.frame, x.gray]));
+  const sampled = frames.filter((x) => x.frame % 12 === 5);
+  const added = await refineJumps({ frames: sampled, fps, duration: n, render: async (fs) => fs.map((f) => ({ frame: f, gray: at.get(f)! })) });
+  assert.deepEqual(motionScan([...sampled, ...added], fps).jumps.map((j) => [j.frame, j.span]), [[203, 4]]);
+});
