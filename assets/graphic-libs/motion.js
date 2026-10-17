@@ -7,10 +7,10 @@
      uncutMotion.edges(t, [{ at: 0, left: 0, right: 100 }, { at: 1, left: 200, right: 300 }], { lead: "spring.snap", trail: "spring.settle" })
                                                          // { left, right }: the leading edge rides the faster spring (liquid tab indicator, toggle knob)
      uncutMotion.rise(t, { at: 0.5, out: 2, height: 80 }) // { y, visible }: text rising out of a mask line (wrap it in overflow: hidden), and leaving upward
-     uncutMotion.flood(t, { at, x, y, r, width, height, dur: 0.3, until, to: { x, y, r } })
+     uncutMotion.flood(t, { at, x, y, r, width, height, dur: 0.4, until, to: { x, y, r } })
                                                          // { x, y, r, full }: a circle that overscales past the frame's corners, then contracts into the next shape
      uncutMotion.cover(x, y, width, height)              // the radius that covers the frame from (x, y), 6 % past the farthest corner
-     uncutMotion.shape(t, [{ at, x, y, w, h, r }, { at, bleed: true }, ...], { width, height, spring })
+     uncutMotion.shape(t, [{ at, x, y, w, h, r }, { at, bleed: true }, ...], { width, height, spring: "spring.calm" })
                                                          // { x, y, w, h, r, full }: ONE rounded rect (x, y its centre) morphing key to key;
                                                          // bleed: true is the whole frame 12 % past every edge, square corners (a flood is a morph)
      uncutMotion.shapePath(ctx, s)                       // that shape as the canvas path (clip to it, then draw the footage)
@@ -29,9 +29,12 @@
                                                          // measured: glide in, rest 0.1 s, press (cursor scale 0.85, button
                                                          // scale 0.95) and release; key the change at fire (0.03 s into the
                                                          // press), never on the arrival; a list chains clicks
-     uncutMotion.camera(t, [{ at, x, y, zoom }], spring, o) // { x, y, zoom }: the world point at the frame's centre and its zoom;
-                                                         // zoom rides the spring in log space (an even push, no lurch); a key
-                                                         // missing x, y or zoom keeps the previous key's;
+     uncutMotion.camera(t, [{ at, x, y, zoom, dur }], ease, o) // { x, y, zoom }: the world point at the frame's centre and its zoom;
+                                                         // each move a calm glide (ease.glide) in log space for zoom: 0.9 s or
+                                                         // longer for a big push (o: { height } also slows a long pan), its
+                                                         // key's dur wins; a spring name as ease keeps a spring; a key
+                                                         // missing x, y or zoom keeps the previous key's; let it settle
+                                                         // before the next key or a flight starts (one move at a time);
                                                          // { drift: 0.015 } as a 4th argument: no hold is still, zoom
                                                          // creeps 1.5 % from each key to the next (a key's own drift wins)
      uncutMotion.frameRect(left, top, w, h, { width, height, fit, pad, align, safe, keep })
@@ -44,15 +47,15 @@
                                                          // out and sliding as needed: "push in on this dialog, its words uncut" is one call
      uncutMotion.apply(ctx, cam, width, height)          // ctx.transform for that camera (save first): draw the UI in world px after it
      uncutMotion.toScreen(cam, x, y, width, height)      // [sx, sy]: a world point on screen (the cursor, a headline pinned to the UI)
-     uncutMotion.morph(t, from, to, { at, dur: 0.3 })     // { x, y, w, h, r, p, full }: rect to rect (centres, corner radius) in dur s,
+     uncutMotion.morph(t, from, to, { at, dur: 0.4 })     // { x, y, w, h, r, p, full }: rect to rect (centres, corner radius) in dur s,
                                                          // eased; to: "bleed" is the whole frame past every edge. The button grows into
                                                          // the next scene's full shape; never shrink a scene to a dot
      uncutMotion.coverage(s, width, height)              // 0..1: the share of the frame inside shape s (keep it at 0.7 or more on every frame)
-     uncutMotion.grow(t, { at, full, kind, origin, width, height, dur: 0.3 })
+     uncutMotion.grow(t, { at, full, kind, origin, width, height, dur: 0.4 })
                                                          // { rects, x, y, w, h, r, scale, full, visible }: the next shot's entry in a one-take,
                                                          // no cut: on the kick at it grows out of origin (a rect in the previous shot, else
                                                          // its own centre) into a seed shape, kind "inset" | "pill" | "circle" | "strip" | "split",
-                                                         // and on the kick full (default at + 0.5) bleeds past every edge; draw the old shot
+                                                         // and on the kick full (default at + 0.6) bleeds past every edge; draw the old shot
                                                          // under it until full is true. scale (1.12 to 1) eases the new picture in: scale it
                                                          // about the frame's centre
      uncutMotion.growPath(ctx, g), uncutMotion.growCSS(g) // that entry as a canvas clip path, or a CSS clip-path for a frame-sized div
@@ -63,13 +66,14 @@
      uncutMotion.shapeCSS(s)                             // { left, top, width, height, borderRadius } in px for a div
      uncutMotion.riseCSS(t, { at, out, size })           // { height, transform, visible }: a mask div of that height
                                                          // (overflow: hidden) around a span with that transform
-     uncutMotion.swap(t, at, { out: 0.1, in: 0.14, gap: 0.03, blur: 6, lift: 14 })
+     uncutMotion.swap(t, at, { out: 0.16, in: 0.26, gap: 0.06, blur: 5, lift: 10 })
                                                          // { out: { alpha, blur, dy, visible }, in: {...} }: the content inside a morphing
                                                          // shape swaps on its own timing: the old content leaves (up, a few px of blur),
                                                          // then the new arrives; draw each with ctx.globalAlpha, ctx.filter = blur(px), dy
      uncutMotion.beat(n, { bpm: 120, offset: 0 })         // seconds of beat n
      uncutMotion.loop(t, duration)                        // t wrapped into [0, duration): the last frame meets the first
-     uncutMotion.ease.inOut(p), .out(p), .in(p)           // cubic eases for opacity or colour
+     uncutMotion.ease.inOut(p), .out(p), .in(p), .glide(p) // cubic eases for opacity or colour; glide: the calm move (eases off,
+                                                         // slows down 1.7x as long, no overshoot): a move of about 0.8 s
      uncutMotion.mix(a, b, p), uncutMotion.clamp(v, lo, hi), uncutMotion.mixColor("#000000", "#ffffff", p)
 */
 (function () {
@@ -79,6 +83,7 @@
     "spring.settle": { stiffness: 170, damping: 20 },
     "spring.land": { stiffness: 220, damping: 17 },
     "spring.bounce": { stiffness: 300, damping: 9 },
+    "spring.calm": { stiffness: 90, damping: 18 },
     spring: { stiffness: 170, damping: 20 },
   };
   function params(p) {
@@ -167,10 +172,17 @@
     p = p <= 0 ? 0 : p >= 1 ? 1 : p;
     return p * p * p;
   }
+  // The calm glide measured on the reference films: it eases off rest (top speed a third of the
+  // way in), slows down about 1.7x as long as it sped up and lands with no overshoot (velocity
+  // 12p(1 - p)^2: 10 to 90 % of the travel in 54 % of the time, the last 10 % in the final 32 %).
+  function glide(p) {
+    p = p <= 0 ? 0 : p >= 1 ? 1 : p;
+    return p * p * (6 - 8 * p + 3 * p * p);
+  }
   // A flood: the shape grows past the corners in `dur` s (it never covers half the frame in one
   // frame), stays full until `until`, then contracts into `to` over `dur`.
   function flood(t, o) {
-    var dur = o.dur || 0.3;
+    var dur = o.dur || 0.4;
     var R = cover(o.x, o.y, o.width, o.height);
     var p = easeInOut((t - o.at) / dur);
     var x = o.x, y = o.y, r = o.r + (R - o.r) * p;
@@ -189,7 +201,7 @@
     o = o || {};
     var W = o.width || 1080;
     var H = o.height || 1350;
-    var pre = o.spring || "spring.snap";
+    var pre = o.spring || "spring.calm";
     var ks = sorted(keys).map(function (k) {
       if (!k.bleed) return k;
       return { at: k.at, x: W / 2, y: H / 2, w: W * 1.24, h: H * 1.24, r: 0, spring: k.spring };
@@ -397,17 +409,38 @@
   }
   // Screen-studio camera: (x, y) is the world point at the frame's centre. Missing fields carry
   // over from the previous key; zoom springs in log space, so a 1x to 3x push moves evenly.
+  //
+  // Default (no preset, or "glide"): each key's move is a calm glide of its own dur (key.dur, else
+  // o.dur, else measured from the move): at least 0.9 s, longer for a big push (zoom at most about
+  // 1.2 ln/s at its peak) or, with o.height, a long pan (about 1.3 frame heights/s at its peak), up
+  // to 2 s. A spring preset ("spring.settle", ...) keeps the old spring camera.
   function camera(t, keys, preset, o) {
     var ks = sorted(keys);
-    var s = preset || "spring.settle";
     if (!ks.length) return { x: 0, y: 0, zoom: 1 };
     var full = [];
     for (var i = 0; i < ks.length; i++) {
       var p = full[i - 1] || { x: 0, y: 0, zoom: 1 };
       var k = ks[i];
-      full.push({ at: k.at, spring: k.spring, drift: k.drift, x: k.x === undefined ? p.x : k.x, y: k.y === undefined ? p.y : k.y, lz: Math.log(Math.max(1e-3, k.zoom === undefined ? p.zoom : k.zoom)), zoom: k.zoom === undefined ? p.zoom : k.zoom });
+      full.push({ at: k.at, spring: k.spring, drift: k.drift, dur: k.dur, x: k.x === undefined ? p.x : k.x, y: k.y === undefined ? p.y : k.y, lz: Math.log(Math.max(1e-3, k.zoom === undefined ? p.zoom : k.zoom)), zoom: k.zoom === undefined ? p.zoom : k.zoom });
     }
-    return { x: springs(t, full, s, "x"), y: springs(t, full, s, "y"), zoom: Math.exp(springs(t, full, s, "lz") + drift(t, full, s, o)) };
+    if (preset && preset !== "glide") return { x: springs(t, full, preset, "x"), y: springs(t, full, preset, "y"), zoom: Math.exp(springs(t, full, preset, "lz") + drift(t, full, preset, o)) };
+    var out = { x: full[0].x, y: full[0].y, lz: full[0].lz };
+    for (var j = 1; j < full.length; j++) {
+      var a = full[j - 1], b = full[j];
+      b.dur = Math.max(1e-3, b.dur === undefined ? glideDur(a, b, o) : Number(b.dur) || 0);
+      var g = glide((t - b.at) / b.dur);
+      if (!g) continue;
+      out.x += (b.x - a.x) * g;
+      out.y += (b.y - a.y) * g;
+      out.lz += (b.lz - a.lz) * g;
+    }
+    return { x: out.x, y: out.y, zoom: Math.exp(out.lz + drift(t, full, "glide", o)) };
+  }
+  function glideDur(a, b, o) {
+    if (o && o.dur > 0) return o.dur;
+    var d = Math.max(0.9, (1.78 * Math.abs(b.lz - a.lz)) / 1.2);
+    if (o && o.height > 0) d = Math.max(d, (1.78 * Math.hypot(b.x - a.x, b.y - a.y) * Math.max(a.zoom, b.zoom)) / (1.3 * o.height));
+    return Math.min(2, d);
   }
   // A hold that never freezes: from each key to the next, zoom creeps up by d (linear, in log
   // space); from the next key on, that creep springs away under the key's own move, so it stays
@@ -421,7 +454,8 @@
       var b = ks[i + 1].at;
       if (!d || !(b > a) || t <= a) continue;
       var lz = Math.log(1 + d);
-      sum += t < b ? (lz * (t - a)) / (b - a) : lz * (1 - spring(t - b, ks[i + 1].spring || preset));
+      var away = preset === "glide" ? glide((t - b) / ks[i + 1].dur) : spring(t - b, ks[i + 1].spring || preset);
+      sum += t < b ? (lz * (t - a)) / (b - a) : lz * (1 - away);
     }
     return sum;
   }
@@ -474,7 +508,7 @@
     };
     var a = bleed(from);
     var b = bleed(to);
-    var p = easeInOut((t - (o.at || 0)) / (o.dur || 0.3));
+    var p = easeInOut((t - (o.at || 0)) / (o.dur || 0.4));
     var out = { p: p };
     ["x", "y", "w", "h", "r"].forEach(function (f) {
       out[f] = mix(a[f] || 0, b[f] || 0, p);
@@ -502,11 +536,11 @@
   // a short blur), the new one arrives after a gap; both quick, so the swap reads as one change.
   function swap(t, at, o) {
     o = o || {};
-    var dOut = o.out || 0.1;
-    var dIn = o.in || 0.14;
-    var gap = o.gap === undefined ? 0.03 : o.gap;
-    var blur = o.blur === undefined ? 6 : o.blur;
-    var lift = o.lift === undefined ? 14 : o.lift;
+    var dOut = o.out || 0.16;
+    var dIn = o.in || 0.26;
+    var gap = o.gap === undefined ? 0.06 : o.gap;
+    var blur = o.blur === undefined ? 5 : o.blur;
+    var lift = o.lift === undefined ? 10 : o.lift;
     var po = easeIn((t - at) / dOut);
     var pi = easeOut((t - at - dOut - gap) / dIn);
     return {
@@ -569,11 +603,11 @@
     o = o || {};
     var W = o.width || 1080;
     var H = o.height || 1350;
-    // dur 0 is an instant cut-in; a negative one counts as 0; none is 0.3 s.
-    var dur = o.dur === undefined || o.dur === null ? 0.3 : Math.max(0, Number(o.dur) || 0);
+    // dur 0 is an instant cut-in; a negative one counts as 0; none is 0.4 s.
+    var dur = o.dur === undefined || o.dur === null ? 0.4 : Math.max(0, Number(o.dur) || 0);
     var at = o.at || 0;
     // The bleed never comes before the seed (a full before at would leave the scale stuck high).
-    var fullAt = o.full === undefined ? at + 0.5 : Math.max(Number(o.full) || 0, at);
+    var fullAt = o.full === undefined ? at + 0.6 : Math.max(Number(o.full) || 0, at);
     var g = growSeeds(o.kind || "inset", W, H, o);
     var from = o.origin ? [o.origin] : g.from;
     var ramp = function (start, length, ease) {
@@ -691,7 +725,7 @@
     riseCSS: riseCSS,
     beat: beat,
     loop: loop,
-    ease: { inOut: easeInOut, out: easeOut, in: easeIn },
+    ease: { inOut: easeInOut, out: easeOut, in: easeIn, glide: glide },
     mix: mix,
     clamp: clamp,
     mixColor: mixColor,

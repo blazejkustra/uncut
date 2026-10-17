@@ -5,7 +5,7 @@
 // drawn first in a fresh document, after the frames before it, or after frames in shuffled order:
 // panels swapped and swapped back (Inspector, Effects), a dialog opened and closed, blur and dim
 // easing out, clips, steps and the playhead moving, two flights (a hero piece docking, a tile
-// becoming a clip, the tile leaving); a flight to an element not laid out shows nothing.
+// becoming a clip, the tile leaving), a running step's spinner turning with t; a flight to an element not laid out shows nothing.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -55,7 +55,7 @@ window.render = (t) => {
   if (t > 0.6) clips.push({ track: "Main", start: 0, duration: 2 + t, name: "A", image: thumb, selected: within(t, 1.2, 2) });
   if (t > 1.5) clips.push({ track: "Text", start: 1, duration: 1.5, name: "Title" });
   const ed = uncutUI.mount(cam, "editor", {
-    width: 1440, height: 1000, scale: 0.375 + 0.05 * Math.min(1, t / 3),
+    width: 1440, height: 1000, scale: 0.375 + 0.05 * Math.min(1, t / 3), time: t,
     blur: 6 * Math.max(0, 1 - t / 0.8), dim: 0.35 * Math.max(0, 1 - t / 0.8),
     media: [{ name: "A", meta: "Video", image: thumb, duration: 12 }],
     topbar: { title: "Film", exportLabel: within(t, 2.4, 2.8) ? "Exporting " + Math.round((t - 2.4) * 250) + "%" : undefined },
