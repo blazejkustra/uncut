@@ -105,7 +105,9 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   const filmFound = motionFindings(scan, fps, { oneTake: true, loop: true, hard: true });
   assert.deepEqual(filmFound.filter((f) => f.hard).map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:seam:0"]);
   assert.ok(!filmFound.find((f) => f.key === "motion:hold:60")!.hard);
-  assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { oneTake: true, loop: true, footage: false });
+  // Since the ablations cut the skill, it no longer prescribes a loop: only the brief's words ask for one.
+  assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { oneTake: true, loop: false, footage: false });
+  assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, true);
   assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { oneTake: true, loop: false, footage: false });
   assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { oneTake: false, loop: false, footage: false });
   assert.equal(motionIntent({ skills: ["motion-film"], words: "DJI 0050 drone footage" }).footage, true);
@@ -439,24 +441,25 @@ test("D297: the drop's strip and fact, UI-first intent, the canvas around the pi
   assert.match(facts, /scores shown without its result when it didn't pass/);
   assert.match(runFacts(undefined, []), /no storyboard has been proposed yet .*; this is review 1, the first/);
   assert.match(runFacts(8, []), /the brief asks for X, but this run shows Y/);
-  assert.match(CRITIC_SYSTEM, /one hero element at a time on a calm canvas[\s\S]*this run's facts/);
+  assert.match(CRITIC_SYSTEM, /never against a house style[\s\S]*this run's facts/);
+  assert.doesNotMatch(CRITIC_SYSTEM, /one hero element|flat black with a caption/);
 });
 
-// D297 (the audit): with the motion film on it wins: only its checklist and the brand's reach the
-// critic, motion craft isn't suggested with it, its sound profile is ui (an effect per press, never a
-// blocker), and a scan that couldn't run is Uncut's problem, not the video's.
-test("D297: the film's checklist wins, no motion craft with it, the ui sound profile, an unmeasured scan isn't marked down", () => {
+// D297 (the audit) let the motion film's checklist win; since the ablations cut its creative rules
+// every skill's checklist reaches the critic and it has no sound profile of its own. Motion craft
+// still isn't suggested with it, and a scan that couldn't run is Uncut's problem, not the video's.
+test("D297 after the cut: every checklist reaches the critic, no motion craft with the film, no film sound profile, an unmeasured scan isn't marked down", () => {
   // Built the way the brand state lists them: a plugin skill's name is its id, its title the name shown.
   const skills = ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"].map((name) => skillOfPlugin({ name, title: `The ${name} skill`, description: "", instructions: "", plugin: "uncut-skills", pluginName: "Uncut skills", bundled: true }));
-  assert.deepEqual(criticSkills(skills).map((x) => x.id), ["brand-application", "motion-film"]);
+  assert.deepEqual(criticSkills(skills).map((x) => x.id), ["launch-promo", "motion-craft", "sound-design", "brand-application", "motion-film"]);
   assert.deepEqual(criticSkills(skills.slice(0, 3)).map((x) => x.id), ["launch-promo", "motion-craft", "sound-design"]);
   const film = suggestOf({ film: "Our launch film: one take, never cut, a single shape morphing on the beat", type: "launch-promo" });
   assert.ok(film.includes("motion-film") && !film.includes("motion-craft"), film.join(", "));
   assert.ok(suggestOf({ film: "Our launch film", type: "launch-promo" }).includes("motion-craft"));
-  assert.equal(soundProfileFor({ film: "x", type: "launch-promo" }, ["sound-design", "motion-film"]), "ui");
+  assert.equal(soundProfileFor({ film: "x", type: "launch-promo" }, ["sound-design", "motion-film"]), "strict");
   assert.equal(soundProfileFor({ film: "a silent film", type: "launch-promo" }, ["motion-film"]), "off");
   const rubric = rubricOf({ film: "x", type: "launch-promo" }, { skills: ["motion-film"] });
-  assert.ok(!rubric.hardKinds.includes("sound"), "never a blocker");
+  assert.equal(rubric.sound, soundProfileFor({ film: "x", type: "launch-promo" }), "the type's profile, no film override");
   assert.match(soundProfileText("ui"), /one soft effect per real cursor press, drag or morph/);
   assert.match(UNMEASURED, /don't mark anything down/);
 });

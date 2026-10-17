@@ -60,14 +60,12 @@ export function userRequest(prompts: ReadonlyArray<string | undefined>, current:
 }
 
 /**
- * The skills whose checklists the critic checks. D297: with the motion film on, it wins: launch
- * promo's held end card, motion craft's one thing at a time and sound design's few effects contradict
- * it, so only the film's checklist and the brand's go to the critic.
+ * The skills whose checklists the critic checks: all of them. D297 let the motion film's checklist
+ * win over the others, whose rules its creative ones contradicted; since the ablations cut the film
+ * to honesty and measured defects there is nothing left to contradict.
  */
-// Compared by id: a skill's name is its title ("Motion film (one take)"), never the id slug.
 export function criticSkills<S extends { readonly id: string }>(skills: ReadonlyArray<S>): ReadonlyArray<S> {
-  if (!skills.some((x) => x.id === BUILTIN_IDS.film)) return skills;
-  return skills.filter((x) => x.id === BUILTIN_IDS.film || x.id === BUILTIN_IDS.brand);
+  return skills;
 }
 
 /** D297: what the critic hears when the scan couldn't run (rehearsal 3 marked motion down for it). */

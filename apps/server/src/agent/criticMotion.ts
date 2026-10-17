@@ -764,18 +764,18 @@ export function blurPicks(fast: MotionScan["fast"], max = BLUR_RUNS): Array<{ re
 }
 
 /**
- * Whether the film is meant as one take (no cuts, no holds) and as a loop: the motion-film skill, or
- * the brief's words. D296: and whether it is footage first (the brief's words name footage, or the
+ * Whether the film is meant as one take (no cuts, no holds: the motion-film skill, or the brief's
+ * words) and as a loop (the brief's words only, since the skill no longer prescribes one). D296: and whether it is footage first (the brief's words name footage, or the
  * timeline has video or pictures), where the footage should fill the frame.
  */
-/** Words that make a film UI first: it shows an app's interface (the motion-film skill's main path). */
+/** Words that make a film UI first: it shows an app's interface. */
 const UI_WORDS = /\b(app|UI|interface|screens?|composer|timeline|cursor|software|the program)\b/i;
 
 export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean }): { oneTake: boolean; loop: boolean; footage: boolean } {
   const film = o.skills.includes("motion-film");
   return {
     oneTake: film || /one[- ]take|never cut|no cuts|one continuous (shot|take)/i.test(o.words),
-    loop: film || /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
+    loop: /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
     // Rehearsal 3: a UI-first film names its footage too (the preview plays it), but its frames are a
     // calm canvas around one UI element by design, so its words naming the app's UI keep it UI first.
     footage: !!o.hasFootage || (/\b(footage|drone|b-?roll|clips?|travel|photos?|aerials?)\b/i.test(o.words) && !UI_WORDS.test(o.words)),
