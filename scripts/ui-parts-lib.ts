@@ -132,13 +132,18 @@ export function partsOf(capture: Capture): Record<string, SceneCapture["parts"][
 /** The runtime's source as plain JS (types stripped, the module marker removed). */
 export function runtimeJs(source: string): string {
   // Its comments stay in runtime.ts (the header is the agent's API): whole-line ones are dropped.
-  return stripTypeScriptTypes(source)
-    .replace(/^[ \t]*\/\*\*?[\s\S]*?\*\/[ \t]*$/gm, "")
+  // A block comment ends at its first */ (a line that starts with one and goes on with code keeps it all).
+  const plain = stripTypeScriptTypes(source);
+  const out = plain
+    .replace(/^[ \t]*\/\*(?:[^*]|\*(?!\/))*\*\/[ \t]*$/gm, "")
     .replace(/^[ \t]*\/\/.*$/gm, "")
     .replace(/^export \{\};\s*$/m, "")
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+  // Line-based stripping can't see inside a template literal: one spanning lines must come through as written.
+  for (const span of out.match(/`[^`]*`/g) ?? []) if (span.includes("\n") && !plain.includes(span)) throw new Error(`runtimeJs: stripping comments would change a multi-line template literal: ${span.slice(0, 80)}`);
+  return out;
 }
 
 /** The library's header: its API for the agent (docs_read graphics carries it word for word). */
@@ -198,9 +203,11 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        agent (the side panel), editor (the window, 1920 x 900): the parts inside by name ({ composer: { text } });
          editor: media: [{ name, meta, image }] (the library's tiles)
    An image is a data: or blob: URL: await uncut.url(id, seconds) once before the first frame (an uncut:media/
-   marker only resolves in the graphic's own HTML). Nothing of the fixture shows unless you pass it: no prompt
-   in a message, no clips, media tiles, reply, edit count or review card in a turn; the review says
-   "Reviewing" with empty bars, no round, model, time or time left. Run facts are real or absent: pass a result,
+   marker only resolves in the graphic's own HTML). No run fact of the fixture shows unless you pass it: no prompt
+   in a message, no clips, media tiles, steps, reply, edit count or review card in a turn (review: true
+   is a blank card), no export progress; the review says "Reviewing" with empty bars, no round, model,
+   time or time left. Sample labels that stay until you pass yours: the project's title, the clip's name
+   in inspector and effects (title, target), the 28 s length on the preview's timecode and the ruler. Run facts are real or absent: pass a result,
    round, score or timing only from this run's real results (review_submit, beat_grid), never invented.
      uncutUI.cursor(host, { x, y, scale, size: 28 })  // the macOS pointer, its tip at (x, y) in host px
      uncutUI.timecode(seconds, fps), uncutUI.css()    // "00:00:12:30"; the parts' CSS (added once by mount)
