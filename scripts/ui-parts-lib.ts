@@ -194,6 +194,10 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        camera is fine), best once the camera has settled; several flights go one after another, each
        leaving as the last lands. Returns { x, y, w, h, p, el } (el: the hero piece's element while it is up).
      uncutUI.rectIn(el, host)                         // { x, y, w, h }: an element's rect in host px (aim a click at Send)
+     uncutUI.frameText(el, host, { width, height, text: 0.048, safe: 72 })  // a camera key { x, y, zoom } on el's
+       words (host: the world div the camera moves) zoomed until their font is text of the frame's height (a piece's
+       4.8 %), kept whole inside the safe inset; returns text (the share they get) and fits (false: too wide to set
+       that large: framing the agent panel's whole width leaves its 12 px steps about 2 % tall; set them as a piece)
      uncutUI.mount(host, name, props)                 // a whole part (returns its root): rarely, briefly
      uncutUI.parts()                                  // editor, topbar, agent, message, turn, review, timeline, preview,
                                                       // composer, storyboard, export, exportProgress, inspector, effects
@@ -282,6 +286,7 @@ window.uncutUI = {
   sequence: sequence,
   fly: fly,
   rectIn: rectIn,
+  frameText: frameText,
   cursor: cursor,
   timecode: timecode,
   css: css,
