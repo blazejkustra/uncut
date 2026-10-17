@@ -344,6 +344,10 @@ test("grow: the next shot grows out of a shape into a seed on the kick, then ble
     }
   }
   assert.equal(M.grow(13.4, { at: 13, kind: "split" }).rects.length, 2, "split is two halves closing");
+  // Round 2's A1: the split's seed left an 8 % sliver of the old shot across the frame (a torn block
+  // wipe); its seed leaves a clear window of at least a third of the frame.
+  const [a, b] = M.grow(13.4, { at: 13, full: 13.5, kind: "split", width: W, height: H }).rects;
+  assert.ok(b!.y - b!.h / 2 - (a!.y + a!.h / 2) >= H / 3, "a window, not a sliver");
   // It grows out of a rect in the previous shot (a thumbnail, a button), not out of nothing.
   const origin = { x: 200, y: 1100, w: 160, h: 90, r: 12 };
   assert.deepEqual({ ...M.grow(13, { at: 13, origin }).rects[0] }, origin);

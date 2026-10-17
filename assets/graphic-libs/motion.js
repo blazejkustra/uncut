@@ -434,7 +434,9 @@
       return { from: [{ x: edge, y: H / 2, w: 0, h: H * 1.24, r: 0 }], seed: [{ x: left ? edge + sw / 2 : edge - sw / 2, y: H / 2, w: sw, h: H * 1.24, r: 0 }], to: [B] };
     }
     if (kind === "split") {
-      var bw = W * 1.24, top = -H * 0.12, bot = H * 1.12, sh = H * 0.12 + H * 0.46, fh = H * 0.12 + H * 0.52;
+      // The seed leaves a clear window of the old shot (the middle 40 %), not a sliver: round 2's A1
+      // held an 8 % strip of the old shot across the frame for 0.2 s, which read as a torn block wipe.
+      var bw = W * 1.24, top = -H * 0.12, bot = H * 1.12, sh = H * 0.12 + H * 0.3, fh = H * 0.12 + H * 0.52;
       return {
         from: [{ x: W / 2, y: top, w: bw, h: 0, r: 0 }, { x: W / 2, y: bot, w: bw, h: 0, r: 0 }],
         seed: [{ x: W / 2, y: top + sh / 2, w: bw, h: sh, r: 0 }, { x: W / 2, y: bot - sh / 2, w: bw, h: sh, r: 0 }],
