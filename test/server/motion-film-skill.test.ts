@@ -56,6 +56,9 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   // Round 6 named the live stage; round 7 followed it yet dropped beats and read slow and small, while the
   // liked films (A1r6's pieces, A2's own rebuild) were free in form: the stage is the easiest, not the only way.
   assert.match(body, /Easiest: the live editor stage \(uncutUI\.mount "editor", the graphics example\); pieces or your own rebuild work too/);
+  // Honesty upfront (the build reads it before the critic does): run facts real, a review card "Reviewing" until it passes.
+  assert.match(body, /On-screen run facts are real results only; a review reads "Reviewing" until it passes/);
+  assert.ok(skillChecklist(body).some((l) => /about this run are true, else none/.test(l)), "honest run facts in the checklist");
   for (const re of [/70 %/, /9 %/, /caption under a card/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 8 && checklist.length <= 12, `${checklist.length} lines`);
