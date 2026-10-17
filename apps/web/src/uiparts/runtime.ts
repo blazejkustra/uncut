@@ -737,6 +737,8 @@ interface Built {
   /** The slot's font size in the app (px) and its part's name. */
   readonly font: number;
   readonly name: string;
+  /** The inset around the slot inside the piece (app px). */
+  readonly pad: number;
 }
 type Holder = HTMLElement & { __pieceKey?: string; __built?: Built };
 
@@ -873,8 +875,11 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
         break;
       }
     }
-  const radius = num(k.radius, opaque ? ownRadius : Math.min(18, Math.max(10, el.offsetHeight * 0.2)));
-  const pad = num(k.pad, opaque ? 0 : Math.round(Math.min(18, Math.max(10, el.offsetHeight * 0.25))));
+  // The shell's inset and corners from one line of the words (not the slot's height): a list grown
+  // by a row, or a paragraph wrapped to more lines, keeps the same padding and radius at every count.
+  const line = parseFloat(view.getComputedStyle(lead).lineHeight) || font * 1.4;
+  const radius = num(k.radius, opaque ? ownRadius : Math.min(18, Math.max(10, line * 0.6)));
+  const pad = num(k.pad, opaque ? 0 : Math.round(Math.min(18, Math.max(10, line * 0.6))));
   // type: the layout width at which font px reads as type px in a width px shell.
   const w = typed ? Math.max(48, Math.round((k.width! * font) / k.type! - pad * 2)) : num(k.size?.width, el.offsetWidth);
   let h = num(k.size?.height, el.offsetHeight);
@@ -901,7 +906,9 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
   if (st.height === "auto") {
     // A new width: its height as it lays out at that width, pinned.
     // (Children all positioned, a lane: it keeps the app's height.)
-    h = el.offsetHeight > 2 ? el.offsetHeight : h;
+    // Its exact height (offsetHeight rounds: lines of 16.8 px would leave the bottom inset off by a pixel or two).
+    const r = el.getBoundingClientRect();
+    h = el.offsetHeight > 2 ? (r.width > 0 && el.offsetWidth > 0 ? (r.height * el.offsetWidth) / r.width : el.offsetHeight) : h;
     st.height = `${h}px`;
   }
   const node = holder.ownerDocument.createElement("div");
@@ -909,7 +916,7 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
   node.style.cssText = `position:absolute;left:0;top:0;width:${w + pad * 2}px;height:${h + pad * 2}px;padding:${pad}px;box-sizing:border-box;transform-origin:0 0`;
   node.appendChild(wrap);
   holder.replaceChildren(node);
-  const built: Built = { node, el, w: w + pad * 2, h: h + pad * 2, bg: k.background ?? (opaque ? ownBg : behind), radius, font, name };
+  const built: Built = { node, el, w: w + pad * 2, h: h + pad * 2, bg: k.background ?? (opaque ? ownBg : behind), radius, font, name, pad };
   holder.__pieceKey = key;
   holder.__built = built;
   return built;
@@ -949,6 +956,7 @@ function fitInto(b: Built, w: number, h: number, alpha: number, blur: number, dx
   st.opacity = String(Math.round(alpha * 1000) / 1000);
   st.filter = blur > 0.05 ? `blur(${(blur / Math.max(s, 0.01)).toFixed(2)}px)` : "none";
   st.visibility = alpha > 0.001 ? "visible" : "hidden";
+  st.maskImage = "";
 }
 
 const covers = (k: PieceKey) => (k.fit ? k.fit === "cover" : /\.frame$/.test(k.piece));
@@ -1111,6 +1119,7 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
         st.opacity = String(Math.round((1 - fade) * 1000) / 1000);
         st.filter = "none";
         st.visibility = fade < 0.999 ? "visible" : "hidden";
+        st.maskImage = "";
       } else fitInto(bf, box.w, box.h, 1 - out, blurOut, -dx * 0.35 * box.w * go, -dy * 0.35 * box.h * go, false, 1 - 0.06 * out);
       const pic = covers(kj);
       const inn = pic ? smooth((raw - 0.08) / 0.27) : smooth((raw - 0.18) / 0.3);
@@ -1123,12 +1132,17 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
     } else {
       // The same piece grown or shrunk (a row added): the content at its new scale, anchored at the
       // shell's top, which reveals it as it grows.
+      // A row still below the shell's bottom inset fades out over the inset's top half (the rows already
+      // shown stay whole), so it is never cut at the shell's edge while the shell grows to it.
       const s = boxJ.w / bj.w;
       const st = bj.node.style;
       st.transform = `translate(${(box.w - bj.w * s) / 2}px, 0px) scale(${s})`;
       st.opacity = "1";
       st.filter = "none";
       st.visibility = "visible";
+      const end = box.h / s - bj.pad;
+      const mask = bj.pad > 0 && end < bj.h - bj.pad - 0.5 ? `linear-gradient(to bottom, #000 ${end.toFixed(2)}px, transparent ${(end + bj.pad / 2).toFixed(2)}px)` : "";
+      st.maskImage = mask;
     }
   } else fitInto(bj, box.w, box.h, 1, 0, 0, 0, covers(keys[j]!));
   if (!carried) {
