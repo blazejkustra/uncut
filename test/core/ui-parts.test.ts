@@ -112,6 +112,14 @@ test("the data can't close its script, repeated icons are pooled, and the whole 
   assert.ok(Buffer.byteLength(LIB) < 310_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
 });
 
+test("runtimeJs drops whole-line comments only: code after a leading /* */ stays, a multi-line template literal can't be cut", () => {
+  assert.equal(runtimeJs("/* a */ const x = 1;\nconst y = 2; /* b */\nconst z = 3;"), "/* a */ const x = 1;\nconst y = 2; /* b */\nconst z = 3;");
+  assert.equal(runtimeJs("  /* lead */ go();\nkeep();\n  /** doc\n   * more */\n// gone\nend();"), "/* lead */ go();\nkeep();\n\nend();");
+  assert.equal(runtimeJs('const u = "http://x", c = "a{background:url(//x)}", r = /\\/\\//g;'), 'const u = "http://x", c = "a{background:url(//x)}", r = /\\/\\//g;');
+  assert.throws(() => runtimeJs("const s = `line\n// not a comment\nend`;"), /multi-line template literal/);
+  assert.equal(runtimeJs("const s = `one\ntwo`;"), "const s = `one\ntwo`;");
+});
+
 test("pure at load and from t: no clocks, timers or randomness in the runtime", () => {
   const code = runtimeJs(readFileSync(resolve("apps/web/src/uiparts/runtime.ts"), "utf8")).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
   assert.doesNotMatch(code, /Math\.random|Date\.now|performance\.now|setTimeout|setInterval|requestAnimationFrame|new Date/);

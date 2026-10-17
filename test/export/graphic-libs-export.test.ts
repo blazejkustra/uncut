@@ -84,23 +84,29 @@ const UI = `<div id="stage" style="position:absolute;left:0;top:0;width:640px;he
 <script>
 const stage = document.getElementById("stage");
 const host = (x, y) => { const d = document.createElement("div"); d.style.cssText = "position:absolute;left:" + x + "px;top:" + y + "px"; stage.appendChild(d); return d; };
-const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110), seq: host(0, 0), piece: host(0, 0) };
+const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110), seq: host(0, 0), carry: host(0, 0), frame: host(0, 0), piece: host(0, 0) };
 const pic = document.createElement("canvas");
 pic.width = 108; pic.height = 135;
+const pic2 = document.createElement("canvas");
+pic2.width = 108; pic2.height = 135;
+pic2.getContext("2d").fillStyle = "#3a7";
+pic2.getContext("2d").fillRect(0, 0, 108, 135);
 let checked = false;
 window.render = (t) => {
   if (!checked) {
     const scratch = host(0, 0);
     // The turn's reply, edit row and review card, and clips, show only when passed (the fixture's are left out).
     const clips = { clips: [{ track: "Main", start: 0, duration: 2, name: "A" }] };
-    const bring = { turn: { reply: "Done.", edit: "Placed the clips on Main", review: true }, timeline: clips, editor: { timeline: clips } };
+    const bring = { turn: { steps: ["Read the brand kit"], reply: "Done.", edit: "Placed the clips on Main", review: true }, timeline: clips, editor: { timeline: clips } };
     for (const n of uncutUI.parts()) {
       const full = uncutUI.mount(scratch, n, bring[n]);
       for (const s of uncutUI.slots(n)) if (!uncutUI.find(full, s)) throw new Error(n + ": no slot " + s);
       const root = uncutUI.mount(scratch, n);
       // Mounted without props, no part states a run fact (a result, round, score, model, time).
-      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh/);
+      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh|Rendering… \\d|Wrote graphic/);
       if (said) throw new Error(n + ": states " + said[0] + " without props");
+      // Asked for, the turn's review card is a blank one too: the fixture's result and scores never come back with it.
+      if (n === "turn" && (/Passed|round \\d/.test(full.textContent) || uncutUI.findAll(full, ".score-value").some((v) => v.textContent))) throw new Error("turn: review: true shows the fixture's result or scores");
       if (n === "review" && uncutUI.findAll(root, "score").some((r) => r.querySelector(".score-value").textContent)) throw new Error("review: a score without props");
     }
     // Every slot also stands alone as a piece (built, measured, unboxed).
@@ -119,6 +125,9 @@ window.render = (t) => {
   uncutUI.mount(at.preview, "preview", { scale: 0.15, frame: pic, time: t });
   // Pieces: the composer's box morphing into the agent's steps (mid-morph at frame 40), the Saved pill alone.
   uncutUI.sequence(at.seq, t, [{ at: 0, piece: "composer.box", props: { text: prompt }, size: { width: 200 }, width: 220, x: 320, y: 300 }, { at: 1.2, piece: "turn.steps", props: { steps: ["Read the brand kit", "Placed the clips on Main"] }, size: { width: 200 }, width: 240, x: 330, y: 290 }]);
+  // Mid-morph at frame 40 too: the prompt carried into its message, pushed in from the left, light; a leaving preview frame, cropped by the shell, giving way to the export's job.
+  uncutUI.sequence(at.carry, t, [{ at: 0, piece: "composer", props: { text: prompt }, width: 200, type: 12, x: 110, y: 300 }, { at: 1.2, piece: "message", props: { text: prompt }, carry: [["input", "text"]], from: "left", theme: "light", width: 180, type: 12, x: 120, y: 310 }]);
+  uncutUI.sequence(at.frame, t, [{ at: 0, piece: "preview.frame", props: { frame: pic2 }, width: 120, x: 560, y: 300 }, { at: 1.2, piece: "exportProgress.job", props: { progress: Math.min(1, t / 3) }, from: "right", width: 140, type: 10, x: 560, y: 300 }]);
   uncutUI.piece(at.piece, "topbar.saved", { width: 90, x: 590, y: 30 });
   uncutUI.cursor(stage, { x: 120 + t * 40, y: 90, scale: t > 1.2 && t < 1.35 ? 0.85 : 1, size: 18 });
 };

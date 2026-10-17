@@ -193,6 +193,24 @@ function setLead(el: Element | null, text: string) {
   else el.insertBefore(el.ownerDocument.createTextNode(text), el.firstChild);
 }
 
+/** A review card as the review part starts: "Reviewing", no result, round or scores (the fixture's are a run's facts). */
+function blankReview(card: Element) {
+  card.removeAttribute("data-passed");
+  setText(card.querySelector(".card-head .grow"), "Review");
+  const out = card.querySelector(".card-outcome");
+  if (out) {
+    out.className = "card-outcome";
+    out.textContent = "Reviewing";
+  }
+  for (const row of card.querySelectorAll(".score")) {
+    row.removeAttribute("data-value");
+    row.classList.remove("low", "ok");
+    const bar = row.querySelector(".score-bar > span") as HTMLElement | null;
+    if (bar) bar.style.width = "0%";
+    setText(row.querySelector(".score-value"), "");
+  }
+}
+
 /**
  * Honesty first: the parts were captured on fixture data, so every fact about a run in them (the
  * review's result, round and scores, the plan's state, the turn's model and time, the export's time
@@ -200,33 +218,21 @@ function setLead(el: Element | null, text: string) {
  * results) put one on screen.
  */
 function neutral(root: HTMLElement) {
-  for (const card of findAll(root, '.card-item[data-type="review"]')) {
-    card.removeAttribute("data-passed");
-    setText(card.querySelector(".card-head .grow"), "Review");
-    const out = card.querySelector(".card-outcome");
-    if (out) {
-      out.className = "card-outcome";
-      out.textContent = "Reviewing";
-    }
-    for (const row of card.querySelectorAll(".score")) {
-      row.removeAttribute("data-value");
-      row.classList.remove("low", "ok");
-      const bar = row.querySelector(".score-bar > span") as HTMLElement | null;
-      if (bar) bar.style.width = "0%";
-      setText(row.querySelector(".score-value"), "");
-    }
-  }
+  for (const card of findAll(root, '.card-item[data-type="review"]')) blankReview(card);
   for (const el of findAll(root, ".plan-state")) el.remove();
   for (const el of findAll(root, ".turn-status")) {
     el.textContent = "";
     el.removeAttribute("title");
   }
   for (const el of findAll(root, ".export-status .muted")) el.textContent = "";
+  // The export's progress (the fixture's 42 %): none until progress is passed.
+  for (const el of findAll(root, ".export-status")) setLead(el, "Rendering…");
+  for (const el of root.querySelectorAll<HTMLElement>(".export-bar > div")) el.style.width = "0%";
   // The export's file, folder and settings line is the fixture's.
   for (const el of findAll(root, '[data-testid="export-job-where"]')) el.remove();
-  // The fixture's prose and counts: the turn's reply, its edit count, the critic's card inside a
+  // The fixture's prose and counts: the turn's steps, reply, edit count, the critic's card inside a
   // turn (props bring them back), the media library's sample files (editor: media).
-  for (const el of root.querySelectorAll('.turn .reply, .turn-edits, .turn .card-item, .turn .edit-row, [data-testid="media-tile"], .tl-lane .clip')) el.remove();
+  for (const el of root.querySelectorAll('.turn .worklog .step, .turn .reply, .turn-edits, .turn .card-item, .turn .edit-row, [data-testid="media-tile"], .tl-lane .clip')) el.remove();
   // The user's words (a message's text, the composer's typed text): the graphic's, else none.
   for (const el of findAll(root, ".msg-user")) el.textContent = "";
   for (const el of findAll(root, ".composer-hl")) el.textContent = "\u200b";
@@ -321,7 +327,12 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
   turn(root, o) {
     if (typeof o.reply === "string") addCaptured(root, "turn", ".reply", (el) => setText(el.querySelector("p"), o.reply));
     if (typeof o.edit === "string") addCaptured(root, "turn", ".edit-row", (el) => setText(el.querySelector(".grow"), o.edit), ".worklog");
-    if (o.review) addCaptured(root, "turn", ".card-item", (el) => typeof o.review === "object" && applyProps("review", el, o.review as Props), ".edit-row, .worklog");
+    // The card as captured is the fixture's review (Passed, round 2, its scores): blank, then the graphic's props.
+    if (o.review)
+      addCaptured(root, "turn", ".card-item", (el) => {
+        blankReview(el);
+        if (typeof o.review === "object") applyProps("review", el, o.review as Props);
+      }, ".edit-row, .worklog");
     if (Array.isArray(o.steps)) fillList(root.querySelector(".worklog"), ".step", o.steps.map(String), (el, s) => setText(el.querySelector(".grow"), s));
     if (typeof o.done === "number") [...root.querySelectorAll(".worklog .step")].forEach((el, i) => el.setAttribute("data-status", i < (o.done as number) ? "done" : "running"));
     if (typeof o.status === "string") setText(root.querySelector(".turn-status"), o.status);
