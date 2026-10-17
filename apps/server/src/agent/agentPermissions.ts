@@ -11,21 +11,22 @@ import { join, relative, sep } from "node:path";
 import { type Access, ACCESS_NAME } from "./permissions/access.ts";
 import { realPath, inside, shownPath, str, toolPath, owned } from "./permissions/paths.ts";
 import { SECRETISH, webAddressProblem } from "./permissions/web.ts";
-import { simpleCommand, destructive, readOnlyLine } from "./permissions/shell.ts";
+import { simpleCommand, destructive, readOnlyLine, pinnedToProject } from "./permissions/shell.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
 export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders } from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
-export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, allowlisted } from "./permissions/shell.ts";
+export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, allowlisted, pinnedToProject } from "./permissions/shell.ts";
 export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
 export { SECRET_DIRS, SECRET_FILES, denyRules, appDataRules, appDataAskRules, ownFileRules, ownFileAskRules, autoAskRules, sessionSettings, LOOK_DISALLOWED } from "./permissions/settings.ts";
 
 export type Decision =
-  | { readonly kind: "allow" }
+  // `updatedInput`: the input claude runs instead (a read-only line pinned to the project).
+  | { readonly kind: "allow"; readonly updatedInput?: Record<string, unknown> }
   | { readonly kind: "deny"; readonly message: string }
   // A card: `title` ("Run a command"), `target` (the command or path), `grant`: the key "Always for
   // this session" remembers (undefined: it can't be granted, a destructive command always asks).
-  | { readonly kind: "ask"; readonly title: string; readonly target: string; readonly why?: string; readonly grant?: string };
+  | { readonly kind: "ask"; readonly title: string; readonly target: string; readonly why?: string; readonly grant?: string; readonly updatedInput?: Record<string, unknown> };
 
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
@@ -174,7 +175,12 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
     const reads = tool === "Bash" && readOnlyLine(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []) });
     const grant = `Bash:${command.trim()}`;
-    if (reads) return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow" } : { kind: "ask", title: "Run a command", target, grant };
+    // It was judged from the project; claude's shell may sit in another folder (a cd into an added
+    // folder stays between calls), so it runs from the project (review of 0039421).
+    if (reads) {
+      const updatedInput = { ...input, command: pinnedToProject(command, project) };
+      return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow", updatedInput } : { kind: "ask", title: "Run a command", target, grant, updatedInput };
+    }
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
     if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: "Not done: commands don't touch apps' data (~/Library/Application Support) except reading the active brand kit's files and Uncut's graphic libraries with ls, cat, head, tail or stat (no pipes or redirects). Use Read for those files, and Uncut's tools for the rest." };

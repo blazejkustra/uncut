@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ACCESS_NAME, appDataAskRules, appDataRules, autoAskRules, ownFileAskRules, decide, denyRules, mentionedDirs, ownFileRules, permissionMode, sessionSettings, rootProblem, shellSegments, simpleCommand, webAddressProblem, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
+import { execFileSync } from "node:child_process";
+import { ACCESS_NAME, pinnedToProject, appDataAskRules, appDataRules, autoAskRules, ownFileAskRules, decide, denyRules, mentionedDirs, ownFileRules, permissionMode, sessionSettings, rootProblem, shellSegments, simpleCommand, webAddressProblem, type Access, type PermissionContext } from "../../apps/server/src/agent/agentPermissions.ts";
 import { doingLabel, stepLabel } from "../../apps/server/src/agent/agentTools.ts";
 import { safeName, sniff } from "../../apps/server/src/agent/agentDownload.ts";
 
@@ -481,6 +482,41 @@ test("a downloaded font: over 2 MB or a family no drawer takes is refused (and r
     // A family read from the file (here its own name; a TTF's name table the same) that the drawers skip.
     const odd = await intoFonts(file("Grötesk©.woff2"), project, undefined);
     assert.ok("problem" in odd && /isn't a family name/.test(odd.problem), JSON.stringify(odd));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("review of 0039421: a read-only line Uncut lets run is pinned to the project (claude's shell keeps a cd into an added folder), escaped spaces read too", () => {
+  const data = "/Users/me/Library/Application Support/Uncut";
+  const kit = `${data}/brand/kits/uncut`;
+  const extra = { sanctioned: [kit], dataDir: data };
+  const command = 'cat "brand/kits/a.svg"';
+  const allow = d("Bash", { command, description: "x" }, "auto", extra);
+  assert.ok(allow.kind === "allow" && allow.updatedInput, JSON.stringify(allow));
+  assert.deepEqual(allow.updatedInput, { command: `cd '${PROJECT}' && {\n${command}\n}`, description: "x" });
+  const ask = d("Bash", { command }, "ask", extra);
+  assert.ok(ask.kind === "ask" && ask.updatedInput?.command === pinnedToProject(command, PROJECT), "a card's Allow runs it pinned too");
+  // An escaped space reads the kit like a quoted one; any other backslash isn't a plain read.
+  const escaped = `cat ${kit.replaceAll(" ", "\\ ")}/a.svg`;
+  assert.equal(kind("Bash", { command: escaped }, "auto", extra), "allow", escaped);
+  for (const bad of [`cat ${data.replaceAll(" ", "\\ ")}/settings.json`, `cat "${kit}\\ x/a.svg"`, `cat ${kit.replaceAll(" ", "\\ ")}/a\\nb`, `cat a\u0001b`]) assert.notEqual(kind("Bash", { command: bad }, "auto", extra), "allow", bad);
+});
+
+test("review of 0039421: the pinned line runs in the project wherever the shell is, a quote in the project's name included", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-pin-")));
+  try {
+    const project = join(root, "It's a Promo.uncut");
+    const elsewhere = join(root, "Library", "Application Support", "Uncut");
+    for (const dir of [project, elsewhere]) mkdirSync(join(dir, "Application Support"), { recursive: true });
+    writeFileSync(join(project, "Application Support", "x.txt"), "PROJECT");
+    writeFileSync(join(elsewhere, "Application Support", "x.txt"), "SECRET");
+    const line = 'cat "Application Support/x.txt"; echo';
+    assert.equal(execFileSync("/bin/bash", ["-c", line], { cwd: elsewhere, encoding: "utf8" }).trim(), "SECRET", "unpinned: the shell's folder decides");
+    assert.equal(execFileSync("/bin/bash", ["-c", pinnedToProject(line, project)], { cwd: elsewhere, encoding: "utf8" }).trim(), "PROJECT");
+    assert.equal(execFileSync("/bin/zsh", ["-c", pinnedToProject(`${line};`, project)], { cwd: elsewhere, encoding: "utf8" }).trim(), "PROJECT", "a trailing ; still parses");
+    // A cd that fails runs nothing.
+    assert.throws(() => execFileSync("/bin/bash", ["-c", pinnedToProject(line, join(root, "gone"))], { cwd: elsewhere, stdio: "pipe" }));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
