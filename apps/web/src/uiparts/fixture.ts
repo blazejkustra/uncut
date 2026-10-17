@@ -61,6 +61,16 @@ export const FIXTURE_PROJECT = {
 
 export const FIXTURE_SNAPSHOT: ProjectSnapshot = { dir: FIXTURE_DIR, project: FIXTURE_PROJECT, revision: 15, canUndo: true, canRedo: false };
 
+/** The effects scene: the second clip selected with a look and an effect on it (the Inspector's effect rows, the Effects tab's tiles). */
+export const FIXTURE_FX_CLIP = "c2";
+export const FIXTURE_SNAPSHOT_FX: ProjectSnapshot = {
+  ...FIXTURE_SNAPSHOT,
+  project: {
+    ...FIXTURE_PROJECT,
+    tracks: FIXTURE_PROJECT.tracks.map((t) => ({ ...t, items: t.items.map((i) => (i.id === FIXTURE_FX_CLIP ? { ...i, effects: [{ module: "effect.look", params: { look: "warm" } }, { module: "effect.vignette", params: { amount: 0.5, size: 0.5 } }] } : i)) })),
+  },
+};
+
 export const FIXTURE_PROMPT = "Make a 28 s launch film for Uncut on the Electro Dreams beat, the drone clips as the film being edited.";
 
 export const FIXTURE_STORYBOARD: Storyboard = {

@@ -23,6 +23,8 @@ export function extract(scene: string): unknown {
     { name: "storyboard", scene: "plan", selector: ".storyboard-card" },
     { name: "export", scene: "export", selector: ".modal-layer .modal" },
     { name: "exportProgress", scene: "exporting", selector: ".modal-layer .modal" },
+    { name: "inspector", scene: "effects", selector: ".side" },
+    { name: "effects", scene: "effects", selector: ".library" },
   ];
   const DROP_ATTRS = /^(aria-.*|title|tabindex|role|spellcheck|focusable|accept|multiple|draggable|autocomplete|data-held-by|data-gpu.*)$/;
   const HOVERISH = /:(hover|focus|focus-visible|focus-within|active)\b/;
@@ -51,7 +53,17 @@ export function extract(scene: string): unknown {
         if (o.className) img.className = o.className;
         img.setAttribute("style", `${o.getAttribute("style") ?? ""};width:${box.width}px;height:${box.height}px`);
         try {
-          if (o.width && o.height && box.width) img.src = o.toDataURL("image/png");
+          // An effect tile's thumbnail is a picture (JPEG, a quarter the bytes); the rest keep their transparency.
+          if (o.width && o.height && box.width) {
+            if (o.closest(".fx-thumb")) {
+              // An effect tile's thumbnail is a picture: JPEG at the size it's drawn (a fraction of the bytes).
+              const small = document.createElement("canvas");
+              small.width = Math.round(box.width);
+              small.height = Math.round(box.height);
+              small.getContext("2d")!.drawImage(o, 0, 0, small.width, small.height);
+              img.src = small.toDataURL("image/jpeg", 0.72);
+            } else img.src = o.toDataURL("image/png");
+          }
         } catch {}
         c.replaceWith(img);
       }
@@ -65,6 +77,11 @@ export function extract(scene: string): unknown {
       for (const a of [...c.attributes]) if (DROP_ATTRS.test(a.name)) c.removeAttribute(a.name);
       const cls = c.getAttribute("class");
       if (cls !== null) cls.trim() ? c.setAttribute("class", cls.trim().replace(/\s+/g, " ")) : c.removeAttribute("class");
+    }
+    // The Effects tab keeps its filters (the looks); its effect and shader grids would only weigh.
+    if (spec.name === "effects") for (const g of clone.querySelectorAll('[data-testid="effects-grid"], [data-testid="shaders-grid"]')) {
+      if (g.previousElementSibling?.classList.contains("lib-label")) g.previousElementSibling.remove();
+      g.remove();
     }
     // The preview's picture is the author's: the frame keeps its size and background, empty.
     for (const f of clone.querySelectorAll(".frame")) f.replaceChildren();

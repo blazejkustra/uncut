@@ -49,7 +49,7 @@ app.whenReady().then(async () => {
   await win.loadURL(url);
   for (let i = 0; i < 200; i++) { if (await win.webContents.executeJavaScript("document.body.dataset.ready === '1'")) break; await new Promise((r) => setTimeout(r, 50)); }
   const result = {};
-  for (const scene of ["compose", "plan", "done", "export", "exporting"]) {
+  for (const scene of ["compose", "plan", "done", "export", "exporting", "effects"]) {
     await win.webContents.executeJavaScript("window.__uiparts.scene(" + JSON.stringify(scene) + ")");
     if (shots) writeFileSync(shots + "/" + scene + ".png", (await win.webContents.capturePage()).toPNG());
     result[scene] = await win.webContents.executeJavaScript("(" + readFileSync(extract, "utf8") + ")(" + JSON.stringify(scene) + ")");

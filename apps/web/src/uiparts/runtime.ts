@@ -29,15 +29,17 @@ type Root = HTMLElement & { __uiKey?: string; __uiName?: string };
 
 /** Named slots per part: a name for the selectors a film reaches for most (find takes any selector too). */
 const SLOTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  composer: { input: ".composer-box > textarea", text: ".composer-hl", context: ".composer-ctx", send: ".send", attach: ".composer-at", model: ".choice.model" },
+  composer: { box: ".composer-box", input: ".composer-box > textarea", text: ".composer-hl", context: ".composer-ctx", send: ".send", attach: ".composer-at", model: ".choice.model" },
   message: { text: ".msg-user" },
-  turn: { reply: ".reply", steps: ".step", review: ".card-item" },
+  turn: { reply: ".reply", steps: ".worklog", step: ".worklog .step", edit: ".edit-row", review: ".card-item" },
   storyboard: { summary: ".approval-text", beats: ".beats", beat: ".beat", approve: ".btn.primary", edit: ".approval-btns .btn.ghost" },
   review: { head: ".card-head", status: ".card-outcome", scores: ".scores", score: ".score", bar: ".score-bar > span" },
-  timeline: { toolbar: ".bottom-toolbar", ruler: ".tl-ruler", lanes: ".tl-lanes", heads: ".tl-heads", playhead: ".playhead", clip: ".clip" },
+  timeline: { toolbar: ".bottom-toolbar", ruler: ".tl-ruler", lanes: ".tl-lanes", heads: ".tl-heads", playhead: ".playhead", clip: ".clip", lane: ".tl-lane", main: ".tl-lane.main" },
   preview: { frame: ".frame", transport: ".transport", timecode: ".timecode", play: ".icon-btn.play" },
+  inspector: { title: ".insp-title", filter: '[data-testid="insp-filter"]', amount: '[data-testid="insp-filter-intensity"]', effects: '[data-testid="insp-effects"]', effect: '[data-testid="insp-effect"]', transform: '[data-testid="insp-sec-transform"]' },
+  effects: { search: ".tr-search", target: '[data-testid="effects-target"]', filters: '[data-testid="filters-grid"]', tile: '[data-testid="filter-tile"]', none: '[data-look="none"]', natural: '[data-look="natural"]', warm: '[data-look="warm"]', cool: '[data-look="cool"]', vintage: '[data-look="vintage"]', film: '[data-look="film"]', bw: '[data-look="bw"]', vivid: '[data-look="vivid"]' },
   export: { close: ".export-head .icon-btn", draft: '[data-testid="quality-draft"]', standard: '[data-testid="quality-standard"]', high: '[data-testid="quality-high"]', file: '[data-testid="export-name"]', motionBlur: 'input[type="checkbox"]', cancel: ".wiz-foot .btn.ghost", export: ".wiz-foot .btn.primary" },
-  exportProgress: { bar: ".export-bar", fill: ".export-bar > div", cancel: '[data-testid="export-cancel"]' },
+  exportProgress: { progress: ".export-status", bar: ".export-bar", fill: ".export-bar > div", cancel: '[data-testid="export-cancel"]' },
   topbar: { export: ".export-btn", saved: ".saved", title: ".project-title" },
   agent: { tabs: ".tabs", thread: ".agent-thread", composer: ".composer", send: ".send", plan: ".plan-chip-btn" },
   editor: { topbar: ".topbar", export: ".export-btn", rail: ".rail", library: ".library", preview: ".stage", frame: ".frame", side: ".side", composer: ".composer", send: ".send", thread: ".agent-thread", timeline: ".bottom", playhead: ".playhead" },
@@ -115,7 +117,7 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
       at = shell;
     }
     const tpl = doc.createElement("template");
-    tpl.innerHTML = p.html.replace(/\u0001(\d+)\u0002/g, (_m, i: string) => DATA.pool[Number(i)] ?? "");
+    tpl.innerHTML = expand(p.html);
     const root = tpl.content.firstElementChild as HTMLElement;
     root.style.width = `${width}px`;
     root.style.height = `${height}px`;
@@ -220,6 +222,17 @@ function neutral(root: HTMLElement) {
     el.removeAttribute("title");
   }
   for (const el of findAll(root, ".export-status .muted")) el.textContent = "";
+  // The fixture's prose and counts: the turn's reply, its edit count, the critic's card inside a
+  // turn (props bring them back), the media library's sample files (editor: media).
+  for (const el of root.querySelectorAll('.turn .reply, .turn-edits, .turn .card-item, .turn .edit-row, [data-testid="media-tile"], .tl-lane .clip')) el.remove();
+  // The user's words (a message's text, the composer's typed text): the graphic's, else none.
+  for (const el of findAll(root, ".msg-user")) el.textContent = "";
+  for (const el of findAll(root, ".composer-hl")) el.textContent = "\u200b";
+  for (const el of findAll(root, ".composer-box > textarea")) el.textContent = "";
+  for (const el of findAll(root, ".composer .send")) el.setAttribute("disabled", "");
+  // The storyboard's plan: the graphic's (summary, beats), else none.
+  for (const el of findAll(root, ".approval-text")) setLead(el, "");
+  for (const el of root.querySelectorAll(".beats .beat-time, .beats .beat-head b, .beats .beat-line")) el.textContent = "";
 }
 
 function applyProps(name: string, root: HTMLElement, o: Props) {
@@ -246,6 +259,7 @@ function applyProps(name: string, root: HTMLElement, o: Props) {
     }
   }
   for (const k of list(o.hide)) for (const el of findAll(root, k, name)) el.style.visibility = "hidden";
+  for (const k of list(o.remove)) for (const el of findAll(root, k, name)) if (el !== root) el.remove();
 }
 
 function getRadius(el: HTMLElement): string {
@@ -303,12 +317,27 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
     if (typeof o.text === "string") root.textContent = o.text;
   },
   turn(root, o) {
-    if (typeof o.reply === "string") {
-      const p = find(root, "reply", "turn")?.querySelector("p");
-      setText(p ?? null, o.reply);
-    }
+    if (typeof o.reply === "string") addCaptured(root, "turn", ".reply", (el) => setText(el.querySelector("p"), o.reply));
+    if (typeof o.edit === "string") addCaptured(root, "turn", ".edit-row", (el) => setText(el.querySelector(".grow"), o.edit), ".worklog");
+    if (o.review) addCaptured(root, "turn", ".card-item", (el) => typeof o.review === "object" && applyProps("review", el, o.review as Props), ".edit-row, .worklog");
     if (Array.isArray(o.steps)) fillList(root.querySelector(".worklog"), ".step", o.steps.map(String), (el, s) => setText(el.querySelector(".grow"), s));
+    if (typeof o.done === "number") [...root.querySelectorAll(".worklog .step")].forEach((el, i) => el.setAttribute("data-status", i < (o.done as number) ? "done" : "running"));
     if (typeof o.status === "string") setText(root.querySelector(".turn-status"), o.status);
+  },
+  inspector(root, o) {
+    if (typeof o.title === "string") setText(find(root, "title", "inspector")?.querySelector(".grow") ?? null, o.title);
+    if (typeof o.filter === "string") setText(find(root, "amount", "inspector")?.querySelector(".prop-k") ?? null, o.filter);
+    if (typeof o.amount === "number") for (const el of find(root, "amount", "inspector")?.querySelectorAll("input") ?? []) el.setAttribute("value", String(Math.round(o.amount)));
+    if (o.filter === false) find(root, "filter", "inspector")?.remove();
+    if (o.effects === false) find(root, "effects", "inspector")?.remove();
+  },
+  effects(root, o) {
+    if (o.active !== undefined) for (const tile of findAll(root, '[data-testid="filter-tile"]')) {
+      const on = tile.getAttribute("data-look") === o.active;
+      tile.classList.toggle("active", on);
+      on ? tile.setAttribute("data-active", "true") : tile.removeAttribute("data-active");
+    }
+    if (typeof o.target === "string") setText(find(root, "target", "effects"), o.target);
   },
   storyboard(root, o) {
     if (typeof o.summary === "string") {
@@ -384,6 +413,19 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
   },
   editor(root, o) {
     nested(root, o, ["composer", "turn", "message", "review", "timeline", "preview", "topbar"]);
+    if (Array.isArray(o.media)) {
+      const grid = root.querySelector('[data-testid="media-grid"]');
+      const tpl = DATA.parts.editor ? mediaTile(root.ownerDocument) : null;
+      if (grid && tpl)
+        for (const m of o.media as ReadonlyArray<{ name?: string; meta?: string; image?: string }>) {
+          const el = tpl.cloneNode(true) as HTMLElement;
+          setText(el.querySelector(".tile-name"), m.name ?? "");
+          setText(el.querySelector(".tile-sub"), m.meta ?? "");
+          const thumb = el.querySelector(".thumb") as HTMLElement | null;
+          if (thumb && m.image) thumb.style.cssText += `;background:url("${picture(m.image)}") center/cover`;
+          grid.appendChild(el);
+        }
+    }
   },
 };
 
@@ -397,13 +439,56 @@ function nested(root: HTMLElement, o: Props, names: ReadonlyArray<string>) {
   }
 }
 
+/** A picture URL a part can show: data: or blob: (uncut:media markers resolve only in the graphic's own HTML). */
+function picture(src: string): string {
+  if (/^uncut:media\//.test(src)) throw new Error(`uncutUI: "${src}" can't load from a prop; pass await uncut.url(id, seconds) (a blob: URL, asked once before the first frame) instead`);
+  return src;
+}
+
+/** The library's media tile as captured (the runtime removes the sample files; editor: media puts tiles back from it). */
+function mediaTile(doc: Document): Element | null {
+  const tpl = doc.createElement("template");
+  tpl.innerHTML = expand(part("editor").html);
+  const tile = tpl.content.querySelector('[data-testid="media-tile"]');
+  tile?.querySelector(".tile-used")?.remove();
+  return tile;
+}
+
+/** Puts back an element neutral() removed from a part (its captured markup), after the first match of `after` (else last), and fills it. */
+function addCaptured(root: HTMLElement, name: string, sel: string, fill: (el: HTMLElement) => void, after?: string) {
+  let el = root.querySelector(sel) as HTMLElement | null;
+  if (!el) {
+    const tpl = root.ownerDocument.createElement("template");
+    tpl.innerHTML = expand(part(name).html);
+    const src = tpl.content.querySelector(sel) as HTMLElement | null;
+    if (!src) return;
+    el = src.cloneNode(true) as HTMLElement;
+    const parent = (src.parentElement && root.querySelector(`.${[...src.parentElement.classList].join(".")}`)) || root;
+    const anchor = after ? (parent.querySelector(after) as HTMLElement | null) : null;
+    anchor && anchor.parentElement === parent ? anchor.after(el) : parent.appendChild(el);
+  }
+  fill(el);
+}
+
+function expand(html: string): string {
+  return html.replace(/\u0001(\d+)\u0002/g, (_m, i: string) => DATA.pool[Number(i)] ?? "");
+}
+
 /** Make container hold one copy of its first `selector` child per entry (cloned), each filled by fill. */
 function fillList<T>(container: Element | null, selector: string, entries: ReadonlyArray<T>, fill: (el: Element, entry: T, i: number) => void) {
   if (!container) return;
   const existing = [...container.querySelectorAll(selector)];
-  const tpl = existing[0];
-  if (!tpl) return;
-  const parent = tpl.parentElement!;
+  // None left (the runtime blanked them): the first as captured, from the part it belongs to.
+  let tpl: Element | undefined = existing[0];
+  let parent: Element | null = tpl?.parentElement ?? null;
+  if (!tpl) {
+    const owner = partName(container);
+    const t = container.ownerDocument.createElement("template");
+    t.innerHTML = owner ? expand(part(owner).html) : "";
+    tpl = t.content.querySelector(`${[...container.classList].map((c) => `.${c}`).join("")} ${selector}`) ?? undefined;
+    parent = container;
+  }
+  if (!tpl || !parent) return;
   existing.forEach((e) => e.remove());
   entries.forEach((entry, i) => {
     const el = tpl.cloneNode(true) as Element;
@@ -436,16 +521,19 @@ function timelineProps(root: HTMLElement, o: Props, pps: number) {
   };
   if (Array.isArray(o.clips)) {
     const clips = o.clips as ReadonlyArray<Clip>;
-    // Templates: each lane's first clip (its kind's look), before the lanes are cleared.
+    // Templates: each lane's first clip as captured (its kind's look); the part starts with none.
     const templates = new Map<HTMLElement, Element>();
     const any = new Map<string, Element>();
-    for (const lane of lanes) {
-      const c = lane.querySelector(".clip");
+    const tpl0 = root.ownerDocument.createElement("template");
+    tpl0.innerHTML = expand(part("timeline").html);
+    const captured = [...tpl0.content.querySelectorAll(".tl-lane")];
+    lanes.forEach((lane, i) => {
+      const c = captured[i]?.querySelector(".clip");
       if (c) templates.set(lane, c);
       for (const k of ["video", "audio", "text"]) if (c?.classList.contains(k) && !any.has(k)) any.set(k, c);
-    }
-    const touched = new Set<HTMLElement>(clips.map((c) => laneOf(c.track)).filter((l): l is HTMLElement => !!l));
-    for (const lane of touched) for (const c of lane.querySelectorAll(".clip")) c.remove();
+    });
+    // The clips passed are the whole timeline.
+    for (const lane of lanes) for (const c of lane.querySelectorAll(".clip")) c.remove();
     for (const c of clips) {
       const lane = laneOf(c.track);
       if (!lane) continue;
@@ -462,7 +550,7 @@ function timelineProps(root: HTMLElement, o: Props, pps: number) {
       for (const img of el.querySelectorAll("img")) (img as HTMLElement).style.width = "100%";
       const strip = el.querySelector(".strip") as HTMLElement | null;
       if (strip && c.image) {
-        strip.style.backgroundImage = `url("${c.image}")`;
+        strip.style.backgroundImage = `url("${picture(c.image)}")`;
         strip.style.backgroundSize = "auto 100%";
         strip.style.backgroundRepeat = "repeat-x";
       }
@@ -475,6 +563,270 @@ function timelineProps(root: HTMLElement, o: Props, pps: number) {
     const ph = root.querySelector(".playhead") as HTMLElement | null;
     if (ph) ph.style.left = `${o.playhead * pps}px`;
   }
+}
+
+// ---- pieces: one element of a part on its own, set large; and one shell morphing piece to piece ----
+
+/** A piece as built: its content (natural size, padding included), the look its shell carries. */
+interface Built {
+  readonly node: HTMLElement;
+  readonly el: HTMLElement;
+  readonly w: number;
+  readonly h: number;
+  readonly bg: string;
+  readonly radius: number;
+}
+type Holder = HTMLElement & { __pieceKey?: string; __built?: Built };
+
+/** One key of a sequence (and what piece takes): the piece, its part's props, where it sits. */
+interface PieceKey {
+  readonly at?: number;
+  readonly piece: string;
+  readonly props?: Props;
+  readonly index?: number;
+  /** Centre in host px (default: the box's top-left at the host's origin). */
+  readonly x?: number;
+  readonly y?: number;
+  /** Width in host px (default: its size in the app); height: a taller or wider shell, the content fitted inside. */
+  readonly width?: number;
+  readonly height?: number;
+  readonly scale?: number;
+  /** The piece's own layout size in app px (default: as the app lays it out): a narrower composer wraps its text, so it sets larger. */
+  readonly size?: { readonly width?: number; readonly height?: number };
+  readonly pad?: number;
+  /** The shell's soft shadow on the canvas (default on; false: none). */
+  readonly shadow?: boolean;
+  readonly radius?: number;
+  readonly background?: string;
+  /** The shell's press (uncutMotion.click's .button, 0.95 pressed). */
+  readonly press?: number;
+  /** This key's transition into it (s, default the sequence's dur, 0.5). */
+  readonly dur?: number;
+  /** In a morph, the content fitted whole in the shell ("contain", the default) or covering it ("cover", the default for a picture: preview.frame). */
+  readonly fit?: "contain" | "cover";
+}
+
+const PIECE_SHELL = "display:contents;";
+
+/** A colour as [r, g, b, a] (rgb() / rgba() / #rrggbb), or undefined. */
+function rgba(c: string): [number, number, number, number] | undefined {
+  const hex = /^#([0-9a-f]{6})$/i.exec(c.trim());
+  if (hex) {
+    const n = parseInt(hex[1]!, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
+  }
+  const m = c.match(/[\d.]+/g);
+  if (!m || m.length < 3 || !/^rgb/.test(c.trim())) return undefined;
+  return [Number(m[0]), Number(m[1]), Number(m[2]), m.length >= 4 ? Number(m[3]) : 1];
+}
+
+function mixRgba(a: string, b: string, p: number): string {
+  const x = rgba(a) || [0, 0, 0, 0];
+  const y = rgba(b) || [0, 0, 0, 0];
+  const v = x.map((n, i) => n + (y[i]! - n) * p);
+  return `rgba(${Math.round(v[0]!)}, ${Math.round(v[1]!)}, ${Math.round(v[2]!)}, ${Math.round(v[3]! * 1000) / 1000})`;
+}
+
+/** The morph's ease: a critically damped spring from rest, normalised to land exactly at 1 (no overshoot, no lurch). */
+function settle(p: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  const k = 7.4;
+  const f = (x: number) => 1 - (1 + x) * Math.exp(-x);
+  return f(k * p) / f(k);
+}
+
+const smooth = (p: number) => {
+  const q = Math.max(0, Math.min(1, p));
+  return q * q * (3 - 2 * q);
+};
+
+/**
+ * Builds piece `id` ("part.slot", or "part" for the whole part) in holder, cached by its props: the
+ * part is built whole (its props applied, so a typed composer or a step's label is right), the
+ * slot measured as the app lays it out, then everything around it unboxed (display: contents keeps
+ * the selectors and the inherited type) and the slot pinned to that size.
+ */
+function buildPiece(holder: Holder, k: PieceKey): Built {
+  const [name, slot] = [k.piece.split(".")[0]!, k.piece.split(".").slice(1).join(".")];
+  const props = k.props || {};
+  const key = `${k.piece}\n${k.index ?? 0}\n${k.pad ?? ""}\n${k.radius ?? ""}\n${k.background ?? ""}\n${keyOf(k.size ?? {})}\n${keyOf(props)}`;
+  if (holder.__pieceKey === key && holder.__built) return holder.__built;
+  const scratch = holder.ownerDocument.createElement("div");
+  scratch.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none";
+  holder.replaceChildren(scratch);
+  const root = mount(scratch, name, { ...props, background: "none", scale: 1 });
+  const wrap = scratch.firstElementChild as HTMLElement;
+  const el = slot ? findAll(root, slot, name)[k.index ?? 0] : root;
+  if (!el) throw new Error(`uncutUI: no piece "${k.piece}"${k.index ? ` #${k.index}` : ""} (slots of ${name}: ${slots(name).join(", ")})`);
+  const view = holder.ownerDocument.defaultView!;
+  const w = num(k.size?.width, el.offsetWidth);
+  let h = num(k.size?.height, el.offsetHeight);
+  const cs = view.getComputedStyle(el);
+  // Read now: the style is live, and the slot is restyled below.
+  const ownBg = cs.backgroundColor;
+  const ownRadius = parseFloat(cs.borderTopLeftRadius) || 0;
+  const own = rgba(ownBg);
+  // An opaque slot with square corners (a timeline lane, a panel section) sits in a padded, rounded shell of its colour.
+  const opaque = !!own && own[3] >= 0.99 && ownRadius > 0;
+  let behind = own && own[3] >= 0.99 ? ownBg : part(name).backdrop || "rgb(10, 10, 10)";
+  if (!(own && own[3] >= 0.99))
+    for (let p = el.parentElement; p && p !== scratch; p = p.parentElement) {
+      const c = rgba(view.getComputedStyle(p).backgroundColor);
+      if (c && c[3] >= 0.99) {
+        behind = view.getComputedStyle(p).backgroundColor;
+        break;
+      }
+    }
+  const radius = num(k.radius, opaque ? ownRadius : Math.min(18, Math.max(10, el.offsetHeight * 0.2)));
+  const pad = num(k.pad, opaque ? 0 : Math.round(Math.min(18, Math.max(10, el.offsetHeight * 0.25))));
+  // Unbox the path from the part's wrapper to the slot; drop everything beside it.
+  for (let at: HTMLElement = el; at !== wrap; ) {
+    const parent = at.parentElement as HTMLElement;
+    for (const sib of [...parent.children]) if (sib !== at) sib.remove();
+    if (parent.getAttribute("style")?.startsWith(SHELL)) parent.setAttribute("style", PIECE_SHELL + (parent.getAttribute("style") || "").slice(SHELL.length));
+    else parent.style.display = "contents";
+    at = parent;
+  }
+  wrap.style.cssText = "display:contents";
+  const st = el.style;
+  st.boxSizing = "border-box";
+  st.width = `${w}px`;
+  st.height = typeof k.size?.width === "number" && typeof k.size?.height !== "number" ? "auto" : `${h}px`;
+  st.margin = "0";
+  st.position = "relative";
+  st.left = st.top = st.right = st.bottom = "auto";
+  st.flex = "none";
+  st.maxWidth = st.maxHeight = "none";
+  if (opaque) st.boxShadow = "none";
+  if (st.height === "auto") {
+    // A new width: its height as it lays out at that width, pinned.
+    // (Children all positioned, a lane: it keeps the app's height.)
+    h = el.offsetHeight > 2 ? el.offsetHeight : h;
+    st.height = `${h}px`;
+  }
+  const node = holder.ownerDocument.createElement("div");
+  node.className = "uncut-ui-piece";
+  node.style.cssText = `position:absolute;left:0;top:0;width:${w + pad * 2}px;height:${h + pad * 2}px;padding:${pad}px;box-sizing:border-box;transform-origin:0 0`;
+  node.appendChild(wrap);
+  holder.replaceChildren(node);
+  const built: Built = { node, el, w: w + pad * 2, h: h + pad * 2, bg: k.background ?? (opaque ? ownBg : behind), radius };
+  holder.__pieceKey = key;
+  holder.__built = built;
+  return built;
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  r: number;
+}
+
+/** A key's box in host px: its centre, size and corner radius (the piece's own radius scaled with it). */
+function keyBox(k: PieceKey, b: Built): Box {
+  const s = typeof k.width === "number" ? k.width / b.w : num(k.scale, 1);
+  const w = typeof k.width === "number" ? k.width : b.w * s;
+  const h = typeof k.height === "number" ? k.height : b.h * s;
+  return { x: typeof k.x === "number" ? k.x : w / 2, y: typeof k.y === "number" ? k.y : h / 2, w, h, r: b.radius * s };
+}
+
+/** Place a built piece's content fitted (one uniform scale, never stretched) and centred in a w x h shell. */
+function fitInto(b: Built, w: number, h: number, alpha: number, blur: number, dy: number, cover?: boolean) {
+  const s = cover ? Math.max(w / b.w, h / b.h) : Math.min(w / b.w, h / b.h);
+  const st = b.node.style;
+  st.transform = `translate(${(w - b.w * s) / 2}px, ${(h - b.h * s) / 2 + dy}px) scale(${s})`;
+  st.opacity = String(Math.round(alpha * 1000) / 1000);
+  st.filter = blur > 0.05 ? `blur(${(blur / Math.max(s, 0.01)).toFixed(2)}px)` : "none";
+  st.visibility = alpha > 0.001 ? "visible" : "hidden";
+}
+
+const covers = (k: PieceKey) => (k.fit ? k.fit === "cover" : /\.frame$/.test(k.piece));
+
+/**
+ * One shell carried through the keys: each key a piece where it sits; from each key's at it morphs
+ * from the key before (dur s, a critically damped ease): the shell's centre, size, corner radius and
+ * colour travel as one object while the old content leaves (fading, lifting, a few px of blur) and
+ * the new one arrives inside it, both fitted at one uniform scale (text never stretches). The same
+ * piece twice (another width, more steps) resizes without a crossfade. Pure in t. Returns the shell's
+ * box { x, y, w, h, r }, p (0..1 in a morph, 1 at rest), the key index shown and its element.
+ */
+function sequence(host: HTMLElement, t: number, keys: ReadonlyArray<PieceKey>, o?: { readonly dur?: number }): { x: number; y: number; w: number; h: number; r: number; p: number; key: number; el: HTMLElement } {
+  if (!keys.length) throw new Error("uncutUI.sequence: no keys");
+  const doc = host.ownerDocument;
+  ensureCss(doc);
+  let shell = host.querySelector(":scope > .uncut-ui-shell") as HTMLElement | null;
+  if (!shell) {
+    shell = doc.createElement("div");
+    shell.className = "uncut-ui-shell";
+    host.appendChild(shell);
+  }
+  const holders: Array<Holder> = [];
+  for (let i = 0; i < keys.length; i++) {
+    let hd = shell.children[i] as Holder | undefined;
+    if (!hd) {
+      hd = doc.createElement("div") as Holder;
+      hd.style.cssText = "position:absolute;left:0;top:0";
+      shell.appendChild(hd);
+    }
+    holders.push(hd);
+  }
+  while (shell.children.length > keys.length) shell.lastElementChild!.remove();
+  let j = 0;
+  for (let i = 0; i < keys.length; i++) if (num(keys[i]!.at, 0) <= t) j = i;
+  const dur = (k: PieceKey) => Math.max(0.05, num(k.dur, num(o?.dur, 0.5)));
+  const from = j > 0 && t < num(keys[j]!.at, 0) + dur(keys[j]!) ? j - 1 : -1;
+  const raw = from >= 0 ? (t - num(keys[j]!.at, 0)) / dur(keys[j]!) : 1;
+  const p = settle(raw);
+  // Shown before building: a piece is measured as laid out.
+  holders.forEach((hd, i) => (hd.style.display = i === j || i === from ? "block" : "none"));
+  const bj = buildPiece(holders[j]!, keys[j]!);
+  const boxJ = keyBox(keys[j]!, bj);
+  let box: Box = boxJ;
+  let bg = bj.bg;
+  let press = num(keys[j]!.press, 1);
+  if (from >= 0) {
+    const bf = buildPiece(holders[from]!, keys[from]!);
+    const boxF = keyBox(keys[from]!, bf);
+    box = { x: boxF.x + (boxJ.x - boxF.x) * p, y: boxF.y + (boxJ.y - boxF.y) * p, w: boxF.w + (boxJ.w - boxF.w) * p, h: boxF.h + (boxJ.h - boxF.h) * p, r: boxF.r + (boxJ.r - boxF.r) * p };
+    bg = mixRgba(bf.bg, bj.bg, p);
+    press = num(keys[from]!.press, 1) + (press - num(keys[from]!.press, 1)) * p;
+    const same = keys[from]!.piece === keys[j]!.piece && (keys[from]!.index ?? 0) === (keys[j]!.index ?? 0);
+    holders[from]!.style.display = same ? "none" : "block";
+    if (!same) {
+      // A swap inside the travelling shell: the new content arrives over 12 to 38 % of the morph while
+      // the old leaves over 8 to 36 % (lifting, a few px of blur), so one of them always holds the shell.
+      const out = (raw - 0.08) / 0.28;
+      fitInto(bf, box.w, box.h, 1 - smooth(out), 3 * Math.max(0, Math.min(1, out)), -0.03 * box.h * smooth(out), covers(keys[from]!));
+      const inn = (raw - 0.12) / 0.26;
+      fitInto(bj, box.w, box.h, smooth(inn), 3 * (1 - Math.min(1, Math.max(0, inn))), 0.03 * box.h * (1 - smooth(inn)), covers(keys[j]!));
+    } else {
+      // The same piece grown or shrunk (a row added): the content at its new scale, anchored at the
+      // shell's top, which reveals it as it grows.
+      const s = boxJ.w / bj.w;
+      const st = bj.node.style;
+      st.transform = `translate(${(box.w - bj.w * s) / 2}px, 0px) scale(${s})`;
+      st.opacity = "1";
+      st.filter = "none";
+      st.visibility = "visible";
+    }
+  } else fitInto(bj, box.w, box.h, 1, 0, 0);
+  shell.style.cssText = `position:absolute;left:${box.x - box.w / 2}px;top:${box.y - box.h / 2}px;width:${box.w}px;height:${box.h}px;border-radius:${Math.min(box.r, box.w / 2, box.h / 2)}px;background:${bg};overflow:hidden;transform:scale(${press});transform-origin:50% 50%${keys[j]!.shadow === false ? "" : ";box-shadow:0 1px 2px rgb(0 0 0 / 8%), 0 14px 40px rgb(0 0 0 / 14%)"}`;
+  return { x: box.x, y: box.y, w: box.w, h: box.h, r: box.r, p: from >= 0 ? p : 1, key: j, el: bj.el };
+}
+
+/** One piece on its own: sequence with one key (the same pixels as that key at rest). Returns the slot's element. */
+function piece(host: HTMLElement, id: string, props?: Omit<PieceKey, "piece" | "at">): HTMLElement {
+  return sequence(host, 0, [{ ...(props || {}), piece: id, at: 0 }]).el;
+}
+
+/** An element's rect in host px { x, y, w, h } (its top-left; a cursor's target, a headline pinned to a piece). */
+function rectIn(el: Element, host: HTMLElement): { x: number; y: number; w: number; h: number } {
+  const a = el.getBoundingClientRect();
+  const b = host.getBoundingClientRect();
+  const s = host.offsetWidth ? b.width / host.offsetWidth : 1;
+  return { x: (a.left - b.left) / s, y: (a.top - b.top) / s, w: a.width / s, h: a.height / s };
 }
 
 /**

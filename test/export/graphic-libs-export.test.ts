@@ -84,21 +84,27 @@ const UI = `<div id="stage" style="position:absolute;left:0;top:0;width:640px;he
 <script>
 const stage = document.getElementById("stage");
 const host = (x, y) => { const d = document.createElement("div"); d.style.cssText = "position:absolute;left:" + x + "px;top:" + y + "px"; stage.appendChild(d); return d; };
-const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110) };
+const at = { composer: host(16, 16), review: host(16, 150), timeline: host(250, 230), exportProgress: host(250, 16), preview: host(430, 110), seq: host(0, 0), piece: host(0, 0) };
 const pic = document.createElement("canvas");
 pic.width = 108; pic.height = 135;
 let checked = false;
 window.render = (t) => {
   if (!checked) {
     const scratch = host(0, 0);
+    // The turn's reply, edit row and review card, and clips, show only when passed (the fixture's are left out).
+    const clips = { clips: [{ track: "Main", start: 0, duration: 2, name: "A" }] };
+    const bring = { turn: { reply: "Done.", edit: "Placed the clips on Main", review: true }, timeline: clips, editor: { timeline: clips } };
     for (const n of uncutUI.parts()) {
+      const full = uncutUI.mount(scratch, n, bring[n]);
+      for (const s of uncutUI.slots(n)) if (!uncutUI.find(full, s)) throw new Error(n + ": no slot " + s);
       const root = uncutUI.mount(scratch, n);
-      for (const s of uncutUI.slots(n)) if (!uncutUI.find(root, s)) throw new Error(n + ": no slot " + s);
       // Mounted without props, no part states a run fact (a result, round, score, model, time).
-      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM/);
+      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh/);
       if (said) throw new Error(n + ": states " + said[0] + " without props");
       if (n === "review" && uncutUI.findAll(root, "score").some((r) => r.querySelector(".score-value").textContent)) throw new Error("review: a score without props");
     }
+    // Every slot also stands alone as a piece (built, measured, unboxed).
+    for (const n of uncutUI.parts()) for (const s of uncutUI.slots(n)) uncutUI.piece(scratch, n + "." + s, { width: 100, props: bring[n] });
     scratch.remove();
     checked = true;
   }
@@ -111,6 +117,9 @@ window.render = (t) => {
   ctx.fillStyle = "hsl(" + Math.round(t * 90) + ", 70%, 50%)";
   ctx.fillRect(0, 0, 108, 135);
   uncutUI.mount(at.preview, "preview", { scale: 0.15, frame: pic, time: t });
+  // Pieces: the composer's box morphing into the agent's steps (mid-morph at frame 40), the Saved pill alone.
+  uncutUI.sequence(at.seq, t, [{ at: 0, piece: "composer.box", props: { text: prompt }, size: { width: 200 }, width: 220, x: 320, y: 300 }, { at: 1.2, piece: "turn.steps", props: { steps: ["Read the brand kit", "Placed the clips on Main"] }, size: { width: 200 }, width: 240, x: 330, y: 290 }]);
+  uncutUI.piece(at.piece, "topbar.saved", { width: 90, x: 590, y: 30 });
   uncutUI.cursor(stage, { x: 120 + t * 40, y: 90, scale: t > 1.2 && t < 1.35 ? 0.85 : 1, size: 18 });
 };
 </script>`;
