@@ -437,6 +437,14 @@ test("the card's summary agrees with the round's blockers", () => {
   assert.equal(agreeingNotes("No blockers remain. Motion is below the bar.", [{ kind: "motion" }]), "1 blocker (motion). Motion is below the bar.");
   assert.equal(agreeingNotes("Clean and on brand.", []), "Clean and on brand.");
   assert.equal(agreeingNotes("The card shows an invented result.", [{ kind: "invented" }]), "1 blocker (invented). The card shows an invented result.");
+  // Review: a "no blockers" or stale count mid-sentence takes its whole sentence, not a garbled half.
+  assert.equal(agreeingNotes("The film has no blockers but the hook is weak. Motion is good.", [{ kind: "motion" }]), "1 blocker (motion). Motion is good.");
+  assert.equal(agreeingNotes("2 blockers remain: the font and the overflow. The drop lands.", [{ kind: "font" }]), "1 blocker (font). The drop lands.");
+  assert.equal(agreeingNotes("Two blockers: the font and the overflow. The drop lands.", [{ kind: "font" }, { kind: "overflow" }]), "Two blockers: the font and the overflow. The drop lands.", "a count that agrees stays");
+  // Zero final blockers (the user marked them Intended): a stale count goes; nothing left says none.
+  assert.equal(agreeingNotes("3 blockers: the font, the overflow and a pop. The drop lands.", []), "The drop lands.");
+  assert.equal(agreeingNotes("One blocker remains.", []), "No blockers.");
+  assert.equal(agreeingNotes("No blockers. The drop lands.", []), "No blockers. The drop lands.");
   // criticReview: an unverified claim makes a blocker, and the notes say so.
   const review = criticReview(
     { scores: { hook: 8, readability: 8, motion: 8, variety: 8, sound: 8, brand: 8 }, evidence: {}, blockers: [], defects: [], fixes: [{ defect: "d1", verified: false, note: "still holds" }], summary: "No blockers, and it lands.", unproven: [] },
