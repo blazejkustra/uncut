@@ -120,7 +120,7 @@ test("the tools, labels, Look only set and the prompt's production process", () 
   assert.equal(stepLabel("storyboard_propose", { beats: BEATS }), "Proposed a storyboard of 2 beats");
   assert.equal(stepLabel("review_submit", { scores: { hook: 9, readability: 7 } }), "Asked the critic for a review");
   assert.equal(stepLabel("review_submit", { fixes: [{ defect: "d1", what: "x" }] }), "Asked the critic to check 1 fix");
-  for (const want of [/ask_user/, /brief_write/, /storyboard_propose/, /review_submit/, /beat_grid/, /never invent a logo/i, /hard lines/, /You don't score your own work/, /3 rounds, then more \(up to 6\) only while the blockers keep going down or changing/, /reference_frames/, /spring/]) assert.match(AGENT_TEXT, want);
+  for (const want of [/ask_user/, /brief_write/, /storyboard_propose/, /review_submit/, /beat_grid/, /never invent a logo/i, /hard lines/, /You don't score your own work/, /Up to 6 rounds: the first 3 always; past 3 another only while it converges[\s\S]*there is no 3-round limit/, /reference_frames/, /spring/]) assert.match(AGENT_TEXT, want);
   assert.match(SYSTEM_PROMPT, /follows the production process: docs_read production first/);
   assert.ok(!/[·•]/.test(AGENT_TEXT.replace(/never ·, • or \*/, "")), "no dot separators in the prompt");
 });

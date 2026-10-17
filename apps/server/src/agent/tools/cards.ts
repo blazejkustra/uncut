@@ -5,11 +5,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
 import { REVIEW_SCORES } from "@uncut/contracts";
-import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout, motionBlurDefault, projectMotionBlur } from "@uncut/core";
+import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout, motionBlurDefault, projectMotionBlur, safeMargin } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
-import { criticMessage, criticReview, mayReviewAgain, parseCritic, reviewNext, REVIEW_ROUNDS, REVIEW_ROUNDS_MAX, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "../agentCritic.ts";
+import { criticMessage, criticReview, parseCritic, reviewNext, reviewOutlook, runCritic, scoredOf, type CriticClaim, type CriticFinding, type CriticImage, type CriticInput } from "../agentCritic.ts";
 import { activeBrand, readBrand, readPlan, writeBrief, writeReview, writeStoryboard, normBrief, normBeats } from "../../brand/store.ts";
 import { BUILTIN_IDS, guessVideoType, isVideoType, reviewRubric, skillChecklist, suggestSkills, VIDEO_TYPES } from "@uncut/core/skills";
 import { FONT_ERRORS } from "../agentTools.ts";
@@ -318,13 +318,18 @@ export const makeCardTools = (ctx: GenerateCtx) => {
   const reviewSubmit = (r: Running, v: ProjectView, args: Record<string, unknown>) =>
     Effect.gen(function* () {
       if (!r.looked.sheet || !r.looked.phone) {
-        const missing = [!r.looked.sheet ? "a contact_sheet of the edit (no media)" : "", !r.looked.phone ? "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)" : ""].filter(Boolean).join(" and ");
-        return textResult(`Look before you ask for a review: ${missing}${r.reviewRounds ? " since the last round" : ""}, then review_submit.`, true);
+        // Round 4's A1: a refusal says what is missing, what is already done and that nothing counted.
+        const sheet = "contact_sheet with no media argument (the whole edit)";
+        const phone = "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)";
+        const missing = [!r.looked.sheet ? sheet : "", !r.looked.phone ? phone : ""].filter(Boolean).join(" and ");
+        const done = r.looked.sheet ? ` Already done: ${sheet.split(" (")[0]}.` : r.looked.phone ? ` Already done: ${phone.split(" (")[0]}.` : "";
+        return textResult(`Look before you ask for a review: each round starts from the edit as it is now, so first run ${missing}${r.reviewRounds ? ` (not done since round ${r.reviewRounds})` : ""}.${done} Then call review_submit again with the same fixes; this call didn't reach the critic and doesn't count as a round.`, true);
       }
-      // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while the blockers go down or change.
+      // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while it converges (reviewOutlook says why).
       const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
       // A hard ceiling on the turn's own count too: a review that couldn't be saved isn't in the plan.
-      if (!mayReviewAgain(turnReviews(), r.reviewRounds)) return textResult(`That was the last review round in this turn (${r.reviewRounds}; past ${REVIEW_ROUNDS} a turn goes on only while the blockers go down or change, up to ${REVIEW_ROUNDS_MAX}): stop fixing and tell the user what the critic still found.`, true);
+      const outlook = reviewOutlook(turnReviews(), r.reviewRounds);
+      if (!outlook.more) return textResult(`No more review rounds in this turn (${outlook.why}): stop fixing and tell the user what the critic still found.`, true);
       const project = v.session.project as Project;
       const fps = project.canvas.fps;
       const { starts, duration } = layout(project);
@@ -565,13 +570,13 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...(review.fixes ? { fixes: review.fixes } : {}),
         motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds, empty: emptyRuns(motion.scan, fps) } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
-        next: reviewNext(review, round, mayReviewAgain(turnReviews(), r.reviewRounds), (at) => {
+        next: reviewNext(review, round, reviewOutlook(turnReviews(), r.reviewRounds), (at) => {
           // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
           const f = clampF(at * fps);
           const g = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items).find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
           const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
           return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}`;
-        }),
+        }, { width: project.canvas.width, height: project.canvas.height, safe: safeMargin(project) }),
       });
     });
 
