@@ -575,4 +575,9 @@ test("round 2's A2: Claude Code's saved tool output of this project is read; the
   assert.ok(!settings.permissions.deny.some((r: string) => r.startsWith("Read(~/.claude/") || r === "Bash(*/.claude/*)"));
   for (const rule of ["Read(~/.claude/**)", "Bash(*/.claude/*)"]) assert.ok(settings.permissions.ask.includes(rule), rule);
   assert.ok(denyRules().includes("Read(~/.claude.json)"), "~/.claude.json stays a secret");
+  // A ~/.claude that is a link (dotfiles): judged by its real path like everything it's compared with.
+  const linked = { realpath: (p: string) => p.replace(`${HOME}/.claude`, `${HOME}/dotfiles/claude`) };
+  assert.equal(kind("Read", { file_path: `${out}/b4vwce.txt` }, "auto", linked), "allow", "its saved output still read");
+  assert.equal(kind("Read", { file_path: `${HOME}/.claude/.credentials.json` }, "auto", linked), "deny", "refused, not a card");
+  assert.equal(kind("Bash", { command: `cat ${out}/b4vwce.txt` }, "auto", linked), "allow");
 });

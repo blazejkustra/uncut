@@ -61,9 +61,10 @@ const remember = (key: string, result: Rehearsal, budgetMs: number) => {
   done.set(key, { result, budgetMs });
   return result;
 };
-const keyOf = (layers: ReadonlyArray<GraphicLayer>) => {
-  const h = createHash("sha256");
-  for (const l of layers) h.update(l.doc).update(JSON.stringify([l.f0, l.frames, l.motion?.ts ?? null, l.item.props ?? null]));
+// The canvas and fps too: render(t, info) gets them (a canvas or fps change reruns it), as do the item's in and duration.
+const keyOf = (layers: ReadonlyArray<GraphicLayer>, plan: ExportPlan) => {
+  const h = createHash("sha256").update(JSON.stringify([plan.canvas.width, plan.canvas.height, plan.fps]));
+  for (const l of layers) h.update(l.doc).update(JSON.stringify([l.f0, l.frames, l.motion?.ts ?? null, l.item.props ?? null, l.item.in ?? 0, l.item.duration]));
   return h.digest("hex");
 };
 
@@ -79,7 +80,7 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
   const total = calls.reduce((n, c) => n + c.length, 0);
   const end = layers.reduce((s, l) => Math.max(s, l.f1 / fps), 0);
   if (!total) return { covered: 0, total: 0, reached: end };
-  const key = keyOf(layers);
+  const key = keyOf(layers, plan);
   const before = done.get(key);
   if (before && (before.result.failure || before.result.covered >= total || before.budgetMs >= o.budgetMs)) return before.result;
   const deadline = now() + o.budgetMs;
@@ -103,12 +104,17 @@ export async function rehearseGraphics(r: Rasterizer, plan: ExportPlan, o: { rea
       } catch (error) {
         const message = (error as Error).message ?? String(error);
         if (STALLED.test(message)) return { covered, total, reached, stalled: true };
+        // Stopped (the turn, the session closed under it): the rasteriser's "stopped" isn't the graphic's failure.
+        if (o.signal?.aborted) return { covered, total, reached };
         const m = /at its frame (\d+(?:\.\d+)?): ([\s\S]*)$/.exec(message);
         const local = m ? Number(m[1]) : chunk[0]!.local;
         const why = (m ? m[2]! : message.replace(/^The text renderer failed: /, "")).replace(`${name}: `, "");
         const at = chunk.find((c) => c.local === local) ?? chunk[0]!;
         const second = (layer.f0 + at.i) / fps;
-        return remember(key, { frame: layer.f0 + at.i, failure: `The graphic ${name} would stop the export at ${second.toFixed(2)} s (its frame ${local}): ${why}`, covered: covered + chunk.indexOf(at), total, reached: second }, o.budgetMs);
+        const failed = { frame: layer.f0 + at.i, failure: `The graphic ${name} would stop the export at ${second.toFixed(2)} s (its frame ${local}): ${why}`, covered: covered + chunk.indexOf(at), total, reached: second };
+        // Only a failure the graphic's own render(t) threw is kept: a rasteriser that crashed or
+        // stopped is said this once and rehearsed again next time.
+        return m ? remember(key, failed, o.budgetMs) : failed;
       }
       fresh = false;
       covered += chunk.length;
