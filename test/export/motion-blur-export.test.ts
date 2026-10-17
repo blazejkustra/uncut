@@ -162,12 +162,31 @@ test("motion blur: each frame the mean of its sub-frames on premultiplied colour
       }
     }
     assert.ok(worst <= 3, `frame ${i}: the mean of its ${ts.length} sub-frames (worst ${worst.toFixed(1)})`);
-    // The square moves 64 px a frame: its sub-frames sit 0, 8, 16, 24 px on, so x0 + 52 is covered
-    // by the last two: white at half opacity (premultiplied mean), not grey.
+    // The square moves 64 px a frame: its 4 sub-frames sit `step` px apart (8 at 180°, 4 at 90°), so
+    // x0 + 40 + 1.5 steps is covered by the last two: white at half opacity (premultiplied mean), not grey.
     if (i === 101) continue; // wraps round the canvas
     const x0 = (64 * i) % 120;
-    const [r, g, b, alpha] = px(frame, x0 + 52, 40);
+    const step = (64 * MOTION_BLUR_DEFAULTS.shutter) / 360 / MOTION_BLUR_DEFAULTS.samples;
+    const [r, g, b, alpha] = px(frame, Math.round(x0 + 40 + 1.5 * step), 40);
     assert.ok(Math.abs(alpha! - 128) <= 2 && r! >= 250 && g! >= 250 && b! >= 250, `the trail at 2 of 4 sub-frames: white at half opacity, ${[r, g, b, alpha]}`);
+  }
+});
+
+test("a graphic request with ts (the critic's blurred frames) is the export's blurred frame", { skip, timeout: 240000 }, async () => {
+  const blurred = await streamed(MOVER, "mover", true);
+  for (const i of [1, 10, 45]) {
+    const out = join(root, `mover-ts-${i}.png`);
+    await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(MOVER, { width: W, height: H }), t: i / FPS, ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS), info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out });
+    const png = rgbaOf(out);
+    const frame = frameOf(blurred.frames, i);
+    let worst = 0;
+    for (let p = 0; p < W * H; p++) {
+      const a = frame[p * 4 + 3]!;
+      worst = Math.max(worst, Math.abs(png[p * 4 + 3]! - a));
+      if (a < 8) continue;
+      for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(png[p * 4 + c]! - frame[p * 4 + c]!));
+    }
+    assert.ok(worst <= 3, `frame ${i}: within 3 of the export's blurred frame (worst ${worst})`);
   }
 });
 

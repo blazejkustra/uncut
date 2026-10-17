@@ -1,6 +1,6 @@
 // Motion blur in the export (D291): a frame is the average of `samples` pictures drawn at moments
 // spread over the open shutter, `shutter` degrees of the frame interval (180°: half of it, a film
-// camera's), starting at the frame's own time, so the first sub-frame is the sharp frame and one
+// camera's; 90° by default, see MOTION_BLUR_DEFAULTS), starting at the frame's own time, so the first sub-frame is the sharp frame and one
 // sample is no blur. The export draws graphics this way (the rasteriser streams each sub-frame,
 // ffmpeg averages them on premultiplied colour). The preview draws no blur.
 import type { Item, Project } from "../timeline/types.ts";
@@ -12,8 +12,14 @@ export interface MotionBlur {
   readonly shutter: number;
 }
 
-/** What an export uses without a project setting: 4 sub-frames over a 180° shutter. */
-export const MOTION_BLUR_DEFAULTS: MotionBlur = { samples: 4, shutter: 180 };
+/**
+ * What an export uses without a project setting: 4 sub-frames over a 90° shutter. Round 2's A1 (12
+ * sub-frames, the old 180° default) smeared a camera push into the footage and a UI morph into
+ * unreadable ghosts; rendered side by side, 90° kept the move smooth with a quarter-frame trail and
+ * the text readable, where 180° doubled the smear and 4 sub-frames over 180° showed stepped copies.
+ * Graphics are UI and type moving fast under a camera, not film footage: the shorter shutter suits them.
+ */
+export const MOTION_BLUR_DEFAULTS: MotionBlur = { samples: 4, shutter: 90 };
 export const MOTION_BLUR_SAMPLES = { min: 2, max: 16 } as const;
 
 /** Whether an export blurs by default: the project's `on`, else on for Standard and High, off for Draft. */

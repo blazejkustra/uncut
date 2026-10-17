@@ -25,17 +25,17 @@ test("subFrameTimes: n sub-frames from the frame's own moment over shutter/360 o
 });
 
 test("motion blur settings: defaults by quality, the project's own, clamped, an item opting out", () => {
-  assert.deepEqual(MOTION_BLUR_DEFAULTS, { samples: 4, shutter: 180 });
+  assert.deepEqual(MOTION_BLUR_DEFAULTS, { samples: 4, shutter: 90 });
   assert.equal(motionBlurDefault({}, "draft"), false);
   assert.equal(motionBlurDefault({}, "standard"), true);
   assert.equal(motionBlurDefault({}, "high"), true);
   assert.equal(motionBlurDefault({ motionBlur: { on: false } }, "high"), false);
   assert.equal(motionBlurDefault({ motionBlur: { on: true } }, "draft"), true);
-  assert.deepEqual(projectMotionBlur({}), { samples: 4, shutter: 180 });
+  assert.deepEqual(projectMotionBlur({}), { samples: 4, shutter: 90 });
   assert.deepEqual(projectMotionBlur({ motionBlur: { samples: 8, shutter: 90 } }), { samples: 8, shutter: 90 });
   assert.deepEqual(projectMotionBlur({ motionBlur: { samples: 99, shutter: 0 } }), { samples: 16, shutter: 1 });
   assert.equal(itemMotionBlur({}, {}, false), undefined);
-  assert.deepEqual(itemMotionBlur({}, {}, true), { samples: 4, shutter: 180 });
+  assert.deepEqual(itemMotionBlur({}, {}, true), { samples: 4, shutter: 90 });
   assert.equal(itemMotionBlur({ motionBlur: false }, {}, true), undefined);
   // The export's switch is the last word: an item can't turn blur on in an export without it.
   assert.equal(itemMotionBlur({ motionBlur: true }, {}, false), undefined);
