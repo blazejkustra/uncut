@@ -7,12 +7,15 @@ import { parseTemplate, type Template } from "./templates.ts";
 
 const KEYNOTE = `---
 name: Keynote one take
-description: A product launch film rebuilt from the product's own UI: one unbroken take, a cursor drives every change, the camera pushes in so each moment fills the frame, on the beat.
+description: A product launch film rebuilt from the product's own UI: one unbroken take, a person asks and the AI does the editing, the camera pushes in so each moment fills the frame, on the beat.
 ---
 
 <inputs>
 Everything the film needs is in this project. Use only what is listed here; don't invent anything and don't stop to ask.
 - Project: {{project}}
+- The request typed on screen at the open, word for word (it is the user's own ask; edit it here before sending if you like):
+  "Create a promo video for {{product|the product}} from this {{footage-kind}}"
+  If it says just "footage", you may name the footage by what the clips show once you've looked at them (drone footage, a screen recording, product shots); change nothing else in it.
 - Canvas: {{canvas}}. Length: {{length|the song's length}}.
 - Song: {{music}}
 - Beat grid: {{grid}}
@@ -36,22 +39,29 @@ Rebuild the interface as flat vector graphics, measured from the screenshots: th
 
 <direction>
 A launch reveal told only with the product's own interface, in one unbroken take. Nothing cuts and nothing fades: every scene is made from a piece of the one before it. A button swells into a panel, a card becomes a row, a row stretches into a clip, a preview grows until it is the whole frame.
-The cursor is the reason for every change. It travels on an eased arc, settles, then clicks, types, drags or presses and holds, and what it touched answers on that beat. Nothing moves on its own.
-The camera behaves like a screen-recording zoom: it pushes in until the moment that matters fills most of the frame, glides to the next one, and pulls back to the whole window at most once, for one bar, to show where things live. The cursor scales with it.
+It must look like AI is editing. The cursor is the person, and it appears only where a person acts: typing the request into the composer and pressing send at the open, and pressing Export at the end. There it travels on an eased arc, settles, then types or clicks, and what it touched answers on that beat. Everything in between is the agent's work and happens with no cursor on screen: a step line of the agent ticks in, and on the next beat the edit it names appears by itself (a clip lands, a trim tightens, a look washes over the footage, a caption or a title writes itself in). Every change answers a step line; nothing moves without a visible cause.
+The camera behaves like a screen-recording zoom: it pushes in until the moment that matters fills most of the frame, glides to the next one, and pulls back to the whole window at most once, for one bar, to show where things live. The cursor, while it is on screen, scales with it.
 Readability floor, judged at phone size: any word the viewer has to read is at least 3 % of the frame's height on screen. The typed request is the biggest type in the film until the logo: the composer spans the frame's width and its text is at least 6 % of the frame's height. Whole windows at desktop scale with 1 % text are scenery, never the message; push in instead.
 Every frame is full. The panel the camera is on always holds real content: no stretch of empty panel, no lone icon on a blank field, no dark frame waiting for the next thing.
-Honesty: show only what the product has and what this run really did. Labels come from the screenshots. Numbers come from the inputs above (how many files, the song's length, the canvas) or from your own work in this turn (the beats of the storyboard you wrote). Labels, counts and results quoted in the kit's notes show the style only; the words and numbers on screen come from this run. Never show an outcome that hasn't happened: the critic's review and the export come after the film exists, so show their controls or show them starting, never a verdict, a score or a made-up percentage.
+Honesty: show only what the product has and what this run really did. Labels come from the screenshots. Numbers come from the inputs above (how many files, the song's length, the canvas) or from your own work in this turn (the beats of the storyboard you wrote). Labels, counts and results quoted in the kit's notes show the style only; the words and numbers on screen come from this run. Never show an outcome that hasn't happened: the critic's review comes after the film exists, so show it starting (its criteria rows appearing, bars beginning to fill), never a verdict, a final score or a made-up percentage. The export at the end may run to the product's own saved message, with no invented file size or time.
 </direction>
 
 <structure>
 Plan in bars of the beat grid: count the bars below on the measured grid, start on a downbeat, change something on every beat and make one big change per bar.
-1. Open, bars 1 to 2: the composer (or the product's first screen if it has none) fills the frame's width, already moving on frame 0. The cursor clicks into it and a short, real request this project could send (naming its footage and song in plain words) is typed in big type, one word per beat.
+1. Open, bars 1 to 2: the composer (or the product's first screen if it has none) fills the frame's width, already moving on frame 0. The cursor clicks into it and the request from the inputs is typed in big type, a word or two per beat, exactly as written: a user's plain ask, never edit instructions or a description of the film.
 2. Send, bar 3: the cursor clicks send; the send control grows and carries the request into the agent's panel as its first message.
-3. Work, bars 4 to 5: true step lines of this run tick in one per beat, with real counts (the files imported, the brief, the storyboard with its real number of beats). The cards the product has slide in, and the cursor approves one so it takes the success colour. The camera stays pushed in so every line reads.
-4. Build, up to the drop: one bar on the whole window, then a glide to the timeline: the footage snaps onto the track one clip per beat with thumbnail strips, the song draws across with its waveform, the playhead starts to run. Then a dive into the preview that reaches full frame exactly on the drop.
+3. Work, bars 4 to 5, no cursor from here: true step lines of this run tick in one per beat, with real counts (the files imported, the brief, the storyboard with its real number of beats). The cards the product has slide in under them. The camera stays pushed in so every line reads.
+4. Build, up to the drop: one bar on the whole window, then a glide to the timeline: a step line names the cut, and the footage snaps onto the track one clip per beat with thumbnail strips, the song draws across with its waveform, the playhead starts to run. Then a dive into the preview that reaches full frame exactly on the drop.
 5. Drop, 2 to 3 bars from {{drop|the drop found in the beat analysis}}: the real footage edge to edge, a new shot every one or two beats, each one arriving as a shape (inset, full bleed, pill, split), never as a cut. Only the best stretch of each clip.
-6. Features, 2 to 3 bars: the footage shrinks back into the preview and one shape travels through two or three real features from the screens; for each, the cursor does its one action and the result fills the frame. An export may be shown up to its progress bar running, never finished.
-7. Close, the last 2 bars: the last thing on screen folds into the logo while the tagline {{tagline|(none in the kit: leave it out)}} and {{url|(no URL in the kit: leave it out)}} rise out of a mask line, landing on the last downbeat. The logo never sits alone on an empty frame for more than a beat. The last frame equals the first (the empty composer, the cursor where it began), so the film loops.
+6. Features, 2 to 3 bars: the footage shrinks back into the preview and one shape travels through 2 to 4 of the product's features, each a beat or two, each shown as the agent using it on this project: its step line ticks in, then the result fills the frame. Pick only what the product really has (its screens, or the kit's about and notes, name it) and what reads as motion at phone size and says the product's value at a glance. Good picks, when the product has them:
+   - a look or effect visibly changing the footage (the plain shot, then the graded one)
+   - captions appearing word by word on the video
+   - a title or text animating in over the footage
+   - clips trimming or snapping onto the timeline on the beat (if not already shown in the build)
+   - the agent's review starting, its criteria rows appearing and their bars beginning to fill
+   - one undo putting a whole turn back
+   Steer away from dense panels and forms (settings, mixer faders, brand kit forms, file lists, capture setup) unless one is a single big, legible moment.
+7. Close, the last 2 to 3 bars: the cursor comes back for the one last human act: it clicks Export, the product's export control answers, the progress runs and lands on its saved message. Then the last thing on screen folds into the logo while the tagline {{tagline|(none in the kit: leave it out)}} and {{url|(no URL in the kit: leave it out)}} rise out of a mask line, landing on the last downbeat. The logo never sits alone on an empty frame for more than a beat. The last frame equals the first (the empty composer, the cursor where it began), so the film loops.
 </structure>
 
 <never>
@@ -75,13 +85,13 @@ Crossfades, blur-ins, fades from or to black, brightness ramps that develop an i
 - visibility: visible on a child beats a hidden parent; give children inherit.
 - will-change on a layer the camera scales leaves its text soft; leave it off.
 - A plain local file server often can't serve byte ranges, so a video loaded by URL won't seek; that's why the blob URL.
-- The cursor stays inside the frame and above everything else.
+- While the cursor is on screen it stays inside the frame and above everything else; between send and Export it is gone, not parked in a corner.
 - Compare the first and last frames, cursor included; any difference shows as a jump when the film loops.
 - If you're not sure the product has something, leave it out.
 </gotchas>
 
 <start>
-Don't ask questions; decide. First write the beat map: one line per bar with its time on the grid, what is on screen, what the cursor does and where the camera is. Render four stills (the open with the request typed, the agent's work, the drop, the close) and check each against the readability floor and this brief. Then build the whole film, render a still per beat, scan for one-frame pops (a frame that changes far more than the frames around it) and fix them, and finish with the film and the song on the timeline.
+Don't ask questions; decide. First write the beat map: one line per bar with its time on the grid, what is on screen, what causes each change (the cursor, or the agent step line that names it) and where the camera is. Render four stills (the open with the request typed, the agent's work, the drop, the close) and check each against the readability floor and this brief. Then build the whole film, render a still per beat, scan for one-frame pops (a frame that changes far more than the frames around it) and fix them, and finish with the film and the song on the timeline.
 </start>
 `;
 
