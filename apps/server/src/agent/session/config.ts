@@ -1,5 +1,5 @@
 import { AGENT_IMAGE_TYPES, AGENT_MODELS } from "@uncut/contracts";
-import { type Access, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
+import { type Access, claudeConfigDirs, permissionMode, sessionSettings, LOOK_DISALLOWED } from "../agentPermissions.ts";
 import { SYSTEM_PROMPT, skillsPrompt } from "../agentTools.ts";
 import type { PluginSkill } from "@uncut/core";
 import { which } from "../../app/setup.ts";
@@ -65,7 +65,7 @@ export function sessionArgs(o: { readonly cfg: string; readonly settings?: strin
     "--permission-prompt-tool", "stdio",
     // Secrets stay out whatever the access, before claude's own read-only auto-allow and its classifier.
     // D219: Uncut's data folder (and other apps' data) too.
-    "--settings", o.settings ?? sessionSettings({ access, projects: o.projects, dataDir: o.dataDir }),
+    "--settings", o.settings ?? sessionSettings({ access, projects: o.projects, dataDir: o.dataDir, claudeConfig: claudeConfigDirs() }),
     // D232 (issue #60): every installed skill by name and description; skill_read loads one.
     "--append-system-prompt", `${SYSTEM_PROMPT}${skillsPrompt(o.skills ?? [])}`,
   ];

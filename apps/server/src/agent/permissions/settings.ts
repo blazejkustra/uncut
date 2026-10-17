@@ -17,15 +17,33 @@ export const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcl
 export const CLAUDE_DIR = ".claude";
 const CLAUDE_ASK_RULES = [`Read(~/${CLAUDE_DIR}/**)`, `Bash(*/${CLAUDE_DIR}/*)`, `Bash(*/${CLAUDE_DIR})`, `Bash(*~/${CLAUDE_DIR}*)`];
 export const SECRET_FILES = [".netrc", ".npmrc", ".git-credentials", ".claude.json", ".pypirc"] as const;
-export function denyRules(dataDir?: string): Array<string> {
+/** A secret file as a file rule's pattern: Claude Code's own config with its backups (.claude.json.backup, …). */
+const secretPattern = (f: string) => (f === ".claude.json" ? `${f}*` : f);
+/**
+ * CLAUDE_CONFIG_DIR (Claude Code's folder when the user moved it from ~/.claude; its .claude.json
+ * is in it too): the same rules as ~/.claude at its absolute paths, the folder as set and its real
+ * path when they differ (claudeConfigDirs). ~/.claude's rules stay.
+ */
+const configDirDenyRules = (dirs: ReadonlyArray<string>) =>
+  dirs.flatMap((d) => {
+    const base = globSafe(d.replace(/\/+$/, ""));
+    return [`Edit(/${base}/**)`, `Read(/${base}/.claude.json*)`];
+  });
+const configDirAskRules = (dirs: ReadonlyArray<string>) =>
+  dirs.flatMap((d) => {
+    const dir = d.replace(/\/+$/, "");
+    return [`Read(/${globSafe(dir)}/**)`, ...["/", " ", '"', "'"].map((end) => `Bash(*${bashSafe(dir)}${end}*)`), `Bash(*${bashSafe(dir)})`];
+  });
+export function denyRules(dataDir?: string, claudeConfig: ReadonlyArray<string> = []): Array<string> {
   const rules: Array<string> = [];
   for (const d of SECRET_DIRS) {
     for (const tool of ["Read", "Edit"]) rules.push(`${tool}(~/${d}/**)`);
     rules.push(`Bash(*/${d}/*)`, `Bash(*/${d})`, `Bash(*~/${d}*)`);
   }
   rules.push(`Edit(~/${CLAUDE_DIR}/**)`);
+  rules.push(...configDirDenyRules(claudeConfig));
   for (const f of SECRET_FILES) {
-    for (const tool of ["Read", "Edit"]) rules.push(`${tool}(~/${f})`);
+    for (const tool of ["Read", "Edit"]) rules.push(`${tool}(~/${secretPattern(f)})`);
     rules.push(`Bash(*${f}*)`);
   }
   // .env files anywhere (Read and Edit), and a command naming one (after a space or a slash, so `process.env` isn't caught).
@@ -63,8 +81,8 @@ export function appDataRules(dataDir?: string): Array<string> {
  * command comes to Uncut over stdio and `decide` lets a plain read of the active kit's files run
  * (claude's deny rules refused `cat` of a kit SVG silently, with no card) and refuses the rest.
  */
-export function appDataAskRules(dataDir?: string): Array<string> {
-  const rules = ["Bash(*Application Support*)", "Bash(*Application\\ Support*)", ...CLAUDE_ASK_RULES];
+export function appDataAskRules(dataDir?: string, claudeConfig: ReadonlyArray<string> = []): Array<string> {
+  const rules = ["Bash(*Application Support*)", "Bash(*Application\\ Support*)", ...CLAUDE_ASK_RULES, ...configDirAskRules(claudeConfig)];
   const dir = dataDir?.replace(/\/+$/, "");
   // A data folder elsewhere (UNCUT_DATA_DIR) isn't caught by the Application Support rules.
   // (The folder itself, not a sibling that starts with its name.)
@@ -112,9 +130,10 @@ export function autoAskRules(): Array<string> {
  * D194, D214: the --settings JSON a session gets: claude's deny rules in every access; in Auto also
  * Uncut's own files (deny) and the calls that must still reach Uncut (ask).
  */
-export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined } = {}): string {
-  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir), ask: appDataAskRules(o.dataDir) } });
-  return JSON.stringify({ permissions: { deny: [...denyRules(o.dataDir), ...ownFileRules(o.projects ?? [])], ask: [...autoAskRules(), ...appDataAskRules(o.dataDir), ...ownFileAskRules()] } });
+export function sessionSettings(o: { readonly access?: Access | undefined; readonly projects?: ReadonlyArray<string> | undefined; readonly dataDir?: string | undefined; readonly claudeConfig?: ReadonlyArray<string> | undefined } = {}): string {
+  const cc = o.claudeConfig ?? [];
+  if (o.access !== "auto") return JSON.stringify({ permissions: { deny: denyRules(o.dataDir, cc), ask: appDataAskRules(o.dataDir, cc) } });
+  return JSON.stringify({ permissions: { deny: [...denyRules(o.dataDir, cc), ...ownFileRules(o.projects ?? [])], ask: [...autoAskRules(), ...appDataAskRules(o.dataDir, cc), ...ownFileAskRules()] } });
 }
 
 /** D194: tools a Look only session starts without (--disallowedTools): claude can't even auto-allow a read-only command. */

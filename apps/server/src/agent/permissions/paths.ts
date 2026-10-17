@@ -50,6 +50,17 @@ export function realPath(p: string, base: string, home = homedir(), real: (p: st
   }
 }
 
+/**
+ * CLAUDE_CONFIG_DIR when the user set it (Claude Code's folder instead of ~/.claude): the folder as
+ * set (~ expanded, absolute) and its real path when that differs; empty when it isn't set.
+ */
+export function claudeConfigDirs(env: NodeJS.ProcessEnv = process.env, home = homedir(), real: (p: string) => string = realpathSync.native): Array<string> {
+  const v = env.CLAUDE_CONFIG_DIR?.trim();
+  if (!v) return [];
+  const abs = absolute(v, home, home);
+  return [...new Set([abs, realPath(abs, home, home, real)])];
+}
+
 /** Uncut's own files in a project (compared without case: APFS isn't case-sensitive). */
 const OWNED_RE = [/^project\.json$/, /^history\.db/, /^agent(\/|$)/, /^brand\/active\.json$/];
 export function owned(real: string, project: string): boolean {
