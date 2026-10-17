@@ -47,6 +47,19 @@ export function runFacts(beats: number | undefined, reviews: ReadonlyArray<{ rea
 }
 
 /**
+ * The user's own words for the critic: the project's main request (its longest message, where a
+ * detailed brief lives) first, then this turn's message when it's another (a later "make it faster"
+ * mustn't hide the brief). Each capped, so a pasted log can't crowd out the frames.
+ */
+export function userRequest(prompts: ReadonlyArray<string | undefined>, current: string | undefined, cap = 8000): string {
+  const all = prompts.map((x) => x?.trim() ?? "").filter(Boolean);
+  const main = all.reduce((a, x) => (x.length > a.length ? x : a), "");
+  const now = current?.trim() ?? "";
+  const cut = (x: string) => (x.length > cap ? `${x.slice(0, cap)} […]` : x);
+  return [main, now && now !== main ? `Then, this turn: ${now}` : ""].filter(Boolean).map(cut).join("\n\n");
+}
+
+/**
  * The skills whose checklists the critic checks. D297: with the motion film on, it wins: launch
  * promo's held end card, motion craft's one thing at a time and sound design's few effects contradict
  * it, so only the film's checklist and the brand's go to the critic.
@@ -142,7 +155,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
             type: saved.b.type ?? "none (judged as a short product video)",
             suggestedSkills: skills.suggested.filter((x) => !skills.used.some((u) => u.id === x.id)).map((x) => ({ id: x.id, name: x.name })),
             skills: skills.used.map((x) => ({ id: x.id, name: x.name })),
-            skillsNote: `${skills.suggested.some((x) => !skills.used.some((u) => u.id === x.id)) ? "Read each suggested skill that fits with skill_read before you build (no need to ask the user; leave out one the brief says it doesn't want, like motion graphics or sound design). " : ""}Follow every rule of the skills this project uses; the critic checks their review checklists.`,
+            skillsNote: `${skills.suggested.some((x) => !skills.used.some((u) => u.id === x.id)) ? "Read each suggested skill that fits with skill_read before you build (no need to ask the user; leave out one the brief says it doesn't want, like motion graphics or sound design). " : ""}Follow the rules of the skills this project uses where the user's own direction doesn't decide; the critic checks their review checklists.`,
             rubric: Object.fromEntries(Object.entries(rubric.levels).map(([k, l]) => [k, l === "na" ? "not scored" : l])),
             sound: soundProfileText(rubric.sound),
           }
@@ -542,7 +555,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.
       const number = r.owner.plan.reviews.length + 1;
-      const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: criticSkills(brand.skills).map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended, motion: { lines: motionFacts, strips: motion.images.length } };
+      const input: CriticInput = { round: number, canvas: project.canvas, frames: duration, brief: r.owner.plan.brief, storyboard: sb, kit: brand.kit ? kitLines(brand.kit, brand.files) : [], previous: prev, claims, checks, determinism: { checked, differed }, images, skills: criticSkills(brand.skills).map((x) => ({ name: x.name, checklist: skillChecklist(x.body) })), request: userRequest(r.owner.turns.map((t) => t.prompt), r.turn.prompt), sound: soundSheet(project, { sound: rubric.sound }), rubric, intended, motion: { lines: motionFacts, strips: motion.images.length } };
       const bin = yield* Effect.promise(() => findClaude());
       if (!bin) return textResult("Uncut's critic needs Claude Code, and it isn't installed: the review couldn't run. Tell the user; don't say the video passed.", true);
       const answer = yield* Effect.tryPromise({ try: (signal) => runCritic({ bin, env: sessionEnv(process.env), model: r.session.model, message: criticMessage(input), signal: AbortSignal.any([signal, r.abort.signal]) }), catch: (e) => e as Error }).pipe(

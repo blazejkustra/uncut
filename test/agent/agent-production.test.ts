@@ -443,7 +443,9 @@ test("D195/D196: Uncut's critic scores the review, blockers fail it, fixes are c
       assert.ok(run.args.includes("--no-session-persistence"));
       assert.ok(!run.env.includes("OPENAI_API_KEY"), "D277: no generator key for the critic");
       assert.notEqual(run.cwd, s.dir);
-      assert.ok(!run.text.includes("BUILDER-SECRET-7"), "no builder message");
+      // A2 vs A2r5: the user's own words reach the critic, verbatim and only in <request> (judged first); nothing the builder adds does.
+      assert.ok(run.text.includes("<request>\nBUILDER-SECRET-7 make the promo and review it\n</request>"), "the user's request");
+      assert.equal(run.text.split("BUILDER-SECRET-7").length, 2, "the user's words once, inside <request>");
       assert.ok(!run.text.includes("editing agent inside Uncut"), "no builder system prompt");
       assert.ok(!run.text.includes(builder.prompt.slice(0, 60)));
       assert.ok(!/centred the title/.test(run.text) || /<claimed-fixes>/.test(run.text), "the builder's words only as fix claims");

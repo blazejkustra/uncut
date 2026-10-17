@@ -40,7 +40,7 @@ export const makeBrandTools = (ctx: CardsCtx) => {
         description: skill.description,
         from: skill.pluginName ? `the plugin ${skill.pluginName}` : "the user's own skills",
         instructions: skill.body,
-        next: "Follow every rule in it for this task; the critic checks its review checklist.",
+        next: "Follow its rules for this task where the user's own direction doesn't decide (what the message sets wins); the critic checks its review checklist.",
       });
     });
 

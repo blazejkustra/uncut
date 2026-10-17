@@ -160,7 +160,7 @@ export function planContext(brand: { kit?: BrandKit | undefined; files: Readonly
   else b.push(`No brand kit is chosen for this project.${brand.others.length ? ` The user's kits: ${brand.others.map((k) => `"${k.name}" (${k.id})`).join(", ")}. A product the request names: its kit (brand_read) if one matches; else ask_user once, don't search the disk or the web for it.` : " The user has no kits yet."}`);
   // D232: the skills this project uses (read with skill_read or called with /name) by name; the system
   // prompt lists every installed skill, and skill_read gives one's instructions (progressive disclosure).
-  if (brand.skills.length) b.push(`Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow every rule in them (skill_read gives one's instructions again); the critic checks their review checklists.`);
+  if (brand.skills.length) b.push(`Skills this project uses: ${brand.skills.map((x) => `${x.name} (${x.id})`).join(", ")}. Follow their rules where the user's own direction doesn't decide (skill_read gives one's instructions again); the critic checks their review checklists.`);
   parts.push(`<brand>\n${b.join("\n")}\n</brand>`);
   const block = planOnly(plan, gate);
   if (block) parts.push(block);
