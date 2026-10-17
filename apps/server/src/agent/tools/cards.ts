@@ -237,6 +237,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       r.planned = true;
       // Round 2's A2: a prompt that says nobody can answer ("decide yourself") approves its own
       // storyboard, shown as such on the card, rather than skipping it (and the critic with it).
+      if (args.approve === "self" && r.access !== "auto") {
+        r.proposing = false;
+        return textResult(`approve "self" is for a run in Auto where nobody can answer; this chat is set to ${r.access === "look" ? "Look only" : "Ask first"}, so the user is here to approve it: propose it without approve.`, true);
+      }
       if (args.approve === "self") {
         r.proposing = false;
         const sb = yield* write({ summary, beats, status: "approved", approvedBy: "agent" });

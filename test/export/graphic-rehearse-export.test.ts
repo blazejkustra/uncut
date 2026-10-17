@@ -145,3 +145,13 @@ test("a frame session (render_frames, review_submit) rehearses with the export's
     await session.close();
   }
 });
+
+test("a stretch slower than the renderer waits for one request stops the rehearsal there, never a failure", { skip, timeout: 120_000 }, async () => {
+  // 0.6 s a frame: each frame within the export's own deadline, a 60-frame request past the rasteriser's 30 s.
+  const SLOW = `<script>window.render = () => { const t0 = Date.now(); while (Date.now() - t0 < 600) {} };</script>`;
+  const x = await rehearseGraphics(raster, plan(SLOW, false, "graphics/slow.html"), { budgetMs: 60_000 });
+  assert.equal(x.failure, undefined, "not a failure");
+  assert.equal(x.stalled, true);
+  assert.equal(x.covered, 0);
+  assert.match(rehearsalLine(x), /took longer than the renderer waits/);
+});
