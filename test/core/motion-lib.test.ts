@@ -484,11 +484,12 @@ test("calm defaults: the glide eases off and slows down longer than it sped up; 
   while (v(b - 0.001) < tenth) b -= 0.001;
   const ratio = (b - peak) / (peak - a);
   assert.ok(ratio > 1.5 && ratio < 1.9, `slows down ${ratio.toFixed(2)}x as long as it speeds up`);
-  // The camera: by default each move is a glide of 0.9 s or more; a 4x push takes longer, its zoom never faster than about 1.2 ln/s.
+  // The camera: by default each move is a glide of 0.75 s or more (round 7: a 0.9 s floor made small moves read as drift); a 4x push takes longer, its zoom never faster than about 1.2 ln/s.
   const keys = [{ at: 0, x: 500, y: 400, zoom: 1 }, { at: 1, zoom: 2 }, { at: 4, zoom: 8 }];
   const lz = (t: number) => Math.log(M.camera(t, keys).zoom);
   assert.ok(near(lz(1), 0, 1e-12) && lz(1.9) < Math.log(2) - 1e-4 && near(lz(2.05), Math.log(2), 1e-9), "about 1 s for a 2x push");
-  assert.ok(near(Math.log(M.camera(1.9, [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, zoom: 1.5 }]).zoom), Math.log(1.5), 1e-9), "0.9 s for a small one");
+  const small = (t: number) => Math.log(M.camera(t, [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, zoom: 1.5 }]).zoom);
+  assert.ok(small(1.7) < Math.log(1.5) - 1e-4 && near(small(1.75), Math.log(1.5), 1e-9), "0.75 s for a small one");
   let fastest = 0;
   for (let t = 0; t < 7; t += 1 / 60) {
     const z = lz(t + 1 / 60) - lz(t);
@@ -504,6 +505,6 @@ test("calm defaults: the glide eases off and slows down longer than it sped up; 
   assert.ok(near(M.camera(1.15, keys, "spring.settle").zoom, Math.exp(Math.log(2) * M.spring(0.15, "spring.settle")), 1e-9));
   // Pure and continuous through a retarget mid-move.
   const re = [{ at: 0, x: 0, y: 0, zoom: 1 }, { at: 1, x: 300 }, { at: 1.4, x: -200 }];
-  for (let t = 0.9; t < 3; t += 1 / 60) assert.ok(Math.abs(M.camera(t + 1 / 60, re).x - M.camera(t, re).x) < 15, `continuous at ${t.toFixed(2)}`);
+  for (let t = 0.9; t < 3; t += 1 / 60) assert.ok(Math.abs(M.camera(t + 1 / 60, re).x - M.camera(t, re).x) < 25, `continuous at ${t.toFixed(2)}`);
   assert.deepEqual(M.camera(1.234, re), M.camera(1.234, re));
 });

@@ -30,11 +30,11 @@
                                                          // scale 0.95) and release; key the change at fire (0.03 s into the
                                                          // press), never on the arrival; a list chains clicks
      uncutMotion.camera(t, [{ at, x, y, zoom, dur }], ease, o) // { x, y, zoom }: the world point at the frame's centre and its zoom;
-                                                         // each move a calm glide (ease.glide) in log space for zoom: 0.9 s or
+                                                         // each move a glide (ease.glide) in log space for zoom: 0.75 s, or
                                                          // longer for a big push (o: { height } also slows a long pan), its
                                                          // key's dur wins; a spring name as ease keeps a spring; a key
-                                                         // missing x, y or zoom keeps the previous key's; let it settle
-                                                         // before the next key or a flight starts (one move at a time);
+                                                         // missing x, y or zoom keeps the previous key's; the next key or
+                                                         // a flight may start as it settles (one main move at a time);
                                                          // { drift: 0.015 } as a 4th argument: no hold is still, zoom
                                                          // creeps 1.5 % from each key to the next (a key's own drift wins)
      uncutMotion.frameRect(left, top, w, h, { width, height, fit, pad, align, safe, keep })
@@ -411,7 +411,7 @@
   // over from the previous key; zoom springs in log space, so a 1x to 3x push moves evenly.
   //
   // Default (no preset, or "glide"): each key's move is a calm glide of its own dur (key.dur, else
-  // o.dur, else measured from the move): at least 0.9 s, longer for a big push (zoom at most about
+  // o.dur, else measured from the move): at least 0.75 s, longer for a big push (zoom at most about
   // 1.2 ln/s at its peak) or, with o.height, a long pan (about 1.3 frame heights/s at its peak), up
   // to 2 s. A spring preset ("spring.settle", ...) keeps the old spring camera.
   function camera(t, keys, preset, o) {
@@ -438,7 +438,7 @@
   }
   function glideDur(a, b, o) {
     if (o && o.dur > 0) return o.dur;
-    var d = Math.max(0.9, (1.78 * Math.abs(b.lz - a.lz)) / 1.2);
+    var d = Math.max(0.75, (1.78 * Math.abs(b.lz - a.lz)) / 1.2);
     if (o && o.height > 0) d = Math.max(d, (1.78 * Math.hypot(b.x - a.x, b.y - a.y) * Math.max(a.zoom, b.zoom)) / (1.3 * o.height));
     return Math.min(2, d);
   }

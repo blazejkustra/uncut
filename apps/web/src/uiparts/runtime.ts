@@ -1043,6 +1043,30 @@ function carry(host: HTMLElement, kf: PieceKey, kj: PieceKey, bf: Built, bj: Bui
 
 type Hiding = HTMLElement & { __hidden?: Array<HTMLElement> };
 
+/** Where the shell is when key i + 1 starts, if key i's own morph (from i - 1) is still running then:
+ *  that morph's box and colour at that moment, chained back through earlier unsettled morphs; else null (key i at rest). */
+function startOf(i: number, keys: ReadonlyArray<PieceKey>, holders: ReadonlyArray<Holder>, dur: (k: PieceKey) => number, depth = 0): { box: Box; bg: string } | null {
+  if (i < 1 || depth > 8) return null;
+  const at = num(keys[i]!.at, 0);
+  const raw = (num(keys[i + 1]!.at, 0) - at) / dur(keys[i]!);
+  if (raw >= 1) return null;
+  const q = settle(raw);
+  const built = (n: number) => {
+    const hd = holders[n]!;
+    const shown = hd.style.display;
+    hd.style.display = "block";
+    const b = buildPiece(hd, keys[n]!);
+    hd.style.display = shown;
+    return b;
+  };
+  const bi = built(i);
+  const rest = keyBox(keys[i]!, bi);
+  const prev = startOf(i - 1, keys, holders, dur, depth + 1);
+  const a = prev ? prev.box : keyBox(keys[i - 1]!, built(i - 1));
+  const abg = prev ? prev.bg : built(i - 1).bg;
+  return { box: { x: a.x + (rest.x - a.x) * q, y: a.y + (rest.y - a.y) * q, w: a.w + (rest.w - a.w) * q, h: a.h + (rest.h - a.h) * q, r: a.r + (rest.r - a.r) * q }, bg: mixRgba(abg, bi.bg, q) };
+}
+
 /**
  * One shell carried through the keys: each key a piece where it sits (by default centred in the
  * host, 86 % of its width, its words 4.8 % of its height); from each key's at it morphs from the key
@@ -1096,8 +1120,12 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
     const kj = keys[j]!;
     const bf = buildPiece(holders[from]!, kf);
     const boxF = keyBox(kf, bf);
-    box = { x: boxF.x + (boxJ.x - boxF.x) * p, y: boxF.y + (boxJ.y - boxF.y) * p, w: boxF.w + (boxJ.w - boxF.w) * p, h: boxF.h + (boxJ.h - boxF.h) * p, r: boxF.r + (boxJ.r - boxF.r) * p };
-    bg = mixRgba(bf.bg, bj.bg, p);
+    // A key that starts before the last morph settled (a row added every half beat) starts from
+    // where the shell is, not from the last key's rest: no one-frame jump (round 7's steps card).
+    const start = startOf(from, keys, holders, dur);
+    const b0 = start ? start.box : boxF;
+    box = { x: b0.x + (boxJ.x - b0.x) * p, y: b0.y + (boxJ.y - b0.y) * p, w: b0.w + (boxJ.w - b0.w) * p, h: b0.h + (boxJ.h - b0.h) * p, r: b0.r + (boxJ.r - b0.r) * p };
+    bg = mixRgba(start ? start.bg : bf.bg, bj.bg, p);
     press = num(kf.press, 1) + (press - num(kf.press, 1)) * p;
     const same = kf.piece === kj.piece && (kf.index ?? 0) === (kj.index ?? 0) && kf.theme === kj.theme;
     holders[from]!.style.display = same ? "none" : "block";
