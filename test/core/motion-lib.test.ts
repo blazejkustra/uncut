@@ -391,6 +391,29 @@ test("grow (review): a full before at doesn't stick the scale at 1.12; dur 0 cut
   assert.ok(near(M.grow(2.2, { at: 2 }).w, M.grow(2.2, { at: 2, dur: 0.4 }).w, 1e-9), "the default is 0.4 s");
 });
 
+test("grow: visible from the kick on, so the documented pattern never paints the next shot unclipped before its grow", () => {
+  // A1r8 (12.98 and 15.48 s): at at and at + 1/60 the seed was under half a pixel, visible and full
+  // were both false, and the graphic ("full: new alone; visible: old, new clipped") fell through to
+  // the new shot full-bleed for two frames before the grow began. Every frame and every export
+  // sub-frame (4 over a 90° shutter) from the kick on is the old shot with the new one clipped, or
+  // the new one once full.
+  const W = 1080;
+  const H = 1350;
+  for (const kind of ["inset", "pill", "circle", "strip", "split"])
+    for (const at of [779 / 60, 929 / 60, 13]) {
+      const o = { at, full: at + 0.15, kind, width: W, height: H };
+      assert.ok(!M.grow(at - 1 / 960, o).visible, `${kind}: nothing before the kick`);
+      for (let f = 0; f <= 40; f++)
+        for (let j = 0; j < 4; j++) {
+          const g = M.grow(at + (f + j / 16) / 60, o);
+          assert.ok(g.full || g.visible, `${kind} at ${at.toFixed(3)} frame +${f} sub ${j}: neither full nor visible`);
+        }
+      // At the kick the seed is a point: the clip shows nothing of the new shot.
+      const k = M.grow(at, o);
+      assert.ok(k.visible && !k.full && k.rects.every((r) => r.w * r.h < 1 || kind === "strip" || kind === "split"), `${kind}: a point at the kick`);
+    }
+});
+
 test("grow: the next shot grows out of a shape into a seed on the kick, then bleeds full on the next; never a blank, never a jump", () => {
   const W = 1080;
   const H = 1350;

@@ -56,8 +56,10 @@
                                                          // no cut: on the kick at it grows out of origin (a rect in the previous shot, else
                                                          // its own centre) into a seed shape, kind "inset" | "pill" | "circle" | "strip" | "split",
                                                          // and on the kick full (default at + 0.6) bleeds past every edge; draw the old shot
-                                                         // under it until full is true. scale (1.12 to 1) eases the new picture in: scale it
-                                                         // about the frame's centre
+                                                         // under it until full is true. visible is true from at on (the seed may still be a
+                                                         // point: its clip shows only the old shot), so "full: new alone, visible: old + new
+                                                         // clipped, else old" never paints the new shot unclipped before its grow (A1r8 12.98 s).
+                                                         // scale (1.12 to 1) eases the new picture in: scale it about the frame's centre
      uncutMotion.growPath(ctx, g), uncutMotion.growCSS(g) // that entry as a canvas clip path, or a CSS clip-path for a frame-sized div
      uncutMotion.frameWidth(drawnWidth, zoom)            // the width to ask uncut.frame for: drawn width x camera zoom (x the content
                                                          // scale), rounded UP to a fixed step so the cache holds (never upscale footage)
@@ -642,9 +644,10 @@
       r: first.r,
       scale: 1 + (k - 1) * (1 - ramp(at, fullAt + dur - at, easeOut)),
       full: full,
-      visible: t >= at && rects.some(function (s) {
-        return s.w > 0.5 && s.h > 0.5;
-      }),
+      // From the kick on, even while the seed is still a point: a graphic that draws the old shot
+      // under the clip only while visible otherwise falls through to the new shot unclipped for the
+      // grow's first frames (A1r8 12.98 and 15.48 s: two frames of the next shot before its grow).
+      visible: t >= at,
     };
   }
   function growPath(ctx, g) {
