@@ -49,7 +49,10 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   assert.match(body, /^The hero \(both paths\)\n- One hero shape, a rounded rect or pill \(uncutMotion\.shape\), never leaves the frame/m);
   for (const want of [/A new card under a new headline is a slide/, /lands by about 0\.5 s/, /Every change has a visible cause: a drawn cursor's click, drag or keystroke/, /3\.5 % of the height or more/, /1 to 3 words/, /most scenes need none/, /holds drift \(uncutMotion\.camera's drift/, /uncutMotion\.click\) lands, rests 0\.1 s, visibly presses the button, and its change starts at fire/, /never on arrival/]) assert.match(body, want);
   for (const re of [/One hero carried through every scene/, /moves by 0\.5 s/, /visible cause \(a click rests, then presses\)/, /footage stays inside UI/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
-  for (const re of [/near-empty/, /camera moving in every scene/, /grows out of a shape/, /on the kick/, /huge headline/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
+  for (const re of [/near-empty/, /moving in every scene/, /grows out of a shape/, /on the kick/, /huge headline/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
+  // Round 5: the UI as large pieces morphing into each other (uncutUI.sequence), never a screen-recording pan; Uncut's real flow as the default story.
+  for (const want of [/^- UI as pieces: one element at a time/m, /60 to 90 % of the width/, /uncutUI\.sequence morphs each into the next/, /Never pan over a desktop-sized panel/, /About Uncut, by default tell its real flow/, /clips landing on the timeline, a look seen in the preview, Export, Saved/]) assert.match(body, want);
+  assert.ok(skillChecklist(body).some((l) => /large pieces/.test(l)), "pieces in the checklist");
   for (const re of [/70 %/, /9 %/, /caption under a card/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 8 && checklist.length <= 12, `${checklist.length} lines`);

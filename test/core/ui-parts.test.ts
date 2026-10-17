@@ -17,7 +17,7 @@ import { librarySignatures } from "../../apps/server/src/agent/agentDocs.ts";
 
 const ROOT = resolve(".");
 const LIB = readFileSync(resolve("assets/graphic-libs/ui.js"), "utf8");
-const PARTS = ["editor", "topbar", "agent", "message", "turn", "review", "timeline", "preview", "composer", "storyboard", "export", "exportProgress"];
+const PARTS = ["editor", "topbar", "agent", "message", "turn", "review", "timeline", "preview", "composer", "storyboard", "export", "exportProgress", "inspector", "effects"];
 
 type Ui = { parts(): Array<string>; size(n: string): { width: number; height: number }; css(): string; mount: unknown; find: unknown; findAll: unknown; cursor: unknown; timecode(s: number, fps?: number): string };
 const load = () => {
@@ -108,7 +108,8 @@ test("the data can't close its script, repeated icons are pooled, and the whole 
   const { parts, pool } = pooled({ a: { html: '<i><svg a="1"></svg><svg a="1"></svg><img src="data:image/png;base64,AAAA"></i>', width: 1, height: 1, ancestors: [] } });
   assert.deepEqual(pool, ['<svg a="1"></svg>', "data:image/png;base64,AAAA"]);
   assert.equal(parts.a!.html, '<i>\u00010\u0002\u00010\u0002<img src="\u00011\u0002"></i>');
-  assert.ok(Buffer.byteLength(LIB) < 260_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
+  // The pieces runtime and the Effects tab's look thumbnails (JPEG) brought it near 300 KB; the whole document with every library stays under MAX_GRAPHIC_DOC_BYTES (graphic-libs.test.ts).
+  assert.ok(Buffer.byteLength(LIB) < 310_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
 });
 
 test("pure at load and from t: no clocks, timers or randomness in the runtime", () => {

@@ -190,6 +190,9 @@ test("the critic's prompt: near-empty frames are blank; a wide shot of the whole
   assert.match(CRITIC_SYSTEM, /fine only while it fills a fair share of the frame and the next shape is already growing/);
   assert.doesNotMatch(CRITIC_SYSTEM, /on its way to the next state is not blank/);
   assert.match(CRITIC_SYSTEM, /A wide shot of a whole app window .* is a readability defect with its time range .*not a blocker/);
+  // Round 5 (A1r5): a desktop-sized agent panel or export dialog the moment is about, its words tiny, passed as "texture".
+  assert.match(CRITIC_SYSTEM, /In a UI-first film .* the panel, dialog or row the moment is about IS that line: a desktop-sized panel whose words are under about 3\.5 % of the frame's height .* is this blocker/);
+  assert.match(CRITIC_SYSTEM, /shown at desktop scale, its lines unreadable at 360 px, is an illegible blocker in a UI-first film/);
 });
 
 // Round 3's A/B: A1r3 went 4, 1, 1 and A2r3 1, 2, 2; each later round had fixed the last one's

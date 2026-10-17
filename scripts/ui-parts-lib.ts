@@ -139,50 +139,65 @@ export function runtimeJs(source: string): string {
 }
 
 /** The library's header: its API for the agent (docs_read graphics carries it word for word). */
-export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI as parts a graphic animates, for a film about Uncut
-   itself: build it from these instead of redrawing panels. Load it with the marker uncut:lib/ui.js
-   (a script tag with that src). Each part is the real app's markup and CSS, generated from its
-   React components (scripts/ui-parts.ts), as live DOM: scale it, move it with uncutMotion.cameraCSS,
-   clip it with uncutMotion.shapeCSS or growCSS, put footage in its preview frame. Dark, as the app.
-     uncutUI.parts()                                  // the names: editor, topbar, agent, message, turn, review,
-                                                      // timeline, preview, composer, storyboard, export, exportProgress
-     uncutUI.size(name)                               // { width, height }: its box in the app, CSS px at scale 1
-     uncutUI.mount(host, name, props)                 // puts the part in host (a div you position) and returns its root;
-                                                      // call it every frame: the same props give the same picture
-       props for every part: scale (1); width, height (its box, px before scale); text { slot: "..." };
-       press { slot: scale } (uncutMotion.click's .button); highlight: slot or [slots] (a selection ring);
-       hide: slot or [slots]; background ("none" or a colour: behind a part that isn't opaque, by
-       default the panel it sat on in the app)
-       composer: text (typed so far; empty disables Send), caret (true: a text caret after it), placeholder,
-         context ("Playhead 00:00:12:00"); slots input, send, attach, model, context
+export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a film about Uncut itself: the real app's markup
+   and CSS, generated from its React components (scripts/ui-parts.ts), as live DOM (crisp at any
+   size). Load it with the marker uncut:lib/ui.js (a script tag with that src). Dark, as the app.
+   Build the film from PIECES: one element of the UI on its own (the composer, a step row, a lane of
+   clips, the filter slider, the preview, Export, Saved), set LARGE on a calm canvas (60 to 90 % of
+   the width, its text 3.5 % of the frame's height or more), each one morphing into the next. A whole
+   panel only briefly, and only when its words read on a phone; never a camera panning over a
+   desktop-sized window: that reads as a screen recording.
+     uncutUI.sequence(host, t, keys, { dur: 0.5 })    // ONE shell carried through keys (call it every frame):
+       keys: [{ at, piece: "composer", props, size: { width: 300 }, width: 920, x: 540, y: 675 }, { at: 2, piece: "turn.steps", ... }]
+       piece: "part.slot" (or "part"); props: the part's props below; index: the nth match; x, y: its centre
+       in host px; width: its width in host px; size: its own layout size in app px (narrower wraps its text,
+       so it sets larger: the composer at 300 shown 920 wide); height: a taller or wider shell; pad, radius,
+       background (its shell's, default the piece's own look); press: the shell's scale (uncutMotion.click's
+       .button); fit: "contain" | "cover" (default cover for preview.frame); shadow: false; dur: its morph.
+       From each key's at the shell's centre, size, radius and colour travel to it in dur s (critically damped:
+       no overshoot) while the old content leaves and the new one arrives inside it, both at one uniform
+       scale (text never stretches): the send button's composer becomes the agent's steps, a step becomes the
+       lane its clips land on. The same piece twice (one more step) grows without a crossfade. Pure in t.
+       Returns { x, y, w, h, r, p, key, el } (el: the shown piece's element, for find and rectIn).
+     uncutUI.piece(host, "export.high", { props, width, x, y, ... })  // one piece alone (sequence's key at rest)
+     uncutUI.rectIn(el, host)                         // { x, y, w, h }: an element's rect in host px (aim a click at Send)
+     uncutUI.mount(host, name, props)                 // a whole part (returns its root): rarely, briefly
+     uncutUI.parts()                                  // editor, topbar, agent, message, turn, review, timeline, preview,
+                                                      // composer, storyboard, export, exportProgress, inspector, effects
+     uncutUI.slots(name), uncutUI.size(name)          // its slots (what a piece can be); its box in the app, CSS px
+     uncutUI.find(root, slot), uncutUI.findAll(root, slot)  // a slot's element (or any CSS selector's) in a part or piece
+   Pieces (part.slot): composer, composer.box, composer.send; message; turn.steps, turn.step, turn.edit,
+     turn.review; storyboard.beat, storyboard.approve; review.score; timeline.main, timeline.lane, timeline.clip,
+     timeline.playhead; preview.frame, preview.play; inspector.amount (a filter's slider), inspector.effect,
+     inspector.filter; effects.warm (any look: natural, cool, vintage, film, bw, vivid), effects.tile, effects.filters;
+     export.draft, export.standard, export.high, export.export; exportProgress.progress, exportProgress.bar;
+     topbar.export, topbar.saved, topbar.title.
+   Props (every part): text { slot: "..." }; press { slot: scale }; highlight, hide (keeps its room), remove (slot
+   or [slots]); background (mount: "none" or a colour behind a part that isn't opaque). Each part's own:
+       composer: text (typed so far; empty disables Send), caret, placeholder, context ("Playhead 00:00:12:00")
        message: text (the user's prompt bubble)
-       turn: reply, steps: ["Read the brand kit", ...], status (the line under it: model and time); slots reply, steps, review
-       storyboard: summary, beats: [{ start, end, title, lines: ["...", ...] }], count (show the first n);
-         slots summary, beat, approve, edit
-       review: scores { hook, readability, motion, variety, sound, brand } (0 to 10; only these are drawn),
-         progress 0..1 (their bars fill), status (by default "Reviewing"), title (by default "Review");
-         slots status, score, bar
-       timeline: clips: [{ track: "Main" | "Text" | "Audio" | "Sound effects" | index, start, duration (s),
-         name, image (a data: URL or uncut:media/<id>: the clip's filmstrip), selected, color }] (replaces
-         those tracks' clips), playhead (s), selected: [clip indexes]; slots playhead, clip, ruler, lanes
-       preview: frame (an element of yours, a canvas or an img with uncut.frame's picture: it fills the
-         preview's frame), time (s: the timecode); slots frame, transport, play
-       export: quality ("draft" | "standard" | "high"), file ("Launch film.mp4"), motionBlur (true or false);
-         slots draft, standard, high, file, motionBlur, export, cancel
-       exportProgress: progress 0..1 (the bar and "Rendering... 42%"), eta (s left); slots fill, cancel
-       topbar: exportLabel ("Exporting 42%"); slots export, saved, title
-       agent (the whole side panel), editor (the whole window, 1920 x 900): the props of the parts inside
-         them by name, editor: { composer: { text }, timeline: { playhead: 4 }, preview: { frame: canvas } }
-     uncutUI.slots(name)                              // its slot names (the elements a film reaches for)
-     uncutUI.find(root, slot)                         // the slot's element (or any CSS selector's) in a mounted part
-     uncutUI.findAll(root, slot)                      // every match
-     uncutUI.cursor(host, { x, y, scale, size: 28 })  // the macOS pointer, its tip at (x, y) in host px
-     uncutUI.timecode(seconds, fps)                   // "00:00:12:30", the editor's timecode
-     uncutUI.css()                                    // the parts' CSS (scoped under .uncut-ui), added once by mount
-   Run facts are real or absent: by default a part states none (the review "Reviewing" with empty bars,
-   no round, no plan state, no model or time under a turn, no time left on an export). Pass a result,
+       turn: steps: ["Read the brand kit", ...], done (rows done, the rest running), edit (the edit row's label),
+         reply (the agent's answer), review (true, or the review's props: its card in the turn), status
+       storyboard: summary, beats: [{ start, end, title, lines: ["..."] }], count (the first n)
+       review: scores { hook, readability, motion, variety, sound, brand } (0 to 10), progress 0..1, status, title
+       timeline: clips: [{ track: "Main" | "Text" | "Graphics" | "Audio" | "Sound effects" | index, start, duration
+         (s), name, image, selected, color }]: the whole timeline (it starts empty); playhead (s)
+       preview: frame (your canvas or img: it fills the frame), time (s: the timecode)
+       inspector: title (the clip's name), filter (the look's name on its slider), amount (0 to 100),
+         filter: false, effects: false (those sections out)
+       effects: active (the look picked: "warm"; none: ""), target ("On DJI 0063")
+       export: quality ("draft" | "standard" | "high"), file ("Launch film.mp4"), motionBlur
+       exportProgress: progress 0..1 ("Rendering... 42%"), eta (s left)
+       topbar: exportLabel ("Exporting 42%")
+       agent (the side panel), editor (the window, 1920 x 900): the parts inside by name ({ composer: { text } });
+         editor: media: [{ name, meta, image }] (the library's tiles)
+   An image is a data: or blob: URL: await uncut.url(id, seconds) once before the first frame (an uncut:media/
+   marker only resolves in the graphic's own HTML). Nothing of the fixture shows unless you pass it: no prompt
+   in a message, no clips, media tiles, reply, edit count or review card in a turn; the review says
+   "Reviewing" with empty bars, no round, model, time or time left. Run facts are real or absent: pass a result,
    round, score or timing only from this run's real results (review_submit, beat_grid), never invented.
-   Text inside parts is real text: keep a part's UI line 3.5 % of the frame's height or more (scale, camera).
+     uncutUI.cursor(host, { x, y, scale, size: 28 })  // the macOS pointer, its tip at (x, y) in host px
+     uncutUI.timecode(seconds, fps), uncutUI.css()    // "00:00:12:30"; the parts' CSS (added once by mount)
    The fonts are the Mac's system UI fonts, as in the app; nothing loads from the network. */`;
 
 /**
@@ -224,6 +239,9 @@ window.uncutUI = {
   mount: mount,
   find: find,
   findAll: findAll,
+  piece: piece,
+  sequence: sequence,
+  rectIn: rectIn,
   cursor: cursor,
   timecode: timecode,
   css: css,
