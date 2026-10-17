@@ -352,6 +352,9 @@ function neutral(root: HTMLElement) {
   }
   for (const el of findAll(root, '[data-testid="effects-target"]')) el.textContent = "";
   for (const el of findAll(root, '[data-testid="export-range-text"]')) el.textContent = "";
+  // The fixture clip's timings in the Inspector and the export's file name: none until passed (export file).
+  for (const el of root.querySelectorAll('[data-testid="insp-start"], [data-testid="insp-in"], [data-testid="insp-out"]')) el.textContent = "";
+  for (const el of findAll(root, '[data-testid="export-name"]')) el.setAttribute("value", "");
   // The storyboard's plan: the graphic's (summary, beats), else none.
   for (const el of findAll(root, ".approval-text")) setLead(el, "");
   for (const el of root.querySelectorAll(".beats .beat-time, .beats .beat-head b, .beats .beat-line")) el.textContent = "";
@@ -1234,6 +1237,11 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   } else if (from) A = rectIn(from, host);
   else A = f.from as Rect;
   const B: Rect = to ? rectIn(to, host) : (f.to as Rect);
+  // An end element not laid out (display: none, detached, zero size) is gone too: never a flight to the host's corner.
+  if ((to && !(B.w > 0 && B.h > 0)) || (from && !(A.w > 0 && A.h > 0))) {
+    layer.style.display = "none";
+    return { x: 0, y: 0, w: 0, h: 0, p: 0, el: null };
+  }
 
   if (raw < 0 && !built) {
     layer.style.display = "none";
