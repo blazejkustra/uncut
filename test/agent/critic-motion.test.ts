@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { EMPTY_SHARE, emptyRuns, FAST_STEP, nearlyEmpty, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { EMPTY_CONTENT, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -516,7 +516,7 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
   // Empty from 253 to 266 (0.23 s, cursor only) and from 400 to 405 (0.1 s, too short to count).
   const frameAt = (f: number) => ((f >= 253 && f <= 266) ? canvas(true) : f >= 400 && f <= 405 ? canvas(false) : hero(f));
   assert.ok(nearlyEmpty(canvas(true), w, h) && !nearlyEmpty(hero(0), w, h));
-  assert.ok(EMPTY_SHARE > 0.95);
+  assert.ok(EMPTY_CONTENT <= 0.02);
   const plan = scanPlan(motionAnchors([{ start: 0 }, { start: 5 }], fps, n), fps, n, 120);
   const sampled = plan.map((f) => ({ frame: f, gray: frameAt(f) }));
   const edges = await refineEmpty({ frames: sampled, fps, size: { w, h }, render: async (fs) => fs.map((f) => ({ frame: f, gray: frameAt(f) })) });
@@ -563,5 +563,125 @@ test("review: the 12-finding cap keeps every blocker (the loop seam) ahead of so
   assert.ok(found.some((f) => f.key === "motion:seam:0" && f.hard), found.map((f) => f.key).join(", "));
   const firstSoft = found.findIndex((f) => !f.hard);
   assert.ok(firstSoft < 0 || found.slice(firstSoft).every((f) => !f.hard), "hard ones lead");
+});
+
+// Review of 72a73b9: a canvas share alone flagged a dark full-bleed UI and sat close to a lone
+// wordmark. Frames drawn at 1080 × 1350, encoded at the renderer's 200 px and decoded at EMPTY_WIDTH
+// like review_submit: only the cursor-only frame is nearly empty.
+const W1 = 1080, H1 = 1350;
+function drawn(bg: number, paint: (set: (x0: number, y0: number, x1: number, y1: number, v: number) => void) => void) {
+  const g = new Uint8Array(W1 * H1).fill(bg);
+  paint((x0, y0, x1, y1, v) => {
+    for (let y = Math.max(0, y0); y < Math.min(H1, y1); y++) g.fill(v, y * W1 + Math.max(0, x0), y * W1 + Math.min(W1, x1));
+  });
+  return g;
+}
+/** A block letter (an H-like glyph: two stems and a bar) at x, y, w × h with stroke s. */
+const glyph = (set: (x0: number, y0: number, x1: number, y1: number, v: number) => void, x: number, y: number, w: number, h: number, s: number, v: number) => {
+  set(x, y, x + s, y + h, v);
+  set(x + w - s, y, x + w, y + h, v);
+  set(x, y + (h >> 1) - (s >> 1), x + w, y + (h >> 1) + (s >> 1), v);
+};
+const FIXTURES: Record<string, Uint8Array> = {
+  darkUI: drawn(28, (set) => {
+    // Two panels a few levels off the near-black, soft edges, then lines of small light text.
+    for (const [x0, y0, x1, y1] of [[40, 60, 1040, 700], [40, 740, 1040, 1300]] as const) {
+      set(x0, y0, x1, y1, 30);
+      set(x0 + 6, y0 + 6, x1 - 6, y1 - 6, 32);
+    }
+    for (let line = 0; line < 5; line++) {
+      const y = 110 + line * 250;
+      let x = 90;
+      for (let word = 0; word < 2; word++) {
+        const letters = 3 + ((line + word) % 5);
+        for (let l = 0; l < letters; l++) glyph(set, x + l * 16, y, 12, 18, 3, 190);
+        x += letters * 16 + 22;
+      }
+    }
+  }),
+  wordmark: drawn(237, (set) => {
+    for (let l = 0; l < 5; l++) glyph(set, 342 + l * 84, 630, 60, 90, 18, 20);
+  }),
+  headline: drawn(20, (set) => {
+    for (let l = 0; l < 4; l++) glyph(set, 40 + l * 255, 470, 220, 400, 60, 240);
+  }),
+  cursorOnly: drawn(237, (set) => {
+    // An arrow cursor with a white outline, near the middle.
+    for (let r = 0; r < 34; r++) set(560, 640 + r, 560 + Math.min(24, Math.round(r * 0.75)) + 2, 641 + r, 255);
+    for (let r = 2; r < 32; r++) set(562, 640 + r, 562 + Math.min(20, Math.round(r * 0.66)), 641 + r, 15);
+  }),
+};
+const jpegOf = (gray: Uint8Array) => {
+  const out = spawnSync("ffmpeg", ["-v", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s", `${W1}x${H1}`, "-i", "-", "-vf", "scale=200:-2:flags=area", "-q:v", "4", "-f", "image2pipe", "-c:v", "mjpeg", "-"], { input: gray, maxBuffer: 1 << 26 });
+  assert.equal(out.status, 0, String(out.stderr));
+  return out.stdout;
+};
+
+test("review of 72a73b9: a dark full-bleed UI, a lone wordmark and a huge headline aren't empty; a cursor alone on a light canvas is", { skip: hasFfmpeg ? false : "needs ffmpeg" }, async () => {
+  const size = emptySize({ width: W1, height: H1 });
+  assert.deepEqual(size, { w: 160, h: 200 });
+  const names = Object.keys(FIXTURES);
+  const greys = await grayFrames("ffmpeg", names.map((n) => jpegOf(FIXTURES[n]!)), size.w, size.h);
+  const m = Object.fromEntries(names.map((n, i) => [n, emptyMeasure(greys[i]!, size.w, size.h)]));
+  for (const n of ["darkUI", "wordmark", "headline"]) assert.ok(!m[n]!.empty, `${n}: ${JSON.stringify(m[n])}`);
+  assert.ok(m.cursorOnly!.empty, JSON.stringify(m.cursorOnly));
+  // The dark UI really is the case the old measure got wrong: at the scan's 64 px its soft panels
+  // and its text read as 97.5 % canvas or more.
+  const small = scanSize({ width: W1, height: H1 });
+  const [dark64] = await grayFrames("ffmpeg", [jpegOf(FIXTURES.darkUI!)], small.w, small.h);
+  assert.ok(canvasShare(dark64!, small.w, small.h).share >= 0.975, JSON.stringify(canvasShare(dark64!, small.w, small.h)));
+  // The reviewer's probe: soft panels on 28 and 1.5 % of scattered light pixels, at 96 px.
+  const w = 96, h = 120, g = new Uint8Array(w * h).fill(28);
+  for (let y = 10; y < 110; y++) for (let x = 6; x < 90; x++) g[y * w + x] = x < 8 || x > 87 || y < 12 || y > 107 ? 30 : 32;
+  for (let i = 0, lit = 0; i < w * h && lit < w * h * 0.015; i += 67, lit++) g[i] = 60;
+  assert.ok(!emptyMeasure(g, w, h).empty);
+});
+
+test("review of 72a73b9: refineEmpty samples closer next to a bare frame, edges every stretch (more than 8), and an unrefined run reaches out to its neighbours", async () => {
+  const fps = 60, w = 64, h = 80, n = 1200;
+  const flat = () => new Uint8Array(w * h).fill(237);
+  const cursor = () => {
+    const g = flat();
+    g[40 * w + 30] = 10;
+    return g;
+  };
+  const hero = (f: number) => {
+    const g = flat();
+    for (let y = 12; y < 68; y++) for (let x = 8; x < 56; x++) g[y * w + x] = 20 + ((x * 7 + y * 3 + f) % 60);
+    return g;
+  };
+  // A small mark of four letters: bare (under EMPTY_SUSPECT) but not empty.
+  const small = () => {
+    const g = flat();
+    for (let l = 0; l < 4; l++) for (let y = 38; y < 42; y++) g[y * w + 20 + l * 6] = 20;
+    return g;
+  };
+  // 0.25 s empty (131..145) right after a small mark (100..130): both between samples 0.5 s apart.
+  const at1 = (f: number) => (f >= 131 && f <= 145 ? cursor() : f >= 100 && f <= 130 ? small() : hero(f));
+  const sparse = Array.from({ length: n / 30 }, (_, i) => i * 30).map((f) => ({ frame: f, gray: at1(f) }));
+  const render1 = async (fs: ReadonlyArray<number>) => fs.map((f) => ({ frame: f, gray: at1(f) }));
+  assert.deepEqual(emptyRuns(motionScan(sparse, fps, { size: { w, h } }), fps), [], "the samples alone miss it");
+  const found1 = await refineEmpty({ frames: sparse, fps, size: { w, h }, render: render1, duration: n });
+  assert.deepEqual(emptyRuns(motionScan([...sparse, ...found1], fps, { size: { w, h } }), fps), [{ start: 131, end: 145 }]);
+  // Ten empty stretches: every edge narrowed (the old cap was 8 edges).
+  const stretch = (f: number) => f % 100 >= 40 && f % 100 <= 59;
+  const at2 = (f: number) => (stretch(f) ? cursor() : hero(f));
+  const samples2 = Array.from({ length: n / 15 }, (_, i) => i * 15).map((f) => ({ frame: f, gray: at2(f) }));
+  const found2 = await refineEmpty({ frames: samples2, fps, size: { w, h }, render: async (fs) => fs.map((f) => ({ frame: f, gray: at2(f) })), duration: n });
+  const runs2 = emptyRuns(motionScan([...samples2, ...found2], fps, { size: { w, h } }), fps);
+  assert.equal(runs2.length, 12);
+  assert.ok(runs2.every((r) => !r.upto && r.start % 100 === 40 && r.end % 100 === 59), JSON.stringify(runs2));
+  // Out of time: one empty sample between non-empty ones 9 frames away may be 17 frames long.
+  const at3 = (f: number) => (f >= 300 && f <= 305 ? cursor() : hero(f));
+  const samples3: Array<ScanFrame> = [291, 300, 309].map((f) => ({ frame: f, gray: at3(f) }));
+  const scan3 = motionScan(samples3, fps, { size: { w, h } });
+  assert.deepEqual(scan3.empty, [{ start: 300, end: 300, upto: { start: 292, end: 308 } }]);
+  assert.equal(emptyRuns(scan3, fps).length, 1);
+  const f3 = motionFindings(scan3, fps, { oneTake: true, hard: true }).find((f) => f.key === "motion:empty:300")!;
+  assert.ok(!f3.hard && /Maybe a nearly empty frame.*up to 0\.28 s/.test(f3.message), f3.message);
+  assert.match(motionLines(scan3, fps, { consecutive: false }).join("\n"), /maybe f 292 to f 308/);
+  // A precomputed emptiness (the larger grey) wins over the scan-size grey.
+  const sure: ScanFrame = { frame: 0, gray: hero(0), bare: { content: 0.001, parts: 1, empty: true } };
+  assert.equal(motionScan([sure, { frame: 1, gray: hero(1), bare: { content: 0.5, parts: 9, empty: false } }], fps).empty.length, 1);
 });
 

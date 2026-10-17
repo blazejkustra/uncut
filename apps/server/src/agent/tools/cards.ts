@@ -18,7 +18,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, refineEmpty, refineJumps, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, scanSize, emptySize, emptyMeasure, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
@@ -369,26 +369,36 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 // The scan's grey frames from the strips' size (grayFrames scales them to SCAN_WIDTH).
                 const { w, h } = scanSize(project.canvas);
                 if (ffmpeg && got.scanned.length > 2) {
-                  const grays = yield* Effect.tryPromise({ try: (signal) => grayFrames(ffmpeg, got.scanned.map((f) => got.byFrame.get(f)!), w, h, AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
-                  const sampled = got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! }));
-                  // A1: a cut between two sampled frames, narrowed down to the frame it happens on.
-                  const refineUntil = Date.now() + REFINE_BUDGET_MS;
-                  // Rehearsal 4: and each nearly empty stretch's exact edges.
+                  // Review of 72a73b9: emptiness is judged on larger grey frames (EMPTY_WIDTH) than the differences.
+                  const big = emptySize(project.canvas);
+                  const decode = async (jpegs: ReadonlyArray<Buffer>, sig: AbortSignal) => {
+                    const [gs, bs] = await Promise.all([grayFrames(ffmpeg, jpegs, w, h, sig), grayFrames(ffmpeg, jpegs, big.w, big.h, sig)]);
+                    return gs.map((gray, i) => ({ gray, bare: emptyMeasure(bs[i]!, big.w, big.h) }));
+                  };
+                  const decoded = yield* Effect.tryPromise({ try: (signal) => decode(got.scanned.map((f) => got.byFrame.get(f)!), AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
+                  const grays = decoded.map((x) => x.gray);
+                  const sampled: Array<ScanFrame> = got.scanned.map((f, i) => ({ frame: f, ...decoded[i]! }));
+                  // A1: a cut between two sampled frames, narrowed down to the frame it happens on;
+                  // rehearsal 4: and each nearly empty stretch's exact edges, each on its own time budget.
                   const refined = scanList.length === duration ? [] : yield* Effect.tryPromise({
                     try: async (signal) => {
                       const sig = AbortSignal.any([signal, r.abort.signal]);
-                      const until = () => Date.now() > refineUntil || sig.aborted;
-                      const render = async (frames: ReadonlyArray<number>) => {
-                        const shot = await Effect.runPromise(session.render(frames, STRIP_CELL, { until: () => Date.now() > refineUntil }), { signal: sig });
-                        const gs = await grayFrames(ffmpeg, shot.map((x) => x.jpeg), w, h, sig);
-                        return shot.map((x, i) => ({ frame: x.frame, gray: gs[i]! }));
+                      const phase = (ms: number) => {
+                        const deadline = Date.now() + ms;
+                        const until = () => Date.now() > deadline || sig.aborted;
+                        const render = async (frames: ReadonlyArray<number>): Promise<Array<ScanFrame>> => {
+                          const shot = await Effect.runPromise(session.render(frames, STRIP_CELL, { until: () => Date.now() > deadline }), { signal: sig });
+                          const ds = await decode(shot.map((x) => x.jpeg), sig);
+                          return shot.map((x, i) => ({ frame: x.frame, ...ds[i]! }));
+                        };
+                        return { until, render };
                       };
-                      const jumps = await refineJumps({ frames: sampled, fps, duration, until, render });
-                      const edges = await refineEmpty({ frames: [...sampled, ...jumps], fps, size: { w, h }, until, render });
+                      const jumps = await refineJumps({ frames: sampled, fps, duration, ...phase(REFINE_BUDGET_MS) });
+                      const edges = await refineEmpty({ frames: [...sampled, ...jumps], fps, size: { w, h }, duration, ...phase(REFINE_EMPTY_BUDGET_MS) });
                       return [...jumps, ...edges];
                     },
                     catch: (e) => e as Error,
-                  }).pipe(Effect.catch(() => Effect.succeed([] as Array<{ frame: number; gray: Uint8Array }>)));
+                  }).pipe(Effect.catch(() => Effect.succeed([] as Array<ScanFrame>)));
                   scan = motionScan([...sampled, ...refined], fps, { size: { w, h } });
                   // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
                   const di = dropBeat(sb?.beats);

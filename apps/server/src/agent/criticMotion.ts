@@ -44,11 +44,20 @@ export const JUMP_OVER = 1.5;
 export const HOLD_DIFF = 0.0015;
 export const HOLD_MAX_S = 1;
 /**
- * A nearly empty frame: this share of it or more is the flat canvas reaching its edge (canvasShare;
- * a cursor or a speck is under 2 % at the scan's size). Rehearsal 4: A1 22.1-22.5 s (cursor only)
- * measures 100 %, A2 4.2-4.4 s 98-100 %; a lone wordmark 96 %, a headline end card 86 %.
+ * A nearly empty frame (emptyMeasure, at EMPTY_WIDTH): what isn't the canvas reaching the frame's
+ * edge is at most EMPTY_CONTENT of it, in at most EMPTY_PARTS separate marks: a cursor (and its
+ * shadow or click ring), a speck. Rehearsal 4: A1 22.1-22.5 s (cursor only), A2 4.2-4.4 s. The review
+ * of 72a73b9: a canvas share alone (97.5 % at 64 px) flagged a dark full-bleed UI (soft panels on
+ * near-black read as canvas, its text 1.5 %) and sat close to a lone wordmark (96 %); text is many
+ * marks, so a dark UI's lines, a wordmark's letters and a headline aren't empty.
  */
-export const EMPTY_SHARE = 0.975;
+export const EMPTY_CONTENT = 0.015;
+export const EMPTY_PARTS = 3;
+/** Emptiness is judged on grey frames this wide (the scan's 64 px blur a wordmark into a speck). */
+export const EMPTY_WIDTH = 160;
+/** A sample this bare or barer (content share) is a suspect: the gap to its neighbours is sampled at most EMPTY_STEP_S apart. */
+export const EMPTY_SUSPECT = 0.08;
+export const EMPTY_STEP_S = 0.15;
 /** A nearly empty run this long or longer is a finding (a blocker in a motion film). */
 export const EMPTY_MIN_S = 0.2;
 /**
@@ -218,15 +227,15 @@ export const REFINE_BUDGET_MS = 20_000;
  * apart; stops when `until` says so. Returns the grey frames it added.
  */
 export async function refineJumps(o: {
-  readonly frames: ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>;
+  readonly frames: ReadonlyArray<ScanFrame>;
   readonly fps: number;
   readonly duration: number;
-  readonly render: (frames: ReadonlyArray<number>) => Promise<ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>>;
+  readonly render: (frames: ReadonlyArray<number>) => Promise<ReadonlyArray<ScanFrame>>;
   readonly until?: () => boolean;
   readonly max?: number;
-}): Promise<Array<{ frame: number; gray: Uint8Array }>> {
+}): Promise<Array<ScanFrame>> {
   const at = new Map(o.frames.map((x) => [x.frame, x.gray]));
-  const added: Array<{ frame: number; gray: Uint8Array }> = [];
+  const added: Array<ScanFrame> = [];
   const sorted = [...at.keys()].sort((a, b) => a - b);
   const gapMax = Math.max(2, Math.round(0.5 * o.fps));
   const steps: Array<{ lo: number; hi: number; d: number }> = [];
@@ -240,7 +249,7 @@ export async function refineJumps(o: {
   const fetch = async (frames: Iterable<number>) => {
     const want = [...new Set(frames)].filter((f) => f >= 0 && f < o.duration && !at.has(f)).sort((a, b) => a - b);
     if (!want.length || o.until?.()) return !want.length;
-    for (const x of await o.render(want)) if (!at.has(x.frame)) (at.set(x.frame, x.gray), added.push({ frame: x.frame, gray: x.gray }));
+    for (const x of await o.render(want)) if (!at.has(x.frame)) (at.set(x.frame, x.gray), added.push(x));
     return true;
   };
   // Bisect every live step together, a round of midpoints at a time.
@@ -261,41 +270,81 @@ export async function refineJumps(o: {
   return added;
 }
 
-/** Whether a grey frame (w × h) is nearly empty: EMPTY_SHARE or more of it bare canvas. */
-export const nearlyEmpty = (gray: Uint8Array, w: number, h: number) => canvasShare(gray, w, h).share >= EMPTY_SHARE;
+/** A scan frame: its grey at the scan's size, and (optional) its emptiness measured at EMPTY_WIDTH. */
+export interface ScanFrame {
+  readonly frame: number;
+  readonly gray: Uint8Array;
+  readonly bare?: EmptyMeasure;
+}
+
+/** Whether a grey frame (w × h) is nearly empty (emptyMeasure). */
+export const nearlyEmpty = (gray: Uint8Array, w: number, h: number) => emptyMeasure(gray, w, h).empty;
+
+/** The emptiness budget's own slice (ms), after refineJumps' REFINE_BUDGET_MS. */
+export const REFINE_EMPTY_BUDGET_MS = 12_000;
 
 /**
- * The exact edges of each nearly empty stretch the samples show: between an empty sample and its
- * non-empty neighbour (at most 0.5 s apart), bisection down to two consecutive frames, a round of
- * midpoints rendered together. At most `max` edges; stops when `until` says so. The frames it added.
+ * The nearly empty stretches the samples show or hint at, sampled closer and then edged exactly:
+ * first every gap over EMPTY_STEP_S next to a bare sample (empty, or EMPTY_SUSPECT or barer) is
+ * filled at EMPTY_STEP_S (a short stretch fits between samples 0.5 s apart); then between each empty
+ * sample and its non-empty neighbour (at most 0.5 s apart), bisection down to two consecutive frames,
+ * a round of midpoints rendered together. At most `max` edges; stops when `until` says so. A frame's
+ * emptiness is its `bare`, else measured on its grey at `size`. The frames it added.
  */
 export async function refineEmpty(o: {
-  readonly frames: ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>;
+  readonly frames: ReadonlyArray<ScanFrame>;
   readonly fps: number;
   readonly size: { readonly w: number; readonly h: number };
-  readonly render: (frames: ReadonlyArray<number>) => Promise<ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>>;
+  readonly render: (frames: ReadonlyArray<number>) => Promise<ReadonlyArray<ScanFrame>>;
   readonly until?: () => boolean;
   readonly max?: number;
-}): Promise<Array<{ frame: number; gray: Uint8Array }>> {
-  const at = new Map(o.frames.map((x) => [x.frame, x.gray]));
-  const blank = new Map<number, boolean>();
-  const isBlank = (f: number) => {
-    if (!blank.has(f)) blank.set(f, nearlyEmpty(at.get(f)!, o.size.w, o.size.h));
-    return blank.get(f)!;
+  readonly duration?: number;
+}): Promise<Array<ScanFrame>> {
+  const at = new Map(o.frames.map((x) => [x.frame, x]));
+  const measured = new Map<number, EmptyMeasure>();
+  const bareOf = (f: number) => {
+    if (!measured.has(f)) {
+      const x = at.get(f)!;
+      measured.set(f, x.bare ?? emptyMeasure(x.gray, o.size.w, o.size.h));
+    }
+    return measured.get(f)!;
   };
-  const added: Array<{ frame: number; gray: Uint8Array }> = [];
-  const sorted = [...at.keys()].sort((a, b) => a - b);
+  const isBlank = (f: number) => bareOf(f).empty;
+  const added: Array<ScanFrame> = [];
+  const take = async (frames: ReadonlyArray<number>) => {
+    const want = [...new Set(frames)].filter((f) => f >= 0 && (o.duration === undefined || f < o.duration) && !at.has(f)).sort((a, b) => a - b);
+    if (!want.length) return;
+    for (const x of await o.render(want)) if (!at.has(x.frame)) (at.set(x.frame, x), added.push(x));
+  };
+  const sortedNow = () => [...at.keys()].sort((a, b) => a - b);
+  // 1. Closer samples next to a bare one.
+  const step = Math.max(1, Math.round(EMPTY_STEP_S * o.fps));
   const gapMax = Math.max(2, Math.round(0.5 * o.fps));
+  {
+    const sorted = sortedNow();
+    const fill: Array<number> = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const lo = sorted[i - 1]!, hi = sorted[i]!;
+      if (hi - lo <= step || hi - lo > 4 * gapMax) continue;
+      const suspect = (f: number) => bareOf(f).empty || bareOf(f).content <= EMPTY_SUSPECT;
+      if (!suspect(lo) && !suspect(hi)) continue;
+      const n = Math.ceil((hi - lo) / step);
+      for (let k = 1; k < n; k++) fill.push(lo + Math.round(((hi - lo) * k) / n));
+    }
+    if (fill.length && !o.until?.()) await take(fill);
+  }
+  // 2. Each edge between an empty sample and a non-empty one, narrowed to two consecutive frames.
+  const sorted = sortedNow();
   let live: Array<{ lo: number; hi: number }> = [];
   for (let i = 1; i < sorted.length; i++) {
     const lo = sorted[i - 1]!, hi = sorted[i]!;
     if (hi - lo >= 2 && hi - lo <= gapMax && isBlank(lo) !== isBlank(hi)) live.push({ lo, hi });
   }
-  live = live.slice(0, o.max ?? 8);
+  live = live.slice(0, o.max ?? 64);
   while (live.some((e) => e.hi - e.lo > 1)) {
     const mids = live.filter((e) => e.hi - e.lo > 1).map((e) => ({ e, m: (e.lo + e.hi) >> 1 }));
     if (o.until?.()) break;
-    for (const x of await o.render(mids.map((x) => x.m).filter((m) => !at.has(m)))) if (!at.has(x.frame)) (at.set(x.frame, x.gray), added.push({ frame: x.frame, gray: x.gray }));
+    await take(mids.map((x) => x.m));
     live = live.filter((e) => e.hi - e.lo <= 1 || at.has((e.lo + e.hi) >> 1));
     for (const { e, m } of mids) {
       if (!at.has(m)) continue;
@@ -336,8 +385,12 @@ export interface MotionScan {
   readonly jumps: ReadonlyArray<MotionEvent>;
   /** Stretches (frames) where nothing visible changes, over HOLD_MAX_S. */
   readonly holds: ReadonlyArray<{ readonly start: number; readonly end: number }>;
-  /** Runs (frames, inclusive) where the frame is nearly empty (EMPTY_SHARE), when the scan knew the frame size. */
-  readonly empty: ReadonlyArray<{ readonly start: number; readonly end: number }>;
+  /**
+   * Runs (frames, inclusive) where the frame is nearly empty (emptyMeasure), from the first empty
+   * sample to the last, when the scan could measure it. `upto`: when an edge wasn't narrowed to the
+   * frame, how far the run may reach (out to the neighbouring non-empty samples, exclusive).
+   */
+  readonly empty: ReadonlyArray<EmptyRun>;
   readonly emptyMeasured: boolean;
   /** Fast moves (frames, the steps' first and last frame) and their biggest step. */
   readonly fast: ReadonlyArray<{ readonly start: number; readonly end: number; readonly peak: number }>;
@@ -350,7 +403,7 @@ export interface MotionScan {
  * Pops, jumps, holds and the seam in a set of grey frames (any frames; consecutive ones are what
  * pops and jumps are judged on). Deterministic and pure.
  */
-export function motionScan(input: ReadonlyArray<{ readonly frame: number; readonly gray: Uint8Array }>, fps: number, o: { readonly ratio?: number; readonly min?: number; readonly size?: { readonly w: number; readonly h: number } } = {}): MotionScan {
+export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { readonly ratio?: number; readonly min?: number; readonly size?: { readonly w: number; readonly h: number } } = {}): MotionScan {
   const ratio = o.ratio ?? POP_RATIO;
   const min = o.min ?? POP_MIN;
   const fr = [...input].sort((a, b) => a.frame - b.frame);
@@ -413,21 +466,28 @@ export function motionScan(input: ReadonlyArray<{ readonly frame: number; readon
     } else close();
   }
   close();
-  // Nearly empty runs: consecutive samples (at most 0.5 s apart) that are nearly all canvas; a run
-  // is measured from its first empty sample to its last (refineEmpty renders its exact edges).
-  const empty: Array<{ start: number; end: number }> = [];
-  if (o.size) {
-    const { w, h } = o.size;
-    let run: { start: number; end: number } | undefined;
-    for (const x of fr) {
-      const blank = canvasShare(x.gray, w, h).share >= EMPTY_SHARE;
-      if (blank && run && x.frame - run.end <= gapMax) run.end = x.frame;
+  // Nearly empty runs: consecutive samples (at most 0.5 s apart) that are nearly empty; a run is
+  // measured from its first empty sample to its last (refineEmpty renders its exact edges), and an
+  // edge that isn't exact reaches out to the neighbouring sample (upto).
+  const empty: Array<EmptyRun> = [];
+  const emptyMeasured = !!o.size || fr.some((x) => x.bare);
+  if (emptyMeasured) {
+    const blankAt = fr.map((x) => x.bare?.empty ?? (o.size ? emptyMeasure(x.gray, o.size.w, o.size.h).empty : false));
+    const runs: Array<{ start: number; end: number; first: number; last: number }> = [];
+    let run: { start: number; end: number; first: number; last: number } | undefined;
+    fr.forEach((x, i) => {
+      if (blankAt[i] && run && x.frame - run.end <= gapMax) (run.end = x.frame), (run.last = i);
       else {
-        if (run) empty.push(run);
-        run = blank ? { start: x.frame, end: x.frame } : undefined;
+        if (run) runs.push(run);
+        run = blankAt[i] ? { start: x.frame, end: x.frame, first: i, last: i } : undefined;
       }
+    });
+    if (run) runs.push(run);
+    for (const r of runs) {
+      const before = fr[r.first - 1]?.frame, after = fr[r.last + 1]?.frame;
+      const lo = before === undefined ? r.start : before + 1, hi = after === undefined ? r.end : after - 1;
+      empty.push(lo < r.start || hi > r.end ? { start: r.start, end: r.end, upto: { start: lo, end: hi } } : { start: r.start, end: r.end });
     }
-    if (run) empty.push(run);
   }
   // Fast moves: FAST_RUN or more consecutive steps of FAST_STEP or more, none of them a jump or a pop.
   const fast: Array<{ start: number; end: number; peak: number }> = [];
@@ -449,7 +509,7 @@ export function motionScan(input: ReadonlyArray<{ readonly frame: number; readon
   const first = fr[0];
   const last = fr.at(-1);
   const seam = first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical) } : undefined;
-  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured: !!o.size, fast, ...(seam ? { seam } : {}), typical: round(typical) };
+  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured, fast, ...(seam ? { seam } : {}), typical: round(typical) };
 }
 
 const round = (v: number, digits = 4) => Math.round(v * 10 ** digits) / 10 ** digits;
@@ -477,7 +537,13 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   }
   // Rehearsal 4: nearly empty frames (A1 22.1 s, A2 4.2 s and 24 s) survived three rounds as a critic opinion.
   for (const e of o.oneTake ? emptyRuns(scan, fps).slice(0, 2) : []) {
-    out.push({ rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard, message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${((e.end + 1 - e.start) / fps).toFixed(2)} s): ${+(EMPTY_SHARE * 100).toFixed(1)} % or more of it is bare canvas, at most a cursor or a speck. Every frame should show the hero: morph the outgoing shape straight into the next one instead of clearing the frame between them.` });
+    // A blocker only when the empty samples alone span it; one that may reach it is a finding to look at.
+    const sure = runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9;
+    const fix = "Every frame should show the hero: morph the outgoing shape straight into the next one instead of clearing the frame between them.";
+    const what = `at most a cursor or a speck (${+(EMPTY_CONTENT * 100).toFixed(1)} % or less of it isn't bare canvas, in ${EMPTY_PARTS} marks or fewer)`;
+    out.push(sure
+      ? { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard, message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${runSeconds(e, fps).toFixed(2)} s): ${what}. ${fix}` }
+      : { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a nearly empty frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until the next sampled frames that aren't, f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). render_frames around it to see how long. ${fix}` });
   }
   for (const m of o.oneTake ? scan.fast.slice(0, 3) : []) {
     out.push({ rule: "motion", key: `motion:fast:${m.start}`, frame: m.start, range: { start: m.start, end: m.end }, hard: false, message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame. The export's motion blur draws each frame from a few sub-frames, so a move this fast stacks into copies that read as a glitch (render_frames draws no blur, so you won't see it there). Ease it over about 0.3 s or more, or raise the sub-frames: update_project {"motionBlur":{"samples":12}}.` });
@@ -487,8 +553,16 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   return [...out.filter((f) => f.hard), ...out.filter((f) => !f.hard)].slice(0, 12);
 }
 
-/** The scan's nearly empty runs of EMPTY_MIN_S or more (a run counts its last frame). */
-export const emptyRuns = (scan: MotionScan, fps: number) => scan.empty.filter((e) => (e.end + 1 - e.start) / fps >= EMPTY_MIN_S - 1e-9);
+/** A nearly empty run (frames, inclusive) and, when its edges aren't exact, how far it may reach. */
+export interface EmptyRun {
+  readonly start: number;
+  readonly end: number;
+  readonly upto?: { readonly start: number; readonly end: number };
+}
+const runSeconds = (r: { readonly start: number; readonly end: number }, fps: number) => (r.end + 1 - r.start) / fps;
+
+/** The scan's nearly empty runs of EMPTY_MIN_S or more (a run counts its last frame), or that may reach it (upto). */
+export const emptyRuns = (scan: MotionScan, fps: number) => scan.empty.filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9);
 
 /** What a scan cut short by the time budget says (in the facts and the tool's result). */
 export const budgetLine = (covered: number, planned: number) => `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
@@ -503,7 +577,7 @@ export function motionLines(scan: MotionScan, fps: number, scanned: { readonly c
   if (scan.jumps.length) lines.push(`One-frame jumps (cuts, or changes that took one frame): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %)`).join(", ")}.`);
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");
   const empties = emptyRuns(scan, fps);
-  if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (${+(EMPTY_SHARE * 100).toFixed(1)} % or more bare canvas, at most a cursor) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${((e.end + 1 - e.start) / fps).toFixed(2)} s)`).join(", ")}.` : "No nearly empty stretch.");
+  if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No nearly empty stretch.");
   if (scan.fast.length) lines.push(`Very fast moves (${Math.round(FAST_STEP * 100)} % or more of the picture changing every frame for ${FAST_RUN}+ frames; the export's motion blur may stack them into copies, which the frames here don't show): ${scan.fast.slice(0, 6).map((m) => `f ${m.start} to f ${m.end}`).join(", ")}.`);
   if (scan.seam) lines.push(`Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`);
   return lines;
@@ -627,8 +701,14 @@ export interface FlatStrip {
  * picture is about 0, a hero element on a calm canvas is the canvas's share. 0..1, level 0..255.
  */
 export function canvasShare(gray: Uint8Array, w: number, h: number): { share: number; level: number } {
+  const c = canvasFill(gray, w, h);
+  return c ? { share: c.count / (w * h), level: c.level } : { share: 0, level: 0 };
+}
+
+/** canvasShare's flood: which pixels are the canvas, how many, its level; undefined for no frame. */
+function canvasFill(gray: Uint8Array, w: number, h: number): { seen: Uint8Array; count: number; level: number } | undefined {
   const n = w * h;
-  if (!n || gray.length < n) return { share: 0, level: 0 };
+  if (!n || gray.length < n) return undefined;
   const edge: Array<number> = [];
   for (let x = 0; x < w; x++) edge.push(x, (h - 1) * w + x);
   for (let y = 1; y < h - 1; y++) edge.push(y * w, y * w + w - 1);
@@ -661,8 +741,52 @@ export function canvasShare(gray: Uint8Array, w: number, h: number): { share: nu
       if (Math.abs(gray[j]! - level) <= FLAT_LEVELS && Math.abs(gray[j]! - gray[i]!) <= FLAT_GRADIENT) (seen[j] = 1), queue.push(j);
     }
   }
-  return { share: count / n, level };
+  return { seen, count, level };
 }
+
+/** What a frame shows besides its canvas: the share that isn't canvas, in how many separate marks, and whether that's nearly empty. */
+export interface EmptyMeasure {
+  readonly content: number;
+  readonly parts: number;
+  readonly empty: boolean;
+}
+
+/**
+ * How empty a grey frame (w × h) is: the pixels that aren't the canvas (canvasShare's flood from the
+ * edge) as a share, and how many separate marks they make (8-connected; counted up to 64). Nearly
+ * empty: EMPTY_CONTENT or less in EMPTY_PARTS marks or fewer (a cursor, a speck). A dark UI's text,
+ * a wordmark's letters and a headline are many marks or a large share. Best at EMPTY_WIDTH.
+ */
+export function emptyMeasure(gray: Uint8Array, w: number, h: number): EmptyMeasure {
+  const c = canvasFill(gray, w, h);
+  if (!c) return { content: 1, parts: 0, empty: false };
+  const n = w * h;
+  const content = (n - c.count) / n;
+  const seen = c.seen;
+  let parts = 0;
+  const stack: Array<number> = [];
+  for (let s = 0; s < n && parts < 64; s++) {
+    if (seen[s]) continue;
+    parts++;
+    seen[s] = 1;
+    stack.push(s);
+    while (stack.length) {
+      const i = stack.pop()!;
+      const x = i % w, y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const j = yy * w + xx;
+          if (!seen[j]) (seen[j] = 1), stack.push(j);
+        }
+    }
+  }
+  return { content: round(content), parts, empty: content <= EMPTY_CONTENT && parts <= EMPTY_PARTS };
+}
+
+/** The emptiness grey size for a canvas: EMPTY_WIDTH wide, even height. */
+export const emptySize = (canvas: { readonly width: number; readonly height: number }) => ({ w: EMPTY_WIDTH, h: Math.max(2, Math.round((EMPTY_WIDTH * canvas.height) / canvas.width / 2) * 2) });
 
 /** The scale facts for the critic: each strip's flat share, and whether most are over FLAT_MAX. */
 export function flatLines(strips: ReadonlyArray<FlatStrip>, fps: number, footage: boolean): Array<string> {
