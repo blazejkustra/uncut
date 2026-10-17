@@ -22,8 +22,10 @@
 /** What each placeholder becomes (documented for the template editor and the tests). */
 export const TEMPLATE_KEYS = {
   project: "The project's name.",
+  product: "The product's name: the brand kit's name.",
   media: "Every file in the media library, one line each: name, kind, length, fps, size, sound.",
   footage: "The video and image files only, one line each.",
+  "footage-kind": "What the footage is, in a user's words: drone footage when every clip is named as drone or aerial footage, else footage.",
   music: "The song: the longest audio file (or the analysed one), its length, tempo and drop when known.",
   tempo: "The song's tempo from its beat analysis, as measured (e.g. 121.8 BPM).",
   drop: "Where the song's drop lands (the beat where the kick and bass step up), from its beat analysis.",
@@ -201,6 +203,8 @@ const andList = (xs: ReadonlyArray<string>) => (xs.length < 2 ? xs.join("") : `$
 const IMAGE_FILE = /\.(?:png|jpe?g|webp|gif|avif)$/i;
 const SCREEN_NAME = /(?:^|[^a-z])(?:ui|screen|screenshot|app)(?:[^a-z]|$)/i;
 const CLAUDE_MARK = "claude-mark.svg";
+/** Clip names that say the clip was shot from a drone (DJI_ alone doesn't: DJI makes handheld cameras too). */
+const DRONE_NAME = /drone|aerial|fpv|mavic/i;
 const secondsWord = (s: number) => `${Math.round(s * 100) / 100} s`;
 
 /** The kit's colours, one role per line in the order the roles first appear: "- surface: #111111 (panel), #161616". */
@@ -234,6 +238,8 @@ export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, st
   if (f.media.length) out.media = listOf(f.media);
   const footage = f.media.filter((m) => m.kind !== "audio");
   if (footage.length) out.footage = listOf(footage);
+  const clips = footage.filter((m) => m.kind === "video");
+  if (footage.length) out["footage-kind"] = clips.length && clips.every((m) => DRONE_NAME.test(m.name)) ? "drone footage" : "footage";
   if (f.canvas) out.canvas = `${f.canvas.width} x ${f.canvas.height} (${aspectOf(f.canvas.width, f.canvas.height)}), ${fpsWord(f.canvas.fps)}`;
   if (f.length && f.length.seconds > 0) out.length = sayDuration(f.length.seconds);
   const k = f.kit;
@@ -250,6 +256,7 @@ export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, st
     if (taglines.length) lines.push(`- Taglines: ${taglines.map((t) => `"${t}"`).join(", ")}`);
     if (urls.length) lines.push(`- URLs: ${urls.join(", ")}`);
     out.kit = lines.join("\n");
+    if (k.name.trim()) out.product = oneLine(k.name);
     if (k.colors.length) out.palette = paletteOf(k.colors);
     const faces = k.typefaces?.length ? k.typefaces : undefined;
     if (faces) out.fonts = faces.map((f) => `${f.family}${f.roles.length ? ` for ${andList(f.roles)}` : ""} (${f.file ?? "not in the kit as a file"})`).join("; ");
@@ -289,8 +296,10 @@ export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, st
 /** What a placeholder says when the project has no value for it and the template gives no fallback. */
 export const TEMPLATE_MISSING: Readonly<Record<TemplateKey, string>> = {
   project: "[the project's name]",
+  product: "[the product's name]",
   media: "[no media imported yet: import your footage, screenshots and song]",
   footage: "[no footage or images imported yet]",
+  "footage-kind": "footage",
   music: "[no song imported yet]",
   tempo: "[tempo not measured yet: analyse the song's beats first (media_analyze with the beats analyzer) and use the tempo it finds]",
   drop: "[drop not known yet: find it in the song's beat analysis (media_analyze with the beats analyzer); if the song has no clear drop, use its strongest downbeat]",

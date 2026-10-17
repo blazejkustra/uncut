@@ -52,6 +52,8 @@ test("placeholders fill from the project's facts, deterministically", () => {
   assert.equal(v.drop, "0:14.2 into the song (beat 29)");
   assert.equal(v.music, "song.mp3, 28 s, 121.8 BPM, drop at 0:14.2");
   assert.equal(v.kit, ['"Acme" brand kit', "- Logos (use these files, never redraw them): acme-light.svg", "- Fonts: Inter (Inter.woff2)", "- Colours: #0a0a0a background, #6d8cff Blue (accent)", "- Other files: ui-shot.webp", "- About: Acme makes rockets.", "- Tone: Plain."].join("\n"));
+  assert.equal(v.product, "Acme");
+  assert.equal(v["footage-kind"], "footage");
   assert.deepEqual(templateValues(facts), v);
   const { text, missing } = fillTemplate("Make {{length}} at {{canvas}} for {{project}}.", v);
   assert.equal(text, "Make 28 s at 1080 x 1350 (4:5), 60 fps for Spring launch.");
@@ -111,6 +113,34 @@ test("what the project doesn't have: the fallback, else an honest note; never a 
   assert.equal(speech.tempo, undefined);
   // An empty project: every known placeholder has a note.
   assert.deepEqual(Object.keys(TEMPLATE_MISSING).sort(), Object.keys(TEMPLATE_KEYS).sort());
+});
+
+test("the keynote's typed request: a user's plain ask, product from the kit, the footage named only when the clip names say drone", () => {
+  const line = (f: TemplateFacts) => /"Create a promo video for [^"\n]*"/.exec(fillTemplate(BUILTIN_TEMPLATES[0]!.body, templateValues(f)).text)?.[0];
+  assert.equal(line(facts), '"Create a promo video for Acme from this footage"');
+  const drone: TemplateFacts = { ...facts, media: [{ name: "drone-coast.mp4", kind: "video" }, { name: "Aerial 2.mov", kind: "video" }, { name: "ui.png", kind: "image" }] };
+  assert.equal(templateValues(drone)["footage-kind"], "drone footage");
+  assert.equal(line(drone), '"Create a promo video for Acme from this drone footage"');
+  // DJI_ names alone don't say drone (DJI makes handheld cameras too): plain footage, and the brief lets the agent name it.
+  assert.equal(templateValues({ ...facts, media: [{ name: "DJI_20261014175116_0050_D.MP4", kind: "video" }, { name: "drone.mp4", kind: "video" }] })["footage-kind"], "footage");
+  assert.match(BUILTIN_TEMPLATES[0]!.body, /If it says just "footage", you may name the footage by what the clips show/);
+  // No kit, no footage: still a plain ask, never a note in brackets.
+  assert.equal(line({ media: [] }), '"Create a promo video for the product from this footage"');
+  // The open types that request, not invented edit instructions.
+  assert.match(BUILTIN_TEMPLATES[0]!.body, /the request from the inputs is typed in big type/);
+  assert.doesNotMatch(BUILTIN_TEMPLATES[0]!.body, /naming its footage and song/);
+});
+
+test("the keynote looks like AI is editing: a cursor only where a person acts, the agent's step lines cause the rest, curated features, export to its saved message", () => {
+  const k = BUILTIN_TEMPLATES[0]!.body;
+  assert.match(k, /The cursor is the person, and it appears only where a person acts: typing the request into the composer and pressing send at the open, and pressing Export at the end/);
+  assert.match(k, /happens with no cursor on screen: a step line of the agent ticks in, and on the next beat the edit it names appears by itself/);
+  assert.doesNotMatch(k, /cursor is the reason for every change|cursor approves|the cursor does its one action/);
+  assert.match(k, /2 to 4 of the product's features[^\n]*as the agent using it on this project/);
+  for (const pick of ["captions appearing word by word", "a look or effect visibly changing the footage", "a title or text animating in", "bars beginning to fill"]) assert.ok(k.includes(pick), pick);
+  assert.match(k, /Steer away from dense panels and forms \(settings, mixer faders, brand kit forms, file lists, capture setup\)/);
+  assert.match(k, /it clicks Export, [^\n]*lands on its saved message/);
+  assert.doesNotMatch(k, /never finished/);
 });
 
 test("unknown placeholders stay as written; \\{{ is a literal; spaces inside braces are fine", () => {

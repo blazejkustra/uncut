@@ -172,6 +172,7 @@ test("a template fills from the open project: media, kit files, canvas, song len
   assert.doesNotMatch(keynote.text, /\{\{|undefined/);
   assert.match(keynote.text, /track\.mp3, 30 s, 120 BPM, drop at 0:16\.0/);
   assert.match(keynote.text, /Beat grid: 120 BPM: a beat every 0\.5 s/);
+  assert.match(keynote.text, /\n  "Create a promo video for Acme from this footage"\n/);
   assert.match(keynote.text, /model picker [^\n]*Claude's mark before it: claude-mark\.svg from the kit/);
   await assert.rejects(fillFor(data, "gone", open, [], readBeats), /isn't there any more/);
 });
