@@ -124,6 +124,7 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
     at.appendChild(root);
     const back = typeof o.background === "string" ? o.background : p.backdrop;
     wrap.style.cssText = `position:relative;width:${width}px;height:${height}px;transform-origin:0 0${back ? `;background:${back};border-radius:${p.radius || "0"}` : ""}`;
+    neutral(root);
     applyProps(name, root, o);
     host.replaceChildren(wrap);
     // Panels scrolled in the app (the agent's thread at its newest turn) scroll back there.
@@ -188,6 +189,37 @@ function setLead(el: Element | null, text: string) {
   const node = [...el.childNodes].find((n) => n.nodeType === 3);
   if (node) node.textContent = text;
   else el.insertBefore(el.ownerDocument.createTextNode(text), el.firstChild);
+}
+
+/**
+ * Honesty first: the parts were captured on fixture data, so every fact about a run in them (the
+ * review's result, round and scores, the plan's state, the turn's model and time, the export's time
+ * left) starts blank or neutral ("Reviewing", empty bars). Only props the graphic passes (the real
+ * results) put one on screen.
+ */
+function neutral(root: HTMLElement) {
+  for (const card of findAll(root, '.card-item[data-type="review"]')) {
+    card.removeAttribute("data-passed");
+    setText(card.querySelector(".card-head .grow"), "Review");
+    const out = card.querySelector(".card-outcome");
+    if (out) {
+      out.className = "card-outcome";
+      out.textContent = "Reviewing";
+    }
+    for (const row of card.querySelectorAll(".score")) {
+      row.removeAttribute("data-value");
+      row.classList.remove("low", "ok");
+      const bar = row.querySelector(".score-bar > span") as HTMLElement | null;
+      if (bar) bar.style.width = "0%";
+      setText(row.querySelector(".score-value"), "");
+    }
+  }
+  for (const el of findAll(root, ".plan-state")) el.remove();
+  for (const el of findAll(root, ".turn-status")) {
+    el.textContent = "";
+    el.removeAttribute("title");
+  }
+  for (const el of findAll(root, ".export-status .muted")) el.textContent = "";
 }
 
 function applyProps(name: string, root: HTMLElement, o: Props) {
@@ -276,6 +308,7 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
       setText(p ?? null, o.reply);
     }
     if (Array.isArray(o.steps)) fillList(root.querySelector(".worklog"), ".step", o.steps.map(String), (el, s) => setText(el.querySelector(".grow"), s));
+    if (typeof o.status === "string") setText(root.querySelector(".turn-status"), o.status);
   },
   storyboard(root, o) {
     if (typeof o.summary === "string") {
@@ -296,15 +329,18 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
   review(root, o) {
     if (typeof o.status === "string") setText(find(root, "status", "review"), o.status);
     if (typeof o.title === "string") setText(find(root, "head", "review")?.querySelector(".grow") ?? null, o.title);
+    // Only scores the graphic passes (a real review's) are drawn; progress fills their bars.
     const scores = o.scores as Readonly<Record<string, number>> | undefined;
-    const fill = num(o.progress, 1);
-    for (const row of findAll(root, "score", "review")) {
-      const id = row.getAttribute("data-score") || "";
-      const value = scores && typeof scores[id] === "number" ? scores[id]! : Number(row.getAttribute("data-value"));
-      const bar = row.querySelector(".score-bar > span") as HTMLElement | null;
-      if (bar) bar.style.width = `${Math.max(0, Math.min(1, fill)) * value * 10}%`;
-      setText(row.querySelector(".score-value"), fill >= 1 || scores ? String(Math.round(value * Math.min(1, fill))) : row.querySelector(".score-value")?.textContent);
-    }
+    const fill = Math.max(0, Math.min(1, num(o.progress, 1)));
+    if (scores && typeof scores === "object")
+      for (const row of findAll(root, "score", "review")) {
+        const value = scores[row.getAttribute("data-score") || ""];
+        if (typeof value !== "number" || !Number.isFinite(value)) continue;
+        const v = Math.max(0, Math.min(10, value));
+        const bar = row.querySelector(".score-bar > span") as HTMLElement | null;
+        if (bar) bar.style.width = `${fill * v * 10}%`;
+        setText(row.querySelector(".score-value"), String(Math.round(v * fill)));
+      }
   },
   timeline(root, o) {
     timelineProps(root, o, part("timeline").pxPerSecond || 60);

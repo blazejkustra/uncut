@@ -2,8 +2,8 @@
 // into assets/graphic-libs/ui.js (the scoped CSS, the parts' markup, the runtime), and the hash of
 // the inputs the parts are made from (test/core/ui-parts.test.ts compares it with ui.js's).
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { stripTypeScriptTypes } from "node:module";
 
 /** One scene's capture (apps/web/src/uiparts/extract.ts). */
@@ -15,9 +15,11 @@ export interface SceneCapture {
 export type Capture = Readonly<Record<string, SceneCapture>>;
 
 /**
- * What the parts are made from: every stylesheet of the editor, the components whose markup the
- * parts are, the fixture and harness, and the generator itself. A change to any of them can change
- * a part, so ui.js must be regenerated (node scripts/ui-parts.ts).
+ * What the parts are made from: every stylesheet of the editor, every module the harness reaches
+ * through relative imports (the editor part is the whole window, so any component App draws, its
+ * helpers and the store can change a part), the web app's package.json (its dependencies' versions),
+ * and the generator itself. A change to any of them can change a part, so ui.js must be regenerated
+ * (node scripts/ui-parts.ts). Not tracked: the lockfile and workspace packages (@uncut/contracts).
  */
 export function uiPartsInputs(root: string): Array<string> {
   const web = join(root, "apps/web/src");
@@ -30,10 +32,27 @@ export function uiPartsInputs(root: string): Array<string> {
     }
   };
   walk(web, (f) => f.endsWith(".css"));
-  for (const dir of ["editor", "timeline", "preview", "panels/agent", "panels/composer", "panels/exportDialog", "uiparts"]) walk(join(web, dir), (f) => /\.tsx?$/.test(f));
-  for (const f of ["panels/Agent.tsx", "panels/AgentCards.tsx", "panels/Composer.tsx", "panels/ExportDialog.tsx", "panels/TokenMeter.tsx", "panels/Library.tsx", "panels/library/MediaLibrary.tsx", "panels/library/MediaTile.tsx", "onboarding/Onboarding.tsx"]) out.push(join(web, f));
-  for (const f of ["scripts/ui-parts.ts", "scripts/ui-parts-lib.ts", "apps/web/src/uiparts/extract.ts", "apps/web/uiparts.html"]) out.push(join(root, f));
+  out.push(...importClosure(join(web, "uiparts/harness.tsx")));
+  for (const f of ["scripts/ui-parts.ts", "scripts/ui-parts-lib.ts", "apps/web/src/uiparts/extract.ts", "apps/web/src/uiparts/runtime.ts", "apps/web/uiparts.html", "apps/web/package.json"]) out.push(join(root, f));
   return [...new Set(out)].map((f) => relative(root, f)).sort();
+}
+
+/** Every .ts/.tsx module reachable from entry through relative imports (static, side-effect and dynamic), entry included. */
+export function importClosure(entry: string): Array<string> {
+  const seen = new Set<string>();
+  const queue = [entry];
+  while (queue.length) {
+    const f = queue.pop()!;
+    if (seen.has(f)) continue;
+    seen.add(f);
+    const src = readFileSync(f, "utf8");
+    for (const m of src.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+      const base = resolve(dirname(f), m[1]!);
+      const hit = [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")].find((p) => /\.tsx?$/.test(p) && existsSync(p) && statSync(p).isFile());
+      if (hit) queue.push(hit);
+    }
+  }
+  return [...seen].sort();
 }
 
 /** sha256 of the inputs (path and content, line endings normalised), hex. */
@@ -137,11 +156,12 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI as part
        composer: text (typed so far; empty disables Send), caret (true: a text caret after it), placeholder,
          context ("Playhead 00:00:12:00"); slots input, send, attach, model, context
        message: text (the user's prompt bubble)
-       turn: reply, steps: ["Read the brand kit", ...]; slots reply, steps, review
+       turn: reply, steps: ["Read the brand kit", ...], status (the line under it: model and time); slots reply, steps, review
        storyboard: summary, beats: [{ start, end, title, lines: ["...", ...] }], count (show the first n);
          slots summary, beat, approve, edit
-       review: progress 0..1 (the score bars fill), scores { hook, readability, motion, variety, sound, brand }
-         (0 to 10), status ("Passed", "Reviewing"), title; slots status, score, bar
+       review: scores { hook, readability, motion, variety, sound, brand } (0 to 10; only these are drawn),
+         progress 0..1 (their bars fill), status (by default "Reviewing"), title (by default "Review");
+         slots status, score, bar
        timeline: clips: [{ track: "Main" | "Text" | "Audio" | "Sound effects" | index, start, duration (s),
          name, image (a data: URL or uncut:media/<id>: the clip's filmstrip), selected, color }] (replaces
          those tracks' clips), playhead (s), selected: [clip indexes]; slots playhead, clip, ruler, lanes
@@ -159,6 +179,9 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI as part
      uncutUI.cursor(host, { x, y, scale, size: 28 })  // the macOS pointer, its tip at (x, y) in host px
      uncutUI.timecode(seconds, fps)                   // "00:00:12:30", the editor's timecode
      uncutUI.css()                                    // the parts' CSS (scoped under .uncut-ui), added once by mount
+   Run facts are real or absent: by default a part states none (the review "Reviewing" with empty bars,
+   no round, no plan state, no model or time under a turn, no time left on an export). Pass a result,
+   round, score or timing only from this run's real results (review_submit, beat_grid), never invented.
    Text inside parts is real text: keep a part's UI line 3.5 % of the frame's height or more (scale, camera).
    The fonts are the Mac's system UI fonts, as in the app; nothing loads from the network. */`;
 

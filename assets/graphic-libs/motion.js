@@ -318,18 +318,38 @@
   // (travel), lies still (rest 0.1 s), presses (cursor to 0.85 in 0.09 s, the button to 0.95), holds
   // 0.02 s and releases in 0.13 s. What the click causes starts at fire, 0.03 s into the press, never
   // on the arrival. Give fire (the moment the change starts) and the glide is scheduled back from it,
-  // or at (the moment the glide starts). A list of clicks chains them, each from the last one's target.
+  // or at (the moment the glide starts); a fire under 0.48 s starts the glide before t = 0. A list of
+  // clicks (in time order) chains them, each from the last one's target; one keyed too soon for a
+  // full glide leaves after the last press (a faster glide, 0.12 s at least) as that press eases out.
   function click(t, o) {
     if (Array.isArray(o)) {
       var prev = null;
       var cur = null;
+      var held = 0;
+      var last = null;
       for (var i = 0; i < o.length; i++) {
         var spec = {};
         for (var k in o[i]) spec[k] = o[i][k];
         if (!spec.from && prev) spec.from = [prev.x, prev.y];
+        // Too close to the last click for a full glide: it leaves only after that press, a faster glide.
+        if (last && spec.fire != null && spec.travel == null) {
+          var room = spec.fire - 0.03 - (spec.rest == null ? 0.1 : spec.rest) - last.release;
+          if (room < 0.35) spec.travel = Math.max(0.12, room);
+        }
         var c = click(t, spec);
         if (!cur || t >= c.start) cur = c;
+        // A click that glides off before the last one's release ends keeps that press easing out (no one-frame pop).
+        held = Math.max(held, c.press);
         prev = spec;
+        last = c;
+      }
+      if (held > cur.press) {
+        var out = {};
+        for (var q in cur) out[q] = cur[q];
+        out.press = held;
+        out.scale = 1 - 0.15 * held;
+        out.button = 1 - 0.05 * held;
+        return out;
       }
       return cur;
     }

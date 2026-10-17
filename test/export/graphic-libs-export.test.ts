@@ -94,13 +94,17 @@ window.render = (t) => {
     for (const n of uncutUI.parts()) {
       const root = uncutUI.mount(scratch, n);
       for (const s of uncutUI.slots(n)) if (!uncutUI.find(root, s)) throw new Error(n + ": no slot " + s);
+      // Mounted without props, no part states a run fact (a result, round, score, model, time).
+      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM/);
+      if (said) throw new Error(n + ": states " + said[0] + " without props");
+      if (n === "review" && uncutUI.findAll(root, "score").some((r) => r.querySelector(".score-value").textContent)) throw new Error("review: a score without props");
     }
     scratch.remove();
     checked = true;
   }
   const prompt = "Make a 28 s launch film for Uncut on the beat";
   uncutUI.mount(at.composer, "composer", { scale: 0.5, text: prompt.slice(0, Math.floor(t * 24)), caret: true, press: { send: t > 1.2 ? 0.95 : 1 } });
-  uncutUI.mount(at.review, "review", { scale: 0.42, progress: Math.min(1, t / 1.5) });
+  uncutUI.mount(at.review, "review", { scale: 0.42, progress: Math.min(1, t / 1.5), scores: { hook: 7, motion: 6 } });
   uncutUI.mount(at.timeline, "timeline", { scale: 0.2, playhead: t * 3, clips: [{ track: "Main", start: 0, duration: 3 + t, name: "DJI 0055", selected: true }, { track: "Main", start: 3.1 + t, duration: 4, name: "DJI 0063" }] });
   uncutUI.mount(at.exportProgress, "exportProgress", { scale: 0.5, progress: Math.min(1, t / 3), eta: 30 - t * 10 });
   const ctx = pic.getContext("2d");
