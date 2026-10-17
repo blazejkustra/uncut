@@ -908,3 +908,16 @@ test("review of 7142bcb: wc reads only project or kit files, never through a lin
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// T4-keynote-noskill: both Auto refusals were a cd into the kit (quoted, "Application Support",
+// trailing slash) or the project with reads, joined to `which ffmpeg`: the cd and reads pass, the
+// which is the one refused piece and the message quotes it alone.
+test("T4: a cd into the kit's quoted path with reads passes; joined to which, only the which is quoted", () => {
+  const kit = `cd "${R9_DATA}/brand/kits/uncut/" && ls -la && head -c 400 uncut-mark-on-dark.svg`;
+  assert.equal(r9d(kit).kind, "allow", kit);
+  for (const command of [`${kit}; which ffmpeg`, `cd "${R9_PROJECT}" && cat project.json | head -n 20; which ffmpeg ffprobe`]) {
+    const d = r9d(command);
+    assert.ok(d.kind === "deny", command);
+    assert.ok(d.message.includes("`which ffmpeg") && !d.message.includes("`cd ") && !d.message.includes("`ls -la`"), d.message);
+  }
+});

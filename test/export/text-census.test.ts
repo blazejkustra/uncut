@@ -14,7 +14,7 @@ import { censusOf, graphicDocument, graphicInfo, SMALL_TEXT, type Project } from
 import { readGraphics } from "../../apps/server/src/export/exporter.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
 import { rasterizerCommand, startRasterizer, type Rasterizer } from "../../apps/server/src/export/rasterizer.ts";
-import { legibilityNote } from "../../apps/server/src/agent/agentLegibility.ts";
+import { censusNear, legibilityNote } from "../../apps/server/src/agent/agentLegibility.ts";
 
 const DESKTOP = resolve("apps/desktop/dist/main.cjs");
 const hasFfmpeg = !spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error;
@@ -49,10 +49,25 @@ window.render = (t) => {
 };
 </script>`;
 
+// T4-keynote's Export moment: a sequence swapping topbar.export into export.high (dur 0.2 at 1.0 s) over
+// the editor stage mounted with blur and dim, and a big caption the graphic fades itself.
+const SOFT = `<div id="stage" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px"></div>
+<div id="seq" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px"></div>
+<div id="cap" style="position:absolute;left:40px;top:1200px;font:80px 'DM Sans';color:#fff">Ship it today</div>
+<script src="uncut:lib/ui.js"></script>
+<script>
+window.render = (t) => {
+  uncutUI.mount(document.getElementById("stage"), "composer", { width: 360, height: 160, scale: 5, blur: t >= 1.5 ? 8 : 0, dim: t >= 1.5 ? 0.35 : 0, text: "Big stage words" });
+  document.getElementById("cap").style.opacity = t >= 1.5 ? "0.2" : "1";
+  uncutUI.sequence(document.getElementById("seq"), t, [{ at: 0, piece: "topbar.export", props: {}, y: 675 }, { at: 1.0, piece: "export.high", props: { quality: "high" }, y: 675, dur: 0.2 }]);
+};
+</script>`;
+
 let root: string;
 let docs: Map<string, string>;
 let raster: Rasterizer;
 const project = { canvas, tracks: [{ items: [{ type: "graphic", src: "graphics/census.html", duration: 60 }] }] } as unknown as Project;
+const softProject = { canvas, tracks: [{ items: [{ type: "graphic", src: "graphics/soft.html", duration: 60 }] }] } as unknown as Project;
 
 before(async () => {
   if (skip) return;
@@ -60,8 +75,11 @@ before(async () => {
   const dir = join(root, "Census.uncut");
   mkdirSync(join(dir, "graphics"), { recursive: true });
   writeFileSync(join(dir, "graphics", "census.html"), STAGE);
-  const graphics = await readGraphics(dir, project, await loadGraphicLibs(resolve("assets/graphic-libs")));
-  docs = new Map([...graphics].map(([src, html]) => [src, graphicDocument(html, canvas)]));
+  writeFileSync(join(dir, "graphics", "soft.html"), SOFT);
+  const libs = await loadGraphicLibs(resolve("assets/graphic-libs"));
+  const graphics = await readGraphics(dir, project, libs);
+  const softs = await readGraphics(dir, softProject, libs);
+  docs = new Map([...graphics, ...softs].map(([src, html]) => [src, graphicDocument(html, canvas)]));
   const command = rasterizerCommand({ ...process.env, UNCUT_RENDER_ENTRY: DESKTOP });
   if ("problem" in command) throw new Error(command.problem);
   raster = await startRasterizer(command);
@@ -73,10 +91,10 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-async function census(local: number) {
-  const out = join(root, `f-${local}.png`);
+async function census(local: number, src = "graphics/census.html") {
+  const out = join(root, `f-${src.length}-${local}.png`);
   const info = graphicInfo({ duration: 60, props: {} }, canvas, local);
-  const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: docs.get("graphics/census.html")!, t: local / canvas.fps, info, out, census: SMALL_TEXT });
+  const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: docs.get(src)!, t: local / canvas.fps, info, out, census: SMALL_TEXT });
   const c = censusOf(reply ? reply.census : undefined);
   assert.ok(c, "a census came back");
   return c;
@@ -110,4 +128,30 @@ test("SVG text is sized through its viewBox, and a canvas on screen is reported 
   assert.equal((await census(45)).unseen, undefined);
   const note = legibilityNote([{ frame: 57, small: [], measured: c.measured, unseen: c.unseen }], H);
   assert.match(note ?? "", /frame 57, text drawn on a canvas.*isn't measured/);
+});
+
+test("a word blurred mid-swap, in a blurred and dimmed stage, or faded by the graphic is listed with exactly what softens it", { skip, timeout: 120000 }, async (t) => {
+  // f 32 at 30 fps: a third into the 0.2 s swap into export.high at 1.0 s, as T4's f 1356 was (0.4 in).
+  const mid = await census(32, "graphics/soft.html");
+  t.diagnostic(JSON.stringify(mid));
+  const high = mid.soft?.find((x) => x.text === "High");
+  assert.ok(high && high.by === "swap" && high.piece === "export.high" && high.side === "in" && high.at === 1 && high.dur === 0.2, JSON.stringify(high));
+  assert.equal(mid.soft?.some((x) => x.by === "stage"), false, "the stage isn't blurred yet");
+  const rest = await census(40, "graphics/soft.html");
+  assert.equal(rest.soft?.find((x) => x.text === "High"), undefined, "at rest the card reads");
+  assert.ok(rest.measured > 0);
+  const hint = censusNear([{ frame: 32, measured: mid.measured, small: mid.small, ...(mid.soft ? { soft: mid.soft } : {}) }], 32 / canvas.fps, canvas.fps) ?? "";
+  assert.match(hint, /softened at f 32: "High" .*uncutUI\.sequence's swap into "export\.high" \(its key at 1 s, dur 0\.2 s\).*at rest at 1\.2 s/, hint);
+  // The stage's own props and the graphic's own opacity, each named.
+  const late = await census(50, "graphics/soft.html");
+  t.diagnostic(JSON.stringify(late.soft));
+  const stage = late.soft?.find((x) => x.by === "stage");
+  assert.equal(late.soft?.some((x) => x.by === "stage" && x.share < SMALL_TEXT * 100), false, "a stage's small chrome isn't listed");
+  assert.ok(stage && stage.part === "composer" && stage.blur > 1 && stage.bright < 0.7, JSON.stringify(stage));
+  assert.equal(late.soft?.find((x) => x.text === "High")?.by, undefined, "the hero piece over the stage isn't softened by it");
+  const cap = late.soft?.find((x) => x.text === "Ship it today");
+  assert.ok(cap && cap.by === "graphic" && cap.prop === "opacity" && cap.el === "div#cap", JSON.stringify(cap));
+  const note = legibilityNote([{ frame: 50, measured: late.measured, small: late.small, ...(late.soft ? { soft: late.soft } : {}) }], H) ?? "";
+  assert.match(note, /"Big stage words.*blurred 8 px, darkened to 65 %: uncutUI\.mount\("composer"\)'s blur and dim props/);
+  assert.match(note, /"Ship it today" 4\.3 % \(at 20 % opacity: the graphic's own opacity on div#cap/);
 });

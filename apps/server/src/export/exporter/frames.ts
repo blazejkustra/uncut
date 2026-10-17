@@ -1,6 +1,6 @@
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { type Project, type Media, motionBlurDefault, itemMotionBlur, subFrameTimes, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, censusOf, SMALL_TEXT, type CensusRun, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
+import { type Project, type Media, motionBlurDefault, itemMotionBlur, subFrameTimes, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, censusOf, SMALL_TEXT, type CensusRun, type SoftRun, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
 import { clipShader, shaderParamBytes, shaderModuleCode, shaderFrameBytes, shaderTime } from "@uncut/core/shaders";
 import { RASTER_CSS, planExport, mediaToken, sourceFramePick, svgClipHtml, untaggedFilter, blurFilters, placementOf, fxGraph, boxGraph } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
@@ -21,6 +21,8 @@ export interface RenderedFrame {
   readonly measured?: number;
   /** With census: picture surfaces whose words it couldn't read (canvases, images, videos in a graphic; a zoomed, boxed or fading graphic). */
   readonly unseen?: number;
+  /** With census: words big enough to read but blurred, faded or dimmed, with what does it (census.ts SoftRun). */
+  readonly soft?: ReadonlyArray<SoftRun>;
 }
 
 export interface FrameSessionOptions {
@@ -150,6 +152,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const f = Math.max(0, Math.min(duration - 1, Math.floor(requested)));
       const notes: Array<string> = [];
       const small: Array<CensusRun> = [];
+      const soft: Array<SoftRun> = [];
       let measured = 0;
       let unseen = 0;
       const inputs: Array<string> = ["-i", background];
@@ -201,6 +204,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
             measured += got.measured;
             unseen += got.unseen ?? 0;
             small.push(...got.small);
+            soft.push(...(got.soft ?? []));
           }
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }
@@ -305,7 +309,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
       small.sort((a, b) => b.share - a.share);
-      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured, ...(unseen ? { unseen } : {}) } : {}) });
+      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured, ...(unseen ? { unseen } : {}), ...(soft.length ? { soft: soft.sort((a, b) => b.share - a.share).slice(0, 8) } : {}) } : {}) });
     }
     return out;
   };

@@ -3,7 +3,7 @@
 // default, a thread's step rows smaller than its message), the critic called them readable by eye,
 // and nothing measured them; whole-editor moments were blocked one per round. The census lists every
 // word under the floor in each frame, so the agent sees them all before the critic.
-import { censusList, LETTER_SHARE, SMALL_TEXT, type CensusRun } from "@uncut/core";
+import { censusList, LETTER_SHARE, SMALL_TEXT, softList, type CensusRun, type SoftRun } from "@uncut/core";
 
 import type { CriticFinding } from "./agentCritic.ts";
 
@@ -14,6 +14,8 @@ export interface CensusFrame {
   readonly measured?: number;
   /** Canvases, images or videos (or a zoomed or fading graphic) on the frame whose words the census can't read. */
   readonly unseen?: number;
+  /** Words big enough to read but blurred, faded or dimmed, and what does it (the stage's props, a sequence swap, the graphic's own style). */
+  readonly soft?: ReadonlyArray<SoftRun>;
 }
 
 /** What the census can't see, said wherever it would otherwise sound complete. */
@@ -28,22 +30,35 @@ export const legibleFix = (height: number) =>
 
 const frames = (list: ReadonlyArray<CensusFrame>) => list.filter((f) => f.small?.length);
 
+/** Frames whose big words are blurred, faded or dimmed, each with what does it ("" when none). */
+export function softNote(list: ReadonlyArray<CensusFrame>, max = 3): string {
+  const soft = list.filter((f) => f.soft?.length);
+  if (!soft.length) return "";
+  return `Words big enough to read but softened (the census skips them as unreadable): ${soft.slice(0, max).map((f) => `frame ${f.frame}: ${softList(f.soft!, 2)}`).join("; ")}${soft.length > max ? `; ${soft.length - max} more frames` : ""}. Fine for a stage or a passing swap; not on a frame where that word is the moment's subject.`;
+}
+
 /** render_frames' note: each frame's words under the floor, then the fix; undefined when none (or no census). */
 export function legibilityNote(list: ReadonlyArray<CensusFrame>, height: number): string | undefined {
   const small = frames(list);
   const blind = list.filter((f) => f.unseen).map((f) => f.frame);
   const caveat = blind.length ? ` On frame${blind.length === 1 ? "" : "s"} ${blind.slice(0, 6).join(", ")}${blind.length > 6 ? " …" : ""}, ${UNSEEN}.` : "";
-  if (!small.length) return caveat ? caveat.trim() : undefined;
+  const soft = softNote(list);
+  const tail = `${caveat}${soft ? ` ${soft}` : ""}`;
+  if (!small.length) return tail ? tail.trim() : undefined;
   const lines = small.slice(0, 6).map((f) => `frame ${f.frame}: ${censusList(f.small!, 4)}`);
-  return `Small text, measured on the graphics' words (letters' height as % of the frame's height; words a viewer must read need ${SMALL_TEXT * 100} %): ${lines.join("; ")}${small.length > 6 ? `; ${small.length - 6} more frames` : ""}. ${legibleFix(height)}${caveat}`;
+  return `Small text, measured on the graphics' words (letters' height as % of the frame's height; words a viewer must read need ${SMALL_TEXT * 100} %): ${lines.join("; ")}${small.length > 6 ? `; ${small.length - 6} more frames` : ""}. ${legibleFix(height)}${tail}`;
 }
 
 /** The census near a moment (seconds): the closest measured frame within half a second, as "measured there: …". */
 export function censusNear(list: ReadonlyArray<CensusFrame>, at: number, fps: number): string | undefined {
   const f = at * fps;
   const near = list.filter((x) => (x.measured ?? 0) > 0 && Math.abs(x.frame - f) <= fps / 2).sort((a, b) => Math.abs(a.frame - f) - Math.abs(b.frame - f))[0];
-  if (!near) return undefined;
-  return near.small?.length ? `measured at f ${near.frame}: ${censusList(near.small, 3)}` : `measured at f ${near.frame}: no graphic word under ${SMALL_TEXT * 100} %${near.unseen ? ` (${UNSEEN})` : ""}`;
+  // A softened word on the moment's own frame (or the closest one with any) says what softens it:
+  // T4-keynote's Export card was judged 0.08 s into a swap three rounds running, read as dim styling.
+  const soft = list.filter((x) => x.soft?.length && Math.abs(x.frame - f) <= fps / 2).sort((a, b) => Math.abs(a.frame - f) - Math.abs(b.frame - f))[0];
+  const softLine = soft ? `; softened at f ${soft.frame}: ${softList(soft.soft!, 2)}` : "";
+  if (!near) return soft ? softLine.slice(2) : undefined;
+  return `${near.small?.length ? `measured at f ${near.frame}: ${censusList(near.small, 3)}` : `measured at f ${near.frame}: no graphic word under ${SMALL_TEXT * 100} %${near.unseen ? ` (${UNSEEN})` : ""}`}${softLine}`;
 }
 
 /** The critic's fact line (in <motion>): the sheet's frames with words under the floor, or that none has. */

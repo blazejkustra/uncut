@@ -412,8 +412,11 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 const list = yield* session.render(cells, CELL_WIDTH, { census: true });
                 const sheet = yield* session.sheet(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), sheetLayout(list.length, aspect));
                 const phone = yield* session.render(phoneFrames, phoneWidth);
-                const fixed = fixFrames.length ? yield* session.render(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720)) : [];
-                return { ok: true as const, sheet, shown: list.map((f) => f.frame), census: list.map((f) => ({ frame: f.frame, ...(f.small ? { small: f.small } : {}), ...(f.measured !== undefined ? { measured: f.measured } : {}), ...(f.unseen ? { unseen: f.unseen } : {}) })), phone, fixed };
+                // Each claimed fix's frame measured too: a blocker's hint names what softens the words there
+                // (T4-keynote's Export card, 0.08 s into a swap at the claimed 22.6 s, three rounds).
+                const fixed = fixFrames.length ? yield* session.render(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720), { census: true }) : [];
+                const censusOfFrame = (f: (typeof list)[number]) => ({ frame: f.frame, ...(f.small ? { small: f.small } : {}), ...(f.measured !== undefined ? { measured: f.measured } : {}), ...(f.unseen ? { unseen: f.unseen } : {}), ...(f.soft ? { soft: f.soft } : {}) });
+                return { ok: true as const, sheet, shown: list.map((f) => f.frame), census: list.map(censusOfFrame), fixCensus: fixed.map(censusOfFrame), phone, fixed };
               }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
               if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
               const motion = yield* Effect.gen(function* () {
@@ -600,7 +603,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           const f = clampF(at * fps);
           const g = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items).find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
           const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
-          const measured = censusNear(census, at, fps);
+          const measured = censusNear([...evidence.fixCensus, ...census], at, fps);
           return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}${measured ? `; ${measured}` : ""}`;
         }, { width: project.canvas.width, height: project.canvas.height, safe: safeMargin(project) }),
       });
