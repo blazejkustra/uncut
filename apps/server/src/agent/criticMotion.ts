@@ -462,7 +462,7 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
  * The scan as review findings (rule "motion"): pops always; one-frame jumps and holds over a second
  * when the film is one take (a cut is fine elsewhere, an end card may hold); the seam when it loops.
  * Nearly empty runs of EMPTY_MIN_S or more (blockers when hard) and fast moves (never blockers) when one take.
- * At most 12, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
+ * At most 12, the blockers first, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
  */
 export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean } = {}): Array<CriticFinding> {
   // D297: in a motion film (hard) a pop, a one-frame jump (a cut) and a broken seam fail the round.
@@ -483,7 +483,8 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
     out.push({ rule: "motion", key: `motion:fast:${m.start}`, frame: m.start, range: { start: m.start, end: m.end }, hard: false, message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame. The export's motion blur draws each frame from a few sub-frames, so a move this fast stacks into copies that read as a glitch (render_frames draws no blur, so you won't see it there). Ease it over about 0.3 s or more, or raise the sub-frames: update_project {"motionBlur":{"samples":12}}.` });
   }
   if (o.loop && seamBroken(scan)) out.push({ rule: "motion", key: "motion:seam:0", frame: 0, hard, message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.` });
-  return out.slice(0, 12);
+  // The blockers first, so the cap never drops one (the seam came last) for a soft finding.
+  return [...out.filter((f) => f.hard), ...out.filter((f) => !f.hard)].slice(0, 12);
 }
 
 /** The scan's nearly empty runs of EMPTY_MIN_S or more (a run counts its last frame). */
