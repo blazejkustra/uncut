@@ -115,6 +115,10 @@ test("the four built-ins: parse, are read-only, use known placeholders with inpu
     // Uncut's on-screen rule: no dots or asterisks between words.
     assert.doesNotMatch(t.body, /\w · \w|\w \* \w/, t.id);
   }
+  // The keynote shows the model picker with the kit's Claude mark when the kit has it, pasted in, never redrawn.
+  assert.match(BUILTIN_TEMPLATES[0]!.body, /claude-mark\.svg[^\n]*model picker|model picker[^\n]*claude-mark|claude-mark\.svg, the composer's model picker/);
+  // No over-prescribed slow pacing: no "calm", "fewer transitions" or long holds.
+  for (const t of BUILTIN_TEMPLATES) assert.doesNotMatch(t.body, /\bcalm|fewer transitions|second and a half|hold(?:s)? (?:for )?(?:two|three|[2-9]) ?s/i, t.id);
   // Filled with nothing, a built-in still reads: notes, never "undefined".
   const filled = fillTemplate(BUILTIN_TEMPLATES[0]!.body, {}).text;
   assert.doesNotMatch(filled, /undefined|\{\{/);

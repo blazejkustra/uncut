@@ -6,7 +6,7 @@
 // The fill is deterministic: the project's media (names, lengths, fps, sizes), its brand kit, its
 // canvas and length, and the song's tempo and drop when a beat analysis is already cached (nothing
 // is analysed here). What the project doesn't have becomes the template's fallback or an honest note.
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { BrandKit } from "@uncut/contracts";
@@ -21,6 +21,9 @@ import type { BeatsResult } from "../analysis/beats.ts";
 import { cachedFor, targetOf } from "../analysis/analysis.ts";
 import { activeBrand, readPlan } from "../brand/store.ts";
 import { writeAtomic } from "../project/atomicWrite.ts";
+
+/** A template file's size cap on disk (the body is at most TEMPLATE_BODY_MAX characters, up to 4 bytes each, plus front matter). */
+const TEMPLATE_FILE_MAX = TEMPLATE_BODY_MAX * 4 + 4096;
 
 export const templatesDir = (dataDir: string) => join(dataDir, "templates");
 
@@ -39,7 +42,11 @@ export async function listTemplates(dataDir: string): Promise<Array<TemplateInfo
     const id = name.endsWith(".md") ? name.slice(0, -3) : "";
     if (!TEMPLATE_ID.test(id) || BUILTIN_TEMPLATE_IDS.has(id)) continue;
     try {
-      own.push(parseTemplate(await readFile(join(templatesDir(dataDir), name), "utf8"), id));
+      // Only plain files of a sane size: a symlink (to a key, a huge log) or a folder is skipped.
+      const file = join(templatesDir(dataDir), name);
+      const st = await lstat(file);
+      if (!st.isFile() || st.size > TEMPLATE_FILE_MAX) continue;
+      own.push(parseTemplate(await readFile(file, "utf8"), id));
     } catch {
       // unreadable: skipped
     }
@@ -54,7 +61,11 @@ export async function saveTemplate(dataDir: string, t: TemplateInfo): Promise<vo
   if (!t.name.trim()) throw new TemplateError({ reason: "invalid", message: "Give the template a name." });
   if (t.body.length > TEMPLATE_BODY_MAX) throw new TemplateError({ reason: "invalid", message: `A template is at most ${TEMPLATE_BODY_MAX} characters.` });
   await mkdir(templatesDir(dataDir), { recursive: true });
-  await writeAtomic(join(templatesDir(dataDir), `${t.id}.md`), formatTemplate({ name: t.name.slice(0, 80), description: t.description.slice(0, 300), body: t.body }));
+  const file = join(templatesDir(dataDir), `${t.id}.md`);
+  // writeAtomic writes through a symlink to its target: a template is never a link to somewhere else.
+  const st = await lstat(file).catch(() => undefined);
+  if (st && !st.isFile()) throw new TemplateError({ reason: "invalid", message: "A file with that template's name isn't a plain file; rename or remove it in the templates folder first." });
+  await writeAtomic(file, formatTemplate({ name: t.name.slice(0, 80), description: t.description.slice(0, 300), body: t.body }));
 }
 
 export async function deleteTemplate(dataDir: string, id: string): Promise<void> {

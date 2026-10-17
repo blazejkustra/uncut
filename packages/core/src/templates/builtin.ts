@@ -22,7 +22,8 @@ Use only what this project has; don't ask for more and don't invent anything.
 
 <direction>
 A launch film in the style of a keynote reveal, told entirely with the product's own interface. One continuous take: the camera never cuts and nothing fades. Each scene is built out of the one before it: a button grows into the next panel, a card folds into a list, a shape floods the frame and shrinks into the next view.
-The look is the product itself, rebuilt as clean, flat vector graphics from the kit and any screenshots in the media: its real colours, fonts, corner radii and spacing. The brand's logo files are used as they are, never redrawn.
+The look is the product itself, rebuilt as clean, flat vector graphics from the kit and any screenshots in the media: its real colours, fonts, corner radii and spacing, its accent colour only on the one thing selected. The brand's logo files are used as they are, never redrawn.
+When the product has a prompt box or composer, the film opens on it, and the first action is a real request typed into it in big type, word by word on the beat. If the kit has claude-mark.svg, the composer's model picker shows that mark beside the model name, exactly as in the app; paste the file in, never redraw it.
 A cursor causes every change. It moves on a soft curve, rests, clicks, types, drags. Nothing changes without a visible reason.
 The camera pushes in so the moment that matters fills the frame and reads on a phone, then glides to the next one. The cursor scales with the camera.
 Never: crossfades, blur-ins, 3D flips, particles, glows, gradients on interface chrome, panels or features the product doesn't have, made-up numbers or quotes, holds longer than a second, anything that looks like a stock template.
@@ -34,21 +35,24 @@ Never: crossfades, blur-ins, 3D flips, particles, glows, gradients on interface 
 - Build: each feature grows out of the last. One feature per bar or two, each shown doing its one job, named in a few words at most.
 - Drop ({{drop|the song's biggest moment}}): the biggest reveal lands here, the product's most impressive moment, edge to edge.
 - Proof: only what's true, from the kit or the media. If there's nothing to prove with, skip it.
-- Close: the interface collapses into the logo, the tagline and URL from the kit rise in, landing on the last downbeat. The last frame matches the first, so the film loops.
+- Close: the interface collapses into the logo, and the tagline and URL rise out of a mask line if the kit has them, landing on the last downbeat. The last frame matches the first, so the film loops.
 </structure>
 
 <build>
 - One motion graphic spanning the whole film, every frame a pure function of time: no CSS transitions, timers or state carried between frames.
 - Moves settle on springs; a value with several targets is the sum of one spring per change, so any frame can be drawn on its own.
 - Typing is a function of time too: the visible characters come from t.
+- Footage inside the film: downscale it to the canvas first, re-encode it all-intra so any frame seeks fast, and wait for each seek to finish before drawing.
 - Find the beat grid and the drop from the song before placing anything. Start on a downbeat; put big changes on downbeats and the reveal on the drop.
 - Music only, no added effects unless asked; master around -14 LUFS.
-- Check a still per bar, then the whole film for one-frame pops, cramped text and anything unreadable at phone size.
+- Check a still per beat, then scan the whole film for one-frame pops (a frame that differs from its neighbours far more than they differ from each other), cramped text and anything unreadable at phone size.
 </build>
 
 <gotchas>
 - A shape that floods the frame must overscale past the corners, or the edges show for a frame.
 - Text that changes inside a morphing shape needs its own mask.
+- A child set visible shows through a hidden parent; let children inherit visibility.
+- will-change on anything the camera scales renders its text blurry; leave it off.
 - The last frame has to match the first, cursor included, or the loop jumps.
 - Everything on screen must exist in the product. When unsure, leave it out.
 </gotchas>
@@ -85,7 +89,7 @@ Never: hard cuts, crossfades, blur-ins, slices or tiles, bouncy easing, particle
 - Open: the shape is already moving on frame 0, holding the strongest image or a big headline.
 - Middle: a new state every bar, each made out of the last. Vary the form (inset, full bleed, pill, split) so no two bars look the same.
 - Drop ({{drop|the song's biggest moment}}): the shape floods the frame with the best shot.
-- End: the shape settles into the logo or a last word from the kit, held about a second and a half, and springs back to the first frame's shape so it loops.
+- End: the shape settles into the logo or a last word from the kit, held about a second, and springs back to the first frame's shape so it loops.
 </structure>
 
 <build>
@@ -96,7 +100,7 @@ Never: hard cuts, crossfades, blur-ins, slices or tiles, bouncy easing, particle
 </build>
 
 <gotchas>
-- A flood must overscale past the corners, or the corners pop.
+- A flood must overscale past the corners and take about a third of a second, or the corners pop and half the frame changes at once.
 - A clip inside a shape is drawn at its shown size or larger; never upscale a small file into a full-bleed frame.
 - The last frame must equal the first, or the loop stutters.
 </gotchas>
@@ -131,7 +135,7 @@ Never: speed ramps or effects on every cut, the same shot twice, transitions tha
 <structure>
 {{tempo|The song's tempo}}, {{beats|cut on the beats}}.
 - Open: the most striking shot on frame 0, already in motion. No fade from black.
-- Build: shots of one or two beats, wider and calmer first, getting tighter and faster towards the drop.
+- Build: shots of one or two beats, wider first, getting tighter and faster towards the drop.
 - Drop ({{drop|the song's biggest moment}}): the best shot of all lands exactly here.
 - After the drop: the fastest cutting, then slow down for the last bar.
 - End: the last shot or the logo held on the final downbeat, the music ending with it, not cut off.
