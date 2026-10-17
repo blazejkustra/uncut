@@ -45,8 +45,8 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   // Blind round 3 (the references): one hero carried through every scene (cards under new headlines read
   // as slides), frame 0 moving by 0.5 s, every change caused, phone-legible UI lines, few words, holds that drift.
   assert.match(body, /^The hero \(both paths\)\n- One hero shape, a rounded rect or pill \(uncutMotion\.shape\), never leaves the frame/m);
-  for (const want of [/A new card under a new headline is a slide/, /lands by about 0\.5 s/, /Every change has a visible cause: a drawn cursor's click, drag or keystroke/, /3\.5 % of the height or more/, /1 to 3 words/, /most scenes need none/, /holds drift \(uncutMotion\.camera's drift/]) assert.match(body, want);
-  for (const re of [/One hero carried through every scene/, /moves by 0\.5 s/, /visible cause/, /footage stays inside UI/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
+  for (const want of [/A new card under a new headline is a slide/, /lands by about 0\.5 s/, /Every change has a visible cause: a drawn cursor's click, drag or keystroke/, /3\.5 % of the height or more/, /1 to 3 words/, /most scenes need none/, /holds drift \(uncutMotion\.camera's drift/, /uncutMotion\.click\) lands, rests 0\.1 s, visibly presses the button, and its change starts at fire/, /never on arrival/]) assert.match(body, want);
+  for (const re of [/One hero carried through every scene/, /moves by 0\.5 s/, /visible cause \(a click rests, then presses\)/, /footage stays inside UI/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   for (const re of [/near-empty/, /camera moving in every scene/, /grows out of a shape/, /on the kick/, /huge headline/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   for (const re of [/70 %/, /9 %/, /caption under a card/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   const checklist = skillChecklist(body);

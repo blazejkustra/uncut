@@ -24,6 +24,7 @@ interface Motion {
   iris: (open: number, o: { x: number; y: number; r: number; blades?: number }) => Array<Array<Pt>>;
   squeeze: (xs: Array<number>, widths: Array<number>, anchor: number, f: number) => Array<{ x: number; scale: number; width: number }>;
   cursor: (t: number, path: Array<Record<string, unknown>>, o?: unknown) => { x: number; y: number; scale: number; down: boolean };
+  click: (t: number, o: Record<string, unknown> | Array<Record<string, unknown>>) => Record<"x" | "y" | "scale" | "press" | "button" | "start" | "arrive" | "pressAt" | "fire" | "release" | "end", number> & { down: boolean; fired: boolean };
   camera: (t: number, keys: Array<Record<string, number>>, s?: unknown, o?: { drift?: number }) => { x: number; y: number; zoom: number };
   beat: (n: number, o?: { bpm?: number; offset?: number }) => number;
   loop: (t: number, d: number) => number;
@@ -149,6 +150,42 @@ test("iris: six blades; open, the aperture is clear; closed, the blades cover th
   assert.ok(closed.some((b) => inside([510, 505], b)), "nearly closed: near the centre is covered");
   for (const b of closed) for (const [x, y] of b) assert.ok(Math.hypot(x - 500, y - 500) <= 200 + 1e-6, "blades stay in the circle");
   assert.deepEqual(M.iris(0.5, o), half, "pure");
+});
+
+test("click: the cursor lands and lies still, then presses, and the change starts only after the press begins", () => {
+  // Measured at 60 fps on the reference films: the last pixels decelerate, about 0.1 s still, a 0.09 s
+  // press to scale 0.85 (the button 0.95), a 0.13 s release, the result starting 30 ms into the press.
+  const o = { from: [900, 1200], x: 480, y: 740, fire: 6 };
+  const c = M.click(6, o);
+  assert.ok(near(c.fire, 6) && near(c.pressAt, 5.97, 1e-9) && near(c.arrive, 5.87, 1e-9) && near(c.start, 5.52, 1e-9), JSON.stringify(c));
+  const at = (t: number) => M.click(t, o);
+  assert.deepEqual([at(c.start - 1).x, at(c.start - 1).y], [900, 1200], "waits at from");
+  assert.ok(near(at(c.arrive).x, 480, 1e-6) && near(at(c.arrive).y, 740, 1e-6), "on the target at arrival");
+  // Still from the arrival to the press: nothing moves, nothing presses (the old bug: a press mid-glide).
+  for (let t = c.arrive; t < c.pressAt; t += 1 / 60) {
+    const s = at(t);
+    assert.ok(near(s.x, 480, 1e-6) && near(s.y, 740, 1e-6) && s.press === 0 && s.scale === 1 && !s.fired, `still at ${t}`);
+  }
+  // Decelerates into the target: the last 0.1 s of the glide covers little of the distance.
+  const d = (t: number) => Math.hypot(at(t).x - 480, at(t).y - 740);
+  assert.ok(d(c.arrive - 0.1) < 0.06 * Math.hypot(420, 460), `${d(c.arrive - 0.1)} px left 0.1 s out`);
+  assert.ok(d(c.start + 0.1) < Math.hypot(420, 460) * 0.85 && d(c.start + 0.1) > 0, "already moving early");
+  // The press: down 0.09 s to 0.85, held, released over 0.13 s.
+  const deep = at(c.pressAt + 0.1);
+  assert.ok(near(deep.scale, 0.85, 1e-9) && near(deep.button, 0.95, 1e-9) && deep.down && deep.fired, JSON.stringify(deep));
+  assert.ok(at(c.pressAt + 0.045).press > 0.3 && at(c.pressAt + 0.045).press < 0.7, "presses over time, not in one frame");
+  assert.ok(!at(c.fire - 0.005).fired && at(c.fire).fired, "fires 30 ms into the press");
+  assert.ok(near(at(c.end).scale, 1) && !at(c.end).down && near(c.end - c.release, 0.13, 1e-9), "released");
+  // at schedules forward instead; a list chains clicks, each from the last target.
+  assert.ok(near(M.click(0, { x: 1, y: 2, at: 1 }).fire, 1 + 0.35 + 0.1 + 0.03, 1e-9));
+  const chain = [
+    { from: [0, 0], x: 100, y: 100, fire: 1 },
+    { x: 300, y: 100, fire: 2 },
+  ];
+  assert.ok(near(M.click(1.5, chain).x, 100, 1e-6), "rests on the first target until the next glide");
+  assert.ok(near(M.click(2, chain).x, 300, 1e-6) && M.click(2, chain).fired, "second click");
+  assert.ok(near(M.click(0, chain).x, 0, 1e-6), "before the first: at its from");
+  assert.deepEqual(M.click(5.95, o), M.click(5.95, o), "pure");
 });
 
 test("squeeze, cursor, camera, beat, loop, colours", () => {
