@@ -332,14 +332,10 @@ export function dropOf(beats: ReadonlyArray<number>, phase: number, onsets: Read
 }
 
 /**
- * The beat grid in timeline frames (D191): beats, downbeats (one beat in 4: the phase whose beats
- * carry the most onset strength) and the strongest hits, inside the item; snaps of the given
- * frames to the nearest beat and downbeat.
+ * The downbeat phase (one beat in 4: the phase whose beats carry the most onset strength; D296: the
+ * drop's, when there is one, since a drop lands on a downbeat) and the drop, in seconds of the media.
  */
-export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range?: { start: number; end: number }, snap?: ReadonlyArray<number>) {
-  const toTl = (seconds: number) => Math.round(item.start + (seconds * fps - item.in) / (item.speed || 1));
-  const end = item.start + item.duration;
-  const inItem = (f: number) => f >= item.start && f < end && (!range || (f >= range.start && f < range.end));
+export function downbeatsOf(result: BeatsResult): { phase: number; drop: ReturnType<typeof dropOf> } {
   const beatsS = result.beats ?? [];
   const onsets = result.onsets ?? [];
   // Onset strength near each beat (within a quarter beat).
@@ -354,9 +350,22 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
       phase = p;
     }
   }
-  // D296: a drop by level lands on a downbeat: the downbeats follow it.
   const drop = dropOf(beatsS, phase, onsets, result.beatLevels);
-  if (drop) phase = drop.beat % 4;
+  return { phase: drop ? drop.beat % 4 : phase, drop };
+}
+
+/**
+ * The beat grid in timeline frames (D191): beats, downbeats (one beat in 4: the phase whose beats
+ * carry the most onset strength) and the strongest hits, inside the item; snaps of the given
+ * frames to the nearest beat and downbeat.
+ */
+export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range?: { start: number; end: number }, snap?: ReadonlyArray<number>) {
+  const toTl = (seconds: number) => Math.round(item.start + (seconds * fps - item.in) / (item.speed || 1));
+  const end = item.start + item.duration;
+  const inItem = (f: number) => f >= item.start && f < end && (!range || (f >= range.start && f < range.end));
+  const beatsS = result.beats ?? [];
+  const onsets = result.onsets ?? [];
+  const { phase, drop } = downbeatsOf(result);
   const beats = beatsS.map(toTl).filter(inItem);
   const downbeats = beatsS.flatMap((b, i) => (i % 4 === phase ? [toTl(b)] : [])).filter(inItem);
   const hits = onsets

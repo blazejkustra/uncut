@@ -6,3 +6,7 @@
 .brand-hero-title { font-weight: 600; font-size: 13px; }
 .brand-hero .btn { justify-content: center; }
 .mention-option .skill-call { margin-left: auto; }
+/* Issue #111: the Templates group in the composer's / menu, and the Templates section of the Skills tab. */
+.slash-group { padding: 6px 8px 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--dim); text-transform: uppercase; }
+.slash-group:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+.template-syntax { font-family: var(--mono); font-size: 10.5px; color: var(--dim); line-height: 1.5; }

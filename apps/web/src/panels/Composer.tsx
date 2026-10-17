@@ -3,13 +3,15 @@
 // (Add to chat, D141, inserts the same), and a typed time (@0:12, @12s) offers that moment (D183);
 // ↑ in an empty box brings back earlier prompts; while a turn runs the button is Stop and Enter
 // queues the message for when it ends. D232 (issue #60): / offers the installed skills (a picked
-// one goes in as /name; the server sends its instructions with the message). Images come in by
+// one goes in as /name; the server sends its instructions with the message), and since issue #111
+// a Templates group: a picked template is filled from the project and lands here as a brief to
+// edit before sending. Images come in by
 // paste, drop or the paperclip. The bottom
 // row picks the provider, model, effort and access, remembered per project (agentPrefs.ts). The
 // text, chips and images live in the store.
 import { AGENT_IMAGE_MAX, AGENT_IMAGE_TYPES, AGENT_IMAGES_MAX, type AgentImage, type AgentMention, type AgentTurn } from "@uncut/contracts";
 import { mentionCandidates, momentLabel, parseMoment } from "@uncut/core/mentions";
-import { ArrowLeftRight, ArrowUp, AtSign, Blend, BookOpen, Clock3, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Sparkles, Square, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, AtSign, Blend, BookOpen, Clock3, FileText, Film, Flag, ListVideo, MousePointer2, Music, Paperclip, Rows3, Sparkles, Square, X } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { usePlayback } from "../preview/playback.ts";
@@ -19,6 +21,7 @@ import { bridge } from "../state/bridge.ts";
 import { isAttachable, quotePaths, sortPasted } from "./pasted.ts";
 import { actions, getState, useApp, type Project } from "../state/store.ts";
 import { ComposerChoices } from "./composer/Choices.tsx";
+import { slashItems, type SlashItem } from "./composer/slash.ts";
 import { TokenMeter } from "./TokenMeter.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import "./skills/skills.css";
@@ -69,7 +72,7 @@ async function readImage(file: File): Promise<AgentImage | string> {
 }
 
 export function Composer({ project, online, blocked, turns, running, provider }: { project: Project; online: boolean; blocked: boolean; turns: ReadonlyArray<AgentTurn>; running: string | null; provider: string }) {
-  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot, brand } = useApp();
+  const { agentDraft: draft, agentMentions: mentions, agentQueued: queued, agentFocus, agentImages: images, snapshot, brand, templates } = useApp();
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [dropping, setDropping] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -147,15 +150,14 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     return [...moment, ...candidates.filter((c) => c.label.toLowerCase().includes(q)).slice(0, 8 - moment.length)];
   }, [candidates, query?.[1], fps]);
   const pickerOpen = !!query && dismissed !== at && matches.length > 0 && !blocked;
-  // D232: /name calls a skill; the picker lists the installed ones (a path closes it).
+  // D232: /name calls a skill; the picker lists the installed ones (a path closes it). Issue #111:
+  // the templates follow as their own group.
+  useEffect(() => {
+    if (online && !templates) void actions.templatesGet();
+  }, [online, !templates]);
   const slash = !query ? /(?:^|\s)\/([a-z0-9-]{0,40})$/.exec(before) : null;
   const slashAt = slash ? caret - slash[1]!.length - 1 : -1;
-  const skillMatches = useMemo(() => {
-    if (!slash) return [];
-    const q = slash[1]!;
-    const all = brand?.skills ?? [];
-    return [...all.filter((x) => x.id.startsWith(q)), ...all.filter((x) => !x.id.startsWith(q) && (x.id.includes(q) || x.name.toLowerCase().includes(q)))].slice(0, 12);
-  }, [brand?.skills, slash?.[1]]);
+  const skillMatches = useMemo(() => (slash ? slashItems(slash[1]!, brand?.skills ?? [], templates ?? []) : []), [brand?.skills, templates, slash?.[1]]);
   const skillOpen = !!slash && dismissed !== slashAt && skillMatches.length > 0 && !blocked;
   useEffect(() => setPick(0), [query?.[1], slash?.[1]]);
 
@@ -171,7 +173,14 @@ export function Composer({ project, online, blocked, turns, running, provider }:
     setDraft(text, [...mentions.filter((m) => !(m.kind === c.kind && m.id === c.id && m.label === c.label)), mention]);
   };
 
-  const chooseSkill = (x: (typeof skillMatches)[number]) => {
+  const chooseSkill = (x: SlashItem) => {
+    if (x.kind === "template") {
+      // The /query goes at once; the filled brief comes in where it was when the server answers.
+      caretTo.current = slashAt;
+      setDraft(draft.slice(0, slashAt) + draft.slice(caret));
+      void actions.useTemplate(x.id, slashAt);
+      return;
+    }
     const insert = `/${x.id} `;
     caretTo.current = slashAt + insert.length;
     setDraft(draft.slice(0, slashAt) + insert + draft.slice(caret));
@@ -283,24 +292,30 @@ export function Composer({ project, online, blocked, turns, running, provider }:
       {skillOpen && (
         <div className="mention-picker" role="listbox" data-testid="skill-picker">
           {skillMatches.map((x, i) => (
-            <button
-              key={x.id}
-              role="option"
-              aria-selected={i === pick}
-              className={`mention-option ${i === pick ? "active" : ""}`}
-              data-testid="skill-option"
-              data-skill={x.id}
-              title={x.description}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                chooseSkill(x);
-              }}
-              onMouseEnter={() => setPick(i)}
-            >
-              <BookOpen />
-              <span className="ellipsis grow">{x.name}</span>
-              <span className="skill-call">/{x.id}</span>
-            </button>
+            <Fragment key={`${x.kind}:${x.id}`}>
+              {x.kind === "template" && skillMatches[i - 1]?.kind !== "template" && (
+                <div className="slash-group" role="presentation" data-testid="template-group">
+                  Templates
+                </div>
+              )}
+              <button
+                role="option"
+                aria-selected={i === pick}
+                className={`mention-option ${i === pick ? "active" : ""}`}
+                data-testid={x.kind === "template" ? "template-option" : "skill-option"}
+                {...(x.kind === "template" ? { "data-template": x.id } : { "data-skill": x.id })}
+                title={x.description}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  chooseSkill(x);
+                }}
+                onMouseEnter={() => setPick(i)}
+              >
+                {x.kind === "template" ? <FileText /> : <BookOpen />}
+                <span className="ellipsis grow">{x.name}</span>
+                <span className="skill-call">{x.kind === "template" ? (x.builtin ? "template" : "yours") : `/${x.id}`}</span>
+              </button>
+            </Fragment>
           ))}
         </div>
       )}
@@ -336,7 +351,7 @@ export function Composer({ project, online, blocked, turns, running, provider }:
           value={draft}
           spellCheck={false}
           disabled={!online || blocked}
-          placeholder={blocked ? "Set up Claude Code to use the agent" : running ? "Write the next message; it's sent when this turn ends" : "Ask for an edit; @ to point at media or a clip, / for a skill"}
+          placeholder={blocked ? "Set up Claude Code to use the agent" : running ? "Write the next message; it's sent when this turn ends" : "Ask for an edit; @ to point at media or a clip, / for a skill or a template"}
           onChange={(e) => {
             history.current.at = -1;
             setCaret(e.target.selectionStart);

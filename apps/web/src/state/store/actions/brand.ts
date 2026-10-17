@@ -1,4 +1,5 @@
-import { type BrandKit, type BrandScope, type BrandSkill, type BrandActive, type BrandImported } from "@uncut/contracts";
+import { type BrandKit, type BrandScope, type BrandSkill, type BrandActive, type BrandImported, type TemplateInfo } from "@uncut/contracts";
+import { insertBrief } from "@uncut/core/templates";
 import { bridge } from "../../bridge.ts";
 import { isTransportError } from "../../connection.ts";
 import { set, state, isRemote } from "../core.ts";
@@ -68,6 +69,40 @@ export const brandActions = {
     const call = `/${name}`;
     const has = new RegExp(`(^|\\s)${call.replace(/[-/]/g, "\\$&")}(\\s|$)`).test(draft);
     set({ agentDraft: has ? draft : `${call} ${draft.trimStart()}`, agentFocus: state.agentFocus + 1, panelRequest: { panel: "agent", seq: nextPanelSeq() } });
+  },
+  // ---- templates (issue #111) ----
+  /** Reads the templates again (the / menu and the Skills tab show them). */
+  async templatesGet() {
+    const result = await call((c) => c["templates.list"]({}));
+    if (result.ok) set({ templates: result.value });
+  },
+  /** Saves one of the user's templates; true when it was taken (the reason in brandError otherwise). */
+  async templatesSave(template: TemplateInfo) {
+    const result = await call((c) => c["templates.save"]({ template }));
+    if (result.ok) set({ templates: result.value, brandError: undefined });
+    else set({ brandError: plainError(result.error) });
+    return result.ok;
+  },
+  async templatesDelete(id: string) {
+    const result = await call((c) => c["templates.delete"]({ id }));
+    if (result.ok) set({ templates: result.value, brandError: undefined });
+    else set({ brandError: plainError(result.error) });
+    return result.ok;
+  },
+  /**
+   * A template filled from the open project, put into the composer at `at` (the draft as it is when
+   * the fill comes back; the end when left out), the Agent tab open. Nothing is sent: the user edits
+   * the brief first. False when it couldn't be filled (the reason in brandError).
+   */
+  async useTemplate(id: string, at?: number) {
+    const result = await call((c) => c["templates.fill"]({ id }));
+    if (!result.ok) {
+      set({ brandError: plainError(result.error) });
+      return false;
+    }
+    const draft = state.agentDraft;
+    set({ agentDraft: insertBrief(draft, result.value.text, at ?? draft.length), agentFocus: state.agentFocus + 1, panelRequest: { panel: "agent", seq: nextPanelSeq() } });
+    return true;
   },
   /** D232: where skills come from: Settings, the plugins (Uncut's setup, its Capture step). */
   openPlugins() {

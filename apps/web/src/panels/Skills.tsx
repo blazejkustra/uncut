@@ -2,7 +2,7 @@
 // bundled uncut.skills) and the user's own. Nothing to pick: the agent sees each skill's name and
 // description and reads one when it fits; the user calls one with /name in the composer (Use in
 // chat puts it there). More skills come with plugins (Get more skills: the plugins in setup).
-import type { BrandSkill } from "@uncut/contracts";
+import type { BrandSkill, TemplateInfo } from "@uncut/contracts";
 import { Plus, Puzzle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -10,6 +10,10 @@ import { actions, useApp } from "../state/store.ts";
 import { type View, SCOPE_LABEL } from "./brand/kit.ts";
 import { SkillEditor, SkillView } from "./brand/SkillEditor.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
+import { TemplateEditor, TemplateRow, TemplateView, type TemplateDraft } from "./skills/Templates.tsx";
+
+// Issue #111: the Templates section's own views beside the skills'.
+type TabView = View | { readonly kind: "template"; readonly id: string } | { readonly kind: "template-edit"; readonly id: string | undefined; readonly draft: TemplateDraft };
 import "./skills/skills.css";
 
 export function SkillsLibrary() {
@@ -17,11 +21,15 @@ export function SkillsLibrary() {
   const brand = app.brand;
   const online = app.connection === "connected";
   const hasProject = app.snapshot !== null;
-  const [view, setView] = useState<View>({ kind: "list" });
+  const [view, setView] = useState<TabView>({ kind: "list" });
+  const templates = app.templates ?? [];
   // Fresh when the tab opens: a plugin installed or allowed since brings its skills.
   useEffect(() => {
-    if (online) void actions.brandGet();
+    if (!online) return;
+    void actions.brandGet();
+    void actions.templatesGet();
   }, [online]);
+  const duplicateTemplate = (t: TemplateInfo) => setView({ kind: "template-edit", id: undefined, draft: { name: `${t.name} copy`, description: t.description, body: t.body } });
 
   const openSkill = (s: BrandSkill) =>
     s.plugin ? setView({ kind: "builtin", id: s.id }) : setView({ kind: "skill", id: s.id, scope: s.scope, draft: { name: s.name, scope: s.scope, description: s.description, body: s.body } });
@@ -64,6 +72,17 @@ export function SkillsLibrary() {
         </div>
       ) : view.kind === "builtin" ? (
         <SkillView skill={brand.skills.find((s) => s.id === view.id)} online={online} hasProject={hasProject} onUse={use} onDuplicate={(s) => newSkill(s)} onClose={() => setView({ kind: "list" })} />
+      ) : view.kind === "template" ? (
+        <TemplateView
+          t={templates.find((t) => t.id === view.id)}
+          online={online}
+          hasProject={hasProject}
+          onDuplicate={duplicateTemplate}
+          onEdit={(t) => setView({ kind: "template-edit", id: t.id, draft: { name: t.name, description: t.description, body: t.body } })}
+          onClose={() => setView({ kind: "list" })}
+        />
+      ) : view.kind === "template-edit" ? (
+        <TemplateEditor id={view.id} draft={view.draft} templates={templates} online={online} onDraft={(draft) => setView({ ...view, draft })} onClose={() => setView({ kind: "list" })} />
       ) : view.kind === "skill" ? (
         <SkillEditor brand={brand} view={view} hasProject={hasProject} online={online} onDraft={(draft) => setView({ ...view, draft })} onClose={() => setView({ kind: "list" })} />
       ) : (
@@ -93,6 +112,21 @@ export function SkillsLibrary() {
             </div>
             {yours.length === 0 && <div className="muted small">None yet; duplicate a plugin's skill to make your own version</div>}
             {yours.map(row)}
+          </div>
+          <div className="lib-section" data-testid="templates-section">
+            <div className="brand-head">
+              <span className="lib-label">Templates</span>
+              <button className="btn ghost brand-small-btn" data-testid="templates-new" disabled={!online} onClick={() => setView({ kind: "template-edit", id: undefined, draft: { name: "", description: "", body: "" } })}>
+                <Plus />
+                New template
+              </button>
+            </div>
+            <div className="skills-intro small">
+              Creative briefs filled from your project. Type <kbd>/</kbd> in the chat to pick one; it lands in the chat for you to edit before sending.
+            </div>
+            {templates.map((t) => (
+              <TemplateRow key={t.id} t={t} onOpen={(x) => setView({ kind: "template", id: x.id })} />
+            ))}
           </div>
         </div>
       )}

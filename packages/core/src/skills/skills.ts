@@ -59,7 +59,7 @@ export interface BriefLike {
 
 const has = (re: RegExp, ...xs: ReadonlyArray<string | ReadonlyArray<string> | undefined>) => xs.some((x) => (Array.isArray(x) ? x.some((y) => re.test(y)) : typeof x === "string" && re.test(x)));
 /** Seconds in a duration like "20 s", "0:45", "1 min", "30-45s" (the largest number). */
-function seconds(d: string | undefined): number | undefined {
+export function durationSeconds(d: string | undefined): number | undefined {
   if (!d) return undefined;
   const mmss = /(\d+):(\d{2})/.exec(d);
   if (mmss) return Number(mmss[1]) * 60 + Number(mmss[2]);
@@ -123,7 +123,7 @@ export function suggestSkills(brief: BriefLike & { readonly type?: string }, o: 
   const formats = (brief.formats ?? []).map(ratio).filter((x): x is number => x !== undefined);
   const kinds = new Set(formats.map((r) => (r < 0.7 ? "tall" : r < 0.9 ? "4:5" : r < 1.1 ? "square" : "wide")));
   const multi = kinds.size > 1 || has(/cut-?downs?|every format|all formats|multi-?format|reels.*shorts|shorts.*tiktok/i, ...words, brief.deliverables);
-  const length = seconds(brief.duration);
+  const length = durationSeconds(brief.duration);
   if (talking) picked.add(BUILTIN_IDS.talking);
   if (launch || (!type && !talking && !demo && !explainer && !titles)) picked.add(BUILTIN_IDS.launch);
   if (demo) picked.add(BUILTIN_IDS.demo);

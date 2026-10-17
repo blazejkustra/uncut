@@ -11,6 +11,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import { Agent } from "../agent/agent.ts";
 import { brandRpc } from "../brand/brandRpc.ts";
+import { templatesRpc } from "../templates/templates.ts";
 import { Analysis } from "../analysis/analysis.ts";
 import { presentedToken, tokensMatch } from "./auth.ts";
 import { defaultParentDir, listFolder } from "./files.ts";
@@ -62,6 +63,7 @@ interface Services {
 // Handlers stay thin: decode (done by the RPC layer), call one service method.
 const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, library, agent, exporter, analysis, whisper, plugins, capture, generator, keys, sounds, mediaIndex, proxies, links }: Services) => {
   const brand = brandRpc(config.dataDir, projects.view, plugins.skillsNow);
+  const templates = templatesRpc(config.dataDir, projects.current, plugins.skillsNow);
   return WsRpcGroup.toLayer({
     [RPC_METHODS.serverHello]: () =>
       Effect.map(mediaCore.version, (version) => ({
@@ -128,6 +130,11 @@ const handlersLayer = ({ config, mediaCore, projects, recents, setup, settings, 
     [RPC_METHODS.brandSetActive]: (active) => brand.setActive(active),
     [RPC_METHODS.brandAddFile]: ({ kit, scope, path }) => brand.addFile(kit, scope, path),
     [RPC_METHODS.brandImport]: ({ kit, scope, source }) => brand.importFiles(kit, scope, source),
+    // Issue #111: creative briefs for the composer's / menu, filled from the open project.
+    [RPC_METHODS.templatesList]: () => templates.list,
+    [RPC_METHODS.templatesSave]: ({ template }) => templates.save(template),
+    [RPC_METHODS.templatesDelete]: ({ id }) => templates.delete(id),
+    [RPC_METHODS.templatesFill]: ({ id }) => templates.fill(id),
     [RPC_METHODS.agentScreenTake]: (answer) => agent.screenTake(answer),
     [RPC_METHODS.agentRestoreCleanup]: ({ turnId }) => agent.restoreCleanup(turnId),
     [RPC_METHODS.agentNewThread]: () => agent.newThread,
