@@ -7,58 +7,81 @@ import { parseTemplate, type Template } from "./templates.ts";
 
 const KEYNOTE = `---
 name: Keynote one take
-description: A product launch film made from the product's own UI: one continuous take, every scene morphs out of the last, a cursor drives it, on the beat.
+description: A product launch film rebuilt from the product's own UI: one unbroken take, a cursor drives every change, the camera pushes in so each moment fills the frame, on the beat.
 ---
 
 <inputs>
-Use only what this project has; don't ask for more and don't invent anything.
+Everything the film needs is in this project. Use only what is listed here; don't invent anything and don't stop to ask.
 - Project: {{project}}
-- Brand: {{kit}}
-- Media:
-{{media}}
+- Canvas: {{canvas}}. Length: {{length|the song's length}}.
 - Song: {{music}}
-- Canvas: {{canvas}}. Length: {{length|about 30 s, or the song's length}}.
+- Beat grid: {{grid}}
+- Footage (every file appears at least once):
+{{footage}}
+- Brand: {{kit}}
+- The product's real screens. Open and study each one before drawing anything; the film is rebuilt from them:
+{{screens}}
 </inputs>
 
+<look>
+Rebuild the interface as flat vector graphics, measured from the screenshots: the same layout, proportions, labels and icons. Never approximate it from memory.
+- Colours by role. The accent marks only the one thing selected or active at a time:
+{{palette}}
+- Type: {{fonts}}. Interface labels in the body face, timecodes and numbers in the mono face if the kit has one, big statements in the heading face with tight tracking.
+- Logos: {{logos}}. Placed as files, never traced or recoloured.
+- The model picker under the composer, when the product has one, shows the model's name with Claude's mark before it: {{claude-mark}}.
+- How this product's interface is built and what to show, from the kit. Follow its look exactly; the words, counts and results it quotes are examples, not a script (see Honesty below):
+{{look}}
+</look>
+
 <direction>
-A launch film in the style of a keynote reveal, told entirely with the product's own interface. One continuous take: the camera never cuts and nothing fades. Each scene is built out of the one before it: a button grows into the next panel, a card folds into a list, a shape floods the frame and shrinks into the next view.
-The look is the product itself, rebuilt as clean, flat vector graphics from the kit and any screenshots in the media: its real colours, fonts, corner radii and spacing, its accent colour only on the one thing selected. The brand's logo files are used as they are, never redrawn.
-When the product has a prompt box or composer, the film opens on it, and the first action is a real request typed into it in big type, word by word on the beat. If the kit has claude-mark.svg, the composer's model picker shows that mark beside the model name, exactly as in the app; paste the file in, never redraw it.
-A cursor causes every change. It moves on a soft curve, rests, clicks, types, drags. Nothing changes without a visible reason.
-The camera pushes in so the moment that matters fills the frame and reads on a phone, then glides to the next one. The cursor scales with the camera.
-Never: crossfades, blur-ins, 3D flips, particles, glows, gradients on interface chrome, panels or features the product doesn't have, made-up numbers or quotes, holds longer than a second, anything that looks like a stock template.
+A launch reveal told only with the product's own interface, in one unbroken take. Nothing cuts and nothing fades: every scene is made from a piece of the one before it. A button swells into a panel, a card becomes a row, a row stretches into a clip, a preview grows until it is the whole frame.
+The cursor is the reason for every change. It travels on an eased arc, settles, then clicks, types, drags or presses and holds, and what it touched answers on that beat. Nothing moves on its own.
+The camera behaves like a screen-recording zoom: it pushes in until the moment that matters fills most of the frame, glides to the next one, and pulls back to the whole window at most once, for one bar, to show where things live. The cursor scales with it.
+Readability floor, judged at phone size: any word the viewer has to read is at least 3 % of the frame's height on screen. The typed request is the biggest type in the film until the logo: the composer spans the frame's width and its text is at least 6 % of the frame's height. Whole windows at desktop scale with 1 % text are scenery, never the message; push in instead.
+Every frame is full. The panel the camera is on always holds real content: no stretch of empty panel, no lone icon on a blank field, no dark frame waiting for the next thing.
+Honesty: show only what the product has and what this run really did. Labels come from the screenshots. Numbers come from the inputs above (how many files, the song's length, the canvas) or from your own work in this turn (the beats of the storyboard you wrote). Labels, counts and results quoted in the kit's notes show the style only; the words and numbers on screen come from this run. Never show an outcome that hasn't happened: the critic's review and the export come after the film exists, so show their controls or show them starting, never a verdict, a score or a made-up percentage.
 </direction>
 
 <structure>
-{{tempo|The song's tempo}}, {{beats|one change on every beat}}: something happens on every beat, one big change per bar.
-- Open: the product's first screen, already moving on frame 0, filling the frame. The cursor arrives and does the first real action.
-- Build: each feature grows out of the last. One feature per bar or two, each shown doing its one job, named in a few words at most.
-- Drop ({{drop|the song's biggest moment}}): the biggest reveal lands here, the product's most impressive moment, edge to edge.
-- Proof: only what's true, from the kit or the media. If there's nothing to prove with, skip it.
-- Close: the interface collapses into the logo, and the tagline and URL rise out of a mask line if the kit has them, landing on the last downbeat. The last frame matches the first, so the film loops.
+Plan in bars of the beat grid: count the bars below on the measured grid, start on a downbeat, change something on every beat and make one big change per bar.
+1. Open, bars 1 to 2: the composer (or the product's first screen if it has none) fills the frame's width, already moving on frame 0. The cursor clicks into it and a short, real request this project could send (naming its footage and song in plain words) is typed in big type, one word per beat.
+2. Send, bar 3: the cursor clicks send; the send control grows and carries the request into the agent's panel as its first message.
+3. Work, bars 4 to 5: true step lines of this run tick in one per beat, with real counts (the files imported, the brief, the storyboard with its real number of beats). The cards the product has slide in, and the cursor approves one so it takes the success colour. The camera stays pushed in so every line reads.
+4. Build, up to the drop: one bar on the whole window, then a glide to the timeline: the footage snaps onto the track one clip per beat with thumbnail strips, the song draws across with its waveform, the playhead starts to run. Then a dive into the preview that reaches full frame exactly on the drop.
+5. Drop, 2 to 3 bars from {{drop|the drop found in the beat analysis}}: the real footage edge to edge, a new shot every one or two beats, each one arriving as a shape (inset, full bleed, pill, split), never as a cut. Only the best stretch of each clip.
+6. Features, 2 to 3 bars: the footage shrinks back into the preview and one shape travels through two or three real features from the screens; for each, the cursor does its one action and the result fills the frame. An export may be shown up to its progress bar running, never finished.
+7. Close, the last 2 bars: the last thing on screen folds into the logo while the tagline {{tagline|(none in the kit: leave it out)}} and {{url|(no URL in the kit: leave it out)}} rise out of a mask line, landing on the last downbeat. The logo never sits alone on an empty frame for more than a beat. The last frame equals the first (the empty composer, the cursor where it began), so the film loops.
 </structure>
 
+<never>
+Crossfades, blur-ins, fades from or to black, brightness ramps that develop an image, 3D flips, particles, glows, lens flares, gradients on interface chrome, a theme the product doesn't use, panels, buttons or features missing from the screenshots, invented numbers, quotes or results, a hold over a second, near-empty frames, text too small for a phone, anything that looks like a stock template. And from the kit:
+{{avoid}}
+</never>
+
 <build>
-- One motion graphic spanning the whole film, every frame a pure function of time: no CSS transitions, timers or state carried between frames.
-- Moves settle on springs; a value with several targets is the sum of one spring per change, so any frame can be drawn on its own.
-- Typing is a function of time too: the visible characters come from t.
-- Footage inside the film: downscale it to the canvas first, re-encode it all-intra so any frame seeks fast, and wait for each seek to finish before drawing.
-- Find the beat grid and the drop from the song before placing anything. Start on a downbeat; put big changes on downbeats and the reveal on the drop.
-- Music only, no added effects unless asked; master around -14 LUFS.
-- Check a still per beat, then scan the whole film for one-frame pops (a frame that differs from its neighbours far more than they differ from each other), cramped text and anything unreadable at phone size.
+- One HTML motion graphic at the canvas size for the whole film. Every frame is computed from t alone inside an async seek(t): no CSS transitions or animations, no timers, nothing carried over from the previous frame.
+- Motion settles on closed-form springs. A property that is moved several times is the sum of one spring per move, each starting at its own time, so every frame stands alone.
+- Typing is computed from t as well (characters shown are a function of t), and the caret blinks on the grid.
+- Clips landing on the timeline put their left and right edges on slightly different springs, so they stretch as they arrive.
+- Footage: downscale each clip to the canvas size first, re-encode it with every frame a keyframe, load it from a blob URL and wait for the seeked event before drawing the frame.
+- The song only, no sound effects unless asked, mastered around -14 LUFS.
+- Leave the finished film on the timeline with the song under it, at the length above.
 </build>
 
 <gotchas>
-- A shape that floods the frame must overscale past the corners, or the edges show for a frame.
-- Text that changes inside a morphing shape needs its own mask.
-- A child set visible shows through a hidden parent; let children inherit visibility.
-- will-change on anything the camera scales renders its text blurry; leave it off.
-- The last frame has to match the first, cursor included, or the loop jumps.
-- Everything on screen must exist in the product. When unsure, leave it out.
+- A shape that grows to fill the frame must overshoot the corners and take about a third of a second to get there; a fill that completes in one frame reads as a cut.
+- Text that changes while its shape morphs needs a clip mask of its own, or it spills out.
+- visibility: visible on a child beats a hidden parent; give children inherit.
+- will-change on a layer the camera scales leaves its text soft; leave it off.
+- A plain local file server often can't serve byte ranges, so a video loaded by URL won't seek; that's why the blob URL.
+- The cursor stays inside the frame and above everything else.
+- Compare the first and last frames, cursor included; any difference shows as a jump when the film loops.
+- If you're not sure the product has something, leave it out.
 </gotchas>
 
 <start>
-Write the beat map first (a state per bar, on the song's real beats) and check four stills: the open, the first build, the drop and the close. Then build the whole film, check your own work, and leave the finished film with the song on the timeline.
+Don't ask questions; decide. First write the beat map: one line per bar with its time on the grid, what is on screen, what the cursor does and where the camera is. Render four stills (the open with the request typed, the agent's work, the drop, the close) and check each against the readability floor and this brief. Then build the whole film, render a still per beat, scan for one-frame pops (a frame that changes far more than the frames around it) and fix them, and finish with the film and the song on the timeline.
 </start>
 `;
 
@@ -85,7 +108,7 @@ Never: hard cuts, crossfades, blur-ins, slices or tiles, bouncy easing, particle
 </direction>
 
 <structure>
-{{tempo|The song's tempo}}, {{beats|a change on nearly every beat}}.
+{{tempo}}, {{beats|a change on nearly every beat}}.
 - Open: the shape is already moving on frame 0, holding the strongest image or a big headline.
 - Middle: a new state every bar, each made out of the last. Vary the form (inset, full bleed, pill, split) so no two bars look the same.
 - Drop ({{drop|the song's biggest moment}}): the shape floods the frame with the best shot.
@@ -133,7 +156,7 @@ Never: speed ramps or effects on every cut, the same shot twice, transitions tha
 </direction>
 
 <structure>
-{{tempo|The song's tempo}}, {{beats|cut on the beats}}.
+{{tempo}}, {{beats|cut on the beats}}.
 - Open: the most striking shot on frame 0, already in motion. No fade from black.
 - Build: shots of one or two beats, wider first, getting tighter and faster towards the drop.
 - Drop ({{drop|the song's biggest moment}}): the best shot of all lands exactly here.

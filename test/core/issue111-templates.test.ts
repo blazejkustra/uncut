@@ -58,6 +58,45 @@ test("placeholders fill from the project's facts, deterministically", () => {
   assert.deepEqual(missing, []);
 });
 
+test("the kit's design facts and the beat grid: palette by role, typefaces once with their roles, logos placed, screens, dos and don'ts, tagline, URL, Claude's mark", () => {
+  const rich: TemplateFacts = {
+    ...facts,
+    kit: {
+      ...facts.kit!,
+      colors: [{ hex: "#0a0a0a", role: "background", name: "bg" }, { hex: "#111111", role: "surface", name: "panel" }, { hex: "#161616", role: "surface" }, { hex: "#6d8cff", role: "accent" }],
+      files: ["claude-mark.svg", "ui-editor.webp", "ui-shot.webp", "notes.pdf"],
+      logoRoles: { dark: "acme-dark.svg", light: "acme-light.svg" },
+      typefaces: [{ family: "Inter", roles: ["heading", "body"], file: "Inter.woff2" }, { family: "Mono", roles: ["mono"] }],
+      screens: ["ui-editor.webp"],
+      taglines: ["Rockets, simply", "Second line"],
+      urls: ["acme.dev", "github.com/acme"],
+      dos: ["Panels are #111111 with a 10 px radius", " Selection is the accent "],
+      donts: ["No light theme"],
+    },
+  };
+  const v = templateValues(rich);
+  assert.equal(v.palette, "- background: #0a0a0a (bg)\n- surface: #111111 (panel), #161616\n- accent: #6d8cff");
+  assert.equal(v.fonts, "Inter for heading and body (Inter.woff2); Mono for mono (not in the kit as a file)");
+  assert.equal(v.logos, "acme-dark.svg (on dark), acme-light.svg (on light)");
+  assert.equal(v.screens, "- ui-editor.webp");
+  assert.equal(v.look, "- Panels are #111111 with a 10 px radius\n- Selection is the accent");
+  assert.equal(v.avoid, "- No light theme");
+  assert.equal(v.tagline, '"Rockets, simply"');
+  assert.equal(v.url, "acme.dev");
+  assert.match(v["claude-mark"]!, /^claude-mark\.svg from the kit, pasted in as it is/);
+  assert.match(v.kit!, /\n- Taglines: "Rockets, simply", "Second line"\n- URLs: acme\.dev, github\.com\/acme$/);
+  // No example list: the images named like screenshots.
+  assert.equal(templateValues({ ...rich, kit: { ...rich.kit!, screens: [] } }).screens, "- ui-editor.webp\n- ui-shot.webp");
+  // No Claude mark in the kit: no value, so the note says the name goes alone.
+  const plain = templateValues(facts);
+  assert.equal(plain["claude-mark"], undefined);
+  assert.match(fillTemplate("{{claude-mark}}", plain).text, /model's name alone/);
+  // The grid: beat and bar length, the first downbeat, the bars, the drop's bar.
+  assert.equal(v.grid, "121.8 BPM: a beat every 0.49 s, a bar of 4 beats every 1.97 s; the first downbeat at 0:00.4 into the song; 56 beats (14 bars) in 28 s; the drop on bar 8, at 0:14.2");
+  const g = templateValues({ ...facts, music: { ...facts.music!, downbeat: { seconds: 0.5, beat: 1 }, drop: { seconds: 12.5, beat: 25 } } }).grid;
+  assert.match(g!, /first downbeat at 0:00\.5 into the song; .*the drop on bar 7, at 0:12\.5$/);
+});
+
 test("what the project doesn't have: the fallback, else an honest note; never a guessed tempo", () => {
   const bare: TemplateFacts = { media: [{ name: "song.mp3", kind: "audio", seconds: 30 }], music: { name: "song.mp3", seconds: 30 } };
   const v = templateValues(bare);
@@ -122,6 +161,17 @@ test("the four built-ins: parse, are read-only, use known placeholders with inpu
   // Filled with nothing, a built-in still reads: notes, never "undefined".
   const filled = fillTemplate(BUILTIN_TEMPLATES[0]!.body, {}).text;
   assert.doesNotMatch(filled, /undefined|\{\{/);
+  // The keynote is concrete through the project, never through numbers of its own: the kit's palette,
+  // type, logos, screens, dos and don'ts, the beat grid; a readability floor; no scripted results.
+  const keynote = BUILTIN_TEMPLATES[0]!.body;
+  for (const k of ["palette", "fonts", "logos", "screens", "look", "avoid", "grid", "footage", "claude-mark", "tagline", "url"]) assert.ok(keynote.includes(`{{${k}`), k);
+  for (const section of ["<look>", "<never>"]) assert.ok(keynote.includes(section), section);
+  assert.match(keynote, /at least 3 % of the frame's height/);
+  assert.match(keynote, /never a verdict/);
+  assert.doesNotMatch(keynote, /\b4:5\b|\b\d+ BPM|\bPassed\b/);
+  // No analysis yet: the brief tells the agent to analyse the song, never a dangling "The song's tempo".
+  assert.doesNotMatch(filled, /The song's tempo/);
+  assert.match(filled, /Beat grid: \[no beat analysis of the song yet: analyse its beats first \(media_analyze/);
 });
 
 const skills = [
@@ -129,13 +179,13 @@ const skills = [
   { id: "talking-head", name: "Talking-head short", description: "" },
   { id: "motion-film", name: "Motion film", description: "" },
 ];
-test("the / menu: skills first, then the templates as their own group, matched by id or name", () => {
+test("the / menu: the templates first as their own group, then the skills, matched by id or name", () => {
   const all = slashItems("", skills, BUILTIN_TEMPLATES);
   assert.deepEqual(
     all.map((x) => `${x.kind}:${x.id}`),
-    ["skill:launch-promo", "skill:talking-head", "skill:motion-film", "template:keynote-one-take", "template:one-shape-never-cut", "template:beat-cut-reel", "template:talking-head-subtitles"],
+    ["template:keynote-one-take", "template:one-shape-never-cut", "template:beat-cut-reel", "template:talking-head-subtitles", "skill:launch-promo", "skill:talking-head", "skill:motion-film"],
   );
-  assert.deepEqual(slashItems("talking", skills, BUILTIN_TEMPLATES).map((x) => `${x.kind}:${x.id}`), ["skill:talking-head", "template:talking-head-subtitles"]);
+  assert.deepEqual(slashItems("talking", skills, BUILTIN_TEMPLATES).map((x) => `${x.kind}:${x.id}`), ["template:talking-head-subtitles", "skill:talking-head"]);
   // Only a template matches: the menu still opens with it.
   assert.deepEqual(slashItems("keyn", skills, BUILTIN_TEMPLATES).map((x) => x.id), ["keynote-one-take"]);
   assert.deepEqual(slashItems("one-shape", skills, BUILTIN_TEMPLATES).map((x) => x.id), ["one-shape-never-cut"]);

@@ -78,8 +78,27 @@ function makeProject(dir: string, kit: boolean) {
   const data = join(root, "data2");
   if (kit) {
     mkdirSync(join(data, "brand", "kits", "acme"), { recursive: true });
-    writeFileSync(join(data, "brand", "kits", "acme", "kit.json"), JSON.stringify({ id: "acme", name: "Acme", logos: { light: "logo.svg" }, colors: [{ hex: "#112233", role: "accent" }], fonts: [{ family: "Inter", file: "Inter.woff2" }], tone: "Plain and direct." }));
-    for (const f of ["logo.svg", "Inter.woff2", "ui-shot.png"]) writeFileSync(join(data, "brand", "kits", "acme", f), "x");
+    writeFileSync(
+      join(data, "brand", "kits", "acme", "kit.json"),
+      JSON.stringify({
+        id: "acme",
+        name: "Acme",
+        logos: { light: "logo.svg" },
+        colors: [{ hex: "#112233", role: "accent" }],
+        fonts: [
+          { family: "Inter", role: "heading", file: "Inter.woff2" },
+          { family: "Inter", role: "body", file: "Inter.woff2" },
+        ],
+        tone: "Plain and direct.",
+        taglines: ["Rockets, simply"],
+        urls: ["acme.dev"],
+        dos: ["Panels have a 10 px radius"],
+        donts: ["No light theme"],
+        // One example that isn't in the folder: left out.
+        examples: ["ui-shot.png", "ui-gone.png"],
+      }),
+    );
+    for (const f of ["logo.svg", "Inter.woff2", "ui-shot.png", "claude-mark.svg"]) writeFileSync(join(data, "brand", "kits", "acme", f), "x");
     mkdirSync(join(dir, "brand"), { recursive: true });
     writeFileSync(join(dir, "brand", "active.json"), JSON.stringify({ kit: "acme", skills: [] }));
   }
@@ -108,9 +127,12 @@ test("a template fills from the open project: media, kit files, canvas, song len
   assert.deepEqual(facts.music?.drop, { seconds: 16, beat: 32 });
   assert.equal(facts.music?.beatCount, 60);
   assert.deepEqual(facts.kit?.logos, ["logo.svg"]);
-  assert.deepEqual(facts.kit?.files, ["ui-shot.png"]);
+  assert.deepEqual(facts.kit?.files, ["claude-mark.svg", "ui-shot.png"]);
+  assert.deepEqual(facts.kit?.screens, ["ui-shot.png"]);
+  assert.deepEqual(facts.kit?.typefaces, [{ family: "Inter", roles: ["heading", "body"], file: "Inter.woff2" }]);
+  assert.deepEqual(facts.music?.downbeat, { seconds: 0, beat: 0 });
 
-  await saveTemplate(data, { id: "probe", name: "Probe", description: "", body: "{{project}}\n{{canvas}}\n{{length}}\n{{tempo}}\n{{drop}}\n{{beats}}\n{{footage}}\n{{kit}}" });
+  await saveTemplate(data, { id: "probe", name: "Probe", description: "", body: "{{project}}\n{{canvas}}\n{{length}}\n{{tempo}}\n{{drop}}\n{{beats}}\n{{footage}}\n{{kit}}\n{{grid}}\n{{fonts}}\n{{screens}}\n{{look}}\n{{avoid}}\n{{tagline}} {{url}}\n{{claude-mark}}" });
   const filled = await fillFor(data, "probe", open, [], readBeats);
   assert.deepEqual(filled.missing, []);
   assert.equal(
@@ -127,8 +149,17 @@ test("a template fills from the open project: media, kit files, canvas, song len
       "- Logos (use these files, never redraw them): logo.svg",
       "- Fonts: Inter (Inter.woff2)",
       "- Colours: #112233 accent",
-      "- Other files: ui-shot.png",
+      "- Other files: claude-mark.svg, ui-shot.png",
       "- Tone: Plain and direct.",
+      '- Taglines: "Rockets, simply"',
+      "- URLs: acme.dev",
+      "120 BPM: a beat every 0.5 s, a bar of 4 beats every 2 s; the first downbeat at 0:00.0 into the song; 60 beats (15 bars) in 30 s; the drop on bar 9, at 0:16.0",
+      "Inter for heading and body (Inter.woff2)",
+      "- ui-shot.png",
+      "- Panels have a 10 px radius",
+      "- No light theme",
+      '"Rockets, simply" acme.dev',
+      "claude-mark.svg from the kit, pasted in as it is (never redrawn, recoloured or swapped for another icon)",
     ].join("\n"),
   );
   // The brief's duration wins over the song's length, and the beats are counted inside it.
@@ -140,6 +171,8 @@ test("a template fills from the open project: media, kit files, canvas, song len
   const keynote = await fillFor(data, "keynote-one-take", open, [], readBeats);
   assert.doesNotMatch(keynote.text, /\{\{|undefined/);
   assert.match(keynote.text, /track\.mp3, 30 s, 120 BPM, drop at 0:16\.0/);
+  assert.match(keynote.text, /Beat grid: 120 BPM: a beat every 0\.5 s/);
+  assert.match(keynote.text, /model picker [^\n]*Claude's mark before it: claude-mark\.svg from the kit/);
   await assert.rejects(fillFor(data, "gone", open, [], readBeats), /isn't there any more/);
 });
 
@@ -150,6 +183,11 @@ test("no analysis, no kit, no project: the notes say what's missing instead of g
   assert.match(filled.text, /\[no brand kit picked for this project\]/);
   assert.ok(filled.missing.includes("tempo") && filled.missing.includes("kit"));
   assert.doesNotMatch(filled.text, /BPM/);
+  // The keynote with no analysis: the agent is told to analyse the song first, and no Claude mark is promised.
+  const keynote = await fillFor(data, "keynote-one-take", open, [], none);
+  assert.ok(keynote.missing.includes("grid"));
+  assert.match(keynote.text, /Beat grid: \[no beat analysis of the song yet: analyse its beats first/);
+  assert.match(keynote.text, /model's name alone, no icon/);
   // No project open: only fallbacks and notes.
   const closed = await fillFor(data, "talking-head-subtitles", undefined, [], none);
   assert.match(closed.text, /\[no media imported yet/);

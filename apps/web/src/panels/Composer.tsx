@@ -4,8 +4,8 @@
 // ↑ in an empty box brings back earlier prompts; while a turn runs the button is Stop and Enter
 // queues the message for when it ends. D232 (issue #60): / offers the installed skills (a picked
 // one goes in as /name; the server sends its instructions with the message), and since issue #111
-// a Templates group: a picked template is filled from the project and lands here as a brief to
-// edit before sending. Images come in by
+// a Templates group above them: a picked template is filled from the project and lands here as a
+// brief to edit before sending. Images come in by
 // paste, drop or the paperclip. The bottom
 // row picks the provider, model, effort and access, remembered per project (agentPrefs.ts). The
 // text, chips and images live in the store.
@@ -151,7 +151,7 @@ export function Composer({ project, online, blocked, turns, running, provider }:
   }, [candidates, query?.[1], fps]);
   const pickerOpen = !!query && dismissed !== at && matches.length > 0 && !blocked;
   // D232: /name calls a skill; the picker lists the installed ones (a path closes it). Issue #111:
-  // the templates follow as their own group.
+  // the templates come first as their own group, the skills after them.
   useEffect(() => {
     if (online && !templates) void actions.templatesGet();
   }, [online, !templates]);
@@ -293,9 +293,9 @@ export function Composer({ project, online, blocked, turns, running, provider }:
         <div className="mention-picker" role="listbox" data-testid="skill-picker">
           {skillMatches.map((x, i) => (
             <Fragment key={`${x.kind}:${x.id}`}>
-              {x.kind === "template" && skillMatches[i - 1]?.kind !== "template" && (
-                <div className="slash-group" role="presentation" data-testid="template-group">
-                  Templates
+              {x.kind !== skillMatches[i - 1]?.kind && (
+                <div className="slash-group" role="presentation" data-testid={x.kind === "template" ? "template-group" : "skill-group"}>
+                  {x.kind === "template" ? "Templates" : "Skills"}
                 </div>
               )}
               <button
