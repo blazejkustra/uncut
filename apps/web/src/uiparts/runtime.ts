@@ -77,7 +77,8 @@ function ensureCss(doc: Document) {
   if (doc.querySelector("style[data-uncut-ui]")) return;
   const style = doc.createElement("style");
   style.setAttribute("data-uncut-ui", "");
-  style.textContent = DATA.css;
+  // A flight's landing element stays hidden, children included, while its copy travels (fly).
+  style.textContent = `${DATA.css}\n[data-uncut-fly-hidden],[data-uncut-fly-hidden] *{visibility:hidden !important}`;
   (doc.head || doc.documentElement).appendChild(style);
 }
 
@@ -1336,8 +1337,9 @@ const isElement = (v: unknown): v is HTMLElement => !!v && typeof v === "object"
  * a free rect or element (a big floating piece, a media tile, the typed prompt) to an element in the
  * stage (the composer's slot in the agent panel, the clip on the timeline, the preview's frame). Its
  * rect, corner radius and colour travel along an optional arc (critically damped), the start's look
- * handing over to the landing element's own look on the way; the landing element is hidden until
- * it lands, then the copy is gone and the real one shows. A piece key as from shows that piece at
+ * handing over to the landing element's own look on the way (words, fit "contain", one after the
+ * other: never the same text twice); the landing element is hidden until it lands (from frame 0 when
+ * from is a piece key), then the copy is gone and the real one shows: one copy on screen at a time. A piece key as from shows that piece at
  * rest before at (its typed text, the Send press), so the same call is the hero and its dock. Pure
  * in t. Returns { x, y, w, h, p, el } (el: the free piece's element when from is a piece key).
  */
@@ -1362,8 +1364,14 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   const raw = (t - f.at) / dur;
   const to = isElement(f.to) ? f.to : null;
   const from = isElement(f.from) ? f.from : null;
-  // The landing element is hidden while the copy flies; the from element leaves once the flight starts (leave).
-  if (to) to.style.visibility = raw >= 0 && raw < 1 ? "hidden" : "";
+  // The landing element is hidden while the copy flies, and before the flight too when the start is a
+  // free piece shown at rest (the hero composer and the message it becomes are the same words: the
+  // stage's bubble showing early is the prompt twice on screen). Its copy is gone on arrival, then the
+  // real one shows. The from element leaves once the flight starts (leave).
+  if (to) {
+    if (raw < 1 && (raw >= 0 || isPieceKey(f.from))) to.setAttribute("data-uncut-fly-hidden", "");
+    else to.removeAttribute("data-uncut-fly-hidden");
+  }
   if (from && f.leave) from.style.visibility = raw >= 0 ? "hidden" : "";
 
   // Landed, not started from an element yet, or an end gone with a later state: nothing shows.
@@ -1407,6 +1415,7 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
       const view = doc.defaultView!;
       const cs = view.getComputedStyle(el);
       const node = snapshot(el);
+      node.removeAttribute("data-uncut-fly-hidden");
       node.style.backgroundColor = "transparent";
       node.style.borderRadius = "0";
       node.style.border = "0";
@@ -1431,9 +1440,13 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   } else slotA.replaceChildren();
   const rB = sb ? (sb.r * B.w) / sb.w : rA;
   const bgB = sb ? sb.bg : bgA;
-  // The hand-over: the landing look comes in over the start's, which goes once it is mostly in.
-  const inB = smooth((q - 0.2) / 0.25);
-  const outA = smooth((q - 0.32) / 0.18);
+  // The hand-over. Pictures (cover: a tile into a clip) cross: the landing look comes in over the
+  // start's, which goes once it is mostly in. Words (contain: the typed prompt into its bubble) never
+  // overlap: the start's go first, then the landing's come in, so the same words are never on screen
+  // twice (T3b's faint second prompt behind the flying composer).
+  const words = f.fit === "contain";
+  const inB = words ? smooth((q - 0.34) / 0.16) : smooth((q - 0.2) / 0.25);
+  const outA = words ? smooth((q - 0.18) / 0.16) : smooth((q - 0.32) / 0.18);
   const place = (node: HTMLElement, w: number, h: number, alpha: number, cover: boolean) => {
     const s = cover ? Math.max(cur.w / w, cur.h / h) : Math.min(cur.w / w, cur.h / h);
     node.style.transformOrigin = "0 0";
