@@ -1,6 +1,6 @@
 // Shell commands for the permission rules: segments, words, destructive ones, the read-only allowlist.
 import { homedir } from "node:os";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { absolute, inside, owned } from "./paths.ts";
 
 
@@ -124,6 +124,29 @@ export function destructive(command: string, project: string, roots: ReadonlyArr
   return undefined;
 }
 
+/**
+ * A line with what quotes keep literal blanked out (to test it for shell syntax): everything inside
+ * '…', and inside "…" everything but $, `, \ and the closing quote (the shell still expands those).
+ * Round 9's A2: `grep -o '"[a-z]*":"[^"]*\.\(MP4\|mp4\)"' project.json` was refused for the
+ * pattern's \ ( | inside single quotes.
+ */
+export function quotedBlanked(c: string): string {
+  let out = "";
+  let quote: string | undefined;
+  for (const ch of c) {
+    if (quote) {
+      if (ch === quote) {
+        quote = undefined;
+        out += ch;
+      } else out += quote === '"' && /[$`\\]/.test(ch) ? ch : "x";
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
 /** Characters and words that make a command more than one simple program call. */
 const COMPLEX = /[$`(){}<>|;&\n\r\\]|<<|\*\*|\bsudo\b/;
 
@@ -131,10 +154,10 @@ const COMPLEX = /[$`(){}<>|;&\n\r\\]|<<|\*\*|\bsudo\b/;
  * A single simple command's words, or why it isn't one: no shell syntax ($, `, (, ), {, }, <, >,
  * |, ;, &, newlines, here-docs, backslashes), every quote a whole word ("my file", not r""m).
  */
-export function simpleCommand(command: string): { words: Array<string> } | { complex: string } {
+export function simpleCommand(command: string, opaqueQuotes = false): { words: Array<string> } | { complex: string } {
   const c = command.trim();
   if (!c) return { complex: "it's empty" };
-  if (COMPLEX.test(c)) return { complex: "it uses shell syntax ($, `, pipes, redirects, ; or &)" };
+  if (COMPLEX.test(opaqueQuotes ? quotedBlanked(c) : c)) return { complex: "it uses shell syntax ($, `, pipes, redirects, ; or &)" };
   const words: Array<string> = [];
   const re = /"([^"]*)"|'([^']*)'|([^\s"']+)/g;
   let last = 0;
@@ -167,6 +190,8 @@ export interface ReadZones {
   readonly sanctioned?: ReadonlyArray<string>;
   /** Further real paths that may be read (Claude Code's saved tool output of this project). */
   readonly readable?: (real: string) => boolean;
+  /** A folder's entries (its real path), for a cp source's * or ? (copyIntoProject); without it a glob isn't taken. */
+  readonly list?: (realDir: string) => ReadonlyArray<string>;
 }
 
 /**
@@ -177,7 +202,7 @@ export interface ReadZones {
  * by its real path (`real`, symlinks followed), so a link can't reach out. Only the flags in FLAGS
  * (head/tail: -n or -c and a number). Reading Uncut's own files (project.json, …) is fine; making a
  * folder there isn't. Media work goes through Uncut's tools; ffmpeg, ffprobe, file, wc and the rest
- * always get a card.
+ * always get a card (a cp only runs without one as copyIntoProject judges it).
  */
 export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, zones: string | ReadZones): boolean {
   const { project, sanctioned = [], readable: extra } = typeof zones === "string" ? { project: zones, readable: undefined } : zones;
@@ -234,6 +259,61 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
   return paths.every(readable);
 }
 
+/**
+ * Round 9's A2: `cp <this project's tool-results>/mcp-uncut-blob-17922490*.jpg .work/sheets/` was
+ * refused. A cp that only reads the project or this project's saved tool output (not a sanctioned
+ * folder: apps' data is only read in place) and writes into the project, like the Write tool there: no flag but
+ * -p (no -R, -L, …); the last word is the destination, a plain path whose real path is in the
+ * project; for each source the file it lands on (the destination, or the destination/its name)
+ * must be in the project and not Uncut's own (project.json, history.db, agent/, brand/active.json),
+ * judged by real path so a link there can't send the write out. A source may end in one glob
+ * segment with only * and ? (the folder part plain): every entry of that folder it could match,
+ * dot-files too, is judged by its real path, and none is no copy (`list` reads the folder).
+ */
+export function copyIntoProject(args: ReadonlyArray<string>, real: (p: string) => string, zones: ReadZones): boolean {
+  // Sources: the project and the saved tool output, not apps' data (a kit is read where it is; D219).
+  const { project, readable: extra, list } = zones;
+  const words: Array<string> = [];
+  for (const a of args) {
+    if (a.startsWith("-")) {
+      if (a !== "-p") return false;
+      continue;
+    }
+    words.push(a);
+  }
+  if (words.length < 2) return false;
+  const dest = words.at(-1)!;
+  const plain = (a: string) => a.length > 0 && !a.startsWith("~") && !/[*?[\]{}=\\$`]/.test(a) && !a.split("/").includes("..");
+  if (!plain(dest)) return false;
+  const lands = (r: string) => inside(r, project) && !owned(r, project);
+  if (!lands(real(dest))) return false;
+  const readable = (r: string) => inside(r, project) || extra?.(r) === true;
+  for (const src of words.slice(0, -1)) {
+    let files: Array<string>;
+    if (plain(src)) files = [src];
+    else {
+      const folder = src.includes("/") ? src.slice(0, src.lastIndexOf("/")) || "/" : ".";
+      const name = src.slice(src.lastIndexOf("/") + 1);
+      if (!list || !plain(folder) || !/^[^[\]{}=\\$`~]+$/.test(name) || !/[*?]/.test(name)) return false;
+      const dir = real(folder);
+      const re = new RegExp(`^${name.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".")}$`, "s");
+      let entries: ReadonlyArray<string>;
+      try {
+        entries = list(dir);
+      } catch {
+        return false;
+      }
+      files = entries.filter((e) => re.test(e)).map((e) => join(dir, e));
+      if (!files.length) return false;
+    }
+    for (const f of files) {
+      if (!readable(real(f))) return false;
+      if (!lands(real(join(dest, basename(f))))) return false;
+    }
+  }
+  return true;
+}
+
 /** Stands for an escaped space (`Application\ Support`) while a read-only line is parsed. */
 const SPACE = "\u0001";
 
@@ -248,7 +328,8 @@ function escapedSpaces(c: string): string | undefined {
   for (let i = 0; i < c.length; i++) {
     const ch = c[i]!;
     if (quote) {
-      if (ch === "\\") return undefined;
+      // Literal inside '…' (round 9: a grep pattern's \\( \\|); live inside "…".
+      if (ch === "\\" && quote === '"') return undefined;
       if (ch === quote) quote = undefined;
       out += ch;
       continue;
@@ -305,7 +386,7 @@ const JQ_PATH = /^\.(?:[A-Za-z0-9_.]|\[\d{0,6}\])*$/;
 function pureFilter(raw: string): boolean {
   // An unquoted glob or tilde would become file names.
   if (/[*?[\]{}~]/.test(raw.replace(/"[^"]*"|'[^']*'/g, ""))) return false;
-  const parsed = simpleCommand(raw);
+  const parsed = simpleCommand(raw, true);
   if ("complex" in parsed) return false;
   const [name = "", ...args] = parsed.words.map((w) => w.replaceAll(SPACE, " "));
   const f = FILTER_FLAGS[name];
@@ -348,9 +429,69 @@ export function readOnlyLine(command: string, real: (p: string, base: string) =>
  * "the line" for shell syntax around them; undefined when it is one. For the refusal's message.
  */
 export function notReadOnly(command: string, real: (p: string, base: string) => string, zones: ReadZones): string | undefined {
-  const c = escapedSpaces(command.trim());
+  return nonReads(command, real, zones)[0];
+}
+
+/**
+ * A line without each unquoted `2>/dev/null` word (errors thrown away: it writes nowhere). The line
+ * still runs as typed; this is only what is judged.
+ */
+function devNullDropped(c: string): string {
+  let out = "";
+  let quote: string | undefined;
+  for (let i = 0; i < c.length; i++) {
+    const ch = c[i]!;
+    if (quote) {
+      if (ch === quote) quote = undefined;
+      out += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if ((i === 0 || /\s/.test(c[i - 1]!)) && c.startsWith("2>/dev/null", i) && /^(?:[\s;|&]|$)/.test(c.slice(i + 11, i + 12))) {
+      i += 10;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/** A line without its here-documents' bodies (a script written with cat > x <<'EOF' is one piece, not one per line). */
+function withoutHeredocs(command: string): string {
+  const out: Array<string> = [];
+  let end: { word: string; tabs: boolean } | undefined;
+  for (const line of command.split("\n")) {
+    if (end) {
+      if ((end.tabs ? line.replace(/^\t+/, "") : line) === end.word) end = undefined;
+      continue;
+    }
+    out.push(line);
+    const m = line.match(/<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/);
+    if (m) end = { word: m[3]!, tabs: m[1] === "-" };
+  }
+  return out.join("\n");
+}
+
+/**
+ * Every piece of a line that isn't a plain read (round 9: a refusal named only the first, an `ls`,
+ * while the python after it was what kept the line from running), in order; ["the line"] for shell
+ * syntax around them; empty when readOnlyLine runs it.
+ */
+export function nonReads(command: string, real: (p: string, base: string) => string, zones: ReadZones): Array<string> {
+  const escaped = escapedSpaces(command.trim());
+  const c = escaped === undefined ? undefined : devNullDropped(escaped);
   const SYNTAX = /[$`(){}<>\\\r\0]|<<|\*\*|\bsudo\b/;
-  if (c === undefined || !c || SYNTAX.test(c)) return shellSegments(command).find((p) => SYNTAX.test(p)) ?? "the line";
+  const syntax = (x: string) => SYNTAX.test(quotedBlanked(x));
+  if (c === undefined || !c.trim() || syntax(c)) {
+    // Each piece with shell syntax, and each other piece that isn't a read on its own.
+    const pieces = shellSegments(withoutHeredocs(command)).filter((p) => {
+      if (/^(?:done|fi|esac|then|else|do)$/.test(p)) return false;
+      const x = escapedSpaces(p);
+      const y = x === undefined ? undefined : devNullDropped(x);
+      return y === undefined || syntax(y) || nonReads(p, real, zones).length > 0;
+    });
+    return pieces.length ? pieces : ["the line"];
+  }
   // Only ; && and newlines join commands, | pipes one into the next; a lone & (background) or || isn't taken.
   const pieces: Array<Array<string>> = [];
   let pipe: Array<string> = [];
@@ -369,7 +510,7 @@ export function notReadOnly(command: string, real: (p: string, base: string) => 
       continue;
     }
     if (ch === "|") {
-      if (c[i + 1] === "|") return "the line";
+      if (c[i + 1] === "|") return ["the line"];
       pipe.push(cur);
       cur = "";
       continue;
@@ -381,7 +522,7 @@ export function notReadOnly(command: string, real: (p: string, base: string) => 
       continue;
     }
     if (ch === "&") {
-      if (c[i + 1] !== "&") return "the line";
+      if (c[i + 1] !== "&") return ["the line"];
       i++;
       pieces.push([...pipe, cur]);
       pipe = [];
@@ -390,37 +531,57 @@ export function notReadOnly(command: string, real: (p: string, base: string) => 
     }
     cur += ch;
   }
-  if (quote) return "the line";
+  if (quote) return ["the line"];
   pieces.push([...pipe, cur]);
   const segments = pieces.map((p) => p.map((x) => x.trim()));
   if (segments.length > 1 && segments.at(-1)!.length === 1 && !segments.at(-1)![0]) segments.pop();
-  if (segments.length > 12 || segments.some((p) => p.length > 6 || p.some((x) => !x))) return "the line";
+  if (segments.length > 12 || segments.some((p) => p.length > 6 || p.some((x) => !x))) return ["the line"];
+  const out: Array<string> = [];
   let cwd = zones.project;
   for (const [segment, ...filters] of segments) {
     const shown = [segment, ...filters].join(" | ").replaceAll(SPACE, "\\ ");
-    const parsed = simpleCommand(segment!);
-    if ("complex" in parsed) return shown;
+    const parsed = simpleCommand(segment!, true);
+    if ("complex" in parsed) {
+      out.push(shown);
+      continue;
+    }
     const [name = "", ...args] = parsed.words.map((w) => w.replaceAll(SPACE, " "));
-    if (filters.length && (name === "cd" || name === "mkdir" || name === "pwd")) return shown;
-    if (!filters.every(pureFilter)) return shown;
+    if (filters.length && (name === "cd" || name === "mkdir" || name === "pwd" || name === "cp")) {
+      out.push(shown);
+      continue;
+    }
+    // A stage after the pipe that isn't a pure filter is named by itself (`python3 -c "…"`, not the cat before it).
+    const badFilters = filters.filter((f) => !pureFilter(f));
+    if (badFilters.length) {
+      out.push(...badFilters.map((f) => f.replaceAll(SPACE, "\\ ")));
+      continue;
+    }
     if (name === "echo" || name === "pwd") {
-      if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) return shown;
+      if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) out.push(shown);
       continue;
     }
     if (name === "cd") {
       // No .. (review of 223cd14): the shell's cd is logical (a .. after a symlinked folder goes back
       // up the link's own path) while this judges the real path, so `cd S; cd ../../..` got out.
-      if (args.length !== 1 || /^[-+~]/.test(args[0]!) || /[*?[\]{}=]/.test(args[0]!) || args[0]!.split("/").includes("..")) return shown;
+      if (args.length !== 1 || /^[-+~]/.test(args[0]!) || /[*?[\]{}=]/.test(args[0]!) || args[0]!.split("/").includes("..")) {
+        out.push(shown);
+        continue;
+      }
       const to = real(args[0]!, cwd);
       // Into the project or a sanctioned folder (round 3's A1: `cd <kit>; head -c 600 a.svg`). The line
       // runs pinnedToProject, in a subshell, so the cd doesn't outlast it.
-      if (!inside(to, zones.project) && !(zones.sanctioned ?? []).some((d) => inside(to, d))) return shown;
-      cwd = to;
+      if (!inside(to, zones.project) && !(zones.sanctioned ?? []).some((d) => inside(to, d))) out.push(shown);
+      else cwd = to;
+      continue;
+    }
+    // A cp into the project of what a plain read may read (round 9).
+    if (name === "cp") {
+      if (!copyIntoProject(args, (p) => real(p, cwd), zones)) out.push(shown);
       continue;
     }
     // A grep pattern the shell would turn into file names (unquoted * ? [ ] { } ~).
-    if (name === "grep" && /[*?[\]{}~]/.test(segment!.replace(/"[^"]*"|'[^']*'/g, ""))) return shown;
-    if (!allowlisted(name, args, (p) => real(p, cwd), zones)) return shown;
+    if (name === "grep" && /[*?[\]{}~]/.test(segment!.replace(/"[^"]*"|'[^']*'/g, ""))) out.push(shown);
+    else if (!allowlisted(name, args, (p) => real(p, cwd), zones)) out.push(shown);
   }
-  return undefined;
+  return out;
 }

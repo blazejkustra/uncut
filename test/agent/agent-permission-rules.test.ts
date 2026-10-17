@@ -94,7 +94,7 @@ test("D194 commands: Look only refuses; Auto runs only a short allowlist of simp
     assert.equal(kind("Bash", { command }, "auto"), "allow", command);
     assert.equal(kind("Bash", { command }, "ask"), "ask", `${command}: Ask always asks`);
   }
-  for (const command of ["npm run build", "curl -L -o media/a.png https://x.dev/a.png", "cat ~/Documents/notes.txt", "cat ../other/a.txt", "cat media/../../x", "ls /", "ls -R", "ls media/*", "cat /etc/hosts", "mkdir ~/x", "mkdir .", "mkdir -m 777 x", "head -c x notes.md", "head -5 notes.md", "tail -f notes.md", "tail -n -5 notes.md", "cp media/a.png media/b.png", "cat a=b", "cat -v notes.md"]) {
+  for (const command of ["npm run build", "curl -L -o media/a.png https://x.dev/a.png", "cat ~/Documents/notes.txt", "cat ../other/a.txt", "cat media/../../x", "ls /", "ls -R", "ls media/*", "cat /etc/hosts", "mkdir ~/x", "mkdir .", "mkdir -m 777 x", "head -c x notes.md", "head -5 notes.md", "tail -f notes.md", "tail -n -5 notes.md", "cp -R media/a media/b", "cp media/a.png ../b.png", "cat a=b", "cat -v notes.md"]) {
     const r = d("Bash", { command }, "auto");
     assert.equal(r.kind, "ask", command);
   }
@@ -695,6 +695,151 @@ test("review of 223cd14: a cd can't leave the judged folder (no .. after a symli
     }
     assert.equal(run(`cd '${kit}'; head -c 3 a.svg`), "SVG / SVG", "a cd into the kit still reads it");
     assert.equal(run("cd a/b; ls"), "c / c");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+// Round 9's A2 (A2r9): the exact lines Auto refused, from the run's Claude Code session.
+const A2R9_KIT_NUMPY = "ls -la \"/Users/me/Library/Application Support/Uncut/brand/kits/uncut/\"; ls -la; which ffmpeg ffprobe python3; python3 -c \"import numpy, scipy; print(numpy.__version__, scipy.__version__)\"";
+const A2R9_MIXED = "grep -o '\"path\":\"[^\"]*\"' project.json; ls /opt/homebrew/bin/python3* 2>/dev/null; for p in /opt/homebrew/bin/python3 /usr/bin/python3; do $p -c \"import numpy;print('$p', numpy.__version__)\" 2>/dev/null; done; ls -la brand/*";
+const A2R9_GREP = "grep -o '\"[a-zA-Z]*\":\"[^\"]*\\.\\(MP4\\|mp4\\|mp3\\|MOV\\)\"' project.json";
+const A2R9_WAVE = "cd /Users/me/Desktop/uncut-vs-claude/uncut/A2r9/project.uncut && cat > .work/scripts/wave.py <<'EOF'\nimport sys, subprocess, numpy as np\nsr=8000\nx=np.frombuffer(subprocess.run([\"ffmpeg\",\"-v\",\"error\",\"-i\",sys.argv[1],\"-ac\",\"1\",\"-ar\",str(sr),\"-f\",\"f32le\",\"-\"],capture_output=True).stdout,np.float32)\nn=280; seg=len(x)//n\nr=np.array([np.sqrt((x[i*seg:(i+1)*seg]**2).mean()) for i in range(n)])\nr=r/r.max(); print(\",\".join(f\"{v:.2f}\" for v in r))\nEOF\n.work/venv/bin/python -I .work/scripts/wave.py /Users/me/Desktop/uncut-vs-claude/inputs/music/2-electro-dreams_arulo_mixkit-190_cut28.mp3 > .work/wave.txt; head -c 300 .work/wave.txt; cat \"/Users/me/Library/Application Support/Uncut/brand/kits/uncut/uncut-mark-on-dark.svg\" | head -c 1500";
+const A2R9_POPS_HEREDOC = "cat > .work/scripts/pops.py <<'EOF'\nimport sys, numpy as np\nfrom PIL import Image\n# each arg: path:startframe ; sheets are 10 cols x 6 rows, 1566x1302\ndiffs={}\nfor a in sys.argv[1:]:\n    p,s=a.rsplit(':',1); s=int(s)\n    im=np.asarray(Image.open(p).convert('L'),dtype=np.float32)\n    H,W=im.shape; cw=W/10; ch=H/6\n    cells=[]\n    for k in range(60):\n        r,c=divmod(k,10)\n        x0=int(c*cw+8); x1=int((c+1)*cw-8); y0=int(r*ch+8); y1=int(r*ch+ch*0.86)\n        cells.append(im[y0:y1,x0:x1])\n    for k in range(59):\n        diffs[s+k+1]=float(np.abs(cells[k+1]-cells[k]).mean())\nfr=sorted(diffs)\nd=np.array([diffs[f] for f in fr])\nfor i,f in enumerate(fr):\n    nb=[d[j] for j in (i-2,i-1,i+1,i+2) if 0<=j<len(d) and fr[j]-f in (-2,-1,1,2)]\n    if nb and d[i]>3*max(np.median(nb),0.4) and d[i]>1.5:\n        print(f\"pop? frame {f}: diff {d[i]:.2f} neighbours {np.round(nb,2)}\")\nprint(\"max diff\", round(d.max(),2), \"at\", fr[int(d.argmax())])\nEOF\nD=/Users/me/.claude/projects/-Users-me-Desktop-uncut-vs-claude-uncut-A2r9-project-uncut/327467b9-81d1-4691-915e-a8c46dbd3cad/tool-results\n.work/venv/bin/python -I .work/scripts/pops.py $D/mcp-uncut-blob-1792249001078-wjmpg8.jpg:0 $D/mcp-uncut-blob-1792249013442-xrhkkw.jpg:60 $D/mcp-uncut-blob-1792249018929-4xbsjs.jpg:120 $D/mcp-uncut-blob-1792249024545-ietyu2.jpg:180 $D/mcp-uncut-blob-1792249030111-asj0zh.jpg:240 $D/mcp-uncut-blob-1792249035791-sddmmy.jpg:300 $D/mcp-uncut-blob-1792249041676-5g3wd8.jpg:360 $D/mcp-uncut-blob-1792249047996-lmbwf8.jpg:420 $D/mcp-uncut-blob-1792249055812-ebdm59.jpg:480 $D/mcp-uncut-blob-1792249063810-d3sqrl.jpg:540";
+const A2R9_POPS = "D=/Users/me/.claude/projects/-Users-me-Desktop-uncut-vs-claude-uncut-A2r9-project-uncut/327467b9-81d1-4691-915e-a8c46dbd3cad/tool-results; .work/venv/bin/python -I .work/scripts/pops.py $D/mcp-uncut-blob-1792249001078-wjmpg8.jpg:0 $D/mcp-uncut-blob-1792249013442-xrhkkw.jpg:60 $D/mcp-uncut-blob-1792249018929-4xbsjs.jpg:120 $D/mcp-uncut-blob-1792249024545-ietyu2.jpg:180 $D/mcp-uncut-blob-1792249030111-asj0zh.jpg:240 $D/mcp-uncut-blob-1792249035791-sddmmy.jpg:300 $D/mcp-uncut-blob-1792249041676-5g3wd8.jpg:360 $D/mcp-uncut-blob-1792249047996-lmbwf8.jpg:420 $D/mcp-uncut-blob-1792249055812-ebdm59.jpg:480 $D/mcp-uncut-blob-1792249063810-d3sqrl.jpg:540";
+const A2R9_CP = "mkdir -p .work/sheets && cp /Users/me/.claude/projects/-Users-me-Desktop-uncut-vs-claude-uncut-A2r9-project-uncut/327467b9-81d1-4691-915e-a8c46dbd3cad/tool-results/mcp-uncut-blob-17922490*.jpg .work/sheets/ && ls .work/sheets";
+const R9_HOME = "/Users/me";
+const R9_PROJECT = `${R9_HOME}/Desktop/uncut-vs-claude/uncut/A2r9/project.uncut`;
+const R9_DATA = `${R9_HOME}/Library/Application Support/Uncut`;
+const R9_OUT = `${R9_HOME}/.claude/projects/-Users-me-Desktop-uncut-vs-claude-uncut-A2r9-project-uncut/327467b9-81d1-4691-915e-a8c46dbd3cad/tool-results`;
+const R9_SHEETS = ["mcp-uncut-blob-1792249001078-wjmpg8.jpg", "mcp-uncut-blob-1792249013442-xrhkkw.jpg", "b4vwce.txt"];
+const r9 = (access: Access, extra: Extra = {}): PermissionContext => ({
+  project: R9_PROJECT, roots: [], home: R9_HOME, realpath: (p) => p, sanctioned: [`${R9_DATA}/brand/kits/uncut`], dataDir: R9_DATA,
+  readdir: (dir) => (dir === R9_OUT ? R9_SHEETS : []), ...extra, access, grants: new Set(extra.grants ?? []),
+});
+const r9d = (command: string, access: Access = "auto", extra?: Extra) => decide("Bash", { command }, r9(access, extra));
+
+test("round 9: a grep whose single-quoted pattern has \\ ( | is a plain read; mixed lines are refused naming every piece that isn't one", () => {
+  assert.equal(r9d(A2R9_GREP).kind, "allow", A2R9_GREP);
+  for (const command of [
+    `grep -E '(MP4|mp4)$' project.json | head -n 5`,
+    `grep -o "[a-z]*(x)" project.json`,
+    "cat project.json 2>/dev/null | head -n 3",
+    "ls -la media 2>/dev/null; grep -c clip project.json",
+  ]) assert.equal(r9d(command).kind, "allow", command);
+  for (const command of [
+    `grep -o "$(cat /etc/hosts)" project.json`,
+    `grep -o "\\$HOME" project.json`,
+    "grep 'x' project.json > copy.json",
+    "grep 'x' project.json 2>/tmp/err",
+    "grep 'x' project.json 2>/dev/nullx",
+    "grep 'x' project.json; echo '2>/dev/null' > a",
+    `grep 'a' project.json; python3 -c 'print(1)'`,
+  ]) assert.notEqual(r9d(command).kind, "allow", command);
+  // The mixed line runs python: still refused, and the message quotes the python, not only the ls before it.
+  const mixed = r9d(A2R9_MIXED);
+  assert.ok(mixed.kind === "deny", JSON.stringify(mixed));
+  assert.ok(mixed.message.includes("`ls /opt/homebrew/bin/python3* 2>/dev/null`") && mixed.message.includes(`\`do $p -c "import numpy;print('$p', numpy.__version__)" 2>/dev/null\``), mixed.message);
+  assert.ok(!mixed.message.includes("`grep -o"), "the grep of project.json is a read");
+  // Apps' data: the python is named, and so is the write of the heredoc.
+  const kit = r9d(A2R9_KIT_NUMPY);
+  assert.ok(kit.kind === "deny" && kit.message.includes('`python3 -c "import numpy, scipy') && !kit.message.includes("`ls -la `"), kit.kind === "deny" ? kit.message : "");
+  const wave = r9d(A2R9_WAVE);
+  assert.ok(wave.kind === "deny" && wave.message.includes("`cat > .work/scripts/wave.py <<'EOF'"), wave.kind === "deny" ? wave.message : "");
+  // The grep runs as judged in bash and zsh: the pattern is literal in single quotes.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-r9g-")));
+  try {
+    writeFileSync(join(root, "project.json"), '{"src":"/m/a.MP4","x":"b.mp3","n":1}');
+    const r = decide("Bash", { command: A2R9_GREP }, { project: root, roots: [], home: root, access: "auto", grants: new Set() });
+    assert.equal(r.kind, "allow");
+    const line = ((r as { updatedInput?: Record<string, unknown> }).updatedInput as { command: string }).command;
+    for (const sh of ["/bin/bash", "/bin/zsh"]) assert.equal(execFileSync(sh, ["-c", line], { encoding: "utf8" }).trim(), '"src":"/m/a.MP4"\n"x":"b.mp3"', sh);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("round 9: this project's saved tool output is copied into the project (a project write); programs on it are refused with how to use it", () => {
+  // The exact cp: Auto runs it, Ask first asks, Look only refuses commands.
+  const cp = r9d(A2R9_CP);
+  assert.equal(cp.kind, "allow", JSON.stringify(cp));
+  assert.equal(r9d(A2R9_CP, "ask").kind, "ask");
+  assert.equal(r9d(A2R9_CP, "look").kind, "deny");
+  for (const command of [
+    `cp ${R9_OUT}/b4vwce.txt .work/notes.txt`,
+    `cp -p ${R9_OUT}/b4vwce.txt ${R9_PROJECT}/.work/`,
+    `cd .work && cp ${R9_OUT}/mcp-uncut-blob-*.jpg sheets/`,
+    "cp project.json .work/project-copy.json",
+    "cp media/a.png media/b.png",
+  ]) assert.equal(r9d(command).kind, "allow", command);
+  for (const command of [
+    `cp -R ${R9_OUT} .work/`,
+    `cp -L ${R9_OUT}/b4vwce.txt .work/`,
+    `cp ${R9_OUT}/b4vwce.txt /tmp/`,
+    `cp ${R9_OUT}/b4vwce.txt ~/Desktop/`,
+    `cp ${R9_OUT}/b4vwce.txt project.json`,
+    `cp ${R9_OUT}/b4vwce.txt agent/turns/x`,
+    `cp ${R9_OUT}/b4vwce.txt history.db`,
+    `cp .work/project.json .`,
+    `cp ${R9_OUT}/nothing-*.png .work/`,
+    `cp ${R9_OUT}/[a-z]*.jpg .work/`,
+    `cp ${R9_OUT}/*.jpg .work/*/`,
+    `cp ${R9_HOME}/.claude/projects/-Users-me-Other/1/tool-results/x.jpg .work/`,
+    `cp ${R9_HOME}/.claude/settings.json .work/`,
+    `cp ${R9_HOME}/.claude/projects/-Users-me-Desktop-uncut-vs-claude-uncut-A2r9-project-uncut/327467b9-81d1-4691-915e-a8c46dbd3cad.jsonl .work/`,
+    `cp ${R9_OUT}/../../327467b9-81d1-4691-915e-a8c46dbd3cad.jsonl .work/`,
+    `cp "${R9_DATA}/server-token" .work/`,
+    `cp "${R9_DATA}/brand/kits/uncut/logo.svg" .work/`,
+    `D=${R9_OUT}; cp $D/b4vwce.txt .work/`,
+    `cp ${R9_OUT}/b4vwce.txt .work/ | head`,
+  ]) assert.equal(r9d(command).kind, "deny", command);
+  // Python on the saved sheets (with or without the heredoc that writes it): refused, naming the piece, and saying to copy first.
+  for (const [command, piece] of [[A2R9_POPS, "`.work/venv/bin/python -I .work/scripts/pops.py $D/"], [A2R9_POPS_HEREDOC, "`cat > .work/scripts/pops.py <<'EOF'"]] as const) {
+    const r = r9d(command);
+    assert.ok(r.kind === "deny" && r.message.includes(piece) && /Copy the files into the project first/.test(r.message) && r.message.includes("cp of such files into the project"), r.kind === "deny" ? r.message : r.kind);
+  }
+  // Anything else in ~/.claude keeps the plain refusal, now naming the piece.
+  const other = r9d(`python3 x.py ${R9_HOME}/.claude/projects`);
+  assert.ok(other.kind === "deny" && other.message.includes("other conversations") && other.message.includes("`python3 x.py") && !other.message.includes("Copy the files"), other.kind === "deny" ? other.message : "");
+  const mixedOut = r9d(`python3 x.py ${R9_OUT}/a.jpg ${R9_HOME}/.claude/settings.json`);
+  assert.ok(mixedOut.kind === "deny" && !mixedOut.message.includes("Copy the files"), "another ~/.claude path on the line");
+});
+
+test("round 9: cp into the project on disk: a link at the destination or among a glob's matches can't take the token or write out", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-r9cp-")));
+  try {
+    const home = join(root, "home");
+    const project = join(home, "Movies", "P.uncut");
+    const data = join(home, "Library", "Application Support", "Uncut");
+    const out = join(home, ".claude", "projects", project.replace(/[^A-Za-z0-9]/g, "-"), "s1", "tool-results");
+    for (const dir of [join(project, ".work"), data, out]) mkdirSync(dir, { recursive: true });
+    writeFileSync(join(data, "server-token"), "SECRET");
+    writeFileSync(join(out, "sheet-1.jpg"), "JPG1");
+    writeFileSync(join(out, "sheet-2.jpg"), "JPG2");
+    writeFileSync(join(project, "project.json"), "{}");
+    const run = (line: string) => {
+      const r = decide("Bash", { command: line }, { project, roots: [], home, access: "auto", grants: new Set(), dataDir: data });
+      if (r.kind !== "allow") return r.kind;
+      execFileSync("/bin/zsh", ["-c", (r.updatedInput as { command: string }).command], { cwd: root, stdio: "ignore" });
+      return "ran";
+    };
+    assert.equal(run(`mkdir -p .work/sheets && cp ${out}/sheet-*.jpg .work/sheets/ && ls .work/sheets`), "ran");
+    assert.equal(execFileSync("/bin/cat", [join(project, ".work", "sheets", "sheet-2.jpg")], { encoding: "utf8" }), "JPG2");
+    // A link among the saved output (to the token): the glob's matches are judged one by one.
+    symlinkSync(join(data, "server-token"), join(out, "sheet-3.jpg"));
+    assert.equal(run(`cp ${out}/sheet-*.jpg .work/sheets/`), "deny");
+    assert.equal(run(`cp ${out}/sheet-3.jpg .work/`), "deny");
+    rmSync(join(out, "sheet-3.jpg"));
+    // A link at the destination (to the token, to project.json): the write would go through it.
+    symlinkSync(join(data, "server-token"), join(project, ".work", "sheet-1.jpg"));
+    assert.equal(run(`cp ${out}/sheet-1.jpg .work/`), "deny");
+    symlinkSync(join(project, "project.json"), join(project, ".work", "p.json"));
+    assert.equal(run(`cp ${out}/sheet-2.jpg .work/p.json`), "deny");
+    symlinkSync(home, join(project, "H"));
+    assert.equal(run(`cp ${out}/sheet-2.jpg H/`), "deny");
+    assert.equal(execFileSync("/bin/cat", [join(data, "server-token")], { encoding: "utf8" }), "SECRET");
+    assert.equal(execFileSync("/bin/cat", [join(project, "project.json")], { encoding: "utf8" }), "{}");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
