@@ -296,15 +296,20 @@ export function copyIntoProject(args: ReadonlyArray<string>, real: (p: string) =
       const name = src.slice(src.lastIndexOf("/") + 1);
       if (!list || !plain(folder) || !/^[^[\]{}=\\$`~]+$/.test(name) || !/[*?]/.test(name)) return false;
       const dir = real(folder);
-      const re = new RegExp(`^${name.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".")}$`, "s");
+      // A ? judged like a * (review of 6dc1722): the shell's ? is one character (an emoji, or one
+      // byte of it in the C locale), not one UTF-16 unit, so every name it could match is judged.
+      const re = new RegExp(`^${name.replace(/[.+^$()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".*")}$`, "s");
       let entries: ReadonlyArray<string>;
       try {
         entries = list(dir);
       } catch {
         return false;
       }
-      files = entries.filter((e) => re.test(e)).map((e) => join(dir, e));
-      if (!files.length) return false;
+      const matched = entries.filter((e) => re.test(e));
+      // A match starting with - would reach cp as a flag (`cp * sub/ <project>/` with a file named -R
+      // copied sub's contents over project.json; review of 6dc1722).
+      if (!matched.length || matched.some((e) => e.startsWith("-"))) return false;
+      files = matched.map((e) => join(dir, e));
     }
     for (const f of files) {
       if (!readable(real(f))) return false;
