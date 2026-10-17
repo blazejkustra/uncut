@@ -544,3 +544,24 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
   assert.ok(!ff.hard);
   assert.match(ff.message, /update_project \{"motionBlur":\{"samples":12\}\}/);
 });
+
+test("review: the 12-finding cap keeps every blocker (the loop seam) ahead of soft findings", () => {
+  const ev = (frame: number) => ({ frame, diff: 0.2, ratio: 9 });
+  const scan = {
+    frames: 600,
+    pops: [10, 20, 30, 40].map(ev),
+    jumps: [100, 110, 120, 130].map(ev),
+    holds: [{ start: 200, end: 280 }, { start: 300, end: 380 }],
+    empty: [{ start: 400, end: 420 }, { start: 450, end: 470 }],
+    emptyMeasured: true,
+    fast: [{ start: 500, end: 504, peak: 0.1 }, { start: 520, end: 524, peak: 0.1 }, { start: 540, end: 544, peak: 0.1 }],
+    seam: { diff: 0.3, typical: 0.01 },
+    typical: 0.01,
+  };
+  const found = motionFindings(scan, 60, { oneTake: true, loop: true, hard: true });
+  assert.equal(found.length, 12);
+  assert.ok(found.some((f) => f.key === "motion:seam:0" && f.hard), found.map((f) => f.key).join(", "));
+  const firstSoft = found.findIndex((f) => !f.hard);
+  assert.ok(firstSoft < 0 || found.slice(firstSoft).every((f) => !f.hard), "hard ones lead");
+});
+
