@@ -495,7 +495,7 @@ test("review of 0039421: a read-only line Uncut lets run is pinned to the projec
   const command = 'cat "brand/kits/a.svg"';
   const allow = d("Bash", { command, description: "x" }, "auto", extra);
   assert.ok(allow.kind === "allow" && allow.updatedInput, JSON.stringify(allow));
-  assert.deepEqual(allow.updatedInput, { command: `cd '${PROJECT}' && (\n${command}\n)`, description: "x" });
+  assert.deepEqual(allow.updatedInput, { command: `cd '${PROJECT}' && (\nunset CDPATH; cd() { builtin cd "$@" || exit 1; }\n${command}\n)`, description: "x" });
   const ask = d("Bash", { command }, "ask", extra);
   assert.ok(ask.kind === "ask" && ask.updatedInput?.command === pinnedToProject(command, PROJECT), "a card's Allow runs it pinned too");
   // An escaped space reads the kit like a quoted one; any other backslash isn't a plain read.
@@ -658,6 +658,43 @@ test("round 3: plain reads of project.json and the kit (grep of files, cd into t
     const k = join(root, "kit");
     for (const dir of [project, k]) mkdirSync(dir, { recursive: true });
     assert.equal(execFileSync("/bin/bash", ["-c", `${pinnedToProject(`cd '${k}'; pwd`, project)}; pwd`], { encoding: "utf8" }).trim(), `${k}\n${project}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("review of 223cd14: a cd can't leave the judged folder (no .. after a symlinked folder, a failed cd ends the line)", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-cd-")));
+  try {
+    const home = join(root, "home");
+    const project = join(home, "Movies", "P.uncut");
+    const data = join(home, "Library", "Application Support", "Uncut");
+    const kit = join(data, "brand", "kits", "k");
+    mkdirSync(join(project, "a", "b", "c", "d"), { recursive: true });
+    mkdirSync(kit, { recursive: true });
+    writeFileSync(join(data, "server-token"), "SECRET");
+    writeFileSync(join(home, "secret.txt"), "SECRET");
+    writeFileSync(join(kit, "a.svg"), "SVG");
+    // Links in the project: one deep inside it, one out to the home folder.
+    symlinkSync(join(project, "a", "b", "c", "d"), join(project, "S"));
+    symlinkSync(home, join(project, "H"));
+    const run = (line: string) => {
+      const r = decide("Bash", { command: line }, { project, roots: [], home, access: "auto", grants: new Set(), sanctioned: [kit], dataDir: data });
+      if (r.kind !== "allow") return r.kind;
+      const command = (r.updatedInput as { command: string }).command;
+      return ["/bin/bash", "/bin/zsh"].map((sh) => {
+        try {
+          return execFileSync(sh, ["-c", command], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+        } catch (error) {
+          return `failed ${String((error as { stdout?: string }).stdout ?? "").trim()}`;
+        }
+      }).join(" / ");
+    };
+    for (const line of ["cd S; cd ../../..; cat secret.txt", "cd S; cd ../../../Library/Application\\ Support/Uncut; cat server-token", "cd missing; cat H/secret.txt", "cd a/missing && cat H/secret.txt", "cd +1; cat H/secret.txt"]) {
+      assert.ok(!run(line).includes("SECRET"), line);
+    }
+    assert.equal(run(`cd '${kit}'; head -c 3 a.svg`), "SVG / SVG", "a cd into the kit still reads it");
+    assert.equal(run("cd a/b; ls"), "c / c");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
