@@ -27,13 +27,16 @@ export const REVIEW_ROUNDS = 3;
 export const REVIEW_ROUNDS_MAX = 6;
 
 /**
- * Whether a turn may run another review round after these (its rounds, in order): always under
- * REVIEW_ROUNDS; then, up to REVIEW_ROUNDS_MAX, only while the last round still has blockers and
- * fewer than the round before it (it is converging). A pass, a stall or more blockers stop it.
+ * Whether a turn may run another review round after these (its saved rounds, in order) when it has
+ * run `done` rounds (the turn's own count: a round whose review couldn't be saved still counts):
+ * always under REVIEW_ROUNDS; never at REVIEW_ROUNDS_MAX; in between only while the last round still
+ * has blockers and fewer than the round before it (it is converging), and only when every round is
+ * saved (an unsaved one can't show that). A pass, a stall or more blockers stop it.
  */
-export function mayReviewAgain(rounds: ReadonlyArray<{ readonly passed?: boolean; readonly blockers?: ReadonlyArray<unknown> }>): boolean {
-  if (rounds.length < REVIEW_ROUNDS) return true;
-  if (rounds.length >= REVIEW_ROUNDS_MAX) return false;
+export function mayReviewAgain(rounds: ReadonlyArray<{ readonly passed?: boolean; readonly blockers?: ReadonlyArray<unknown> }>, done: number = rounds.length): boolean {
+  if (done >= REVIEW_ROUNDS_MAX || rounds.length >= REVIEW_ROUNDS_MAX) return false;
+  if (done < REVIEW_ROUNDS) return true;
+  if (rounds.length < done) return false;
   const last = rounds.at(-1)!, before = rounds.at(-2);
   const n = (x: { readonly blockers?: ReadonlyArray<unknown> } | undefined) => x?.blockers?.length ?? 0;
   return !last.passed && n(last) > 0 && !!before && n(last) < n(before);
