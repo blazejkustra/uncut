@@ -100,7 +100,8 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
   // Claude Code's own folder (CLAUDE_DIR): only this project's saved tool output is read (claude
   // saves a large result there and tells the agent to read it); the rest is other conversations and
   // settings. Claude names a project's folder by its path with every other character a dash.
-  const claudeDir = join(home, CLAUDE_DIR);
+  // By its real path, as the paths it's compared with are (a ~/.claude linked from a dotfiles folder).
+  const claudeDir = real(join(home, CLAUDE_DIR), home);
   const results = join(claudeDir, "projects", project.replace(/[^A-Za-z0-9]/g, "-"));
   const toolOutput = (r: string) => {
     if (!inside(r, results)) return false;
