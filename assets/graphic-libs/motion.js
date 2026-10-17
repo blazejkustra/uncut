@@ -15,7 +15,10 @@
                                                          // bleed: true is the whole frame 12 % past every edge, square corners (a flood is a morph)
      uncutMotion.shapePath(ctx, s)                       // that shape as the canvas path (clip to it, then draw the footage)
      uncutMotion.footageRect(srcW, srcH, width, height, s) // { x, y, w, h }: draw the clip there: covers the frame and the shape,
-                                                         // the same scale while the shape fits the frame (no zoom-in that goes soft, no flat edges)
+                                                         // the same scale while the shape fits the frame (no zoom-in that goes soft, no flat edges).
+                                                         // It is the whole frame's crop, not the shape's: a shot already on screen at another
+                                                         // size (a preview fitted to a card) never switches to it on one frame (a zoom snap);
+                                                         // keep drawing it at its old rect and ease to this one, or use this rect from the start
      uncutMotion.riseText(ctx, text, x, baseline, t, { at, out, size })
                                                          // draws a line rising out of its mask line and leaving upward, whole:
                                                          // the mask has room for ascenders and descenders, the exit is quick (spring.snap)
