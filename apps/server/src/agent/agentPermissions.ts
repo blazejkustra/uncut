@@ -5,19 +5,20 @@
 // D214: Auto runs claude with `--permission-mode auto` (Claude Code's own classifier approves routine
 // calls, like t3code's Auto); what still reaches Uncut there is decided by the same rules as
 // Edit freely was, and the auto-only --settings rules below send every file and web call here.
+import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, sep } from "node:path";
 
 import { type Access, ACCESS_NAME } from "./permissions/access.ts";
 import { realPath, inside, shownPath, str, toolPath, owned } from "./permissions/paths.ts";
 import { SECRETISH, webAddressProblem } from "./permissions/web.ts";
-import { simpleCommand, destructive, notReadOnly, pinnedToProject } from "./permissions/shell.ts";
+import { simpleCommand, destructive, nonReads, pinnedToProject, shellSegments, shellWords } from "./permissions/shell.ts";
 import { CLAUDE_DIR } from "./permissions/settings.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
 export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders, claudeConfigDirs } from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
-export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, notReadOnly, allowlisted, pinnedToProject } from "./permissions/shell.ts";
+export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, notReadOnly, nonReads, allowlisted, copyIntoProject, quotedBlanked, pinnedToProject } from "./permissions/shell.ts";
 export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
 export { SECRET_DIRS, SECRET_FILES, denyRules, appDataRules, appDataAskRules, ownFileRules, ownFileAskRules, autoAskRules, sessionSettings, LOOK_DISALLOWED } from "./permissions/settings.ts";
 
@@ -64,6 +65,8 @@ export interface PermissionContext {
   /** Secret-looking strings read from files in this turn: a WebFetch URL carrying one asks. */
   readonly tainted?: ReadonlySet<string>;
   readonly realpath?: (p: string) => string;
+  /** A folder's entries (a cp source's glob, judged file by file); readdirSync by default. */
+  readonly readdir?: (dir: string) => ReadonlyArray<string>;
   /** CLAUDE_CONFIG_DIR (claudeConfigDirs: as set and its real path): Claude Code's folder there is judged like ~/.claude. */
   readonly claudeConfig?: ReadonlyArray<string>;
   /** Uncut's data folder (D219): a command naming it, or any app's data, is refused unless it only reads a sanctioned folder. */
@@ -72,11 +75,35 @@ export interface PermissionContext {
 
 /** D219: a command naming apps' data (~/Library/Application Support, as typed or escaped) or Uncut's data folder. */
 export const namesAppData = (command: string, dataDir?: string) => /Application\\?\s+Support/i.test(command) || (!!dataDir && command.includes(dataDir.replace(/\/+$/, "")));
+/** A command (or word) naming ~/.claude. */
+const CLAUDE_NAMED = /(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/;
+
+/** The refusal's "`a` and `b` aren't one" for the pieces nonReads found (at most four, each cut at 200 characters). */
+function offendingText(pieces: ReadonlyArray<string>): string {
+  if (pieces[0] === "the line") return "the line uses other shell syntax";
+  const shown = pieces.slice(0, 4).map((p) => `\`${p.slice(0, 200)}\``);
+  const more = pieces.length > 4 ? ` (and ${pieces.length - 4} more)` : "";
+  if (shown.length === 1) return `${shown[0]} isn't one`;
+  return `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}${more} aren't`;
+}
+
+/**
+ * The paths a command names that `named` picks (words naming Claude Code's folder): a VAR= taken
+ * off the front, each cut at its first $, glob or `:` count (`$D/x.jpg:0`), empty ones left out.
+ */
+function claudePaths(command: string, named: (word: string) => boolean): Array<string> {
+  return shellSegments(command)
+    .flatMap((seg) => shellWords(seg))
+    .filter(named)
+    .map((w) => w.replace(/^[A-Za-z_][A-Za-z0-9_]*=/, "").split(/[$*?[{]/)[0]!.replace(/\/+$/, ""))
+    .filter((p) => p.length > 0);
+}
+
 /** D214: a command naming Uncut's own files in a project (Auto's ask rules send it here). */
 const NAMES_OWN = /project\.json|history\.db|brand\/active\.json|agent\/turns/i;
 
 type Zone = "cache" | "project" | "root" | "sanctioned" | "outside";
-/** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered. */
+/** Commands whose options read or write arbitrary files (the second security review): always a card, never remembered (a cp copyIntoProject passes is a plain read's, round 9). */
 const FILE_TOOLS = new Set(["ffmpeg", "ffprobe", "ffplay", "file", "wc", "tar", "zip", "unzip", "cp", "mv", "ln", "rsync", "curl", "wget", "tee", "dd", "install", "sips", "convert", "magick"]);
 const WRAPPERS = new Set(["env", "time", "command", "exec", "nice", "nohup", "timeout", "builtin", "xargs", "sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "source", ".", "eval", "python", "python3", "node", "perl", "ruby", "php", "osascript", "open", "deno", "bun", "npx", "pnpm", "npm", "yarn", "make", "awk", "sed", "find", "git", "sudo", "su", "doas", "watch", "parallel", "script", "expect", "tclsh", "lua", "swift", "java"]);
 
@@ -198,11 +225,11 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     // Issue A/B 2026-10-17: reads in the project and the sanctioned folders (the active kit, the
     // graphic libraries; not after the web outside Auto) and mkdir -p in the project, also a few
     // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
-    const notRead = tool === "Bash" ? notReadOnly(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []), readable: toolOutput }) : "the line";
-    const reads = notRead === undefined;
-    // Round 3: the refusals below name the piece that kept the line from being a plain read.
-    const PLAIN = "ls, cat, head, tail, stat or grep of files, piped into head, tail, grep, wc, sort, uniq or a jq path at most, joined by ; or && (cd allowed), no redirects";
-    const offending = notRead === "the line" ? "the line uses other shell syntax" : `\`${(notRead ?? "").slice(0, 200)}\` isn't one`;
+    const notRead = tool === "Bash" ? nonReads(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []), readable: toolOutput, list: ctx.readdir ?? ((dir) => readdirSync(dir)) }) : ["the line"];
+    const reads = notRead.length === 0;
+    // Round 3: the refusals below name the pieces that kept the line from being a plain read (round 9: every one, not just the first).
+    const PLAIN = "ls, cat, head, tail, stat or grep of files, piped into head, tail, grep, wc, sort, uniq or a jq path at most, or cp of such files into the project; joined by ; or && (cd allowed), no redirects but 2>/dev/null";
+    const offending = offendingText(notRead);
     const grant = `Bash:${command.trim()}`;
     // It was judged from the project; claude's shell may sit in another folder (a cd into an added
     // folder stays between calls), so it runs from the project (review of 0039421).
@@ -211,7 +238,13 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow", updatedInput } : { kind: "ask", title: "Run a command", target, grant, updatedInput };
     }
     // Anything else naming Claude Code's folder: refused (its deny rules did that before they became ask rules).
-    if (/(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/.test(command) || configNamed(command)) return claudeRefusal;
+    // Round 9's A2: a python run on this project's saved contact sheets got the refusal that says
+    // they are read; when every path there is this project's saved output, say how they can be used.
+    if (CLAUDE_NAMED.test(command) || configNamed(command)) {
+      const named = claudePaths(command, (w) => CLAUDE_NAMED.test(w) || configNamed(w));
+      if (named.length && named.every((p) => toolOutput(real(p)))) return { kind: "deny", message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .work/…) and run other programs on the copies.` };
+      return { kind: "deny", message: `${claudeRefusal.message} Commands there run only as plain reads (${PLAIN}); ${offending}.` };
+    }
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
     if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: `Not done: commands don't touch apps' data (~/Library/Application Support) except plain reads of the active brand kit's files and Uncut's graphic libraries (${PLAIN}); ${offending}. Run the reads on their own, or use Read for those files, and Uncut's tools for the rest.` };
