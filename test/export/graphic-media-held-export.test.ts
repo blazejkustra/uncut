@@ -44,8 +44,8 @@ window.render = async (t) => {
 };
 </script>`;
 
-// A picture asked for once after the first frame and kept: closed once unused for about 2 × fps
-// frames (a closed ImageBitmap reads 0 × 0), so its memory goes predictably; the setup's isn't.
+// A picture asked for once after the first frame and kept by the page: never closed (the page owns
+// what it was handed; a closed ImageBitmap reads 0 × 0), however long it goes unasked.
 const AGED = `<canvas id="c" width="${W}" height="${H}"></canvas>
 <script>
 let early, late;
@@ -53,7 +53,31 @@ window.render = async (t, info) => {
   early ??= await uncut.frame("clip", 0.1, { width: 32 });
   if (info.frame === 1) late = await uncut.frame("clip", 0.3, { width: 32 });
   if (info.frame > 1) await uncut.frame("clip", 0.2 + t, { width: 16 });
-  if (info.frame === ${FRAMES - 1} && (late.width !== 0 || early.width === 0)) throw new Error("late " + late.width + ", early " + early.width);
+  if (info.frame === ${FRAMES - 1} && (late.width === 0 || early.width === 0)) throw new Error("late " + late.width + ", early " + early.width);
+};
+</script>`;
+
+// Round 2's A2 film (film-5.html): every picture it got after the first frame kept in its own maps
+// (thumbnails for good, footage per frame) and drawn again from there on later frames without
+// asking uncut.frame again. The sweep of b89909f closed pictures unasked for about 2 × fps frames,
+// so the export died at frame 511 with "The image source is detached". A run past 600 frames at
+// 60 fps: thumbnails fetched at frames 1, 40, 150 and 300, all drawn on every frame after.
+const CACHE_FPS = 60;
+const CACHE_FRAMES = 620;
+const CACHED = `<canvas id="c" width="${W}" height="${H}"></canvas>
+<script>
+const ctx = document.getElementById("c").getContext("2d");
+const TC = new Map(), FC = new Map();
+const ASK = [1, 40, 150, 300];
+window.render = async (t, info) => {
+  FC.clear();
+  const k = Math.round(t * 30) / 30;
+  if (!FC.has(k)) FC.set(k, await uncut.frame("clip", (0.2 + t) % 2.5, { width: ${W} }));
+  for (const f of ASK) if (info.frame === f && !TC.has(f)) TC.set(f, await uncut.frame("clip", f / 200, { width: 24 }));
+  ctx.clearRect(0, 0, ${W}, ${H});
+  ctx.drawImage(FC.get(k), 0, 0, ${W}, ${H});
+  let x = 0;
+  for (const b of TC.values()) { ctx.drawImage(b, x, 0, 24, 14); x += 26; }
 };
 </script>`;
 
@@ -98,8 +122,19 @@ test("a picture fetched once and drawn every frame survives more frames than the
   for (let f = 0; f < FRAMES; f++) await assert.doesNotReject(draw(HELD, f), `frame ${f}`);
 });
 
-test("a picture unused for about 2 × fps frames is closed; one from the first render is not", { skip }, async () => {
+test("a picture handed to the page is never closed, however long it goes unasked", { skip }, async () => {
   for (let f = 0; f < FRAMES; f++) await assert.doesNotReject(drawIn(AGED, f, "aged"), `frame ${f}`);
+});
+
+test("a page that keeps every picture it got and draws them all later exports past 600 frames (A2r2)", { skip, timeout: 240_000 }, async () => {
+  const c = { ...canvas, fps: CACHE_FPS };
+  const doc = graphicDocument(CACHED, c);
+  for (let f = 0; f < CACHE_FRAMES; f++) {
+    await assert.doesNotReject(
+      raster.render({ kind: "graphic", width: W, height: H, doc, t: f / CACHE_FPS, info: graphicInfo({ duration: CACHE_FRAMES, props: {} }, c, f), out: join(root, "cached.png"), name: `"cached" (graphics/cached.html)` }),
+      `frame ${f}`,
+    );
+  }
 });
 
 test("what render(t) throws reaches the export with its name and message, never undefined", { skip }, async () => {

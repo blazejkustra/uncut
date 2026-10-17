@@ -78,10 +78,13 @@ export function graphicMediaUsed(html: string): Array<string> {
 /**
  * The script graphicDocument puts in a graphic's <head> (before its own bootstrap): window.uncut
  * (frame, image, url) and window.__uncutMedia (ready: the markers' pictures in place and decoded,
- * awaited before the first frame; sweep(fps): called after each frame, forgets pictures not asked
- * for lately, so a long graphic doesn't keep every frame it drew, and closes the ones unused for
- * about 2 × fps frames so their memory is freed at once; a picture first asked for in the setup or
- * the first render is never closed, since the graphic may hold it and draw it every frame).
+ * awaited before the first frame; sweep(fps): called after each frame and each motion-blur
+ * sub-frame, keeps the cache bounded by forgetting pictures not asked for lately).
+ * A picture handed to the page is the page's: it is never closed here. The page may keep it in its
+ * own caches and draw it any number of frames later without asking again (round 2's A2 film kept
+ * every thumbnail it got and drew them seconds later; closing pictures unasked for about 2 × fps
+ * frames detached them and the export died at frame 511). Forgetting only drops the cache's
+ * reference: GC frees the pixels once the page lets go too, and a later ask fetches a fresh bitmap.
  */
 export const GRAPHIC_MEDIA_BOOT = `(() => {
   const MARK = ${MARKER.toString()};
@@ -107,9 +110,8 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     const q = "t=" + t + (w ? "&w=" + w : "") + (h ? "&h=" + h : "");
     return fetch("${GRAPHIC_MEDIA_SCHEME}://media/" + encodeURIComponent(id) + "?" + q).then((r) => (r.ok ? r.blob() : r.text().then((m) => Promise.reject(new Error(m || "the media couldn't be loaded")))));
   };
+  // Bounded: at most KEEP pictures beyond the ones asked for in the last frame. Never closed.
   const cache = new Map();
-  // Forgotten pictures not closed yet (closed once unused for about 2 × fps frames).
-  const aged = new Set();
   let gen = 0;
   const size = (v) => (typeof v === "number" && v >= 1 ? Math.min(8192, Math.round(v)) : 0);
   const entry = (id, t, opts) => {
@@ -120,8 +122,7 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     const k = id + "|" + s + "|" + w + "|" + h;
     let e = cache.get(k);
     if (!e) {
-      // Asked for before the first sweep (the setup, the first render): maybe held for good.
-      e = { blob: load(id, s, w, h), early: gen === 0 };
+      e = { blob: load(id, s, w, h) };
       cache.set(k, e);
       e.blob.catch(() => cache.delete(k));
     }
@@ -172,25 +173,15 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
       await Promise.all([...used].map((u) => { const i = new Image(); i.src = u; return i.decode().catch(() => {}); }));
       await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
     })()),
-    sweep: (fps) => {
+    sweep: () => {
       gen++;
-      const old = Math.max(2, Math.round(2 * (fps > 0 ? fps : 30)));
-      const close = (e) => e.bitmap && e.bitmap.then((b) => b.close(), () => {});
-      for (const e of aged) if (e.gen < gen - old) (aged.delete(e), close(e));
       for (const [k, e] of cache) {
-        if (e.keep) continue;
-        // Unused for about two seconds of frames: closed, so its pixels go now rather than at some GC.
-        if (!e.early && e.gen < gen - old) {
-          cache.delete(k);
-          close(e);
-          continue;
-        }
-        if (e.gen >= gen - 1 || cache.size <= KEEP) continue;
-        // Forgotten (a call asks again), and closed once it's old. One from the setup or the first
-        // render is never closed: the graphic may hold it (a thumbnail fetched once and drawn every
-        // frame), and drawImage of a closed bitmap throws.
+        if (cache.size <= KEEP) break;
+        // Asked for in the last frame (or kept for a blob: URL): stays. Else forgotten, oldest first
+        // (a Map iterates in insertion order), but never closed: the page may still hold it, and
+        // drawImage of a closed bitmap throws "The image source is detached".
+        if (e.keep || e.gen >= gen - 1) continue;
         cache.delete(k);
-        if (!e.early) aged.add(e);
       }
     },
   };
