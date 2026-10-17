@@ -1,4 +1,4 @@
-import type { ServerHello, ProjectSnapshot, RecentProject, SetupCheck, PluginInfo, PluginContributions, CatalogEntry, CaptureState, GeneratorInfo, GenerateJob, KeyInfo, ImportJob, MediaImportResult, AgentState, HistoryState, AgentMention, AgentImage, AgentUiPanel, ExportJob, AnalysisJob, ProxyState, TranscriptionState, BrandState, GenerateKind } from "@uncut/contracts";
+import type { ServerHello, ProjectSnapshot, RecentProject, SetupCheck, PluginInfo, PluginContributions, CatalogEntry, CaptureState, GeneratorInfo, GenerateJob, KeyInfo, ImportJob, MediaImportResult, AgentState, HistoryState, AgentMention, AgentImage, AgentUiPanel, ExportJob, AnalysisJob, ProxyState, TranscriptionState, BrandState, GenerateKind, TemplateInfo } from "@uncut/contracts";
 import type { AppInfo, EnvironmentInfo } from "../bridge.ts";
 import type { Check } from "@uncut/core/checks";
 import type { ProjectModel } from "../project.ts";
@@ -137,6 +137,8 @@ export interface AppStateShape {
   readonly brand?: BrandState;
   /** Why the last brand action failed, shown in the Brand tab. */
   readonly brandError?: string;
+  /** Issue #111: the templates the composer's / menu offers (Uncut's built-ins, then the user's own). */
+  readonly templates?: ReadonlyArray<TemplateInfo>;
 }
 
 /** What a remote environment's file browser is for (D107): each native dialog it stands in for. */

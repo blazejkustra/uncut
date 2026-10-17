@@ -45,6 +45,7 @@
     "./library": "./src/audio/library.ts",
     "./contributions": "./src/plugins/contributions.ts",
     "./skills": "./src/skills/skills.ts",
+    "./templates": "./src/templates/index.ts",
     "./mp4index": "./src/media/mp4index.ts"
   },
   "dependencies": {

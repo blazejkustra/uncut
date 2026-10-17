@@ -12,5 +12,6 @@ export { ANALYZERS, Analyzer, AnalysisJob, AnalysisError, WhisperModel, ModelDow
 export { LibraryHitSchema, LibraryLimit, LibrarySearchResult, LibraryState, LibraryError, FolderSoundSchema, SoundFolderSchema } from "./library.ts";
 export type { SoundFolderInfo } from "./library.ts";
 export { LINK_METHODS, LINK_PLUGIN_ID, LinkKind, LINK_QUALITIES, LinkQuality, DEFAULT_LINK_QUALITY, LinkTool, LinkRequest, LinkJob, LinkError } from "./link.ts";
+export { TemplateInfo, TemplateFilled, TemplateError } from "./templates.ts";
 export { WsRpcGroup } from "./rpc/group.ts";
 export type { ServerConnection } from "./rpc/group.ts";
