@@ -22,9 +22,11 @@
      uncutMotion.iris(open, { x, y, r, blades: 6, turn }) // blade polygons [[x, y], ...]: open 1 = no blades in the circle, 0 = closed
      uncutMotion.squeeze(xs, widths, anchor, f)           // [{ x, scale }]: letters pulled toward anchor by f (1 = as set, 0 = in the anchor), widths follow
      uncutMotion.cursor(t, [{ at, x, y, click }], { spring })  // { x, y, scale, down }: a drawn cursor's path with real presses
-     uncutMotion.camera(t, [{ at, x, y, zoom }], spring)  // { x, y, zoom }: the world point at the frame's centre and its zoom;
+     uncutMotion.camera(t, [{ at, x, y, zoom }], spring, o) // { x, y, zoom }: the world point at the frame's centre and its zoom;
                                                          // zoom rides the spring in log space (an even push, no lurch); a key
-                                                         // missing x, y or zoom keeps the previous key's
+                                                         // missing x, y or zoom keeps the previous key's;
+                                                         // { drift: 0.015 } as a 4th argument: no hold is still, zoom
+                                                         // creeps 1.5 % from each key to the next (a key's own drift wins)
      uncutMotion.frameRect(left, top, w, h, { width, height, fit, pad, align })
                                                          // a camera key { x, y, zoom } that frames a UI rect (world px, top-left):
                                                          // by default it COVERS the frame (the UI surface is the frame, the overflow
@@ -306,7 +308,7 @@
   }
   // Screen-studio camera: (x, y) is the world point at the frame's centre. Missing fields carry
   // over from the previous key; zoom springs in log space, so a 1x to 3x push moves evenly.
-  function camera(t, keys, preset) {
+  function camera(t, keys, preset, o) {
     var ks = sorted(keys);
     var s = preset || "spring.settle";
     if (!ks.length) return { x: 0, y: 0, zoom: 1 };
@@ -314,9 +316,25 @@
     for (var i = 0; i < ks.length; i++) {
       var p = full[i - 1] || { x: 0, y: 0, zoom: 1 };
       var k = ks[i];
-      full.push({ at: k.at, spring: k.spring, x: k.x === undefined ? p.x : k.x, y: k.y === undefined ? p.y : k.y, lz: Math.log(Math.max(1e-3, k.zoom === undefined ? p.zoom : k.zoom)), zoom: k.zoom === undefined ? p.zoom : k.zoom });
+      full.push({ at: k.at, spring: k.spring, drift: k.drift, x: k.x === undefined ? p.x : k.x, y: k.y === undefined ? p.y : k.y, lz: Math.log(Math.max(1e-3, k.zoom === undefined ? p.zoom : k.zoom)), zoom: k.zoom === undefined ? p.zoom : k.zoom });
     }
-    return { x: springs(t, full, s, "x"), y: springs(t, full, s, "y"), zoom: Math.exp(springs(t, full, s, "lz")) };
+    return { x: springs(t, full, s, "x"), y: springs(t, full, s, "y"), zoom: Math.exp(springs(t, full, s, "lz") + drift(t, full, s, o)) };
+  }
+  // A hold that never freezes: from each key to the next, zoom creeps up by d (linear, in log
+  // space); from the next key on, that creep springs away under the key's own move, so it stays
+  // continuous. Nothing after the last key (a key at the loop's end keeps the seam).
+  function drift(t, ks, preset, o) {
+    var base = (o && o.drift) || 0;
+    var sum = 0;
+    for (var i = 0; i + 1 < ks.length; i++) {
+      var d = ks[i].drift === undefined ? base : ks[i].drift;
+      var a = ks[i].at;
+      var b = ks[i + 1].at;
+      if (!d || !(b > a) || t <= a) continue;
+      var lz = Math.log(1 + d);
+      sum += t < b ? (lz * (t - a)) / (b - a) : lz * (1 - spring(t - b, ks[i + 1].spring || preset));
+    }
+    return sum;
   }
   // A camera key framing a UI rect (left, top, w, h in world px): cover (default) fills the frame
   // with it, cropping the overflow at align; fit shows all of it with pad px around.

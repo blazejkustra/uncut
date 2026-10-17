@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { EMPTY_CONTENT, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
+import { EMPTY_CONTENT, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, OPEN_MAX_S, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -114,6 +114,39 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   assert.match(lines.join("\n"), /Single-frame pops: f 20 \(0\.67 s/);
   assert.match(lines.join("\n"), /Holds over 1 s with nothing changing: f 60 to f 99/);
   assert.match(lines.join("\n"), /Loop seam: .* a visible jump if it loops/);
+});
+
+// Blind round 3: the references' first real change lands by 0.6 s; Uncut's light films drifted under a
+// still hook for 1.5 to 1.9 s and read as static. A drift is not a change; a sampling every 0.15 s
+// measures the same as every frame; a soft finding in a one-take film only.
+test("the open: the first real change is measured; later than a second is a static open in a one-take film", () => {
+  const fps = 60;
+  const size = 64 * 80;
+  // A big shape under a slow drift (one grey level every 15 frames), then (from `at`) sliding 2 px a frame.
+  const opening = (at: number, n = 180) => Array.from({ length: n }, (_, f) => {
+    const x = Math.max(0, f - at) * 2;
+    const lift = Math.floor(Math.min(f, at) / 15);
+    const g = new Uint8Array(size);
+    for (let i = 0; i < size; i++) g[i] = ((i % 64) >= 10 + x && (i % 64) < 30 + x ? 200 : 30) + lift;
+    return { frame: f, gray: g };
+  });
+  const lively = motionScan(opening(30), fps);
+  assert.ok(lively.open && lively.open.frame! <= 40 && lively.open.frame! >= 30, JSON.stringify(lively.open));
+  assert.ok(!motionFindings(lively, fps, { oneTake: true }).some((f) => f.key === "motion:open:0"));
+  const late = motionScan(opening(100), fps);
+  assert.ok(late.open!.frame! > OPEN_MAX_S * fps && late.open!.peak < 0.015, JSON.stringify(late.open));
+  const sampled = motionScan(opening(100).filter((x) => x.frame <= 5 || x.frame % 9 === 0), fps);
+  assert.ok(Math.abs(sampled.open!.frame! - late.open!.frame!) <= 9, "a 0.15 s sampling lands within a sample of every frame");
+  const found = motionFindings(late, fps, { oneTake: true, hard: true }).find((f) => f.key === "motion:open:0")!;
+  assert.ok(found && !found.hard && found.range!.start === 0, "a finding, never a blocker");
+  assert.match(found.message, /static open: the first real change lands at f \d+ \(1\.\d\d s\)/);
+  assert.ok(!motionFindings(late, fps).some((f) => f.key === "motion:open:0"), "not one take: no finding");
+  assert.match(motionLines(late, fps, { consecutive: true }).join("\n"), /The open: the first real change .* a static open\./);
+  assert.match(motionLines(lively, fps, { consecutive: true }).join("\n"), /The open: the first real change .* lands at f \d+ \(0\.\d\d s\)\./);
+  // Nothing at all in the first 2 s; samples that stop before a second measure nothing.
+  assert.equal(motionScan(opening(500, 130), fps).open!.frame, undefined);
+  assert.match(motionFindings(motionScan(opening(500, 130), fps), fps, { oneTake: true }).find((f) => f.key === "motion:open:0")!.message, /nothing really changes in the first 2 s/);
+  assert.equal(motionScan(opening(30, 50), fps).open, undefined);
 });
 
 test("the critic gets the strips and the scan in <motion>; pops become review defects of kind motion", () => {
