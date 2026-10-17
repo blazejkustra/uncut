@@ -110,7 +110,11 @@ test("D194 commands: Look only refuses; Auto runs only a short allowlist of simp
     "file -f/etc/passwd",
     "file media/a.png",
     "wc --files0-from=list.txt",
-    "wc -l notes.md",
+    "wc --files0-from list.txt",
+    "wc -l ~/.zshrc",
+    "wc -c ../other/a.txt",
+    "wc -L notes.md",
+    "wc -l",
     "head -n5 notes.md",
     "ls -la/etc",
   ]) {
@@ -872,4 +876,9 @@ test("review of 6dc1722: a cp glob can't smuggle a flag (a file named -R) or mat
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("Auto's A/B: `echo` (no redirect) was already a plain read; the refusal was `wc -c` of a file, which now reads like cat", () => {
+  for (const command of ["echo", "echo hi", "echo ---; cat notes.md", "wc -l notes.md", "wc -c notes.md media/a.srt", "wc -lc notes.md", "cat project.json | head -c 300; echo; wc -c project.json", "cat project.json && echo && wc -c project.json"]) assert.equal(kind("Bash", { command }, "auto"), "allow", command);
+  for (const command of ["echo hi > notes.md", "echo hi >> notes.md", "echo $(cat ~/.zshrc)", "echo ~/*", "wc -c ~/.ssh/id_rsa", "wc -c notes.md > out.txt", "wc --files0-from=list.txt", "wc -c /etc/hosts", "cat project.json; echo; wc -c ../x"]) assert.notEqual(kind("Bash", { command }, "auto"), "allow", command);
 });
