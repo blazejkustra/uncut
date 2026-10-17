@@ -61,10 +61,27 @@ test("typed prompt: the same words, or the start cut with an ellipsis", () => {
 });
 
 test("typed prompt: the composer's text read from the graphic's source", () => {
-  assert.deepEqual(composerTexts([FILM]), { texts: ["Cut a travel film from the drone shots, on the beat"], composer: true });
+  assert.deepEqual(composerTexts([FILM]), { texts: ["Cut a travel film from the drone shots, on the beat"], composer: true, named: ["Cut a travel film from the drone shots, on the beat"] });
   assert.deepEqual(composerTexts([`uncutUI.editor({ composer: { text: 'It\\'s a reel', caret: true } })`]), { texts: ["It's a reel"], composer: true });
   assert.deepEqual(composerTexts([`const typedPrompt = \`Cut my drone clips on the beat\`; el.textContent = typedPrompt.slice(0, n);`]), { texts: ["Cut my drone clips on the beat"], composer: false });
   assert.deepEqual(composerTexts([`const PROMPT_Y = 880; const title = "Edit videos by talking";`]), { texts: [], composer: false });
+});
+
+test("typed prompt: the user's words with other line breaks, escapes or joins still match; a join with a non-literal isn't read", () => {
+  const typed = (decl: string) => typedPromptCheck([A1], [`<script>${decl}\nconst keys = [{ at: 0, piece: "composer", props: { text: PROMPT } }];</script>`]);
+  for (const decl of [
+    `const PROMPT = "Make a 28s launch film for Uncut, " +\n  "this app: one take on the beat, show me typing this prompt and the agent editing the video.";`,
+    `const PROMPT = "Make a 28s launch film for Uncut,\\nthis app: one take on the beat,<br>show me typing this&nbsp;prompt and the agent editing the video&#46;";`,
+    `const PROMPT = 'Make a 28s launch film for Uncut, this app: one take on the beat, show me typing this prompt and the agent editing the\\u00a0video\\u2026';`,
+  ])
+    assert.deepEqual(typed(decl).findings, [], decl);
+  // Joined with something unread: not measured, never a mismatch.
+  const unread = typed(`const PROMPT = "Make a 28s launch film for Uncut, " + REST;`);
+  assert.deepEqual(unread.findings, []);
+  assert.match(unread.facts[0]!, /no composer text .*the request's words are in it/);
+  // A hand-typed opening (a prompt-named const) beside a composer piece's follow-up still counts.
+  const both = typedPromptCheck([A1], [`<script>const typedPrompt = ${JSON.stringify(A1)}; type(typedPrompt);\nconst keys = [{ at: 20, piece: "composer", props: { text: "Make it warmer please" } }];</script>`]);
+  assert.deepEqual(both.findings, []);
 });
 
 test("typed prompt: a mismatch is an invented blocker with the user's words as the fix", () => {
