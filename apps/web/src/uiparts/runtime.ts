@@ -1212,8 +1212,8 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   const raw = (t - f.at) / dur;
   const to = isElement(f.to) ? f.to : null;
   const from = isElement(f.from) ? f.from : null;
-  // The landing element waits hidden; the from element leaves once the flight starts (leave).
-  if (to) to.style.visibility = raw < 1 ? "hidden" : "";
+  // The landing element is hidden while the copy flies; the from element leaves once the flight starts (leave).
+  if (to) to.style.visibility = raw >= 0 && raw < 1 ? "hidden" : "";
   if (from && f.leave) from.style.visibility = raw >= 0 ? "hidden" : "";
 
   // Landed, not started from an element yet, or an end gone with a later state: nothing shows.
