@@ -308,6 +308,23 @@ test("DOM twins: cameraCSS is apply's matrix, shapeCSS the shape's box, riseCSS 
   assert.match(rest.transform, /^translateY\(-?0(\.\d+)?(e-\d+)?px\)$/);
 });
 
+test("grow (review): a full before at doesn't stick the scale at 1.12; dur 0 cuts in at once; a negative dur is 0", () => {
+  const o = { at: 2, full: 0.5, kind: "inset" };
+  assert.ok(near(M.grow(5, o).scale, 1, 1e-9), "settles");
+  assert.ok(M.grow(5, o).full);
+  for (const dur of [0, -1]) {
+    const before = M.grow(1.999, { at: 2, full: 2, dur });
+    const on = M.grow(2, { at: 2, full: 2, dur });
+    assert.ok(!before.visible && near(before.scale, 1.12, 1e-9), `dur ${dur}: nothing before at`);
+    assert.ok(on.full && near(on.scale, 1, 1e-9), `dur ${dur}: full and settled on at`);
+    for (const r of on.rects) for (const v of [r.x, r.y, r.w, r.h, r.r]) assert.ok(Number.isFinite(v), `dur ${dur}: no NaN`);
+  }
+  // dur 0 with the default full (at + 0.5): the seed at once, the bleed at once on full.
+  const seed = M.grow(2.01, { at: 2, dur: 0 });
+  assert.ok(seed.visible && !seed.full && M.grow(2.5, { at: 2, dur: 0 }).full);
+  assert.ok(near(M.grow(2.1, { at: 2 }).w, M.grow(2.1, { at: 2, dur: undefined }).w, 1e-9), "no dur: 0.3 s as before");
+});
+
 test("grow: the next shot grows out of a shape into a seed on the kick, then bleeds full on the next; never a blank, never a jump", () => {
   const W = 1080;
   const H = 1350;
