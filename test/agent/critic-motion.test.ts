@@ -546,7 +546,10 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
   assert.ok(fs.fast.length === 1 && fs.fast[0]!.peak >= FAST_STEP, JSON.stringify(fs.fast));
   const ff = motionFindings(fs, fps, { oneTake: true, hard: true }).find((f) => f.key?.startsWith("motion:fast:"))!;
   assert.ok(!ff.hard);
-  assert.match(ff.message, /Ease it over about 0.3 s/);
+  // Round 3: the smear is the move's speed over the shutter; the hint is the peak speed, not a fixed length or more samples.
+  assert.match(ff.message, /slow the move's fastest frames \(the ease's peak speed counts, not its length/);
+  assert.match(ff.message, /shorten the shutter/);
+  assert.match(ff.message, /A smooth blur that keeps the words readable is fine/);
   assert.match(ff.message, /more sub-frames only smooth the copies into a smear/);
 });
 
