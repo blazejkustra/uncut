@@ -521,3 +521,58 @@ test("review of 0039421: the pinned line runs in the project wherever the shell 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("round 2's A2: a read piped into a pure filter runs in Auto without a card; filters that touch files, globs, redirects and other programs don't", () => {
+  const data = "/Users/me/Library/Application Support/Uncut";
+  const kit = `${data}/brand/kits/uncut`;
+  const extra = { sanctioned: [kit], dataDir: data };
+  for (const command of [
+    "cat project.json | head -n 40",
+    `cat "${kit}/uncut-mark-on-dark.svg" | head -c 600`,
+    "cat project.json | jq '.tracks[0]'",
+    "cat project.json | jq -r .canvas.fps",
+    "cat project.json | grep -n motionBlur | head -5",
+    "cat graphics/film.html | grep -c 'uncut.frame'",
+    "ls media | wc -l",
+    "cat project.json | sort -n | uniq -c",
+    "cd graphics && cat film.html | tail -n 20",
+  ]) assert.equal(kind("Bash", { command }, "auto", extra), "allow", command);
+  for (const command of [
+    "cat project.json | grep -f /Users/me/.ssh/id_rsa",
+    "cat project.json | grep foo /etc/hosts",
+    "cat project.json | grep -r foo",
+    "cat project.json | sort -o out.txt",
+    "cat project.json | jq -f a.jq",
+    "cat project.json | jq '.tracks | length'",
+    "cat project.json | jq --rawfile x /etc/hosts .",
+    "cat project.json | grep foo*",
+    "cat project.json | tee copy.json",
+    "cat project.json | head > copy.json",
+    "cat project.json | uniq - out.txt",
+    "cat /etc/hosts | head",
+    "mkdir -p x | head",
+    "cat project.json | xargs rm",
+  ]) assert.notEqual(kind("Bash", { command }, "auto", extra), "allow", command);
+  assert.equal(kind("Bash", { command: "cat project.json | sh" }, "auto", extra), "deny");
+});
+
+test("round 2's A2: Claude Code's saved tool output of this project is read; the rest of ~/.claude stays refused", () => {
+  const out = `${HOME}/.claude/projects/-Users-me-Movies-Promo/8af91a57/tool-results`;
+  for (const access of ["look", "ask", "auto"] as const) {
+    assert.equal(kind("Read", { file_path: `${out}/b4vwce.txt` }, access), "allow", access);
+    assert.equal(kind("Read", { file_path: `${HOME}/.claude/settings.json` }, access), "deny", access);
+    assert.equal(kind("Read", { file_path: `${HOME}/.claude/projects/-Users-me-Movies-Promo/8af91a57.jsonl` }, access), "deny", "a conversation");
+    assert.equal(kind("Read", { file_path: `${HOME}/.claude/projects/-Users-me-Other/1/tool-results/x.txt` }, access), "deny", "another project's");
+    assert.equal(kind("Read", { file_path: `${out}/../../../-Users-me-Other/1/tool-results/x.txt` }, access), "deny", "climbing out");
+  }
+  assert.equal(kind("Bash", { command: `ls ${out}/` }, "auto"), "allow");
+  assert.equal(kind("Bash", { command: `cat ${out}/b4vwce.txt | head -n 50` }, "auto"), "allow");
+  assert.equal(kind("Bash", { command: `ls ${out}/` }, "ask"), "ask");
+  for (const command of ["cat ~/.claude/settings.json", `cat ${HOME}/.claude/.credentials.json`, `python3 tools/scan.py ${out}`, `D=${out}; ls $D`]) assert.equal(kind("Bash", { command }, "auto"), "deny", command);
+  // claude-side: never edited; reads and commands naming it come to Uncut.
+  const settings = JSON.parse(sessionSettings({ access: "auto", projects: [PROJECT] }));
+  assert.ok(settings.permissions.deny.includes("Edit(~/.claude/**)"));
+  assert.ok(!settings.permissions.deny.some((r: string) => r.startsWith("Read(~/.claude/") || r === "Bash(*/.claude/*)"));
+  for (const rule of ["Read(~/.claude/**)", "Bash(*/.claude/*)"]) assert.ok(settings.permissions.ask.includes(rule), rule);
+  assert.ok(denyRules().includes("Read(~/.claude.json)"), "~/.claude.json stays a secret");
+});

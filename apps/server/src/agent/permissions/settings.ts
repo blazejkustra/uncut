@@ -6,7 +6,16 @@ import type { Access } from "./access.ts";
  * and before its read-only auto-allow): secrets in the home folder can't be read, edited or named
  * in a command, whatever the access. Rule syntax as claude 2.1.299 documents it ("Read(~/.zshrc)", gitignore-style paths, "//" for absolute ones, "*" as a wildcard in Bash rules).
  */
-export const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcloud", ".kube", ".docker", "Library/Keychains", ".claude", ".password-store"] as const;
+export const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcloud", ".kube", ".docker", "Library/Keychains", ".password-store"] as const;
+/**
+ * Claude Code's own folder: never edited (deny), and reads or commands naming it are ask rules
+ * (CLAUDE_ASK_RULES) so they come to Uncut, which lets this project's saved tool output
+ * (projects/<project>/<session>/tool-results/, where claude puts a large result and tells the agent
+ * to read it) be read and refuses the rest (other conversations, settings). Round 2's A2: the deny
+ * rules refused claude's own saved output twice.
+ */
+export const CLAUDE_DIR = ".claude";
+const CLAUDE_ASK_RULES = [`Read(~/${CLAUDE_DIR}/**)`, `Bash(*/${CLAUDE_DIR}/*)`, `Bash(*/${CLAUDE_DIR})`, `Bash(*~/${CLAUDE_DIR}*)`];
 export const SECRET_FILES = [".netrc", ".npmrc", ".git-credentials", ".claude.json", ".pypirc"] as const;
 export function denyRules(dataDir?: string): Array<string> {
   const rules: Array<string> = [];
@@ -14,6 +23,7 @@ export function denyRules(dataDir?: string): Array<string> {
     for (const tool of ["Read", "Edit"]) rules.push(`${tool}(~/${d}/**)`);
     rules.push(`Bash(*/${d}/*)`, `Bash(*/${d})`, `Bash(*~/${d}*)`);
   }
+  rules.push(`Edit(~/${CLAUDE_DIR}/**)`);
   for (const f of SECRET_FILES) {
     for (const tool of ["Read", "Edit"]) rules.push(`${tool}(~/${f})`);
     rules.push(`Bash(*${f}*)`);
@@ -54,7 +64,7 @@ export function appDataRules(dataDir?: string): Array<string> {
  * (claude's deny rules refused `cat` of a kit SVG silently, with no card) and refuses the rest.
  */
 export function appDataAskRules(dataDir?: string): Array<string> {
-  const rules = ["Bash(*Application Support*)", "Bash(*Application\\ Support*)"];
+  const rules = ["Bash(*Application Support*)", "Bash(*Application\\ Support*)", ...CLAUDE_ASK_RULES];
   const dir = dataDir?.replace(/\/+$/, "");
   // A data folder elsewhere (UNCUT_DATA_DIR) isn't caught by the Application Support rules.
   // (The folder itself, not a sibling that starts with its name.)
