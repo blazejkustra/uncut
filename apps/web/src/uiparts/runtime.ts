@@ -778,6 +778,82 @@ interface PieceKey {
   readonly from?: "up" | "down" | "left" | "right" | "none";
   /** Elements that carry over from the key before instead of swapping: a selector in both, or [before's, this one's]; each travels and scales from where it was to where it lands (the prompt into its message, the Send arrow). */
   readonly carry?: ReadonlyArray<string | readonly [string, string]>;
+  /**
+   * props.text typed in: `from` characters (default 0) at at, all of it by at + dur, evenly. The
+   * piece grows by a line over LINE_GROW s each time the text wraps, instead of jumping a line
+   * taller on the keystroke (A1r8, A1r4: the card jumped at every wrap). Pure in t.
+   */
+  readonly typing?: { readonly at: number; readonly dur: number; readonly from?: number };
+}
+
+/** How long a typed piece takes to grow by a line (s). */
+const LINE_GROW = 0.22;
+
+/** The characters of a typing key's text shown at t (rounded, as a graphic slicing its prompt does). */
+function typedCount(k: PieceKey, t: number): number {
+  const len = String(k.props?.text ?? "").length;
+  const from = Math.max(0, Math.min(len, Math.round(num(k.typing?.from, 0))));
+  const dur = num(k.typing?.dur, 0);
+  const at = num(k.typing?.at, 0);
+  const p = dur > 0 ? Math.max(0, Math.min(1, (t - at) / dur)) : t >= at ? 1 : 0;
+  return Math.round(from + (len - from) * p);
+}
+
+/** The first moment typedCount reaches n. */
+function typedTime(k: PieceKey, n: number): number {
+  const len = String(k.props?.text ?? "").length;
+  const from = Math.max(0, Math.min(len, Math.round(num(k.typing?.from, 0))));
+  const dur = num(k.typing?.dur, 0);
+  return num(k.typing?.at, 0) + (len > from && dur > 0 ? dur * Math.max(0, (n - 0.5 - from) / (len - from)) : 0);
+}
+
+type Measurer = HTMLElement & { __pieceKey?: string; __built?: Built; __heights?: Map<string, number> };
+
+/** A typing key's piece height (app px, without its pad) with its first n characters, measured once per document in a hidden holder. */
+function typedHeight(host: HTMLElement, k: PieceKey, n: number): number {
+  let m = host.querySelector(":scope > .uncut-ui-measure") as Measurer | null;
+  if (!m) {
+    m = host.ownerDocument.createElement("div") as Measurer;
+    m.className = "uncut-ui-measure";
+    m.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;visibility:hidden;pointer-events:none";
+    host.appendChild(m);
+  }
+  const key: PieceKey = { ...k, at: 0, typing: undefined, props: { ...(k.props || {}), text: String(k.props?.text ?? "").slice(0, n) } };
+  const id = keyOf(key as unknown as Props);
+  m.__heights ??= new Map();
+  const known = m.__heights.get(id);
+  if (known !== undefined) return known;
+  const b = buildPiece(m, key);
+  const h = b.h - 2 * b.pad;
+  m.__heights.set(id, h);
+  return h;
+}
+
+/**
+ * A typing key at t: its text cut to what's typed, and its height (size.height) eased from the line
+ * count before each wrap to the one after over LINE_GROW s from the wrap's keystroke, so the shell
+ * and the piece's own box (the composer's toolbar riding its bottom edge) grow smoothly. The wraps
+ * in the last LINE_GROW s are found by bisection on the measured heights: a function of t alone.
+ */
+function typedKey(k: PieceKey, t: number, host: HTMLElement): PieceKey {
+  if (!k.typing || typeof k.props?.text !== "string") return k;
+  const n = typedCount(k, t);
+  if (typeof k.size?.height === "number") return { ...k, props: { ...k.props, text: k.props.text.slice(0, n) } };
+  const n0 = typedCount(k, t - LINE_GROW);
+  const h = (c: number) => typedHeight(host, k, c);
+  let height = h(n0);
+  const wraps: Array<number> = [];
+  const split = (lo: number, hi: number, hl: number, hh: number) => {
+    if (Math.abs(hl - hh) < 0.01) return;
+    if (hi - lo <= 1) return void wraps.push(hi);
+    const mid = (lo + hi) >> 1;
+    const hm = h(mid);
+    split(lo, mid, hl, hm);
+    split(mid, hi, hm, hh);
+  };
+  if (n > n0) split(n0, n, height, h(n));
+  for (const c of wraps) height += (h(c) - h(c - 1)) * settle((t - typedTime(k, c)) / LINE_GROW);
+  return { ...k, props: { ...k.props, text: k.props.text.slice(0, n) }, size: { ...(k.size || {}), height } };
 }
 
 
@@ -909,6 +985,23 @@ function buildPiece(holder: Holder, k: PieceKey): Built {
     // Its exact height (offsetHeight rounds: lines of 16.8 px would leave the bottom inset off by a pixel or two).
     const r = el.getBoundingClientRect();
     h = el.offsetHeight > 2 ? (r.width > 0 && el.offsetWidth > 0 ? (r.height * el.offsetWidth) / r.width : el.offsetHeight) : h;
+    st.height = `${h}px`;
+  }
+  // A typing key growing by a line (typedKey): the box with the typed text gives up the height the
+  // piece is short of, clipping its new line, so the rest (the composer's toolbar) rides the bottom.
+  const typedText = k.typing && typeof props.text === "string" ? props.text : "";
+  if (typedText && typeof k.size?.height === "number") {
+    st.height = "auto";
+    const natural = el.offsetHeight;
+    const box = [...el.children].find((c) => (c.textContent || "").includes(typedText)) as HTMLElement | undefined;
+    const short = natural - h;
+    if (box && short > 0.01) {
+      const bs = box.style;
+      bs.height = `${Math.max(0, box.offsetHeight - short)}px`;
+      bs.minHeight = "0";
+      bs.overflow = "hidden";
+      bs.flex = "none";
+    }
     st.height = `${h}px`;
   }
   const node = holder.ownerDocument.createElement("div");
@@ -1081,7 +1174,7 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
   if (!keyList.length) throw new Error("uncutUI.sequence: no keys");
   const doc = host.ownerDocument;
   ensureCss(doc);
-  const keys = keyList.map((k) => resolveKey(k, host));
+  const keys = keyList.map((k) => typedKey(resolveKey(k, host), t, host));
   let shell = host.querySelector(":scope > .uncut-ui-shell") as Hiding | null;
   if (!shell) {
     shell = doc.createElement("div") as Hiding;
@@ -1283,7 +1376,7 @@ function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w
   let built: Built | null = null;
   let press = 1;
   if (isPieceKey(f.from)) {
-    const k = resolveKey(f.from, host);
+    const k = typedKey(resolveKey(f.from, host), t, host);
     built = buildPiece(slotA, k);
     const b = keyBox(k, built);
     A = { x: b.x - b.w / 2, y: b.y - b.h / 2, w: b.w, h: b.h };

@@ -173,6 +173,9 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        side out of a blur and the old leaves by the other, both at one uniform scale (never two legible
        pictures at once); carry: selectors (or [old's, new's]) that travel instead, the prompt shrinking
        into its message. A leaving preview frame stays put, cropped by the shell. The same piece twice (one more step) grows without a swap. Pure in t.
+       typing: { at, dur, from }: props.text typed in (from characters at at, all of it by at + dur), the shell
+       growing a line at a time over 0.22 s at each wrap, its toolbar riding the bottom edge: pass the WHOLE text
+       (also in a fly's from key), never a slice you cut per frame, which makes the card jump a line per wrap.
        Returns { x, y, w, h, r, p, key, el, type } (el: the shown piece's element, for find and rectIn).
      uncutUI.piece(host, "export.high", { props, width, x, y, ... })  // one piece alone (sequence's key at rest)
      uncutUI.mount(host, "editor", { width: 1440, height: 1000, blur, dim, ...props })  // the program as a live stage:
