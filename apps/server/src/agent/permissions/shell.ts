@@ -210,16 +210,57 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
   return paths.every(readable);
 }
 
+/** Stands for an escaped space (`Application\ Support`) while a read-only line is parsed. */
+const SPACE = "\u0001";
+
+/**
+ * A line with each unquoted backslash-space (`Application\\ Support`, as shells and Finder copy it)
+ * swapped for SPACE, or undefined when it has any other backslash or a SPACE of its own.
+ */
+function escapedSpaces(c: string): string | undefined {
+  if (c.includes(SPACE)) return undefined;
+  let out = "";
+  let quote: string | undefined;
+  for (let i = 0; i < c.length; i++) {
+    const ch = c[i]!;
+    if (quote) {
+      if (ch === "\\") return undefined;
+      if (ch === quote) quote = undefined;
+      out += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    if (ch === "\\") {
+      if (c[i + 1] !== " ") return undefined;
+      out += SPACE;
+      i++;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * A read-only line pinned to the project: `cd '<project>' && {` the line `}`. readOnlyLine judges
+ * relative paths against the project, but claude's shell keeps its folder between calls (a `cd`
+ * into an added folder stays), so the line Uncut lets run is sent back (updatedInput) starting there.
+ */
+export function pinnedToProject(command: string, project: string): string {
+  return `cd '${project.replaceAll("'", "'\\''")}' && {\n${command.trim()}\n}`;
+}
+
 /**
  * A line of read-only commands Auto runs without a card: simple commands joined by ;, && or
  * newlines (no other shell syntax: no pipes, redirects, $, `, subshells, globs or backslashes), each
  * one allowlisted (reads in the project or a sanctioned folder, mkdir -p in the project), `echo`
  * and `pwd`, or `cd` into the project or a folder in it (relative paths after it are read from
- * there). `real(p, base)` is a path's real path against `base`.
+ * there). A space may be escaped (`Application\ Support`); no other backslash. `real(p, base)` is
+ * a path's real path against `base`. The line is judged from the project: run it pinnedToProject.
  */
 export function readOnlyLine(command: string, real: (p: string, base: string) => string, zones: ReadZones): boolean {
-  const c = command.trim();
-  if (!c || /[$`(){}<>|\\\r]|<<|\*\*|\bsudo\b/.test(c)) return false;
+  const c = escapedSpaces(command.trim());
+  if (c === undefined || !c || /[$`(){}<>|\\\r\0]|<<|\*\*|\bsudo\b/.test(c)) return false;
   // Only ; && and newlines join commands; a lone & (background) or || isn't taken.
   const pieces: Array<string> = [];
   let cur = "";
@@ -259,7 +300,7 @@ export function readOnlyLine(command: string, real: (p: string, base: string) =>
   for (const segment of segments) {
     const parsed = simpleCommand(segment);
     if ("complex" in parsed) return false;
-    const [name = "", ...args] = parsed.words;
+    const [name = "", ...args] = parsed.words.map((w) => w.replaceAll(SPACE, " "));
     if (name === "echo" || name === "pwd") {
       if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) return false;
       continue;

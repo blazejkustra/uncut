@@ -189,7 +189,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
         s.child.stdin.write(`${JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response: { ...response, ...(toolUseId ? { toolUseID: toolUseId } : {}) } } })}\n`);
       } catch {}
     };
-    const allow = () => reply({ behavior: "allow", updatedInput: input });
+    const allow = (updated?: Record<string, unknown>) => reply({ behavior: "allow", updatedInput: updated ?? input });
     const deny = (message: string) => reply({ behavior: "deny", message });
     const r = s.turn;
     if (!r || r.turn.status !== "running" || r.cancelled) return deny("Not done: no turn is running in Uncut.");
@@ -216,7 +216,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
     const decideFirst = () => {
       if (answered) return;
       const first = decide(tool, input, ctx());
-      if (first.kind === "allow") return allow();
+      if (first.kind === "allow") return allow(first.updatedInput);
       if (first.kind === "deny") return deny(first.message);
       // Its card is the one open (cards are shown one at a time).
       let showing = false;
@@ -237,7 +237,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
         if (r.abort.signal.aborted) return deny("Not done: the turn was stopped.");
         // An "Always" given on the card before may cover it now.
         const d = decide(tool, input, ctx());
-        if (d.kind === "allow") return allow();
+        if (d.kind === "allow") return allow(d.updatedInput);
         if (d.kind === "deny") return deny(d.message);
         let always = false;
         showing = true;
@@ -253,7 +253,7 @@ export const makeAskTools = (ctx: TranscriptCtx) => {
             const dir = d.grant.slice(5);
             if (!r.owner.dirs.includes(dir) && r.owner.dirs.length < 16) r.owner.dirs.push(dir);
           } else if (always && d.grant) r.owner.grants.add(d.grant);
-          return allow();
+          return allow(d.updatedInput);
         }
         if (answer === "stopped") return deny("Not done: the turn was stopped.");
         return deny(`Not done: the user ${answer === "timeout" ? "didn't answer" : "said no"} to "${d.title}: ${d.target.slice(0, 200)}". Don't try it again in this turn; say what you wanted to do and why.`);
