@@ -21,6 +21,16 @@ const pending = new Map<number, { readonly done: (r: { file?: unknown; type?: un
 const waiting = new Map<number, { readonly id: string; readonly t: number }>();
 /** The project media a graphic is waiting for right now. */
 export const mediaWaiting = (): ReadonlyArray<{ readonly id: string; readonly t: number }> => [...waiting.values()];
+// A graphic fetching pictures one after another (await uncut.frame in a loop) has none in flight
+// for the few ms between one answer and its next ask; a deadline sampling mediaWaiting() alone
+// lands in such a gap (A2-noskill, A2r10b: 18 thumbnails in a row failed the first frame). So the
+// time of the last ask or answer is kept too, and the pictures answered so far.
+let lastActivity = 0;
+let answered = 0;
+/** Whether project media is being fetched: a request in flight, or one asked or answered within `withinMs`. */
+export const mediaActive = (withinMs: number, now = Date.now()): boolean => waiting.size > 0 || now - lastActivity < withinMs;
+/** How many media requests have been answered (or failed) since the rasteriser started. */
+export const mediaAnswered = (): number => answered;
 
 const answer = (status: number, body: string | Uint8Array<ArrayBuffer>, type = "text/plain; charset=utf-8") =>
   new Response(body, { status, headers: { "content-type": type, "access-control-allow-origin": "*", "cache-control": "no-store" } });
@@ -39,6 +49,7 @@ export function handleMedia(protocol: Protocol, send: (msg: Record<string, unkno
     const num = (name: string) => (url.searchParams.get(name) ? Number(url.searchParams.get(name)) : undefined);
     const sub = ++next;
     waiting.set(sub, { id, t: num("t") ?? 0 });
+    lastActivity = Date.now();
     const reply = await new Promise<{ file?: unknown; type?: unknown; error?: unknown }>((done) => {
       const timer = setTimeout(() => {
         // An answer after this has nobody to read its file: remove it then.
@@ -53,7 +64,11 @@ export function handleMedia(protocol: Protocol, send: (msg: Record<string, unkno
         },
       });
       send({ media: { sub, id, t: num("t") ?? 0, w: num("w"), h: num("h") } });
-    }).finally(() => waiting.delete(sub));
+    }).finally(() => {
+      waiting.delete(sub);
+      answered++;
+      lastActivity = Date.now();
+    });
     if (typeof reply.file !== "string") return answer(404, typeof reply.error === "string" ? reply.error : "the media couldn't be loaded");
     const file = reply.file;
     try {

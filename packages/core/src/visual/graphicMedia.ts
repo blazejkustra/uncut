@@ -79,7 +79,8 @@ export function graphicMediaUsed(html: string): Array<string> {
  * The script graphicDocument puts in a graphic's <head> (before its own bootstrap): window.uncut
  * (frame, image, url) and window.__uncutMedia (ready: the markers' pictures in place and decoded,
  * awaited before the first frame; sweep(fps): called after each frame and each motion-blur
- * sub-frame, keeps the cache bounded by forgetting pictures not asked for lately).
+ * sub-frame, keeps the cache bounded by forgetting pictures not asked for lately; stats(): the
+ * pictures still pending, which the rasteriser asks for when a frame runs late).
  * A picture handed to the page is the page's: it is never closed here. The page may keep it in its
  * own caches and draw it any number of frames later without asking again (round 2's A2 film kept
  * every thumbnail it got and drew them seconds later; closing pictures unasked for about 2 × fps
@@ -92,6 +93,8 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   const KEEP = 24;
   const waiting = new Map();
   let seq = 0;
+  // Pictures asked of the host and not answered yet (the rasteriser asks when a frame is late).
+  let pending = 0;
   // The preview (an iframe): its parent answers. The export: the rasteriser's own scheme.
   addEventListener("message", (e) => {
     const d = e.data;
@@ -102,6 +105,12 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     else w.fail(new Error(String(d.error || "the media couldn't be loaded")));
   });
   const load = (id, t, w, h) => {
+    pending++;
+    const p = ask(id, t, w, h);
+    p.then(() => pending--, () => pending--);
+    return p;
+  };
+  const ask = (id, t, w, h) => {
     if (parent !== window) return new Promise((done, fail) => {
       const s = ++seq;
       waiting.set(s, { done, fail });
@@ -158,6 +167,7 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     return out;
   };
   window.__uncutMedia = {
+    stats: () => ({ pending }),
     ready: () => (marks ??= (async () => {
       const used = new Set();
       const jobs = [];
