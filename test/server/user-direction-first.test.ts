@@ -15,12 +15,11 @@ import { bundledSkill } from "../helpers/skills.ts";
 
 test("motion-film puts the user's direction first and only fills what it leaves open; honesty and real defects stay", () => {
   const body = bundledSkill("motion-film").instructions;
-  const head = body.slice(0, body.indexOf("\nPace"));
+  const head = body.slice(0, body.indexOf("\nHonesty"));
   assert.match(head, /^The user's direction comes first$/m);
-  assert.match(head, /followed as written: this skill only fills what it leaves open/);
-  assert.match(head, /its numbers are defaults for a brief that doesn't say/);
-  assert.match(head, /Run facts stay true; real defects \(cuts, pops, flashes, the seam\) stay defects/);
-  assert.match(body, /About Uncut, when the message gives no story of its own, by default tell its real flow/);
+  assert.match(head, /Follow the message as written: its structure, look, timings, sizes, sound and bans/);
+  assert.match(head, /nothing here is a house style/);
+  assert.match(head, /Run facts stay true and measured defects stay defects/);
   assert.ok(skillChecklist(body).length <= 12);
 });
 
