@@ -269,11 +269,18 @@ function escapedSpaces(c: string): string | undefined {
  * A read-only line pinned to the project: `cd '<project>' && (` the line `)`. readOnlyLine judges
  * relative paths against the project, but claude's shell keeps its folder between calls (a `cd`
  * into an added folder stays), so the line Uncut lets run is sent back (updatedInput) starting there;
- * the subshell keeps a `cd` on the line (into the kit) from outlasting it.
+ * the subshell keeps a `cd` on the line (into the kit) from outlasting it, and a cd that fails ends it.
  */
 export function pinnedToProject(command: string, project: string): string {
-  return `cd '${project.replaceAll("'", "'\\''")}' && (\n${command.trim()}\n)`;
+  return `cd '${project.replaceAll("'", "'\\''")}' && (\n${PIN_CD}\n${command.trim()}\n)`;
 }
+
+/**
+ * Review of 223cd14: a cd on the line that fails (`cd missing; cat link/x`) must stop it, or the
+ * reads run from the folder before, judged against one that isn't there; and CDPATH mustn't send a
+ * relative cd elsewhere. Defined before the line, in the subshell (bash and zsh).
+ */
+const PIN_CD = 'unset CDPATH; cd() { builtin cd "$@" || exit 1; }';
 
 /**
  * The filters a read may pipe into (round 2's A2: `cat x | head` of the kit and project.json were
@@ -401,7 +408,9 @@ export function notReadOnly(command: string, real: (p: string, base: string) => 
       continue;
     }
     if (name === "cd") {
-      if (args.length !== 1 || args[0]!.startsWith("-") || args[0]!.startsWith("~") || /[*?[\]{}=]/.test(args[0]!)) return shown;
+      // No .. (review of 223cd14): the shell's cd is logical (a .. after a symlinked folder goes back
+      // up the link's own path) while this judges the real path, so `cd S; cd ../../..` got out.
+      if (args.length !== 1 || /^[-+~]/.test(args[0]!) || /[*?[\]{}=]/.test(args[0]!) || args[0]!.split("/").includes("..")) return shown;
       const to = real(args[0]!, cwd);
       // Into the project or a sanctioned folder (round 3's A1: `cd <kit>; head -c 600 a.svg`). The line
       // runs pinnedToProject, in a subshell, so the cd doesn't outlast it.
