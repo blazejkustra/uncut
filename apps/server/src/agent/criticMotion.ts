@@ -40,6 +40,18 @@ export const POP_RATIO = 3;
 export const POP_MIN = 0.03;
 /** A jump is also at least this many times the busier side's biggest step (a cut into a fast move). */
 export const JUMP_OVER = 1.5;
+/**
+ * Round 4's A1 (18.05 s): footage swapped to the agent panel over 4 frames (steps 2.6, 4.9, 8.7,
+ * 8.6 %, then 1 %), a cut to the eye that no one-frame rule sees. A quick swap: a run of 2 to
+ * BURST_S worth of steps each at least a quarter of its peak, the peak BURST_PEAK or more, the
+ * two steps on each side of it under that quarter (the move starts and stops inside 0.09 s) and
+ * the picture going from one state to another (BURST_NET). The
+ * designed grows of the same film peak at 3 to 4 % over 7 to 10 frames; plain Claude's films had none.
+ */
+export const BURST_S = 0.09;
+export const BURST_PEAK = 0.05;
+/** And its net change at least this share of its steps' sum (A1r4's swap 0.92, a zoom snap 0.64). */
+export const BURST_NET = 0.6;
 /** Below this mean difference two samples count as the same picture (a hold). */
 export const HOLD_DIFF = 0.0015;
 export const HOLD_MAX_S = 1;
@@ -276,7 +288,19 @@ export async function refineJumps(o: {
     }
   }
   // Two frames each side of each narrowed step, for motionScan's neighbours.
-  await fetch(live.flatMap((s) => [s.lo - 2, s.lo - 1, s.hi + 1, s.hi + 2]));
+  if (!(await fetch(live.flatMap((s) => [s.lo - 2, s.lo - 1, s.hi + 1, s.hi + 2])))) return added;
+  // Round 4's A1: a quick swap spreads over a few frames; widen each side while its step is still a
+  // quarter of the narrowed one, up to BURST_S plus the two still steps motionScan needs there.
+  const reach = Math.max(2, Math.floor(BURST_S * o.fps)) + 2;
+  const d = (x: number) => (at.has(x) && at.has(x + 1) ? frameDiff(at.get(x)!, at.get(x + 1)!) : 0);
+  const wide: Array<number> = [];
+  for (const s of live) {
+    const q = d(s.lo) / 4;
+    // A side still moving gets the rest of its reach in the same render.
+    if (Math.max(d(s.lo - 2), d(s.lo - 1)) >= q) for (let x = s.lo - 3; x >= s.lo - reach; x--) wide.push(x);
+    if (Math.max(d(s.hi), d(s.hi + 1)) >= q) for (let x = s.hi + 3; x <= s.hi + reach; x++) wide.push(x);
+  }
+  if (wide.length) await fetch(wide);
   return added;
 }
 
@@ -386,6 +410,8 @@ export interface MotionEvent {
   readonly diff: number;
   /** How many times its neighbours' difference. */
   readonly ratio: number;
+  /** A quick swap: the frames the change took (2 or more); a one-frame jump has none. */
+  readonly span?: number;
 }
 export interface MotionScan {
   readonly frames: number;
@@ -462,6 +488,28 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     const busy = Math.max(before ?? 0, after ?? 0);
     if (d >= ratio * calm && d >= JUMP_OVER * busy) jumps.push({ frame: f + 1, diff: round(d), ratio: round(d / calm, 1) });
   }
+  // Quick swaps (BURST_S): a jump spread over a few frames, every step of it and around it known.
+  const burstMax = Math.max(2, Math.floor(BURST_S * fps));
+  const burstSteps = new Set<number>();
+  for (const [f, peak] of step) {
+    if (peak < Math.max(min, BURST_PEAK) || !((step.get(f - 1) ?? -1) <= peak && (step.get(f + 1) ?? Infinity) < peak)) continue;
+    const q = peak / 4;
+    let a = f, b = f;
+    while ((step.get(a - 1) ?? -1) >= q && f - a < burstMax) a--;
+    while ((step.get(b + 1) ?? -1) >= q && b - f < burstMax) b++;
+    const len = b - a + 1;
+    const out = [a - 1, a - 2, b + 1, b + 2].map((x) => step.get(x));
+    if (len < 2 || len > burstMax || out.some((v) => v === undefined || v >= q)) continue;
+    if (jumps.some((j) => j.frame - 1 >= a && j.frame - 1 <= b) || [...popFrames].some((x) => x >= a && x <= b + 1)) continue;
+    // A swap goes from one picture to another (every pixel one way: the net change is most of the
+    // steps' sum); a whip of a pattern moves it back and forth (a fast move, not a cut).
+    const net = frameDiff(at.get(a)!, at.get(b + 1)!);
+    let sum = 0;
+    for (let x = a; x <= b; x++) sum += step.get(x)!;
+    if (net < BURST_NET * sum) continue;
+    jumps.push({ frame: f + 1, diff: round(net), ratio: round(peak / Math.max(...(out as Array<number>), typical), 1), span: len });
+    for (let x = a; x <= b; x++) burstSteps.add(x);
+  }
   jumps.sort((a, b) => a.frame - b.frame);
   // Holds: runs of samples (at most 0.5 s apart) that don't change.
   const holds: Array<{ start: number; end: number }> = [];
@@ -506,7 +554,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
   }
   // Fast moves: FAST_RUN or more consecutive steps of FAST_STEP or more, none of them a jump or a pop.
   const fast: Array<{ start: number; end: number; peak: number }> = [];
-  const skip = new Set([...jumps.map((j) => j.frame - 1), ...popFrames, ...[...popFrames].map((f) => f - 1)]);
+  const skip = new Set([...jumps.map((j) => j.frame - 1), ...burstSteps, ...popFrames, ...[...popFrames].map((f) => f - 1)]);
   let fs: { start: number; end: number; peak: number; n: number } | undefined;
   for (const x of fr) {
     const d = step.get(x.frame);
@@ -575,7 +623,7 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
     out.push({ rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
   }
   if (o.oneTake) {
-    for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
+    for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: j.span ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.` : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
     for (const h of scan.holds.slice(0, 2)) out.push({ rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${((h.end - h.start) / fps).toFixed(1)} s): a hold over 1 s.` });
   }
   // Blind round 3: a motionless first 1.5 to 2 s under a hook headline (drift only) read as a soft hook.
@@ -622,7 +670,7 @@ export function motionLines(scan: MotionScan, fps: number, scanned: { readonly c
     ...(scanned.planned !== undefined && covered < scanned.planned ? [budgetLine(covered, scanned.planned)] : []),
     `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, an even sampling of the rest, and each big change between two samples narrowed down to the frame it happens on"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
   lines.push(scan.pops.length ? `Single-frame pops: ${scan.pops.map((p) => `f ${p.frame} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops found.");
-  if (scan.jumps.length) lines.push(`One-frame jumps (cuts, or changes that took one frame): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %)`).join(", ")}.`);
+  if (scan.jumps.length) lines.push(`One-frame jumps and quick swaps (cuts, or changes that took one frame or under ${BURST_S} s between still frames): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %${j.span ? `, over ${j.span} frames` : ""})`).join(", ")}.`);
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");
   const empties = emptyRuns(scan, fps);
   if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No nearly empty stretch.");
