@@ -448,13 +448,18 @@
     o = o || {};
     var W = o.width || 1080;
     var H = o.height || 1350;
-    var dur = o.dur || 0.3;
+    // dur 0 is an instant cut-in; a negative one counts as 0; none is 0.3 s.
+    var dur = o.dur === undefined || o.dur === null ? 0.3 : Math.max(0, Number(o.dur) || 0);
     var at = o.at || 0;
-    var fullAt = o.full === undefined ? at + 0.5 : o.full;
+    // The bleed never comes before the seed (a full before at would leave the scale stuck high).
+    var fullAt = o.full === undefined ? at + 0.5 : Math.max(Number(o.full) || 0, at);
     var g = growSeeds(o.kind || "inset", W, H, o);
     var from = o.origin ? [o.origin] : g.from;
-    var p1 = easeInOut((t - at) / dur);
-    var p2 = easeInOut((t - fullAt) / dur);
+    var ramp = function (start, length, ease) {
+      return length > 0 ? ease((t - start) / length) : t >= start ? 1 : 0;
+    };
+    var p1 = ramp(at, dur, easeInOut);
+    var p2 = ramp(fullAt, dur, easeInOut);
     var rects = g.seed.map(function (sd, i) {
       var a = from[Math.min(i, from.length - 1)], b = g.to[i], out = {};
       ["x", "y", "w", "h", "r"].forEach(function (f) {
@@ -480,7 +485,7 @@
       w: first.w,
       h: first.h,
       r: first.r,
-      scale: 1 + (k - 1) * (1 - easeOut((t - at) / (fullAt + dur - at))),
+      scale: 1 + (k - 1) * (1 - ramp(at, fullAt + dur - at, easeOut)),
       full: full,
       visible: t >= at && rects.some(function (s) {
         return s.w > 0.5 && s.h > 0.5;
