@@ -186,6 +186,16 @@ test("click: the cursor lands and lies still, then presses, and the change start
   assert.ok(near(M.click(2, chain).x, 300, 1e-6) && M.click(2, chain).fired, "second click");
   assert.ok(near(M.click(0, chain).x, 0, 1e-6), "before the first: at its from");
   assert.deepEqual(M.click(5.95, o), M.click(5.95, o), "pure");
+  // Overlapping clicks: the next glide starts before the last release ends; the press eases out, no pop.
+  const tight = [
+    { from: [0, 0], x: 100, y: 100, fire: 1 },
+    { x: 300, y: 100, fire: 1.4 },
+  ];
+  const first = M.click(1, tight[0]!);
+  assert.ok(M.click(1.4, tight).start < first.end && M.click(1.4, tight).start >= first.release - 1e-9, "the second leaves after the first press, before its release ends");
+  for (let t = first.arrive; t < first.release; t += 1 / 60) assert.ok(near(M.click(t, tight).x, 100, 1e-6), `on the first button through its press at ${t.toFixed(3)}`);
+  for (let t = 0.5; t < 2; t += 1 / 60) assert.ok(Math.abs(M.click(t + 1 / 60, tight).scale - M.click(t, tight).scale) < 0.08, `no scale pop at ${t.toFixed(3)}`);
+  assert.ok(near(M.click(1.4, tight).fire, 1.4, 1e-9) && M.click(1.4, tight).fired, "the second still fires on time");
 });
 
 test("squeeze, cursor, camera, beat, loop, colours", () => {

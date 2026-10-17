@@ -2,7 +2,9 @@
 // project (4:5, 60 fps, drone clips on Main, a title, an end-card graphic, the music and a few sound effects), an agent
 // turn with its storyboard waiting for approval, a finished turn with the critic's review card, and
 // an export. Plain data in the shapes the server sends, so the real components draw it as they
-// would the real thing. Changing it changes the generated parts (ui-parts.test.ts sees them stale).
+// would the real thing. No run facts in it (a timing, a count, a BPM, a defect, a fix): a film's
+// parts state none unless the graphic passes real ones, and the runtime blanks the review's result,
+// round and scores, the turn's status line and the export's time left until it does. Changing it changes the generated parts (ui-parts.test.ts sees them stale).
 import type { AgentState, AgentTurn, ExportJob, ProjectSnapshot, Review, SetupCheck, Storyboard } from "@uncut/contracts";
 
 export const FIXTURE_DIR = "/Users/you/Movies/Launch film.uncut";
@@ -62,7 +64,7 @@ export const FIXTURE_SNAPSHOT: ProjectSnapshot = { dir: FIXTURE_DIR, project: FI
 export const FIXTURE_PROMPT = "Make a 28 s launch film for Uncut on the Electro Dreams beat, the drone clips as the film being edited.";
 
 export const FIXTURE_STORYBOARD: Storyboard = {
-  summary: "One take on Electro Dreams (120 BPM, drop at 12 s): the composer, the agent's plan, the timeline building, the preview flooding full-frame on the drop, the critic's card, the export.",
+  summary: "One take on Electro Dreams: the composer, the agent's plan, the timeline building, the preview flooding full-frame on the drop, the critic's card, the export.",
   status: "proposed",
   beats: [
     { start: 0, end: 2, title: "Hook", entry: '"Edit videos by talking to an agent" huge on the canvas', exit: "The empty composer under it", purpose: "Stop the scroll with the claim", assets: ["Kit fonts", "composer UI"], sound: "Downbeat 0" },
@@ -76,14 +78,14 @@ export const FIXTURE_REVIEW: Review = {
   round: 2,
   scores: { hook: 9, readability: 8, motion: 9, variety: 8, sound: 9, brand: 9 },
   rubric: { hook: "required", readability: "required", motion: "required", variety: "optional", sound: "required", brand: "optional" },
-  defects: [{ at: 12.4, what: "The drop's flood starts two frames after the kick", fix: "Start the flood on frame 744", id: "d1", kind: "motion" }],
+  defects: [],
   by: "critic",
   passed: true,
   at: "2026-10-16T10:12:00.000Z",
-  fixes: [{ defect: "d1", what: "Flood keyed on the kick", verified: true }],
+  fixes: [],
 };
 
-const turn = (id: string, patch: Partial<AgentTurn>): AgentTurn => ({ id, prompt: FIXTURE_PROMPT, startedAt: "2026-10-16T10:00:00.000Z", status: "done", items: [], edits: [], undo: { state: "none" }, model: "claude-opus-5-5", ...patch });
+const turn = (id: string, patch: Partial<AgentTurn>): AgentTurn => ({ id, prompt: FIXTURE_PROMPT, startedAt: "2026-10-16T10:00:00.000Z", status: "done", items: [], edits: [], undo: { state: "none" }, ...patch });
 
 /** The plan scene: the turn is waiting on the storyboard card (Approve). */
 export const FIXTURE_AGENT_PLAN: AgentState = {
@@ -96,8 +98,8 @@ export const FIXTURE_AGENT_PLAN: AgentState = {
       items: [
         { kind: "thinking", text: "Beat grid first, then a storyboard with one state per beat" },
         { kind: "step", text: "Read the brand kit Uncut", tool: "brand_read", status: "done" },
-        { kind: "step", text: "Found the beats: 120 BPM, drop at 12 s", tool: "beat_grid", status: "done" },
-        { kind: "text", text: "Here's the plan: one take on the beat, the drop at 12 s floods the preview full-frame." },
+        { kind: "step", text: "Found the beats", tool: "beat_grid", status: "done" },
+        { kind: "text", text: "Here's the plan: one take on the beat, the drop floods the preview full-frame." },
       ],
     }),
   ],
@@ -113,22 +115,20 @@ export const FIXTURE_AGENT_DONE: AgentState = {
   turns: [
     turn("turn-1", {
       finishedAt: "2026-10-16T10:21:00.000Z",
-      seconds: 1289,
       items: [
         { kind: "step", text: "Wrote graphic film.html", tool: "graphic_write", status: "done" },
-        { kind: "step", text: "Placed 4 clips on Main", tool: "edit", status: "done" },
+        { kind: "step", text: "Placed the clips on Main", tool: "edit", status: "done" },
         { kind: "card", text: "", card: { type: "review", review: FIXTURE_REVIEW } },
-        { kind: "text", text: "The 28 s film is built on the Electro Dreams beat: it opens on the claim, types your prompt, builds the timeline, floods the preview on the drop at 12 s and ends on the export." },
+        { kind: "text", text: "The film is built on the Electro Dreams beat: it opens on the claim, types your prompt, builds the timeline, floods the preview on the drop and ends on the export." },
       ],
       edits: [
-        { revision: 14, summary: "Placed 4 clips on Main", lines: ["Added DJI 0055", "Added DJI 0063", "Added DJI 0068", "Added DJI 0050"], at: 1 },
+        { revision: 14, summary: "Placed the clips on Main", lines: ["Added DJI 0055", "Added DJI 0063", "Added DJI 0068", "Added DJI 0050"], at: 1 },
         { revision: 15, summary: "Added sound effects", lines: ["Added Keyboard typing", "Added Mouse click"] },
       ],
       undo: { state: "available" },
     }),
   ],
   plan: { storyboard: { ...FIXTURE_STORYBOARD, status: "approved", approvedBy: "user" }, reviews: [FIXTURE_REVIEW] },
-  context: { used: 191_000, window: 1_000_000, systemTools: 40_000, conversation: 140_000, message: 11_000, model: "claude-opus-5-5" },
 };
 
 export const FIXTURE_SETUP: ReadonlyArray<SetupCheck> = [

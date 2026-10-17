@@ -28,10 +28,30 @@ const load = () => {
 
 test("ui.js is generated from the app as it is now (else run: node scripts/ui-parts.ts)", () => {
   const inputs = uiPartsInputs(ROOT);
+  // The harness's whole import closure: a helper or component outside the parts' folders changes the editor part too.
+  for (const f of ["apps/web/src/ui/Tooltip.tsx", "apps/web/src/state/format.ts", "apps/web/src/editor/App.tsx", "apps/web/package.json"]) assert.ok(inputs.includes(f), f);
   for (const f of ["apps/web/src/styles.css", "apps/web/src/panels/Composer.tsx", "apps/web/src/timeline/ItemBox.tsx", "apps/web/src/panels/ExportDialog.tsx", "apps/web/src/uiparts/fixture.ts", "apps/web/src/uiparts/runtime.ts", "apps/web/src/uiparts/extract.ts"]) assert.ok(inputs.includes(f), f);
   assert.equal(libInputHash(LIB), uiPartsInputHash(ROOT), "assets/graphic-libs/ui.js is stale: regenerate it with node scripts/ui-parts.ts");
   assert.ok(LIB.startsWith(UI_HEADER), "the header is the generator's");
   assert.ok(LIB.includes(runtimeJs(readFileSync(resolve("apps/web/src/uiparts/runtime.ts"), "utf8"))), "the runtime is runtime.ts, types stripped");
+});
+
+test("no invented run facts in the parts: the fixture's markup states no timing, count, BPM, defect or fix, and the review starts neutral", () => {
+  const data = JSON.parse(/var DATA = (\{.*\});\n/.exec(LIB)![1]!) as { pool: Array<string>; parts: Record<string, { html: string }> };
+  for (const [n, p] of Object.entries(data.parts)) {
+    const text = p.html.replace(/\u0001\d+\u0002/g, "").replace(/<[^>]+>/g, " ");
+    // (The export's "About 38 s left" stays in the markup for its layout; the runtime blanks it.)
+    assert.doesNotMatch(text, /Opus|\d+ s\)|BPM|drop at \d|Placed \d|\d+k \/ \d+M|Flood keyed|frame 744|1289/, n);
+    assert.doesNotMatch(p.html, /agent-review-defect"|agent-review-fix"|token-meter-text/, `${n}: no invented defect, fix or context usage`);
+  }
+  // The runtime blanks what the capture can't avoid (the review's result, round, scores; the plan's
+  // state; the turn's status; the export's time left) before the graphic's props, which alone add facts.
+  const code = runtimeJs(readFileSync(resolve("apps/web/src/uiparts/runtime.ts"), "utf8"));
+  assert.match(code, /neutral\(root\);\s*applyProps\(name, root, o\)/);
+  for (const want of [/"Reviewing"/, /\.plan-state/, /\.turn-status/, /\.export-status \.muted/]) assert.match(code, want);
+  assert.match(UI_HEADER, /Run facts are real or absent/);
+  assert.doesNotMatch(UI_HEADER, /status \("Passed"/);
+  assert.match(GRAPHIC_LIBS_DOC, /By default a part states no run facts/);
 });
 
 test("it's a bundled library: loads in a VM with only window, every part with its size, the API complete", () => {
