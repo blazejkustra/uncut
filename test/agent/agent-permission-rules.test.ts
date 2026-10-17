@@ -399,7 +399,8 @@ test("A/B 2026-10-17: Auto reads the project and the sanctioned folders with pla
     [`cat "${kit}/../other/a.svg"`, "deny"],
     [`cat "${kit}/a.svg" > media/a.svg`, "deny"],
     [`mkdir -p "${kit}/x"`, "deny"],
-    [`cd "${kit}"; cat a.svg`, "deny"],
+    // Round 3: a cd into the kit reads there (the pinned line's subshell keeps the cd from lasting).
+    [`cd "${kit}"; cat a.svg`, "allow"],
     [`cat "${kit}/a.svg" & rm -rf ~`, "deny"],
     ["cat project.json | sh", "deny"],
     ["cat project.json > /tmp/x", "deny"],
@@ -494,7 +495,7 @@ test("review of 0039421: a read-only line Uncut lets run is pinned to the projec
   const command = 'cat "brand/kits/a.svg"';
   const allow = d("Bash", { command, description: "x" }, "auto", extra);
   assert.ok(allow.kind === "allow" && allow.updatedInput, JSON.stringify(allow));
-  assert.deepEqual(allow.updatedInput, { command: `cd '${PROJECT}' && {\n${command}\n}`, description: "x" });
+  assert.deepEqual(allow.updatedInput, { command: `cd '${PROJECT}' && (\n${command}\n)`, description: "x" });
   const ask = d("Bash", { command }, "ask", extra);
   assert.ok(ask.kind === "ask" && ask.updatedInput?.command === pinnedToProject(command, PROJECT), "a card's Allow runs it pinned too");
   // An escaped space reads the kit like a quoted one; any other backslash isn't a plain read.
@@ -615,4 +616,49 @@ test("CLAUDE_CONFIG_DIR: Claude Code's folder there is judged like ~/.claude (ru
   for (const command of [`cat ${CC}/settings.json`, `python3 x.py ${REAL}/projects`]) assert.equal(kind("Bash", { command }, "auto", extra), "deny", command);
   // Without it, that folder is just outside the project.
   assert.equal(kind("Read", { file_path: `${CC}/settings.json` }, "auto", { realpath }), "ask");
+});
+
+test("round 3: plain reads of project.json and the kit (grep of files, cd into the kit) run in Auto; writes, the token and other programs stay refused, and the refusal names the piece", () => {
+  const data = "/Users/me/Library/Application Support/Uncut";
+  const kit = `${data}/brand/kits/uncut`;
+  const extra = { sanctioned: [kit], dataDir: data };
+  for (const command of [
+    // A2r3: refused as a "change".
+    `grep -o '"path": *"[^"]*"' project.json`,
+    "grep -n motionBlur project.json graphics/film.html",
+    "grep -c -e uncut.frame graphics/film.html | head -n 3",
+    // A1r3: refused though the message said kit reads were fine.
+    `cd "${kit}/"; head -c 1500 uncut-mark-on-dark.svg; echo; head -c 600 uncut-mark-on-light.svg`,
+    `cat "${kit}/kit.json" | head -c 3000`,
+  ]) assert.equal(kind("Bash", { command }, "auto", extra), "allow", command);
+  for (const command of [
+    "grep -r path .",
+    "grep -f /Users/me/.ssh/id_rsa project.json",
+    "grep path /etc/hosts",
+    "grep path",
+    "grep foo* project.json",
+    "grep path project.json > copy.json",
+    `cd "${kit}"; mkdir -p x`,
+    `cd "${kit}"; cat ../../../server-token`,
+    `cat "${data}/server-token"`,
+    `grep x "${data}/server-token"`,
+    // With an -e anywhere, grep reads every other word as a file.
+    `grep "${data}/server-token" -e . project.json`,
+    `grep -e . "${data}/server-token"`,
+    "grep /etc/hosts -e . project.json",
+  ]) assert.notEqual(kind("Bash", { command }, "auto", extra), "allow", command);
+  const own = d("Bash", { command: `cat project.json | python3 -c "import json,sys; print(json.load(sys.stdin))"` }, "auto", extra);
+  assert.ok(own.kind === "deny" && own.message.includes("`python3 -c") && own.message.includes("grep"), JSON.stringify(own));
+  const app = d("Bash", { command: `ls "${kit}"; python3 -c "import numpy"` }, "auto", extra);
+  assert.ok(app.kind === "deny" && app.message.includes("`python3 -c"), JSON.stringify(app));
+  // The cd into the kit doesn't outlast the pinned line.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uncut-pin-")));
+  try {
+    const project = join(root, "p.uncut");
+    const k = join(root, "kit");
+    for (const dir of [project, k]) mkdirSync(dir, { recursive: true });
+    assert.equal(execFileSync("/bin/bash", ["-c", `${pinnedToProject(`cd '${k}'; pwd`, project)}; pwd`], { encoding: "utf8" }).trim(), `${k}\n${project}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

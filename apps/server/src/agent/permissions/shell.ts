@@ -182,9 +182,9 @@ export interface ReadZones {
 export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, zones: string | ReadZones): boolean {
   const { project, sanctioned = [], readable: extra } = typeof zones === "string" ? { project: zones, readable: undefined } : zones;
   const flags = FLAGS[name];
-  if (!flags) return false;
+  if (!flags && name !== "grep") return false;
   const paths: Array<string> = [];
-  for (let i = 0; i < args.length; i++) {
+  for (let i = 0; i < args.length && flags; i++) {
     const a = args[i]!;
     if (a.startsWith("-")) {
       if (!flags.has(a)) return false;
@@ -202,6 +202,28 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
     const r = real(a);
     return inside(r, project) || sanctioned.some((d) => inside(r, d)) || extra?.(r) === true;
   };
+  // grep of files (round 3's A2: `grep -o '"path": *"[^"]*"' project.json` was refused): a pattern
+  // (the first word, or -e's), then one or more files; no flag that reads more files (-r, -f, …).
+  // With an -e anywhere every other word is a file (grep permutes its options), so all are judged.
+  if (name === "grep") {
+    const words: Array<string> = [];
+    let e = false;
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i]!;
+      if (a === "-e") {
+        if (args[i + 1] === undefined) return false;
+        e = true;
+        i++;
+      } else if (/^-[ivncwxEFohHlLsq]+$/.test(a)) continue;
+      else if (/^-[mABC]$/.test(a)) {
+        if (!/^\d{1,9}$/.test(args[i + 1] ?? "")) return false;
+        i++;
+      } else if (a.startsWith("-")) return false;
+      else words.push(a);
+    }
+    const files = e ? words : words.slice(1);
+    return files.length > 0 && files.every(readable);
+  }
   if (name === "mkdir") {
     return paths.length > 0 && paths.every((a) => {
       if (!plain(a)) return false;
@@ -244,12 +266,13 @@ function escapedSpaces(c: string): string | undefined {
 }
 
 /**
- * A read-only line pinned to the project: `cd '<project>' && {` the line `}`. readOnlyLine judges
+ * A read-only line pinned to the project: `cd '<project>' && (` the line `)`. readOnlyLine judges
  * relative paths against the project, but claude's shell keeps its folder between calls (a `cd`
- * into an added folder stays), so the line Uncut lets run is sent back (updatedInput) starting there.
+ * into an added folder stays), so the line Uncut lets run is sent back (updatedInput) starting there;
+ * the subshell keeps a `cd` on the line (into the kit) from outlasting it.
  */
 export function pinnedToProject(command: string, project: string): string {
-  return `cd '${project.replaceAll("'", "'\\''")}' && {\n${command.trim()}\n}`;
+  return `cd '${project.replaceAll("'", "'\\''")}' && (\n${command.trim()}\n)`;
 }
 
 /**
@@ -303,15 +326,24 @@ function pureFilter(raw: string): boolean {
  * A line of read-only commands Auto runs without a card: simple commands joined by ;, && or
  * newlines (no other shell syntax: no redirects, $, `, subshells, globs or backslashes), each
  * one allowlisted (reads in the project or a sanctioned folder, mkdir -p in the project), `echo`
- * and `pwd`, or `cd` into the project or a folder in it (relative paths after it are read from
- * there). A read (or echo) may pipe into pure filters (head, tail, grep, wc, sort, uniq, jq with a
+ * and `pwd`, `grep` of files (allowlisted), or `cd` into the project, a sanctioned folder or a
+ * folder in them (relative paths after it are read from there). A read (or echo) may pipe into pure filters (head, tail, grep, wc, sort, uniq, jq with a
  * path; see FILTER_FLAGS): never a file argument, never a redirect. A space may be escaped
  * (`Application\ Support`); no other backslash. `real(p, base)` is a path's real path against
  * `base`. The line is judged from the project: run it pinnedToProject.
  */
 export function readOnlyLine(command: string, real: (p: string, base: string) => string, zones: ReadZones): boolean {
+  return notReadOnly(command, real, zones) === undefined;
+}
+
+/**
+ * Why a line isn't one readOnlyLine runs: the first piece that isn't a plain read (its text), or
+ * "the line" for shell syntax around them; undefined when it is one. For the refusal's message.
+ */
+export function notReadOnly(command: string, real: (p: string, base: string) => string, zones: ReadZones): string | undefined {
   const c = escapedSpaces(command.trim());
-  if (c === undefined || !c || /[$`(){}<>\\\r\0]|<<|\*\*|\bsudo\b/.test(c)) return false;
+  const SYNTAX = /[$`(){}<>\\\r\0]|<<|\*\*|\bsudo\b/;
+  if (c === undefined || !c || SYNTAX.test(c)) return shellSegments(command).find((p) => SYNTAX.test(p)) ?? "the line";
   // Only ; && and newlines join commands, | pipes one into the next; a lone & (background) or || isn't taken.
   const pieces: Array<Array<string>> = [];
   let pipe: Array<string> = [];
@@ -330,7 +362,7 @@ export function readOnlyLine(command: string, real: (p: string, base: string) =>
       continue;
     }
     if (ch === "|") {
-      if (c[i + 1] === "|") return false;
+      if (c[i + 1] === "|") return "the line";
       pipe.push(cur);
       cur = "";
       continue;
@@ -342,7 +374,7 @@ export function readOnlyLine(command: string, real: (p: string, base: string) =>
       continue;
     }
     if (ch === "&") {
-      if (c[i + 1] !== "&") return false;
+      if (c[i + 1] !== "&") return "the line";
       i++;
       pieces.push([...pipe, cur]);
       pipe = [];
@@ -351,31 +383,35 @@ export function readOnlyLine(command: string, real: (p: string, base: string) =>
     }
     cur += ch;
   }
-  if (quote) return false;
+  if (quote) return "the line";
   pieces.push([...pipe, cur]);
   const segments = pieces.map((p) => p.map((x) => x.trim()));
   if (segments.length > 1 && segments.at(-1)!.length === 1 && !segments.at(-1)![0]) segments.pop();
-  if (segments.length > 12 || segments.some((p) => p.length > 6 || p.some((x) => !x))) return false;
+  if (segments.length > 12 || segments.some((p) => p.length > 6 || p.some((x) => !x))) return "the line";
   let cwd = zones.project;
   for (const [segment, ...filters] of segments) {
+    const shown = [segment, ...filters].join(" | ").replaceAll(SPACE, "\\ ");
     const parsed = simpleCommand(segment!);
-    if ("complex" in parsed) return false;
+    if ("complex" in parsed) return shown;
     const [name = "", ...args] = parsed.words.map((w) => w.replaceAll(SPACE, " "));
-    if (filters.length && (name === "cd" || name === "mkdir" || name === "pwd")) return false;
-    if (!filters.every(pureFilter)) return false;
+    if (filters.length && (name === "cd" || name === "mkdir" || name === "pwd")) return shown;
+    if (!filters.every(pureFilter)) return shown;
     if (name === "echo" || name === "pwd") {
-      if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) return false;
+      if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) return shown;
       continue;
     }
     if (name === "cd") {
-      if (args.length !== 1 || args[0]!.startsWith("-") || args[0]!.startsWith("~") || /[*?[\]{}=]/.test(args[0]!)) return false;
+      if (args.length !== 1 || args[0]!.startsWith("-") || args[0]!.startsWith("~") || /[*?[\]{}=]/.test(args[0]!)) return shown;
       const to = real(args[0]!, cwd);
-      // Only into the project: claude's shell keeps its folder between calls, and later calls are judged from the project.
-      if (!inside(to, zones.project)) return false;
+      // Into the project or a sanctioned folder (round 3's A1: `cd <kit>; head -c 600 a.svg`). The line
+      // runs pinnedToProject, in a subshell, so the cd doesn't outlast it.
+      if (!inside(to, zones.project) && !(zones.sanctioned ?? []).some((d) => inside(to, d))) return shown;
       cwd = to;
       continue;
     }
-    if (!allowlisted(name, args, (p) => real(p, cwd), zones)) return false;
+    // A grep pattern the shell would turn into file names (unquoted * ? [ ] { } ~).
+    if (name === "grep" && /[*?[\]{}~]/.test(segment!.replace(/"[^"]*"|'[^']*'/g, ""))) return shown;
+    if (!allowlisted(name, args, (p) => real(p, cwd), zones)) return shown;
   }
-  return true;
+  return undefined;
 }
