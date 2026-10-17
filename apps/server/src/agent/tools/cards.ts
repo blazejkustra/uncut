@@ -23,6 +23,7 @@ import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, 
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
+import { typedPromptCheck } from "../agentTypedPrompt.ts";
 
 /** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_REVIEW_MS = 30_000;
@@ -553,6 +554,9 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       // The sheet's words measured (agentLegibility.ts): every small one at once, never a blocker.
       const census = evidence.census;
       checks.push(...legibilityFindings(census, fps, project.canvas.height));
+      // The typed prompt (agentTypedPrompt.ts): the user's words when their message asks to show itself typed.
+      const typed = typedPromptCheck(r.owner.turns.map((t) => t.prompt).concat(r.turn.prompt), [...(yield* Effect.promise(() => readGraphics(v.dir, project).catch(() => new Map<string, string>()))).values()]);
+      checks.push(...typed.findings);
       if (rehearsal?.failure) checks.push({ rule: "motion", key: "motion:export", message: rehearsalLine(rehearsal), ...(rehearsal.frame !== undefined ? { frame: rehearsal.frame } : {}), hard: true });
       // D292: the time budget left some of the scan's frames out.
       // (Counted on the sampled frames: the refinement's added frames don't make up for a cut.)
@@ -563,6 +567,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...("drop" in motion && motion.drop ? [motion.drop] : []),
         ...beatWordLines(sb?.beats),
         ...legibilityFacts(census, fps),
+        ...typed.facts,
         ...(rehearsal && !rehearsal.failure && rehearsal.total ? [rehearsalLine(rehearsal)] : []),
         // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
         ...(intent.oneTake || r.owner.plan.reviews.length ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),

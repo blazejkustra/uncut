@@ -859,9 +859,12 @@ const UI_WORDS = /\b(app|UI|interface|screens?|composer|timeline|cursor|software
  */
 const ONE_TAKE = /\b(?:one|single)[- ]take\b|\boner\b|\b(?:one|single) (?:continuous|unbroken) (?:shot|take|move|camera move)\b|\bcontinuous (?:shot|take)\b|\b(?:never|don'?t|do not) cut\b(?! ?(?:off|out|into|down|back|short))|\b(?:no|zero|without(?: any)?) (?:hard )?cuts?\b|\bwith no (?:hard )?cuts?\b/gi;
 /** Before a phrase in its clause: it is negated ("not one take", "doesn't need to be one take"). */
-const NEGATED = /\b(?:not|no need|needn'?t|isn'?t|aren'?t|don'?t|doesn'?t|do not|does not|won'?t|instead of|rather than|forget|skip|drop|avoid|nor)\b[^.;!?\n]{0,30}$/i;
+export const NEGATED = /\b(?:not|no need|needn'?t|isn'?t|aren'?t|don'?t|doesn'?t|do not|does not|won'?t|instead of|rather than|forget|skip|drop|avoid|nor)\b[^.;!?\n]{0,30}$/i;
 /** An alternative or a release: "one take or cuts, your call", "cuts are fine", "up to you". */
 const OPTIONAL = /\bor (?:hard )?cuts?\b|\bcuts? or\b|\bcuts? (?:are|is) (?:fine|ok(?:ay)?|allowed|welcome)\b|\byour call\b|\bup to you\b|\beither way\b|\bif you (?:want|like|prefer)\b|\boptional(?:ly)?\b/i;
+
+/** A request's clauses: sentences, and the turns "but", "actually", "however" start. */
+export const clauses = (text: string): Array<string> => text.split(/(?<=[.;!?\n])\s*|\s+(?:but|actually|however)\s+/i);
 
 /**
  * Whether these words ask for one take: some clause has a one-take phrase that isn't negated or
@@ -870,7 +873,7 @@ const OPTIONAL = /\bor (?:hard )?cuts?\b|\bcuts? or\b|\bcuts? (?:are|is) (?:fine
  */
 export function asksOneTake(text: string): boolean {
   let verdict = false;
-  for (const clause of text.split(/(?<=[.;!?\n])\s*|\s+(?:but|actually|however)\s+/i)) {
+  for (const clause of clauses(text)) {
     const hits = [...clause.matchAll(ONE_TAKE)];
     const release = OPTIONAL.test(clause) || /\b(?:add|use|with) (?:a |some )?(?:hard )?cuts?\b|\bcuts? (?:are|is) (?:fine|ok(?:ay)?|allowed)\b/i.test(clause);
     if (!hits.length) {
