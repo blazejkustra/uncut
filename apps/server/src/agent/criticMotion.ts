@@ -79,11 +79,18 @@ export const EMPTY_WIDTH = 160;
 /** A sample this bare or barer (content share) is a suspect: the gap to its neighbours is sampled at most EMPTY_STEP_S apart. */
 export const EMPTY_SUSPECT = 0.08;
 export const EMPTY_STEP_S = 0.15;
-/** A nearly empty run this long or longer is a finding (a blocker in a motion film). */
+/** A nearly empty run this long or longer is a finding. */
 export const EMPTY_MIN_S = 0.2;
 /**
- * A low-information frame (thinMeasure, at THIN_WIDTH: the strips' own size, so a 1.5 % line keeps
- * its height): THIN_FLAT or more of it one flat colour family (± THIN_LEVELS: a dark panel on the
+ * A nearly empty run this long or longer is a blocker in a motion film. Measured frame by frame at
+ * 60 fps: the original target, A1 22.1 s (cursor only), 0.42 s; B2b 0.38 s, T2b 0.55 s; the reference
+ * 2.mp4's black bleed at 21.9 s 0.27 s and the favourite A2's Send at 4.2 s 0.18 to 0.2 s (sampled),
+ * which the old 0.2 s bar blocked. Shorter runs from EMPTY_MIN_S stay findings.
+ */
+export const EMPTY_HARD_S = 1 / 3;
+/**
+ * A low-information frame (thinMeasure, at THIN_WIDTH on the canvas's short side: the strips' own
+ * size for a portrait or square canvas, so a 1.5 % line keeps its height; thinSize): THIN_FLAT or more of it one flat colour family (± THIN_LEVELS: a dark panel on the
  * near-black canvas and its card read as one field), with readable marks (THIN_CONTRAST off that
  * colour, letters joined into words) but none of them wider than a cursor (THIN_MARK_W) and taller
  * than THIN_TALL of the frame: a big dark panel with a line or two of desktop-size text. The empty
@@ -92,7 +99,9 @@ export const EMPTY_MIN_S = 0.2;
  * at 200 px every 0.05 s, the longest run: T1 1.35 s, T1b 1.8 s, A1r8 0.75 s (steps at 2 %); the
  * favourites A2-noskill 0.15 s (its bubble lines are 3.2 % tall), A2 and A1-noskill 0.25 s (a pulled-
  * back editor); 2.mp4 and 3.mp4 0.05 s at most (their bare moments, a dot growing or a black bleed,
- * carry no mark at all: the empty rule's).
+ * carry no mark at all: the empty rule's). Frame by frame at 60 fps: T1 1.35 s, T1b 1.82 s, A1r8
+ * 0.75 s; A2 0.27 s, A1-noskill 0.18 s, A2-noskill 0.15 s. THIN_TALL is a share of the height and
+ * THIN_MARK_W of the short side, so a 16:9 or 9:16 canvas is judged like a 4:5 one.
  */
 export const THIN_WIDTH = 200;
 export const THIN_FLAT = 0.9;
@@ -677,7 +686,7 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
 /**
  * The scan as review findings (rule "motion"): pops always; one-frame jumps and holds over a second
  * when the film is one take (a cut is fine elsewhere, an end card may hold); the seam when it loops.
- * Nearly empty runs of EMPTY_MIN_S or more (blockers when hard) and fast moves (never blockers) when one take.
+ * Nearly empty runs of EMPTY_MIN_S or more (blockers when hard from EMPTY_HARD_S), low-information runs (from THIN_HARD_S) and fast moves (never blockers) when one take.
  * At most 12, the blockers first, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
  */
 export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean } = {}): Array<CriticFinding> {
@@ -701,11 +710,12 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   // Rehearsal 4: nearly empty frames (A1 22.1 s, A2 4.2 s and 24 s) survived three rounds as a critic opinion.
   for (const e of o.oneTake ? emptyRuns(scan, fps).slice(0, 2) : []) {
     // A blocker only when the empty samples alone span it; one that may reach it is a finding to look at.
-    const sure = runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9;
+    const len = runSeconds(e, fps);
+    const sure = len >= EMPTY_MIN_S - 1e-9;
     const fix = "Every frame should show the hero: morph the outgoing shape straight into the next one instead of clearing the frame between them.";
     const what = `at most a cursor or a speck (${+(EMPTY_CONTENT * 100).toFixed(1)} % or less of it isn't bare canvas, in ${EMPTY_PARTS} marks or fewer)`;
     out.push(sure
-      ? { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard, message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${runSeconds(e, fps).toFixed(2)} s): ${what}. ${fix}` }
+      ? { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard: hard && len >= EMPTY_HARD_S - 1e-9, message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${runSeconds(e, fps).toFixed(2)} s): ${what}. ${fix}` }
       : { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a nearly empty frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until the next sampled frames that aren't, f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). render_frames around it to see how long. ${fix}` });
   }
   // T1, T1b: the agent panel after Send, one bubble and desktop-size steps in a big dark field, passed
@@ -986,7 +996,7 @@ export interface ThinMeasure {
 /**
  * A grey frame's (w × h) information (THIN_* above): the share within THIN_LEVELS of its most
  * common level, and the tallest mark THIN_CONTRAST or more off that level (8-connected, gaps of up
- * to 2 px in a row joined, so letters make words) at least THIN_MARK_W of the width wide (a cursor
+ * to 2 px in a row joined, so letters make words) at least THIN_MARK_W of the short side wide (a cursor
  * isn't a mark). Low-information: THIN_FLAT or flatter, a mark there, all of them under THIN_TALL.
  * A frame with no mark at all is the empty rule's (emptyMeasure). Best at THIN_WIDTH.
  */
@@ -1017,7 +1027,7 @@ export function thinMeasure(gray: Uint8Array, w: number, h: number): ThinMeasure
   }
   let tall = 0;
   let marks = 0;
-  const minW = THIN_MARK_W * w;
+  const minW = THIN_MARK_W * Math.min(w, h);
   const stack: Array<number> = [];
   for (let s = 0; s < n; s++) {
     if (mark[s] !== 1) continue;
@@ -1046,8 +1056,17 @@ export function thinMeasure(gray: Uint8Array, w: number, h: number): ThinMeasure
   return { flat: round(flat), tall: round(tall), thin: marks > 0 && tall < THIN_TALL };
 }
 
-/** The low-information grey size for a canvas: THIN_WIDTH wide, even height. */
-export const thinSize = (canvas: { readonly width: number; readonly height: number }) => ({ w: THIN_WIDTH, h: Math.max(2, Math.round((THIN_WIDTH * canvas.height) / canvas.width / 2) * 2) });
+/**
+ * The low-information grey size for a canvas: THIN_WIDTH on its short side, the long side even. A
+ * 16:9 canvas THIN_WIDTH wide was 112 px tall, so a line's height came in 0.9 % steps and a 2.4 %
+ * line read as 2.7 %; scanRenderWidth renders its frames this big.
+ */
+export const thinSize = (canvas: { readonly width: number; readonly height: number }) => {
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  return canvas.width > canvas.height ? { w: even((THIN_WIDTH * canvas.width) / canvas.height), h: THIN_WIDTH } : { w: THIN_WIDTH, h: even((THIN_WIDTH * canvas.height) / canvas.width) };
+};
+/** The width the strips' and scan's frames are rendered at: STRIP_CELL, or wider for a landscape canvas (thinSize). */
+export const scanRenderWidth = (canvas: { readonly width: number; readonly height: number }) => Math.max(STRIP_CELL, thinSize(canvas).w);
 
 /** The emptiness grey size for a canvas: EMPTY_WIDTH wide, even height. */
 export const emptySize = (canvas: { readonly width: number; readonly height: number }) => ({ w: EMPTY_WIDTH, h: Math.max(2, Math.round((EMPTY_WIDTH * canvas.height) / canvas.width / 2) * 2) });

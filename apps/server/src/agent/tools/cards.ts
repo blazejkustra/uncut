@@ -19,7 +19,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, thinMeasure, thinRuns, thinSize, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, thinMeasure, thinRuns, thinSize, scanRenderWidth, type ScanFrame, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 
@@ -416,7 +416,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
               }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
               if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
               const motion = yield* Effect.gen(function* () {
-                const got = yield* Effect.tryPromise({ try: (signal) => motionFrames({ strips, scanList, anchors, duration, render: (frames, until) => Effect.runPromise(session.render(frames, STRIP_CELL, { until }), { signal }) }), catch: (e) => e as Error });
+                const got = yield* Effect.tryPromise({ try: (signal) => motionFrames({ strips, scanList, anchors, duration, render: (frames, until) => Effect.runPromise(session.render(frames, scanRenderWidth(project.canvas), { until }), { signal }) }), catch: (e) => e as Error });
                 const stripImages: Array<CriticImage> = [];
                 for (const st of strips) {
                   const cells = st.frames.flatMap((f) => (got.byFrame.has(f) ? [{ jpeg: got.byFrame.get(f)!, caption: `f ${f}   ${clock(f / fps)}` }] : []));
@@ -433,7 +433,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 if (ffmpeg && got.scanned.length > 2) {
                   // Review of 72a73b9: emptiness is judged on larger grey frames (EMPTY_WIDTH) than the differences.
                   const big = emptySize(project.canvas);
-                  // And how much each frame says (low-information frames) at the strips' own size.
+                  // And how much each frame says (low-information frames) at the strips' own size (wider for a landscape canvas).
                   const fine = thinSize(project.canvas);
                   const decode = async (jpegs: ReadonlyArray<Buffer>, sig: AbortSignal) => {
                     const [gs, bs, ts] = await Promise.all([grayFrames(ffmpeg, jpegs, w, h, sig), grayFrames(ffmpeg, jpegs, big.w, big.h, sig), grayFrames(ffmpeg, jpegs, fine.w, fine.h, sig)]);
@@ -451,7 +451,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                         const deadline = Date.now() + ms;
                         const until = () => Date.now() > deadline || sig.aborted;
                         const render = async (frames: ReadonlyArray<number>): Promise<Array<ScanFrame>> => {
-                          const shot = await Effect.runPromise(session.render(frames, STRIP_CELL, { until: () => Date.now() > deadline }), { signal: sig });
+                          const shot = await Effect.runPromise(session.render(frames, scanRenderWidth(project.canvas), { until: () => Date.now() > deadline }), { signal: sig });
                           const ds = await decode(shot.map((x) => x.jpeg), sig);
                           return shot.map((x, i) => ({ frame: x.frame, ...ds[i]! }));
                         };

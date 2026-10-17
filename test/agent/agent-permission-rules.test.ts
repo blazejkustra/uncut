@@ -882,3 +882,29 @@ test("Auto's A/B: `echo` (no redirect) was already a plain read; the refusal was
   for (const command of ["echo", "echo hi", "echo ---; cat notes.md", "wc -l notes.md", "wc -c notes.md media/a.srt", "wc -lc notes.md", "cat project.json | head -c 300; echo; wc -c project.json", "cat project.json && echo && wc -c project.json"]) assert.equal(kind("Bash", { command }, "auto"), "allow", command);
   for (const command of ["echo hi > notes.md", "echo hi >> notes.md", "echo $(cat ~/.zshrc)", "echo ~/*", "wc -c ~/.ssh/id_rsa", "wc -c notes.md > out.txt", "wc --files0-from=list.txt", "wc -c /etc/hosts", "cat project.json; echo; wc -c ../x"]) assert.notEqual(kind("Bash", { command }, "auto"), "allow", command);
 });
+
+test("review of 7142bcb: wc reads only project or kit files, never through a link, stdin, a file list, ~, .. or a redirect", () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "uncut-wc-")));
+  try {
+    const project = join(dir, "Promo");
+    const outside = join(dir, "Secrets");
+    const kit = join(dir, "data", "brand", "kits", "acme");
+    mkdirSync(project);
+    mkdirSync(outside);
+    mkdirSync(kit, { recursive: true });
+    writeFileSync(join(outside, "key.txt"), "x");
+    writeFileSync(join(project, "notes.md"), "x");
+    writeFileSync(join(kit, "guide.md"), "x");
+    symlinkSync(outside, join(project, "dir"));
+    symlinkSync(join(outside, "key.txt"), join(project, "key.txt"));
+    const c: PermissionContext = { access: "auto", project, roots: [], grants: new Set(), home: dir, sanctioned: [join(dir, "data", "brand", "kits")] } as PermissionContext;
+    for (const command of ["wc -c notes.md", "wc -l ./notes.md", `wc -w ${join(project, "notes.md")}`, `wc -m ${join(kit, "guide.md")}`, "cat notes.md | wc -l"]) assert.equal(decide("Bash", { command }, c).kind, "allow", command);
+    for (const command of [
+      "wc -c key.txt", "wc -c dir/key.txt", "wc -c -", "wc -c", "wc -c notes.md -", "wc -c /dev/stdin", "wc -c < notes.md", "wc -c < ../Secrets/key.txt",
+      "wc -l --files0-from -", "wc --files0-from=notes.md", "wc -cl --files0-from=x", "wc -c -- notes.md", "wc -c ~", "wc -c '~/x'", "wc -c $HOME/x", `wc -c "$HOME"`,
+      `wc -c ${join(outside, "key.txt")}`, `wc -c ${project}/../Secrets/key.txt`, "wc -c notes.md ../Secrets/key.txt", "wc -c $(echo ../Secrets/key.txt)", "wc -c <(cat ../Secrets/key.txt)", "wc -c notes.md 2>../Secrets/x", "wc -c notes.md > out.txt",
+    ]) assert.notEqual(decide("Bash", { command }, c).kind, "allow", command);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
