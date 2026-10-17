@@ -232,7 +232,7 @@ export interface Project {
   /**
    * D291: motion blur in the export (graphics): `on` its default (absent: on for Standard and High,
    * off for Draft; the Export dialog's switch decides in the end), `samples` sub-frames averaged per
-   * frame (2–16, default 4) over `shutter` degrees of the frame interval (1–360, default 180).
+   * frame (2–16, default 4) over `shutter` degrees of the frame interval (1–360, default 90).
    */
   readonly motionBlur?: { readonly on?: boolean; readonly samples?: number; readonly shutter?: number };
   /** D90: taste checks the project turned off (rule ids from core checks.ts). */

@@ -104,7 +104,7 @@ test("Export dialog: Motion blur on by default (not at Draft), the exports smear
   await page.click("[data-testid=export-button]");
   await waitFor(page, "[data-testid=export-form]");
   await waitFor(page, "[data-testid=export-motion]");
-  assert.match(await page.$eval("[data-testid=export-motion]", (el) => el.textContent ?? ""), /4 sub-frames a frame, a 180° shutter/);
+  assert.match(await page.$eval("[data-testid=export-motion]", (el) => el.textContent ?? ""), /4 sub-frames a frame, a 90° shutter/);
   assert.equal(await checked(page), true, "on at Standard");
   await page.click("[data-testid=quality-draft]");
   assert.equal(await checked(page), false, "off at Draft");

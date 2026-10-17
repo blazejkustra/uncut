@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { EMPTY_CONTENT, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan } from "../../apps/server/src/agent/criticMotion.ts";
+import { EMPTY_CONTENT, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -542,7 +542,8 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
   assert.ok(fs.fast.length === 1 && fs.fast[0]!.peak >= FAST_STEP, JSON.stringify(fs.fast));
   const ff = motionFindings(fs, fps, { oneTake: true, hard: true }).find((f) => f.key?.startsWith("motion:fast:"))!;
   assert.ok(!ff.hard);
-  assert.match(ff.message, /update_project \{"motionBlur":\{"samples":12\}\}/);
+  assert.match(ff.message, /Ease it over about 0.3 s/);
+  assert.match(ff.message, /more sub-frames only smooth the copies into a smear/);
 });
 
 test("review: the 12-finding cap keeps every blocker (the loop seam) ahead of soft findings", () => {
@@ -685,3 +686,14 @@ test("review of 72a73b9: refineEmpty samples closer next to a bare frame, edges 
   assert.equal(motionScan([sure, { frame: 1, gray: hero(1), bare: { content: 0.5, parts: 9, empty: false } }], fps).empty.length, 1);
 });
 
+
+test("round 2's A1: the fast moves get a strip drawn with the export's blur, and the critic is told what to look for", () => {
+  const picks = blurPicks([{ start: 361, end: 364, peak: 0.07 }, { start: 721, end: 725, peak: 0.09 }, { start: 10, end: 11, peak: 0.1 }, { start: 900, end: 905, peak: 0.1 }]);
+  assert.equal(picks.length, 3);
+  assert.deepEqual(picks[0]!.frames, [361, 363, 364]);
+  assert.deepEqual(picks[2]!.frames, [10, 11]);
+  const l = stripLayout(3, 1080 / 1350, BLUR_CELL);
+  assert.equal(l.cellWidth, BLUR_CELL);
+  assert.match(CRITIC_SYSTEM, /drawn WITH the export's motion blur/);
+  assert.match(CRITIC_SYSTEM, /dark bands at the frame's edges/);
+});

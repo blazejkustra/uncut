@@ -4,7 +4,7 @@ import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
-import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout } from "@uncut/core";
+import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout, motionBlurDefault, projectMotionBlur } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
 import { answerOut, kitLines, questionOf } from "../agentPlan.ts";
@@ -18,7 +18,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, scanSize, emptySize, emptyMeasure, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 
@@ -341,6 +341,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const strips = stripPlan(anchors, fps, duration);
       const scanList = scanPlan(anchors, fps, duration);
       const aspect = project.canvas.width / project.canvas.height;
+      // The export's blur on a graphic (the project's setting, else on as for High): its fast moves get blurred frames.
+      const blurred = motionBlurDefault(project, "high") && project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic" && i.motionBlur !== false)) ? projectMotionBlur(project) : undefined;
       // D292: one frame session for the round (one rasteriser, the plan once per width), small
       // frames captured small; the strips' and the scan's frames rendered once, under a time budget.
       const rendered = yield* exporter
@@ -407,6 +409,16 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                   // Rehearsal 3: the reveal landed before the drop; say what changes on each side of it.
                   const di = dropBeat(sb?.beats);
                   if (di !== undefined) drop = dropLine(got.scanned.map((f, i) => ({ frame: f, gray: grays[i]! })), clampF(sb!.beats[di]!.start * fps), fps);
+                }
+                // Round 2's A1: the fast moves as the export draws them, with its motion blur (the
+                // critic otherwise sees only sharp frames, so ghosting and smeared edges never show).
+                if (scan?.fast.length && blurred) {
+                  for (const run of blurPicks(scan.fast)) {
+                    const shot = yield* session.render(run.frames, BLUR_CELL, { motionBlur: true }).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
+                    if (!shot.length) continue;
+                    const jpeg = yield* session.sheet(shot.map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}   ${clock(f.frame / fps)}   blur` })), stripLayout(shot.length, aspect, BLUR_CELL)).pipe(Effect.catch(() => Effect.succeed(undefined)));
+                    if (jpeg) stripImages.push({ label: `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the export's motion blur (${blurred.samples} sub-frames over a ${blurred.shutter}° shutter, as the export will look): frames ${shot.map((f) => f.frame).join(", ")} left to right`, jpeg });
+                  }
                 }
                 // D296: how much of each strip's frames is flat background (the median of its frames).
                 const stripFrames = [...new Set(strips.flatMap((st) => st.frames.filter((f) => got.byFrame.has(f))))];
