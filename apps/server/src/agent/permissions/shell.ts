@@ -165,6 +165,8 @@ export interface ReadZones {
   readonly project: string;
   /** The active kit's folder and the bundled graphic libraries: read, never written. Real paths. */
   readonly sanctioned?: ReadonlyArray<string>;
+  /** Further real paths that may be read (Claude Code's saved tool output of this project). */
+  readonly readable?: (real: string) => boolean;
 }
 
 /**
@@ -178,7 +180,7 @@ export interface ReadZones {
  * always get a card.
  */
 export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p: string) => string, zones: string | ReadZones): boolean {
-  const { project, sanctioned = [] } = typeof zones === "string" ? { project: zones } : zones;
+  const { project, sanctioned = [], readable: extra } = typeof zones === "string" ? { project: zones, readable: undefined } : zones;
   const flags = FLAGS[name];
   if (!flags) return false;
   const paths: Array<string> = [];
@@ -198,7 +200,7 @@ export function allowlisted(name: string, args: ReadonlyArray<string>, real: (p:
   const readable = (a: string) => {
     if (!plain(a)) return false;
     const r = real(a);
-    return inside(r, project) || sanctioned.some((d) => inside(r, d));
+    return inside(r, project) || sanctioned.some((d) => inside(r, d)) || extra?.(r) === true;
   };
   if (name === "mkdir") {
     return paths.length > 0 && paths.every((a) => {
@@ -251,18 +253,68 @@ export function pinnedToProject(command: string, project: string): string {
 }
 
 /**
+ * The filters a read may pipe into (round 2's A2: `cat x | head` of the kit and project.json were
+ * denied): each reads only its standard input and writes only to the pipe. No file arguments at all
+ * (a positional word is a pattern or a jq path, never a file), no flags that read or write a file
+ * (grep -f/-r, sort -o/-T/--compress-program, jq -f/--rawfile/--slurpfile, uniq's output file), and
+ * no unquoted glob (which the shell would turn into file names).
+ */
+const FILTER_FLAGS: Record<string, { readonly flags: ReadonlySet<string>; readonly valued: Readonly<Record<string, RegExp>>; readonly positional: 0 | 1 }> = {
+  head: { flags: new Set(), valued: { "-n": /^\d{1,9}$/, "-c": /^\d{1,9}$/ }, positional: 0 },
+  tail: { flags: new Set(), valued: { "-n": /^\+?\d{1,9}$/, "-c": /^\+?\d{1,9}$/ }, positional: 0 },
+  wc: { flags: new Set(["-l", "-w", "-c", "-m"]), valued: {}, positional: 0 },
+  sort: { flags: new Set(["-n", "-r", "-u", "-f", "-h", "-V", "-nr", "-rn"]), valued: { "-k": /^\d{1,3}(,\d{1,3})?$/ }, positional: 0 },
+  uniq: { flags: new Set(["-c", "-d", "-u", "-i"]), valued: {}, positional: 0 },
+  grep: { flags: new Set(["-i", "-v", "-n", "-c", "-w", "-x", "-E", "-F", "-o", "-in", "-ni", "-iv", "-vi", "-io", "-oi"]), valued: { "-m": /^\d{1,9}$/, "-A": /^\d{1,4}$/, "-B": /^\d{1,4}$/, "-C": /^\d{1,4}$/ }, positional: 1 },
+  // A jq path only (.a.b[0], .media[].id): no pipes, objects, $variables or functions in the filter.
+  jq: { flags: new Set(["-r", "-c", "-S", "--raw-output", "--compact-output", "--sort-keys"]), valued: {}, positional: 1 },
+};
+const JQ_PATH = /^\.(?:[A-Za-z0-9_.]|\[\d{0,6}\])*$/;
+
+/** Whether a pipeline stage (after the first) is a pure filter (FILTER_FLAGS); `raw` its text, quotes kept. */
+function pureFilter(raw: string): boolean {
+  // An unquoted glob or tilde would become file names.
+  if (/[*?[\]{}~]/.test(raw.replace(/"[^"]*"|'[^']*'/g, ""))) return false;
+  const parsed = simpleCommand(raw);
+  if ("complex" in parsed) return false;
+  const [name = "", ...args] = parsed.words.map((w) => w.replaceAll(SPACE, " "));
+  const f = FILTER_FLAGS[name];
+  if (!f) return false;
+  const positional: Array<string> = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a.startsWith("-") && a !== "-") {
+      if (f.flags.has(a)) continue;
+      // head -5, tail -20: the count as the flag.
+      if ((name === "head" || name === "tail") && /^-\d{1,9}$/.test(a)) continue;
+      const v = f.valued[a];
+      if (!v || !v.test(args[i + 1] ?? "")) return false;
+      i++;
+      continue;
+    }
+    positional.push(a);
+  }
+  if (positional.length !== f.positional) return false;
+  if (name === "jq") return JQ_PATH.test(positional[0]!) || positional[0] === ".";
+  return true;
+}
+
+/**
  * A line of read-only commands Auto runs without a card: simple commands joined by ;, && or
- * newlines (no other shell syntax: no pipes, redirects, $, `, subshells, globs or backslashes), each
+ * newlines (no other shell syntax: no redirects, $, `, subshells, globs or backslashes), each
  * one allowlisted (reads in the project or a sanctioned folder, mkdir -p in the project), `echo`
  * and `pwd`, or `cd` into the project or a folder in it (relative paths after it are read from
- * there). A space may be escaped (`Application\ Support`); no other backslash. `real(p, base)` is
- * a path's real path against `base`. The line is judged from the project: run it pinnedToProject.
+ * there). A read (or echo) may pipe into pure filters (head, tail, grep, wc, sort, uniq, jq with a
+ * path; see FILTER_FLAGS): never a file argument, never a redirect. A space may be escaped
+ * (`Application\ Support`); no other backslash. `real(p, base)` is a path's real path against
+ * `base`. The line is judged from the project: run it pinnedToProject.
  */
 export function readOnlyLine(command: string, real: (p: string, base: string) => string, zones: ReadZones): boolean {
   const c = escapedSpaces(command.trim());
-  if (c === undefined || !c || /[$`(){}<>|\\\r\0]|<<|\*\*|\bsudo\b/.test(c)) return false;
-  // Only ; && and newlines join commands; a lone & (background) or || isn't taken.
-  const pieces: Array<string> = [];
+  if (c === undefined || !c || /[$`(){}<>\\\r\0]|<<|\*\*|\bsudo\b/.test(c)) return false;
+  // Only ; && and newlines join commands, | pipes one into the next; a lone & (background) or || isn't taken.
+  const pieces: Array<Array<string>> = [];
+  let pipe: Array<string> = [];
   let cur = "";
   let quote: string | undefined;
   for (let i = 0; i < c.length; i++) {
@@ -277,30 +329,40 @@ export function readOnlyLine(command: string, real: (p: string, base: string) =>
       cur += ch;
       continue;
     }
+    if (ch === "|") {
+      if (c[i + 1] === "|") return false;
+      pipe.push(cur);
+      cur = "";
+      continue;
+    }
     if (ch === ";" || ch === "\n") {
-      pieces.push(cur);
+      pieces.push([...pipe, cur]);
+      pipe = [];
       cur = "";
       continue;
     }
     if (ch === "&") {
       if (c[i + 1] !== "&") return false;
       i++;
-      pieces.push(cur);
+      pieces.push([...pipe, cur]);
+      pipe = [];
       cur = "";
       continue;
     }
     cur += ch;
   }
   if (quote) return false;
-  pieces.push(cur);
-  const segments = pieces.map((x) => x.trim());
-  if (segments.length > 1 && !segments.at(-1)) segments.pop();
-  if (segments.length > 12 || segments.some((x) => !x)) return false;
+  pieces.push([...pipe, cur]);
+  const segments = pieces.map((p) => p.map((x) => x.trim()));
+  if (segments.length > 1 && segments.at(-1)!.length === 1 && !segments.at(-1)![0]) segments.pop();
+  if (segments.length > 12 || segments.some((p) => p.length > 6 || p.some((x) => !x))) return false;
   let cwd = zones.project;
-  for (const segment of segments) {
-    const parsed = simpleCommand(segment);
+  for (const [segment, ...filters] of segments) {
+    const parsed = simpleCommand(segment!);
     if ("complex" in parsed) return false;
     const [name = "", ...args] = parsed.words.map((w) => w.replaceAll(SPACE, " "));
+    if (filters.length && (name === "cd" || name === "mkdir" || name === "pwd")) return false;
+    if (!filters.every(pureFilter)) return false;
     if (name === "echo" || name === "pwd") {
       if ((name === "pwd" && args.length) || args.some((a) => /[*?[\]{}~]/.test(a))) return false;
       continue;

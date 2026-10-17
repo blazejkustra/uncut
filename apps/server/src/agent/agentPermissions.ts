@@ -12,6 +12,7 @@ import { type Access, ACCESS_NAME } from "./permissions/access.ts";
 import { realPath, inside, shownPath, str, toolPath, owned } from "./permissions/paths.ts";
 import { SECRETISH, webAddressProblem } from "./permissions/web.ts";
 import { simpleCommand, destructive, readOnlyLine, pinnedToProject } from "./permissions/shell.ts";
+import { CLAUDE_DIR } from "./permissions/settings.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
 export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders } from "./permissions/paths.ts";
@@ -96,6 +97,17 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (cand) return { kind: "ask", title: "Use a folder you mentioned", target: shownPath(cand, project, home), why: `${title}: ${shownPath(r, project, home)}. Always lets this chat read files in that folder (writing there still asks).`, grant: `Root:${cand}` };
     return { kind: "ask", title, target: shownPath(r, project, home), why: webUsed ? "It's outside the project, and this turn has read the web." : "It's outside the project folder.", ...(grant ? { grant } : {}) };
   };
+  // Claude Code's own folder (CLAUDE_DIR): only this project's saved tool output is read (claude
+  // saves a large result there and tells the agent to read it); the rest is other conversations and
+  // settings. Claude names a project's folder by its path with every other character a dash.
+  const claudeDir = join(home, CLAUDE_DIR);
+  const results = join(claudeDir, "projects", project.replace(/[^A-Za-z0-9]/g, "-"));
+  const toolOutput = (r: string) => {
+    if (!inside(r, results)) return false;
+    const segs = relative(results, r).split(sep);
+    return segs.length >= 2 && segs[1] === "tool-results" && !segs.includes("..");
+  };
+  const claudeRefusal: Decision = { kind: "deny", message: `Not done: ~/${CLAUDE_DIR} holds Claude Code's settings and other conversations. Only this project's saved tool output (its tool-results folders) is read there.` };
   if (tool.startsWith("mcp__uncut__")) return { kind: "allow" };
   if (SAFE_TOOLS.has(tool)) return { kind: "allow" };
 
@@ -128,6 +140,10 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     const base = p ? real(p) : project;
     for (const raw of paths) {
       const r = raw === p || raw === "." ? real(raw) : real(raw, base);
+      if (inside(r, claudeDir)) {
+        if (toolOutput(r)) continue;
+        return claudeRefusal;
+      }
       const z = zone(r);
       if (z === "cache" || z === "project") continue;
       // A confirmed folder or the active kit (and the bundled libraries): like the project, until the turn reads the web.
@@ -173,7 +189,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     // Issue A/B 2026-10-17: reads in the project and the sanctioned folders (the active kit, the
     // graphic libraries; not after the web outside Auto) and mkdir -p in the project, also a few
     // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
-    const reads = tool === "Bash" && readOnlyLine(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []) });
+    const reads = tool === "Bash" && readOnlyLine(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []), readable: toolOutput });
     const grant = `Bash:${command.trim()}`;
     // It was judged from the project; claude's shell may sit in another folder (a cd into an added
     // folder stays between calls), so it runs from the project (review of 0039421).
@@ -181,9 +197,11 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
       const updatedInput = { ...input, command: pinnedToProject(command, project) };
       return ctx.access === "auto" || ctx.grants.has(grant) ? { kind: "allow", updatedInput } : { kind: "ask", title: "Run a command", target, grant, updatedInput };
     }
+    // Anything else naming Claude Code's folder: refused (its deny rules did that before they became ask rules).
+    if (/(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/.test(command)) return claudeRefusal;
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
-    if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: "Not done: commands don't touch apps' data (~/Library/Application Support) except reading the active brand kit's files and Uncut's graphic libraries with ls, cat, head, tail or stat (no pipes or redirects). Use Read for those files, and Uncut's tools for the rest." };
+    if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: "Not done: commands don't touch apps' data (~/Library/Application Support) except reading the active brand kit's files and Uncut's graphic libraries with ls, cat, head, tail or stat (piped into head, tail, grep, wc, sort, uniq or a jq path at most; no redirects). Use Read for those files, and Uncut's tools for the rest." };
     // D214: in Auto, a command naming Uncut's own files that isn't a plain read is refused (it would fight the open project).
     if (ctx.access === "auto" && NAMES_OWN.test(command)) return { kind: "deny", message: "Not done: commands don't change Uncut's own files (project.json, history.db, agent/, brand/active.json); reading them with cat, head or ls is fine. Change the project with timeline_edit and the other Uncut tools." };
     const parsed = simpleCommand(command);
