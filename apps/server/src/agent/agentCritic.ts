@@ -23,23 +23,32 @@ import { isIntended, rubricBar, VIDEO_TYPE_NAMES, type Rubric, type RubricCatego
 export const REVIEW_PASS = 8;
 /** At most this many review rounds in a turn. */
 export const REVIEW_ROUNDS = 3;
-/** Rehearsal 4: past REVIEW_ROUNDS a turn keeps reviewing while its blockers shrink, up to this many rounds. */
+/** Rehearsal 4: past REVIEW_ROUNDS a turn keeps reviewing while its blockers go down or change (mayReviewAgain), up to this many rounds. */
 export const REVIEW_ROUNDS_MAX = 6;
+
+/** A blocker's moment, to compare rounds (ids renumber each round): its time to 0.5 s, else its kind and words. */
+const blockerMoment = (b: { readonly kind?: string; readonly what?: string; readonly at?: number }) => (typeof b.at === "number" ? `@${Math.round(b.at * 2) / 2}` : `${b.kind ?? ""}:${b.what ?? ""}`);
 
 /**
  * Whether a turn may run another review round after these (its saved rounds, in order) when it has
  * run `done` rounds (the turn's own count: a round whose review couldn't be saved still counts):
  * always under REVIEW_ROUNDS; never at REVIEW_ROUNDS_MAX; in between only while the last round still
- * has blockers and fewer than the round before it (it is converging), and only when every round is
- * saved (an unsaved one can't show that). A pass, a stall or more blockers stop it.
+ * has blockers and is making progress on the round before it: fewer blockers, or (round 3's A/B:
+ * 4, 1, 1 and 1, 2, 2 each fixed one and stopped) no more of them at other moments (one fixed, the
+ * next found), and only when every round is saved (an unsaved one can't show that). A pass, the same
+ * blockers again or more of them stop it.
  */
-export function mayReviewAgain(rounds: ReadonlyArray<{ readonly passed?: boolean; readonly blockers?: ReadonlyArray<unknown> }>, done: number = rounds.length): boolean {
+export function mayReviewAgain(rounds: ReadonlyArray<{ readonly passed?: boolean; readonly blockers?: ReadonlyArray<{ readonly kind?: string; readonly what?: string; readonly at?: number }> }>, done: number = rounds.length): boolean {
   if (done >= REVIEW_ROUNDS_MAX || rounds.length >= REVIEW_ROUNDS_MAX) return false;
   if (done < REVIEW_ROUNDS) return true;
   if (rounds.length < done) return false;
   const last = rounds.at(-1)!, before = rounds.at(-2);
   const n = (x: { readonly blockers?: ReadonlyArray<unknown> } | undefined) => x?.blockers?.length ?? 0;
-  return !last.passed && n(last) > 0 && !!before && n(last) < n(before);
+  if (last.passed || n(last) === 0 || !before || n(last) > n(before)) return false;
+  if (n(last) < n(before)) return true;
+  const was = new Set((before.blockers ?? []).map(blockerMoment));
+  const now = new Set((last.blockers ?? []).map(blockerMoment));
+  return now.size !== was.size || [...now].some((m) => !was.has(m));
 }
 /** A score whose category has a blocker is at most this. */
 export const BLOCKER_CAP = 5;
@@ -101,14 +110,14 @@ The editor follows the skills in <skill-checklists>: check every line on the fra
 Uncut's layout checks are listed as facts about the project: confirm what you see.
 Motion over time: stills can't show timing, so you also get frame strips (a row of consecutive moments 1/12 s apart around each scene change, left to right) and Uncut's frame-difference scan in <motion>. From the strips judge whether each change lands on its beat (the storyboard's and the sound sheet's times), whether moves ease in and settle or snap, and whether text swapping inside a moving shape overlaps. The scan's pops (a frame unlike both its neighbours), one-frame jumps, holds over 1 s and the loop seam are measured, not guessed: confirm them on the strips and frames, and judge them as motion defects (a pop is always one; a cut or a hold is one only when the brief or the skills ask for one take with no holds).
 Scale and words (in <motion>): Uncut measures how much of each strip's frames is flat background and the canvas around the picture; in a footage-first film, over 35 % at most scene changes means the footage sits small on an empty canvas: mark motion down for a card of footage on flat black with a caption under it. A wide shot of a whole app window (the full editor, every panel at once) where nothing the moment is about reads at 360 px is a readability defect with its time range ("f a to f b: the whole editor, nothing key reads"), not a blocker: the camera should push in on the part that matters (the timeline track that's filling, the preview, the line being typed). A UI-first film is one hero element at a time on a calm canvas: mark it down when the hero is muddy (dark panels on a near-black canvas, edges lost), cluttered (several panels at once), or the line it's about is cut mid-word at the frame's edge. Judge scale and sizes by the film's own direction (the brief, the storyboard, the skills), not by fixed numbers. Text ghosting into stacked copies (motion blur over a big jump in one frame) is a motion defect. Every image is sharp except the strips labelled as drawn WITH the project's motion blur, which show the fast moves as an export with motion blur draws them: there, double or stacked copies of text or UI, a smear that makes text unreadable, or dark bands at the frame's edges where the picture slid away are motion defects with their frames and time (\"f a to f b: the blur stacks the headline into copies\"), and the fix is a slower or shorter move there, not more sub-frames. Around the drop, check its strip: the reveal lands on the drop, not before. The storyboard's words are each beat's approved text: read them in that beat's frames; missing, cut or different words are a readability defect quoting both. Numbers and statuses a film shows about its own making (beat counts, review results, timings) must match this run's facts in <motion>: honesty first. One that states something false is an invented blocker, even when the brief scripted it. When the brief explicitly asks for such a fact and this run didn't produce it, say so in these words: "the brief asks for X, but this run shows Y", and give the true version to show instead (the real count or result, or the step without a result); a true text that differs from the brief's script is a brand defect with that wording, never a blocker.
-From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim. A fix you mark false fails the round like a blocker: your summary must agree (never "no blockers" while a claimed fix is unverified).
+From round 2: for every fix the editor claims, look at the new frames of that moment and say whether the defect is really gone (verified true) or not (false, and what you see instead). Believe the frames, not the claim. A fix you mark false fails the round like a blocker: your summary must agree (never "no blockers" while a claimed fix is unverified). A fast move the scan still lists isn't an unverified fix by itself: verify it on its blur strip; a smooth blur with the words readable and no stacked copies is fixed.
 Answer with one JSON object and nothing else:
 {"scores":{"hook":{"score":0,"evidence":"f 0, f 30: ..."},"readability":{...}},
- "blockers":[{"kind":"placeholder","what":"one sentence","at":3.2}],
+ "blockers":[{"kind":"placeholder","what":"one sentence","at":3.2,"fix":"one sentence"}],
  "defects":[{"kind":"motion","at":1.5,"what":"one sentence","fix":"one sentence"}],
  "fixes":[{"defect":"d1","verified":false,"note":"what the new frames show"}],
  "summary":"two sentences at most"}
-at is seconds into the video. defects are the worst problems that aren't blockers, worst first, at most 6.`;
+at is seconds into the video. defects are the worst problems that aren't blockers, worst first, at most 6. Each fix is the concrete change at that moment: which element, and what to do to it.`;
 
 export interface CriticImage {
   readonly label: string;
@@ -123,6 +132,8 @@ export interface CriticClaim {
   readonly at?: number;
   /** The defect as the critic described it. */
   readonly was?: string;
+  /** The critic's fix for it, from the last round. */
+  readonly fix?: string;
 }
 export interface CriticFinding {
   readonly rule: string;
@@ -238,7 +249,7 @@ export function criticMessage(input: CriticInput) {
 export interface CriticAnswer {
   readonly scores: Partial<Record<Category, number>>;
   readonly evidence: Record<string, string>;
-  readonly blockers: ReadonlyArray<{ kind: string; what: string; at?: number }>;
+  readonly blockers: ReadonlyArray<{ kind: string; what: string; at?: number; fix?: string }>;
   readonly defects: ReadonlyArray<{ at: number; what: string; fix?: string; kind?: string }>;
   readonly fixes: ReadonlyArray<{ defect: string; verified: boolean; note?: string }>;
   readonly summary: string;
@@ -286,7 +297,8 @@ export function parseCritic(text: string, scored: ReadonlyArray<Category> = REVI
     const what = s(b.what, 300);
     const kind = (BLOCKER_KINDS as ReadonlyArray<string>).includes(s(b.kind, 40)) ? s(b.kind, 40) : "other";
     const at = sec(b.at);
-    return what ? [{ kind, what, ...(at !== undefined ? { at } : {}) }] : [];
+    const fix = s(b.fix, 300);
+    return what ? [{ kind, what, ...(at !== undefined ? { at } : {}), ...(fix ? { fix } : {}) }] : [];
   });
   const defects = list(raw.defects).flatMap((d) => {
     const what = s(d.what, 300);
@@ -320,7 +332,7 @@ const MOTION_FINDING = /^motion:(pop|jump|hold|seam|empty|fast):/;
 export function criticReview(answer: CriticAnswer, ctx: { round: number; claims: ReadonlyArray<CriticClaim>; checks: ReadonlyArray<CriticFinding>; determinism: { checked: Array<string>; differed: Array<string> }; looked: { sheet: boolean; phone: boolean }; revision: number; turnId: string; fps: number; rubric?: Rubric | undefined; intended?: ReadonlyArray<IntendedFinding> | undefined }): Review {
   const rubric = ctx.rubric;
   const hard = (kind: string) => !rubric || rubric.hardKinds.includes(kind);
-  type Blocker = { id: string; kind: string; what: string; at?: number; source: string; rule?: string; to?: number };
+  type Blocker = { id: string; kind: string; what: string; at?: number; source: string; rule?: string; to?: number; fix?: string };
   type Defect = { id: string; at: number; what: string; fix?: string; kind?: string; source?: string; rule?: string; to?: number };
   const rawBlockers: Array<Omit<Blocker, "id">> = [];
   const rawDefects: Array<Omit<Defect, "id">> = [];
@@ -352,7 +364,16 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
     const said = answer.fixes.find((f) => f.defect === c.defect);
     return { defect: c.defect, what: c.what, ...(c.at !== undefined ? { at: c.at } : {}), verified: said?.verified === true, ...(said?.note ? { note: said.note } : said ? {} : { note: "The critic didn't confirm it on the new frames." }) };
   });
-  for (const f of fixes) if (!f.verified) blockers.push({ id: id(), kind: "unverified-fix", what: `The fix for ${f.defect} isn't visible on the new frames${f.note ? `: ${f.note}` : "."}`, ...(f.at !== undefined ? { at: f.at } : {}), source: "critic" });
+  // Round 3's A2: two claims on one moment (d3 and d8, the same pan) are one blocker, not two.
+  const unverified: Array<{ ids: Array<string>; note?: string; at?: number; fix?: string }> = [];
+  for (const f of fixes) {
+    if (f.verified) continue;
+    const fix = ctx.claims.find((c) => c.defect === f.defect)?.fix;
+    const same = f.at !== undefined ? unverified.find((u) => u.at !== undefined && Math.abs(u.at - f.at!) < 0.5) : undefined;
+    if (same) same.ids.push(f.defect);
+    else unverified.push({ ids: [f.defect], ...(f.note ? { note: f.note } : {}), ...(f.at !== undefined ? { at: f.at } : {}), ...(fix ? { fix } : {}) });
+  }
+  for (const u of unverified) blockers.push({ id: id(), kind: "unverified-fix", what: `The fix for ${u.ids.join(" and ")} isn't visible on the new frames${u.note ? `: ${u.note}` : "."}`, ...(u.at !== undefined ? { at: u.at } : {}), source: "critic", ...(u.fix ? { fix: u.fix } : {}) });
   const scored = scoredOf(rubric);
   const scores: Partial<Record<Category, number>> = {};
   for (const k of scored) if (answer.scores[k] !== undefined) scores[k] = answer.scores[k];
@@ -430,21 +451,28 @@ export function agreeingNotes(summary: string, blockers: ReadonlyArray<{ readonl
 /** A saved review's rubric (its levels), for reviewNext and the cards; none before D217. */
 const levelsOf = (review: Review) => (review.rubric ? { levels: review.rubric as Record<Category, "required" | "optional" | "na"> } : undefined);
 
-/** What the builder does next after a round. */
-export function reviewNext(review: Review, turnRound: number = review.round, more: boolean = turnRound < REVIEW_ROUNDS): string {
+/**
+ * What the builder does next after a round. `where` (round 3's A/B): a moment as the project has it
+ * (its frame, the graphic drawing it and that graphic's own time, the frames to render), so each
+ * blocker comes with where to look and the critic's fix.
+ */
+export function reviewNext(review: Review, turnRound: number = review.round, more: boolean = turnRound < REVIEW_ROUNDS, where?: (at: number) => string | undefined): string {
   const rb = levelsOf(review);
   const scored = scoredOf(rb);
   const low = scored.filter((k) => (review.scores[k] ?? 0) < (barOf(rb, k) ?? 0));
   const det = review.determinism?.differed.length ? ` The graphics ${review.determinism.differed.map((d) => `"${d}"`).join(", ")} drew differently twice at the same frame: they use the clock, timers or Math.random; make render(t) a pure function of t (seeded random from uncut:lib/random.js).` : "";
-  const blockers = (review.blockers ?? []).map((b) => `${b.id} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}: ${b.what}`);
+  const blockers = (review.blockers ?? []).map((b) => {
+    const place = b.at !== undefined ? where?.(b.at) : undefined;
+    return `${b.id} ${b.kind}${b.at !== undefined ? ` at ${b.at} s` : ""}${place ? ` (${place})` : ""}: ${b.what}${b.fix ? ` Fix: ${b.fix}` : ""}`;
+  });
   const scores = scored.map((k) => `${k} ${review.scores[k]}`).join(", ");
   const na = rb ? REVIEW_SCORES.filter((k) => rb.levels[k] === "na") : [];
   const naText = na.length ? ` Not scored for this video: ${na.join(", ")}.` : "";
   if (review.passed) return `Uncut's critic passed it (${scores}).${naText} Run project_check, fix its warnings, then tell the user in a line or two; the scores are the critic's, not yours.`;
   const open = `${blockers.length ? `Blockers (any one fails the round): ${blockers.join("; ")}.` : ""}${low.length ? ` Under the bar: ${low.map((k) => `${k} (${barOf(rb, k)})`).join(", ")}.` : ""}${det}`.trim();
-  if (!more) return `That was round ${turnRound} in this turn, the last one${turnRound >= REVIEW_ROUNDS ? ` (past ${REVIEW_ROUNDS} rounds a turn goes on only while the blockers shrink, up to ${REVIEW_ROUNDS_MAX})` : ""}: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
-  const extra = turnRound >= REVIEW_ROUNDS ? `Round ${turnRound}: the blockers went down, so you get another round (at most ${REVIEW_ROUNDS_MAX}, and only while they keep going down). ` : "";
-  return `Not passed. ${extra}${open} Fix every blocker first, then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
+  if (!more) return `That was round ${turnRound} in this turn, the last one${turnRound >= REVIEW_ROUNDS ? ` (past ${REVIEW_ROUNDS} rounds a turn goes on only while the blockers go down or change, up to ${REVIEW_ROUNDS_MAX})` : ""}: stop fixing. Tell the user plainly that the critic didn't pass it and what is still wrong: ${open} Don't say it passed or is clean.`;
+  const extra = turnRound >= REVIEW_ROUNDS ? `Round ${turnRound}: the blockers went down or moved on, so you get another round (at most ${REVIEW_ROUNDS_MAX}, and only while they keep going down or changing; the same ones again stop it). ` : "";
+  return `Not passed. ${extra}${open} Fix every blocker first (at its moment, in the graphic named, as its Fix says), then the worst defects (their ids are in the review); a defect the user wants as it is, they mark Intended on the review card. After the edit, render_frames the frames of each fixed moment and look: a fix you haven't seen at the new revision can't be claimed. Then review_submit with fixes [{"defect":"d1","what":"what you changed"}]; Uncut renders fresh frames and the critic checks each claim against them.`;
 }
 
 /**

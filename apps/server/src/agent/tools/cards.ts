@@ -321,10 +321,10 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         const missing = [!r.looked.sheet ? "a contact_sheet of the edit (no media)" : "", !r.looked.phone ? "render_frames with phone true (frame 0, the first 2 s and each beat's last frame)" : ""].filter(Boolean).join(" and ");
         return textResult(`Look before you ask for a review: ${missing}${r.reviewRounds ? " since the last round" : ""}, then review_submit.`, true);
       }
-      // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while the blockers shrink.
+      // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while the blockers go down or change.
       const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
       // A hard ceiling on the turn's own count too: a review that couldn't be saved isn't in the plan.
-      if (!mayReviewAgain(turnReviews(), r.reviewRounds)) return textResult(`That was the last review round in this turn (${r.reviewRounds}; past ${REVIEW_ROUNDS} a turn goes on only while the blockers shrink, up to ${REVIEW_ROUNDS_MAX}): stop fixing and tell the user what the critic still found.`, true);
+      if (!mayReviewAgain(turnReviews(), r.reviewRounds)) return textResult(`That was the last review round in this turn (${r.reviewRounds}; past ${REVIEW_ROUNDS} a turn goes on only while the blockers go down or change, up to ${REVIEW_ROUNDS_MAX}): stop fixing and tell the user what the critic still found.`, true);
       const project = v.session.project as Project;
       const fps = project.canvas.fps;
       const { starts, duration } = layout(project);
@@ -342,7 +342,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         if (!defect || !what) return textResult("Each fix is {defect: an id from the last review (d1, d2, …), what: what you changed}.", true);
         const found = findings.find((x) => x.id === defect);
         if (!found) return textResult(`There's no ${defect} in the last review${findings.length ? ` (its ids: ${findings.map((x) => x.id).filter(Boolean).join(", ")})` : ""}.`, true);
-        claims.push({ defect, what, ...(found.at !== undefined ? { at: found.at } : {}), was: found.what });
+        claims.push({ defect, what, ...(found.at !== undefined ? { at: found.at } : {}), was: found.what, ...(found.fix ? { fix: found.fix } : {}) });
       }
       const near = (at: number) => [Math.max(0, Math.round((at - 0.5) * fps)), Math.round((at + 0.5) * fps)] as const;
       const unseen = claims.filter((c) => {
@@ -565,7 +565,13 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...(review.fixes ? { fixes: review.fixes } : {}),
         motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds, empty: emptyRuns(motion.scan, fps) } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
-        next: reviewNext(review, round, mayReviewAgain(turnReviews(), r.reviewRounds)),
+        next: reviewNext(review, round, mayReviewAgain(turnReviews(), r.reviewRounds), (at) => {
+          // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
+          const f = clampF(at * fps);
+          const g = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items).find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
+          const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
+          return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}`;
+        }),
       });
     });
 

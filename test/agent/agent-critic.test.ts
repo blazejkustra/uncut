@@ -128,7 +128,7 @@ test("layout checks: off-centre centred text, a round text box, a word wider tha
 
 // Rehearsal 4: plain Claude iterates without limit; three rounds are a floor, six a ceiling, and
 // past three a turn goes on only while the blockers shrink.
-test("review rounds: past 3 only while the blockers go down, never past 6", async () => {
+test("review rounds: past 3 only while the blockers go down or change, never past 6", async () => {
   const { mayReviewAgain, REVIEW_ROUNDS, REVIEW_ROUNDS_MAX } = await import("../../apps/server/src/agent/agentCritic.ts");
   const b = (n: number, passed = false) => ({ passed, blockers: Array.from({ length: n }, () => ({})) });
   assert.equal(REVIEW_ROUNDS, 3);
@@ -147,8 +147,8 @@ test("review rounds: past 3 only while the blockers go down, never past 6", asyn
   assert.equal(mayReviewAgain([b(5), b(5)], 3), false, "3 run (one unsaved): past the floor, nothing shows it converging");
   assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6)], 4), true, "all saved and shrinking");
   const r = criticReview(parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "blank", what: "Empty frame", at: 4.2 }] })) as never, ctx);
-  assert.match(reviewNext(r, 3, true), /Not passed\. Round 3: the blockers went down, so you get another round \(at most 6/);
-  assert.match(reviewNext(r, 4, false), /round 4 in this turn, the last one \(past 3 rounds a turn goes on only while the blockers shrink, up to 6\): stop fixing/);
+  assert.match(reviewNext(r, 3, true), /Not passed\. Round 3: the blockers went down or moved on, so you get another round \(at most 6/);
+  assert.match(reviewNext(r, 4, false), /round 4 in this turn, the last one \(past 3 rounds a turn goes on only while the blockers go down or change, up to 6\): stop fixing/);
   assert.match(reviewNext(r, 3), /the last one/, "the default stays 3");
 });
 
@@ -157,4 +157,32 @@ test("the critic's prompt: near-empty frames are blank; a wide shot of the whole
   assert.match(CRITIC_SYSTEM, /fine only while it fills a fair share of the frame and the next shape is already growing/);
   assert.doesNotMatch(CRITIC_SYSTEM, /on its way to the next state is not blank/);
   assert.match(CRITIC_SYSTEM, /A wide shot of a whole app window .* is a readability defect with its time range .*not a blocker/);
+});
+
+// Round 3's A/B: A1r3 went 4, 1, 1 and A2r3 1, 2, 2; each later round had fixed the last one's
+// blocker and found another, and both films shipped with known blockers after 3 rounds.
+test("round 3: past 3 the loop goes on while the blockers change (one fixed, the next found), stops on the same ones again; each blocker comes with where to look and the critic's fix", async () => {
+  const { mayReviewAgain } = await import("../../apps/server/src/agent/agentCritic.ts");
+  const at = (...xs: Array<[string, number]>) => ({ passed: false, blockers: xs.map(([kind, t]) => ({ kind, what: kind, at: t })) });
+  // A1r3: the headline at 2.0 s, then the fold at 22.75 s.
+  assert.equal(mayReviewAgain([at(["invented", 19.25], ["motion", 2], ["motion", 11.6], ["motion", 12]), at(["unverified-fix", 2.02]), at(["unverified-fix", 22.75])]), true, "A1r3 goes on");
+  // A2r3: the invented Passed (twice at about 23 s), then the pan at 11.3 s.
+  assert.equal(mayReviewAgain([at(["invented", 22.5]), at(["invented", 23], ["unverified-fix", 22.75]), at(["unverified-fix", 11.22], ["unverified-fix", 11.28])]), true, "A2r3 goes on");
+  assert.equal(mayReviewAgain([at(["invented", 22.5]), at(["motion", 11.3]), at(["unverified-fix", 11.28])]), false, "the same moment again: stalled");
+  assert.equal(mayReviewAgain([at(["motion", 2]), at(["motion", 11.3]), at(["motion", 2], ["motion", 20])]), false, "more of them: stop");
+  assert.equal(mayReviewAgain([at(["a", 1]), at(["a", 2]), at(["a", 3]), at(["a", 4]), at(["a", 5]), at(["a", 6])]), false, "never past 6");
+  assert.equal(mayReviewAgain([at(["a", 1]), at(["a", 2]), at(["a", 3]), at(["a", 4]), at(["a", 5])]), true, "changing up to the ceiling");
+  // A blocker carries the critic's fix; reviewNext names its frame, graphic and frames to render.
+  const answer = parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "invented", what: "The review card says Passed.", at: 22.75, fix: "Show 'Review, round 1' with no result." }] }));
+  assert.ok(!("problem" in answer));
+  const r = criticReview(answer as never, ctx);
+  assert.equal(r.blockers![0]!.fix, "Show 'Review, round 1' with no result.");
+  const next = reviewNext(r, 1, true, (t) => `f ${Math.round(t * 60)}, film.html at ${t.toFixed(2)} s of it; render_frames 1359 to 1371`);
+  assert.match(next, /d1 invented at 22\.75 s \(f 1365, film\.html at 22\.75 s of it; render_frames 1359 to 1371\): The review card says Passed\. Fix: Show 'Review, round 1' with no result\./);
+  // Two unverified claims on one moment (A2r3's d3 and d8, the same pan) are one blocker, with the last round's fix.
+  const claims = [{ defect: "d3", what: "Eased the pan", at: 11.22, fix: "Slow the pan's fastest frames." }, { defect: "d8", what: "Same pan", at: 11.28 }];
+  const two = criticReview(parseCritic(JSON.stringify({ scores: all(9), fixes: [{ defect: "d3", verified: false, note: "still smeared" }, { defect: "d8", verified: false }] })) as never, { ...ctx, claims });
+  assert.equal(two.blockers!.length, 1, JSON.stringify(two.blockers));
+  assert.match(two.blockers![0]!.what, /The fix for d3 and d8 isn't visible/);
+  assert.equal(two.blockers![0]!.fix, "Slow the pan's fastest frames.");
 });

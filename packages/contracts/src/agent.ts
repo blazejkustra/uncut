@@ -65,7 +65,8 @@ export const Review = Schema.Struct({
   // D195: who scored it: "critic" (a separate claude process Uncut ran) or "agent" (rounds before D195).
   by: Schema.optional(Schema.Literals(["critic", "agent"])),
   // D195: hard blockers (any one fails the round whatever the scores); source "critic" or "check" (Uncut's layout checks).
-  blockers: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String), kind: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), source: Schema.String, rule: Schema.optional(Schema.String), to: Schema.optional(Schema.Number) }))),
+  // Round 3: fix, the critic's concrete change at that moment.
+  blockers: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String), kind: Schema.String, what: Schema.String, at: Schema.optional(Schema.Number), source: Schema.String, rule: Schema.optional(Schema.String), to: Schema.optional(Schema.Number), fix: Schema.optional(Schema.String) }))),
   // D217: the rubric the round was judged by: per category required, optional or na (not scored); the
   // video type and sound profile it came from; how many findings the user marked Intended were left out.
   rubric: Schema.optional(Schema.Record(Schema.String, Schema.Literals(["required", "optional", "na"]))),
