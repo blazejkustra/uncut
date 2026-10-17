@@ -36,6 +36,8 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   assert.match(body, /never a rounded "about 120 BPM"/);
   // D296: UI first is the main path for a product film (showcase the program); footage first is the short second.
   assert.match(body, /^Pick the path from the brief and the media\n- UI first, the main path for a product or launch film: showcase the program[\s\S]*\n- Footage first, only when/m);
+  // A film about Uncut itself builds from its real UI's parts (uncut:lib/ui.js), never a redrawn panel.
+  assert.match(body, /never an invented panel: Uncut itself from uncutUI parts \(uncut:lib\/ui\.js\)/);
   // D296: scale and boldness, measurable; kits first; one item; the lock.
   assert.match(body, /^Scale \(both paths\)\n/m);
   for (const want of [/70 % of its area or more, edges within about 6 %/, /full-bleed again and again/, /9 % of the frame's height or more/, /Never a card on flat black with a small caption under it/, /Every transition morphs the outgoing hero/, /never a fade, wipe or headline roll-up/, /at least every 2 beats/, /on every beat in the busiest section/, /The end card lasts about 1\.5 s and springs back into frame 0/, /Never search the disk or the web for the product; no kit matches: ask_user once/, /ONE item spanning it/, /propose last: while it waits nothing can change/, /In a UI film footage stays inside UI, also after the drop/, /The preview stays inset until the drop, flooding on its frame/, /never zooms in until it goes soft/]) assert.match(body, want);
