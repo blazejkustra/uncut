@@ -193,6 +193,8 @@ test("the critic's prompt: near-empty frames are blank; a wide shot of the whole
   // Round 5 (A1r5): a desktop-sized agent panel or export dialog the moment is about, its words tiny, passed as "texture".
   assert.match(CRITIC_SYSTEM, /In a UI-first film .* the panel, dialog or row the moment is about IS that line: a desktop-sized panel whose words are under about 3\.5 % of the frame's height .* is this blocker/);
   assert.match(CRITIC_SYSTEM, /shown at desktop scale, its lines unreadable at 360 px, is an illegible blocker in a UI-first film/);
+  // The live stage's exemption (the program blurred behind a hero, a short pull-back) never excuses a key moment seen only at stage scale.
+  assert.match(CRITIC_SYSTEM, /is the stage, not the moment, but only while the hero or the next push-in carries what the moment is about: a step, clip, dialog or value seen only at stage scale still counts\) is this blocker/);
 });
 
 // Round 3's A/B: A1r3 went 4, 1, 1 and A2r3 1, 2, 2; each later round had fixed the last one's

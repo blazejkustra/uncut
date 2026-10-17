@@ -103,7 +103,8 @@ window.render = (t) => {
       for (const s of uncutUI.slots(n)) if (!uncutUI.find(full, s)) throw new Error(n + ": no slot " + s);
       const root = uncutUI.mount(scratch, n);
       // Mounted without props, no part states a run fact (a result, round, score, model, time).
-      const said = root.textContent.match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh|Rendering… \\d|Wrote graphic|Launch film|DJI 0063|00:00:28/);
+      // Field values count too (an input's value isn't its text): the export's file name, the clip's timings.
+      const said = (root.textContent + " " + [...root.querySelectorAll("input")].map((i) => i.value).join(" ")).match(/Passed|round \\d|Opus|\\d+ s left|BPM|\\d+ edits|Electro Dreams|Keyboard typing|Airy whoosh|Rendering… \\d|Wrote graphic|Launch film|DJI 0063|00:00:28|00:00:07:00|00:00:09:42|00:00:16:42/);
       if (said) throw new Error(n + ": states " + said[0] + " without props");
       // Asked for, the turn's review card is a blank one too: the fixture's result and scores never come back with it.
       if (n === "turn" && (/Passed|round \\d/.test(full.textContent) || uncutUI.findAll(full, ".score-value").some((v) => v.textContent))) throw new Error("turn: review: true shows the fixture's result or scores");

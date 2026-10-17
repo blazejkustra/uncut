@@ -226,9 +226,9 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
    marker only resolves in the graphic's own HTML). No run fact of the fixture shows unless you pass it: no prompt
    in a message, no clips, media tiles, steps, reply, edit count or review card in a turn (review: true
    is a blank card), no export progress; the review says "Reviewing" with empty bars, no round, model,
-   time or time left; the project's title, length and canvas, a tile's length badge and the clip named in the
-   Inspector and Effects start blank too (topbar title, preview duration and canvas, media duration,
-   inspector title, effects target, export duration). Run facts are real or absent: pass a result,
+   time or time left; the project's title, length and canvas, a tile's length badge, the clip named in the
+   Inspector and Effects, its timings and the export's file name start blank too (topbar title, preview
+   duration and canvas, media duration, inspector title, effects target, export duration and file). Run facts are real or absent: pass a result,
    round, score or timing only from this run's real results (review_submit, beat_grid), never invented.
      uncutUI.cursor(host, { x, y, scale, size: 28 })  // the macOS pointer, its tip at (x, y) in host px
      uncutUI.timecode(seconds, fps), uncutUI.css()    // "00:00:12:30"; the parts' CSS (added once by mount)
