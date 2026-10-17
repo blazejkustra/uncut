@@ -516,7 +516,7 @@ export function normReview(raw: unknown): Review | undefined {
             .flatMap((b) => {
               const o = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
               const what = str(o.what, 300);
-              return what ? [{ ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}), kind: str(o.kind, 40) || "other", what, ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), source: o.source === "check" ? "check" : "critic", ...opt(o) }] : [];
+              return what ? [{ ...(str(o.id, 20) ? { id: str(o.id, 20) } : {}), kind: str(o.kind, 40) || "other", what, ...(typeof o.at === "number" && Number.isFinite(o.at) ? { at: Math.max(0, o.at) } : {}), source: o.source === "check" ? "check" : "critic", ...opt(o), ...(str(o.fix, 300) ? { fix: str(o.fix, 300) } : {}) }] : [];
             })
             .slice(0, 20),
         }
