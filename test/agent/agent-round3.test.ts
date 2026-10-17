@@ -118,7 +118,7 @@ test("U3/U2/U1: claude runs isolated from the user's Claude Code config, with ev
     assert.equal(run.envValues.CLAUDE_AGENT_SDK_VERSION, null, "not presented as the Agent SDK");
     assert.match(run.envValues.CLAUDE_AGENT_SDK_CLIENT_APP ?? "", /^uncut\/\d+\.\d+\.\d+/, "Uncut's own client id, not an inherited one");
     assert.ok(!argv.some((a) => /api-key|apiKey/i.test(a)), "no API key on the command line");
-    assert.match(run.system, /mcp__uncut__project_read/, "the prompt names the full tool names");
+    assert.match(run.system, /always call the full name \(mcp__uncut__graphic_write/, "the prompt names the full tool names (761de95: always call mcp__uncut__<name>)");
     assert.match(run.system, /follows the production process: docs_read production first/, "U6: the process (scene by scene) is one docs_read away");
     assert.match(run.prompt, /<editor-context>[\s\S]*Access: Auto\./);
   } finally {
