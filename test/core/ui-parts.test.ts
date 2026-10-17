@@ -60,6 +60,8 @@ test("it's a bundled library: loads in a VM with only window, every part with it
   assert.ok((GRAPHIC_LIBS as ReadonlyArray<string>).includes("ui.js"));
   assert.match(GRAPHIC_LIBS_DOC, /uncut:lib\/ui\.js/);
   assert.match(GRAPHIC_LIBS_DOC, /For a film about Uncut itself, build from these parts instead of redrawing its panels/);
+  // Round 6: a worked example of the stage story (mount, the hero composer flying in on Send, clips flying to the lane, the camera), so it is the easy path.
+  for (const want of [/The default story for a film about Uncut is the live stage/, /uncutUI\.mount\(ed, "editor"/, /uncutUI\.fly\(fx, t, \{ id: "composer", at: send/, /\.tl-lane\.main \.clip/, /uncutMotion\.camera\(t, keys\)/, /never a film of floating cards/]) assert.match(GRAPHIC_LIBS_DOC, want);
   const ui = load();
   assert.deepEqual([...ui.parts()].sort(), [...PARTS].sort());
   for (const n of PARTS) {

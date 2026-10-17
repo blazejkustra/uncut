@@ -53,6 +53,8 @@ test("its instructions: defaults not questions, beat map with numbered stills as
   // Round 5: the UI as large pieces morphing into each other (uncutUI.sequence), never a screen-recording pan; Uncut's real flow as the default story.
   for (const want of [/^- UI as pieces: one element at a time/m, /60 to 90 % of the width/, /uncutUI\.sequence morphs each into the next/, /Never pan over a desktop-sized panel/, /About Uncut, by default tell its real flow/, /clips landing on the timeline, a look seen in the preview, Export, Saved/]) assert.match(body, want);
   assert.ok(skillChecklist(body).some((l) => /large pieces/.test(l)), "pieces in the checklist");
+  // Round 6: the agent read the skill yet built floating pieces on a bare canvas; the live stage is the named default, pieces its close-ups.
+  assert.match(body, /Default and easiest: the live editor stage \(uncutUI\.mount "editor", the graphics example\)[^\n]*Pieces are its close-ups, never cards floating on bare canvas/);
   for (const re of [/70 %/, /9 %/, /caption under a card/]) assert.ok(skillChecklist(body).some((l) => re.test(l)), String(re));
   const checklist = skillChecklist(body);
   assert.ok(checklist.length >= 8 && checklist.length <= 12, `${checklist.length} lines`);
