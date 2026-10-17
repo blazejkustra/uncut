@@ -383,24 +383,48 @@ export function criticReview(answer: CriticAnswer, ctx: { round: number; claims:
   };
 }
 
-const NO_BLOCKERS = /\bno blockers?\b[^,.;]*?(?:,?\s*(?:and|but)\s+|[,;:]\s*|\.\s*|$)/i;
 const KIND_WORDS: Readonly<Record<string, string>> = { "unverified-fix": "claimed fix not seen" };
+const NUMBER_WORDS: Readonly<Record<string, number>> = { no: 0, zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+/** A count of blockers in a sentence ("No blockers", "2 hard blockers", "one blocker"). */
+const BLOCKER_COUNT = /\b(no|zero|\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:[a-z-]+\s+)?blockers?\b/gi;
+/** A sentence that opens with "No blockers" and a joint ("No blockers, and …", "No blockers remain; …"). */
+const LEADING_NONE = /^no\s+blockers?(?:\s+(?:remain|left|found|here))?\s*(?:,\s*(?:and|but)\s+|,\s*|;\s*|:\s*|\s+(?:and|but)\s+)(?=\S)/i;
 
 /**
  * The critic's summary as the card shows it, agreeing with the round's blockers (rehearsal 4: round
  * 3 said "No blockers" under a "3 blockers" header, because Uncut adds a blocker for each claimed fix
- * the critic didn't verify, and its layout and motion blockers, after the critic wrote it). With
- * blockers, a "no blockers" clause goes and the count with its kinds leads.
+ * the critic didn't verify, and its layout and motion blockers, after the critic wrote it). A
+ * sentence counting blockers that disagrees with the round ("no blockers", a stale "2 blockers") goes
+ * whole (a leading "No blockers, and …" loses just that clause); with blockers, the count with its
+ * kinds leads; with none and nothing left, "No blockers."
  */
 export function agreeingNotes(summary: string, blockers: ReadonlyArray<{ readonly kind: string }>): string {
-  if (!blockers.length) return summary;
-  const counts = new Map<string, number>();
-  for (const b of blockers) counts.set(b.kind, (counts.get(b.kind) ?? 0) + 1);
-  const kinds = [...counts].map(([k, n]) => `${KIND_WORDS[k] ?? k}${n > 1 ? ` ×${n}` : ""}`).join(", ");
-  const lead = `${blockers.length} blocker${blockers.length === 1 ? "" : "s"} (${kinds}).`;
-  const rest = summary.replace(NO_BLOCKERS, "").trim();
-  if (rest === summary.trim() && new RegExp(`^${blockers.length} blockers?\\b`, "i").test(rest)) return summary;
-  return rest ? `${lead} ${rest.charAt(0).toUpperCase()}${rest.slice(1)}` : lead;
+  const n = blockers.length;
+  const sentences = summary.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+  let agrees = false;
+  const kept: Array<string> = [];
+  for (const sentence of sentences) {
+    const counts = [...sentence.matchAll(BLOCKER_COUNT)].map((m) => {
+      const w = m[1]!.toLowerCase();
+      return /^\d+$/.test(w) ? Number(w) : NUMBER_WORDS[w]!;
+    });
+    if (!counts.length || counts.every((c) => c === n)) {
+      if (counts.length) agrees = true;
+      kept.push(sentence);
+      continue;
+    }
+    // "No blockers, and the drop lands." with blockers: the rest of it stands on its own.
+    const rest = counts.length === 1 && counts[0] === 0 ? sentence.replace(LEADING_NONE, "") : sentence;
+    if (rest !== sentence && !new RegExp(BLOCKER_COUNT.source, "i").test(rest)) kept.push(`${rest.charAt(0).toUpperCase()}${rest.slice(1)}`);
+  }
+  const text = kept.join(" ");
+  if (!n) return text || "No blockers.";
+  if (agrees) return text;
+  const tally = new Map<string, number>();
+  for (const b of blockers) tally.set(b.kind, (tally.get(b.kind) ?? 0) + 1);
+  const kinds = [...tally].map(([k, c]) => `${KIND_WORDS[k] ?? k}${c > 1 ? ` ×${c}` : ""}`).join(", ");
+  const lead = `${n} blocker${n === 1 ? "" : "s"} (${kinds}).`;
+  return text ? `${lead} ${text}` : lead;
 }
 
 /** A saved review's rubric (its levels), for reviewNext and the cards; none before D217. */
