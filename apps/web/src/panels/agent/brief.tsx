@@ -23,10 +23,12 @@ function BriefSkills({ brief }: { brief: Brief }) {
 }
 
 export function BriefBody({ brief, live }: { brief: Brief; live?: CardLive | undefined }) {
-  const brand = useApp().brand;
+  const { brand, agent } = useApp();
   const active = brand?.active.skills ?? [];
   const type = isVideoType(brief.type) ? VIDEO_TYPE_NAMES[brief.type] : "";
-  const sound = soundProfileText(soundProfileFor(brief, active));
+  // The user's words set the sound profile as the critic reads them (the main request: the longest message).
+  const request = (agent?.turns ?? []).reduce((a, t) => ((t.prompt ?? "").length > a.length ? (t.prompt ?? "") : a), "");
+  const sound = soundProfileText(soundProfileFor(brief, active, request || undefined));
   const rows: Array<[string, string]> = [
     ["Film", brief.film],
     ["Type", type],
