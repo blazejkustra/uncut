@@ -140,6 +140,12 @@ test("review rounds: past 3 only while the blockers go down, never past 6", asyn
   assert.equal(mayReviewAgain([b(5), b(2), b(0)]), false, "no blockers left (scores under the bar don't keep it going)");
   assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6), b(5)]), true);
   assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6), b(5), b(4)]), false, "the ceiling");
+  // The turn's own count rules (review): a round whose review couldn't be saved still counts.
+  assert.equal(mayReviewAgain([b(9), b(8), b(7)], 6), false, "6 rounds run, 3 saved: the ceiling still holds");
+  assert.equal(mayReviewAgain([b(9), b(8), b(7)], 4), false, "an unsaved round can't show the blockers going down");
+  assert.equal(mayReviewAgain([b(5)], 2), true, "under 3 by the turn's count: always");
+  assert.equal(mayReviewAgain([b(5), b(5)], 3), false, "3 run (one unsaved): past the floor, nothing shows it converging");
+  assert.equal(mayReviewAgain([b(9), b(8), b(7), b(6)], 4), true, "all saved and shrinking");
   const r = criticReview(parseCritic(JSON.stringify({ scores: all(9), blockers: [{ kind: "blank", what: "Empty frame", at: 4.2 }] })) as never, ctx);
   assert.match(reviewNext(r, 3, true), /Not passed\. Round 3: the blockers went down, so you get another round \(at most 6/);
   assert.match(reviewNext(r, 4, false), /round 4 in this turn, the last one \(past 3 rounds a turn goes on only while the blockers shrink, up to 6\): stop fixing/);

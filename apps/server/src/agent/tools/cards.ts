@@ -284,7 +284,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       }
       // Rehearsal 4: a ceiling, not a fixed count: past REVIEW_ROUNDS only while the blockers shrink.
       const turnReviews = () => r.owner.plan.reviews.filter((x) => x.turnId === r.turn.id);
-      if (r.reviewRounds >= REVIEW_ROUNDS && !mayReviewAgain(turnReviews())) return textResult(`That was the last review round in this turn (${r.reviewRounds}; past ${REVIEW_ROUNDS} a turn goes on only while the blockers shrink, up to ${REVIEW_ROUNDS_MAX}): stop fixing and tell the user what the critic still found.`, true);
+      // A hard ceiling on the turn's own count too: a review that couldn't be saved isn't in the plan.
+      if (!mayReviewAgain(turnReviews(), r.reviewRounds)) return textResult(`That was the last review round in this turn (${r.reviewRounds}; past ${REVIEW_ROUNDS} a turn goes on only while the blockers shrink, up to ${REVIEW_ROUNDS_MAX}): stop fixing and tell the user what the critic still found.`, true);
       const project = v.session.project as Project;
       const fps = project.canvas.fps;
       const { starts, duration } = layout(project);
@@ -495,7 +496,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...(review.fixes ? { fixes: review.fixes } : {}),
         motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds, empty: emptyRuns(motion.scan, fps) } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
-        next: reviewNext(review, round, mayReviewAgain(turnReviews())),
+        next: reviewNext(review, round, mayReviewAgain(turnReviews(), r.reviewRounds)),
       });
     });
 
