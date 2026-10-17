@@ -66,11 +66,13 @@ export const makeBrandTools = (ctx: CardsCtx) => {
         const path = files[args.file];
         if (!path) return textResult(`The kit has no file "${args.file}". Its files: ${Object.keys(files).join(", ") || "(none)"}.`, true);
         const ext = path.toLowerCase().split(".").pop() ?? "";
-        const slot = (["light", "dark", "mark"] as const).find((k) => kit.logos[k] === args.file) ?? "mark";
+        const logoSlot = (["light", "dark", "mark"] as const).find((k) => kit.logos[k] === args.file);
+        const isLogo = logoSlot !== undefined;
+        const slot = logoSlot ?? "mark";
         if (["svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
           // D198: drawn as a PNG (an SVG too) on the background it's for.
           const [drawn] = yield* Effect.promise(() => logoPictures([{ slot, path }]));
-          if (drawn?.png) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path}${ext === "svg" ? " (an SVG: drawn here as a PNG; media_import keeps it vector, and in a graphic uncut:brand/logo-… inlines it)" : ""}. media_import this path to place it.` }, picture(drawn.png)] };
+          if (drawn?.png) return { content: [{ type: "text" as const, text: `${args.file} from the kit "${kit.name}": ${path}${ext === "svg" ? ` (an SVG: drawn here as a PNG; media_import keeps it vector, and in a graphic ${isLogo ? `uncut:brand/logo-${slot} inlines it` : "paste its <svg> inline, read from this path as it is, never redrawn"})` : ""}. media_import this path to place it.` }, picture(drawn.png)] };
           if (ext !== "svg") {
             const data = yield* Effect.promise(() => readFile(path).catch(() => undefined));
             const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[ext]!;
