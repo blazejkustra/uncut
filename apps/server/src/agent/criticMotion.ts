@@ -546,7 +546,7 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
       : { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a nearly empty frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until the next sampled frames that aren't, f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). render_frames around it to see how long. ${fix}` });
   }
   for (const m of o.oneTake ? scan.fast.slice(0, 3) : []) {
-    out.push({ rule: "motion", key: `motion:fast:${m.start}`, frame: m.start, range: { start: m.start, end: m.end }, hard: false, message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame. The export's motion blur draws each frame from a few sub-frames, so a move this fast stacks into copies or smears (render_frames draws no blur; the critic sees it drawn with the export's blur). Ease it over about 0.3 s or more; more sub-frames only smooth the copies into a smear, a longer shutter smears more.` });
+    out.push({ rule: "motion", key: `motion:fast:${m.start}`, frame: m.start, range: { start: m.start, end: m.end }, hard: false, message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame. The export's motion blur draws each frame from a few sub-frames, so a move this fast stacks into copies or smears (render_frames draws no blur; the critic sees it drawn with the project's blur). Ease it over about 0.3 s or more; more sub-frames only smooth the copies into a smear, a longer shutter smears more.` });
   }
   if (o.loop && seamBroken(scan)) out.push({ rule: "motion", key: "motion:seam:0", frame: 0, hard, message: `The loop seam: the last frame differs from frame 0 by ${(scan.seam!.diff * 100).toFixed(1)} % (a typical frame step is ${(scan.seam!.typical * 100).toFixed(2)} %), so the loop jumps. Make the last frame equal the first, cursor position and speed included.` });
   // The blockers first, so the cap never drops one (the seam came last) for a soft finding.
@@ -622,7 +622,7 @@ export function stripLayout(count: number, aspect: number, cell = STRIP_CELL): S
 /**
  * Round 2's A1: the export's motion blur (12 sub-frames) ghosted the fast morph at 5.9 s and the
  * drop at 12.1 s, but the critic only saw sharp frames. At the scan's fast moves (at most BLUR_RUNS)
- * a strip of their first, middle and last frame drawn with the export's blur, BLUR_CELL px wide.
+ * a strip of their first, middle and last frame drawn with the project's blur, BLUR_CELL px wide.
  */
 export const BLUR_RUNS = 3;
 export const BLUR_CELL = 360;
