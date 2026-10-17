@@ -28,7 +28,17 @@ export const TEMPLATE_KEYS = {
   tempo: "The song's tempo from its beat analysis, as measured (e.g. 121.8 BPM).",
   drop: "Where the song's drop lands (the beat where the kick and bass step up), from its beat analysis.",
   beats: "How many beats the song has over the film's length, from its beat analysis.",
-  kit: "The project's brand kit: its name, logo and font files, colours, other files, and its about and tone lines.",
+  kit: "The project's brand kit: its name, logo and font files, colours, other files, its about and tone lines, taglines and URLs.",
+  palette: "The kit's colours grouped by role, one role per line (background, surface, text, accent ...).",
+  fonts: "The kit's typefaces with what each is for and its file (e.g. DM Sans for heading and body (DMSans.woff2)).",
+  logos: "The kit's logo files and where each goes (on dark, on light, the mark).",
+  screens: "The product's real UI screenshots: the kit's example files, else the images whose names say ui or screen, one line each.",
+  look: "The kit's dos, one line each: how the product looks and what to show.",
+  avoid: "The kit's don'ts, one line each.",
+  tagline: "The kit's first tagline.",
+  url: "The kit's first URL.",
+  "claude-mark": "Claude's mark when the kit has claude-mark.svg, for a model picker.",
+  grid: "The song's beat grid from its beat analysis: beat and bar length, first downbeat, bars over the film's length, the drop's bar.",
   canvas: "The canvas: size, aspect ratio and frame rate (e.g. 1080 x 1350 (4:5), 60 fps).",
   length: "The film's length: the brief's duration, else the timeline's, else the song's.",
 } as const;
@@ -117,6 +127,15 @@ export interface TemplateFacts {
         readonly colors: ReadonlyArray<{ readonly hex: string; readonly role: string; readonly name?: string | undefined }>;
         readonly about?: string | undefined;
         readonly tone?: string | undefined;
+        /** Which logo file goes where. */
+        readonly logoRoles?: { readonly dark?: string | undefined; readonly light?: string | undefined; readonly mark?: string | undefined } | undefined;
+        readonly typefaces?: ReadonlyArray<{ readonly family: string; readonly roles: ReadonlyArray<string>; readonly file?: string | undefined }> | undefined;
+        /** The product's UI screenshots in the kit. */
+        readonly screens?: ReadonlyArray<string> | undefined;
+        readonly taglines?: ReadonlyArray<string> | undefined;
+        readonly urls?: ReadonlyArray<string> | undefined;
+        readonly dos?: ReadonlyArray<string> | undefined;
+        readonly donts?: ReadonlyArray<string> | undefined;
       }
     | undefined;
   /** The song and, when it has been analysed, its tempo and drop (seconds of the song). */
@@ -131,6 +150,8 @@ export interface TemplateFacts {
         readonly beatCount?: number | undefined;
         readonly beatSpan?: number | undefined;
         readonly drop?: { readonly seconds: number; readonly beat: number } | undefined;
+        /** The first downbeat (seconds of the song) and its beat's index: bars count from it. */
+        readonly downbeat?: { readonly seconds: number; readonly beat: number } | undefined;
       }
     | undefined;
 }
@@ -175,6 +196,36 @@ const listOf = (ms: ReadonlyArray<TemplateMedia>) => {
 };
 
 const tempoWord = (bpm: number) => `${Math.round(bpm * 10) / 10} BPM`;
+const oneLine = (s: string) => s.trim().replace(/\s*\n\s*/g, " ");
+const andList = (xs: ReadonlyArray<string>) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+const IMAGE_FILE = /\.(?:png|jpe?g|webp|gif|avif)$/i;
+const SCREEN_NAME = /(?:^|[^a-z])(?:ui|screen|screenshot|app)(?:[^a-z]|$)/i;
+const CLAUDE_MARK = "claude-mark.svg";
+const secondsWord = (s: number) => `${Math.round(s * 100) / 100} s`;
+
+/** The kit's colours, one role per line in the order the roles first appear: "- surface: #111111 (panel), #161616". */
+function paletteOf(colors: NonNullable<TemplateFacts["kit"]>["colors"]): string {
+  const roles = new Map<string, Array<string>>();
+  for (const c of colors) {
+    const list = roles.get(c.role) ?? [];
+    list.push(c.name && c.name !== c.role ? `${c.hex} (${c.name})` : c.hex);
+    roles.set(c.role, list);
+  }
+  return [...roles].map(([role, hexes]) => `- ${role}: ${hexes.join(", ")}`).join("\n");
+}
+
+/** The beat grid in words: "120 BPM: a beat every 0.5 s, a bar of 4 beats every 2 s; first downbeat at 0:00.5; 14 bars in 28 s; the drop on bar 7, at 0:12.5". */
+function gridOf(bpm: number, s: NonNullable<TemplateFacts["music"]>): string {
+  const beat = 60 / bpm;
+  const parts = [`${tempoWord(bpm)}: a beat every ${secondsWord(beat)}, a bar of 4 beats every ${secondsWord(beat * 4)}`];
+  // Bars count from the first downbeat; without one, the drop's phase (the drop is a downbeat).
+  const first = s.downbeat ?? (s.drop ? { seconds: s.drop.seconds - (s.drop.beat - (s.drop.beat % 4)) * beat, beat: s.drop.beat % 4 } : undefined);
+  if (first) parts.push(`the first downbeat at ${sayMoment(Math.max(0, first.seconds))} into the song`);
+  const span = s.beatSpan ?? s.seconds;
+  if (s.beatCount && span !== undefined) parts.push(`${s.beatCount} beats (${Math.floor(s.beatCount / 4)} bars) in ${sayDuration(span)}`);
+  if (s.drop) parts.push(`the drop on bar ${Math.floor((s.drop.beat - (first?.beat ?? 0)) / 4) + 1}, at ${sayMoment(s.drop.seconds)}`);
+  return parts.join("; ");
+}
 
 /** The placeholders' values for these facts; a key is missing when the project has nothing true to say. */
 export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, string>> {
@@ -192,9 +243,29 @@ export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, st
     if (k.fonts.length) lines.push(`- Fonts: ${k.fonts.join(", ")}`);
     if (k.colors.length) lines.push(`- Colours: ${k.colors.map((c) => `${c.hex} ${c.name ? `${c.name} (${c.role})` : c.role}`).join(", ")}`);
     if (k.files.length) lines.push(`- Other files: ${k.files.join(", ")}`);
-    if (k.about?.trim()) lines.push(`- About: ${k.about.trim().replace(/\s*\n\s*/g, " ")}`);
-    if (k.tone?.trim()) lines.push(`- Tone: ${k.tone.trim().replace(/\s*\n\s*/g, " ")}`);
+    if (k.about?.trim()) lines.push(`- About: ${oneLine(k.about)}`);
+    if (k.tone?.trim()) lines.push(`- Tone: ${oneLine(k.tone)}`);
+    const taglines = (k.taglines ?? []).map(oneLine).filter(Boolean);
+    const urls = (k.urls ?? []).map(oneLine).filter(Boolean);
+    if (taglines.length) lines.push(`- Taglines: ${taglines.map((t) => `"${t}"`).join(", ")}`);
+    if (urls.length) lines.push(`- URLs: ${urls.join(", ")}`);
     out.kit = lines.join("\n");
+    if (k.colors.length) out.palette = paletteOf(k.colors);
+    const faces = k.typefaces?.length ? k.typefaces : undefined;
+    if (faces) out.fonts = faces.map((f) => `${f.family}${f.roles.length ? ` for ${andList(f.roles)}` : ""} (${f.file ?? "not in the kit as a file"})`).join("; ");
+    else if (k.fonts.length) out.fonts = [...new Set(k.fonts)].join("; ");
+    const r = k.logoRoles;
+    const placed = r ? [r.dark && `${r.dark} (on dark)`, r.light && `${r.light} (on light)`, r.mark && `${r.mark} (the mark)`].filter((x): x is string => !!x) : [];
+    if (placed.length) out.logos = placed.join(", ");
+    else if (k.logos.length) out.logos = k.logos.join(", ");
+    const screens = k.screens?.length ? k.screens : k.files.filter((f) => IMAGE_FILE.test(f) && SCREEN_NAME.test(f));
+    if (screens.length) out.screens = screens.map((f) => `- ${f}`).join("\n");
+    const bullets = (xs: ReadonlyArray<string> | undefined) => (xs ?? []).map(oneLine).filter(Boolean).map((x) => `- ${x}`).join("\n");
+    if (bullets(k.dos)) out.look = bullets(k.dos);
+    if (bullets(k.donts)) out.avoid = bullets(k.donts);
+    if (taglines.length) out.tagline = `"${taglines[0]}"`;
+    if (urls.length) out.url = urls[0]!;
+    if ([...k.files, ...k.logos].includes(CLAUDE_MARK)) out["claude-mark"] = `${CLAUDE_MARK} from the kit, pasted in as it is (never redrawn, recoloured or swapped for another icon)`;
   }
   const s = f.music;
   if (s) {
@@ -209,6 +280,7 @@ export function templateValues(f: TemplateFacts): Partial<Record<TemplateKey, st
       const span = s.beatSpan ?? s.seconds;
       if (s.beatCount) out.beats = `${s.beatCount} beats${span !== undefined ? ` in ${sayDuration(span)}` : ""}`;
       if (s.drop) out.drop = `${sayMoment(s.drop.seconds)} into the song (beat ${s.drop.beat + 1})`;
+      out.grid = gridOf(s.bpm, s);
     }
   }
   return out;
@@ -220,12 +292,22 @@ export const TEMPLATE_MISSING: Readonly<Record<TemplateKey, string>> = {
   media: "[no media imported yet: import your footage, screenshots and song]",
   footage: "[no footage or images imported yet]",
   music: "[no song imported yet]",
-  tempo: "[tempo unknown: no beat analysis of the song yet]",
-  drop: "[drop unknown: no beat analysis of the song yet, or the song has no clear drop]",
-  beats: "[beat count unknown: no beat analysis of the song yet]",
+  tempo: "[tempo not measured yet: analyse the song's beats first (media_analyze with the beats analyzer) and use the tempo it finds]",
+  drop: "[drop not known yet: find it in the song's beat analysis (media_analyze with the beats analyzer); if the song has no clear drop, use its strongest downbeat]",
+  beats: "[beat count not known yet: analyse the song's beats first (media_analyze with the beats analyzer)]",
   kit: "[no brand kit picked for this project]",
   canvas: "[the canvas size and frame rate]",
   length: "[length not set yet]",
+  palette: "[no brand kit colours: take the colours from the screenshots]",
+  fonts: "[no fonts in the kit: match the screenshots' type]",
+  logos: "[no logo files in the kit]",
+  screens: "[no UI screenshots in the kit: add some to the brand kit so the interface can be rebuilt from them]",
+  look: "[the kit has no notes on the interface: take radii, borders, spacing and labels from the screenshots]",
+  avoid: "[the kit lists no don'ts]",
+  tagline: "[no tagline in the kit]",
+  url: "[no URL in the kit]",
+  "claude-mark": "[no claude-mark.svg in the kit: the model's name alone, no icon]",
+  grid: "[no beat analysis of the song yet: analyse its beats first (media_analyze with the beats analyzer) and build the grid from the measured tempo, downbeats and drop]",
 };
 
 const PLACEHOLDER = /\\\{\{|\{\{\s*([a-z][a-z0-9-]*)\s*(?:\|([^{}]*))?\}\}/g;

@@ -94,7 +94,7 @@ const cachedBeats: BeatsReader = async (dir, media, fps) => (await cachedFor(tar
 const kitFacts = (kit: BrandKit, files: Record<string, string>): NonNullable<TemplateFacts["kit"]> => {
   const logos = [kit.logos.light, kit.logos.dark, kit.logos.mark].filter((x): x is string => !!x);
   const fonts = kit.fonts.flatMap((f) => (f.file ? [f.file] : []));
-  const fontWords = kit.fonts.map((f) => (f.file ? `${f.family} (${f.file})` : `${f.family} (not in the kit as a file)`));
+  const fontWords = [...new Set(kit.fonts.map((f) => (f.file ? `${f.family} (${f.file})` : `${f.family} (not in the kit as a file)`)))];
   const used = new Set([...logos, ...fonts]);
   return {
     name: kit.name,
@@ -104,7 +104,27 @@ const kitFacts = (kit: BrandKit, files: Record<string, string>): NonNullable<Tem
     colors: kit.colors.map((c) => ({ hex: c.hex, role: c.role, ...(c.name ? { name: c.name } : {}) })),
     ...(kit.about ? { about: kit.about } : {}),
     ...(kit.tone ? { tone: kit.tone } : {}),
+    logoRoles: { dark: kit.logos.dark, light: kit.logos.light, mark: kit.logos.mark },
+    typefaces: typefacesOf(kit),
+    // The kit's example screenshots that are really there.
+    screens: kit.examples.filter((n) => Object.hasOwn(files, n)),
+    taglines: kit.taglines,
+    urls: kit.urls,
+    dos: kit.dos,
+    donts: kit.donts,
   };
+};
+
+/** One entry per typeface (a family in several roles, e.g. heading and body from one file, is listed once). */
+const typefacesOf = (kit: BrandKit) => {
+  const out: Array<{ family: string; roles: Array<string>; file?: string }> = [];
+  for (const f of kit.fonts) {
+    const same = out.find((x) => x.family === f.family && x.file === f.file);
+    if (same) {
+      if (!same.roles.includes(f.role)) same.roles.push(f.role);
+    } else out.push({ family: f.family, roles: f.role ? [f.role] : [], ...(f.file ? { file: f.file } : {}) });
+  }
+  return out;
 };
 
 /** What the open project says, as TemplateFacts (none open: no facts). */
@@ -142,13 +162,15 @@ export async function projectFacts(dataDir: string, open: OpenProjectLike | unde
     const steady = analysed && typeof analysed.bpm === "number" && (analysed.beats?.length ?? 0) > 0;
     const span = length?.seconds ?? songS;
     const beatTimes = steady ? (analysed.beats ?? []) : [];
-    const { drop } = steady ? downbeatsOf(analysed) : { drop: undefined };
+    const { drop, phase } = steady ? downbeatsOf(analysed) : { drop: undefined, phase: 0 };
+    const firstDownbeat = beatTimes[phase];
     music = {
       name: song.media.name,
       seconds: songS,
       ...(analysed ? { bpm: steady ? analysed.bpm : null, confidence: analysed.confidence } : {}),
       ...(steady ? { beatCount: span !== undefined ? beatTimes.filter((t) => t < span).length : beatTimes.length, beatSpan: span } : {}),
       ...(drop ? { drop: { seconds: drop.seconds, beat: drop.beat } } : {}),
+      ...(firstDownbeat !== undefined ? { downbeat: { seconds: firstDownbeat, beat: phase } } : {}),
     };
   }
 
