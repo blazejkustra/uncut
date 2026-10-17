@@ -162,7 +162,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // D198: fonts that aren't there are an error, not a silent fallback.
           const fonts = yield* fontsRule(v);
           // D217: the sound rule follows the video's sound profile; what the user marked Intended stays out.
-          const rubric = yield* rubricOf(v);
+          const rubric = yield* rubricOf(v, r);
           return textResult(checksOut(v.session.project as Project, v.session.revision, { rules, severity: args.severity as string | undefined }, { rules: [...pluginCheckRules(contributed.rules), ...brandRules, ...LAYOUT_RULES, fonts], found: asked.checks, notes: asked.notes, errors: FONT_ERRORS, sound: rubric.sound, intended: r.owner.plan.intended ?? [] }));
         }
         case "library_search":

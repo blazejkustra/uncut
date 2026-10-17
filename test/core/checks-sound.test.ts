@@ -132,3 +132,15 @@ test("ui profile: one soft click per press inside a graphic is fine; outside a g
   const bare = projectChecks(base as Project, { sound: "ui" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
   assert.ok(bare.includes("sync"), "no graphic: a click on nothing is still a finding");
 });
+
+// T2, A2r8: the user asked for the music only. Under the music profile an added effect is one
+// finding (music-only) and the other effect rules have nothing to judge; no effects is clean.
+test("music profile: any sound effect is one music-only finding; none is clean", () => {
+  const clicks = Array.from({ length: 6 }, (_, i) => ({ file: "click-soft.m4a", at: 15 + i * 15, gainDb: -12 }));
+  const withSfx = make({ cut: 645, music: "electro-120bpm.m4a", sfx: clicks });
+  const keys = projectChecks(withSfx, { sound: "music" }).filter((c) => c.id === "sound").map((c) => c.key.split(":")[1]);
+  assert.deepEqual([...new Set(keys)], ["music-only"]);
+  const none = make({ cut: 645, music: "electro-120bpm.m4a", sfx: [] });
+  assert.deepEqual(projectChecks(none, { sound: "music" }).filter((c) => c.id === "sound").map((c) => c.key), []);
+  assert.match(soundSheet(none, { sound: "music" }).join("\n"), /Sound profile music only/);
+});

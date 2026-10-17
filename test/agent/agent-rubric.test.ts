@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { BUNDLE, MEDIA, connect, killAll, startServer } from "../helpers/server.ts";
 import { BUILTIN_IDS, guessVideoType, intendedOf, isIntended, reviewRubric, soundProfileFor, suggestSkills } from "../../packages/core/src/skills/skills.ts";
-import { projectChecks, CHECK_IDS, soundSheet } from "../../packages/core/src/index.ts";
+import { projectChecks, CHECK_IDS, soundSheet, soundProfileText } from "../../packages/core/src/index.ts";
 import { criticReview, criticText, parseCritic, reviewNext, scoredOf, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
 
 const MCP = resolve("apps/server/dist/mcp.mjs");
@@ -316,4 +316,22 @@ test("on the server: the brief suggests and turns nothing on, use only after the
     client.close();
     await server.stop();
   }
+});
+
+// T2, A2r8: the user wrote "The song only, no sound effects unless asked" / "Music only, no added
+// sound effects", but the motion film's ui profile (one soft effect per press) went to the critic,
+// which scored the silence down and asked for clicks. The user's words set the profile.
+test("music only in the request or the brief is the music profile, over the motion film's ui; no sound effects isn't silence", () => {
+  const b = brief("A 28 s launch film", { type: "launch-promo" });
+  assert.equal(soundProfileFor(b, ["motion-film"]), "ui");
+  assert.equal(soundProfileFor(b, ["motion-film"], "Cut the drone clips to the song. Music only, no added sound effects."), "music");
+  assert.equal(soundProfileFor(b, ["motion-film"], "- The song only, no sound effects unless asked, mastered around -14 LUFS."), "music");
+  assert.equal(soundProfileFor(brief("x", { type: "launch-promo", notes: "no sound effects" })), "music", "not off");
+  assert.equal(soundProfileFor(brief("x", { type: "tutorial", notes: "silent, no music" })), "off");
+  assert.equal(soundProfileFor(brief("x", { type: "tutorial", notes: "no sound at all" })), "off");
+  const r = reviewRubric(b, { skills: ["motion-film"], request: "Music only, no added sound effects." });
+  assert.equal(r.sound, "music");
+  assert.equal(r.levels.sound === "na", false, "the music is still judged");
+  assert.ok(!r.hardKinds.includes("sound"));
+  assert.match(soundProfileText("music"), /music only .*never is/);
 });
