@@ -143,6 +143,15 @@ test("the keynote looks like AI is editing: a cursor only where a person acts, t
   assert.doesNotMatch(k, /never finished/);
 });
 
+test("the keynote's cursor leaves after Export on its own motion and is back only at frame 0, where it began (T3b parked it through the render, lockup and close)", () => {
+  const k = BUILTIN_TEMPLATES[0]!.body;
+  assert.match(k, /After its last human act \(the Export click\) the cursor leaves the frame on its own motion, gliding off an edge or fading itself out \(never a fade of the scene\)/);
+  assert.match(k, /stays gone through the render, the logo and the close; it comes back only if the loop needs it on frame 0, at the same spot as on the first frame/);
+  assert.match(k, /Once Export is pressed the cursor glides off the frame \(or fades itself out\) and isn't seen through the render, the logo and the close/);
+  assert.match(k, /between send and Export, and after the Export click, it is gone, not parked by the button or in a corner/);
+  assert.doesNotMatch(k, /the cursor where it began\)/);
+});
+
 test("unknown placeholders stay as written; \\{{ is a literal; spaces inside braces are fine", () => {
   const { text, missing } = fillTemplate("{{ project }} {{nope}} \\{{project}} {{Project}}", { project: "P" });
   assert.equal(text, "P {{nope}} {{project}} {{Project}}");
