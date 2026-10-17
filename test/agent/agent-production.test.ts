@@ -608,3 +608,30 @@ test("U19: beat_grid gives the music's beats, downbeats and snaps in timeline fr
     await s.stop();
   }
 });
+
+test("round 2's A2: nobody can answer, so the storyboard approves itself; a built turn without review_submit is reminded once and goes on", { skip, timeout: 120000 }, async () => {
+  const s = await setup("unattended");
+  try {
+    const built = [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }, { tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 1", ops: [{ op: "insert_item", track: "text", item: TITLE }] } }, { tool: "project_read" }, { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Scene 2", ops: [{ op: "insert_item", track: "text", item: { ...TITLE, id: "title-2", start: 60 } }] } }];
+    const id = await s.start("Make a launch film. I can't answer questions, decide yourself.", built);
+    // The reminder is a message of its own to the same claude: the fake plays the next turn for it.
+    writeFileSync(join(s.base, "plan.json"), JSON.stringify([built, [{ text: "Running the critic loop now." }]]));
+    const t = await s.done(id);
+    assert.equal(t.status, "done", t.error);
+    const answer = jsonOf(s.results()[0]!.result);
+    assert.equal(answer.approved, true);
+    assert.equal(answer.by, "you");
+    assert.match(answer.message, /review_submit before you end/);
+    assert.equal(t.items.find((i: any) => i.kind === "card").card.outcome, "self");
+    assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).approvedBy, "agent");
+    const prompts = s.prompts();
+    assert.equal(prompts.length, 2, "the message, then the reminder");
+    assert.match(prompts[1]!.prompt, /Uncut's critic hasn't reviewed it; no review_submit ran[\s\S]*review_submit/);
+    assert.match(t.items.filter((i: any) => i.kind === "text").map((i: any) => i.text).join(" "), /Running the critic loop now/);
+    // The next message's plan says who approved it.
+    await s.ask("go on", [{ text: "ok" }]);
+    assert.match(s.prompts().at(-1)!.prompt, /Storyboard \(approved by you: the user couldn't answer\)/);
+  } finally {
+    await s.stop();
+  }
+});

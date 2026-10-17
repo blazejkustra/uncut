@@ -4,6 +4,7 @@ import { readdirSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentCard, AgentPlan, AgentAnswer, Storyboard, Brief, BrandKit, BrandSkill } from "@uncut/contracts";
+import { REVIEW_SCORES } from "@uncut/contracts";
 import { CHECK_IDS, fontRule, GRAPHIC_SRC, LAYOUT_HARD, LAYOUT_RULES, projectChecks, soundHard, soundProfileText, soundSheet, type Project, layout, motionBlurDefault, projectMotionBlur } from "@uncut/core";
 import * as Effect from "effect/Effect";
 import { CELL_WIDTH, clock, sheetFrames, sheetLayout } from "../agentFootage.ts";
@@ -31,11 +32,18 @@ import type { GenerateCtx } from "./generate.ts";
  * This run's facts for the critic: a film that shows the app making itself may only show true
  * numbers and statuses (the storyboard's beats, the review rounds so far and what each found).
  */
-export function runFacts(beats: number | undefined, reviews: ReadonlyArray<{ readonly round: number; readonly blockers?: ReadonlyArray<unknown> }>): string {
-  const rounds = reviews.map((x) => `round ${x.round}: ${x.blockers?.length ? `${x.blockers.length} blocker${x.blockers.length === 1 ? "" : "s"}, not passed` : "no blockers"}`);
+export function runFacts(beats: number | undefined, reviews: ReadonlyArray<{ readonly round: number; readonly blockers?: ReadonlyArray<unknown>; readonly passed?: boolean; readonly scores?: Readonly<Partial<Record<string, number>>> }>): string {
+  // Round 2's A1: one round accepted an in-film card showing round 1's scores and the next flagged
+  // it; with every round's result and exact scores here the check is the same every round.
+  const rounds = reviews.map((x) => {
+    const n = x.blockers?.length ?? 0;
+    const result = x.passed === true ? "passed" : x.passed === false || n ? "not passed" : "";
+    const scores = REVIEW_SCORES.filter((k) => typeof x.scores?.[k] === "number").map((k) => `${k} ${x.scores![k]}`);
+    return `round ${x.round}: ${[result, n ? `${n} blocker${n === 1 ? "" : "s"}` : "no blockers", scores.length ? `scores ${scores.join(", ")}` : ""].filter(Boolean).join(", ")}`;
+  });
   // A2: "the storyboard has no beats" read as a fact when none was proposed yet (the film was built first).
   const board = beats ? `the storyboard has ${beats} beat${beats === 1 ? "" : "s"}` : "no storyboard has been proposed yet (so its beat count isn't known)";
-  return `This run's facts, for any number or status the film shows about its own making: ${board}; this is review ${reviews.length + 1}${rounds.length ? ` (before it: ${rounds.join("; ")})` : ", the first"}, and its own result isn't known while you judge it. A beat count, review result, round or timing on screen that states something these contradict is invented; when the brief scripted it, say "the brief asks for X, but this run shows Y" and give the true version.`;
+  return `This run's facts, for any number or status the film shows about its own making: ${board}; this is review ${reviews.length + 1}${rounds.length ? ` (before it: ${rounds.join("; ")})` : ", the first"}, and its own result isn't known while you judge it. A beat count, review result, score, round or timing on screen that states something these contradict is invented, and so is a round's scores shown without its result when it didn't pass (they read as a pass); when the brief scripted it, say "the brief asks for X, but this run shows Y" and give the true version.`;
 }
 
 /**
@@ -227,6 +235,15 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       }
       const write = (sb: Storyboard) => Effect.promise(() => writeStoryboard(v.dir, sb).catch((e: Error) => (console.error(`[uncut] couldn't save the storyboard: ${e.message}`), sb)));
       r.planned = true;
+      // Round 2's A2: a prompt that says nobody can answer ("decide yourself") approves its own
+      // storyboard, shown as such on the card, rather than skipping it (and the critic with it).
+      if (args.approve === "self") {
+        r.proposing = false;
+        const sb = yield* write({ summary, beats, status: "approved", approvedBy: "agent" });
+        yield* refreshPlan(r, v);
+        addCard(r, { type: "storyboard", storyboard: sb, outcome: "self" }, summary || "Storyboard");
+        return textResult({ ...stillNote, approved: true, by: "you", message: "Approved by you (the user said they can't answer); say so in your reply. Build it scene by scene, then run the critic loop as always: review_submit before you end (the critic never needs the user)." });
+      }
       if (r.skipStoryboard) {
         r.proposing = false;
         const sb = yield* write({ summary, beats, status: "approved", approvedBy: "setting" });
@@ -496,7 +513,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...beatWordLines(sb?.beats),
         ...(rehearsal && !rehearsal.failure && rehearsal.total ? [rehearsalLine(rehearsal)] : []),
         // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
-        ...(intent.oneTake ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
+        ...(intent.oneTake || r.owner.plan.reviews.length ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
       ];
       const round = r.reviewRounds + 1;
       // The review's number across the project (the card's "round n"); the limit counts this turn's.

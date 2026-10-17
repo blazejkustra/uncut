@@ -177,6 +177,8 @@ export interface Running {
   readonly limits: TurnLimits;
   // D189: review rounds in this turn.
   reviewRounds: number;
+  // Round 2's A2: the turn was reminded once to run the critic before it ends (agentPlan reviewNudge).
+  nudged?: boolean;
   // D196: frames of the edit the agent rendered in this turn, by revision (render_frames, contact_sheet): a fix claim needs its moment rendered at the current revision.
   rendered: Array<{ stamp: string; frames: ReadonlyArray<number> }>;
   // D196: graphic files written in this turn (a graphic's change doesn't move the revision).

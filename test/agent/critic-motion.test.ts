@@ -352,7 +352,11 @@ test("D297: the drop's strip and fact, UI-first intent, the canvas around the pi
   const lines = flatLines([{ label: "beat 1", at: 0, flat: 0.5, canvas: 0.3, level: 241 }], fps, false).join("\n");
   assert.match(lines, /beat 1 30 % at grey 241/);
   // The run's facts.
-  assert.match(runFacts(12, [{ round: 1, blockers: [1, 2] }, { round: 2, blockers: [] }]), /12 beats; this is review 3 \(before it: round 1: 2 blockers, not passed; round 2: no blockers\)/);
+  assert.match(runFacts(12, [{ round: 1, blockers: [1, 2] }, { round: 2, blockers: [] }]), /12 beats; this is review 3 \(before it: round 1: not passed, 2 blockers; round 2: no blockers\)/);
+  // Round 2's A1: the exact scores and result of each round, so an in-film score card is checked the same way every round.
+  const facts = runFacts(8, [{ round: 1, passed: false, blockers: [1, 2, 3], scores: { hook: 7, readability: 8, motion: 5, variety: 7, brand: 8 } }, { round: 2, passed: true, blockers: [], scores: { hook: 8, readability: 8, motion: 8, variety: 8, brand: 9 } }]);
+  assert.match(facts, /round 1: not passed, 3 blockers, scores hook 7, readability 8, motion 5, variety 7, brand 8; round 2: passed, no blockers, scores hook 8/);
+  assert.match(facts, /scores shown without its result when it didn't pass/);
   assert.match(runFacts(undefined, []), /no storyboard has been proposed yet .*; this is review 1, the first/);
   assert.match(runFacts(8, []), /the brief asks for X, but this run shows Y/);
   assert.match(CRITIC_SYSTEM, /one hero element at a time on a calm canvas[\s\S]*this run's facts/);
