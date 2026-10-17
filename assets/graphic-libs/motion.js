@@ -21,7 +21,11 @@
                                                          // the mask has room for ascenders and descenders, the exit is quick (spring.snap)
      uncutMotion.iris(open, { x, y, r, blades: 6, turn }) // blade polygons [[x, y], ...]: open 1 = no blades in the circle, 0 = closed
      uncutMotion.squeeze(xs, widths, anchor, f)           // [{ x, scale }]: letters pulled toward anchor by f (1 = as set, 0 = in the anchor), widths follow
-     uncutMotion.cursor(t, [{ at, x, y, click }], { spring })  // { x, y, scale, down }: a drawn cursor's path with real presses
+     uncutMotion.cursor(t, [{ at, x, y, click }], { spring })  // { x, y, scale, down }: a drawn cursor's path (put clicks on click)
+     uncutMotion.click(t, { from: [x, y], x, y, fire, travel: 0.35 }) // { x, y, scale, press, button, fire, ... }: one click as
+                                                         // measured: glide in, rest 0.1 s, press (cursor scale 0.85, button
+                                                         // scale 0.95) and release; key the change at fire (0.03 s into the
+                                                         // press), never on the arrival; a list chains clicks
      uncutMotion.camera(t, [{ at, x, y, zoom }], spring, o) // { x, y, zoom }: the world point at the frame's centre and its zoom;
                                                          // zoom rides the spring in log space (an even push, no lurch); a key
                                                          // missing x, y or zoom keeps the previous key's;
@@ -302,9 +306,67 @@
       var c = ks[i].click === true ? ks[i].at : ks[i].click;
       var hold = ks[i].hold || 0.12;
       if (t >= c && t < c + hold) down = true;
-      scale -= 0.12 * (spring(t - c, "spring.snap") - spring(t - c - hold, "spring.snap"));
+      scale -= 0.15 * (spring(t - c, "spring.snap") - spring(t - c - hold, "spring.snap"));
     }
     return { x: x, y: y, scale: scale, down: down };
+  }
+  // A believable click, timed on reference films at 60 fps: the cursor glides in and decelerates
+  // (travel), lies still (rest 0.1 s), presses (cursor to 0.85 in 0.09 s, the button to 0.95), holds
+  // 0.02 s and releases in 0.13 s. What the click causes starts at fire, 0.03 s into the press, never
+  // on the arrival. Give fire (the moment the change starts) and the glide is scheduled back from it,
+  // or at (the moment the glide starts). A list of clicks chains them, each from the last one's target.
+  function click(t, o) {
+    if (Array.isArray(o)) {
+      var prev = null;
+      var cur = null;
+      for (var i = 0; i < o.length; i++) {
+        var spec = {};
+        for (var k in o[i]) spec[k] = o[i][k];
+        if (!spec.from && prev) spec.from = [prev.x, prev.y];
+        var c = click(t, spec);
+        if (!cur || t >= c.start) cur = c;
+        prev = spec;
+      }
+      return cur;
+    }
+    var travel = o.travel == null ? 0.35 : o.travel;
+    var rest = o.rest == null ? 0.1 : o.rest;
+    var lead = 0.03, down = 0.09, hold = 0.02, up = 0.13;
+    var start = o.fire != null ? o.fire - lead - rest - travel : o.at || 0;
+    var arrive = start + travel;
+    var press = arrive + rest;
+    var fire = press + lead;
+    var release = press + down + hold;
+    var end = release + up;
+    var from = o.from || [o.x, o.y];
+    // Smooth start, long ease-out landing: most of the distance early, the last pixels slow.
+    var p = clamp((t - start) / Math.max(travel, 1e-6), 0, 1);
+    var e = easeOut(p * p * (3 - 2 * p) * 0.5 + p * 0.5);
+    // A slight arc, as a hand moves: off the straight line by bend x the distance at mid-travel.
+    var dx = o.x - from[0];
+    var dy = o.y - from[1];
+    var bow = (o.bend == null ? 0.08 : o.bend) * Math.sin(Math.PI * e);
+    var x = from[0] + dx * e - dy * bow;
+    var y = from[1] + dy * e + dx * bow;
+    var pr = 0;
+    if (t >= press && t < press + down) pr = easeInOut((t - press) / down);
+    else if (t >= press + down && t < release) pr = 1;
+    else if (t >= release && t < end) pr = 1 - easeInOut((t - release) / up);
+    return {
+      x: x,
+      y: y,
+      scale: 1 - 0.15 * pr,
+      press: pr,
+      button: 1 - 0.05 * pr,
+      down: t >= press && t < release,
+      fired: t >= fire,
+      start: start,
+      arrive: arrive,
+      pressAt: press,
+      fire: fire,
+      release: release,
+      end: end,
+    };
   }
   // Screen-studio camera: (x, y) is the world point at the frame's centre. Missing fields carry
   // over from the previous key; zoom springs in log space, so a 1x to 3x push moves evenly.
@@ -573,6 +635,7 @@
     iris: iris,
     squeeze: squeeze,
     cursor: cursor,
+    click: click,
     camera: camera,
     frameRect: frameRect,
     apply: apply,
