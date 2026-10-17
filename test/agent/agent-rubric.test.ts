@@ -319,11 +319,12 @@ test("on the server: the brief suggests and turns nothing on, use only after the
 });
 
 // T2, A2r8: the user wrote "The song only, no sound effects unless asked" / "Music only, no added
-// sound effects", but the motion film's ui profile (one soft effect per press) went to the critic,
-// which scored the silence down and asked for clicks. The user's words set the profile.
-test("music only in the request or the brief is the music profile, over the motion film's ui; no sound effects isn't silence", () => {
+// sound effects" in the request, which the profile never read (only the brief), and the critic
+// scored the silence down and asked for clicks. The user's words set the profile, over any default.
+test("music only in the request or the brief is the music profile, over the skills' and the type's defaults; no sound effects isn't silence", () => {
   const b = brief("A 28 s launch film", { type: "launch-promo" });
-  assert.equal(soundProfileFor(b, ["motion-film"]), "ui");
+  assert.notEqual(soundProfileFor(b, ["motion-film"]), "music");
+  assert.equal(soundProfileFor(b, ["sound-design"], "Music only, no added sound effects."), "music");
   assert.equal(soundProfileFor(b, ["motion-film"], "Cut the drone clips to the song. Music only, no added sound effects."), "music");
   assert.equal(soundProfileFor(b, ["motion-film"], "- The song only, no sound effects unless asked, mastered around -14 LUFS."), "music");
   assert.equal(soundProfileFor(brief("x", { type: "launch-promo", notes: "no sound effects" })), "music", "not off");
