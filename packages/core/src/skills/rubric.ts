@@ -110,11 +110,25 @@ export const skillIdOf = (id: string) => (id.startsWith("builtin-") ? id.slice("
 /** Skill ids as they are now, without repeats, in order. */
 export const skillIdsOf = (ids: ReadonlyArray<string>) => [...new Set(ids.map(skillIdOf))];
 
-/** The sound profile for a brief and the project's skills: its words first, then the Sound design skill, then the type. */
-export function soundProfileFor(brief: RubricBrief | undefined, skills: ReadonlyArray<string> = []): SoundProfile {
+/**
+ * The user asking for the music alone: "music only", "the song only", "only the music", "no (added)
+ * sound effects", "no sfx" (T2's "The song only, no sound effects unless asked", A2r8's "Music only,
+ * no added sound effects").
+ */
+const MUSIC_ONLY = /\b(music|song|track|soundtrack) only\b|\bonly (the |a |one )?(music|song|track|soundtrack)\b|\bno (added |extra |other )?(sound ?effects?|sfx|sound fx|foley|ui sounds?|click sounds?|clicks)\b|\bwithout (any )?(sound ?effects?|sfx)\b/i;
+
+/**
+ * The sound profile for a brief and the project's skills: the user's own words first (the request,
+ * then the brief's), then the Sound design skill, then the type. Music only wins over the motion
+ * film's ui profile: a skill default never asks for effects the user ruled out (T2, A2r8's critics
+ * scored the silence down and asked for clicks).
+ */
+export function soundProfileFor(brief: RubricBrief | undefined, skills: ReadonlyArray<string> = [], request?: string): SoundProfile {
   skills = skillIdsOf(skills);
-  const w = words(brief);
-  if (/\bno (music|sound|audio)\b|\bsilent\b|\bmuted\b/i.test(w)) return "off";
+  const w = [request ?? "", words(brief)].filter(Boolean).join("\n");
+  // "no sound effects" is music only, not silence: the music-only words first, and "no sound" only alone.
+  if (MUSIC_ONLY.test(w) && !/\bno music\b|\bsilent\b|\bmuted\b/i.test(w)) return "music";
+  if (/\bno (music|audio)\b|\bno sound\b(?! ?(effects?|fx|design))|\bsilent\b|\bmuted\b/i.test(w)) return "off";
   if (/\bsubtle sound|quiet sound|minimal sound|few sound effects|sound,? subtle/i.test(w)) return "strict";
   if (/\b(dense|loud|lots of|heavy) (sound|sfx|effects)|meme sounds|sound ?effects? everywhere/i.test(w)) return "loose";
   if (skills.includes("sound-design")) return "strict";
@@ -139,9 +153,9 @@ export interface Rubric {
  * sound when the sound profile is strict. Motion film (D292) makes the motion required too.
  * Without a type: everything required and every kind a blocker, as before.
  */
-export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skills?: ReadonlyArray<string>; readonly hasKit?: boolean } = {}): Rubric {
+export function reviewRubric(brief: RubricBrief | undefined, o: { readonly skills?: ReadonlyArray<string>; readonly hasKit?: boolean; readonly request?: string } = {}): Rubric {
   const skills = skillIdsOf(o.skills ?? []);
-  const sound = soundProfileFor(brief, skills);
+  const sound = soundProfileFor(brief, skills, o.request);
   const type = isVideoType(brief?.type) ? brief.type : undefined;
   if (!type) {
     const levels = Object.fromEntries(RUBRIC_CATEGORIES.map((k) => [k, k === "sound" && sound === "off" ? N : R])) as Record<RubricCategory, RubricLevel>;

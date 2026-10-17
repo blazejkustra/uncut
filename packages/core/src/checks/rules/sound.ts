@@ -89,7 +89,19 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
       if (ctx.sound === "off") return out;
       const lim = SOUND_LIMITS[ctx.sound];
       const fps = ctx.fps;
-      const sfx = sfxItems(ctx);
+      const placed = sfxItems(ctx);
+      // The music-only profile: the user asked for no effects, so one is a finding of its own and
+      // the other effect rules have nothing to judge.
+      const sfx = ctx.sound === "music" ? [] : placed;
+      if (ctx.sound === "music" && placed.length) {
+        out.push({
+          key: `sound:music-only:${placed[0]!.start}`,
+          message: `The user asked for the music only, but ${placed.length} sound effect${placed.length === 1 ? " is" : "s are"} on the timeline (${placed.slice(0, 4).map((s) => `${s.label} at ${secs(s.start, fps)}`).join(", ")}${placed.length > 4 ? ", …" : ""}).`,
+          itemIds: placed.map((s) => s.item.id),
+          frame: placed[0]!.start,
+          hint: "Delete them; let the cuts and moves land on the music's beats instead.",
+        });
+      }
       const music = musicItems(ctx);
       const events = visualEvents(ctx);
       const length = Math.max(1, ctx.end);

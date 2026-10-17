@@ -147,7 +147,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           return undefined;
         }
       });
-      const rubric = yield* rubricOf(v);
+      const rubric = yield* rubricOf(v, r);
       const skillsOut = skills
         ? {
             type: saved.b.type ?? "none (judged as a short product video)",
@@ -161,12 +161,16 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       return textResult({ saved: "brief.json", ...skillsOut, next: sb?.status === "approved" ? "The storyboard is approved: if the brief changed what it shows, propose it again with storyboard_propose." : "Now propose the storyboard with storyboard_propose; build once the user approves it." });
     });
 
-  /** D217: the critic's rubric for the open project: its brief, its active skills and whether it has a kit. */
-  const rubricOf = (v: ProjectView) =>
+  /**
+   * D217: the critic's rubric for the open project: its brief, its active skills, whether it has a
+   * kit, and the user's own words (a "music only" there sets the sound profile over a skill's default).
+   */
+  const rubricOf = (v: ProjectView, r?: Running) =>
     Effect.promise(async () => {
       const plan = await readPlan(v.dir).catch(() => ({ reviews: [] }) as AgentPlan);
       const active = await readBrand(brandDirs(v)).then((b) => b.active).catch(() => ({ kit: null, skills: [] as ReadonlyArray<string> }));
-      return reviewRubric(plan.brief, { skills: active.skills, hasKit: !!active.kit });
+      const request = r ? userRequest(r.owner.turns.map((t) => t.prompt), r.turn.prompt) : undefined;
+      return reviewRubric(plan.brief, { skills: active.skills, hasKit: !!active.kit, ...(request ? { request } : {}) });
     });
 
   /** storyboard_propose (D188): saved as proposed, then a card the user approves (maybe editing beats) or sends back. */
@@ -529,7 +533,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const fontCheck = yield* fontsRule(v);
       // D217: the rubric (the brief's type, the active skills, a kit) sets the sound profile; density
       // and level fail a round only under the strict one. Findings the user marked Intended stay out.
-      const rubric = yield* rubricOf(v);
+      const rubric = yield* rubricOf(v, r);
       const intended = r.owner.plan.intended ?? [];
       const checks: Array<CriticFinding> = projectChecks(project, { rules: [...LAYOUT_RULES, fontCheck], disabled: CHECK_IDS.filter((id) => !keep.has(id)), sound: rubric.sound })
         .map((c) => ({ rule: c.id, key: c.key, message: c.message, ...(c.frame !== undefined ? { frame: c.frame } : {}), ...(c.range ? { range: c.range } : {}), hard: LAYOUT_HARD.has(c.id) || FONT_ERRORS.has(c.id) || (c.id === "sound" && soundHard(c.key, rubric.sound)) }));

@@ -36,10 +36,13 @@ export const FAST_CUT_S = 2;
  * findings; loose: a meme, gaming, social or music edit that may want dense, loud effects (much looser
  * numbers, still findings; no click or meme notes); ui (D297): a motion film, one soft effect per real
  * cursor press, drag or morph, on every beat if the picture changes on every beat, the same click
- * as often as it's pressed, under the music, never a blocker; off: no sound-effect limits at all.
+ * as often as it's pressed, under the music, never a blocker; music: the user asked for the music
+ * only (T2, A2r8: "Music only, no added sound effects"), so the sound is the music, judged on its
+ * sync with the picture, and an added effect is a finding, a silent press never one; off: no
+ * sound-effect limits at all.
  */
-export type SoundProfile = "strict" | "standard" | "loose" | "ui" | "off";
-export const SOUND_PROFILES: ReadonlyArray<SoundProfile> = ["strict", "standard", "loose", "ui", "off"];
+export type SoundProfile = "strict" | "standard" | "loose" | "ui" | "music" | "off";
+export const SOUND_PROFILES: ReadonlyArray<SoundProfile> = ["strict", "standard", "loose", "ui", "music", "off"];
 export interface SoundLimits {
   /** Effects starting in any 10 s. */
   readonly per10s: number;
@@ -57,12 +60,14 @@ export const SOUND_LIMITS: Readonly<Record<Exclude<SoundProfile, "off">, SoundLi
   standard: { per10s: SFX_PER_10S, repeatMax: SFX_REPEAT_MAX, hitsPer15s: SFX_HITS_PER_15S, underDb: SFX_UNDER_MUSIC_DB, taste: true },
   loose: { per10s: 12, repeatMax: 8, hitsPer15s: 4, underDb: -3, taste: false },
   ui: { per10s: 24, repeatMax: 1000, hitsPer15s: 2, underDb: SFX_UNDER_MUSIC_DB, taste: true },
+  music: { per10s: 0, repeatMax: SFX_REPEAT_MAX, hitsPer15s: 0, underDb: SFX_UNDER_MUSIC_DB, taste: true },
 };
 /** The profile in a few words (the Brief card, project_check, the critic's sheet). */
 export function soundProfileText(p: SoundProfile): string {
   if (p === "off") return "off: no limits on sound effects";
   const l = SOUND_LIMITS[p];
   const level = l.underDb > 0 ? `${l.underDb} dB under the music` : `up to ${-l.underDb} dB over the music`;
+  if (p === "music") return "music only (the user's request): no sound effects; the sound is the music, judged on its tempo fitting the cutting and the cuts and big moments landing on its beats; an added effect is a finding, a press or a move without one never is";
   if (p === "ui") return `ui: one soft effect per real cursor press, drag or morph (at most ${l.per10s} in any 10 s), ${level}, no meme sounds; a finding, never a blocker`;
   return `${p}: at most ${l.per10s} effects in any 10 s, ${level}${p === "strict" ? "; too many or too loud fails a review" : "; too many or too loud is a finding"}`;
 }
@@ -232,7 +237,7 @@ export function soundSheet(project: Project, options: { readonly speechMedia?: I
   }
   const length = Math.max(1, ctx.end);
   if (!music.length && !sfx.length) lines.push("No music and no sound effects.");
-  else lines.push(`${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; ${ctx.sound === "off" ? "no limit for this video" : `the bar is at most ${SOUND_LIMITS[ctx.sound].per10s}`}), ${new Set(sfx.map((s) => s.sound)).size} different`);
+  else lines.push(`${sfx.length} sound effect${sfx.length === 1 ? "" : "s"} in ${secs(length, fps)} (${(Math.round((sfx.length / (length / fps)) * 100) / 10).toFixed(1)} per 10 s; ${ctx.sound === "off" ? "no limit for this video" : ctx.sound === "music" ? "the user asked for the music only, so none are wanted" : `the bar is at most ${SOUND_LIMITS[ctx.sound].per10s}`}), ${new Set(sfx.map((s) => s.sound)).size} different`);
   lines.push(`Sound profile ${soundProfileText(ctx.sound)}.`);
   return lines;
 }
