@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { EMPTY_CONTENT, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, OPEN_MAX_S, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
+import { EMPTY_CONTENT, THIN_FLAT, THIN_TALL, THIN_WIDTH, thinMeasure, thinRuns, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, OPEN_MAX_S, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -827,4 +827,58 @@ test("a quick swap (a cut spread over a few frames) is a jump with its span; a f
   const sampled = frames.filter((x) => x.frame % 12 === 5);
   const added = await refineJumps({ frames: sampled, fps, duration: n, render: async (fs) => fs.map((f) => ({ frame: f, gray: at.get(f)! })) });
   assert.deepEqual(motionScan([...sampled, ...added], fps).jumps.map((j) => [j.frame, j.span]), [[203, 4]]);
+});
+
+// T1, T1b: after Send, the agent panel (grey 17 on the canvas's 10) with one bubble and a line or two
+// of desktop-size steps (1.5 % of the height) passed the empty rule (the panel is content) and every
+// round. A low-information frame is mostly one flat colour family with only marks that small; a big
+// pill or headline on a calm canvas, footage, and a frame with no mark at all (the empty rule's) aren't.
+test("low-information frames: a dark panel with small lines blocks a motion film from 0.5 s; one big element on a calm canvas doesn't", async () => {
+  const w = THIN_WIDTH, h = 250, fps = 60;
+  const field = (bg: number) => {
+    const g = new Uint8Array(w * h).fill(bg);
+    for (let y = 0; y < h; y++) for (let x = 40; x < w; x++) g[y * w + x] = bg + 7; // the panel, one colour family with the canvas
+    return g;
+  };
+  // A text line `px` tall at (x, y): letters 2 px wide, 1 px apart (they join into a word).
+  const line = (g: Uint8Array, x: number, y: number, len: number, px: number, v: number) => {
+    for (let k = 0; k < len; k += 3) for (let yy = y; yy < y + px; yy++) for (let xx = x + k; xx < x + k + 2; xx++) g[yy * w + xx] = v;
+  };
+  const panel = (px: number) => {
+    const g = field(10);
+    for (let y = 30; y < 44; y++) for (let x = 90; x < 190; x++) g[y * w + x] = 28; // the bubble
+    line(g, 96, 35, 80, px, 220);
+    line(g, 50, 60, 60, px, 150);
+    for (let y = 150; y < 158; y++) for (let x = 120; x < 125; x++) g[y * w + x] = 240; // the cursor
+    return g;
+  };
+  const small = thinMeasure(panel(3), w, h); // 1.2 % of the height
+  assert.ok(small.thin && small.flat >= THIN_FLAT && small.tall < THIN_TALL, JSON.stringify(small));
+  assert.ok(!emptyMeasure(panel(3), w, h).empty, "the empty rule passes it (the panel is content)");
+  assert.ok(!thinMeasure(panel(9), w, h).thin, "lines 3.6 % tall read: not low-information");
+  const pill = new Uint8Array(w * h).fill(237);
+  for (let y = 110; y < 140; y++) for (let x = 50; x < 150; x++) pill[y * w + x] = 15;
+  assert.ok(!thinMeasure(pill, w, h).thin, "one big pill on a calm canvas");
+  assert.ok(!thinMeasure(new Uint8Array(w * h).fill(10), w, h).thin, "no mark at all is the empty rule's, not this");
+  const footage = Uint8Array.from({ length: w * h }, (_, i) => (i * 37) % 251);
+  assert.ok(!thinMeasure(footage, w, h).thin, "footage");
+  // 0.6 s of the small panel between big pills: a blocker in a motion film; 0.3 s: a finding.
+  const run = (frames: number) => {
+    const fr = Array.from({ length: 120 }, (_, f) => {
+      const g = f >= 30 && f < 30 + frames ? panel(3) : pill;
+      return { frame: f, gray: g.subarray(0, 64), info: thinMeasure(g, w, h) };
+    });
+    const scan = motionScan(fr, fps);
+    return { scan, found: motionFindings(scan, fps, { oneTake: true, hard: true }).filter((x) => x.key?.startsWith("motion:thin:")) };
+  };
+  const long = run(36);
+  assert.deepEqual(thinRuns(long.scan, fps), [{ start: 30, end: 65 }]);
+  assert.equal(long.found.length, 1);
+  assert.ok(long.found[0]!.hard, "0.6 s blocks a motion film");
+  assert.match(long.found[0]!.message, /low-information/);
+  assert.match(motionLines(long.scan, fps, { consecutive: true }).join("\n"), /Low-information frames .* f 30 to f 65/);
+  const short = run(18);
+  assert.equal(short.found.length, 1);
+  assert.ok(!short.found[0]!.hard, "0.3 s is a finding");
+  assert.deepEqual(motionFindings(long.scan, fps, { hard: true }).filter((x) => x.key?.startsWith("motion:thin:")), [], "not one take: no finding");
 });
