@@ -73,24 +73,37 @@ export function typedMatches(typed: string, request: string): boolean {
 
 const LIT = String.raw`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\x60(?:[^\x60\\$]|\\.|\$(?!\{))*\x60`;
 const IDENT = String.raw`[A-Za-z_$][\w$]*`;
-const unquote = (lit: string) => lit.slice(1, -1).replace(/\\n/g, "\n").replace(/\\(.)/g, "$1");
+/** A literal's text as the page shows it: JS escapes (\\n, \\u2019, \\x27) and HTML entities and line-break tags read, so typography isn't a mismatch. */
+const ENTITY: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "\u2019", lsquo: "\u2018", rdquo: "\u201d", ldquo: "\u201c", hellip: "\u2026", mdash: "-", ndash: "-" };
+const unquote = (lit: string) =>
+  lit
+    .slice(1, -1)
+    .replace(/\\u\{([0-9a-f]+)\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi, (_, a, b, c) => String.fromCodePoint(parseInt(a ?? b ?? c, 16)))
+    .replace(/\\([nrt])/g, " ")
+    .replace(/\\(.)/g, "$1")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, d, h, n) => (d || h ? String.fromCodePoint(parseInt(d ?? h, d ? 10 : 16)) : (ENTITY[n.toLowerCase()] ?? m)));
+/** A literal or literals joined with + ("…for Uncut, " + "this app…"): its text; undefined when a + joins something else. */
+const LITS = String.raw`(?:${LIT})(?:\s*\+\s*(?:${LIT}))*(?!\s*\+)`;
+const unquoteAll = (lits: string) => [...lits.matchAll(new RegExp(LIT, "g"))].map((m) => unquote(m[0])).join("");
 
 /**
  * The text the graphics' composers show, as written in their source: an uncutUI composer piece's
  * or an editor's composer part's `text:` (a literal, or the const it names), else a string const
  * named like a prompt (PROMPT, typedPrompt) for a hand-built composer. `composer` says which kind
- * was found (only those count when there are any).
+ * was found (only those are quoted when there are any); `named` keeps the prompt-named consts beside
+ * composer texts (a hand-typed opening and a composer piece's follow-up), which may still match.
  */
-export function composerTexts(sources: Iterable<string>): { readonly texts: ReadonlyArray<string>; readonly composer: boolean } {
+export function composerTexts(sources: Iterable<string>): { readonly texts: ReadonlyArray<string>; readonly composer: boolean; readonly named?: ReadonlyArray<string> } {
   const fromComposer = new Set<string>();
   const named = new Set<string>();
   for (const src of sources) {
     const consts = new Map<string, string>();
-    for (const m of src.matchAll(new RegExp(String.raw`\b(?:const|let|var)\s+(${IDENT})\s*=\s*(${LIT})`, "g"))) consts.set(m[1]!, unquote(m[2]!));
-    const value = (v: string) => (/^["'\x60]/.test(v) ? unquote(v) : consts.get(v));
+    for (const m of src.matchAll(new RegExp(String.raw`\b(?:const|let|var)\s+(${IDENT})\s*=\s*(${LITS})`, "g"))) consts.set(m[1]!, unquoteAll(m[2]!));
+    const value = (v: string) => (/^["'\x60]/.test(v) ? unquoteAll(v) : consts.get(v));
     const at = [
-      new RegExp(String.raw`piece\s*:\s*["']composer["'][^}]*?\btext\s*:\s*(${LIT}|${IDENT})`, "g"),
-      new RegExp(String.raw`\bcomposer\s*:\s*\{[^}]*?\btext\s*:\s*(${LIT}|${IDENT})`, "g"),
+      new RegExp(String.raw`piece\s*:\s*["']composer["'][^}]*?\btext\s*:\s*(${LITS}|${IDENT})`, "g"),
+      new RegExp(String.raw`\bcomposer\s*:\s*\{[^}]*?\btext\s*:\s*(${LITS}|${IDENT})`, "g"),
     ];
     for (const re of at)
       for (const m of src.matchAll(re)) {
@@ -99,7 +112,7 @@ export function composerTexts(sources: Iterable<string>): { readonly texts: Read
       }
     for (const [name, v] of consts) if (/prompt|typed/i.test(name) && v.trim().length >= 12 && /\s/.test(v.trim())) named.add(v.trim());
   }
-  return fromComposer.size ? { texts: [...fromComposer], composer: true } : { texts: [...named], composer: false };
+  return fromComposer.size ? { texts: [...fromComposer], composer: true, ...(named.size ? { named: [...named] } : {}) } : { texts: [...named], composer: false };
 }
 
 /** The request as the fix quotes it: whole up to 160 characters, else its start to a word and an ellipsis. */
@@ -128,13 +141,13 @@ export function typedPromptCheck(prompts: ReadonlyArray<string | undefined>, sou
   const fix = `type the user's own words in the composer: "${words}"${words.endsWith("…") ? " (shortened with an ellipsis, or all of it)" : ""}, the same words in the sent message, never another prompt`;
   const head = `The request asks to show its own prompt being typed, so the words typed in the film must be the user's message (cut with an ellipsis if long, never replaced)`;
   if (!sources.length) return { facts: [`${head}; Uncut found no graphic source to measure it: read the typed words on the frames and compare them with <request>.`], findings: [] };
-  const { texts, composer } = composerTexts(sources);
+  const { texts, composer, named = [] } = composerTexts(sources);
   if (!texts.length) {
     const r = normText(ask);
     const found = sources.some((s) => normText(s.replace(/\\(.)/g, "$1")).includes(r.split(" ").slice(0, MIN_KEPT_WORDS).join(" ")));
     return { facts: [`${head}; Uncut found no composer text in the graphics' source${found ? " (the request's words are in it)" : " and not the request's words either"}: read the typed words on the frames and compare them with <request>.`], findings: [] };
   }
-  if (texts.some((t) => typedMatches(t, ask))) return { facts: [`${head}; measured in the graphics' source: the ${composer ? "composer" : "prompt"} text is the user's message.`], findings: [] };
+  if (texts.some((t) => typedMatches(t, ask)) || named.some((t) => typedMatches(t, ask))) return { facts: [`${head}; measured in the graphics' source: the ${composer ? "composer" : "prompt"} text is the user's message.`], findings: [] };
   const typed = texts.slice(0, 2).map((t) => `"${short(t)}"`).join(" and ");
   return {
     facts: [],
