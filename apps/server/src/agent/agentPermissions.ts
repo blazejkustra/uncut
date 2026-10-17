@@ -11,13 +11,13 @@ import { join, relative, sep } from "node:path";
 import { type Access, ACCESS_NAME } from "./permissions/access.ts";
 import { realPath, inside, shownPath, str, toolPath, owned } from "./permissions/paths.ts";
 import { SECRETISH, webAddressProblem } from "./permissions/web.ts";
-import { simpleCommand, destructive, readOnlyLine, pinnedToProject } from "./permissions/shell.ts";
+import { simpleCommand, destructive, notReadOnly, pinnedToProject } from "./permissions/shell.ts";
 import { CLAUDE_DIR } from "./permissions/settings.ts";
 export { ACCESS_NAME, permissionMode } from "./permissions/access.ts";
 export type { Access } from "./permissions/access.ts";
 export { absolute, inside, shownPath, realPath, owned, rootProblem, mentionedDirs, namedFolders, claudeConfigDirs } from "./permissions/paths.ts";
 export type { NamedFolder } from "./permissions/paths.ts";
-export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, allowlisted, pinnedToProject } from "./permissions/shell.ts";
+export { shellSegments, shellWords, destructive, simpleCommand, readOnlyLine, notReadOnly, allowlisted, pinnedToProject } from "./permissions/shell.ts";
 export { SECRETISH, webAddressProblem } from "./permissions/web.ts";
 export { SECRET_DIRS, SECRET_FILES, denyRules, appDataRules, appDataAskRules, ownFileRules, ownFileAskRules, autoAskRules, sessionSettings, LOOK_DISALLOWED } from "./permissions/settings.ts";
 
@@ -198,7 +198,11 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     // Issue A/B 2026-10-17: reads in the project and the sanctioned folders (the active kit, the
     // graphic libraries; not after the web outside Auto) and mkdir -p in the project, also a few
     // joined by ; or && after a cd into the project, run in Auto without a card; Ask first asks.
-    const reads = tool === "Bash" && readOnlyLine(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []), readable: toolOutput });
+    const notRead = tool === "Bash" ? notReadOnly(command, (p, base) => real(p, base), { project, sanctioned: webUsed ? [] : (ctx.sanctioned ?? []), readable: toolOutput }) : "the line";
+    const reads = notRead === undefined;
+    // Round 3: the refusals below name the piece that kept the line from being a plain read.
+    const PLAIN = "ls, cat, head, tail, stat or grep of files, piped into head, tail, grep, wc, sort, uniq or a jq path at most, joined by ; or && (cd allowed), no redirects";
+    const offending = notRead === "the line" ? "the line uses other shell syntax" : `\`${(notRead ?? "").slice(0, 200)}\` isn't one`;
     const grant = `Bash:${command.trim()}`;
     // It was judged from the project; claude's shell may sit in another folder (a cd into an added
     // folder stays between calls), so it runs from the project (review of 0039421).
@@ -210,9 +214,9 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     if (/(^|[\s"'=/~])\.claude(\/|[\s"';|&)]|$)/.test(command) || configNamed(command)) return claudeRefusal;
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
     // cookies) is refused, as claude's deny rules did before they became ask rules.
-    if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: "Not done: commands don't touch apps' data (~/Library/Application Support) except reading the active brand kit's files and Uncut's graphic libraries with ls, cat, head, tail or stat (piped into head, tail, grep, wc, sort, uniq or a jq path at most; no redirects). Use Read for those files, and Uncut's tools for the rest." };
+    if (namesAppData(command, ctx.dataDir)) return { kind: "deny", message: `Not done: commands don't touch apps' data (~/Library/Application Support) except plain reads of the active brand kit's files and Uncut's graphic libraries (${PLAIN}); ${offending}. Run the reads on their own, or use Read for those files, and Uncut's tools for the rest.` };
     // D214: in Auto, a command naming Uncut's own files that isn't a plain read is refused (it would fight the open project).
-    if (ctx.access === "auto" && NAMES_OWN.test(command)) return { kind: "deny", message: "Not done: commands don't change Uncut's own files (project.json, history.db, agent/, brand/active.json); reading them with cat, head or ls is fine. Change the project with timeline_edit and the other Uncut tools." };
+    if (ctx.access === "auto" && NAMES_OWN.test(command)) return { kind: "deny", message: `Not done: a command naming Uncut's own files (project.json, history.db, agent/, brand/active.json) runs only as a plain read (${PLAIN}); ${offending}. Run the read on its own or use Read; change the project with timeline_edit and the other Uncut tools.` };
     const parsed = simpleCommand(command);
     const hint = destructive(command, project, [], home);
     if ("complex" in parsed) return { kind: "ask", title: "Run a command", target, why: hint ? `It ${hint}.` : `It can't be checked: ${parsed.complex}.` };
