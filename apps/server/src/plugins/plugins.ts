@@ -31,6 +31,16 @@ import { type CallExtra, PluginHost } from "./runtime/host.ts";
 import { type FoundPlugin, type Discovery, messageOf } from "./discovery/manifest.ts";
 import { discoverPlugins } from "./discovery/discover.ts";
 import { isApproved, pluginInfos, contributesOf, contributesFor, skillsHash, pluginAsks } from "./discovery/infos.ts";
+
+/**
+ * For an ablation run: UNCUT_SKILLS_OFF="motion-film,sound-design" hides those skills from the whole
+ * app (the agent's skills list, skill_read, brief suggestions, the critic's checklists), as if not installed.
+ */
+export const withoutSkills = <S extends { readonly name: string }>(skills: ReadonlyArray<S>, off: string | undefined): ReadonlyArray<S> => {
+  const names = new Set((off ?? "").split(",").map((x) => x.trim()).filter(Boolean));
+  return names.size ? skills.filter((x) => !names.has(x.name)) : skills;
+};
+
 export { MANIFEST_FILE, DEFAULT_TIMEOUT_S, checkManifest } from "./discovery/manifest.ts";
 export type { PluginSource, ProcessSpec, FoundPlugin, BrokenPlugin, Discovery } from "./discovery/manifest.ts";
 export { MAX_LINE, PluginTimeout, PluginCancelled, DEFAULT_SDK_DIR, PluginProcess } from "./runtime/process.ts";
@@ -126,7 +136,7 @@ export const layer = Layer.effect(
     const keepSkills = Effect.map(settings.pluginApprovals, (approvals) => {
       // D248: the plugins that ship with Uncut first, so their skill names are theirs whatever the order of the folders.
       const allowed = discovery.plugins.filter((p) => isApproved(p, approvals[p.id]) && !installing.has(p.id));
-      skills = mergeSkills([...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => p.contributions));
+      skills = withoutSkills(mergeSkills([...allowed.filter((p) => p.source === "bundled"), ...allowed.filter((p) => p.source !== "bundled")].map((p) => p.contributions)), process.env.UNCUT_SKILLS_OFF);
     });
 
     const refresh = scanLock.withPermits(1)(

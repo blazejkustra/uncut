@@ -43,7 +43,8 @@ test("Uncut's own skills (the bundled uncut.skills plugin): names, a review chec
     const list = skillChecklist(s.instructions);
     assert.ok(list.length >= 4 && list.length <= 12, `${s.name}: ${list.length} checklist lines`);
     // D295, D296: the one-take film skill carries a whole recipe (two paths, scale, the beat map, stills); the rest stay short.
-    const cap = s.name === BUILTIN_IDS.film ? 5800 : 2600;
+    // A2 vs A2r5: motion-film opens with the user's direction coming first (it fills gaps only).
+    const cap = s.name === BUILTIN_IDS.film ? 6300 : 2600;
     assert.ok(s.instructions.length <= cap, `${s.name} is ${s.instructions.length} characters (at most ${cap})`);
     for (const head of ["Review checklist"]) assert.match(s.instructions, new RegExp(`\\n${head}\\n`), s.name);
     // On-screen copy rules apply to the recipes too (D207): commas or line breaks, never ·, • or *.
@@ -117,7 +118,7 @@ test("planContext (D232): the skills the project uses by name, no bodies and no 
   const gate = gateOf(plan, false);
   const used = [BUILTIN_IDS.launch, BUILTIN_IDS.sound].map((id) => ({ id, name: bundledSkill(id).title }));
   const text = planContext({ files: {}, skills: used, others: [] }, plan, gate);
-  assert.match(text, /Skills this project uses: Launch promo \(launch-promo\), Sound design \(sound-design\)\. Follow every rule in them \(skill_read gives one's instructions again\); the critic checks their review checklists\./);
+  assert.match(text, /Skills this project uses: Launch promo \(launch-promo\), Sound design \(sound-design\)\. Follow their rules where the user's own direction doesn't decide \(skill_read gives one's instructions again\); the critic checks their review checklists\./);
   assert.ok(!text.includes(bundledSkill(BUILTIN_IDS.launch).instructions.slice(0, 60)), "no bodies in every message");
   const none = planContext({ files: {}, skills: [], others: [] }, plan, gate);
   assert.ok(!/Skills this project uses|No skills are on/.test(none));
