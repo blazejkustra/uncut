@@ -186,7 +186,9 @@ test("reviewNext: a blocker of text cut at the frame edge names the safe inset a
 });
 
 test("the critic's prompt: near-empty frames are blank; a wide shot of the whole editor is a readability defect", () => {
-  assert.match(CRITIC_SYSTEM, /blank: a black or blank frame, or a nearly empty one \(bare canvas with at most a cursor or a speck\) for 0\.2 s or more/);
+  // The night review: 0.2 s blocked the reference 2.mp4's 0.27 s black bleed and A2's Send; A1's 0.42 s cursor-only beat still blocks.
+  assert.match(CRITIC_SYSTEM, /blank: a black or blank frame, or a nearly empty one \(bare canvas with at most a cursor or a speck\) for 0\.33 s or more/);
+  assert.match(CRITIC_SYSTEM, /A shorter one \(a black bleed or a cursor-only beat between shots, 0\.2 to 0\.33 s\) is a motion defect, not this blocker/);
   assert.match(CRITIC_SYSTEM, /fine only while it fills a fair share of the frame and the next shape is already growing/);
   assert.doesNotMatch(CRITIC_SYSTEM, /on its way to the next state is not blank/);
   assert.match(CRITIC_SYSTEM, /A wide shot of a whole app window .* is a readability defect with its time range .*not a blocker/);

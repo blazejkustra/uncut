@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { agreeingNotes, CRITIC_SYSTEM, criticReview, criticText, type CriticFinding, type CriticInput } from "../../apps/server/src/agent/agentCritic.ts";
-import { EMPTY_CONTENT, THIN_FLAT, THIN_TALL, THIN_WIDTH, thinMeasure, thinRuns, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, OPEN_MAX_S, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
+import { EMPTY_CONTENT, EMPTY_HARD_S, THIN_FLAT, THIN_TALL, THIN_WIDTH, thinMeasure, thinRuns, thinSize, scanRenderWidth, emptyMeasure, emptySize, emptyRuns, type ScanFrame, FAST_STEP, nearlyEmpty, OPEN_MAX_S, refineEmpty, JUMP_OVER, refineJumps, beatWordLines, beatWords, canvasShare, dropBeat, dropLine, FLAT_MAX, flatFindings, flatFraction, flatLines, budgetLine, frameDiff, grayFrames, MAX_STRIPS, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionRenderOrder, motionScan, SCAN_BUDGET, SCAN_WINDOW, scanPlan, scanSize, STRIP_CELL, stripLayout, stripPlan, blurPicks, BLUR_CELL } from "../../apps/server/src/agent/criticMotion.ts";
 import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
@@ -586,7 +586,8 @@ test("a rendered film with real cuts mid-beat: review_submit's sampling plus the
   }
 });
 
-// Rehearsal 4: nearly empty frames (A1 22.1-22.5 s cursor only, A2 4.2-4.4 s) block a motion film;
+// Rehearsal 4: nearly empty frames (A1 22.1-22.5 s cursor only) block a motion film from EMPTY_HARD_S
+// (the night review: A2's 4.2 s Send and the reference 2.mp4's 0.27 s black bleed are findings);
 // fast moves that the export's blur stacks into copies (A2 14.0 s) are a finding with the fix.
 test("nearly empty stretches are measured to the frame and block a motion film; very fast moves are findings", async () => {
   const fps = 60, w = 64, h = 80, n = 600;
@@ -611,9 +612,16 @@ test("nearly empty stretches are measured to the frame and block a motion film; 
   assert.deepEqual(emptyRuns(scan, fps), [{ start: 253, end: 266 }]);
   const found = motionFindings(scan, fps, { oneTake: true, hard: true });
   const empty = found.find((f) => f.key === "motion:empty:253")!;
-  assert.ok(empty.hard, "a blocker in a motion film");
+  // The night review: 0.23 s (the reference 2.mp4's black bleed is 0.27 s) is a finding, not a blocker.
+  assert.ok(!empty.hard, "under EMPTY_HARD_S: a finding even in a motion film");
   assert.match(empty.message, /f 253 to f 266 \(4\.22 s to 4\.45 s, 0\.23 s\)/);
-  assert.ok(!motionFindings(scan, fps, { oneTake: true }).find((f) => f.key === "motion:empty:253")!.hard, "a finding elsewhere");
+  // A1 22.1 s's cursor-only beat (0.42 s) still blocks a motion film; a finding elsewhere.
+  assert.ok(EMPTY_HARD_S > 0.27 && EMPTY_HARD_S < 0.38);
+  const longAt = (f: number) => ((f >= 253 && f <= 277) ? canvas(true) : hero(f));
+  const longScan = motionScan([...sampled.map((x) => ({ frame: x.frame, gray: longAt(x.frame) })), ...(await refineEmpty({ frames: sampled.map((x) => ({ frame: x.frame, gray: longAt(x.frame) })), fps, size: { w, h }, render: async (fs) => fs.map((f) => ({ frame: f, gray: longAt(f) })) }))], fps, { size: { w, h } });
+  assert.deepEqual(emptyRuns(longScan, fps), [{ start: 253, end: 277 }]);
+  assert.ok(motionFindings(longScan, fps, { oneTake: true, hard: true }).find((f) => f.key === "motion:empty:253")!.hard, "0.42 s blocks a motion film");
+  assert.ok(!motionFindings(longScan, fps, { oneTake: true }).find((f) => f.key === "motion:empty:253")!.hard, "a finding elsewhere");
   assert.deepEqual(motionFindings(scan, fps).filter((f) => /empty/.test(f.key ?? "")), [], "not one take: no finding");
   assert.match(motionLines(scan, fps, { consecutive: false }).join("\n"), /Nearly empty frames .* f 253 to f 266/);
   // Without the frame size there's no claim either way.
@@ -881,4 +889,40 @@ test("low-information frames: a dark panel with small lines blocks a motion film
   assert.equal(short.found.length, 1);
   assert.ok(!short.found[0]!.hard, "0.3 s is a finding");
   assert.deepEqual(motionFindings(long.scan, fps, { hard: true }).filter((x) => x.key?.startsWith("motion:thin:")), [], "not one take: no finding");
+});
+
+// The night review: thinSize was THIN_WIDTH wide whatever the canvas, so a 16:9 frame was 112 px tall
+// (a line's height in 0.9 % steps); now THIN_WIDTH is the short side and the frames are rendered that
+// big, THIN_TALL a share of the height and THIN_MARK_W of the short side on every canvas.
+test("low-information frames on 16:9 and 9:16 canvases: judged by the frame's share, like 4:5", () => {
+  assert.deepEqual(thinSize({ width: 1080, height: 1350 }), { w: THIN_WIDTH, h: 250 }, "4:5 as calibrated");
+  assert.deepEqual(thinSize({ width: 1440, height: 1440 }), { w: THIN_WIDTH, h: THIN_WIDTH });
+  assert.deepEqual(thinSize({ width: 1920, height: 1080 }), { w: 356, h: THIN_WIDTH });
+  assert.deepEqual(thinSize({ width: 1080, height: 1920 }), { w: THIN_WIDTH, h: 356 });
+  assert.equal(scanRenderWidth({ width: 1920, height: 1080 }), 356, "a landscape canvas renders its scan frames wider");
+  assert.equal(scanRenderWidth({ width: 1080, height: 1350 }), 200);
+  for (const canvas of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 1080, height: 1350 }]) {
+    const { w, h } = thinSize(canvas);
+    const name = `${canvas.width}x${canvas.height}`;
+    // A dark panel (one colour family with the canvas) holding lines `share` of the height tall.
+    const panel = (share: number) => {
+      const g = new Uint8Array(w * h).fill(10);
+      for (let y = 0; y < h; y++) for (let x = Math.round(w * 0.2); x < w; x++) g[y * w + x] = 17;
+      const px = Math.max(1, Math.round(share * h));
+      for (const [y0, x0, len] of [[0.15, 0.3, 0.45], [0.25, 0.25, 0.35]] as const)
+        for (let k = 0; k < len * w; k += 3) for (let y = Math.round(y0 * h); y < Math.round(y0 * h) + px; y++) for (let x = Math.round(x0 * w) + k; x < Math.round(x0 * w) + k + 2; x++) g[y * w + x] = 220;
+      return g;
+    };
+    const small = thinMeasure(panel(0.015), w, h);
+    assert.ok(small.thin && small.tall < THIN_TALL, `${name}: 1.5 % lines are low-information ${JSON.stringify(small)}`);
+    assert.ok(!thinMeasure(panel(0.04), w, h).thin, `${name}: 4 % lines read`);
+    const pill = new Uint8Array(w * h).fill(237);
+    for (let y = Math.round(h * 0.4); y < Math.round(h * 0.55); y++) for (let x = Math.round(w * 0.25); x < Math.round(w * 0.75); x++) pill[y * w + x] = 15;
+    assert.ok(!thinMeasure(pill, w, h).thin, `${name}: one big pill`);
+    // A cursor (a 12 x 20 px arrow on a 1080 px short side) is no mark, whichever side is short.
+    const cur = new Uint8Array(w * h).fill(10);
+    const cw = Math.max(1, Math.round((12 / 1080) * Math.min(w, h))), ch = Math.max(1, Math.round((20 / 1080) * Math.min(w, h)));
+    for (let y = 50; y < 50 + ch; y++) for (let x = 60; x < 60 + cw; x++) cur[y * w + x] = 240;
+    assert.ok(!thinMeasure(cur, w, h).thin, `${name}: a cursor alone is the empty rule's`);
+  }
 });

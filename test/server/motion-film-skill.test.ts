@@ -33,6 +33,9 @@ test("its instructions: direction first, honesty, measured defects as facts, the
   for (const head of ["The user's direction comes first", "Honesty", "Defects Uncut measures", "Toolkit", "Review checklist"]) assert.match(body, new RegExp(`^${head}`, "m"), head);
   assert.match(body, /a review reads "Reviewing" until one passes; no invented counts, scores/);
   for (const want of [/Hard cuts/, /quick swap/, /Single-frame pops/, /2 to 3 frame flashes/, /Near-empty or low-information frames/, /Text cut at the frame's edge/, /illegible at phone size \(360 px wide\)/, /facts about the render, not taste/]) assert.match(body, want);
+  // The blocking lengths the critic measures (EMPTY_HARD_S, THIN_HARD_S), not the old 0.2 s that blocked the references.
+  assert.match(body, /a cursor or a speck, for 0\.33 s; tiny text in a big flat field for 0\.5 s/);
+  assert.doesNotMatch(body, /0\.2 s/);
   assert.match(body, /logos and Claude mark go in as their files \(brand_read\), never redrawn/);
   assert.match(body, /Template \(#111/);
   for (const want of ["uncut:lib/ui.js", "uncutUI.mount", "uncutUI.sequence", "uncutUI.fly", "uncutMotion.click", "uncutMotion.camera", "uncutMotion.grow", "uncutMotion.frameRect", "safe and keep", "docs_read graphics"]) assert.ok(body.includes(want), want);
