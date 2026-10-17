@@ -51,7 +51,8 @@ export function rasterizerCommand(
 export type RasterJob =
   | ({ readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string } & RasterOutSize)
   /** `ts`: motion blur's sub-frames (the first is t), their pictures averaged as the export's seq-graphic. */
-  | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly ts?: ReadonlyArray<number>; readonly info: unknown; readonly out: string; readonly name?: string } & RasterOutSize)
+  /** `census`: also measure the frame's words (packages/core census.ts), those under that share of the height coming back. */
+  | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly ts?: ReadonlyArray<number>; readonly info: unknown; readonly out: string; readonly name?: string; readonly census?: number } & RasterOutSize)
   /**
    * A rehearsal: render(t, info) at each of the graphic's own `frames` (and each frame's `ts`, motion
    * blur's sub-frames) in order, in the graphic window as the export calls it, nothing captured;
@@ -80,12 +81,17 @@ export interface RasterOutSize {
   readonly outHeight?: number;
 }
 
+/** What a job may give back: a graphic job's census (unchecked; censusOf reads it). */
+export interface RasterReply {
+  readonly census?: unknown;
+}
+
 export interface Rasterizer {
   /**
    * Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). `timeoutMs`: a
    * shorter wait than the usual deadline (RENDER_TIMEOUT_MS), never a longer one.
    */
-  readonly render: (job: RasterJob, o?: { readonly timeoutMs?: number }) => Promise<void>;
+  readonly render: (job: RasterJob, o?: { readonly timeoutMs?: number }) => Promise<RasterReply | void>;
   /** Stop it (SIGKILL if it doesn't go within a second). Resolves once it's gone. */
   readonly close: () => Promise<void>;
   readonly pid: number | undefined;
@@ -130,7 +136,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
   let stderr = "";
   child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
   child.stdin!.on("error", () => {});
-  const pending = new Map<number, { resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  const pending = new Map<number, { resolve: (reply?: RasterReply) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   let failed: Error | undefined;
   const failAll = (error: Error) => {
     failed ??= error;
@@ -149,7 +155,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     child.once("exit", (code, signal) => reject(new Error(`The text renderer stopped before it was ready (${signal ?? `code ${code}`}). ${stderr.trim().split("\n").at(-1) ?? ""}`.trim())));
   });
   readline.createInterface({ input: child.stdout! }).on("line", (line) => {
-    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown };
+    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown; census?: unknown };
     try {
       msg = JSON.parse(line);
     } catch {
@@ -162,7 +168,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     if (!p) return;
     pending.delete(Number(msg.id));
     clearTimeout(p.timer);
-    if (msg.ok === true) p.resolve();
+    if (msg.ok === true) p.resolve(msg.census !== undefined ? { census: msg.census } : undefined);
     else p.reject(new Error(`The text renderer failed: ${typeof msg.error === "string" && msg.error ? msg.error : "it gave no reason"}`));
   });
   child.once("exit", (code, signal) => failAll(new Error(`The text renderer stopped (${signal ?? `code ${code}`}).`)));
@@ -190,7 +196,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     pid: child.pid,
     close,
     render: (job, o) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<RasterReply | void>((resolve, reject) => {
         if (failed) return reject(failed);
         const id = ++next;
         const wait = o?.timeoutMs !== undefined && Number.isFinite(o.timeoutMs) ? Math.max(0, Math.min(RENDER_TIMEOUT_MS, o.timeoutMs)) : RENDER_TIMEOUT_MS;

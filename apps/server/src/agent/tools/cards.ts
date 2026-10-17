@@ -19,9 +19,10 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, thinMeasure, thinRuns, thinSize, scanRenderWidth, type ScanFrame, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, thinMeasure, thinRuns, thinSize, scanRenderWidth, STILL_MAX_S, type ScanFrame, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
+import { censusNear, legibilityFacts, legibilityFindings } from "../agentLegibility.ts";
 
 /** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_REVIEW_MS = 30_000;
@@ -391,7 +392,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       // D292: motion over time: a frame strip per scene change and a frame-difference scan (pops,
       // one-frame jumps, holds, the loop seam), as images and facts for the critic and findings for the agent.
       const hasFootage = project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "clip"));
-      const intent = motionIntent({ skills: brand.skills.map((x) => x.id), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.assets ?? []), ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n"), hasFootage });
+      const intent = motionIntent({ skills: brand.skills.map((x) => x.id), words: [r.owner.plan.brief?.film, r.owner.plan.brief?.visual, r.owner.plan.brief?.notes, ...(r.owner.plan.brief?.assets ?? []), ...(r.owner.plan.brief?.hardLines ?? [])].filter(Boolean).join("\n"), hasFootage, request: userRequest(r.owner.turns.map((t) => t.prompt), r.turn.prompt) });
       const anchors = motionAnchors(sb?.beats, fps, duration);
       const strips = stripPlan(anchors, fps, duration);
       const scanList = scanPlan(anchors, fps, duration);
@@ -408,11 +409,11 @@ export const makeCardTools = (ctx: GenerateCtx) => {
               const mine = yield* hashes(session);
               const evidence = yield* Effect.gen(function* () {
                 const cells = "refused" in sheetCells ? [0] : [...sheetCells];
-                const list = yield* session.render(cells, CELL_WIDTH);
+                const list = yield* session.render(cells, CELL_WIDTH, { census: true });
                 const sheet = yield* session.sheet(list.map((f, i) => ({ jpeg: f.jpeg, caption: `${i + 1}   f ${f.frame}   ${clock(f.frame / fps)}` })), sheetLayout(list.length, aspect));
                 const phone = yield* session.render(phoneFrames, phoneWidth);
                 const fixed = fixFrames.length ? yield* session.render(fixFrames.map((x) => x.frame), Math.min(project.canvas.width, 720)) : [];
-                return { ok: true as const, sheet, shown: list.map((f) => f.frame), phone, fixed };
+                return { ok: true as const, sheet, shown: list.map((f) => f.frame), census: list.map((f) => ({ frame: f.frame, ...(f.small ? { small: f.small } : {}), ...(f.measured !== undefined ? { measured: f.measured } : {}) })), phone, fixed };
               }).pipe(Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })));
               if (!evidence.ok) return { mine, evidence, motion: { images: [] as Array<CriticImage>, scan: undefined } };
               const motion = yield* Effect.gen(function* () {
@@ -541,8 +542,14 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const flatStrips = "flat" in motion ? (motion.flat ?? []) : [];
       // Why there's no scan without an error: no ffmpeg, or too few frames rendered to compare.
       const scanMissing = yield* Effect.promise(async () => ((await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH"));
-      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.id === BUILTIN_IDS.film) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
+      // A motion film (one take, or graphics over half the timeline): one still frame over STILL_MAX_S is a finding.
+      const graphicFrames = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items).filter((i) => i.type === "graphic").reduce((n, i) => n + i.duration, 0);
+      const motionFilm = intent.oneTake || graphicFrames * 2 >= duration;
+      const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.id === BUILTIN_IDS.film) || intent.asked, ...(motionFilm ? { still: STILL_MAX_S } : {}) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
+      // The sheet's words measured (agentLegibility.ts): every small one at once, never a blocker.
+      const census = evidence.census;
+      checks.push(...legibilityFindings(census, fps, project.canvas.height));
       if (rehearsal?.failure) checks.push({ rule: "motion", key: "motion:export", message: rehearsalLine(rehearsal), ...(rehearsal.frame !== undefined ? { frame: rehearsal.frame } : {}), hard: true });
       // D292: the time budget left some of the scan's frames out.
       // (Counted on the sampled frames: the refinement's added frames don't make up for a cut.)
@@ -552,6 +559,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...flatLines(flatStrips, fps, intent.footage),
         ...("drop" in motion && motion.drop ? [motion.drop] : []),
         ...beatWordLines(sb?.beats),
+        ...legibilityFacts(census, fps),
         ...(rehearsal && !rehearsal.failure && rehearsal.total ? [rehearsalLine(rehearsal)] : []),
         // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
         ...(intent.oneTake || r.owner.plan.reviews.length ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
@@ -592,7 +600,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
           const f = clampF(at * fps);
           const g = project.tracks.filter((t) => !t.hidden).flatMap((t) => t.items).find((i) => i.type === "graphic" && (starts.get(i.id) ?? 0) <= f && f < (starts.get(i.id) ?? 0) + i.duration);
           const name = g ? (g.name ?? (typeof g.src === "string" ? g.src : "a graphic")) : undefined;
-          return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}`;
+          const measured = censusNear(census, at, fps);
+          return `f ${f}${g ? `, ${name} at ${((f - (starts.get(g.id) ?? 0)) / fps).toFixed(2)} s of it` : ""}; render_frames ${clampF(f - 6)} to ${clampF(f + 6)}${measured ? `; ${measured}` : ""}`;
         }, { width: project.canvas.width, height: project.canvas.height, safe: safeMargin(project) }),
       });
     });

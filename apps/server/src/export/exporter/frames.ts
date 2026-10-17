@@ -1,6 +1,6 @@
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { type Project, type Media, motionBlurDefault, itemMotionBlur, subFrameTimes, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
+import { type Project, type Media, motionBlurDefault, itemMotionBlur, subFrameTimes, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, censusOf, SMALL_TEXT, type CensusRun, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
 import { clipShader, shaderParamBytes, shaderModuleCode, shaderFrameBytes, shaderTime } from "@uncut/core/shaders";
 import { RASTER_CSS, planExport, mediaToken, sourceFramePick, svgClipHtml, untaggedFilter, blurFilters, placementOf, fxGraph, boxGraph } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
@@ -16,6 +16,9 @@ export interface RenderedFrame {
   readonly jpeg: Buffer;
   /** What this frame leaves out (a graphic whose file couldn't be read), as sentences. */
   readonly notes?: ReadonlyArray<string>;
+  /** With census: the words its graphics draw under SMALL_TEXT of the height (the biggest first), and how many runs were measured. */
+  readonly small?: ReadonlyArray<CensusRun>;
+  readonly measured?: number;
 }
 
 export interface FrameSessionOptions {
@@ -34,7 +37,8 @@ export interface FrameSession {
    * it says true, the rest are left out (the frames done so far are returned).
    */
   /** `motionBlur`: graphics drawn with the export's motion blur (the project's samples and shutter, the sub-frames' pictures averaged as the export averages them). */
-  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean }) => Promise<Array<RenderedFrame>>;
+  /** `census`: each graphic's words measured too (RenderedFrame.small), the DOM text a viewer must read. */
+  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean }) => Promise<Array<RenderedFrame>>;
   /** A contact sheet's grid (agentFootage sheetHtml) drawn by this session's rasteriser, as a JPEG. */
   readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Promise<Buffer>;
   /**
@@ -121,28 +125,30 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
     return got;
   };
 
-  const render = async (frames: ReadonlyArray<number>, width: number, o: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean } = {}): Promise<Array<RenderedFrame>> => {
+  const render = async (frames: ReadonlyArray<number>, width: number, o: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean; readonly census?: boolean } = {}): Promise<Array<RenderedFrame>> => {
     if (closed) throw new Error("The frame session is closed.");
     const call = o.signal ? AbortSignal.any([signal, o.signal]) : signal;
     const onCallAbort = () => void raster?.close();
     o.signal?.addEventListener("abort", onCallAbort, { once: true });
     try {
-      return await renderIn(frames, width, call, o.until, o.motionBlur === true);
+      return await renderIn(frames, width, call, o.until, o.motionBlur === true, o.census === true);
     } finally {
       o.signal?.removeEventListener("abort", onCallAbort);
     }
   };
 
-  const renderIn = async (frames: ReadonlyArray<number>, width: number, signal: AbortSignal, until: (() => boolean) | undefined, motionBlur = false): Promise<Array<RenderedFrame>> => {
+  const renderIn = async (frames: ReadonlyArray<number>, width: number, signal: AbortSignal, until: (() => boolean) | undefined, motionBlur = false, census = false): Promise<Array<RenderedFrame>> => {
     const W = Math.max(2, Math.round(width / 2) * 2);
     const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
-    const { background, untagged, small } = await forWidth(W, H, signal);
-    const draw = async (html: string, png: string) => rs.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png, ...small });
+    const { background, untagged, small: sized } = await forWidth(W, H, signal);
+    const draw = async (html: string, png: string) => rs.render({ width: cw, height: ch, css, html: await withMedia(html, project, mediaPath, urls), out: png, ...sized });
     const out: Array<RenderedFrame> = [];
     for (const requested of frames) {
       if (until?.()) break;
       const f = Math.max(0, Math.min(duration - 1, Math.floor(requested)));
       const notes: Array<string> = [];
+      const small: Array<CensusRun> = [];
+      let measured = 0;
       const inputs: Array<string> = ["-i", background];
       const graph: Array<string> = [`[0:v]scale=${W}:${H},format=rgba[b0]`];
       let base = "b0";
@@ -183,7 +189,14 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           // With blur: the export's sub-frames (planExport's: a held frame, before its start or past its end, stays sharp).
           const blur = motionBlur ? itemMotionBlur(v.item, project, true) : undefined;
           const ts = blur ? subFrameTimes(at, project.canvas.fps, blur, at !== (v.item.in ?? 0) + local) : undefined;
-          await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, ...(ts && ts.length > 1 ? { ts } : {}), info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...small });
+          // The census only for a graphic seen whole and mostly opaque (a zoomed or fading one's words aren't at their drawn size).
+          const counted = census && v.opacity >= 0.35 && v.zoom === undefined && !v.box;
+          const reply = await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, ...(ts && ts.length > 1 ? { ts } : {}), info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...(counted ? { census: SMALL_TEXT } : {}), ...sized });
+          const got = counted && reply ? censusOf(reply.census) : undefined;
+          if (got) {
+            measured += got.measured;
+            small.push(...got.small);
+          }
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }
         if (!input) continue;
@@ -286,7 +299,8 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const file = join(temp, `w${W}-frame-${f}.jpg`);
       const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
-      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}) });
+      small.sort((a, b) => b.share - a.share);
+      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured } : {}) });
     }
     return out;
   };

@@ -112,6 +112,12 @@ export const THIN_TALL = 0.025;
 /** A low-information run this long is a blocker in a motion film; from EMPTY_MIN_S it is a finding. */
 export const THIN_HARD_S = 0.5;
 /**
+ * One still frame this long in a motion film is a finding (never a blocker): A1r9 and A1-noskill3
+ * held their end card 4.9 to 5.0 s. Measured as the scan's holds: 2.mp4 1.1 s, 3.mp4 1.5 s,
+ * A2-noskill 3.45 s (its slow typing open) and A1-noskill 3.38 s (its end card), A1-noskill2 3.35 s.
+ */
+export const STILL_MAX_S = 4;
+/**
  * A fast move: at least FAST_RUN consecutive frames each changing FAST_STEP or more of the picture.
  * The export's motion blur draws it from a few sub-frames, so it stacks into copies (A2 14.0 and
  * 17.0 s: two halves sliding across the frame in a few frames read as a pixelated glitch); render
@@ -689,7 +695,7 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
  * Nearly empty runs of EMPTY_MIN_S or more (blockers when hard from EMPTY_HARD_S), low-information runs (from THIN_HARD_S) and fast moves (never blockers) when one take.
  * At most 12, the blockers first, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
  */
-export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean } = {}): Array<CriticFinding> {
+export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean; readonly still?: number } = {}): Array<CriticFinding> {
   // D297: in a motion film (hard) a pop, a one-frame jump (a cut) and a broken seam fail the round.
   const hard = !!o.hard;
   const out: Array<CriticFinding> = [];
@@ -700,8 +706,21 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   }
   if (o.oneTake) {
     for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: j.span ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.` : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
-    for (const h of scan.holds.slice(0, 2)) out.push({ rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${((h.end - h.start) / fps).toFixed(1)} s): a hold over 1 s.` });
+    // The longest holds (an end card held 5 s came third in time order and wasn't listed).
+    const still = o.still;
+    for (const h of [...scan.holds].sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 2)) {
+      const len = (h.end - h.start) / fps;
+      out.push(still !== undefined && len >= still
+        ? { rule: "motion", key: `motion:still:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `One still frame from f ${h.start} to f ${h.end} (${secs(h.start, fps)} to ${secs(h.end, fps)}, ${len.toFixed(1)} s): nothing on screen moves for over ${still} s. The films that worked hold their end card about 1.5 to 3 s; shorten the hold or keep one thing moving through it (the last word landing, a slow push on the lockup), unless the request asks for the hold.` }
+        : { rule: "motion", key: `motion:hold:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `Nothing changes from f ${h.start} to f ${h.end} (${len.toFixed(1)} s): a hold over 1 s.` });
+    }
   }
+  // A motion film that isn't one take (cuts are fine) still shouldn't park on one frame.
+  if (!o.oneTake && o.still !== undefined)
+    for (const h of [...scan.holds].filter((x) => (x.end - x.start) / fps >= o.still!).sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 2)) {
+      const len = (h.end - h.start) / fps;
+      out.push({ rule: "motion", key: `motion:still:${h.start}`, frame: h.start, range: { start: h.start, end: h.end }, hard: false, message: `One still frame from f ${h.start} to f ${h.end} (${secs(h.start, fps)} to ${secs(h.end, fps)}, ${len.toFixed(1)} s): nothing on screen moves for over ${o.still} s. The films that worked hold their end card about 1.5 to 3 s; shorten the hold or keep one thing moving through it (the last word landing, a slow push on the lockup), unless the request asks for the hold.` });
+    }
   // Blind round 3: a motionless first 1.5 to 2 s under a hook headline (drift only) read as a soft hook.
   if (o.oneTake && openLate(scan, fps)) {
     const at = scan.open!.frame;
@@ -828,10 +847,20 @@ export function blurPicks(fast: MotionScan["fast"], max = BLUR_RUNS): Array<{ re
 /** Words that make a film UI first: it shows an app's interface. */
 const UI_WORDS = /\b(app|UI|interface|screens?|composer|timeline|cursor|software|the program)\b/i;
 
-export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean }): { oneTake: boolean; loop: boolean; footage: boolean } {
+const ONE_TAKE = /one[- ]take|never cut|no cuts|one continuous (shot|take)/i;
+
+/**
+ * What the film is (the brief's words, the active skills) and what the user asked for in their own
+ * words (`request`): `asked` when the request itself asks for one take. A1-noskill3 asked for "one
+ * take on the beat" with the motion-film skill off, and its four hard cuts were findings only: the
+ * request decides that cuts fail the round, whatever skills are on (hard in motionFindings).
+ */
+export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean; readonly request?: string }): { oneTake: boolean; loop: boolean; footage: boolean; asked: boolean } {
   const film = o.skills.includes("motion-film");
+  const asked = ONE_TAKE.test(o.request ?? "");
   return {
-    oneTake: film || /one[- ]take|never cut|no cuts|one continuous (shot|take)/i.test(o.words),
+    asked,
+    oneTake: film || asked || ONE_TAKE.test(o.words),
     loop: /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
     // Rehearsal 3: a UI-first film names its footage too (the preview plays it), but its frames are a
     // calm canvas around one UI element by design, so its words naming the app's UI keep it UI first.

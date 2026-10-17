@@ -197,4 +197,7 @@ export interface Running {
   readonly toolNames: Map<string, string>;
   // D194: media_download's spending in this turn.
   downloads: { bytes: number; count: number };
+  // Uncut tools the model called by their bare name (graphic_write, not mcp__uncut__graphic_write):
+  // Claude Code answered "No such tool available" and nothing ran; the next Uncut result says so.
+  bareCalls?: Array<string>;
 }

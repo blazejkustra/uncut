@@ -152,6 +152,11 @@ export function runtimeJs(source: string): string {
 export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a film about Uncut itself: the real app's markup
    and CSS, generated from its React components (scripts/ui-parts.ts), as live DOM (crisp at any
    size). Load it with the marker uncut:lib/ui.js (a script tag with that src). Dark, as the app.
+   READABLE: every word the viewer must read stands at least 3 % of the frame's height (its letters; a font
+   of 4.2 %). Two calls get there: a piece at its default type (4.8 % of the height; a smaller type is
+   smaller words, and type sizes the piece's FIRST line: a thread's 12 px step rows come out 12/13 of its
+   message, so give steps their own "turn.steps" key), or uncutUI.frameText(el, world, { width, height })
+   as the camera key on the stage. render_frames lists every word under 3 % in each frame it draws.
    Build the film from PIECES: one element of the UI on its own (the composer, a step row, a lane of
    clips, the filter slider, the preview, Export, Saved), set LARGE on a calm canvas (60 to 90 % of
    the width, its text 4.5 % of the frame's height or more), each one morphing into the next. A whole

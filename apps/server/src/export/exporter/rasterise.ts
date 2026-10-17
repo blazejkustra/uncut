@@ -190,12 +190,12 @@ async function streamLayer(r: Rasterizer, ff: SequenceFfmpeg, layer: VisualLayer
     if (!ended) void open(fifo, constants.O_RDONLY | constants.O_NONBLOCK).then((fh) => fh.close(), () => {});
   });
   encoding.catch(() => {});
-  const pending: Array<Promise<void>> = [];
+  const pending: Array<Promise<unknown>> = [];
   try {
     await r.render({ kind: "seq-open", width: o.width, height: o.height, out: fifo });
     await draw(async (job, onError) => {
       if (o.signal.aborted) throw new Cancelled();
-      const p = onError ? r.render(job).catch(onError) : r.render(job);
+      const p: Promise<unknown> = onError ? r.render(job).catch(onError) : r.render(job);
       // Handled when its turn comes; until then a failure mustn't count as unhandled.
       p.catch(() => {});
       pending.push(p);
