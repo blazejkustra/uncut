@@ -97,7 +97,7 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // What a frame leaves out (a graphic it couldn't read, D78), once each.
           clamped.push(...new Set(rendered.list.flatMap((r) => r.notes ?? [])));
           const rehearsal = rendered.rehearsal?.failure ? ` ${rehearsalLine(rendered.rehearsal)}` : "";
-          const legible = legibilityNote(rendered.list, canvas.height);
+          const legible = legibilityNote(rendered.list, canvas.height, canvas.fps);
           return {
             content: [
               { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}${legible ? ` ${legible}` : ""}` },

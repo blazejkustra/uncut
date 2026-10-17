@@ -225,9 +225,12 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        storyboard: summary, beats: [{ start, end, title, lines: ["..."] }], count (the first n)
        review: scores { hook, readability, motion, variety, sound, brand } (0 to 10), progress 0..1, status, title
        timeline: clips: [{ track: "Main" | "Text" | "Graphics" | "Audio" | "Sound effects" | index, start, duration
-         (s), name, image, selected, color }]: the whole timeline (it starts empty); playhead (s)
-       preview: frame (your canvas or img: it fills the frame), time (s: the timecode), duration (s: the
-         length after it; an editor's is its clips' end), canvas ("1080×1350, 60 fps")
+         (s), name, image, media (its media id), in (s into the media), selected, color }]: the whole timeline
+         (it starts empty); playhead (s)
+       preview: frame (your canvas or img: it fills the frame; false: empty), time (s: the timecode), duration
+         (s: the length after it; an editor's is its clips' end), canvas ("1080×1350, 60 fps"). Without a frame,
+         the editor's preview shows the clip under the playhead (timeline.playhead, else preview.time): its
+         media's frame at in + (playhead - start) through uncut.frame, else its image; a gap is black
        inspector: title (the clip's name), filter (the look's name on its slider), amount (0 to 100),
          filter: false, effects: false (those sections out)
        effects: active (the look picked: "warm"; none: ""), target ("On DJI 0063")

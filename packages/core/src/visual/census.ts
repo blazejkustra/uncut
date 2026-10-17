@@ -25,6 +25,8 @@ export interface Census {
   readonly unseen?: number;
   /** Words big enough to read but blurred, faded or dimmed, with what does it (the biggest first, at most 8). */
   readonly soft?: ReadonlyArray<SoftRun>;
+  /** An uncutUI stage's preview showing nothing (black): the share of the frame it covers, % (the largest). */
+  readonly emptyPreview?: number;
 }
 
 /**
@@ -170,13 +172,28 @@ export const GRAPHIC_CENSUS = `function (W, H, floor) {
     var ps = look(q);
     if (ps.ok && getComputedStyle(q).visibility !== "hidden") unseen++;
   }
+  // An uncutUI preview with nothing in it (no preview.frame, no clip under the playhead): a black
+  // hole on the stage. The films' editor wide shots showed one for seconds and nothing said so.
+  var empty = 0;
+  var frames = document.querySelectorAll(".uncut-ui .frame");
+  for (var j = 0; j < frames.length; j++) {
+    var fr = frames[j];
+    if (!fr.closest(".stage") || fr.closest(".uncut-ui-measure")) continue;
+    if (fr.querySelector("canvas, img, video, svg, iframe")) continue;
+    var fb = fr.getBoundingClientRect();
+    var fv = Math.max(0, Math.min(fb.right, W) - Math.max(fb.left, 0)) * Math.max(0, Math.min(fb.bottom, H) - Math.max(fb.top, 0));
+    if (fv < W * H * 0.02) continue;
+    var fs = look(fr);
+    if (!fs.shown || fs.alpha < 0.35 || getComputedStyle(fr).visibility === "hidden") continue;
+    empty = Math.max(empty, fv / (W * H));
+  }
   var small = [];
   runs.forEach(function (share, text) { small.push({ text: text, share: Math.round(share * 1000) / 10 }); });
   small.sort(function (a, b) { return b.share - a.share; });
   var softs = [];
   soft.forEach(function (v) { softs.push(v); });
   softs.sort(function (a, b) { return b.share - a.share; });
-  return { small: small.slice(0, 40), measured: measured, unseen: unseen, soft: softs.slice(0, 8) };
+  return { small: small.slice(0, 40), measured: measured, unseen: unseen, soft: softs.slice(0, 8), emptyPreview: Math.round(empty * 100) };
 }`;
 
 /** A census back from the rasteriser, checked (it crossed a process boundary). */
@@ -199,7 +216,8 @@ export function censusOf(v: unknown): Census | undefined {
       for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
       return o as unknown as SoftRun;
     });
-  return { small, measured: c.measured, ...(typeof c.unseen === "number" && c.unseen > 0 ? { unseen: c.unseen } : {}), ...(soft.length ? { soft } : {}) };
+  const empty = fin((c as { emptyPreview?: unknown }).emptyPreview);
+  return { small, measured: c.measured, ...(typeof c.unseen === "number" && c.unseen > 0 ? { unseen: c.unseen } : {}), ...(soft.length ? { soft } : {}), ...(empty !== undefined && empty > 0 ? { emptyPreview: Math.min(100, Math.round(empty)) } : {}) };
 }
 
 const secs = (v: number) => `${Math.round(v * 100) / 100} s`;

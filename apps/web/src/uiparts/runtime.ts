@@ -409,13 +409,111 @@ function getRadius(el: HTMLElement): string {
 function placeElements(name: string, root: HTMLElement, o: Props) {
   const frame = name === "preview" || name === "editor" ? find(root, "frame", name) : null;
   const pic = name === "editor" ? (o.preview as Props | undefined)?.frame : o.frame;
-  if (frame && pic && typeof pic === "object" && "nodeType" in pic && (pic as Node).parentNode !== frame) {
-    const el = pic as HTMLElement;
-    el.style.width = el.style.width || "100%";
-    el.style.height = el.style.height || "100%";
-    el.style.display = el.style.display || "block";
-    frame.replaceChildren(el);
+  if (frame && pic && typeof pic === "object" && "nodeType" in pic) {
+    if ((pic as Node).parentNode !== frame) {
+      const el = pic as HTMLElement;
+      el.style.width = el.style.width || "100%";
+      el.style.height = el.style.height || "100%";
+      el.style.display = el.style.display || "block";
+      frame.replaceChildren(el);
+    }
+  } else if (frame && name === "editor" && pic !== false && pic !== null) stageFootage(frame, o);
+}
+
+/** A clip as the stage's preview reads it: a media id (and its in point) or a picture. */
+type Footage = { readonly media?: string; readonly at: number; readonly image?: string };
+
+/**
+ * The clip under the playhead (timeline.playhead, else preview.time, else 0) on a picture track
+ * (not Audio, Sound effects or Text), the last one passed on top: its media at its in point plus the
+ * playhead's distance into it, or its image. Undefined in a gap: the preview is black there, as in the app.
+ */
+function footageAt(o: Props): Footage | undefined {
+  const tl = o.timeline as Props | undefined;
+  const pv = o.preview as Props | undefined;
+  const clips = (tl && Array.isArray(tl.clips) ? tl.clips : []) as ReadonlyArray<Clip>;
+  const ph = num(tl?.playhead, num(pv?.time, 0));
+  const shots = clips.filter((c) => c && (typeof c.media === "string" || typeof c.image === "string") && !(typeof c.track === "string" && /audio|sound|music|text|caption|subtitle/i.test(c.track)));
+  const end = (c: Clip) => num(c.start, 0) + Math.max(0.05, num(c.duration, 1));
+  // The last clip passed that holds the playhead; at the very end of the cut, its last frame.
+  const hit = shots.findLast((c) => ph >= num(c.start, 0) && ph < end(c)) ?? shots.findLast((c) => ph > 0 && ph === end(c));
+  if (!hit) return undefined;
+  const at = Math.max(0, num(hit.in, 0) + Math.min(ph, num(hit.start, 0) + Math.max(0.05, num(hit.duration, 1))) - num(hit.start, 0));
+  return typeof hit.media === "string" ? { media: hit.media, at } : { image: hit.image!, at };
+}
+
+/** Work the frame must wait for (a picture decoding, a media frame drawn): the graphic's bootstrap awaits it before the capture. */
+function hold(doc: Document, p: Promise<unknown>) {
+  const media = (doc.defaultView as unknown as { __uncutMedia?: { hold?: (p: Promise<unknown>) => void } } | null)?.__uncutMedia;
+  if (media && typeof media.hold === "function") media.hold(p);
+}
+
+type FootageCanvas = HTMLCanvasElement & { __want?: string };
+
+/**
+ * The editor stage's preview when the graphic passes no preview.frame: the timeline's own footage
+ * under the playhead (a clip's media frame through uncut.frame, or its image), never invented; a gap
+ * shows black. Drawn into one canvas kept in the frame; the bootstrap waits for the picture (hold),
+ * so the frame is the same whether drawn first in a fresh document or after others.
+ * preview: { frame: false } keeps the preview empty.
+ */
+function stageFootage(frame: HTMLElement, o: Props) {
+  const doc = frame.ownerDocument;
+  const f = footageAt(o);
+  let cv = frame.querySelector(":scope > canvas[data-uncut-footage]") as FootageCanvas | null;
+  if (!f) {
+    if (cv) cv.remove();
+    return;
   }
+  const w = Math.max(2, Math.round(frame.clientWidth || frame.offsetWidth || 320));
+  const h = Math.max(2, Math.round(frame.clientHeight || frame.offsetHeight || 180));
+  if (!cv) {
+    cv = doc.createElement("canvas") as FootageCanvas;
+    cv.setAttribute("data-uncut-footage", "");
+    cv.style.cssText = "display:block;width:100%;height:100%";
+    frame.replaceChildren(cv);
+  }
+  // Twice the frame's layout size (the camera pushes in on it), at most 1920 px long.
+  const k = Math.min(2, 1920 / Math.max(w, h));
+  const cw = Math.max(2, Math.round(w * k));
+  const ch = Math.max(2, Math.round(h * k));
+  const want = `${f.media ?? f.image}|${f.media ? f.at : 0}|${cw}x${ch}`;
+  if (cv.__want === want) return;
+  cv.__want = want;
+  const target = cv;
+  const draw = (img: CanvasImageSource & { width: number; height: number }) => {
+    if (target.__want !== want) return;
+    target.width = cw;
+    target.height = ch;
+    const ctx = target.getContext("2d");
+    if (!ctx) return;
+    const s = Math.max(cw / img.width, ch / img.height);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(img, (cw - img.width * s) / 2, (ch - img.height * s) / 2, img.width * s, img.height * s);
+  };
+  const clear = () => {
+    if (target.__want !== want) return;
+    target.width = cw;
+    target.height = ch;
+  };
+  const api = (doc.defaultView as unknown as { uncut?: { frame?: (id: string, t: number, o: { width: number }) => Promise<ImageBitmap> } } | null)?.uncut;
+  let job: Promise<unknown>;
+  if (f.media) {
+    if (!api || typeof api.frame !== "function") {
+      clear();
+      return;
+    }
+    job = api.frame(f.media, f.at, { width: Math.min(1920, cw) }).then(draw, (e: unknown) => {
+      clear();
+      console.error(`uncutUI: the preview's clip ${f.media} at ${f.at} s couldn't be loaded: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  } else {
+    const img = doc.createElement("img");
+    img.src = picture(f.image!);
+    job = img.decode().then(() => draw(img), () => clear());
+  }
+  hold(doc, job);
 }
 
 /** Seconds as the editor's timecode, hh:mm:ss:ff at fps. */
@@ -663,6 +761,10 @@ interface Clip {
   readonly duration?: number;
   readonly name?: string;
   readonly image?: string;
+  /** The clip's media id (project_read): the editor stage's preview shows its frame under the playhead. */
+  readonly media?: string;
+  /** Where the clip starts in its media (s), for that frame. */
+  readonly in?: number;
   readonly selected?: boolean;
   readonly color?: string;
 }

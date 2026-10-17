@@ -39,6 +39,16 @@ test("render_frames' note names each frame's small words, the floor and the one-
   assert.equal(legibilityNote([{ frame: 1, small: [], measured: 3 }, { frame: 2 }], 1350), undefined, "nothing small, no note; no census, no note");
 });
 
+test("render_frames' note says where an uncutUI stage's preview is empty (black), with the fix", () => {
+  assert.deepEqual(censusOf({ small: [], measured: 2, emptyPreview: 31.6 }), { small: [], measured: 2, emptyPreview: 32 });
+  assert.equal(censusOf({ small: [], measured: 2, emptyPreview: 0 })?.emptyPreview, undefined);
+  const note = legibilityNote([{ frame: 480, small: [], measured: 4, emptyPreview: 32 }, { frame: 600, small: [], measured: 4 }], 1350, 60)!;
+  assert.match(note, /preview is empty \(black\) on frame 480 \(8\.00 s\), 32 % of the frame/);
+  assert.match(note, /media: id, in: s/);
+  assert.match(note, /preview: \{ frame: yourCanvas \}/);
+  assert.doesNotMatch(note, /frame 600/);
+});
+
 test("review_submit: one finding with every small frame (never a blocker), the critic's facts, the census near a blocker", () => {
   const list = [{ frame: 315, small: T3, measured: 8 }, { frame: 420, small: [], measured: 9 }, { frame: 1260, small: [{ text: "Hook in 2 s", share: 1.9 }], measured: 12 }];
   const [f, ...rest] = legibilityFindings(list, 60, 1350);
