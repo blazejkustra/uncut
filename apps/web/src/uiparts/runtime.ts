@@ -96,8 +96,11 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
   const o: Props = props || {};
   const doc = host.ownerDocument;
   ensureCss(doc);
-  // scale is applied on every call, outside the key: a camera that scales a part doesn't rebuild it.
-  const key = `${name}\n${keyOf({ ...o, scale: undefined })}`;
+  // scale, blur and dim are applied on every call, outside the key: a camera that scales a part doesn't
+  // rebuild it. The editor's panels are live (see liveEditor): their props stay out of its key too.
+  const stable: Record<string, unknown> = { ...o, scale: undefined, blur: undefined, dim: undefined };
+  if (name === "editor") for (const k of EDITOR_LIVE_PROPS) stable[k] = undefined;
+  const key = `${name}\n${keyOf(stable)}`;
   let wrap = host.firstElementChild as Root | null;
   if (!wrap || wrap.__uiKey !== key) {
     const width = num(o.width, p.width);
@@ -127,15 +130,113 @@ function mount(host: HTMLElement, name: string, props?: Props): HTMLElement {
     const back = typeof o.background === "string" ? o.background : p.backdrop;
     wrap.style.cssText = `position:relative;width:${width}px;height:${height}px;transform-origin:0 0${back ? `;background:${back};border-radius:${p.radius || "0"}` : ""}`;
     neutral(root);
-    applyProps(name, root, o);
+    applyProps(name, root, name === "editor" ? { media: o.media } : o);
     host.replaceChildren(wrap);
     // Panels scrolled in the app (the agent's thread at its newest turn) scroll back there.
     for (const el of wrap.querySelectorAll("[data-ui-scroll]")) el.scrollTop = Number(el.getAttribute("data-ui-scroll"));
   }
-  wrap.style.transform = `scale(${num(o.scale, 1)})`;
+  const scale = num(o.scale, 1);
+  wrap.style.transform = `scale(${scale})`;
+  // blur: screen px (the part's own px times its scale); dim 0..1 darkens it: the program behind a hero.
+  const blur = Math.max(0, num(o.blur, 0));
+  const dim = Math.max(0, Math.min(1, num(o.dim, 0)));
+  wrap.style.filter = `${blur > 0.05 ? `blur(${(blur / Math.max(scale, 0.01)).toFixed(2)}px) ` : ""}${dim > 0.001 ? `brightness(${(1 - dim).toFixed(3)})` : ""}`.trim() || "none";
   const root = rootOf(wrap);
+  if (name === "editor") liveEditor(root, o);
   placeElements(name, root, o);
   return root;
+}
+
+/** The editor's props that update its panels in place on every call (each panel rebuilt only when its own props change). */
+const EDITOR_LIVE_PROPS = ["side", "library", "composer", "turn", "message", "review", "inspector", "effects", "timeline", "preview", "topbar", "export", "exportProgress", "text", "press", "highlight", "hide", "remove"];
+
+type LiveRoot = HTMLElement & { __pristine?: Map<string, HTMLElement>; __liveKeys?: Map<string, string> };
+
+/**
+ * The editor as a live stage: each panel (the side panel, the library, the timeline, the preview,
+ * the top bar, a dialog over it) is rebuilt from its pristine markup only when its props change,
+ * so a film can move clips, grow the agent's steps, run the playhead or an export frame by frame
+ * without rebuilding the window. side: "inspector" shows the Inspector tab in the side panel (its
+ * props: inspector), library: "effects" the Effects panel (effects); export or exportProgress opens
+ * that dialog over the window. text, press, highlight, hide and remove reach into every panel.
+ */
+function liveEditor(root: LiveRoot, o: Props) {
+  const doc = root.ownerDocument;
+  if (!root.__pristine) {
+    root.__pristine = new Map();
+    root.__liveKeys = new Map();
+    for (const sel of [".side", ".library", ".bottom", ".stage", ".topbar"]) {
+      const el = root.querySelector(sel) as HTMLElement | null;
+      if (el) root.__pristine.set(sel, el.cloneNode(true) as HTMLElement);
+    }
+  }
+  const sub = (k: string) => (o[k] && typeof o[k] === "object" ? (o[k] as Props) : undefined);
+  const fresh = (name: string): HTMLElement => {
+    const tpl = doc.createElement("template");
+    tpl.innerHTML = expand(part(name).html);
+    const el = tpl.content.firstElementChild as HTMLElement;
+    neutral(el);
+    return el;
+  };
+  const clips = (sub("timeline")?.clips as ReadonlyArray<Clip> | undefined) ?? [];
+  const length = clips.reduce((m, c) => Math.max(m, num(c.start, 0) + num(c.duration, 0)), 0);
+  const common = keyOf({ text: o.text, press: o.press, highlight: o.highlight, hide: o.hide, remove: o.remove });
+  // Each panel: its base (pristine, or another part's markup), put in place, then its props (list
+  // templates are found through the part the element sits in, so props go on once it is attached).
+  const pristine = (sel: string) => root.__pristine!.get(sel)!.cloneNode(true) as HTMLElement;
+  const units: ReadonlyArray<{ sel: string; spec: unknown; base: () => HTMLElement; apply: (el: HTMLElement) => void }> = [
+    {
+      sel: ".side",
+      spec: [o.side, o.composer, o.turn, o.message, o.review, o.inspector],
+      base: () => (o.side === "inspector" ? fresh("inspector") : pristine(".side")),
+      apply: (el) => (o.side === "inspector" ? applyProps("inspector", el, sub("inspector") || {}) : nested(el, o, ["composer", "turn", "message", "review"])),
+    },
+    {
+      sel: ".library",
+      spec: [o.library, o.effects],
+      base: () => (o.library === "effects" ? fresh("effects") : pristine(".library")),
+      apply: (el) => {
+        if (o.library === "effects") applyProps("effects", el, sub("effects") || {});
+        for (const b of root.querySelectorAll(".rail [data-rail]")) b.classList.toggle("active", b.getAttribute("data-rail") === (o.library === "effects" ? "effects" : "media"));
+      },
+    },
+    { sel: ".bottom", spec: [o.timeline], base: () => pristine(".bottom"), apply: (el) => applyProps("timeline", el, sub("timeline") || {}) },
+    { sel: ".stage", spec: [o.preview, length], base: () => pristine(".stage"), apply: (el) => applyProps("preview", el, { duration: length, ...(sub("preview") || {}) }) },
+    { sel: ".topbar", spec: [o.topbar], base: () => pristine(".topbar"), apply: (el) => applyProps("topbar", el, sub("topbar") || {}) },
+  ];
+  let changed = false;
+  for (const u of units) {
+    if (!root.__pristine.has(u.sel)) continue;
+    const key = `${keyOf({ s: u.spec } as Props)}\n${common}`;
+    if (root.__liveKeys!.get(u.sel) === key) continue;
+    const next = u.base();
+    const cur = root.querySelector(u.sel);
+    if (cur) {
+      cur.replaceWith(next);
+      u.apply(next);
+    }
+    root.__liveKeys!.set(u.sel, key);
+    changed = true;
+  }
+  // A dialog over the window: the export settings, or the export running.
+  const dialog = sub("exportProgress") ? "exportProgress" : sub("export") ? "export" : "";
+  const dkey = `${dialog}\n${keyOf({ d: dialog ? o[dialog] : null } as Props)}\n${common}`;
+  if (root.__liveKeys!.get("modal") !== dkey) {
+    root.querySelector(":scope > .modal-layer")?.remove();
+    if (dialog) {
+      const layer = doc.createElement("div");
+      const anc = part(dialog).ancestors.at(-1);
+      layer.className = anc?.cls || "modal-layer";
+      if (anc?.vars) layer.setAttribute("style", anc.vars);
+      const el = fresh(dialog);
+      layer.appendChild(el);
+      root.appendChild(layer);
+      applyProps(dialog, el, { duration: length, ...(sub(dialog) || {}) });
+    }
+    root.__liveKeys!.set("modal", dkey);
+    changed = true;
+  }
+  if (changed) applyProps("", root, { text: o.text, press: o.press, highlight: o.highlight, hide: o.hide, remove: o.remove });
 }
 
 function rootOf(wrap: HTMLElement): HTMLElement {
@@ -238,6 +339,19 @@ function neutral(root: HTMLElement) {
   for (const el of findAll(root, ".composer-hl")) el.textContent = "\u200b";
   for (const el of findAll(root, ".composer-box > textarea")) el.textContent = "";
   for (const el of findAll(root, ".composer .send")) el.setAttribute("disabled", "");
+  // Sample labels: the fixture project's title, length and canvas, the clip named in the Inspector and
+  // Effects. Blank until the graphic passes its own (topbar title, preview duration and canvas,
+  // inspector title, effects target); an editor's length is its clips' end.
+  for (const el of findAll(root, ".project-title")) el.textContent = "";
+  for (const el of root.querySelectorAll(".timecode .tc-end")) el.textContent = ` / ${timecode(0)}`;
+  for (const el of findAll(root, '[data-testid="canvas-info"]')) el.textContent = "";
+  for (const el of root.querySelectorAll('.insp-title .grow, [data-testid="insp-media"], [data-testid="insp-duration"]')) el.textContent = "";
+  for (const el of root.querySelectorAll('[data-testid="insp-name"], [data-testid="insp-media-name"]')) {
+    el.removeAttribute("placeholder");
+    el.setAttribute("value", "");
+  }
+  for (const el of findAll(root, '[data-testid="effects-target"]')) el.textContent = "";
+  for (const el of findAll(root, '[data-testid="export-range-text"]')) el.textContent = "";
   // The storyboard's plan: the graphic's (summary, beats), else none.
   for (const el of findAll(root, ".approval-text")) setLead(el, "");
   for (const el of root.querySelectorAll(".beats .beat-time, .beats .beat-head b, .beats .beat-line")) el.textContent = "";
@@ -334,11 +448,21 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
         if (typeof o.review === "object") applyProps("review", el, o.review as Props);
       }, ".edit-row, .worklog");
     if (Array.isArray(o.steps)) fillList(root.querySelector(".worklog"), ".step", o.steps.map(String), (el, s) => setText(el.querySelector(".grow"), s));
-    if (typeof o.done === "number") [...root.querySelectorAll(".worklog .step")].forEach((el, i) => el.setAttribute("data-status", i < (o.done as number) ? "done" : "running"));
+    // A running step shows the app's spinner (lucide LoaderCircle) where a done one has its tick.
+    if (typeof o.done === "number")
+      [...root.querySelectorAll(".worklog .step")].forEach((el, i) => {
+        const running = i >= (o.done as number);
+        el.setAttribute("data-status", running ? "running" : "done");
+        const icon = el.querySelector("svg");
+        if (running && icon) icon.outerHTML = SPINNER_SVG;
+      });
     if (typeof o.status === "string") setText(root.querySelector(".turn-status"), o.status);
   },
   inspector(root, o) {
-    if (typeof o.title === "string") setText(find(root, "title", "inspector")?.querySelector(".grow") ?? null, o.title);
+    if (typeof o.title === "string") {
+      setText(find(root, "title", "inspector")?.querySelector(".grow") ?? null, o.title);
+      setText(root.querySelector('[data-testid="insp-media"]'), o.title);
+    }
     if (typeof o.filter === "string") setText(find(root, "amount", "inspector")?.querySelector(".prop-k") ?? null, o.filter);
     if (typeof o.amount === "number") for (const el of find(root, "amount", "inspector")?.querySelectorAll("input") ?? []) el.setAttribute("value", String(Math.round(o.amount)));
     if (o.filter === false) find(root, "filter", "inspector")?.remove();
@@ -388,7 +512,9 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
     timelineProps(root, o, part("timeline").pxPerSecond || 60);
   },
   preview(root, o) {
-    if (typeof o.time === "number") setLead(find(root, "timecode", "preview"), `${timecode(o.time)} / `);
+    if (typeof o.time === "number") setLead(find(root, "timecode", "preview"), timecode(o.time));
+    if (typeof o.duration === "number") setText(root.querySelector(".timecode .tc-end"), ` / ${timecode(o.duration)}`);
+    if (typeof o.canvas === "string") setText(root.querySelector('[data-testid="canvas-info"]'), o.canvas);
   },
   export(root, o) {
     if (typeof o.quality === "string") {
@@ -400,6 +526,7 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
       }
     }
     if (typeof o.file === "string") find(root, "file", "export")?.setAttribute("value", o.file);
+    if (typeof o.duration === "number") setText(root.querySelector('[data-testid="export-range-text"]'), `${timecode(0)} to ${timecode(o.duration)}, ${o.duration.toFixed(1)} s`);
     if (typeof o.motionBlur === "boolean") {
       const box = find(root, "motionBlur", "export");
       if (box) o.motionBlur ? box.setAttribute("checked", "") : box.removeAttribute("checked");
@@ -420,20 +547,24 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
   },
   topbar(root, o) {
     if (typeof o.exportLabel === "string") setLead(find(root, "export", "topbar"), o.exportLabel);
+    if (typeof o.title === "string") setText(find(root, "title", "topbar"), o.title);
   },
   agent(root, o) {
     nested(root, o, ["composer", "turn", "message", "review"]);
   },
   editor(root, o) {
-    nested(root, o, ["composer", "turn", "message", "review", "timeline", "preview", "topbar"]);
     if (Array.isArray(o.media)) {
       const grid = root.querySelector('[data-testid="media-grid"]');
       const tpl = DATA.parts.editor ? mediaTile(root.ownerDocument) : null;
       if (grid && tpl)
-        for (const m of o.media as ReadonlyArray<{ name?: string; meta?: string; image?: string }>) {
+        for (const m of o.media as ReadonlyArray<{ name?: string; meta?: string; image?: string; duration?: number }>) {
           const el = tpl.cloneNode(true) as HTMLElement;
           setText(el.querySelector(".tile-name"), m.name ?? "");
           setText(el.querySelector(".tile-sub"), m.meta ?? "");
+          // The tile's length badge (mm:ss) is the file's: shown only when passed.
+          const badge = el.querySelector(".dur");
+          if (typeof m.duration === "number") setText(badge, `${String(Math.floor(m.duration / 60)).padStart(2, "0")}:${String(Math.floor(m.duration % 60)).padStart(2, "0")}`);
+          else badge?.remove();
           const thumb = el.querySelector(".thumb") as HTMLElement | null;
           if (thumb && m.image) thumb.style.cssText += `;background:url("${picture(m.image)}") center/cover`;
           grid.appendChild(el);
@@ -670,8 +801,10 @@ const smooth = (p: number) => {
 
 /** A key with its host's defaults: centred, 86 % of the host's width, its words 4.8 % of the host's height. */
 function resolveKey(k: PieceKey, host: HTMLElement): PieceKey {
-  const W = host.offsetWidth || 1080;
-  const H = host.offsetHeight || 1350;
+  // A host not laid out yet (zero size): the graphic's own canvas, the document's size.
+  const view = host.ownerDocument.defaultView;
+  const W = host.offsetWidth || host.ownerDocument.documentElement.clientWidth || view?.innerWidth || 1080;
+  const H = host.offsetHeight || host.ownerDocument.documentElement.clientHeight || view?.innerHeight || 1350;
   const own = typeof k.size?.width === "number";
   const width = typeof k.width === "number" ? k.width : typeof k.scale === "number" || own ? undefined : W * 0.86;
   const type = own || covers(k) || width === undefined ? 0 : num(k.type, H * 0.048);
@@ -991,6 +1124,186 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
   return { x: box.x, y: box.y, w: box.w, h: box.h, r: box.r, p: from >= 0 ? p : 1, key: j, el: bj.el, type: (bj.font * boxJ.w) / bj.w };
 }
 
+type Rect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+type FlyLayer = HTMLElement & { __snaps?: Map<string, { key: string; node: HTMLElement; w: number; h: number; bg: string; r: number }> };
+
+interface Flight {
+  readonly at: number;
+  /** The flight's length (s, default 0.7). */
+  readonly dur?: number;
+  /** Where it starts: an element on screen (a media tile, a piece's text), a rect in host px, or a piece key (a big free piece, shown at rest before at). */
+  readonly from: Element | Rect | PieceKey;
+  /** Where it lands: an element (the editor's composer, a timeline clip, the preview's frame) or a rect in host px. */
+  readonly to: Element | Rect;
+  /** Host px the path bows by at its middle (negative: up, a lift off the page). */
+  readonly arc?: number;
+  /** true: the from element is gone once the flight starts (the prompt leaving the composer); default it stays (a tile copied to the timeline). */
+  readonly leave?: boolean;
+  /** The layer's name, one per flight in flight at once (default "0"). */
+  readonly id?: string;
+  /** How an element's copy sits in the moving rect: "cover" (default: a tile cropped into a clip's strip) or "contain" (text into a bubble, whole). */
+  readonly fit?: "cover" | "contain";
+}
+
+/** An element as a free-standing copy: its computed styles written inline (it keeps its look outside the part's CSS). */
+function snapshot(el: HTMLElement): HTMLElement {
+  const view = el.ownerDocument.defaultView!;
+  const copy = el.cloneNode(true) as HTMLElement;
+  const src = [el, ...el.querySelectorAll("*")];
+  const dst = [copy, ...copy.querySelectorAll("*")];
+  src.forEach((s, i) => {
+    const cs = view.getComputedStyle(s);
+    let css = "";
+    for (let j = 0; j < cs.length; j++) {
+      const k = cs[j]!;
+      if (k === "visibility" || k.startsWith("transition") || k.startsWith("animation")) continue;
+      css += `${k}:${cs.getPropertyValue(k)};`;
+    }
+    dst[i]!.setAttribute("style", css);
+  });
+  copy.style.position = "absolute";
+  copy.style.left = copy.style.top = "0px";
+  copy.style.margin = "0";
+  copy.style.transform = "none";
+  copy.style.transformOrigin = "0 0";
+  copy.style.opacity = "1";
+  copy.style.boxShadow = "none";
+  copy.style.width = `${el.offsetWidth}px`;
+  copy.style.height = `${el.offsetHeight}px`;
+  // Its box as laid out: percentages of a parent it no longer has don't apply.
+  copy.style.maxWidth = copy.style.maxHeight = "none";
+  copy.style.minWidth = copy.style.minHeight = "0";
+  copy.style.boxSizing = "border-box";
+  copy.style.visibility = "visible";
+  return copy;
+}
+
+const isPieceKey = (v: unknown): v is PieceKey => !!v && typeof v === "object" && typeof (v as PieceKey).piece === "string";
+const isElement = (v: unknown): v is HTMLElement => !!v && typeof v === "object" && "nodeType" in (v as object);
+
+/**
+ * One element travelling into its place in the program, as one object (call it every frame): from
+ * a free rect or element (a big floating piece, a media tile, the typed prompt) to an element in the
+ * stage (the composer's slot in the agent panel, the clip on the timeline, the preview's frame). Its
+ * rect, corner radius and colour travel along an optional arc (critically damped), the start's look
+ * handing over to the landing element's own look on the way; the landing element is hidden until
+ * it lands, then the copy is gone and the real one shows. A piece key as from shows that piece at
+ * rest before at (its typed text, the Send press), so the same call is the hero and its dock. Pure
+ * in t. Returns { x, y, w, h, p, el } (el: the free piece's element when from is a piece key).
+ */
+function fly(host: HTMLElement, t: number, f: Flight): { x: number; y: number; w: number; h: number; p: number; el: HTMLElement | null } {
+  const doc = host.ownerDocument;
+  ensureCss(doc);
+  const id = f.id ?? "0";
+  let layer = [...host.children].find((c) => c.classList.contains("uncut-ui-fly") && c.getAttribute("data-fly") === id) as FlyLayer | undefined;
+  if (!layer) {
+    layer = doc.createElement("div") as FlyLayer;
+    layer.className = "uncut-ui-fly";
+    layer.setAttribute("data-fly", id);
+    layer.innerHTML = '<div class="uncut-ui-fly-box"><div class="uncut-ui-fly-a"></div><div class="uncut-ui-fly-b"></div></div>';
+    host.appendChild(layer);
+  }
+  layer.__snaps ??= new Map();
+  layer.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:50";
+  const box = layer.firstElementChild as HTMLElement;
+  const slotA = box.children[0] as Holder;
+  const slotB = box.children[1] as HTMLElement;
+  const dur = Math.max(0.05, num(f.dur, 0.7));
+  const raw = (t - f.at) / dur;
+  const to = isElement(f.to) ? f.to : null;
+  const from = isElement(f.from) ? f.from : null;
+  // The landing element waits hidden; the from element leaves once the flight starts (leave).
+  if (to) to.style.visibility = raw < 1 ? "hidden" : "";
+  if (from && f.leave) from.style.visibility = raw >= 0 ? "hidden" : "";
+
+  // Landed, not started from an element yet, or an end gone with a later state: nothing shows.
+  if (raw >= 1 || !f.to || !f.from || (raw < 0 && !isPieceKey(f.from))) {
+    layer.style.display = "none";
+    return { x: 0, y: 0, w: 0, h: 0, p: raw >= 1 ? 1 : 0, el: null };
+  }
+  // The start: a piece key's box (built here), an element's rect, or a rect.
+  let A: Rect;
+  let built: Built | null = null;
+  let press = 1;
+  if (isPieceKey(f.from)) {
+    const k = resolveKey(f.from, host);
+    built = buildPiece(slotA, k);
+    const b = keyBox(k, built);
+    A = { x: b.x - b.w / 2, y: b.y - b.h / 2, w: b.w, h: b.h };
+    press = num(k.press, 1);
+  } else if (from) A = rectIn(from, host);
+  else A = f.from as Rect;
+  const B: Rect = to ? rectIn(to, host) : (f.to as Rect);
+
+  if (raw < 0 && !built) {
+    layer.style.display = "none";
+    return { x: A.x + A.w / 2, y: A.y + A.h / 2, w: A.w, h: A.h, p: 0, el: null };
+  }
+  layer.style.display = "block";
+  const q = Math.max(0, raw);
+  const p = settle(q);
+  const arc = num(f.arc, 0) * 4 * p * (1 - p);
+  const cur = { x: A.x + (B.x - A.x) * p, y: A.y + (B.y - A.y) * p + arc, w: A.w + (B.w - A.w) * p, h: A.h + (B.h - A.h) * p };
+  // The copies: the start's (an element's look, inline) and the landing element's, cached by their markup.
+  const snap = (slot: string, el: HTMLElement) => {
+    const key = `${el.outerHTML.length}:${el.offsetWidth}x${el.offsetHeight}:${el.outerHTML.slice(0, 400)}:${el.textContent}`;
+    let s = layer!.__snaps!.get(slot);
+    if (!s || s.key !== key) {
+      const view = doc.defaultView!;
+      const cs = view.getComputedStyle(el);
+      const node = snapshot(el);
+      node.style.backgroundColor = "transparent";
+      node.style.borderRadius = "0";
+      node.style.border = "0";
+      s = { key, node, w: el.offsetWidth || 1, h: el.offsetHeight || 1, bg: cs.backgroundColor, r: parseFloat(cs.borderTopLeftRadius) || 0 };
+      layer!.__snaps!.set(slot, s);
+    }
+    return s;
+  };
+  const sb = to ? snap("b", to) : null;
+  if (sb && slotB.firstElementChild !== sb.node) slotB.replaceChildren(sb.node);
+  if (!sb) slotB.replaceChildren();
+  let rA = 0;
+  let bgA = "rgba(0, 0, 0, 0)";
+  if (built) {
+    rA = (built.radius * A.w) / built.w;
+    bgA = built.bg;
+  } else if (from) {
+    const sa = snap("a", from);
+    if (slotA.firstElementChild !== sa.node) slotA.replaceChildren(sa.node);
+    rA = (sa.r * A.w) / sa.w;
+    bgA = sa.bg;
+  } else slotA.replaceChildren();
+  const rB = sb ? (sb.r * B.w) / sb.w : rA;
+  const bgB = sb ? sb.bg : bgA;
+  // The hand-over: the landing look comes in over the start's, which goes once it is mostly in.
+  const inB = smooth((q - 0.2) / 0.25);
+  const outA = smooth((q - 0.32) / 0.18);
+  const place = (node: HTMLElement, w: number, h: number, alpha: number, cover: boolean) => {
+    const s = cover ? Math.max(cur.w / w, cur.h / h) : Math.min(cur.w / w, cur.h / h);
+    node.style.transformOrigin = "0 0";
+    node.style.transform = `translate(${(cur.w - w * s) / 2}px, ${(cur.h - h * s) / 2}px) scale(${s})`;
+    node.style.opacity = String(Math.round(alpha * 1000) / 1000);
+    node.style.visibility = alpha > 0.001 ? "visible" : "hidden";
+  };
+  slotA.style.cssText = slotB.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible";
+  if (built) {
+    built.node.style.position = "absolute";
+    place(built.node, built.w, built.h, raw < 0 ? 1 : 1 - outA, false);
+  } else if (slotA.firstElementChild) {
+    const sa = layer.__snaps.get("a")!;
+    place(sa.node, sa.w, sa.h, 1 - outA, f.fit !== "contain");
+  }
+  if (sb) place(sb.node, sb.w, sb.h, raw < 0 ? 0 : inB, f.fit !== "contain");
+  const bg = mixRgba(bgA, bgB, raw < 0 ? 0 : inB);
+  const r = rA + (rB - rA) * p;
+  const lift = raw < 0 ? (built && f.from && (f.from as PieceKey).shadow !== false ? 1 : 0) : Math.sin(Math.PI * Math.min(1, q * 1.4)) * (1 - p) + (built ? 1 - p : 0);
+  const shadow = lift > 0.01 ? `;box-shadow:0 ${(2 + 22 * lift).toFixed(1)}px ${(6 + 50 * lift).toFixed(1)}px rgb(0 0 0 / ${(0.1 + 0.22 * Math.min(1, lift)).toFixed(3)})` : "";
+  const pz = raw < 0 ? press : 1;
+  box.style.cssText = `position:absolute;left:${cur.x}px;top:${cur.y}px;width:${cur.w}px;height:${cur.h}px;border-radius:${Math.min(r, cur.w / 2, cur.h / 2)}px;background:${bg};overflow:hidden;transform:scale(${pz});transform-origin:50% 50%${shadow}`;
+  return { x: cur.x + cur.w / 2, y: cur.y + cur.h / 2, w: cur.w, h: cur.h, p: raw < 0 ? 0 : p, el: built?.el ?? null };
+}
+
 /** One piece on its own: sequence with one key (the same pixels as that key at rest). Returns the slot's element. */
 function piece(host: HTMLElement, id: string, props?: Omit<PieceKey, "piece" | "at">): HTMLElement {
   return sequence(host, 0, [{ ...(props || {}), piece: id, at: 0 }]).el;
@@ -1022,6 +1335,7 @@ function cursor(host: HTMLElement, o: { readonly x: number; readonly y: number; 
   return el;
 }
 
+const SPINNER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader-circle spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>';
 const CURSOR_SVG = '<svg viewBox="0 0 20 30" width="100%" height="100%" style="display:block;overflow:visible;filter:drop-shadow(0 1px 1.5px rgb(0 0 0 / 35%))"><path d="M3.6 3 L3.6 24.2 L8.6 19.4 L11.9 27 L15.1 25.6 L11.9 18.2 L18.6 18.2 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
 
 export {};
