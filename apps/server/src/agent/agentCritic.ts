@@ -131,7 +131,7 @@ Blockers are real defects, and they fail the video whatever the scores. The <rub
 - illegible: text meant to be read (a title, caption, headline, a quoted storyboard word, the line the moment is about) too small, too thin or too low in contrast to read at 360 px wide; small labels and chrome around the moment's subject are texture, never this. In a UI-first film (an app's UI is the subject) the panel, dialog or row the moment is about IS that line: a desktop-sized panel whose words are under about 3.5 % of the frame's height (a screen-recording look: small text in big dark panels, a camera panning over them; the whole program blurred behind a hero, or passing in a short pull-back, is the stage, not the moment, but only while the hero or the next push-in carries what the moment is about: a step, clip, dialog or value seen only at stage scale still counts) is this blocker, with its time range
 - brand-colour: colours outside the kit where the kit should rule (backgrounds, text, accents), only when the rubric lists it
 - invented: a logo, product UI, screen, metric, quote or customer that the brief and kit don't provide, or a number or status about the film's own making that differs from this run's facts in <motion>
-- blank: a black or blank frame, or a nearly empty one (bare canvas with at most a cursor or a speck) for 0.2 s or more; Uncut measures these in <motion> ("Nearly empty frames"). A small element on a calm canvas is fine only while it fills a fair share of the frame and the next shape is already growing out of it
+- blank: a black or blank frame, or a nearly empty one (bare canvas with at most a cursor or a speck) for 0.2 s or more; Uncut measures these in <motion> ("Nearly empty frames"). A low-information frame is one too: mostly one flat colour with only tiny content (a big dark panel holding one message bubble or a line or two of desktop-size steps, a card waiting for its content); Uncut measures these too ("Low-information frames"), and one of 0.5 s or more in a one-take film is this blocker. A small element on a calm canvas is fine only while it fills a fair share of the frame and the next shape is already growing out of it
 - off-centre: an element meant to be centred (a button glyph, a title, a logo) visibly off its centre
 - sound: from the <sound> sheet, only when the rubric lists it: sound effects past the sound profile's limits, landing on nothing, a meme sound or a click on text the brief didn't ask for
 Style rules (pacing, a hook, transitions, motion style, the sound's density or level) are defects, not blockers, unless the rubric lists them. Give every defect a kind: the category it belongs to (hook, readability, motion, variety, sound, brand) or a blocker kind.
@@ -353,7 +353,7 @@ export function parseCritic(text: string, scored: ReadonlyArray<Category> = REVI
 /** D217: the check findings that become review findings when they don't block (they can't be seen on frames). */
 const CHECK_FINDING = /^sound:(density|loud|level):/;
 /** D292: the motion scan's findings (pops; jumps, holds and the seam when asked for) are defects from the check, with or without a rubric. */
-const MOTION_FINDING = /^motion:(pop|jump|hold|seam|empty|fast):/;
+const MOTION_FINDING = /^motion:(pop|jump|hold|seam|empty|thin|fast):/;
 
 /**
  * The round as saved (D195, D196, D217): the critic's scores (only the categories the rubric scores)

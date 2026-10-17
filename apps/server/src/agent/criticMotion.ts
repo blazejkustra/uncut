@@ -82,6 +82,27 @@ export const EMPTY_STEP_S = 0.15;
 /** A nearly empty run this long or longer is a finding (a blocker in a motion film). */
 export const EMPTY_MIN_S = 0.2;
 /**
+ * A low-information frame (thinMeasure, at THIN_WIDTH: the strips' own size, so a 1.5 % line keeps
+ * its height): THIN_FLAT or more of it one flat colour family (± THIN_LEVELS: a dark panel on the
+ * near-black canvas and its card read as one field), with readable marks (THIN_CONTRAST off that
+ * colour, letters joined into words) but none of them wider than a cursor (THIN_MARK_W) and taller
+ * than THIN_TALL of the frame: a big dark panel with a line or two of desktop-size text. The empty
+ * rule counts that panel as content (grey 17 on 10 is more than FLAT_LEVELS), so T1 4.6 to 6.2 s and
+ * T1b 4.6 to 6.4 s (the agent panel after Send, its lines 1.5 % of the height) passed it. Measured
+ * at 200 px every 0.05 s, the longest run: T1 1.35 s, T1b 1.8 s, A1r8 0.75 s (steps at 2 %); the
+ * favourites A2-noskill 0.15 s (its bubble lines are 3.2 % tall), A2 and A1-noskill 0.25 s (a pulled-
+ * back editor); 2.mp4 and 3.mp4 0.05 s at most (their bare moments, a dot growing or a black bleed,
+ * carry no mark at all: the empty rule's).
+ */
+export const THIN_WIDTH = 200;
+export const THIN_FLAT = 0.9;
+export const THIN_LEVELS = 20;
+export const THIN_CONTRAST = 40;
+export const THIN_MARK_W = 0.06;
+export const THIN_TALL = 0.025;
+/** A low-information run this long is a blocker in a motion film; from EMPTY_MIN_S it is a finding. */
+export const THIN_HARD_S = 0.5;
+/**
  * A fast move: at least FAST_RUN consecutive frames each changing FAST_STEP or more of the picture.
  * The export's motion blur draws it from a few sub-frames, so it stacks into copies (A2 14.0 and
  * 17.0 s: two halves sliding across the frame in a few frames read as a pixelated glitch); render
@@ -313,11 +334,12 @@ export async function refineJumps(o: {
   return added;
 }
 
-/** A scan frame: its grey at the scan's size, and (optional) its emptiness measured at EMPTY_WIDTH. */
+/** A scan frame: its grey at the scan's size, and (optional) its emptiness measured at EMPTY_WIDTH and its information at THIN_WIDTH. */
 export interface ScanFrame {
   readonly frame: number;
   readonly gray: Uint8Array;
   readonly bare?: EmptyMeasure;
+  readonly info?: ThinMeasure;
 }
 
 /** Whether a grey frame (w × h) is nearly empty (emptyMeasure). */
@@ -352,7 +374,8 @@ export async function refineEmpty(o: {
     }
     return measured.get(f)!;
   };
-  const isBlank = (f: number) => bareOf(f).empty;
+  // A low-information frame (info.thin) is sampled and edged like an empty one.
+  const isBlank = (f: number) => bareOf(f).empty || !!at.get(f)!.info?.thin;
   const added: Array<ScanFrame> = [];
   const take = async (frames: ReadonlyArray<number>) => {
     const want = [...new Set(frames)].filter((f) => f >= 0 && (o.duration === undefined || f < o.duration) && !at.has(f)).sort((a, b) => a - b);
@@ -369,7 +392,7 @@ export async function refineEmpty(o: {
     for (let i = 1; i < sorted.length; i++) {
       const lo = sorted[i - 1]!, hi = sorted[i]!;
       if (hi - lo <= step || hi - lo > 4 * gapMax) continue;
-      const suspect = (f: number) => bareOf(f).empty || bareOf(f).content <= EMPTY_SUSPECT;
+      const suspect = (f: number) => isBlank(f) || bareOf(f).content <= EMPTY_SUSPECT;
       if (!suspect(lo) && !suspect(hi)) continue;
       const n = Math.ceil((hi - lo) / step);
       for (let k = 1; k < n; k++) fill.push(lo + Math.round(((hi - lo) * k) / n));
@@ -437,6 +460,9 @@ export interface MotionScan {
    */
   readonly empty: ReadonlyArray<EmptyRun>;
   readonly emptyMeasured: boolean;
+  /** Runs of low-information frames (thinMeasure), built like `empty`, when the frames carry it. */
+  readonly thin?: ReadonlyArray<EmptyRun>;
+  readonly thinMeasured?: boolean;
   /** Fast moves (frames, the steps' first and last frame) and their biggest step. */
   readonly fast: ReadonlyArray<{ readonly start: number; readonly end: number; readonly peak: number }>;
   /**
@@ -566,26 +592,31 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
   // Nearly empty runs: consecutive samples (at most 0.5 s apart) that are nearly empty; a run is
   // measured from its first empty sample to its last (refineEmpty renders its exact edges), and an
   // edge that isn't exact reaches out to the neighbouring sample (upto).
-  const empty: Array<EmptyRun> = [];
-  const emptyMeasured = !!o.size || fr.some((x) => x.bare);
-  if (emptyMeasured) {
-    const blankAt = fr.map((x) => x.bare?.empty ?? (o.size ? emptyMeasure(x.gray, o.size.w, o.size.h).empty : false));
+  const runsOf = (pick: ReadonlyArray<boolean>, of: ReadonlyArray<ScanFrame>): Array<EmptyRun> => {
+    const out: Array<EmptyRun> = [];
     const runs: Array<{ start: number; end: number; first: number; last: number }> = [];
     let run: { start: number; end: number; first: number; last: number } | undefined;
-    fr.forEach((x, i) => {
-      if (blankAt[i] && run && x.frame - run.end <= gapMax) (run.end = x.frame), (run.last = i);
+    of.forEach((x, i) => {
+      if (pick[i] && run && x.frame - run.end <= gapMax) (run.end = x.frame), (run.last = i);
       else {
         if (run) runs.push(run);
-        run = blankAt[i] ? { start: x.frame, end: x.frame, first: i, last: i } : undefined;
+        run = pick[i] ? { start: x.frame, end: x.frame, first: i, last: i } : undefined;
       }
     });
     if (run) runs.push(run);
     for (const r of runs) {
-      const before = fr[r.first - 1]?.frame, after = fr[r.last + 1]?.frame;
+      const before = of[r.first - 1]?.frame, after = of[r.last + 1]?.frame;
       const lo = before === undefined ? r.start : before + 1, hi = after === undefined ? r.end : after - 1;
-      empty.push(lo < r.start || hi > r.end ? { start: r.start, end: r.end, upto: { start: lo, end: hi } } : { start: r.start, end: r.end });
+      out.push(lo < r.start || hi > r.end ? { start: r.start, end: r.end, upto: { start: lo, end: hi } } : { start: r.start, end: r.end });
     }
-  }
+    return out;
+  };
+  const emptyMeasured = !!o.size || fr.some((x) => x.bare);
+  const empty = emptyMeasured ? runsOf(fr.map((x) => x.bare?.empty ?? (o.size ? emptyMeasure(x.gray, o.size.w, o.size.h).empty : false)), fr) : [];
+  // Low-information runs, over the frames that carry the measure (the scan's grey is too small for it).
+  const informed = fr.filter((x) => x.info);
+  const thinMeasured = informed.length > 0;
+  const thin = thinMeasured ? runsOf(informed.map((x) => x.info!.thin), informed) : [];
   // Fast moves: FAST_RUN or more consecutive steps of FAST_STEP or more, none of them a jump or a pop.
   const fast: Array<{ start: number; end: number; peak: number }> = [];
   const skip = new Set([...jumps.map((j) => j.frame - 1), ...burstSteps, ...popFrames, ...[...popFrames].map((f) => f - 1)]);
@@ -607,7 +638,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
   const first = fr[0];
   const last = fr.at(-1);
   const seam = first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical) } : undefined;
-  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured, fast, ...(open ? { open } : {}), ...(seam ? { seam } : {}), typical: round(typical) };
+  return { frames: fr.length, pops, jumps, holds, empty, emptyMeasured, thin, thinMeasured, fast, ...(open ? { open } : {}), ...(seam ? { seam } : {}), typical: round(typical) };
 }
 
 /**
@@ -677,6 +708,17 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
       ? { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard, message: `Nearly empty frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${runSeconds(e, fps).toFixed(2)} s): ${what}. ${fix}` }
       : { rule: "motion", key: `motion:empty:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a nearly empty frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until the next sampled frames that aren't, f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). render_frames around it to see how long. ${fix}` });
   }
+  // T1, T1b: the agent panel after Send, one bubble and desktop-size steps in a big dark field, passed
+  // the empty rule (the panel counts as content) and every round.
+  for (const e of o.oneTake ? thinRuns(scan, fps).slice(0, 2) : []) {
+    const len = runSeconds(e, fps);
+    const sure = len >= EMPTY_MIN_S - 1e-9;
+    const what = `low-information: ${Math.round(THIN_FLAT * 100)} % or more of it one flat colour (a dark panel on the dark canvas counts as one), and nothing in it taller than ${+(THIN_TALL * 100).toFixed(1)} % of the height (a line or two of desktop-size text, a cursor)`;
+    const fix = "Give the moment one big element: the line it is about set large (an uncutUI piece over the blurred stage, or the camera framing that line with uncutUI.frameText until its words reach 3.5 % or more), never a near-empty panel waiting for its content.";
+    out.push(sure
+      ? { rule: "motion", key: `motion:thin:${e.start}`, frame: e.start, range: { start: e.start, end: e.end }, hard: hard && len >= THIN_HARD_S - 1e-9, message: `A low-information frame from f ${e.start} to f ${e.end} (${secs(e.start, fps)} to ${secs(e.end + 1, fps)}, ${len.toFixed(2)} s): ${what}. ${fix}` }
+      : { rule: "motion", key: `motion:thin:${e.start}`, frame: e.start, range: { start: e.upto!.start, end: e.upto!.end }, hard: false, message: `Maybe a low-information frame: f ${e.start} to f ${e.end} (${secs(e.start, fps)}) is ${what}, and it may last until f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; the scan couldn't narrow its edges in time). ${fix}` });
+  }
   for (const m of o.oneTake ? scan.fast.slice(0, 3) : []) {
     out.push({ rule: "motion", key: `motion:fast:${m.start}`, frame: m.start, range: { start: m.start, end: m.end }, hard: false, message: `Very fast move from f ${m.start} to f ${m.end} (${secs(m.start, fps)}): up to ${(m.peak * 100).toFixed(0)} % of the picture changes every frame (listed from ${Math.round(FAST_STEP * 100)} %). The export's motion blur smears each frame over how far things move during its shutter; sub-frames only decide whether that shows as stacked copies (few) or one smooth smear (many), so more sub-frames only smooth the copies into a smear (render_frames draws no blur; the critic sees it drawn with the project's blur). If text smears or doubles there, slow the move's fastest frames (the ease's peak speed counts, not its length: a gentler curve or a shorter travel), keep the words still while it moves, or shorten the shutter. A smooth blur that keeps the words readable is fine as it is.` });
   }
@@ -695,6 +737,9 @@ const runSeconds = (r: { readonly start: number; readonly end: number }, fps: nu
 
 /** The scan's nearly empty runs of EMPTY_MIN_S or more (a run counts its last frame), or that may reach it (upto). */
 export const emptyRuns = (scan: MotionScan, fps: number) => scan.empty.filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9);
+/** The scan's low-information runs of EMPTY_MIN_S or more (or that may reach it), the longest first. */
+export const thinRuns = (scan: MotionScan, fps: number) =>
+  (scan.thin ?? []).filter((e) => Math.max(runSeconds(e, fps), e.upto ? runSeconds(e.upto, fps) : 0) >= EMPTY_MIN_S - 1e-9).sort((a, b) => runSeconds(b, fps) - runSeconds(a, fps));
 
 /** What a scan cut short by the time budget says (in the facts and the tool's result). */
 export const budgetLine = (covered: number, planned: number) => `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
@@ -710,6 +755,8 @@ export function motionLines(scan: MotionScan, fps: number, scanned: { readonly c
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");
   const empties = emptyRuns(scan, fps);
   if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No nearly empty stretch.");
+  const thins = thinRuns(scan, fps);
+  if (scan.thinMeasured) lines.push(thins.length ? `Low-information frames (${Math.round(THIN_FLAT * 100)} % or more one flat colour, nothing taller than ${+(THIN_TALL * 100).toFixed(1)} % of the height: a near-empty panel with a line of small text) for ${EMPTY_MIN_S} s or more: ${thins.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end}, maybe f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No low-information stretch.");
   if (scan.fast.length) lines.push(`Very fast moves (${Math.round(FAST_STEP * 100)} % or more of the picture changing every frame for ${FAST_RUN}+ frames; the export's motion blur may stack them into copies; the other frames here are sharp, so judge that on the strips drawn with the project's motion blur when they are among the images): ${scan.fast.slice(0, 6).map((m) => `f ${m.start} to f ${m.end}`).join(", ")}.`);
   if (scan.open) lines.push(`The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${openLate(scan, fps) ? ", a static open" : ""}.`);
   if (scan.seam) lines.push(`Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`);
@@ -928,6 +975,79 @@ export function emptyMeasure(gray: Uint8Array, w: number, h: number): EmptyMeasu
   }
   return { content: round(content), parts, empty: content <= EMPTY_CONTENT && parts <= EMPTY_PARTS };
 }
+
+/** How much a frame says (thinMeasure): its flat colour family's share, its tallest readable mark (share of the height), and whether that's low-information. */
+export interface ThinMeasure {
+  readonly flat: number;
+  readonly tall: number;
+  readonly thin: boolean;
+}
+
+/**
+ * A grey frame's (w × h) information (THIN_* above): the share within THIN_LEVELS of its most
+ * common level, and the tallest mark THIN_CONTRAST or more off that level (8-connected, gaps of up
+ * to 2 px in a row joined, so letters make words) at least THIN_MARK_W of the width wide (a cursor
+ * isn't a mark). Low-information: THIN_FLAT or flatter, a mark there, all of them under THIN_TALL.
+ * A frame with no mark at all is the empty rule's (emptyMeasure). Best at THIN_WIDTH.
+ */
+export function thinMeasure(gray: Uint8Array, w: number, h: number): ThinMeasure {
+  const n = w * h;
+  if (!n || gray.length < n) return { flat: 0, tall: 1, thin: false };
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < n; i++) hist[gray[i]!]!++;
+  let best = 0;
+  let level = 0;
+  for (let v = 0; v < 256; v++) {
+    let c = 0;
+    for (let u = Math.max(0, v - THIN_LEVELS); u <= Math.min(255, v + THIN_LEVELS); u++) c += hist[u]!;
+    if (c > best) (best = c), (level = v);
+  }
+  const flat = best / n;
+  if (flat < THIN_FLAT) return { flat: round(flat), tall: 1, thin: false };
+  const mark = new Uint8Array(n);
+  for (let y = 0; y < h; y++) {
+    let last = -1;
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (Math.abs(gray[i]! - level) < THIN_CONTRAST) continue;
+      mark[i] = 1;
+      if (last >= 0 && x - last > 1 && x - last <= 3) for (let k = last + 1; k < x; k++) mark[y * w + k] = 1;
+      last = x;
+    }
+  }
+  let tall = 0;
+  let marks = 0;
+  const minW = THIN_MARK_W * w;
+  const stack: Array<number> = [];
+  for (let s = 0; s < n; s++) {
+    if (mark[s] !== 1) continue;
+    let x0 = w, x1 = -1, y0 = h, y1 = -1;
+    mark[s] = 2;
+    stack.push(s);
+    while (stack.length) {
+      const i = stack.pop()!;
+      const x = i % w, y = (i - x) / w;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const j = yy * w + xx;
+          if (mark[j] === 1) (mark[j] = 2), stack.push(j);
+        }
+    }
+    if (x1 - x0 + 1 < minW) continue;
+    marks++;
+    tall = Math.max(tall, (y1 - y0 + 1) / h);
+  }
+  return { flat: round(flat), tall: round(tall), thin: marks > 0 && tall < THIN_TALL };
+}
+
+/** The low-information grey size for a canvas: THIN_WIDTH wide, even height. */
+export const thinSize = (canvas: { readonly width: number; readonly height: number }) => ({ w: THIN_WIDTH, h: Math.max(2, Math.round((THIN_WIDTH * canvas.height) / canvas.width / 2) * 2) });
 
 /** The emptiness grey size for a canvas: EMPTY_WIDTH wide, even height. */
 export const emptySize = (canvas: { readonly width: number; readonly height: number }) => ({ w: EMPTY_WIDTH, h: Math.max(2, Math.round((EMPTY_WIDTH * canvas.height) / canvas.width / 2) * 2) });

@@ -19,7 +19,7 @@ import type { ProjectView } from "../../project/projects.ts";
 import type { Running } from "../session/types.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
-import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
+import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, blurPicks, BLUR_CELL, scanSize, emptySize, emptyMeasure, thinMeasure, thinRuns, thinSize, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 
@@ -429,9 +429,11 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 if (ffmpeg && got.scanned.length > 2) {
                   // Review of 72a73b9: emptiness is judged on larger grey frames (EMPTY_WIDTH) than the differences.
                   const big = emptySize(project.canvas);
+                  // And how much each frame says (low-information frames) at the strips' own size.
+                  const fine = thinSize(project.canvas);
                   const decode = async (jpegs: ReadonlyArray<Buffer>, sig: AbortSignal) => {
-                    const [gs, bs] = await Promise.all([grayFrames(ffmpeg, jpegs, w, h, sig), grayFrames(ffmpeg, jpegs, big.w, big.h, sig)]);
-                    return gs.map((gray, i) => ({ gray, bare: emptyMeasure(bs[i]!, big.w, big.h) }));
+                    const [gs, bs, ts] = await Promise.all([grayFrames(ffmpeg, jpegs, w, h, sig), grayFrames(ffmpeg, jpegs, big.w, big.h, sig), grayFrames(ffmpeg, jpegs, fine.w, fine.h, sig)]);
+                    return gs.map((gray, i) => ({ gray, bare: emptyMeasure(bs[i]!, big.w, big.h), info: thinMeasure(ts[i]!, fine.w, fine.h) }));
                   };
                   const decoded = yield* Effect.tryPromise({ try: (signal) => decode(got.scanned.map((f) => got.byFrame.get(f)!), AbortSignal.any([signal, r.abort.signal])), catch: (e) => e as Error });
                   const grays = decoded.map((x) => x.gray);
@@ -579,7 +581,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         blockers: review.blockers,
         defects: review.defects,
         ...(review.fixes ? { fixes: review.fixes } : {}),
-        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds, empty: emptyRuns(motion.scan, fps) } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
+        motion: { strips: motion.images.length, ...(cut ? { scanCut: cut } : {}), ...(!motion.scan ? { scanFailed: "problem" in motion ? motion.problem : scanMissing } : {}), ...(motion.scan ? { scanned: motion.scan.frames, pops: motion.scan.pops.map((p) => p.frame), ...(intent.oneTake ? { jumps: motion.scan.jumps.map((j) => j.frame), holds: motion.scan.holds, empty: emptyRuns(motion.scan, fps), thin: thinRuns(motion.scan, fps) } : {}), ...(intent.loop && motion.scan.seam ? { seam: motion.scan.seam } : {}) } : {}), found: motionChecks.map((c) => c.message), facts: motionFacts },
         determinism: checked.length ? (differed.length ? `differed: ${differed.join(", ")}` : `${checked.length} graphic${checked.length === 1 ? "" : "s"} drew the same twice`) : "no graphics to check",
         next: reviewNext(review, round, reviewOutlook(turnReviews(), r.reviewRounds), (at) => {
           // Round 3's A/B: each blocker's frame, the graphic drawing it there (at its own time) and the frames to look at.
