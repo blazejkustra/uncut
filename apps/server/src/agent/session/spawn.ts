@@ -14,7 +14,7 @@ import { isString, resultText, RESULT_MAX } from "../turns/history.ts";
 import { TURN_DIR_PREFIX } from "./stale.ts";
 import { sessionEnv, initMs, sessionArgs } from "./config.ts";
 import { forgetSentBlocks } from "./send.ts";
-import { reviewNudge } from "../agentPlan.ts";
+import { asksNoQuestions, reviewNudge } from "../agentPlan.ts";
 import type { StreamCtx } from "./stream.ts";
 
 /**
@@ -141,7 +141,8 @@ export const makeSpawn = (ctx: StreamCtx) => {
       // D218: claude reports API failures (429, 529) and give-ups as a "success" result too.
       if (!msg.is_error && !resultFailed(msg)) {
         // Round 2's A2: a turn that built a video and never asked the critic is reminded once and goes on.
-        const nudge = reviewNudge({ access: r.access, reviewRounds: r.reviewRounds, graphicWrites: r.graphicWrites, edits: r.turn.edits.length, planned: r.planned, proposing: r.proposing, nudged: r.nudged, cancelled: r.cancelled, storyboard: r.owner.plan.storyboard?.status });
+        const brief = r.owner.plan.brief;
+        const nudge = reviewNudge({ access: r.access, unattended: asksNoQuestions(r.turn.prompt, brief?.film, brief?.visual, brief?.notes, ...(brief?.hardLines ?? [])), reviewRounds: r.reviewRounds, graphicWrites: r.graphicWrites, edits: r.turn.edits.length, planned: r.planned, proposing: r.proposing, nudged: r.nudged, cancelled: r.cancelled, storyboard: r.owner.plan.storyboard?.status });
         if (nudge && s.child?.stdin && !s.closed && s.turn === r) {
           r.nudged = true;
           try {

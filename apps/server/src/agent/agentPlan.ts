@@ -397,8 +397,25 @@ export const REVIEW_BUILD = { graphics: 3, edits: 5 } as const;
  * The critic never needs the user. When a turn that built a video ends without a review_submit,
  * Uncut sends the agent this once, and the turn goes on; undefined when it doesn't apply (a small
  * request, a Look-only turn, a storyboard waiting for the user or sent back, a turn already reviewed or reminded).
+ * `unattended`: the prompt or the brief says nobody can answer (asksNoQuestions); only then does it
+ * suggest approve "self" (with someone there, the storyboard goes to them).
  */
-export function reviewNudge(t: { readonly access: string; readonly reviewRounds: number; readonly graphicWrites: number; readonly edits: number; readonly planned: boolean; readonly proposing?: boolean | undefined; readonly nudged?: boolean | undefined; readonly cancelled?: boolean | undefined; readonly storyboard?: string | undefined }): string | undefined {
+/**
+ * Whether a prompt or a brief says nobody will answer questions ("I can't answer, decide yourself",
+ * "don't ask me anything", an unattended run): only then does Uncut suggest approve "self".
+ */
+const NO_QUESTIONS = [
+  /\b(?:i|we)\s*(?:can't|cannot|can not|won't|will not|am not able to|'m not able to|won't be able to)\s+(?:be\s+(?:here|around|available)\s+to\s+)?answer/i,
+  /\b(?:no ?one|nobody)\s+(?:can|will|is (?:here|around|available) to)\s+answer/i,
+  /\b(?:don't|do not|never)\s+ask\s+(?:me\s+)?(?:any(?:thing|\s+questions?)?|questions?|for (?:approval|confirmation))/i,
+  /\bno\s+questions(?:\s+(?:please|asked|needed))?\s*(?:[,.!;]|$)/im,
+  /\bwithout\s+asking\b/i,
+  /\bdecide\s+(?:it\s+|everything\s+|that\s+)?(?:yourself|for yourself|on your own)\b/i,
+  /\bunattended\b/i,
+];
+export const asksNoQuestions = (...texts: ReadonlyArray<string | undefined>) => texts.some((t) => !!t && NO_QUESTIONS.some((re) => re.test(t.replace(/[\u2018\u2019]/g, "'"))));
+
+export function reviewNudge(t: { readonly access: string; readonly unattended?: boolean | undefined; readonly reviewRounds: number; readonly graphicWrites: number; readonly edits: number; readonly planned: boolean; readonly proposing?: boolean | undefined; readonly nudged?: boolean | undefined; readonly cancelled?: boolean | undefined; readonly storyboard?: string | undefined }): string | undefined {
   if (t.nudged || t.cancelled || t.proposing || t.access === "look" || t.reviewRounds > 0) return undefined;
   // A storyboard proposed or sent back: the build waits for the user, there's nothing to review yet.
   if (t.storyboard !== undefined && t.storyboard !== "approved") return undefined;
@@ -407,5 +424,5 @@ export function reviewNudge(t: { readonly access: string; readonly reviewRounds:
   const built = t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard === "approved" && t.graphicWrites + t.edits >= 2);
   if (!built) return undefined;
   const what = [t.graphicWrites ? `${t.graphicWrites} graphic write${t.graphicWrites === 1 ? "" : "s"}` : "", t.edits ? `${t.edits} timeline edit${t.edits === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
-  return `[Uncut] Not done yet: this turn built the video (${what}) and Uncut's critic hasn't reviewed it; no review_submit ran. Run the critic loop now (docs_read production, step 6): a contact_sheet of the edit, render_frames with phone true, then mcp__uncut__review_submit, and fix its blockers. The critic never needs the user, so a run where nobody can answer still goes through it (with no one to approve the storyboard, approve it yourself with storyboard_propose approve "self" and say so). Only if this was a small, specific request, say that in one line and end.`;
+  return `[Uncut] Not done yet: this turn built the video (${what}) and Uncut's critic hasn't reviewed it; no review_submit ran. Run the critic loop now (docs_read production, step 6): a contact_sheet of the edit, render_frames with phone true, then mcp__uncut__review_submit, and fix its blockers. The critic never needs the user${t.unattended ? ', so a run where nobody can answer still goes through it (with no one to approve the storyboard, approve it yourself with storyboard_propose approve "self" and say so)' : ""}. Only if this was a small, specific request, say that in one line and end.`;
 }

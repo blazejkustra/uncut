@@ -20,7 +20,7 @@ import { drawSheet } from "../../apps/server/src/export/exporter/sheets.ts";
 import { openFrameSession, renderFramesWith } from "../../apps/server/src/export/exporter/frames.ts";
 import { loadGraphicLibs } from "../../apps/server/src/export/graphicLibs.ts";
 import { resolveGraphicLibs, type Project } from "../../packages/core/src/index.ts";
-import { criticSkills, runFacts, UNMEASURED } from "../../apps/server/src/agent/tools/cards.ts";
+import { blurStripLabel, criticSkills, runFacts, UNMEASURED } from "../../apps/server/src/agent/tools/cards.ts";
 import { reviewRubric as rubricOf, soundProfileFor, suggestSkills as suggestOf } from "../../packages/core/src/skills/skills.ts";
 import { soundProfileText } from "../../packages/core/src/checks/soundSheet.ts";
 import { skillOfPlugin } from "../../apps/server/src/brand/store.ts";
@@ -698,6 +698,15 @@ test("round 2's A1: the fast moves get a strip drawn with the export's blur, and
   assert.deepEqual(picks[2]!.frames, [10, 11]);
   const l = stripLayout(3, 1080 / 1350, BLUR_CELL);
   assert.equal(l.cellWidth, BLUR_CELL);
-  assert.match(CRITIC_SYSTEM, /drawn WITH the export's motion blur/);
+  assert.match(CRITIC_SYSTEM, /drawn WITH the project's motion blur/);
   assert.match(CRITIC_SYSTEM, /dark bands at the frame's edges/);
+});
+
+test("the blurred strip's label says it's the project's motion blur, not a claim about the export's quality", () => {
+  const label = blurStripLabel({ start: 361, end: 364 }, 60, { samples: 12, shutter: 180 }, [361, 363, 364], false);
+  assert.match(label, /drawn WITH the project's motion blur \(12 sub-frames over a 180° shutter; as a Standard or High export draws it; a Draft export draws it sharp\): frames 361, 363, 364/);
+  assert.doesNotMatch(label, /as the export will look|export's motion blur/);
+  assert.match(blurStripLabel({ start: 1, end: 3 }, 30, { samples: 8, shutter: 90 }, [1, 3], true), /the project turns it on for every export/);
+  // The critic is told to judge the strips by that label.
+  assert.ok(CRITIC_SYSTEM.includes("drawn WITH the project's motion blur") && label.includes("drawn WITH the project's motion blur"));
 });
