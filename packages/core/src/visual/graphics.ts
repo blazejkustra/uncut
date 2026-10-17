@@ -154,7 +154,8 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   // D198: every declared face loaded once before the first frame (canvas text doesn't wait for a font).
   let fonts;
   const fontsReady = () => (fonts ??= Promise.all([...document.fonts].map((f) => f.load().catch(() => {}))).then(() => document.fonts.ready));
-  window.__uncutRender = async (t, info) => {
+  // dry (a rehearsal, nothing captured): no frames waited for after render(t).
+  window.__uncutRender = async (t, info, dry) => {
     await fontsReady();
     await window.__uncutMedia.ready();
     // Whatever render throws comes back as an Error with its name and message: a DOMException
@@ -168,7 +169,7 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
         throw new Error(text || "render(t) failed");
       }
     }
-    await frames();
+    if (!dry) await frames();
     window.__uncutMedia.sweep();
     return true;
   };

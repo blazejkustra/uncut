@@ -8,7 +8,16 @@
 //   stdin  ← { id, kind: "graphic", width, height, doc, t, info, out }   a graphic item's frame (D78):
 //                                                    its document (core graphicDocument) loaded in a
 //                                                    window of its own, render(t, info) called, captured
-//   either of those two with outWidth and outHeight: laid out at width × height, the capture shrunk
+//                                                    with `ts` (motion blur's sub-frames, at most 64): their
+//                                                    pictures averaged as seq-graphic averages them (D291)
+//   stdin  ← { id, kind: "graphic-run", width, height, doc, info, frames, ts?, name?, fresh? }   a rehearsal:
+//                                                    render(t, info) at each frame of `frames` (the graphic's
+//                                                    own frames, info.frame set to each) and, with `ts`, at
+//                                                    each of its sub-frames, in order, in the graphic window
+//                                                    as the export calls it, nothing captured (`fresh`: the
+//                                                    document loaded anew first); fails with
+//                                                    "at its frame <n>: <why>" at the first that throws
+//   either of the first two with outWidth and outHeight: laid out at width × height, the capture shrunk
 //                                                    to outWidth × outHeight before it's encoded (D292)
 //   stdin  ← { id, kind: "shader", width, height, code, frame, params?, input, out }   a shader effect's
 //                                                    frame (D213): `input` a width×height RGBA file, drawn
@@ -104,6 +113,8 @@ interface GraphicRequest {
   readonly height: number;
   readonly doc: string;
   readonly t: number;
+  /** Motion blur's sub-frames (the first is t): their pictures averaged into the one saved, as the export's. */
+  readonly ts?: ReadonlyArray<number>;
   readonly info: unknown;
   readonly out: string;
   /** What to call it in an error ("intro" (graphics/intro.html)). */
@@ -139,7 +150,32 @@ type SeqRequest =
   | { readonly id: number; readonly kind: "seq-html"; readonly css: string; readonly html: string }
   | { readonly id: number; readonly kind: "seq-hold"; readonly count: number }
   | { readonly id: number; readonly kind: "seq-close" };
-type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | SeqRequest;
+/** A rehearsal (see the header): the graphic's frames called in order, nothing captured. */
+interface RunRequest {
+  readonly id: number;
+  readonly kind: "graphic-run";
+  readonly width: number;
+  readonly height: number;
+  readonly doc: string;
+  readonly info: Record<string, unknown>;
+  readonly frames: ReadonlyArray<number>;
+  readonly ts?: ReadonlyArray<ReadonlyArray<number>>;
+  readonly name?: string;
+  readonly fresh?: boolean;
+}
+/** The most frames one rehearsal request takes. */
+const MAX_RUN_FRAMES = 2000;
+const isRunRequest = (v: unknown): v is RunRequest => {
+  const r = v as Partial<RunRequest> | null;
+  if (typeof r !== "object" || r === null || r.kind !== "graphic-run" || !Number.isInteger(r.id)) return false;
+  const size = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= 8192;
+  const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+  if (!size(r.width) || !size(r.height) || typeof r.doc !== "string" || typeof r.info !== "object" || r.info === null) return false;
+  if (!Array.isArray(r.frames) || r.frames.length < 1 || r.frames.length > MAX_RUN_FRAMES || !r.frames.every(num)) return false;
+  if (r.ts !== undefined && (!Array.isArray(r.ts) || r.ts.length !== r.frames.length || !r.ts.every((x) => Array.isArray(x) && x.length >= 1 && x.length <= MAX_SUBFRAMES && x.every(num)))) return false;
+  return (r.name === undefined || typeof r.name === "string") && (r.fresh === undefined || typeof r.fresh === "boolean");
+};
+type Request = HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest | SeqRequest | RunRequest;
 /** The most sub-frames one sequence frame may average (motion blur). */
 const MAX_SUBFRAMES = 64;
 
@@ -208,7 +244,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style id="css"></style></head><body><div class="frame" id="frame"></div></body></html>`;
 
 const isRequest = (v: unknown): v is Request => {
-  if (isSeqRequest(v)) return true;
+  if (isSeqRequest(v) || isRunRequest(v)) return true;
   if (typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "shader-probe") return Number.isInteger((v as { id?: unknown }).id);
   const r = v as Partial<HtmlRequest> & Partial<Omit<GraphicRequest, "kind">> & { kind?: unknown };
   const sized =
@@ -228,7 +264,8 @@ const isRequest = (v: unknown): v is Request => {
     const within = (n: unknown, max: number) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= max;
     if ((r.kind !== undefined && r.kind !== "graphic") || !within(r.outWidth, r.width!) || !within(r.outHeight, r.height!)) return false;
   }
-  if (r.kind === "graphic") return typeof r.doc === "string" && typeof r.t === "number" && Number.isFinite(r.t) && (r.name === undefined || typeof r.name === "string");
+  if (r.kind === "graphic")
+    return typeof r.doc === "string" && typeof r.t === "number" && Number.isFinite(r.t) && (r.name === undefined || typeof r.name === "string") && (r.ts === undefined || (Array.isArray(r.ts) && r.ts.length >= 1 && r.ts.length <= MAX_SUBFRAMES && r.ts.every((t) => typeof t === "number" && Number.isFinite(t))));
   if ((r.kind as unknown) === "shader") {
     const sr = v as Partial<ShaderRequest>;
     const floats = (a: unknown, max: number) => Array.isArray(a) && a.length <= max && a.every((x) => typeof x === "number" && Number.isFinite(x));
@@ -358,7 +395,9 @@ async function main() {
   // the next frame starts from a fresh one.
   // `ts`: the times drawn (a sequence frame's sub-frames, D291), each picture handed to `take`; a
   // time equal to the one before it is not drawn again. The deadline grows with them.
-  const renderGraphic = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, take: (image: Electron.NativeImage) => void | Promise<void>) => {
+  // Without `take` (a rehearsal) nothing is captured: render(t) runs as the export calls it, without
+  // the frames a capture waits for.
+  const renderGraphic = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, take?: (image: Electron.NativeImage) => void | Promise<void>) => {
     if (!graphicWin || graphicWin.isDestroyed()) {
       graphicWin = newGraphicWindow();
       graphicDoc = "";
@@ -373,6 +412,10 @@ async function main() {
         await gw.loadURL(`data:text/html;base64,${Buffer.from(r.doc).toString("base64")}`);
         gw.webContents.setZoomFactor(1);
         graphicDoc = r.doc;
+      }
+      if (!take) {
+        for (const [i, t] of ts.entries()) if (i === 0 || t !== ts[i - 1]) await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}, true).then(() => true)`);
+        return;
       }
       let image: Electron.NativeImage | undefined;
       for (const [i, t] of ts.entries()) {
@@ -579,8 +622,35 @@ async function main() {
     return seqWrite(frame);
   };
 
+  /** A rehearsal (see the header): every frame's render(t) in order, nothing captured; the first failure names its frame. */
+  const runGraphic = async (r: RunRequest) => {
+    if (r.fresh) graphicDoc = "";
+    for (const [i, local] of r.frames.entries()) {
+      try {
+        await renderGraphic({ width: r.width, height: r.height, doc: r.doc, info: { ...r.info, frame: local }, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts?.[i] ?? [local / Number(r.info.fps || 30)]);
+      } catch (error) {
+        throw new Error(`at its frame ${local}: ${messageOf(error)}`);
+      }
+    }
+  };
+
   const render = async (r: Request) => {
-    if (r.kind !== undefined && r.kind !== "graphic" && r.kind !== "shader" && r.kind !== "shader-probe") return renderSeq(r);
+    if (r.kind !== undefined && r.kind !== "graphic" && r.kind !== "graphic-run" && r.kind !== "shader" && r.kind !== "shader-probe") return renderSeq(r);
+    if (r.kind === "graphic-run") return runGraphic(r);
+    if (r.kind === "graphic" && r.ts && r.ts.length > 1) {
+      // Motion blur's sub-frames averaged on premultiplied colour, as seq-graphic does (the export's frame).
+      const s = { width: r.width, height: r.height };
+      const sum = new Uint32Array(r.width * r.height * 4);
+      await renderGraphic(r, r.ts, (image) => {
+        const px = bitmapOf(image, s);
+        for (let i = 0; i < px.length; i++) sum[i]! += px[i]!;
+      });
+      const n = r.ts.length;
+      const half = n >> 1;
+      const frame = Buffer.allocUnsafe(sum.length);
+      for (let i = 0; i < sum.length; i++) frame[i] = (sum[i]! + half) / n;
+      return save(r.out, r)(nativeImage.createFromBitmap(frame, s));
+    }
     if (r.kind === "graphic") return renderGraphic(r, [r.t], save(r.out, r));
     if (r.kind === "shader") return renderShader(r);
     if (r.kind === "shader-probe") return probeShader().catch((error: Error) => {

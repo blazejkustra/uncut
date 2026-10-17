@@ -16,6 +16,10 @@ import { type Running, pushEdit } from "../session/types.ts";
 import { noteFor } from "../turns/notes.ts";
 import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH } from "./common.ts";
+import { rehearsalLine } from "../../export/exporter/rehearse.ts";
+
+/** How long render_frames may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
+export const REHEARSE_RENDER_MS = 15_000;
 import type { McpResult } from "../agent.ts";
 import type { LibraryCtx } from "./library.ts";
 
@@ -77,8 +81,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           // D189: phone true draws them 360 px wide, as in a feed on a phone.
           const scale = args.phone === true ? Math.min(1, PHONE_WIDTH / canvas.width) : typeof args.scale === "number" && args.scale > 0 && args.scale <= 1 ? args.scale : Math.min(1, FRAME_EDGE / Math.max(canvas.width, canvas.height));
           const width = Math.max(64, Math.round(canvas.width * scale));
-          const rendered = yield* exporter.renderFrames(frames as Array<number>, width).pipe(
-            Effect.map((list) => ({ ok: true as const, list })),
+          // The frames, then the export's graphics rehearsed on the same rasteriser (every frame in
+          // order, as the export runs them): a graphic that breaks only on a long run shows here.
+          const rendered = yield* exporter.frameSession((session) => Effect.all([session.render(frames as Array<number>, width), session.rehearse(REHEARSE_RENDER_MS).pipe(Effect.catch(() => Effect.succeed(undefined)))])).pipe(
+            Effect.map(([list, rehearsal]) => ({ ok: true as const, list, rehearsal })),
             Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
           );
           if (!rendered.ok) return textResult(`Couldn't render the frames: ${rendered.message}`, true);
@@ -89,9 +95,10 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           const clamped = rendered.list.flatMap((r, i) => (r.frame !== frames[i] ? [`frame ${frames[i]} is past the last frame, so frame ${r.frame} is shown for it`] : []));
           // What a frame leaves out (a graphic it couldn't read, D78), once each.
           clamped.push(...new Set(rendered.list.flatMap((r) => r.notes ?? [])));
+          const rehearsal = rendered.rehearsal?.failure ? ` ${rehearsalLine(rendered.rehearsal)}` : "";
           return {
             content: [
-              { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}` },
+              { type: "text", text: `Frame${rendered.list.length === 1 ? "" : "s"} ${rendered.list.map((r) => r.frame).join(", ")} of the edit (revision ${v.session.revision}) at ${Math.round(width / 2) * 2}×${height}, drawn as the export draws them, in that order.${clamped.length ? ` Note: ${clamped.join("; ")}.` : ""}${rehearsal}` },
               ...rendered.list.map((r) => ({ type: "image" as const, data: r.jpeg.toString("base64"), mimeType: "image/jpeg" })),
             ],
           };

@@ -20,6 +20,10 @@ import { PHONE_WIDTH } from "./common.ts";
 import { findClaude, sessionEnv } from "../session/config.ts";
 import { beatWordLines, beatWords, budgetLine, canvasShare, dropBeat, dropLine, emptyRuns, flatFindings, flatFraction, flatLines, grayFrames, motionAnchors, motionFindings, motionFrames, motionIntent, motionLines, motionScan, REFINE_BUDGET_MS, REFINE_EMPTY_BUDGET_MS, refineEmpty, refineJumps, scanPlan, scanSize, emptySize, emptyMeasure, type ScanFrame, STRIP_CELL, stripLayout, stripPlan, type FlatStrip, type MotionScan } from "../criticMotion.ts";
 import { which } from "../../app/setup.ts";
+import { rehearsalLine } from "../../export/exporter/rehearse.ts";
+
+/** How long review_submit may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
+export const REHEARSE_REVIEW_MS = 30_000;
 import type { CardAnswer } from "../agent.ts";
 import type { GenerateCtx } from "./generate.ts";
 
@@ -419,12 +423,17 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                 }
                 return { images: stripImages, scan, flat, drop, planned: got.planned, scanned: got.scanned.length, cut: got.cut };
               }).pipe(Effect.catch((error) => Effect.succeed({ images: [] as Array<CriticImage>, scan: undefined, problem: (error as Error).message })));
-              return { mine, evidence, motion };
+              // Round 2's A2: the export's graphics run as the export runs them (every frame in order,
+              // motion blur's sub-frames, the same page), so a graphic that only breaks on a long run
+              // fails the round instead of the export.
+              const rehearsal = yield* session.rehearse(REHEARSE_REVIEW_MS).pipe(Effect.catch(() => Effect.succeed(undefined)));
+              return { mine, evidence, motion, rehearsal };
             }),
           { downscale: true },
         )
         .pipe(Effect.catch((error) => Effect.succeed({ mine: [] as Array<string | undefined>, evidence: { ok: false as const, message: error.message }, motion: { images: [] as Array<CriticImage>, scan: undefined } })));
       const { evidence, motion } = rendered;
+      const rehearsal = "rehearsal" in rendered ? rendered.rehearsal : undefined;
       if (!evidence.ok) return textResult(`Couldn't render the frames for the critic: ${evidence.message}`, true);
       // The second render of each graphic, in a session of its own.
       const theirs = twiceOf.length ? yield* exporter.frameSession(hashes, { downscale: true }).pipe(Effect.catch(() => Effect.succeed([] as Array<string | undefined>))) : [];
@@ -464,6 +473,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const scanMissing = yield* Effect.promise(async () => ((await which("ffmpeg", process.env.PATH ?? "")) ? "too few frames were rendered to compare" : "ffmpeg isn't on PATH"));
       const motionChecks = [...(motion.scan ? motionFindings(motion.scan, fps, { ...intent, hard: brand.skills.some((x) => x.id === BUILTIN_IDS.film) }) : []), ...flatFindings(flatStrips, fps, intent.footage)];
       checks.push(...motionChecks);
+      if (rehearsal?.failure) checks.push({ rule: "motion", key: "motion:export", message: rehearsalLine(rehearsal), ...(rehearsal.frame !== undefined ? { frame: rehearsal.frame } : {}), hard: true });
       // D292: the time budget left some of the scan's frames out.
       // (Counted on the sampled frames: the refinement's added frames don't make up for a cut.)
       const cut = "planned" in motion && motion.scan && motion.cut ? budgetLine(Math.min(motion.scanned, motion.planned), motion.planned) : undefined;
@@ -472,6 +482,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         ...flatLines(flatStrips, fps, intent.footage),
         ...("drop" in motion && motion.drop ? [motion.drop] : []),
         ...beatWordLines(sb?.beats),
+        ...(rehearsal && !rehearsal.failure && rehearsal.total ? [rehearsalLine(rehearsal)] : []),
         // Rehearsal 3: a film that shows the app making itself showed invented counts and results.
         ...(intent.oneTake ? [runFacts(sb?.beats.length, r.owner.plan.reviews)] : []),
       ];
