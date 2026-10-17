@@ -43,7 +43,7 @@ export const Storyboard = Schema.Struct({
   beats: Schema.Array(StoryboardBeat),
   status: Schema.Literals(["proposed", "approved", "declined"]),
   // "user": approved on the card; "setting": Auto with the gate skipped.
-  approvedBy: Schema.optional(Schema.Literals(["user", "setting"])),
+  approvedBy: Schema.optional(Schema.Literals(["user", "setting", "agent"])),
   note: Schema.optional(Schema.String),
   updatedAt: Schema.optional(Schema.String),
 });

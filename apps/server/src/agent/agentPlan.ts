@@ -181,7 +181,7 @@ export function planOnly(plan: AgentPlan, gate: BuildGate): string {
   const sb = plan.storyboard;
   if (sb) {
     const beats = sb.beats.map((x, i) => `${i + 1}. ${x.start}–${x.end} s ${x.title}: ${x.entry} → ${x.exit} (${x.purpose})${x.assets.length ? ` [${x.assets.join(", ")}]` : ""}${x.sound ? ` on ${x.sound}` : ""}`);
-    p.push(`Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`);
+    p.push(`Storyboard (${sb.status}${sb.status === "approved" && sb.approvedBy === "setting" ? " by the setting" : sb.status === "approved" && sb.approvedBy === "agent" ? " by you: the user couldn't answer" : ""}${sb.note ? `, the user said: ${sb.note}` : ""}): ${sb.summary}\n${beats.join("\n")}`);
   }
   if (gate.closed) p.push(sb ? "The build waits for the storyboard's approval." : "The build waits for a storyboard (storyboard_propose).");
   else if (gate.waiting) p.push(`${sb ? "The storyboard isn't approved" : "There is no storyboard yet"}: a small edit the user asks for goes ahead (at most ${SMALL_EDIT_INSERTS} new items per timeline_edit); building the planned video waits for an approved storyboard (storyboard_propose).`);
@@ -386,4 +386,26 @@ export function beatGrid(result: BeatsResult, item: GridItem, fps: number, range
     ...(snaps.length ? { snaps } : {}),
     note: "Timeline frames. Put cuts and state changes on beats, big moments (the reveal, the logo, the end card) on downbeats, and start a whoosh or hit sound 1 to 2 frames before the frame it hits. off is how far the beat is from your frame (move it by that). drop is the downbeat where the kick and bass step up (rise: how many times louder the 2 bars after it are than the 2 before; else where the onsets get 1.5 times busier), null on an even track: land the reveal there.",
   };
+}
+
+/** A turn that built this much reviews before it ends (graphic files written, timeline edits), or two in a turn that planned the video and has its storyboard approved. */
+export const REVIEW_BUILD = { graphics: 3, edits: 5 } as const;
+
+/**
+ * Round 2's A2: an unattended prompt ("I can't answer questions, decide yourself") skipped the
+ * storyboard and with it the whole critic loop (0 rounds), so a film that couldn't export shipped.
+ * The critic never needs the user. When a turn that built a video ends without a review_submit,
+ * Uncut sends the agent this once, and the turn goes on; undefined when it doesn't apply (a small
+ * request, a Look-only turn, a storyboard waiting for the user or sent back, a turn already reviewed or reminded).
+ */
+export function reviewNudge(t: { readonly access: string; readonly reviewRounds: number; readonly graphicWrites: number; readonly edits: number; readonly planned: boolean; readonly proposing?: boolean | undefined; readonly nudged?: boolean | undefined; readonly cancelled?: boolean | undefined; readonly storyboard?: string | undefined }): string | undefined {
+  if (t.nudged || t.cancelled || t.proposing || t.access === "look" || t.reviewRounds > 0) return undefined;
+  // A storyboard proposed or sent back: the build waits for the user, there's nothing to review yet.
+  if (t.storyboard !== undefined && t.storyboard !== "approved") return undefined;
+  // A planned video: its storyboard approved and built on (two or more edits or graphics); a brief
+  // and a sound added aren't a build.
+  const built = t.graphicWrites >= REVIEW_BUILD.graphics || t.edits >= REVIEW_BUILD.edits || (t.planned && t.storyboard === "approved" && t.graphicWrites + t.edits >= 2);
+  if (!built) return undefined;
+  const what = [t.graphicWrites ? `${t.graphicWrites} graphic write${t.graphicWrites === 1 ? "" : "s"}` : "", t.edits ? `${t.edits} timeline edit${t.edits === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
+  return `[Uncut] Not done yet: this turn built the video (${what}) and Uncut's critic hasn't reviewed it; no review_submit ran. Run the critic loop now (docs_read production, step 6): a contact_sheet of the edit, render_frames with phone true, then mcp__uncut__review_submit, and fix its blockers. The critic never needs the user, so a run where nobody can answer still goes through it (with no one to approve the storyboard, approve it yourself with storyboard_propose approve "self" and say so). Only if this was a small, specific request, say that in one line and end.`;
 }

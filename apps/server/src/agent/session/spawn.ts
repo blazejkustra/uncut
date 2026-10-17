@@ -14,6 +14,7 @@ import { isString, resultText, RESULT_MAX } from "../turns/history.ts";
 import { TURN_DIR_PREFIX } from "./stale.ts";
 import { sessionEnv, initMs, sessionArgs } from "./config.ts";
 import { forgetSentBlocks } from "./send.ts";
+import { reviewNudge } from "../agentPlan.ts";
 import type { StreamCtx } from "./stream.ts";
 
 /**
@@ -139,6 +140,17 @@ export const makeSpawn = (ctx: StreamCtx) => {
       if (r.turn.error) return finish(r, { status: "error" });
       // D218: claude reports API failures (429, 529) and give-ups as a "success" result too.
       if (!msg.is_error && !resultFailed(msg)) {
+        // Round 2's A2: a turn that built a video and never asked the critic is reminded once and goes on.
+        const nudge = reviewNudge({ access: r.access, reviewRounds: r.reviewRounds, graphicWrites: r.graphicWrites, edits: r.turn.edits.length, planned: r.planned, proposing: r.proposing, nudged: r.nudged, cancelled: r.cancelled, storyboard: r.owner.plan.storyboard?.status });
+        if (nudge && s.child?.stdin && !s.closed && s.turn === r) {
+          r.nudged = true;
+          try {
+            s.child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: nudge }] }, parent_tool_use_id: null })}\n`);
+            return;
+          } catch (error) {
+            console.error(`[uncut] couldn't remind the agent to review: ${(error as Error).message}`);
+          }
+        }
         const patch = { status: "done" as const, ...(typeof msg.duration_ms === "number" ? { seconds: Math.round(msg.duration_ms / 100) / 10 } : {}) };
         // D206: the clean-up first (unused graphics to the trash, empty tracks it made removed), then the turn ends.
         return void Effect.runPromise(turnCleanup(r))

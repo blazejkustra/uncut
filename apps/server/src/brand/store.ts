@@ -476,7 +476,7 @@ export function normStoryboard(raw: unknown): Storyboard | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const s = raw as Record<string, unknown>;
   const status = s.status === "approved" || s.status === "declined" ? s.status : "proposed";
-  const approvedBy = s.approvedBy === "user" || s.approvedBy === "setting" ? s.approvedBy : undefined;
+  const approvedBy = s.approvedBy === "user" || s.approvedBy === "setting" || s.approvedBy === "agent" ? s.approvedBy : undefined;
   const note = str(s.note, 2000);
   const updatedAt = str(s.updatedAt, 40);
   return { summary: str(s.summary, 600), beats: normBeats(s.beats), status, ...(approvedBy ? { approvedBy } : {}), ...(note ? { note } : {}), ...(updatedAt ? { updatedAt } : {}) };

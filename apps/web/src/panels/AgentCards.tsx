@@ -71,7 +71,7 @@ export function QuestionCard({ approval, question, online }: { approval: AgentAp
   );
 }
 
-const OUTCOME: Readonly<Record<string, string>> = { approved: "Approved", declined: "Changes asked", auto: "Approved by the setting", skipped: "No answer", answered: "Answered" };
+const OUTCOME: Readonly<Record<string, string>> = { approved: "Approved", declined: "Changes asked", auto: "Approved by the setting", self: "Approved by the agent", skipped: "No answer", answered: "Answered" };
 
 /** The review's chip: passed, its blockers, or under the bar. */
 const reviewOutcome = (r: Review) => (r.passed ? "Passed" : r.blockers?.length ? (r.blockers.length === 1 ? "1 blocker" : `${r.blockers.length} blockers`) : "Below 8");
@@ -132,7 +132,7 @@ export function CardItem({ card, live }: { card: AgentCard; live?: CardLive | un
       <>
         <Clapperboard />
         <span className="grow ellipsis">Storyboard, {card.storyboard?.beats.length ?? 0} beats</span>
-        {sb && sb.status === "approved" && card.outcome !== "approved" && card.outcome !== "auto" ? <span className="card-outcome approved">Approved</span> : card.outcome && <span className={`card-outcome ${card.outcome}`}>{OUTCOME[card.outcome] ?? card.outcome}</span>}
+        {sb && sb.status === "approved" && card.outcome !== "approved" && card.outcome !== "auto" && card.outcome !== "self" ? <span className="card-outcome approved">Approved</span> : card.outcome && <span className={`card-outcome ${card.outcome}`}>{OUTCOME[card.outcome] ?? card.outcome}</span>}
       </>
     ) : (
       <>

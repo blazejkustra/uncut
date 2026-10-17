@@ -1010,6 +1010,13 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "approve": {
+            "type": "string",
+            "enum": [
+              "self"
+            ],
+            "description": "Only when the user said nobody can answer (\"decide yourself\"): approve it yourself instead of waiting; the card says so. The critic loop still runs."
+          },
           "summary": {
             "type": "string",
             "maxLength": 600
