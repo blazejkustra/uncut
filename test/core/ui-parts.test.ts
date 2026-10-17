@@ -113,8 +113,8 @@ test("the data can't close its script, repeated icons are pooled, and the whole 
   assert.deepEqual(pool, ['<svg a="1"></svg>', "data:image/png;base64,AAAA"]);
   assert.equal(parts.a!.html, '<i>\u00010\u0002\u00010\u0002<img src="\u00011\u0002"></i>');
   // The pieces runtime and the Effects tab's look thumbnails (JPEG) brought it near 300 KB; the whole document with every library stays under MAX_GRAPHIC_DOC_BYTES (graphic-libs.test.ts).
-  // The live editor stage and fly (round 7) took it past 310 KB, frameText (legible steps) past 320 KB.
-  assert.ok(Buffer.byteLength(LIB) < 325_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
+  // The live editor stage and fly (round 7) took it past 310 KB, frameText (legible steps) past 320 KB, the stage preview's own footage (clip under the playhead) past 325 KB.
+  assert.ok(Buffer.byteLength(LIB) < 330_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
 });
 
 test("runtimeJs drops whole-line comments only: code after a leading /* */ stays, a multi-line template literal can't be cut", () => {

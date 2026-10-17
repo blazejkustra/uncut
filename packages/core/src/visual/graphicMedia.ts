@@ -78,7 +78,8 @@ export function graphicMediaUsed(html: string): Array<string> {
 /**
  * The script graphicDocument puts in a graphic's <head> (before its own bootstrap): window.uncut
  * (frame, image, url) and window.__uncutMedia (ready: the markers' pictures in place and decoded,
- * awaited before the first frame; sweep(fps): called after each frame and each motion-blur
+ * awaited before the first frame; hold(promise) / held(): work a library started in render(t) that the
+ * frame must show, awaited after it; sweep(fps): called after each frame and each motion-blur
  * sub-frame, keeps the cache bounded by forgetting pictures not asked for lately; stats(): the
  * pictures still pending, which the rasteriser asks for when a frame runs late).
  * A picture handed to the page is the page's: it is never closed here. The page may keep it in its
@@ -166,8 +167,19 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     }
     return out;
   };
+  // Work a library started during render(t) that the frame must show (uncutUI's stage preview
+  // drawing a clip's frame): the bootstrap awaits it before the capture.
+  let holds = [];
   window.__uncutMedia = {
     stats: () => ({ pending }),
+    hold: (p) => { holds.push(Promise.resolve(p).catch(() => {})); },
+    held: async () => {
+      while (holds.length) {
+        const now = holds;
+        holds = [];
+        await Promise.all(now);
+      }
+    },
     ready: () => (marks ??= (async () => {
       const used = new Set();
       const jobs = [];

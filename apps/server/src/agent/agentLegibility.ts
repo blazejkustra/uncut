@@ -16,6 +16,16 @@ export interface CensusFrame {
   readonly unseen?: number;
   /** Words big enough to read but blurred, faded or dimmed, and what does it (the stage's props, a sequence swap, the graphic's own style). */
   readonly soft?: ReadonlyArray<SoftRun>;
+  /** An uncutUI stage's preview empty (black) on the frame: the share of the frame it covers (%). */
+  readonly emptyPreview?: number;
+}
+
+/** Frames whose uncutUI stage shows an empty (black) preview, with the fix ("" when none). */
+export function emptyPreviewNote(list: ReadonlyArray<CensusFrame>, fps?: number): string {
+  const empty = list.filter((f) => f.emptyPreview);
+  if (!empty.length) return "";
+  const at = (f: CensusFrame) => `frame ${f.frame}${fps ? ` (${(f.frame / fps).toFixed(2)} s)` : ""}, ${f.emptyPreview} % of the frame`;
+  return `The editor stage's preview is empty (black) on ${empty.slice(0, 6).map(at).join("; ")}${empty.length > 6 ? `; ${empty.length - 6} more frames` : ""}: nothing is under the playhead. Put the cut's clips in timeline.clips with their media ids ({ media: id, in: s }: the stage shows the clip under the playhead itself) or pass preview: { frame: yourCanvas } from frame 0; or keep the empty preview off screen.`;
 }
 
 /** What the census can't see, said wherever it would otherwise sound complete. */
@@ -38,12 +48,13 @@ export function softNote(list: ReadonlyArray<CensusFrame>, max = 3): string {
 }
 
 /** render_frames' note: each frame's words under the floor, then the fix; undefined when none (or no census). */
-export function legibilityNote(list: ReadonlyArray<CensusFrame>, height: number): string | undefined {
+export function legibilityNote(list: ReadonlyArray<CensusFrame>, height: number, fps?: number): string | undefined {
   const small = frames(list);
   const blind = list.filter((f) => f.unseen).map((f) => f.frame);
   const caveat = blind.length ? ` On frame${blind.length === 1 ? "" : "s"} ${blind.slice(0, 6).join(", ")}${blind.length > 6 ? " …" : ""}, ${UNSEEN}.` : "";
   const soft = softNote(list);
-  const tail = `${caveat}${soft ? ` ${soft}` : ""}`;
+  const empty = emptyPreviewNote(list, fps);
+  const tail = `${caveat}${soft ? ` ${soft}` : ""}${empty ? ` ${empty}` : ""}`;
   if (!small.length) return tail ? tail.trim() : undefined;
   const lines = small.slice(0, 6).map((f) => `frame ${f.frame}: ${censusList(f.small!, 4)}`);
   return `Small text, measured on the graphics' words (letters' height as % of the frame's height; words a viewer must read need ${SMALL_TEXT * 100} %): ${lines.join("; ")}${small.length > 6 ? `; ${small.length - 6} more frames` : ""}. ${legibleFix(height)}${tail}`;

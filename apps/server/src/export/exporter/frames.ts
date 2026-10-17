@@ -23,6 +23,8 @@ export interface RenderedFrame {
   readonly unseen?: number;
   /** With census: words big enough to read but blurred, faded or dimmed, with what does it (census.ts SoftRun). */
   readonly soft?: ReadonlyArray<SoftRun>;
+  /** With census: an uncutUI stage's preview empty (black) on this frame, the share of the frame it covers (%). */
+  readonly emptyPreview?: number;
 }
 
 export interface FrameSessionOptions {
@@ -155,6 +157,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const soft: Array<SoftRun> = [];
       let measured = 0;
       let unseen = 0;
+      let emptyPreview = 0;
       const inputs: Array<string> = ["-i", background];
       const graph: Array<string> = [`[0:v]scale=${W}:${H},format=rgba[b0]`];
       let base = "b0";
@@ -203,6 +206,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           if (got) {
             measured += got.measured;
             unseen += got.unseen ?? 0;
+            emptyPreview = Math.max(emptyPreview, got.emptyPreview ?? 0);
             small.push(...got.small);
             soft.push(...(got.soft ?? []));
           }
@@ -309,7 +313,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
       small.sort((a, b) => b.share - a.share);
-      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured, ...(unseen ? { unseen } : {}), ...(soft.length ? { soft: soft.sort((a, b) => b.share - a.share).slice(0, 8) } : {}) } : {}) });
+      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured, ...(unseen ? { unseen } : {}), ...(emptyPreview ? { emptyPreview } : {}), ...(soft.length ? { soft: soft.sort((a, b) => b.share - a.share).slice(0, 8) } : {}) } : {}) });
     }
     return out;
   };
