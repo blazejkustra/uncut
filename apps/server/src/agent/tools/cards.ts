@@ -60,6 +60,16 @@ export function criticSkills<S extends { readonly id: string }>(skills: Readonly
 /** D297: what the critic hears when the scan couldn't run (rehearsal 3 marked motion down for it). */
 export const UNMEASURED = "That's Uncut's problem, not the video's: don't mark anything down for what the scan would have measured (pops, holds, the seam); judge timing only from the strips and frames you have, and say what you couldn't check.";
 
+/**
+ * The critic's label for a fast move drawn with the project's motion blur: the export's quality is
+ * picked at export time (Draft draws it sharp unless the project turns blur on), so it's the
+ * project's blur, not "the export's".
+ */
+export function blurStripLabel(run: { readonly start: number; readonly end: number }, fps: number, blur: { readonly samples: number; readonly shutter: number }, frames: ReadonlyArray<number>, forced: boolean): string {
+  const when = forced ? "the project turns it on for every export" : "as a Standard or High export draws it; a Draft export draws it sharp";
+  return `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the project's motion blur (${blur.samples} sub-frames over a ${blur.shutter}° shutter; ${when}): frames ${frames.join(", ")} left to right`;
+}
+
 /** D295: storyboard_propose renders at most this many stills, this wide. */
 export const MAX_STILLS = 4;
 const STILL_WIDTH = 480;
@@ -196,6 +206,13 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const wanted = all.slice(0, MAX_STILLS);
       const skipped = all.slice(MAX_STILLS).map(([i]) => i + 1);
       const stillNote = skipped.length ? { stills: `Drew the first ${MAX_STILLS} stills; beat${skipped.length === 1 ? "" : "s"} ${skipped.join(", ")} asked for one too and ${skipped.length === 1 ? "was" : "were"} left out (${MAX_STILLS} at most: the open, the drop, the busiest state and the last frame).` } : {};
+      // Round 2's A2: approve "self" is for a run in Auto where nobody can answer, on a first proposal
+      // nobody answered. Refused before anything renders or locks the edit (review of r3).
+      if (args.approve === "self") {
+        if (r.access !== "auto") return textResult(`approve "self" is for a run in Auto where nobody can answer; this chat is set to ${r.access === "look" ? "Look only" : "Ask first"}, so the user is here to approve it: propose it without approve.`, true);
+        const sb = r.owner.plan.storyboard;
+        if (r.storyboardSentBack || (sb?.status === "declined" && sb.note)) return textResult(`approve "self" is only for a first proposal nobody answered; the user sent the storyboard back${sb?.status === "declined" && sb.note ? ` ("${sb.note}")` : ""}, so they're here to approve it: change it as asked and propose it again without approve.`, true);
+      }
       // D296: from here the proposal locks the edit (run.ts): the stills render from this state and
       // the user approves what they see. Set before rendering, so a parallel edit can't slip in.
       r.planned = true;
@@ -237,10 +254,6 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       r.planned = true;
       // Round 2's A2: a prompt that says nobody can answer ("decide yourself") approves its own
       // storyboard, shown as such on the card, rather than skipping it (and the critic with it).
-      if (args.approve === "self" && r.access !== "auto") {
-        r.proposing = false;
-        return textResult(`approve "self" is for a run in Auto where nobody can answer; this chat is set to ${r.access === "look" ? "Look only" : "Ask first"}, so the user is here to approve it: propose it without approve.`, true);
-      }
       if (args.approve === "self") {
         r.proposing = false;
         const sb = yield* write({ summary, beats, status: "approved", approvedBy: "agent" });
@@ -271,6 +284,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
         return textResult({ ...stillNote, approved: true, ...(edited.length ? { edited: true, beats: final.beats, message: "The user edited the beats: build these." } : { message: "Approved as the stills show it. Build it scene by scene to match them; keep the copy, logo and end card they show (to change those, propose again)." }) });
       }
       if (a === "deny") {
+        r.storyboardSentBack = true;
         const note = extra?.note?.trim().slice(0, 2000) ?? "";
         const final = yield* write({ summary, beats, status: "declined", ...(note ? { note } : {}) });
         yield* refreshPlan(r, v);
@@ -362,7 +376,8 @@ export const makeCardTools = (ctx: GenerateCtx) => {
       const strips = stripPlan(anchors, fps, duration);
       const scanList = scanPlan(anchors, fps, duration);
       const aspect = project.canvas.width / project.canvas.height;
-      // The export's blur on a graphic (the project's setting, else on as for High): its fast moves get blurred frames.
+      // The project's motion blur on a graphic (its setting, else on as Standard and High export it;
+      // the quality is picked at export time): its fast moves get blurred frames.
       const blurred = motionBlurDefault(project, "high") && project.tracks.some((t) => !t.hidden && t.items.some((i) => i.type === "graphic" && i.motionBlur !== false)) ? projectMotionBlur(project) : undefined;
       // D292: one frame session for the round (one rasteriser, the plan once per width), small
       // frames captured small; the strips' and the scan's frames rendered once, under a time budget.
@@ -438,7 +453,7 @@ export const makeCardTools = (ctx: GenerateCtx) => {
                     const shot = yield* session.render(run.frames, BLUR_CELL, { motionBlur: true }).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<{ frame: number; jpeg: Buffer }>)));
                     if (!shot.length) continue;
                     const jpeg = yield* session.sheet(shot.map((f) => ({ jpeg: f.jpeg, caption: `f ${f.frame}   ${clock(f.frame / fps)}   blur` })), stripLayout(shot.length, aspect, BLUR_CELL)).pipe(Effect.catch(() => Effect.succeed(undefined)));
-                    if (jpeg) stripImages.push({ label: `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the export's motion blur (${blurred.samples} sub-frames over a ${blurred.shutter}° shutter, as the export will look): frames ${shot.map((f) => f.frame).join(", ")} left to right`, jpeg });
+                    if (jpeg) stripImages.push({ label: blurStripLabel(run, fps, blurred, shot.map((f) => f.frame), project.motionBlur?.on === true), jpeg });
                   }
                 }
                 // D296: how much of each strip's frames is flat background (the median of its frames).

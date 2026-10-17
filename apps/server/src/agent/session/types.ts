@@ -171,6 +171,8 @@ export interface Running {
   // D296: a storyboard this turn proposed waits for the user's answer: timeline_edit, graphic_write
   // and shader_write are refused until they approve it or ask for changes (the stills stay what they see).
   proposing?: boolean;
+  // The user sent a storyboard back in this turn: approve "self" is refused for the rest of it.
+  storyboardSentBack?: boolean;
   // D189: what the agent looked at in this turn since its last review (a contact sheet of the edit, phone-size frames).
   looked: { sheet: boolean; phone: boolean };
   // D218: the subscription limits and sign-in problems claude reported in this turn (agentLimits.ts).

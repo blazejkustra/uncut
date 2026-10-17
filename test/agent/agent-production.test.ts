@@ -638,3 +638,41 @@ test("round 2's A2: nobody can answer, so the storyboard approves itself; a buil
     await s.stop();
   }
 });
+
+test("approve \"self\" never overrides the user: refused after a send-back in the turn or a declined storyboard with a note, and refused before stills render or the edit locks", { skip, timeout: 120000 }, async () => {
+  const s = await setup("self-override");
+  try {
+    const html = "<!doctype html><body style=margin:0;background:#123><script>window.render=()=>{}</script>";
+    const images = join(s.dir, ".cache", "agent-images");
+    // Ask first: refused before the still renders, and the edit isn't locked by it.
+    const ask = await s.ask("storyboard", [
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS.map((b) => ({ ...b, still: { graphic: "look.html", t: 0 } })), approve: "self" } },
+      { tool: "graphic_write", args: { name: "after.html", html } },
+    ], { access: "ask" });
+    const [refused, written] = s.results();
+    assert.match(textOf(refused!.result), /approve "self" is for a run in Auto[\s\S]*Ask first/);
+    assert.ok(!existsSync(images), "no still rendered for a refused call");
+    assert.notEqual(written!.result.isError, true, textOf(written!.result));
+    assert.equal(ask.items.filter((i: any) => i.kind === "card").length, 0);
+    // Auto: the user sends it back in the turn, then the agent tries to approve it itself.
+    const id = await s.start("Make a launch film", [
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS } },
+      { tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } },
+    ], { access: "auto" });
+    await s.client.ok("agent.approve", { id: (await s.card(id)).id, allow: false });
+    await s.done(id);
+    const [, self] = s.results();
+    assert.equal(self!.result.isError, true);
+    assert.match(textOf(self!.result), /only for a first proposal nobody answered; the user sent the storyboard back/);
+    assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).status, "declined", "still the user's answer");
+    // A later Auto turn, the storyboard declined with a note: refused too.
+    writeFileSync(join(s.dir, "storyboard.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")), status: "declined", note: "Open on the dashboard" }));
+    await s.client.ok("agent.planSave", { storyboard: { ...JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")) } });
+    const later = await s.ask("I can't answer questions, decide yourself", [{ tool: "storyboard_propose", args: { summary: "Two beats", beats: BEATS, approve: "self" } }], { access: "auto" });
+    assert.match(textOf(s.results()[0]!.result), /the user sent the storyboard back \("Open on the dashboard"\)[\s\S]*without approve/);
+    assert.equal(later.items.filter((i: any) => i.kind === "card").length, 0);
+    assert.equal(JSON.parse(readFileSync(join(s.dir, "storyboard.json"), "utf8")).status, "declined");
+  } finally {
+    await s.stop();
+  }
+});

@@ -3,13 +3,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { reviewNudge, REVIEW_BUILD } from "../../apps/server/src/agent/agentPlan.ts";
+import { asksNoQuestions, reviewNudge, REVIEW_BUILD } from "../../apps/server/src/agent/agentPlan.ts";
 
 const base = { access: "auto", reviewRounds: 0, graphicWrites: 0, edits: 0, planned: false };
 
 test("a built turn without a review is reminded once; small, look-only, waiting, reviewed or stopped turns aren't", () => {
   // A2r2: five revisions of one graphic, no brief, no storyboard.
-  assert.match(reviewNudge({ ...base, graphicWrites: 5 }) ?? "", /5 graphic writes[\s\S]*review_submit[\s\S]*approve "self"/);
+  assert.match(reviewNudge({ ...base, graphicWrites: 5, unattended: true }) ?? "", /5 graphic writes[\s\S]*review_submit[\s\S]*approve "self"/);
   assert.ok(reviewNudge({ ...base, edits: REVIEW_BUILD.edits }));
   assert.ok(reviewNudge({ ...base, planned: true, edits: 2, storyboard: "approved" }), "a planned video's build");
   assert.equal(reviewNudge({ ...base, planned: true, edits: 1, storyboard: "approved" }), undefined, "one edit");
@@ -24,4 +24,14 @@ test("a built turn without a review is reminded once; small, look-only, waiting,
   assert.equal(reviewNudge({ ...base, planned: true }), undefined, "planned, nothing built");
   assert.equal(reviewNudge({ ...base, planned: true, graphicWrites: 1, storyboard: "declined" }), undefined, "the storyboard was sent back");
   assert.ok(reviewNudge({ ...base, planned: true, graphicWrites: 1, edits: 1, storyboard: "approved" }));
+});
+
+test("the nudge suggests approve \"self\" only when the prompt or brief says nobody can answer", () => {
+  const attended = reviewNudge({ ...base, graphicWrites: 5 }) ?? "";
+  assert.match(attended, /review_submit/);
+  assert.doesNotMatch(attended, /approve "self"|approve it yourself/, "an Auto user who's there approves the storyboard");
+  assert.match(reviewNudge({ ...base, graphicWrites: 5, unattended: true }) ?? "", /approve it yourself with storyboard_propose approve "self"/);
+  for (const yes of ["Make a launch film. I can't answer questions, decide yourself.", "I won\u2019t be around to answer", "Nobody will answer, go ahead", "Don't ask me anything.", "Build it without asking", "Run unattended", "No questions, please."]) assert.ok(asksNoQuestions(yes), yes);
+  for (const no of ["Make a launch film", "Answer the FAQ questions in the film", "There are no questions about pricing here", "Ask me before you export"]) assert.ok(!asksNoQuestions(no), no);
+  assert.ok(asksNoQuestions(undefined, "a teaser", "decide yourself on the colours"), "the brief counts");
 });
