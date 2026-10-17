@@ -19,6 +19,8 @@ export interface RenderedFrame {
   /** With census: the words its graphics draw under SMALL_TEXT of the height (the biggest first), and how many runs were measured. */
   readonly small?: ReadonlyArray<CensusRun>;
   readonly measured?: number;
+  /** With census: picture surfaces whose words it couldn't read (canvases, images, videos in a graphic; a zoomed, boxed or fading graphic). */
+  readonly unseen?: number;
 }
 
 export interface FrameSessionOptions {
@@ -149,6 +151,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const notes: Array<string> = [];
       const small: Array<CensusRun> = [];
       let measured = 0;
+      let unseen = 0;
       const inputs: Array<string> = ["-i", background];
       const graph: Array<string> = [`[0:v]scale=${W}:${H},format=rgba[b0]`];
       let base = "b0";
@@ -193,8 +196,10 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           const counted = census && v.opacity >= 0.35 && v.zoom === undefined && !v.box;
           const reply = await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, ...(ts && ts.length > 1 ? { ts } : {}), info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...(counted ? { census: SMALL_TEXT } : {}), ...sized });
           const got = counted && reply ? censusOf(reply.census) : undefined;
+          if (census && !got && v.opacity >= 0.35) unseen++;
           if (got) {
             measured += got.measured;
+            unseen += got.unseen ?? 0;
             small.push(...got.small);
           }
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
@@ -300,7 +305,7 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
       const r = await run(bin, ["-hide_banner", "-nostdin", "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[out]", "-frames:v", "1", "-q:v", "4", "-update", "1", file], signal);
       if (r.code !== 0) throw new Error(`Frame ${f} couldn't be rendered: ${ffmpegError(r.stderr)}`);
       small.sort((a, b) => b.share - a.share);
-      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured } : {}) });
+      out.push({ frame: f, jpeg: await readFile(file), ...(notes.length ? { notes } : {}), ...(census ? { small: small.slice(0, 40), measured, ...(unseen ? { unseen } : {}) } : {}) });
     }
     return out;
   };
