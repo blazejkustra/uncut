@@ -14,9 +14,13 @@ export const MEDIA_SCHEME_PRIVILEGES = { scheme: MEDIA_SCHEME, privileges: { sta
 /** Whether a request may go out (the session's network filter): only this scheme's media URLs. */
 export const isMediaUrl = (url: string) => url.startsWith(`${MEDIA_SCHEME}://media/`);
 
-const MEDIA_MS = 20_000;
+export const MEDIA_MS = 20_000;
 let next = 0;
 const pending = new Map<number, { readonly done: (r: { file?: unknown; type?: unknown; error?: unknown }) => void }>();
+/** Round 3's A2: the media requests still waiting for the server (id, seconds), so a graphic's frame deadline can wait for them and say so. */
+const waiting = new Map<number, { readonly id: string; readonly t: number }>();
+/** The project media a graphic is waiting for right now. */
+export const mediaWaiting = (): ReadonlyArray<{ readonly id: string; readonly t: number }> => [...waiting.values()];
 
 const answer = (status: number, body: string | Uint8Array<ArrayBuffer>, type = "text/plain; charset=utf-8") =>
   new Response(body, { status, headers: { "content-type": type, "access-control-allow-origin": "*", "cache-control": "no-store" } });
@@ -34,6 +38,7 @@ export function handleMedia(protocol: Protocol, send: (msg: Record<string, unkno
     }
     const num = (name: string) => (url.searchParams.get(name) ? Number(url.searchParams.get(name)) : undefined);
     const sub = ++next;
+    waiting.set(sub, { id, t: num("t") ?? 0 });
     const reply = await new Promise<{ file?: unknown; type?: unknown; error?: unknown }>((done) => {
       const timer = setTimeout(() => {
         // An answer after this has nobody to read its file: remove it then.
@@ -48,7 +53,7 @@ export function handleMedia(protocol: Protocol, send: (msg: Record<string, unkno
         },
       });
       send({ media: { sub, id, t: num("t") ?? 0, w: num("w"), h: num("h") } });
-    });
+    }).finally(() => waiting.delete(sub));
     if (typeof reply.file !== "string") return answer(404, typeof reply.error === "string" ? reply.error : "the media couldn't be loaded");
     const file = reply.file;
     try {
