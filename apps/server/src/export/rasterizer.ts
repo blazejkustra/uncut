@@ -50,7 +50,14 @@ export function rasterizerCommand(
  */
 export type RasterJob =
   | ({ readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string } & RasterOutSize)
-  | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly info: unknown; readonly out: string; readonly name?: string } & RasterOutSize)
+  /** `ts`: motion blur's sub-frames (the first is t), their pictures averaged as the export's seq-graphic. */
+  | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly ts?: ReadonlyArray<number>; readonly info: unknown; readonly out: string; readonly name?: string } & RasterOutSize)
+  /**
+   * A rehearsal: render(t, info) at each of the graphic's own `frames` (and each frame's `ts`, motion
+   * blur's sub-frames) in order, in the graphic window as the export calls it, nothing captured;
+   * `fresh` loads the document anew first. Fails with "at its frame <n>: <why>". At most 2000 frames.
+   */
+  | { readonly kind: "graphic-run"; readonly width: number; readonly height: number; readonly doc: string; readonly info: Record<string, unknown>; readonly frames: ReadonlyArray<number>; readonly ts?: ReadonlyArray<ReadonlyArray<number>>; readonly name?: string; readonly fresh?: boolean }
   /** A shader effect's frame (D213): `input` a width×height RGBA file, `out` .rgba or .png; "no-webgpu: <why>" without WebGPU. */
   | { readonly kind: "shader"; readonly width: number; readonly height: number; readonly code: string; readonly frame: ReadonlyArray<number>; readonly params?: ReadonlyArray<number>; readonly input: string; readonly out: string; readonly name?: string }
   /** Whether WebGPU works there: fails with "no-webgpu: <why>" when it doesn't. */

@@ -1,6 +1,6 @@
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { type Project, type Media, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
+import { type Project, type Media, motionBlurDefault, itemMotionBlur, subFrameTimes, layout, visualsAt, isSvg, SOLID, isDrawnComponent, textHtml, solidHtml, componentHtml, MAX_GRAPHIC_BYTES, graphicDocument, graphicInfo, graphicLocal, irisRadius, maskGeq, clipFx, needsPicturePass, hasOverlay, fxOverlayHtml, isPlainBox, baseBox, fitRect, colourLut, cubeText, moveBox, canvasBox } from "@uncut/core";
 import { clipShader, shaderParamBytes, shaderModuleCode, shaderFrameBytes, shaderTime } from "@uncut/core/shaders";
 import { RASTER_CSS, planExport, mediaToken, sourceFramePick, svgClipHtml, untaggedFilter, blurFilters, placementOf, fxGraph, boxGraph } from "../exportPlan.ts";
 import { rasterizerCommand, type Rasterizer, startRasterizer } from "../rasterizer.ts";
@@ -9,6 +9,7 @@ import { makeTemp } from "./files.ts";
 import { withMedia } from "./graphics.ts";
 import { graphicMediaSource } from "../graphicMedia.ts";
 import { type SheetLayout, sheetHtml } from "../../agent/agentFootage.ts";
+import { type Rehearsal, rehearseGraphics } from "./rehearse.ts";
 
 export interface RenderedFrame {
   readonly frame: number;
@@ -32,9 +33,16 @@ export interface FrameSession {
    * `frames` of the edit, `width` px wide, in order; `until` is asked before each frame and, once
    * it says true, the rest are left out (the frames done so far are returned).
    */
-  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly signal?: AbortSignal }) => Promise<Array<RenderedFrame>>;
+  /** `motionBlur`: graphics drawn with the export's motion blur (the project's samples and shutter, the sub-frames' pictures averaged as the export averages them). */
+  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean }) => Promise<Array<RenderedFrame>>;
   /** A contact sheet's grid (agentFootage sheetHtml) drawn by this session's rasteriser, as a JPEG. */
   readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Promise<Buffer>;
+  /**
+   * The export's graphics rehearsed on this session's rasteriser (exporter/rehearse.ts): every
+   * frame's render(t) in the export's order with the export's motion blur (the project's setting,
+   * else on as for High), nothing captured, within `budgetMs`.
+   */
+  readonly rehearse: (budgetMs: number, o?: { readonly signal?: AbortSignal }) => Promise<Rehearsal>;
   /** Stop the rasteriser and the media source, remove the temp folder. */
   readonly close: () => Promise<void>;
 }
@@ -113,19 +121,19 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
     return got;
   };
 
-  const render = async (frames: ReadonlyArray<number>, width: number, o: { readonly until?: () => boolean; readonly signal?: AbortSignal } = {}): Promise<Array<RenderedFrame>> => {
+  const render = async (frames: ReadonlyArray<number>, width: number, o: { readonly until?: () => boolean; readonly signal?: AbortSignal; readonly motionBlur?: boolean } = {}): Promise<Array<RenderedFrame>> => {
     if (closed) throw new Error("The frame session is closed.");
     const call = o.signal ? AbortSignal.any([signal, o.signal]) : signal;
     const onCallAbort = () => void raster?.close();
     o.signal?.addEventListener("abort", onCallAbort, { once: true });
     try {
-      return await renderIn(frames, width, call, o.until);
+      return await renderIn(frames, width, call, o.until, o.motionBlur === true);
     } finally {
       o.signal?.removeEventListener("abort", onCallAbort);
     }
   };
 
-  const renderIn = async (frames: ReadonlyArray<number>, width: number, signal: AbortSignal, until: (() => boolean) | undefined): Promise<Array<RenderedFrame>> => {
+  const renderIn = async (frames: ReadonlyArray<number>, width: number, signal: AbortSignal, until: (() => boolean) | undefined, motionBlur = false): Promise<Array<RenderedFrame>> => {
     const W = Math.max(2, Math.round(width / 2) * 2);
     const H = Math.max(2, Math.round((W * project.canvas.height) / project.canvas.width / 2) * 2);
     const { background, untagged, small } = await forWidth(W, H, signal);
@@ -172,7 +180,10 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
           }
           const png = join(temp, `w${W}-f${f}-${k}-g.png`);
           const at = graphicLocal(v.item, local);
-          await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...small });
+          // With blur: the export's sub-frames (planExport's: a held frame, before its start or past its end, stays sharp).
+          const blur = motionBlur ? itemMotionBlur(v.item, project, true) : undefined;
+          const ts = blur ? subFrameTimes(at, project.canvas.fps, blur, at !== (v.item.in ?? 0) + local) : undefined;
+          await rs.render({ kind: "graphic", width: cw, height: ch, doc: graphicDocument(html, project.canvas), t: at / project.canvas.fps, ...(ts && ts.length > 1 ? { ts } : {}), info: graphicInfo(v.item, project.canvas, at), out: png, name: `"${v.item.name ?? v.item.id}" (${v.item.src})`, ...small });
           input = ["-f", "image2", "-pattern_type", "none", "-i", png];
         }
         if (!input) continue;
@@ -287,5 +298,12 @@ export async function openFrameSession(bin: string, unsized: Project, mediaPath:
     return readFile(out);
   };
 
-  return { render, sheet, close };
+  const rehearse = async (budgetMs: number, o: { readonly signal?: AbortSignal } = {}) => {
+    if (closed) throw new Error("The frame session is closed.");
+    const plan = planExport(project, { mediaPath, width: cw, height: ch, graphic: (src) => graphics.get(src), motionBlur: motionBlurDefault(project, "high") });
+    if ("problem" in plan) return { covered: 0, total: 0, reached: 0 };
+    return rehearseGraphics(rs, plan, { budgetMs, signal: o.signal ? AbortSignal.any([signal, o.signal]) : signal });
+  };
+
+  return { render, sheet, rehearse, close };
 }

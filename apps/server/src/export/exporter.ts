@@ -31,6 +31,7 @@ import { Projects } from "../project/projects.ts";
 import { which } from "../app/setup.ts";
 import { overwritesImported } from "./subtitleSources.ts";
 import { type RenderedFrame, type FrameSessionOptions, openFrameSession, renderFramesWith } from "./exporter/frames.ts";
+import type { Rehearsal } from "./exporter/rehearse.ts";
 import { type MediaFrame, mediaFramesWith, drawSheet } from "./exporter/sheets.ts";
 import { type SavedSubtitles, NO_SUBTITLES, saveSubtitlesFile } from "./exporter/subtitles.ts";
 import { sweepStaleTemp, exists, plainFsError, canonical } from "./exporter/files.ts";
@@ -68,9 +69,11 @@ export interface ExportInput {
 /** D292: a frame session's renders (exporter/frames.ts openFrameSession), as effects. */
 export interface FrameSessionShape {
   /** As renderFrames; `until` is asked before each frame and, once true, the rest are left out. */
-  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean }) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
+  readonly render: (frames: ReadonlyArray<number>, width: number, o?: { readonly until?: () => boolean; readonly motionBlur?: boolean }) => Effect.Effect<ReadonlyArray<RenderedFrame>, ExportError>;
   /** As sheetImage, drawn by the session's rasteriser. */
   readonly sheet: (cells: ReadonlyArray<{ readonly jpeg: Buffer; readonly caption: string }>, layout: SheetLayout) => Effect.Effect<Buffer, ExportError>;
+  /** The export's graphics rehearsed on the session's rasteriser (exporter/rehearse.ts), within `budgetMs`. */
+  readonly rehearse: (budgetMs: number) => Effect.Effect<Rehearsal, ExportError>;
 }
 
 export interface ExporterShape {
@@ -303,6 +306,7 @@ export const layer = Layer.effect(
               render: (frames, width, o) => Effect.tryPromise({ try: (signal) => session.render(frames, width, { ...o, signal }), catch: failed }),
               // A sheet the session can't draw gets the sheet's own rasteriser.
               sheet: (cells, layout) => Effect.tryPromise({ try: () => session.sheet(cells, layout), catch: (error) => error }).pipe(Effect.catch(() => sheetImage(cells, layout))),
+              rehearse: (budgetMs) => Effect.tryPromise({ try: (signal) => session.rehearse(budgetMs, { signal }), catch: failed }),
             }),
           ({ session, life }) =>
             Effect.promise(async () => {
