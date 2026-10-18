@@ -207,6 +207,8 @@ test("the four built-ins: parse, are read-only, use known placeholders with inpu
   for (const section of ["<look>", "<never>"]) assert.ok(keynote.includes(section), section);
   assert.match(keynote, /at least 3 % of the frame's height/);
   assert.match(keynote, /never a verdict/);
+  // UI labels verbatim (T6 shortened "Claude Default" to "Claude" to fit): reframe or resize, never rename.
+  assert.match(keynote, /labels are copied verbatim[^\n]*"Claude Default"[^\n]*never rename or truncate/);
   assert.doesNotMatch(keynote, /\b4:5\b|\b\d+ BPM|\bPassed\b/);
   // No analysis yet: the brief tells the agent to analyse the song, never a dangling "The song's tempo".
   assert.doesNotMatch(filled, /The song's tempo/);

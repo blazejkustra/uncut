@@ -27,7 +27,7 @@ Everything the film needs is in this project. Use only what is listed here; don'
 </inputs>
 
 <look>
-Rebuild the interface as flat vector graphics, measured from the screenshots: the same layout, proportions, labels and icons. Never approximate it from memory.
+Rebuild the interface as flat vector graphics, measured from the screenshots: the same layout, proportions, labels and icons. Never approximate it from memory. UI labels are copied verbatim from the screenshots (if the model picker reads "Claude Default" with the Claude mark before it, it says exactly that); if a label doesn't fit, reframe or resize the element, never rename or truncate it.
 - Colours by role. The accent marks only the one thing selected or active at a time:
 {{palette}}
 - Type: {{fonts}}. Interface labels in the body face, timecodes and numbers in the mono face if the kit has one, big statements in the heading face with tight tracking.
