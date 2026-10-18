@@ -1,5 +1,5 @@
 ---
-title: "Uncut 0.0.1: edit videos by talking to an agent"
+title: "Uncut 0.0.1: edit videos by talking to an agent 🎉"
 date: "2026-10-16"
 description: "The first public release of Uncut, a free and open-source video editor for the Mac with an agent built in."
 image: "/assets/img/blog/uncut-0-0-1.webp"
