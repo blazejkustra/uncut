@@ -154,6 +154,14 @@ a:focus-visible, .btn:focus-visible { outline: 2px solid var(--select); outline-
   box-shadow: 0 40px 120px -40px rgb(109 140 255 / 22%), 0 20px 60px rgb(0 0 0 / 60%);
 }
 
+/* The editor screenshot opens almost full screen (ZoomShot) */
+.shot-zoom { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.shot-zoom:focus-visible { outline: none; }
+.shot-zoom:focus-visible .shot { outline: 2px solid var(--select); outline-offset: 3px; }
+.zoom { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; cursor: zoom-out; background: rgb(5 5 8 / 0); backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); transition: background 0.4s ease, backdrop-filter 0.4s ease, -webkit-backdrop-filter 0.4s ease; }
+.zoom.open { background: rgb(5 5 8 / 82%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.zoom-img { width: auto; height: auto; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--panel); box-shadow: 0 40px 160px -40px rgb(109 140 255 / 30%), 0 30px 80px rgb(0 0 0 / 70%); transform-origin: center; transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); will-change: transform; }
+
 /* Sections */
 section { padding: 72px 0; }
 h2 { margin: 0; font-size: clamp(28px, 4.2vw, 40px); line-height: 1.12; font-weight: 650; letter-spacing: -0.03em; }
@@ -281,5 +289,5 @@ footer a:hover { color: var(--fg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .wordmark span { animation: none; background-position: 0 0; }
-  .btn, .top nav a, .post-card, .hero-fx::before, .hero-fx canvas { transition: none; }
+  .btn, .top nav a, .post-card, .hero-fx::before, .hero-fx canvas, .zoom, .zoom-img { transition: none; }
 }

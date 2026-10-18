@@ -6,6 +6,7 @@ import HeroFx from "../components/HeroFx.tsx";
 import { ClaudeMark, CodexMark } from "../components/Icons.tsx";
 import SiteFooter from "../components/SiteFooter.tsx";
 import SiteHeader from "../components/SiteHeader.tsx";
+import ZoomShot from "../components/ZoomShot.tsx";
 import { alternates, SITE_URL } from "../lib/site.ts";
 
 export const metadata: Metadata = {
@@ -39,7 +40,7 @@ export default function Home() {
             </p>
             <DownloadButtons />
             <p className="req">For Apple silicon Macs. Free and open source.</p>
-            <img className="shot" src="/assets/img/editor.webp" width={1600} height={1000} fetchPriority="high" alt="The Uncut editor cutting a travel film from drone footage: a media library of Croatian coast clips, the title Day four over a coastal road at golden hour in the preview, a timeline with text, graphics, six clips with transitions and music, and the agent panel with its brief, an approved storyboard and a passed review." />
+            <ZoomShot className="shot" src="/assets/img/editor.webp" width={1600} height={1000} fetchPriority="high" alt="The Uncut editor cutting a travel film from drone footage: a media library of Croatian coast clips, the title Day four over a coastal road at golden hour in the preview, a timeline with text, graphics, six clips with transitions and music, and the agent panel with its brief, an approved storyboard and a passed review." />
           </div>
         </div>
 
