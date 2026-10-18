@@ -40,11 +40,13 @@ setInterval(() => {}, 1000);
     assert.equal((await server.connection).url, "ws://127.0.0.1:4567/ws");
     for (let i = 0; i < 100 && !reasons.length; i++) await sleep(20);
     assert.deepEqual(reasons, ["server exited unexpectedly (code 3)"]);
-    await sleep(50); // the last stderr chunk may land after "exit"
+    for (let i = 0; i < 100 && !readFileSync(join(dir, SERVER_LOG), "utf8").includes("exited unexpectedly"); i++) await sleep(20);
     const log = readFileSync(join(dir, SERVER_LOG), "utf8");
     for (const want of ["[desktop] server started (pid", "starting up", "[desktop] server ready on port 4567", "after ready", "TypeError: boom", "    at somewhere (x.ts:1:1)", "[desktop] server exited unexpectedly (code 3)"]) assert.ok(log.includes(want), `missing ${want}:\n${log}`);
     // Every line is timestamped.
     for (const line of log.trimEnd().split("\n")) assert.match(line, /^\d{4}-\d\d-\d\dT[\d:.]+Z /);
+    // The crash's stack comes before the verdict.
+    assert.ok(log.indexOf("TypeError: boom") < log.indexOf("exited unexpectedly"), log);
     // The ready line (the port handshake) isn't output worth keeping.
     assert.ok(!log.includes('"ready"'), log);
   } finally {
@@ -66,6 +68,7 @@ setInterval(() => {}, 1000);
     const server = start(dir, entry, (reason) => reasons.push(reason));
     await server.connection;
     await server.stop();
+    await sleep(50);
     assert.deepEqual(reasons, []);
     const log = readFileSync(join(dir, SERVER_LOG), "utf8");
     assert.ok(log.includes("[desktop] stopping the server (SIGTERM)"), log);

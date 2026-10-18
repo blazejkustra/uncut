@@ -117,7 +117,9 @@ export function startServer(options: {
     stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
   });
   log(`[desktop] server started (pid ${child.pid ?? "none"})`);
-  // Always drained: a full pipe would block the server's writes.
+  // Always drained: a full pipe would block the server's writes. Our stderr may be a pipe whose
+  // reader is gone (a closed terminal): EPIPE there mustn't crash main.
+  if (!process.stderr.listenerCount("error")) process.stderr.on("error", () => {});
   child.stderr!.on("data", (chunk: Buffer) => {
     process.stderr.write(chunk);
     log(chunk.toString("utf8"));
@@ -176,9 +178,10 @@ export function startServer(options: {
     child.once("exit", (code, signal) => {
       const how = signal ?? `code ${code}`;
       if (!ready) return fail(`server exited before it was ready (${how})`);
-      if (stopping) return void log(`[desktop] server stopped (${how})`);
-      log(`[desktop] server exited unexpectedly (${how})`);
-      options.onExit(`server exited unexpectedly (${how})`);
+      // Logged once its output is all in, so a crash's stack comes before the verdict.
+      const note = stopping ? `[desktop] server stopped (${how})` : `[desktop] server exited unexpectedly (${how})`;
+      child.once("close", () => log(note));
+      if (!stopping) options.onExit(`server exited unexpectedly (${how})`);
     });
   });
   // The renderer reports failures; don't crash main on an unobserved rejection.
