@@ -1248,7 +1248,7 @@ type Hiding = HTMLElement & { __hidden?: Array<HTMLElement> };
 
 /** Where the shell is when key i + 1 starts, if key i's own morph (from i - 1) is still running then:
  *  that morph's box and colour at that moment, chained back through earlier unsettled morphs; else null (key i at rest). */
-function startOf(i: number, keys: ReadonlyArray<PieceKey>, holders: ReadonlyArray<Holder>, dur: (k: PieceKey) => number, depth = 0): { box: Box; bg: string } | null {
+function startOf(i: number, keys: ReadonlyArray<PieceKey>, holders: ReadonlyArray<Holder>, dur: (k: PieceKey) => number, depth = 0): { box: Box; bg: string; at: Place } | null {
   if (i < 1 || depth > 8) return null;
   const at = num(keys[i]!.at, 0);
   const raw = (num(keys[i + 1]!.at, 0) - at) / dur(keys[i]!);
@@ -1265,9 +1265,19 @@ function startOf(i: number, keys: ReadonlyArray<PieceKey>, holders: ReadonlyArra
   const bi = built(i);
   const rest = keyBox(keys[i]!, bi);
   const prev = startOf(i - 1, keys, holders, dur, depth + 1);
-  const a = prev ? prev.box : keyBox(keys[i - 1]!, built(i - 1));
-  const abg = prev ? prev.bg : built(i - 1).bg;
-  return { box: { x: a.x + (rest.x - a.x) * q, y: a.y + (rest.y - a.y) * q, w: a.w + (rest.w - a.w) * q, h: a.h + (rest.h - a.h) * q, r: a.r + (rest.r - a.r) * q }, bg: mixRgba(abg, bi.bg, q) };
+  const bp = built(i - 1);
+  const a = prev ? prev.box : keyBox(keys[i - 1]!, bp);
+  const abg = prev ? prev.bg : bp.bg;
+  const pa = prev ? prev.at : placeOf(bp, a, covers(keys[i - 1]!));
+  const pr = placeOf(bi, rest, covers(keys[i]!));
+  return { box: { x: a.x + (rest.x - a.x) * q, y: a.y + (rest.y - a.y) * q, w: a.w + (rest.w - a.w) * q, h: a.h + (rest.h - a.h) * q, r: a.r + (rest.r - a.r) * q }, bg: mixRgba(abg, bi.bg, q), at: { s: pa.s + (pr.s - pa.s) * q, y: pa.y + (pr.y - pa.y) * q } };
+}
+
+/** Where a piece's content sits at rest in its shell: its scale and its top below the shell's top (fitInto, centred). */
+type Place = { readonly s: number; readonly y: number };
+function placeOf(b: Built, box: Box, cover: boolean): Place {
+  const s = fitScale(b, box.w, box.h, cover);
+  return { s, y: (box.h - b.h * s) / 2 };
 }
 
 /**
@@ -1311,7 +1321,10 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
   const raw = from >= 0 ? (t - num(keys[j]!.at, 0)) / dur(keys[j]!) : 1;
   const p = settle(raw);
   // Shown before building: a piece is measured as laid out.
-  holders.forEach((hd, i) => (hd.style.display = i === j || i === from ? "block" : "none"));
+  holders.forEach((hd, i) => {
+    hd.style.display = i === j || i === from ? "block" : "none";
+    hd.style.zIndex = "";
+  });
   // Which key each holder is, and which side of a swap: the text census (core census.ts) names a word
   // blurred or faded by the swap ("the swap into export.high at 22.52 s"), not the graphic's own style.
   holders.forEach((hd, i) => {
@@ -1369,19 +1382,45 @@ function sequence(host: HTMLElement, t: number, keyList: ReadonlyArray<PieceKey>
         carried = true;
       }
     } else {
-      // The same piece grown or shrunk (a row added): the content at its new scale, anchored at the
-      // shell's top, which reveals it as it grows.
-      // A row still below the shell's bottom inset fades out over the inset's top half (the rows already
-      // shown stay whole), so it is never cut at the shell's edge while the shell grows to it.
-      const s = boxJ.w / bj.w;
+      // The same piece grown or shrunk (a row added): the content's scale and its top in the shell
+      // travel from where they sat at the last key (fitted and centred in its box, as at rest) to where
+      // they rest in this one, so neither the morph's first frame nor its last jumps (T7: a key's height
+      // the rows don't fill exactly put the rows lower at rest than in the morph, 9 one-frame pops).
+      // The rows already shown stay put; a new row fades in on its own short ease and is revealed above
+      // the shell's bottom inset as the shell grows to it (never cut at the shell's edge); a row's icon
+      // that changes (the spinner turning into a check) crossfades with the last key's.
+      const pf = start ? start.at : placeOf(bf, boxF, covers(kf));
+      const pj = placeOf(bj, boxJ, covers(kj));
+      const s = pf.s + (pj.s - pf.s) * p;
+      const oy = pf.y + (pj.y - pf.y) * p;
+      const place = (b: Built, sc: number) => {
+        const st = b.node.style;
+        st.transform = `translate(${(box.w - b.w * sc) / 2}px, ${oy}px) scale(${sc})`;
+        st.filter = "none";
+        st.visibility = "visible";
+      };
+      place(bj, s);
       const st = bj.node.style;
-      st.transform = `translate(${(box.w - bj.w * s) / 2}px, 0px) scale(${s})`;
       st.opacity = "1";
-      st.filter = "none";
-      st.visibility = "visible";
-      const end = box.h / s - bj.pad;
-      const mask = bj.pad > 0 && end < bj.h - bj.pad - 0.5 ? `linear-gradient(to bottom, #000 ${end.toFixed(2)}px, transparent ${(end + bj.pad / 2).toFixed(2)}px)` : "";
-      st.maskImage = mask;
+      const end = (box.h - oy) / s - bj.pad;
+      const old = Math.max(0, bf.h - bf.pad);
+      const grew = bj.h > bf.h + 0.5 && Math.abs(bj.w - bf.w) < 0.5;
+      const a = grew ? smooth((raw - 0.1) / 0.45) : 1;
+      const cut = bj.pad > 0 && end < bj.h - bj.pad - 0.5;
+      const stops: Array<string> = [];
+      if (a < 0.999) stops.push(`#000 ${old.toFixed(2)}px`, `rgb(0 0 0 / ${a.toFixed(3)}) ${(old + 1).toFixed(2)}px`);
+      if (cut) stops.push(`rgb(0 0 0 / ${a.toFixed(3)}) ${Math.max(end, old + 1).toFixed(2)}px`, `transparent ${(Math.max(end, old + 1) + bj.pad / 2).toFixed(2)}px`);
+      st.maskImage = stops.length ? `linear-gradient(to bottom, ${a < 0.999 ? "" : "#000 0px, "}${stops.join(", ")})` : "";
+      // The last key's rows over this one's, fading: the same words on the same pixels, only what changed crossfades.
+      const fade = Math.abs(bj.w - bf.w) < 0.5 ? smooth(raw / 0.45) : 1;
+      const hf = holders[from]!;
+      if (fade < 0.999) {
+        hf.style.display = "block";
+        hf.style.zIndex = "1";
+        place(bf, s * (bj.w / bf.w));
+        bf.node.style.opacity = String(Math.round((1 - fade) * 1000) / 1000);
+        bf.node.style.maskImage = bf.pad > 0 ? `linear-gradient(to bottom, #000 ${old.toFixed(2)}px, transparent ${(old + bf.pad / 2).toFixed(2)}px)` : "";
+      }
     }
   } else fitInto(bj, box.w, box.h, 1, 0, 0, 0, covers(keys[j]!));
   if (!carried) {
