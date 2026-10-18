@@ -403,9 +403,11 @@ async function main() {
     gw.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
     return gw;
   };
-  // The whole frame (load, size, render(t), capture) is under one deadline: a document whose
-  // top-level script never ends stalls its load, not just render. On expiry the window goes and
-  // the next frame starts from a fresh one.
+  // The frame's load, size and render(t) are under one deadline (GRAPHIC_FRAME_MS): a document
+  // whose top-level script never ends stalls its load, not just render. The capture after render(t)
+  // isn't the graphic's time: it has its own bound (grab's SENTINEL_WAIT_MS) and doesn't count, so a
+  // busy machine slow to paint (a CI VM) doesn't fail a graphic that drew in time. On expiry the
+  // window goes and the next frame starts from a fresh one.
   // `ts`: the times drawn (a sequence frame's sub-frames, D291), each picture handed to `take`; a
   // time equal to the one before it is not drawn again. The deadline grows with them.
   // Without `take` (a rehearsal) nothing is captured: render(t) runs as the export calls it, without
@@ -421,6 +423,11 @@ async function main() {
     // runs the graphic's own setup (fonts, libraries, thumbnails fetched), the usual slow one.
     let phase: "load" | "first" | "render" | "capture" = "render";
     let fresh = false;
+    // Time spent capturing (ours, not the graphic's): the GRAPHIC_FRAME_MS budget is the graphic's
+    // load and render(t), so a busy machine slow to hand back the painted frame doesn't use it up.
+    // grab is bounded on its own (SENTINEL_WAIT_MS, then its own error); GRAPHIC_CAP_MS caps it all.
+    let captured = 0;
+    let captureFrom = 0;
     const work = (async () => {
       const [w, h] = gw.getContentSize();
       if (w !== r.width || h !== r.height + 1) gw.setContentSize(r.width, r.height + 1);
@@ -447,7 +454,13 @@ async function main() {
           phase = fresh && !image ? "first" : "render";
           await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}).then(() => ${setSentinel(r.height, expected)})`);
           phase = "capture";
-          image = await grab(gw, r.width, r.height, expected);
+          captureFrom = Date.now();
+          try {
+            image = await grab(gw, r.width, r.height, expected);
+          } finally {
+            captured += Date.now() - captureFrom;
+            captureFrom = 0;
+          }
         }
         await take(image);
       }
@@ -471,8 +484,15 @@ async function main() {
       return Promise.race([asked, new Promise<undefined>((done) => (wait = setTimeout(() => done(undefined), PROBE_MS)))]).finally(() => clearTimeout(wait));
     };
     let settled = false;
+    const hardCap = Math.max(cap, GRAPHIC_CAP_MS);
     const expired = async (reject: (e: Error) => void) => {
       if (settled) return;
+      const now = Date.now();
+      const own = now - started - captured - (captureFrom ? now - captureFrom : 0);
+      if (own < budget && now - started < hardCap) {
+        timer = setTimeout(() => void expired(reject), Math.max(250, budget - own));
+        return;
+      }
       const page = await probe();
       if (settled) return;
       const elapsed = Date.now() - started;
@@ -493,7 +513,7 @@ async function main() {
           ? `: its script never yielded (an endless loop, or heavy synchronous work${phase === "load" ? " in a top-level script" : " in render(t)"})${pictures}`
           : phase === "load"
             ? `: the page was still loading (document ${page.doc ?? "?"}, fonts ${page.fonts ?? "?"})`
-            : phase === "capture"
+            : phase === "capture" // only past hardCap: grab gives up with its own error first
               ? ": render(t) was done but the frame never reached the capture (the machine too busy?)"
               : page.fonts === "loading"
                 ? `: render(t) was waiting for fonts to load${pictures}`
