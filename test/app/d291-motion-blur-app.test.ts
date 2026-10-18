@@ -47,10 +47,11 @@ before(async () => {
   } as unknown as Project;
   dir = writeProject(root, "Motion", project);
   mkdirSync(join(dir, "graphics"));
-  // A white square crossing the canvas 30 px a frame.
+  // A white square crossing the canvas 60 px a frame: the default 90° shutter (6bcd148) smears it over
+  // 15 px, as 180° did at 30 px, so 4 sub-frames leave clearly more partly lit pixels than a sharp edge.
   writeFileSync(join(dir, "graphics", "square.html"), `<canvas id="c" width="${W}" height="${H}"></canvas><script>
 const ctx = document.getElementById("c").getContext("2d");
-window.render = (t, info) => { ctx.clearRect(0, 0, ${W}, ${H}); ctx.fillStyle = "#fff"; ctx.fillRect((t * info.fps * 30) % ${W}, 300, 60, 60); };
+window.render = (t, info) => { ctx.clearRect(0, 0, ${W}, ${H}); ctx.fillStyle = "#fff"; ctx.fillRect((t * info.fps * 60) % ${W}, 300, 60, 60); };
 </script>`);
   mkdirSync(join(root, "out"));
 });
