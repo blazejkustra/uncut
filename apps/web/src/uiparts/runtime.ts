@@ -417,7 +417,10 @@ function placeElements(name: string, root: HTMLElement, o: Props) {
       el.style.display = el.style.display || "block";
       frame.replaceChildren(el);
     }
-  } else if (frame && name === "editor" && pic !== false && pic !== null) stageFootage(frame, o);
+  } else if (frame && name === "editor") {
+    if (pic !== false && pic !== null) stageFootage(frame, o);
+    else frame.querySelector(":scope > canvas[data-uncut-footage]")?.remove();
+  }
 }
 
 /** A clip as the stage's preview reads it: a media id (and its in point) or a picture. */
@@ -425,7 +428,7 @@ type Footage = { readonly media?: string; readonly at: number; readonly image?: 
 
 /**
  * The clip under the playhead (timeline.playhead, else preview.time, else 0) on a picture track
- * (not Audio, Sound effects or Text), the last one passed on top: its media at its in point plus the
+ * (not Audio, Sound effects or Text, by name or lane index: 0 text, 1 graphics, 2 main, 3 music, 4 sfx), the last one passed on top: its media at its in point plus the
  * playhead's distance into it, or its image. Undefined in a gap: the preview is black there, as in the app.
  */
 function footageAt(o: Props): Footage | undefined {
@@ -433,7 +436,8 @@ function footageAt(o: Props): Footage | undefined {
   const pv = o.preview as Props | undefined;
   const clips = (tl && Array.isArray(tl.clips) ? tl.clips : []) as ReadonlyArray<Clip>;
   const ph = num(tl?.playhead, num(pv?.time, 0));
-  const shots = clips.filter((c) => c && (typeof c.media === "string" || typeof c.image === "string") && !(typeof c.track === "string" && /audio|sound|music|text|caption|subtitle/i.test(c.track)));
+  const picture = (tr: Clip["track"]) => (typeof tr === "number" ? tr === 1 || tr === 2 : !(typeof tr === "string" && /audio|sound|music|sfx|text|caption|subtitle/i.test(tr)));
+  const shots = clips.filter((c) => c && (typeof c.media === "string" || typeof c.image === "string") && picture(c.track));
   const end = (c: Clip) => num(c.start, 0) + Math.max(0.05, num(c.duration, 1));
   // The last clip passed that holds the playhead; at the very end of the cut, its last frame.
   const hit = shots.findLast((c) => ph >= num(c.start, 0) && ph < end(c)) ?? shots.findLast((c) => ph > 0 && ph === end(c));
@@ -491,11 +495,14 @@ function stageFootage(frame: HTMLElement, o: Props) {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, cw, ch);
     ctx.drawImage(img, (cw - img.width * s) / 2, (ch - img.height * s) / 2, img.width * s, img.height * s);
+    target.setAttribute("data-uncut-footage", "");
   };
+  // No picture (a media id that isn't a readable video or image): black, and marked so the census reports the empty preview.
   const clear = () => {
     if (target.__want !== want) return;
     target.width = cw;
     target.height = ch;
+    target.setAttribute("data-uncut-footage", "failed");
   };
   const api = (doc.defaultView as unknown as { uncut?: { frame?: (id: string, t: number, o: { width: number }) => Promise<ImageBitmap> } } | null)?.uncut;
   let job: Promise<unknown>;

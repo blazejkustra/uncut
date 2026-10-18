@@ -172,14 +172,14 @@ export const GRAPHIC_CENSUS = `function (W, H, floor) {
     var ps = look(q);
     if (ps.ok && getComputedStyle(q).visibility !== "hidden") unseen++;
   }
-  // An uncutUI preview with nothing in it (no preview.frame, no clip under the playhead): a black
+  // An uncutUI preview with nothing in it (no preview.frame, no clip under the playhead, or its media unreadable): a black
   // hole on the stage. The films' editor wide shots showed one for seconds and nothing said so.
   var empty = 0;
   var frames = document.querySelectorAll(".uncut-ui .frame");
   for (var j = 0; j < frames.length; j++) {
     var fr = frames[j];
     if (!fr.closest(".stage") || fr.closest(".uncut-ui-measure")) continue;
-    if (fr.querySelector("canvas, img, video, svg, iframe")) continue;
+    if (fr.querySelector("canvas:not([data-uncut-footage=failed]), img, video, svg, iframe")) continue;
     var fb = fr.getBoundingClientRect();
     var fv = Math.max(0, Math.min(fb.right, W) - Math.max(fb.left, 0)) * Math.max(0, Math.min(fb.bottom, H) - Math.max(fb.top, 0));
     if (fv < W * H * 0.02) continue;
