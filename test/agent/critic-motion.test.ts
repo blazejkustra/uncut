@@ -106,10 +106,10 @@ test("the scan: a flash frame is a pop, a hard switch a jump, a still stretch a 
   assert.deepEqual(filmFound.filter((f) => f.hard).map((f) => f.key), ["motion:pop:20", "motion:jump:50", "motion:seam:0"]);
   assert.ok(!filmFound.find((f) => f.key === "motion:hold:60")!.hard);
   // Since the ablations cut the skill, it no longer prescribes a loop: only the brief's words ask for one.
-  assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { asked: false, oneTake: true, loop: false, footage: false });
+  assert.deepEqual(motionIntent({ skills: ["motion-film"], words: "" }), { asked: false, oneTake: true, loop: false, footage: false, footageCuts: false });
   assert.equal(motionIntent({ skills: ["motion-film"], words: "a seamless loop" }).loop, true);
-  assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { asked: false, oneTake: true, loop: false, footage: false });
-  assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { asked: false, oneTake: false, loop: false, footage: false });
+  assert.deepEqual(motionIntent({ skills: [], words: "A launch film, one take, never cut" }), { asked: false, oneTake: true, loop: false, footage: false, footageCuts: false });
+  assert.deepEqual(motionIntent({ skills: [], words: "a product demo" }), { asked: false, oneTake: false, loop: false, footage: false, footageCuts: false });
   assert.equal(motionIntent({ skills: ["motion-film"], words: "DJI 0050 drone footage" }).footage, true);
   assert.equal(motionIntent({ skills: [], words: "", hasFootage: true }).footage, true);
   const lines = motionLines(scan, fps, { consecutive: true });

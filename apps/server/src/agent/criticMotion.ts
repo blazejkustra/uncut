@@ -135,6 +135,38 @@ export const FAST_RUN = 3;
 export const OPEN_MOVE = 0.015;
 export const OPEN_WINDOW_S = 0.15;
 export const OPEN_MAX_S = 1;
+/**
+ * D306: typing is a change too. The user's favourite open (A1-noskill: the editor blurred behind a
+ * sharp composer card, the prompt typed from 0.1 s) changes about 1 % of the 64 px grey per window,
+ * under OPEN_MOVE, so it read as a static open and its 3.3 s of typing as a hold. On the fine grey
+ * (thinSize, 200 px on the short side) a typed word is a compact patch of strong change (THIN_CONTRAST
+ * or more): at least TYPE_INK of the picture, inside a box of at most TYPE_BOX of it (a drift moves
+ * every edge: A1r2's spans 0.24), still there TYPE_KEEP of it a window later (a blink or a gliding
+ * cursor goes back or moves on; A1's cursor glide kept 0.71). Typing that starts by OPEN_TYPE_S
+ * makes the open move. Measured every frame and every 5th and 9th: A1-noskill 0.45 to 0.5 s,
+ * A1-noskill2, 4 and 5 0.15 s; A1 (judged static: small text typed from 0.8 s) 0.8 to 0.9 s;
+ * A1r2, A1r3 and A1r7 (drift, a cursor) none.
+ */
+export const TYPE_INK = 0.0008;
+export const TYPE_BOX = 0.05;
+export const TYPE_KEEP = 0.75;
+export const OPEN_TYPE_S = 0.6;
+/**
+ * D306: a straight cut between two footage shots isn't a one-take defect (the user: cuts between the
+ * drone shots looked cleaner than shape transitions). Read from the picture, because footage drawn
+ * by a graphic (uncut.frame, D290: A1-noskill is one graphic) leaves no trace on the timeline: of
+ * the pixels the cut changes (CUT_CHANGED grey levels or more on the scan's grey), FOOTAGE_SHARE or
+ * more are coloured (FOOTAGE_CHROMA or more between the R, G and B channels) on each side. Uncut's UI
+ * is grey panels with grey text, so a UI cut changes colourless pixels on at least one side; texture
+ * doesn't tell them apart (a panel's text is as busy as the sea at 64 px). Measured on the 30 films'
+ * 62 cuts, the lower side's coloured share: footage to footage 0.46 to 0.91 (full-bleed or in the
+ * editor's preview; A1-noskill's two drone swaps 0.64 and 0.60), UI 0 to 0.43 (A1-noskill4's timeline
+ * over blurred footage 0.42); five dusk cuts in plain Claude's B1 and B1b (dark sea, grey concrete)
+ * at 0.33 to 0.43 stay cuts, the safe side.
+ */
+export const CUT_CHANGED = 24;
+export const FOOTAGE_CHROMA = 16;
+export const FOOTAGE_SHARE = 0.45;
 
 export interface MotionAnchor {
   readonly frame: number;
@@ -355,6 +387,57 @@ export interface ScanFrame {
   readonly gray: Uint8Array;
   readonly bare?: EmptyMeasure;
   readonly info?: ThinMeasure;
+  /** D306: each pixel's colour at the scan's size (chromaOf: max minus min of R, G, B), for footage cuts. */
+  readonly chroma?: Uint8Array;
+  /** D306: the grey at thinSize (motionScan's `fine` size), for typing. */
+  readonly fine?: Uint8Array;
+}
+
+/** Each pixel's colour (max minus min of its R, G and B) from packed RGB (3 bytes a pixel). */
+export function chromaOf(rgb: Uint8Array): Uint8Array {
+  const out = new Uint8Array(Math.floor(rgb.length / 3));
+  for (let i = 0; i < out.length; i++) {
+    const r = rgb[3 * i]!, g = rgb[3 * i + 1]!, b = rgb[3 * i + 2]!;
+    out[i] = Math.max(r, g, b) - Math.min(r, g, b);
+  }
+  return out;
+}
+
+/**
+ * D306: whether a cut from grey a to grey b (with each pixel's colour) is between two footage shots:
+ * FOOTAGE_SHARE or more of the pixels it changes are coloured on each side (`photo`: the lower
+ * side's share). Undefined when it changes too little to tell (under 2 % of the picture).
+ */
+export function footageCut(a: Uint8Array, b: Uint8Array, ca: Uint8Array, cb: Uint8Array): { readonly footage: boolean; readonly photo: number } | undefined {
+  const n = Math.min(a.length, b.length, ca.length, cb.length);
+  let changed = 0, pa = 0, pb = 0;
+  for (let i = 0; i < n; i++) {
+    if (Math.abs(a[i]! - b[i]!) < CUT_CHANGED) continue;
+    changed++;
+    if (ca[i]! >= FOOTAGE_CHROMA) pa++;
+    if (cb[i]! >= FOOTAGE_CHROMA) pb++;
+  }
+  if (!n || changed < 0.02 * n) return undefined;
+  const photo = round(Math.min(pa, pb) / changed, 2);
+  return { footage: photo >= FOOTAGE_SHARE, photo };
+}
+
+/** D306: the strong changes (THIN_CONTRAST or more) between two fine greys (w wide): which pixels, and their box's share of the frame. */
+function inkChange(a: Uint8Array, b: Uint8Array, w: number): { readonly at: Array<number>; readonly box: number } {
+  const n = Math.min(a.length, b.length);
+  const h = Math.floor(n / w);
+  const at: Array<number> = [];
+  let x0 = w, x1 = -1, y0 = h, y1 = -1;
+  for (let i = 0; i < n; i++) {
+    if (Math.abs(a[i]! - b[i]!) < THIN_CONTRAST) continue;
+    at.push(i);
+    const x = i % w, y = (i / w) | 0;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return { at, box: at.length && n ? ((x1 - x0 + 1) * (y1 - y0 + 1)) / n : 0 };
 }
 
 /** Whether a grey frame (w × h) is nearly empty (emptyMeasure). */
@@ -459,6 +542,9 @@ export interface MotionEvent {
   readonly ratio: number;
   /** A quick swap: the frames the change took (2 or more); a one-frame jump has none. */
   readonly span?: number;
+  /** D306 (jumps): a cut between two footage shots (footageCut), and its photographic share, when the frames carry colour. */
+  readonly footage?: boolean;
+  readonly photo?: number;
 }
 export interface MotionScan {
   readonly frames: number;
@@ -484,7 +570,7 @@ export interface MotionScan {
    * The open (when the samples reach OPEN_MAX_S): the first sample by which OPEN_MOVE of the picture
    * changed over about OPEN_WINDOW_S, if any within the first 2 s, and the biggest such change before OPEN_MAX_S.
    */
-  readonly open?: { readonly frame?: number; readonly peak: number };
+  readonly open?: { readonly frame?: number; readonly peak: number; readonly typing?: number };
   /** The loop seam: the last frame against frame 0, and the typical frame-to-frame difference. */
   readonly seam?: { readonly diff: number; readonly typical: number };
   readonly typical: number;
@@ -494,12 +580,19 @@ export interface MotionScan {
  * Pops, jumps, holds and the seam in a set of grey frames (any frames; consecutive ones are what
  * pops and jumps are judged on). Deterministic and pure.
  */
-export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { readonly ratio?: number; readonly min?: number; readonly size?: { readonly w: number; readonly h: number } } = {}): MotionScan {
+export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { readonly ratio?: number; readonly min?: number; readonly size?: { readonly w: number; readonly h: number }; readonly fine?: { readonly w: number; readonly h: number } } = {}): MotionScan {
   const ratio = o.ratio ?? POP_RATIO;
   const min = o.min ?? POP_MIN;
   const fr = [...input].sort((a, b) => a.frame - b.frame);
   const at = new Map(fr.map((x) => [x.frame, x.gray]));
   const bareAt = new Map(fr.map((x) => [x.frame, x.bare]));
+  // D306: whether a cut from frame x to frame y is between footage shots (both carry colour).
+  const chromaAt = new Map(fr.flatMap((x) => (x.chroma ? [[x.frame, x.chroma] as const] : [])));
+  const footageOf = (x: number, y: number): { footage?: boolean; photo?: number } => {
+    const ca = chromaAt.get(x), cb = chromaAt.get(y);
+    const cut = ca && cb ? footageCut(at.get(x)!, at.get(y)!, ca, cb) : undefined;
+    return cut ? { footage: cut.footage, photo: cut.photo } : {};
+  };
   // Differences between consecutive frames (frame f → f + 1).
   const step = new Map<number, number>();
   for (const x of fr) {
@@ -562,7 +655,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     if (before === undefined && after === undefined) continue;
     const calm = Math.max(Math.min(before ?? Infinity, after ?? Infinity), typical);
     const busy = Math.max(before ?? 0, after ?? 0);
-    if (d >= ratio * calm && d >= JUMP_OVER * busy) jumps.push({ frame: f + 1, diff: round(d), ratio: round(d / calm, 1) });
+    if (d >= ratio * calm && d >= JUMP_OVER * busy) jumps.push({ frame: f + 1, diff: round(d), ratio: round(d / calm, 1), ...footageOf(f, f + 1) });
   }
   // Quick swaps (BURST_S): a jump spread over a few frames, every step of it and around it known.
   const burstMax = Math.max(2, Math.floor(BURST_S * fps));
@@ -587,7 +680,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     let sum = 0;
     for (let x = a; x <= b; x++) sum += step.get(x)!;
     if (net < BURST_NET * sum) continue;
-    jumps.push({ frame: f + 1, diff: round(net), ratio: round(peak / Math.max(...(out as Array<number>), typical), 1), span: len });
+    jumps.push({ frame: f + 1, diff: round(net), ratio: round(peak / Math.max(...(out as Array<number>), typical), 1), span: len, ...footageOf(a, b + 1) });
     for (let x = a; x <= b; x++) burstSteps.add(x);
   }
   jumps.sort((a, b) => a.frame - b.frame);
@@ -600,10 +693,16 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     if (runStart !== undefined && (runEnd - runStart) / fps > HOLD_MAX_S) holds.push({ start: runStart, end: runEnd });
     runStart = undefined;
   };
+  // D306: a hold ends where the fine grey has changed TYPE_INK or more since the run began (typing
+  // under 1 % of the 64 px grey); a blinking cursor never adds up to that.
+  const fineW = o.fine?.w;
+  let anchor: Uint8Array | undefined;
+  const typed = (c: ScanFrame) => !!(fineW && anchor && c.fine && inkChange(anchor, c.fine, fineW).at.length >= TYPE_INK * c.fine.length);
   for (let i = 1; i < fr.length; i++) {
     const p = fr[i - 1]!;
     const c = fr[i]!;
-    if (c.frame - p.frame <= gapMax && frameDiff(p.gray, c.gray) < HOLD_DIFF) {
+    if (runStart === undefined) anchor = p.fine;
+    if (c.frame - p.frame <= gapMax && frameDiff(p.gray, c.gray) < HOLD_DIFF && !typed(c)) {
       if (runStart === undefined) runStart = p.frame;
       runEnd = c.frame;
     } else close();
@@ -654,7 +753,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
     }
   }
   if (fs && fs.n >= FAST_RUN) fast.push({ start: fs.start, end: fs.end, peak: round(fs.peak) });
-  const open = openMove(fr, fps);
+  const open = openMove(fr, fps, fineW);
   const first = fr[0];
   const last = fr.at(-1);
   const seam = first && last && last.frame > first.frame ? { diff: round(frameDiff(last.gray, first.gray)), typical: round(typical) } : undefined;
@@ -666,7 +765,7 @@ export function motionScan(input: ReadonlyArray<ScanFrame>, fps: number, o: { re
  * sample at least OPEN_WINDOW_S before it (at most twice that), so every frame or a sampling every
  * 0.15 s measure the same window. Undefined when the samples start late or stop before OPEN_MAX_S.
  */
-function openMove(fr: ReadonlyArray<ScanFrame>, fps: number): MotionScan["open"] {
+function openMove(fr: ReadonlyArray<ScanFrame>, fps: number, fineW?: number): MotionScan["open"] {
   const win = Math.max(1, Math.round(OPEN_WINDOW_S * fps));
   const until = Math.round(OPEN_MAX_S * fps);
   const head = fr.filter((x) => x.frame <= 2 * fps);
@@ -682,11 +781,32 @@ function openMove(fr: ReadonlyArray<ScanFrame>, fps: number): MotionScan["open"]
     if (b.frame <= until) peak = Math.max(peak, d);
     if (frame === undefined && d >= OPEN_MOVE) frame = b.frame;
   }
-  return { ...(frame !== undefined ? { frame } : {}), peak: round(peak) };
+  const typing = fineW ? typingStart(head, win, fineW, Math.round(OPEN_TYPE_S * fps)) : undefined;
+  return { ...(frame !== undefined ? { frame } : {}), peak: round(peak), ...(typing !== undefined ? { typing } : {}) };
+}
+
+/**
+ * D306: the first sample (by `until`) where typing shows on the fine grey: against a sample one to
+ * two windows before it, TYPE_INK or more of the picture changes strongly inside a box of TYPE_BOX
+ * or less, and TYPE_KEEP of those pixels still differ from that sample one to three windows later.
+ */
+function typingStart(head: ReadonlyArray<ScanFrame>, win: number, w: number, until: number): number | undefined {
+  for (const b of head) {
+    if (b.frame > until) break;
+    if (!b.fine) continue;
+    const a = head.findLast((x) => x.fine && x.frame <= b.frame - win && x.frame >= b.frame - 2 * win);
+    const c = head.find((x) => x.fine && x.frame >= b.frame + win && x.frame <= b.frame + 3 * win);
+    if (!a || !c) continue;
+    const ink = inkChange(a.fine!, b.fine, w);
+    if (ink.at.length < TYPE_INK * b.fine.length || ink.box > TYPE_BOX) continue;
+    const kept = ink.at.filter((i) => Math.abs(a.fine![i]! - c.fine![i]!) >= THIN_CONTRAST).length;
+    if (kept >= TYPE_KEEP * ink.at.length) return b.frame;
+  }
+  return undefined;
 }
 
 /** Whether the open is static: its first real change comes after OPEN_MAX_S (or not in the first 2 s). */
-export const openLate = (scan: MotionScan, fps: number) => !!scan.open && (scan.open.frame === undefined || scan.open.frame > OPEN_MAX_S * fps);
+export const openLate = (scan: MotionScan, fps: number) => !!scan.open && (scan.open.frame === undefined || scan.open.frame > OPEN_MAX_S * fps) && !(scan.open.typing !== undefined && scan.open.typing <= OPEN_TYPE_S * fps);
 
 const round = (v: number, digits = 4) => Math.round(v * 10 ** digits) / 10 ** digits;
 const secs = (f: number, fps: number) => `${(f / fps).toFixed(2)} s`;
@@ -699,8 +819,11 @@ export const seamBroken = (scan: MotionScan) => !!scan.seam && scan.seam.diff >=
  * when the film is one take (a cut is fine elsewhere, an end card may hold); the seam when it loops.
  * Nearly empty runs of EMPTY_MIN_S or more (blockers when hard from EMPTY_HARD_S), low-information runs (from THIN_HARD_S) and fast moves (never blockers) when one take.
  * At most 12, the blockers first, worst pops first. hard (a motion film, D297): pops, jumps and the seam are blockers.
+ * D306: a cut between two footage shots (footageCut, or `clipCuts`: the timeline's own straight cuts
+ * from one clip to the next) is never one, one take or not; `cutsHard` (default `hard`) says whether
+ * the other cuts block.
  */
-export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean; readonly still?: number } = {}): Array<CriticFinding> {
+export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneTake?: boolean; readonly loop?: boolean; readonly hard?: boolean; readonly still?: number; readonly clipCuts?: ReadonlyArray<number>; readonly cutsHard?: boolean } = {}): Array<CriticFinding> {
   // D297: in a motion film (hard) a pop, a one-frame jump (a cut) and a broken seam fail the round.
   const hard = !!o.hard;
   const out: Array<CriticFinding> = [];
@@ -710,7 +833,8 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
       : { rule: "motion", key: `motion:pop:${p.frame}`, frame: p.frame, hard, message: `Single-frame pop at f ${p.frame} (${secs(p.frame, fps)}): that frame differs from both neighbours ${p.ratio}× as much as they differ from each other (mean change ${(p.diff * 100).toFixed(1)} %). Something shows or vanishes for one frame.` });
   }
   if (o.oneTake) {
-    for (const j of scan.jumps.slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard, message: j.span ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.` : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
+    const cutsHard = o.cutsHard ?? hard;
+    for (const j of scan.jumps.filter((x) => !footageJump(x, o.clipCuts)).slice(0, 4)) out.push({ rule: "motion", key: `motion:jump:${j.frame}`, frame: j.frame, hard: cutsHard, message: j.span ? `Quick swap at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in ${j.span} frames (${(j.span / fps).toFixed(2)} s) with stillness on both sides, its fastest frame ${j.ratio}× the frames around it; to the eye that is a cut. In a one-take film carry the old state into the new one (a morph, a grow or a flood over about 0.3 s), not a quick fade or swap.` : `One-frame jump at f ${j.frame} (${secs(j.frame, fps)}): ${(j.diff * 100).toFixed(1)} % of the picture changes in one frame, ${j.ratio}× the frames around it; in a one-take film that is a cut or a flood that didn't overscale over about 0.3 s.` });
     // The longest holds (an end card held 5 s came third in time order and wasn't listed).
     const still = o.still;
     for (const h of [...scan.holds].sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 2)) {
@@ -761,6 +885,29 @@ export function motionFindings(scan: MotionScan, fps: number, o: { readonly oneT
   return [...out.filter((f) => f.hard), ...out.filter((f) => !f.hard)].slice(0, 12);
 }
 
+/**
+ * D306: whether a jump is a cut between footage shots: the picture says so (footageCut), or it lands
+ * (within a frame, across its span) on one of the timeline's straight cuts from a clip to a clip.
+ */
+export function footageJump(j: MotionEvent, clipCuts: ReadonlyArray<number> = []): boolean {
+  if (j.footage) return true;
+  const first = j.frame - (j.span ?? 1);
+  return clipCuts.some((c) => c >= first - 1 && c <= j.frame + 1);
+}
+
+/**
+ * D306: the timeline's straight cuts between footage: frames where a visible clip (video or picture)
+ * ends and another begins, with no graphic starting or ending within a frame of it (a graphic cutting
+ * there is the graphic's cut). `starts` maps an item to its start frame.
+ */
+export function clipCutFrames(tracks: ReadonlyArray<{ readonly hidden?: boolean; readonly items: ReadonlyArray<{ readonly id: string; readonly type: string; readonly duration: number }> }>, starts: ReadonlyMap<string, number>): Array<number> {
+  const items = tracks.filter((t) => !t.hidden).flatMap((t) => t.items);
+  const edges = (type: string, at: "start" | "end") => new Set(items.filter((i) => i.type === type && starts.has(i.id)).map((i) => starts.get(i.id)! + (at === "end" ? i.duration : 0)));
+  const ends = edges("clip", "end"), begins = edges("clip", "start");
+  const graphic = [...edges("graphic", "start"), ...edges("graphic", "end")];
+  return [...begins].filter((f) => f > 0 && ends.has(f) && !graphic.some((g) => Math.abs(g - f) <= 1)).sort((a, b) => a - b);
+}
+
 /** A nearly empty run (frames, inclusive) and, when its edges aren't exact, how far it may reach. */
 export interface EmptyRun {
   readonly start: number;
@@ -779,20 +926,25 @@ export const thinRuns = (scan: MotionScan, fps: number) =>
 export const budgetLine = (covered: number, planned: number) => `The frame-difference scan covered ${covered} of ${planned} frames: time budget (the frames around each scene change first, then the rest in order).`;
 
 /** The scan for the critic, as facts (in <motion>). */
-export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean; readonly planned?: number; readonly covered?: number }): Array<string> {
+export function motionLines(scan: MotionScan, fps: number, scanned: { readonly consecutive: boolean; readonly planned?: number; readonly covered?: number; readonly clipCuts?: ReadonlyArray<number> }): Array<string> {
   const covered = scanned.covered ?? scan.frames;
   const lines = [
     ...(scanned.planned !== undefined && covered < scanned.planned ? [budgetLine(covered, scanned.planned)] : []),
     `Frame-difference scan of ${scan.frames} small grey frames (${scanned.consecutive ? "every frame" : "every frame around each scene change, an even sampling of the rest, and each big change between two samples narrowed down to the frame it happens on"}); a typical frame-to-frame change is ${(scan.typical * 100).toFixed(2)} %.`];
   lines.push(scan.pops.length ? `Single-frame pops and flashes (a few frames unlike the frames on both sides, the picture going back): ${scan.pops.map((p) => `f ${p.frame}${p.span ? ` to f ${p.frame + p.span - 1}` : ""} (${secs(p.frame, fps)}, ${p.ratio}×)`).join(", ")}.` : "No single-frame pops or flashes found.");
-  if (scan.jumps.length) lines.push(`One-frame jumps and quick swaps (cuts, or changes that took one frame or under ${BURST_S} s between still frames): ${scan.jumps.slice(0, 8).map((j) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %${j.span ? `, over ${j.span} frames` : ""})`).join(", ")}.`);
+  const cutLabel = (j: MotionEvent) => `f ${j.frame} (${secs(j.frame, fps)}, ${(j.diff * 100).toFixed(0)} %${j.span ? `, over ${j.span} frames` : ""})`;
+  const footageCuts = scan.jumps.filter((j) => footageJump(j, scanned.clipCuts));
+  const otherCuts = scan.jumps.filter((j) => !footageJump(j, scanned.clipCuts));
+  if (otherCuts.length) lines.push(`One-frame jumps and quick swaps (cuts, or changes that took one frame or under ${BURST_S} s between still frames): ${otherCuts.slice(0, 8).map(cutLabel).join(", ")}.`);
+  // D306: the user's call: straight cuts between drone shots read cleaner than shape transitions.
+  if (footageCuts.length) lines.push(`Cuts between two footage shots (the changed picture is photographic on both sides, or the timeline cuts from one clip to the next there): ${footageCuts.slice(0, 8).map(cutLabel).join(", ")}. A straight cut between footage shots is fine even in a one-take film: never a motion defect or a blocker; judge only whether it lands on the beat.`);
   lines.push(scan.holds.length ? `Holds over 1 s with nothing changing: ${scan.holds.map((h) => `f ${h.start} to f ${h.end}`).join(", ")}.` : "No hold over 1 s.");
   const empties = emptyRuns(scan, fps);
   if (scan.emptyMeasured) lines.push(empties.length ? `Nearly empty frames (bare canvas with at most a cursor or a speck) for ${EMPTY_MIN_S} s or more: ${empties.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end} empty, maybe f ${e.upto!.start} to f ${e.upto!.end} (${secs(e.upto!.start, fps)}, up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No nearly empty stretch.");
   const thins = thinRuns(scan, fps);
   if (scan.thinMeasured) lines.push(thins.length ? `Low-information frames (${Math.round(THIN_FLAT * 100)} % or more one flat colour, nothing taller than ${+(THIN_TALL * 100).toFixed(1)} % of the height: a near-empty panel with a line of small text) for ${EMPTY_MIN_S} s or more: ${thins.map((e) => (runSeconds(e, fps) >= EMPTY_MIN_S - 1e-9 ? `f ${e.start} to f ${e.end} (${secs(e.start, fps)}, ${runSeconds(e, fps).toFixed(2)} s)` : `f ${e.start} to f ${e.end}, maybe f ${e.upto!.start} to f ${e.upto!.end} (up to ${runSeconds(e.upto!, fps).toFixed(2)} s; edges not narrowed)`)).join(", ")}.` : "No low-information stretch.");
   if (scan.fast.length) lines.push(`Very fast moves (${Math.round(FAST_STEP * 100)} % or more of the picture changing every frame for ${FAST_RUN}+ frames; the export's motion blur may stack them into copies; the other frames here are sharp, so judge that on the strips drawn with the project's motion blur when they are among the images): ${scan.fast.slice(0, 6).map((m) => `f ${m.start} to f ${m.end}`).join(", ")}.`);
-  if (scan.open) lines.push(`The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${openLate(scan, fps) ? ", a static open" : ""}.`);
+  if (scan.open) lines.push(`The open: ${scan.open.frame === undefined ? "no real change in the first 2 s" : `the first real change (${Math.round(OPEN_MOVE * 100 * 10) / 10} % of the picture in ${OPEN_WINDOW_S} s) lands at f ${scan.open.frame} (${secs(scan.open.frame, fps)})`}${scan.open.typing !== undefined ? `; typing shows from f ${scan.open.typing} (${secs(scan.open.typing, fps)})` : ""}${openLate(scan, fps) ? ", a static open" : ""}.`);
   if (scan.seam) lines.push(`Loop seam: the last frame differs from frame 0 by ${(scan.seam.diff * 100).toFixed(1)} %${seamBroken(scan) ? ", a visible jump if it loops" : ", a clean loop"}.`);
   return lines;
 }
@@ -802,9 +954,19 @@ export function motionLines(scan: MotionScan, fps: number, scanned: { readonly c
  * image2pipe stream). Throws when ffmpeg fails or returns the wrong size.
  */
 export function grayFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: number, h: number, signal?: AbortSignal): Promise<Array<Uint8Array>> {
+  return rawFrames(ffmpeg, jpegs, w, h, "gray", signal);
+}
+
+/** D306: each pixel's colour (chromaOf) of `w` × `h` frames from JPEGs, one ffmpeg run like grayFrames. */
+export async function chromaFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: number, h: number, signal?: AbortSignal): Promise<Array<Uint8Array>> {
+  return (await rawFrames(ffmpeg, jpegs, w, h, "rgb24", signal)).map(chromaOf);
+}
+
+function rawFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: number, h: number, pix: "gray" | "rgb24", signal?: AbortSignal): Promise<Array<Uint8Array>> {
   if (!jpegs.length) return Promise.resolve([]);
+  const bytes = pix === "gray" ? 1 : 3;
   return new Promise((done, fail) => {
-    const child = spawn(ffmpeg, ["-v", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-i", "-", "-vf", `scale=${w}:${h}:flags=area,format=gray`, "-f", "rawvideo", "-pix_fmt", "gray", "-"], { stdio: ["pipe", "pipe", "pipe"], ...(signal ? { signal } : {}) });
+    const child = spawn(ffmpeg, ["-v", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-i", "-", "-vf", `scale=${w}:${h}:flags=area,format=${pix}`, "-f", "rawvideo", "-pix_fmt", pix, "-"], { stdio: ["pipe", "pipe", "pipe"], ...(signal ? { signal } : {}) });
     const out: Array<Buffer> = [];
     let err = "";
     child.stdout.on("data", (d: Buffer) => out.push(d));
@@ -813,7 +975,7 @@ export function grayFrames(ffmpeg: string, jpegs: ReadonlyArray<Buffer>, w: numb
     child.stdin.on("error", () => {});
     child.on("close", (code) => {
       const all = Buffer.concat(out);
-      const size = w * h;
+      const size = w * h * bytes;
       if (code !== 0 || all.length !== size * jpegs.length) return fail(new Error(`ffmpeg couldn't decode the frames (${code}): ${err.trim().slice(-300) || `${all.length} bytes for ${jpegs.length} frames`}`));
       done(Array.from({ length: jpegs.length }, (_, i) => new Uint8Array(all.buffer, all.byteOffset + i * size, size)));
     });
@@ -885,17 +1047,40 @@ export function asksOneTake(text: string): boolean {
   return verdict;
 }
 
+/** Footage named in a request: the shots a cut goes between. */
+// "shot" and "take" alone aren't footage: "one continuous shot, cut on the beat" asks for one take.
+const FOOTAGE_NOUN = /\b(?:footage|drone|clips?|shots|b-?roll|aerials?|videos)\b/i;
+/** A cut as an edit: "cut", "cuts", "cutting", "chop", "intercut", "beat cuts". */
+const CUT_VERB = /\b(?:cut|cuts|cutting|chop(?:ped|ping)?|intercut)\b/i;
+/** The beat, the music it lands on. */
+const BEAT = /\b(?:beats?|rhythm|music|song|track|tempo|drums?|bpm)\b/i;
+
+/**
+ * D306: whether these words ask for the footage cut on the beat: some clause names footage, a cut and
+ * the beat (or the music) together, not negated ("cut the drone clips to the song", "footage cut on
+ * the beat", "beat cuts between the drone shots"). Then cuts between footage shots are what the user
+ * asked for, and only the user's own one-take words make the other cuts block.
+ */
+export function asksFootageCuts(text: string): boolean {
+  return clauses(text).some((clause) => {
+    const cut = CUT_VERB.exec(clause);
+    if (!cut || !FOOTAGE_NOUN.test(clause) || !BEAT.test(clause)) return false;
+    return !NEGATED.test(clause.slice(0, cut.index)) && !/\b(?:don'?t|do not|never|no)\s+cut/i.test(clause);
+  });
+}
+
 /**
  * What the film is (the brief's words, the active skills) and what the user asked for in their own
  * words (`request`): `asked` when the request itself asks for one take. A1-noskill3 asked for "one
  * take on the beat" with the motion-film skill off, and its four hard cuts were findings only: the
  * request decides that cuts fail the round, whatever skills are on (hard in motionFindings).
  */
-export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean; readonly request?: string }): { oneTake: boolean; loop: boolean; footage: boolean; asked: boolean } {
+export function motionIntent(o: { readonly skills: ReadonlyArray<string>; readonly words: string; readonly hasFootage?: boolean; readonly request?: string }): { oneTake: boolean; loop: boolean; footage: boolean; asked: boolean; footageCuts: boolean } {
   const film = o.skills.includes("motion-film");
   const asked = asksOneTake(o.request ?? "");
   return {
     asked,
+    footageCuts: asksFootageCuts(o.request ?? ""),
     oneTake: film || asked || asksOneTake(o.words),
     loop: /\bloop(s|ing|ed)?\b|last frame (is|=|equals) (the )?first/i.test(o.words),
     // Rehearsal 3: a UI-first film names its footage too (the preview plays it), but its frames are a
