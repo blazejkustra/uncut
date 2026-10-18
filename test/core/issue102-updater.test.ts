@@ -14,6 +14,8 @@ import {
   MAX_STEP_ASIDES,
   STEP_ASIDE_WINDOW_MS,
   pendingInstall,
+  parseStepAsides,
+  STEP_ASIDE_WAIT_S,
   shipItPid,
   stepAsideWatcher,
   FIRST_CHECK_MS,
@@ -200,14 +202,24 @@ test("busy: an export running, a recording (countdown, saving too), a device rec
 const SHIPIT_STATE = { bundleIdentifier: BUNDLE_ID, launchAfterInstallation: true, targetBundleURL: "file:///Applications/Uncut.app/", updateBundleURL: "file:///x/update.abc/Uncut.app/", useUpdateBundleName: true };
 
 test("pendingInstall: a live ShipIt for this bundle makes the launching app step aside, a few times at most", () => {
-  const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, stepAsides: [] as number[], now: 1_000_000_000 };
+  const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, stepAsides: [] as { t: number; pid: number }[], now: 1_000_000_000 };
   assert.deepEqual(pendingInstall(base), { action: "step-aside", shipItPid: 73220 });
-  const recent = Array.from({ length: MAX_STEP_ASIDES - 1 }, (_, i) => base.now - 1000 * (i + 1));
+  const recent = Array.from({ length: MAX_STEP_ASIDES - 1 }, (_, i) => ({ t: base.now - 1000 * (i + 1), pid: 73220 }));
   assert.equal(pendingInstall({ ...base, stepAsides: recent }).action, "step-aside");
-  const many = Array.from({ length: MAX_STEP_ASIDES }, (_, i) => base.now - 1000 * (i + 1));
+  const many = Array.from({ length: MAX_STEP_ASIDES }, (_, i) => ({ t: base.now - 1000 * (i + 1), pid: 1000 + i }));
   assert.deepEqual(pendingInstall({ ...base, stepAsides: many }), { action: "hold-updates", shipItPid: 73220 });
-  const old = many.map((t) => t - STEP_ASIDE_WINDOW_MS);
+  const old = many.map((s) => ({ ...s, t: s.t - STEP_ASIDE_WINDOW_MS }));
   assert.equal(pendingInstall({ ...base, stepAsides: old }).action, "step-aside", "old step-asides don't count");
+});
+
+test("pendingInstall: a ShipIt already waited out once (stuck, or waiting on another running copy) never keeps the app closed again", () => {
+  const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, now: 1_000_000_000 };
+  const waitedOut = base.now - (STEP_ASIDE_WAIT_S + 10) * 1000;
+  assert.deepEqual(pendingInstall({ ...base, stepAsides: [{ t: waitedOut, pid: 73220 }] }), { action: "hold-updates", shipItPid: 73220 });
+  assert.equal(pendingInstall({ ...base, stepAsides: [{ t: base.now - 5000, pid: 73220 }] }).action, "step-aside", "a second click while the watcher still waits steps aside again");
+  assert.equal(pendingInstall({ ...base, stepAsides: [{ t: waitedOut, pid: 111 }] }).action, "step-aside", "a new ShipIt (launchd restarted it) gets its own wait");
+  assert.deepEqual(parseStepAsides([5, { t: 6, pid: 7 }, { t: "x" }, null]), [{ t: 5, pid: 0 }, { t: 6, pid: 7 }]);
+  assert.deepEqual(parseStepAsides({}), []);
 });
 
 test("pendingInstall: nothing to do without a ShipIt, without a request, or for another copy of the app", () => {

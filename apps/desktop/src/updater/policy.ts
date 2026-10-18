@@ -196,6 +196,20 @@ export const STEP_ASIDE_WINDOW_MS = 10 * 60 * 1000;
 /** How long the watcher waits for ShipIt to exit before it reopens the app anyway. */
 export const STEP_ASIDE_WAIT_S = 90;
 
+/** One past step-aside: when, and for which ShipIt (pid 0: unknown, an older record). */
+export type StepAside = { readonly t: number; readonly pid: number };
+
+/** step-asides.json: [{t, pid}] (plain numbers from older records count as pid 0). */
+export function parseStepAsides(raw: unknown): StepAside[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StepAside[] = [];
+  for (const e of raw) {
+    if (typeof e === "number") out.push({ t: e, pid: 0 });
+    else if (typeof e === "object" && e !== null && typeof (e as StepAside).t === "number" && typeof (e as StepAside).pid === "number") out.push({ t: (e as StepAside).t, pid: (e as StepAside).pid });
+  }
+  return out;
+}
+
 export type PendingInstall = { readonly action: "none" } | { readonly action: "step-aside"; readonly shipItPid: number } | { readonly action: "hold-updates"; readonly shipItPid: number };
 
 /** ShipItState.plist's targetBundleURL (file:///Applications/Uncut.app/) as a path without the trailing slash. */
@@ -213,13 +227,18 @@ function targetPath(state: unknown): string | undefined {
 /**
  * What a launching app does about a ShipIt install. `state` is ShipItState.plist (JSON) or
  * undefined, `shipItPid` the live ShipIt for this bundle id (undefined when none), `stepAsides` the
- * times (ms) this app stepped aside before.
+ * times (ms) this app stepped aside before and for which ShipIt. A ShipIt already waited out once
+ * never keeps the app closed again.
  */
-export function pendingInstall(input: { readonly state: unknown; readonly bundlePath: string; readonly shipItPid: number | undefined; readonly stepAsides: readonly number[]; readonly now: number }): PendingInstall {
+export function pendingInstall(input: { readonly state: unknown; readonly bundlePath: string; readonly shipItPid: number | undefined; readonly stepAsides: readonly StepAside[]; readonly now: number }): PendingInstall {
   const target = targetPath(input.state);
   if (input.shipItPid === undefined || target === undefined) return { action: "none" };
   if (target !== input.bundlePath.replace(/\/+$/, "")) return { action: "none" };
-  const recent = input.stepAsides.filter((t) => t <= input.now && input.now - t < STEP_ASIDE_WINDOW_MS).length;
+  // Already stepped aside for this very ShipIt longer ago than the watcher waits: it's stuck (or
+  // waiting on another running copy of the bundle), so waiting again only keeps the app closed.
+  const stuck = input.stepAsides.some((s) => s.pid === input.shipItPid && input.now - s.t > (STEP_ASIDE_WAIT_S + 5) * 1000);
+  if (stuck) return { action: "hold-updates", shipItPid: input.shipItPid };
+  const recent = input.stepAsides.filter((s) => s.t <= input.now && input.now - s.t < STEP_ASIDE_WINDOW_MS).length;
   return recent < MAX_STEP_ASIDES ? { action: "step-aside", shipItPid: input.shipItPid } : { action: "hold-updates", shipItPid: input.shipItPid };
 }
 

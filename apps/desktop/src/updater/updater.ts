@@ -12,7 +12,7 @@ import { app, autoUpdater as squirrel } from "electron";
 import { MacUpdater, type UpdateInfo } from "electron-updater";
 
 import type { UpdateInstallResult, UpdateStatus } from "../ipc.ts";
-import { BUNDLE_ID, canInstallNow, NO_STAGING_ID, parseSignature, pendingInstall, shipItPid, stepAsideWatcher, UpdateSchedule, updaterConfigYaml, updatePolicy, type BundleSignature, type PendingInstall, type UpdatePolicy } from "./policy.ts";
+import { BUNDLE_ID, canInstallNow, NO_STAGING_ID, parseSignature, parseStepAsides, pendingInstall, shipItPid, stepAsideWatcher, UpdateSchedule, updaterConfigYaml, updatePolicy, type BundleSignature, type PendingInstall, type StepAside, type UpdatePolicy } from "./policy.ts";
 
 const log = (message: string) => console.log(`[updater] ${message}`);
 
@@ -61,16 +61,15 @@ export function checkPendingInstall(dataDir: string): PendingInstall["action"] {
       return "none"; // pgrep exits 1 when nothing matches
     }
     const recordPath = path.join(dataDir, "updater", "step-asides.json");
-    let stepAsides: number[] = [];
+    let stepAsides: StepAside[] = [];
     try {
-      const raw: unknown = JSON.parse(readFileSync(recordPath, "utf8"));
-      if (Array.isArray(raw)) stepAsides = raw.filter((t): t is number => typeof t === "number");
+      stepAsides = parseStepAsides(JSON.parse(readFileSync(recordPath, "utf8")));
     } catch {}
     const now = Date.now();
     decision = pendingInstall({ state, bundlePath: bundlePath(), shipItPid: shipItPid(pgrep), stepAsides, now });
     if (decision.action === "step-aside") {
       mkdirSync(path.dirname(recordPath), { recursive: true });
-      writeFileSync(recordPath, JSON.stringify([...stepAsides.filter((t) => now - t < 24 * 60 * 60 * 1000), now]));
+      writeFileSync(recordPath, JSON.stringify([...stepAsides.filter((s) => now - s.t < 24 * 60 * 60 * 1000), { t: now, pid: decision.shipItPid }]));
       const watcher = stepAsideWatcher(decision.shipItPid, bundlePath());
       spawn(watcher.file, [...watcher.args], { detached: true, stdio: "ignore" }).unref();
       log(`ShipIt (${decision.shipItPid}) is installing an update: quitting until it's done`);
