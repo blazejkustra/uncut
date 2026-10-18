@@ -25,12 +25,17 @@ import {
   UpdateSchedule,
   canInstallNow,
   disabledLabel,
+  bundleVersion,
+  HELD_LABEL,
+  installingMessage,
+  updateBundlePath,
+  updateMenuState,
   feedOverride,
   parseSignature,
   updatePolicy,
   updaterConfigYaml,
 } from "../../apps/desktop/src/updater/policy.ts";
-import { updateBusy } from "../../apps/web/src/state/updateBusy.ts";
+import { updateBusy, updateSubline } from "../../apps/web/src/state/updateBusy.ts";
 
 const DEVELOPER_ID = parseSignature(
   ["Executable=/Applications/Uncut.app/Contents/MacOS/Uncut", "Identifier=com.blazejkustra.uncut", "CodeDirectory v=20500 size=600 flags=0x10000(runtime) hashes=8+7 location=embedded", "Authority=Developer ID Application: Example (ABCDE12345)", "Timestamp=16 Oct 2026 at 10:00:00", "TeamIdentifier=ABCDE12345"].join("\n"),
@@ -243,12 +248,45 @@ test("shipItPid finds the ShipIt serving this bundle id in pgrep -fl", () => {
   assert.equal(shipItPid(""), undefined);
 });
 
-test("the step-aside watcher waits for ShipIt to exit, then opens the bundle", { skip: process.platform === "win32" }, () => {
-  const w = stepAsideWatcher(4242, "/Applications/My Uncut.app");
+test("the step-aside watcher shows the installing dialog, waits for ShipIt to exit, then opens the bundle", { skip: process.platform === "win32" }, () => {
+  const message = installingMessage("0.0.3");
+  const w = stepAsideWatcher(4242, "/Applications/My Uncut.app", message);
   assert.equal(w.file, "/bin/sh");
-  assert.deepEqual(w.args.slice(2), ["uncut-update-wait", "4242", "/Applications/My Uncut.app"]);
-  // Run the script with a gone pid and `open` swapped for echo: it opens right away, the path intact.
-  const script = w.args[1]!.replace("exec /usr/bin/open", "echo");
-  const r = spawnSync("/bin/sh", ["-c", script, "x", "999999", "/Applications/My Uncut.app"], { encoding: "utf8", timeout: 10_000 });
-  assert.equal(r.stdout.trim(), "/Applications/My Uncut.app");
+  assert.deepEqual(w.args.slice(2), ["uncut-update-wait", "4242", "/Applications/My Uncut.app", message]);
+  assert.match(w.args[1]!, /osascript .*display dialog \(item 1 of argv\).*giving up after 90' -e 'end run' "\$3"/, "the message goes in as an argument, never spliced into the script");
+  assert.match(w.args[1]!, /kill "\$d"/, "the dialog closes once ShipIt is done");
+  // Run the script with a gone pid, the dialog swapped for one that prints its message and `open`
+  // swapped for echo: it shows the message and opens right away, the path intact.
+  const script = w.args[1]!.replace(/\/usr\/bin\/osascript .*? "\$3" >\/dev\/null 2>&1/, 'printf "%s|" "$3"').replace("exec /usr/bin/open", "echo");
+  const r = spawnSync("/bin/sh", ["-c", script, "x", "999999", "/Applications/My Uncut.app", "Installing it's \"quoted\""], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(r.stdout.trim(), "Installing it's \"quoted\"|/Applications/My Uncut.app");
+});
+
+test("the step-aside dialog names the version ShipIt installs (from the staged bundle) and says Uncut reopens by itself", () => {
+  const state = { targetBundleURL: "file:///Applications/Uncut.app/", updateBundleURL: "file:///Users/me/Library/Caches/com.blazejkustra.uncut.ShipIt/update.Ab12/Uncut%20Beta.app/" };
+  assert.equal(updateBundlePath(state), "/Users/me/Library/Caches/com.blazejkustra.uncut.ShipIt/update.Ab12/Uncut Beta.app");
+  assert.equal(updateBundlePath({ targetBundleURL: "file:///Applications/Uncut.app/" }), undefined);
+  assert.equal(updateBundlePath(undefined), undefined);
+  const plist = `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleName</key><string>Uncut</string><key>CFBundleShortVersionString</key>\n\t<string>0.0.3</string></dict></plist>`;
+  assert.equal(bundleVersion(plist), "0.0.3");
+  assert.equal(bundleVersion("<plist><dict></dict></plist>"), undefined);
+  assert.match(installingMessage("0.0.3"), /^Installing Uncut 0\.0\.3…/);
+  assert.match(installingMessage("0.0.3"), /reopens by itself/);
+  assert.match(installingMessage(undefined), /^Installing the Uncut update…/);
+});
+
+test("Check for Updates… is off with the reason while this run holds its updater for a pending install", () => {
+  const on = updatePolicy({}, { packaged: true, signature: DEVELOPER_ID });
+  assert.deepEqual(updateMenuState(on, false), { enabled: true });
+  assert.deepEqual(updateMenuState(on, true), { enabled: false, sublabel: HELD_LABEL });
+  assert.match(HELD_LABEL, /quit Uncut/);
+  const dev = updatePolicy({}, { packaged: false });
+  assert.deepEqual(updateMenuState(dev, true), { enabled: false, sublabel: "Only in signed releases" }, "a build that never updates keeps its own reason");
+});
+
+test("Restart to update says Uncut reopens by itself once it's quitting to install", () => {
+  assert.match(updateSubline({ refused: false, quitting: true }), /reopens by itself in a few seconds/);
+  assert.equal(updateSubline({ refused: false, quitting: false }), "Restart to update now, or it installs when you quit.");
+  assert.match(updateSubline({ refused: "busy", quitting: false }), /Something started meanwhile/);
+  assert.match(updateSubline({ refused: "not-ready", quitting: false }), /Download it from GitHub/);
 });

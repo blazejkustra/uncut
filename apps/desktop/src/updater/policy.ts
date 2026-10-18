@@ -212,10 +212,10 @@ export function parseStepAsides(raw: unknown): StepAside[] {
 
 export type PendingInstall = { readonly action: "none" } | { readonly action: "step-aside"; readonly shipItPid: number } | { readonly action: "hold-updates"; readonly shipItPid: number };
 
-/** ShipItState.plist's targetBundleURL (file:///Applications/Uncut.app/) as a path without the trailing slash. */
-function targetPath(state: unknown): string | undefined {
+/** A file:// URL field of ShipItState.plist (targetBundleURL: file:///Applications/Uncut.app/) as a path without the trailing slash. */
+function fileUrlPath(state: unknown, key: "targetBundleURL" | "updateBundleURL"): string | undefined {
   if (typeof state !== "object" || state === null) return undefined;
-  const raw = (state as { targetBundleURL?: unknown }).targetBundleURL;
+  const raw = (state as Record<string, unknown>)[key];
   if (typeof raw !== "string" || !raw.startsWith("file://")) return undefined;
   try {
     return decodeURIComponent(new URL(raw).pathname).replace(/\/+$/, "");
@@ -223,6 +223,7 @@ function targetPath(state: unknown): string | undefined {
     return undefined;
   }
 }
+const targetPath = (state: unknown) => fileUrlPath(state, "targetBundleURL");
 
 /**
  * What a launching app does about a ShipIt install. `state` is ShipItState.plist (JSON) or
@@ -253,8 +254,43 @@ export function shipItPid(pgrepOutput: string, bundleId: string = BUNDLE_ID): nu
   return undefined;
 }
 
-/** The detached watcher: waits (bounded) for ShipIt to exit, then opens the bundle (a no-op focus if ShipIt relaunched it). */
-export function stepAsideWatcher(pid: number, bundlePath: string): { readonly file: string; readonly args: readonly string[] } {
-  const script = `n=0; while kill -0 "$1" 2>/dev/null && [ "$n" -lt ${STEP_ASIDE_WAIT_S} ]; do sleep 1; n=$((n+1)); done; sleep 1; exec /usr/bin/open "$2"`;
-  return { file: "/bin/sh", args: ["-c", script, "uncut-update-wait", String(pid), bundlePath] };
+/** ShipItState.plist's updateBundleURL: the new bundle ShipIt is installing (in its cache), as a path. */
+export function updateBundlePath(state: unknown): string | undefined {
+  return fileUrlPath(state, "updateBundleURL");
 }
+
+/** CFBundleShortVersionString from an (XML) Info.plist; undefined when it isn't there. */
+export function bundleVersion(infoPlist: string): string | undefined {
+  return /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(infoPlist)?.[1]?.trim() || undefined;
+}
+
+/** What the step-aside shows while ShipIt installs (the app itself has quit, so nothing else is on screen). */
+export function installingMessage(version: string | undefined): string {
+  return `Installing ${version ? `Uncut ${version}` : "the Uncut update"}…\n\nUncut reopens by itself when it's done, usually in a few seconds. No need to open it again.`;
+}
+
+/**
+ * The detached watcher: shows `message` in a small dialog (osascript, no permission needed; it
+ * gives up on its own after the wait), waits (bounded) for ShipIt to exit, closes the dialog and
+ * opens the bundle (a no-op focus if ShipIt relaunched it).
+ */
+export function stepAsideWatcher(pid: number, bundlePath: string, message: string = installingMessage(undefined)): { readonly file: string; readonly args: readonly string[] } {
+  const dialog = `/usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "Uncut" buttons {"OK"} default button 1 giving up after ${STEP_ASIDE_WAIT_S}' -e 'end run' "$3" >/dev/null 2>&1 & d=$!`;
+  const script = `${dialog}; n=0; while kill -0 "$1" 2>/dev/null && [ "$n" -lt ${STEP_ASIDE_WAIT_S} ]; do sleep 1; n=$((n+1)); done; kill "$d" 2>/dev/null; sleep 1; exec /usr/bin/open "$2"`;
+  return { file: "/bin/sh", args: ["-c", script, "uncut-update-wait", String(pid), bundlePath, message] };
+}
+
+/**
+ * Uncut › Check for Updates…: on while the updater runs; off with the reason when the build
+ * doesn't update, or when this run holds its updater for a pending ShipIt install (a check would
+ * re-stage the update and break that install).
+ */
+export function updateMenuState(policy: UpdatePolicy, held: boolean): { readonly enabled: boolean; readonly sublabel?: string | undefined } {
+  if (!policy.enabled) return { enabled: false, sublabel: disabledLabel(policy) };
+  if (held) return { enabled: false, sublabel: HELD_LABEL };
+  return { enabled: true };
+}
+export const HELD_LABEL = "Off for now: quit Uncut to finish installing the update";
+
+/** How long Restart to update leaves "Uncut reopens by itself" on screen before it quits. */
+export const INSTALL_NOTICE_MS = 1500;

@@ -12,7 +12,7 @@ import { app, autoUpdater as squirrel } from "electron";
 import { MacUpdater, type UpdateInfo } from "electron-updater";
 
 import type { UpdateInstallResult, UpdateStatus } from "../ipc.ts";
-import { BUNDLE_ID, canInstallNow, NO_STAGING_ID, parseSignature, parseStepAsides, pendingInstall, shipItPid, stepAsideWatcher, UpdateSchedule, updaterConfigYaml, updatePolicy, type BundleSignature, type PendingInstall, type StepAside, type UpdatePolicy } from "./policy.ts";
+import { BUNDLE_ID, bundleVersion, canInstallNow, INSTALL_NOTICE_MS, installingMessage, NO_STAGING_ID, parseSignature, parseStepAsides, pendingInstall, shipItPid, stepAsideWatcher, UpdateSchedule, updateBundlePath, updaterConfigYaml, updatePolicy, type BundleSignature, type PendingInstall, type StepAside, type UpdatePolicy } from "./policy.ts";
 
 const log = (message: string) => console.log(`[updater] ${message}`);
 
@@ -70,7 +70,13 @@ export function checkPendingInstall(dataDir: string): PendingInstall["action"] {
     if (decision.action === "step-aside") {
       mkdirSync(path.dirname(recordPath), { recursive: true });
       writeFileSync(recordPath, JSON.stringify([...stepAsides.filter((s) => now - s.t < 24 * 60 * 60 * 1000), { t: now, pid: decision.shipItPid }]));
-      const watcher = stepAsideWatcher(decision.shipItPid, bundlePath());
+      // Which version ShipIt installs (the staged bundle's Info.plist), for the dialog the watcher shows.
+      let version: string | undefined;
+      try {
+        const staged = updateBundlePath(state);
+        if (staged) version = bundleVersion(readFileSync(path.join(staged, "Contents", "Info.plist"), "utf8"));
+      } catch {}
+      const watcher = stepAsideWatcher(decision.shipItPid, bundlePath(), installingMessage(version));
       spawn(watcher.file, [...watcher.args], { detached: true, stdio: "ignore" }).unref();
       log(`ShipIt (${decision.shipItPid}) is installing an update: quitting until it's done`);
     } else if (decision.action === "hold-updates") {
@@ -221,6 +227,9 @@ export async function startUpdater(options: {
         log("test run: quitAndInstall skipped");
         return "installing";
       }
+      // The renderer now says Uncut reopens by itself in a few seconds (UpdateToast); leave it on
+      // screen a moment, so the app vanishing doesn't look like a crash worth reopening.
+      await new Promise((resolve) => setTimeout(resolve, INSTALL_NOTICE_MS));
       await options.beforeInstall();
       updater.quitAndInstall();
       return "installing";

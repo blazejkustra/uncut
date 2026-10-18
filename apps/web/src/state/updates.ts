@@ -29,9 +29,11 @@ interface UpdateView {
   readonly refused: false | "busy" | "not-ready";
   /** Restart to update is under way (the button is disabled; a second click does nothing). */
   readonly restarting: boolean;
+  /** The leave check passed and the shell is quitting to install (the toast says Uncut reopens by itself). */
+  readonly quitting: boolean;
 }
 
-let view: UpdateView = { status: { kind: "idle" }, busy: false, dismissed: undefined, refused: false, restarting: false };
+let view: UpdateView = { status: { kind: "idle" }, busy: false, dismissed: undefined, refused: false, restarting: false, quitting: false };
 const viewListeners = new Set<() => void>();
 const setView = (patch: Partial<UpdateView>) => {
   view = { ...view, ...patch };
@@ -70,10 +72,11 @@ export async function restartToUpdate() {
   setView({ restarting: true, refused: false });
   try {
     if (!(await confirmLeave("quit"))) return setView({ restarting: false });
+    setView({ quitting: true });
     const result = await bridge.installUpdate?.();
     if (result === "installing") return; // the app quits; stays disabled until then
-    setView({ restarting: false, refused: result === "busy" || result === "not-ready" ? result : false });
+    setView({ restarting: false, quitting: false, refused: result === "busy" || result === "not-ready" ? result : false });
   } catch {
-    setView({ restarting: false });
+    setView({ restarting: false, quitting: false });
   }
 }

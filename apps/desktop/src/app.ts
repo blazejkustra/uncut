@@ -6,7 +6,7 @@ import { APP_INFO_CHANNEL, APP_STATE_CHANNEL, ASK_MEDIA_ACCESS_CHANNEL, CAPTURE_
 import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type WindowSize } from "./windowState.ts";
 import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
 import { setAppMenu, setUpdateMenu } from "./menu.ts";
-import { disabledLabel } from "./updater/policy.ts";
+import { updateMenuState } from "./updater/policy.ts";
 import { checkPendingInstall, startUpdater, type Updater } from "./updater/updater.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { allowFrameNavigation, allowPermission } from "./permissions.ts";
@@ -521,7 +521,7 @@ function installUpdates() {
       setServer(undefined);
       await Promise.allSettled([stopping?.stop(), closeRelay()]);
     },
-    onPolicy: (policy) => setUpdateMenu({ enabled: policy.enabled, sublabel: disabledLabel(policy), check: () => updater?.checkNow() }),
+    onPolicy: (policy) => setUpdateMenu({ ...updateMenuState(policy, pendingUpdate === "hold-updates"), check: () => updater?.checkNow() }),
     hold: pendingUpdate === "hold-updates",
   }).then(
     (u) => {

@@ -6,6 +6,7 @@
 import { Download, X } from "lucide-react";
 import { useEffect } from "react";
 
+import { updateSubline } from "../state/updateBusy.ts";
 import { dismissUpdate, restartToUpdate, startUpdates, useUpdates } from "../state/updates.ts";
 import { Tooltip } from "./Tooltip.tsx";
 import "./update.css";
@@ -15,7 +16,7 @@ const UP_TO_DATE_MS = 4000;
 
 export function UpdateToast() {
   useEffect(startUpdates, []);
-  const { status, busy, dismissed, refused, restarting } = useUpdates();
+  const { status, busy, dismissed, refused, restarting, quitting } = useUpdates();
   const closed = dismissed === status;
   useEffect(() => {
     if (status.kind !== "none" || !status.manual || closed) return;
@@ -31,7 +32,7 @@ export function UpdateToast() {
         <Download />
         <span className="banner-text">
           <strong>Uncut {status.version} is ready</strong>
-          <span className="update-sub" data-testid="update-sub">{refused === "busy" ? "Something started meanwhile. Restart once it's done." : refused === "not-ready" ? "Couldn't prepare the update. Download it from GitHub instead." : "Restart to update now, or it installs when you quit."}</span>
+          <span className="update-sub" data-testid="update-sub">{updateSubline({ refused, quitting })}</span>
         </span>
         <button className="btn primary" data-testid="update-restart" disabled={restarting} onClick={() => void restartToUpdate()}>
           {restarting ? "Restarting…" : "Restart to update"}
