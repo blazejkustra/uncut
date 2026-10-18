@@ -1,7 +1,7 @@
 import { DUCK } from "../../audio/effects.ts";
 import { duckEntry } from "../../audio/ducking.ts";
 import { type CheckRule, sounds, audible, isMusicTrack, soundOf, startOf, keyFade, mediaOf, isSpeechTrack, type Check, type CheckSeverity, secs } from "../context.ts";
-import { SFX_PER_10S, SFX_REPEAT_MAX, SFX_UNDER_MUSIC_DB, SOUND_LIMITS, sfxItems, musicItems, visualEvents, busiest, type PlacedSfx, musicAt, SFX_FIX_UNDER_DB, trackGain, dbText, hitsOf, type VisualEvent, SLOW_BPM, FAST_CUT_S } from "../soundSheet.ts";
+import { keyboardSound, SFX_PER_10S, SFX_REPEAT_MAX, SFX_UNDER_MUSIC_DB, SOUND_LIMITS, sfxItems, musicItems, visualEvents, busiest, type PlacedSfx, musicAt, SFX_FIX_UNDER_DB, trackGain, dbText, hitsOf, type VisualEvent, SLOW_BPM, FAST_CUT_S } from "../soundSheet.ts";
 
 /** Sound rules: silence, music fades and ducking, sound effects. */
 export const SOUND_RULES: ReadonlyArray<CheckRule> = [
@@ -180,7 +180,7 @@ export const SOUND_RULES: ReadonlyArray<CheckRule> = [
             frame: s.start,
             hint: s.kind === "whoosh" ? "Start a whoosh 1 to 2 frames before the cut or move it carries, or delete it." : s.kind === "riser" ? "End a riser on the reveal it builds to, or delete it." : "Move it onto the frame its event happens (1 to 2 frames early), or delete it.",
           });
-        } else if (on.length && lim.taste && s.kind === "ui" && on.every((e) => e.text)) {
+        } else if (on.length && lim.taste && s.kind === "ui" && !keyboardSound(s) && on.every((e) => e.text)) {
           out.push({
             key: `sound:click-text:${s.item.id}`,
             message: `${s.label} at ${secs(s.start, fps)} clicks on a text (${on[0]!.what}); a click belongs on a click the viewer sees, and a text arriving or typing isn't one.`,

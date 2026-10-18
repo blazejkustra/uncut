@@ -144,3 +144,18 @@ test("music profile: any sound effect is one music-only finding; none is clean",
   assert.deepEqual(projectChecks(none, { sound: "music" }).filter((c) => c.id === "sound").map((c) => c.key), []);
   assert.match(soundSheet(none, { sound: "music" }).join("\n"), /Sound profile music only/);
 });
+
+// D306: the user wants keyboard sounds on the typed prompt; a typing sound landing on a text being
+// typed is the right sound, not "a click on a text". A UI click there still is; music only (the
+// user's request) still rules every effect out.
+test("a keyboard sound on typing isn't a click on text; a UI click on text still is; music only still drops both", () => {
+  const texts = [{ start: 150, text: "Cut my drone clips" }, { start: 330, text: "into a reel" }];
+  const p = make({ cut: 60, music: "lofi-loop-120bpm.m4a", texts, sfx: [{ file: "typing-keyboard.m4a", at: 150, gainDb: -10 }, { file: "ui-click.m4a", at: 330, gainDb: -10 }] });
+  const keys = sound(p).map((c) => c.key);
+  assert.ok(!keys.includes("sound:click-text:s0"), `the bundled typing sound on typing: ${keys.join(", ")}`);
+  assert.ok(keys.includes("sound:click-text:s1"), "a UI click on a text is still flagged");
+  const named = make({ cut: 60, music: "lofi-loop-120bpm.m4a", texts, sfx: [{ file: "my-keyboard-clack.m4a", at: 150, gainDb: -10 }] });
+  assert.ok(!sound(named).some((c) => c.key.startsWith("sound:click-text:")), "a keyboard sound by its name");
+  const musicOnly = projectChecks(p, { sound: "music" }).filter((c) => c.id === "sound");
+  assert.ok(musicOnly.some((c) => c.key.startsWith("sound:music-only:")), "music only (the user's words) still asks for none");
+});

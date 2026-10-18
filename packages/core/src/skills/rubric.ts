@@ -121,13 +121,15 @@ const MUSIC_ONLY = /\b(music|song|track|soundtrack) only\b|\bonly (the |a |one )
  * The sound profile for a brief and the project's skills: the user's own words first (the request,
  * then the brief's), then the Sound design skill, then the type. Music only wins over every default:
  * nothing asks for effects the user ruled out (T2, A2r8: the request said music only, the profile
- * never read it, and the critics scored the silence down and asked for clicks).
+ * never read it, and the critics scored the silence down and asked for clicks). D306: and only the
+ * user's request can say music only: the brief is the agent's plan, and an agent that wrote "music
+ * only" there ruled out the keyboard and click sounds the user wanted.
  */
 export function soundProfileFor(brief: RubricBrief | undefined, skills: ReadonlyArray<string> = [], request?: string): SoundProfile {
   skills = skillIdsOf(skills);
   const w = [request ?? "", words(brief)].filter(Boolean).join("\n");
   // "no sound effects" is music only, not silence: the music-only words first, and "no sound" only alone.
-  if (MUSIC_ONLY.test(w) && !/\bno music\b|\bsilent\b|\bmuted\b/i.test(w)) return "music";
+  if (request && MUSIC_ONLY.test(request) && !/\bno music\b|\bsilent\b|\bmuted\b/i.test(request)) return "music";
   if (/\bno (music|audio)\b|\bno sound\b(?! ?(effects?|fx|design))|\bsilent\b|\bmuted\b/i.test(w)) return "off";
   if (/\bsubtle sound|quiet sound|minimal sound|few sound effects|sound,? subtle/i.test(w)) return "strict";
   if (/\b(dense|loud|lots of|heavy) (sound|sfx|effects)|meme sounds|sound ?effects? everywhere/i.test(w)) return "loose";

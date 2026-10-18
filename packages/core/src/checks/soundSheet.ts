@@ -110,6 +110,16 @@ function sfxKind(m: Media): SfxKind {
   return "other";
 }
 
+/**
+ * D306: a keyboard or typing sound (the bundled pack's typing category, or its name): it belongs on
+ * typing, so landing on a text being typed is right, not a click on text. Allowed unless the user's
+ * request says music only (the music profile drops every effect).
+ */
+export const keyboardSound = (s: Pick<PlacedSfx, "media">) => {
+  const b = bundledSfxOf(s.media);
+  return b?.category === "typing" || /\b(typing|keyboard|keys|keystrokes?|key ?(press|stroke)e?s?|typewriter)\b/i.test(`${fileName(s.media)} ${s.media.name}`.replace(/[-_.]/g, " "));
+};
+
 export const trackGain = (t: Track) => t.mixer?.gainDb ?? 0;
 
 /** A tempo written in a sound's name or file name ("Lofi loop 75 BPM", "beat-120bpm.mp3"), else undefined. */

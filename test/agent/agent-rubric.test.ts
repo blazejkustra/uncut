@@ -321,13 +321,13 @@ test("on the server: the brief suggests and turns nothing on, use only after the
 // T2, A2r8: the user wrote "The song only, no sound effects unless asked" / "Music only, no added
 // sound effects" in the request, which the profile never read (only the brief), and the critic
 // scored the silence down and asked for clicks. The user's words set the profile, over any default.
-test("music only in the request or the brief is the music profile, over the skills' and the type's defaults; no sound effects isn't silence", () => {
+test("music only in the request is the music profile, over the skills' and the type's defaults; no sound effects isn't silence", () => {
   const b = brief("A 28 s launch film", { type: "launch-promo" });
   assert.notEqual(soundProfileFor(b, ["motion-film"]), "music");
   assert.equal(soundProfileFor(b, ["sound-design"], "Music only, no added sound effects."), "music");
   assert.equal(soundProfileFor(b, ["motion-film"], "Cut the drone clips to the song. Music only, no added sound effects."), "music");
   assert.equal(soundProfileFor(b, ["motion-film"], "- The song only, no sound effects unless asked, mastered around -14 LUFS."), "music");
-  assert.equal(soundProfileFor(brief("x", { type: "launch-promo", notes: "no sound effects" })), "music", "not off");
+  assert.equal(soundProfileFor(brief("x", { type: "launch-promo" }), [], "no sound effects"), "music", "not off");
   assert.equal(soundProfileFor(brief("x", { type: "tutorial", notes: "silent, no music" })), "off");
   assert.equal(soundProfileFor(brief("x", { type: "tutorial", notes: "no sound at all" })), "off");
   const r = reviewRubric(b, { skills: ["motion-film"], request: "Music only, no added sound effects." });
@@ -335,4 +335,15 @@ test("music only in the request or the brief is the music profile, over the skil
   assert.equal(r.levels.sound === "na", false, "the music is still judged");
   assert.ok(!r.hardKinds.includes("sound"));
   assert.match(soundProfileText("music"), /music only .*never is/);
+});
+
+// D306: the user wanted keyboard and click sounds in a launch film; the agent wrote "Music only, no
+// added sound effects" into its own brief and the profile ruled them out. Only the user's words do.
+test("music only in the brief, a skill or the agent's plan alone isn't the music profile; the user's request still is", () => {
+  const agentPlan = brief("A 28 s launch film for Uncut", { type: "launch-promo", notes: "Music only, no added sound effects.", visual: "the song only", hardLines: ["no sfx"] });
+  assert.equal(soundProfileFor(agentPlan, ["motion-film", "sound-design"]), "strict", "the brief's music-only words are the agent's, not the user's");
+  assert.equal(soundProfileFor(agentPlan, [], "Make a 28s launch film for Uncut, this app: one take on the beat, show me typing this prompt."), "strict", "a request that doesn't say it");
+  assert.equal(reviewRubric(agentPlan, { skills: ["sound-design"], request: "Make a launch film with keyboard sounds." }).sound, "strict");
+  assert.equal(soundProfileFor(agentPlan, [], "Make a launch film. Music only."), "music", "the user's own words still decide");
+  assert.equal(soundProfileFor(brief("x", { type: "meme" }), [], "Use the song only, please"), "music");
 });
