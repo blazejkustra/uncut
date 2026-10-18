@@ -5,6 +5,7 @@
 // from the first half second isn't static, and the typing isn't a hold.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 
 import { asksFootageCuts, CUT_CHANGED, clipCutFrames, footageCut, footageJump, FOOTAGE_CHROMA, motionFindings, motionIntent, motionLines, motionScan, OPEN_TYPE_S, thinSize, type ScanFrame } from "../../apps/server/src/agent/criticMotion.ts";
 
@@ -149,4 +150,14 @@ test("the critic is told: footage cuts aren't one-take defects, keyboard sounds 
   const text = criticText({ round: 1, canvas: { width: 1080, height: 1350, fps: 60 }, frames: 1680, brief, images: [], checks: [], claims: [], determinism: { checked: [], differed: [] }, skills: [], kit: [], previous: undefined, request: "Make a launch film with keyboard sounds.", sound: [], rubric: reviewRubric(brief, { request: "Make a launch film with keyboard sounds." }) } as never);
   assert.match(text, /a keyboard sound on typing and a click on a cursor's press are welcome/);
   assert.doesNotMatch(text, /sound profile music only/i, "the agent's brief doesn't make it music only");
+});
+
+test("chromaFrames decodes review JPEGs into each pixel's colour (as review_submit's decode does)", { skip: spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error ? "needs ffmpeg" : false }, async () => {
+  const { chromaFrames, grayFrames } = await import("../../apps/server/src/agent/criticMotion.ts");
+  const jpeg = (src: string) => spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", src, "-frames:v", "1", "-f", "mjpeg", "-"], { maxBuffer: 1 << 24 }).stdout as Buffer;
+  const [colour, grey] = await chromaFrames("ffmpeg", [jpeg("testsrc=size=200x250"), jpeg("color=c=gray:size=200x250")], W, H);
+  assert.equal(colour!.length, W * H);
+  assert.ok(colour!.filter((v) => v >= FOOTAGE_CHROMA).length > 0.5 * W * H, "testsrc is mostly coloured");
+  assert.ok(grey!.every((v) => v < FOOTAGE_CHROMA), "a grey frame has no colour");
+  assert.equal((await grayFrames("ffmpeg", [jpeg("testsrc=size=200x250")], W, H))[0]!.length, W * H, "grey decoding unchanged");
 });
