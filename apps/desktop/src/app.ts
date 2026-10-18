@@ -7,7 +7,7 @@ import { readWindowSizes, WINDOW_MODES, writeWindowSizes, type WindowMode, type 
 import { BACKGROUND_SWITCHES, centredIn, privacySettingsUrl, SYSTEM_AUDIO_FEATURES, systemAudioSupport, TEST_MEDIA_SWITCHES } from "./background.ts";
 import { setAppMenu, setUpdateMenu } from "./menu.ts";
 import { disabledLabel } from "./updater/policy.ts";
-import { startUpdater, type Updater } from "./updater/updater.ts";
+import { checkPendingInstall, startUpdater, type Updater } from "./updater/updater.ts";
 import { clipboardPaths } from "./clipboardPaths.ts";
 import { allowFrameNavigation, allowPermission } from "./permissions.ts";
 import { textMenu } from "./textMenu.ts";
@@ -40,6 +40,11 @@ if (process.env.UNCUT_DATA_DIR) {
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 }
+// A ShipIt install of this bundle still under way (Restart to update, then reopened before ShipIt
+// swapped the new version in): step aside so it can finish (it reopens the app), or, after a few
+// tries, open without the updater so this run can't re-stage the update and break the install.
+const pendingUpdate = app.isPackaged && process.platform === "darwin" && !process.env.UNCUT_CDP ? checkPendingInstall(process.env.UNCUT_DATA_DIR || app.getPath("userData")) : "none";
+if (pendingUpdate === "step-aside") app.exit(0);
 if (testBackground) {
   app.dock?.hide();
   // An accessory app (no dock icon, no menu bar) is never made the active app by showing a window.
@@ -517,6 +522,7 @@ function installUpdates() {
       await Promise.allSettled([stopping?.stop(), closeRelay()]);
     },
     onPolicy: (policy) => setUpdateMenu({ enabled: policy.enabled, sublabel: disabledLabel(policy), check: () => updater?.checkNow() }),
+    hold: pendingUpdate === "hold-updates",
   }).then(
     (u) => {
       updater = u;

@@ -177,3 +177,65 @@ export class UpdateSchedule {
 
 /** Whether Restart to update may quit now: never during an export, a recording or an agent turn. */
 export const canInstallNow = (busy: boolean) => !busy;
+
+// ---- a reopened app must not break a pending install ----
+//
+// Restart to update quits the app; Squirrel.Mac's ShipIt then verifies the new bundle (~7 s for
+// Uncut's ~300 MB) and swaps it in, and only after that relaunches it. If the app is reopened in
+// that gap (it just vanished, nothing on screen), ShipIt waits for it to quit, and the reopened old
+// version checks again, re-stages the same update and boots ShipIt out: "App Still Running Error",
+// the install is lost, and it repeats on every quit and quick reopen. So at launch, when a ShipIt
+// for this very bundle is alive, the app steps aside (quits at once; a detached watcher reopens it
+// when ShipIt is done), a few times at most, and otherwise starts without its updater for the run.
+
+/** The bundle identifier (electron-builder.yml appId): ShipIt's launchd label and cache folder are named after it. */
+export const BUNDLE_ID = "com.blazejkustra.uncut";
+/** At most this many step-asides within STEP_ASIDE_WINDOW_MS; then the app opens and holds its updater. */
+export const MAX_STEP_ASIDES = 3;
+export const STEP_ASIDE_WINDOW_MS = 10 * 60 * 1000;
+/** How long the watcher waits for ShipIt to exit before it reopens the app anyway. */
+export const STEP_ASIDE_WAIT_S = 90;
+
+export type PendingInstall = { readonly action: "none" } | { readonly action: "step-aside"; readonly shipItPid: number } | { readonly action: "hold-updates"; readonly shipItPid: number };
+
+/** ShipItState.plist's targetBundleURL (file:///Applications/Uncut.app/) as a path without the trailing slash. */
+function targetPath(state: unknown): string | undefined {
+  if (typeof state !== "object" || state === null) return undefined;
+  const raw = (state as { targetBundleURL?: unknown }).targetBundleURL;
+  if (typeof raw !== "string" || !raw.startsWith("file://")) return undefined;
+  try {
+    return decodeURIComponent(new URL(raw).pathname).replace(/\/+$/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a launching app does about a ShipIt install. `state` is ShipItState.plist (JSON) or
+ * undefined, `shipItPid` the live ShipIt for this bundle id (undefined when none), `stepAsides` the
+ * times (ms) this app stepped aside before.
+ */
+export function pendingInstall(input: { readonly state: unknown; readonly bundlePath: string; readonly shipItPid: number | undefined; readonly stepAsides: readonly number[]; readonly now: number }): PendingInstall {
+  const target = targetPath(input.state);
+  if (input.shipItPid === undefined || target === undefined) return { action: "none" };
+  if (target !== input.bundlePath.replace(/\/+$/, "")) return { action: "none" };
+  const recent = input.stepAsides.filter((t) => t <= input.now && input.now - t < STEP_ASIDE_WINDOW_MS).length;
+  return recent < MAX_STEP_ASIDES ? { action: "step-aside", shipItPid: input.shipItPid } : { action: "hold-updates", shipItPid: input.shipItPid };
+}
+
+/** `pgrep -fl` output: the pid of the ShipIt serving this bundle id (its argv[1] is `<bundle id>.ShipIt`). */
+export function shipItPid(pgrepOutput: string, bundleId: string = BUNDLE_ID): number | undefined {
+  for (const line of pgrepOutput.split("\n")) {
+    const m = /^(\d+)\s+(\S.*)$/.exec(line.trim());
+    if (!m) continue;
+    const command = `${m[2]!} `;
+    if (command.includes(`/ShipIt ${bundleId}.ShipIt `)) return Number(m[1]);
+  }
+  return undefined;
+}
+
+/** The detached watcher: waits (bounded) for ShipIt to exit, then opens the bundle (a no-op focus if ShipIt relaunched it). */
+export function stepAsideWatcher(pid: number, bundlePath: string): { readonly file: string; readonly args: readonly string[] } {
+  const script = `n=0; while kill -0 "$1" 2>/dev/null && [ "$n" -lt ${STEP_ASIDE_WAIT_S} ]; do sleep 1; n=$((n+1)); done; sleep 1; exec /usr/bin/open "$2"`;
+  return { file: "/bin/sh", args: ["-c", script, "uncut-update-wait", String(pid), bundlePath] };
+}

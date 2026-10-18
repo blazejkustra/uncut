@@ -3,8 +3,8 @@
 // downloads in the background, tells the renderer (which shows "Uncut X is ready"), and installs
 // on Restart to update or when the app quits. A failed check is logged, never shown: while the
 // repository is private every check fails, and that must stay silent.
-import { execFile } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";
 
@@ -12,7 +12,7 @@ import { app, autoUpdater as squirrel } from "electron";
 import { MacUpdater, type UpdateInfo } from "electron-updater";
 
 import type { UpdateInstallResult, UpdateStatus } from "../ipc.ts";
-import { canInstallNow, NO_STAGING_ID, parseSignature, UpdateSchedule, updaterConfigYaml, updatePolicy, type BundleSignature, type UpdatePolicy } from "./policy.ts";
+import { BUNDLE_ID, canInstallNow, NO_STAGING_ID, parseSignature, pendingInstall, shipItPid, stepAsideWatcher, UpdateSchedule, updaterConfigYaml, updatePolicy, type BundleSignature, type PendingInstall, type UpdatePolicy } from "./policy.ts";
 
 const log = (message: string) => console.log(`[updater] ${message}`);
 
@@ -39,6 +39,51 @@ function readSignature(): Promise<BundleSignature | undefined> {
   });
 }
 
+/**
+ * At launch, before anything else starts: is a ShipIt install of this bundle under way (see
+ * policy.ts's pendingInstall)? "step-aside": a detached watcher is started that reopens the app
+ * once ShipIt is done, and the caller quits at once. "hold-updates": the caller opens as usual
+ * but starts no updater this run (its check would re-stage the update and boot ShipIt out).
+ */
+export function checkPendingInstall(dataDir: string): PendingInstall["action"] {
+  let decision: PendingInstall = { action: "none" };
+  try {
+    let state: unknown;
+    try {
+      state = JSON.parse(readFileSync(path.join(homedir(), "Library", "Caches", `${BUNDLE_ID}.ShipIt`, "ShipItState.plist"), "utf8"));
+    } catch {
+      return "none"; // no install request (or not one we can read): nothing pending
+    }
+    let pgrep = "";
+    try {
+      pgrep = execFileSync("/usr/bin/pgrep", ["-fl", `${BUNDLE_ID}.ShipIt`], { encoding: "utf8", timeout: 3000 });
+    } catch {
+      return "none"; // pgrep exits 1 when nothing matches
+    }
+    const recordPath = path.join(dataDir, "updater", "step-asides.json");
+    let stepAsides: number[] = [];
+    try {
+      const raw: unknown = JSON.parse(readFileSync(recordPath, "utf8"));
+      if (Array.isArray(raw)) stepAsides = raw.filter((t): t is number => typeof t === "number");
+    } catch {}
+    const now = Date.now();
+    decision = pendingInstall({ state, bundlePath: bundlePath(), shipItPid: shipItPid(pgrep), stepAsides, now });
+    if (decision.action === "step-aside") {
+      mkdirSync(path.dirname(recordPath), { recursive: true });
+      writeFileSync(recordPath, JSON.stringify([...stepAsides.filter((t) => now - t < 24 * 60 * 60 * 1000), now]));
+      const watcher = stepAsideWatcher(decision.shipItPid, bundlePath());
+      spawn(watcher.file, [...watcher.args], { detached: true, stdio: "ignore" }).unref();
+      log(`ShipIt (${decision.shipItPid}) is installing an update: quitting until it's done`);
+    } else if (decision.action === "hold-updates") {
+      log(`ShipIt (${decision.shipItPid}) is still pending after repeated relaunches: no update checks this run`);
+    }
+  } catch (error) {
+    log(`pending install check failed: ${(error as Error).message}`);
+    return "none";
+  }
+  return decision.action;
+}
+
 export async function startUpdater(options: {
   readonly dataDir: string;
   readonly send: (status: UpdateStatus) => void;
@@ -46,6 +91,8 @@ export async function startUpdater(options: {
   readonly beforeInstall: () => Promise<void>;
   /** Called when the policy is known (the menu's Check for Updates… follows it). */
   readonly onPolicy: (policy: UpdatePolicy) => void;
+  /** A ShipIt install is pending (checkPendingInstall's "hold-updates"): no checks this run. */
+  readonly hold?: boolean;
 }): Promise<Updater> {
   const signature = app.isPackaged && process.platform === "darwin" ? await readSignature() : undefined;
   const policy = process.platform === "darwin" ? updatePolicy(process.env, { packaged: app.isPackaged, signature }) : ({ enabled: false, reason: "dev", detail: "macOS only" } as const);
@@ -58,6 +105,10 @@ export async function startUpdater(options: {
   if (!policy.enabled) {
     log(`off: ${policy.detail}`);
     return { policy, checkNow: () => {}, setBusy: () => {}, install: async () => "not-ready", status: () => status };
+  }
+  if (options.hold) {
+    log("held: a pending ShipIt install finishes when the app quits");
+    return { policy, checkNow: () => log("held: quit Uncut to finish the pending update"), setBusy: () => {}, install: async () => "not-ready", status: () => status };
   }
 
   const cacheBase = process.env.UNCUT_DATA_DIR ? path.join(process.env.UNCUT_DATA_DIR, "cache") : path.join(homedir(), "Library", "Caches");

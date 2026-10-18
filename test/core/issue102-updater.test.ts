@@ -6,8 +6,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { spawnSync } from "node:child_process";
+
 import {
+  BUNDLE_ID,
   CHECK_EVERY_MS,
+  MAX_STEP_ASIDES,
+  STEP_ASIDE_WINDOW_MS,
+  pendingInstall,
+  shipItPid,
+  stepAsideWatcher,
   FIRST_CHECK_MS,
   NO_STAGING_ID,
   UPDATE_OWNER,
@@ -184,4 +192,51 @@ test("busy: an export running, a recording (countdown, saving too), a device rec
   for (const phase of ["countdown", "recording", "saving"]) assert.equal(updateBusy({ ...idle, recorderPhase: phase }), true, phase);
   assert.equal(updateBusy({ ...idle, capturing: 1 }), true);
   assert.equal(updateBusy({ ...idle, agentRunning: true }), true);
+});
+
+// A reopened app must not break the install ShipIt is doing (Restart to update, then the app was
+// opened again before ShipIt swapped the new bundle in: the old version re-staged the update and
+// booted ShipIt out, "App Still Running Error", 0.0.1 → 0.0.2 never installed).
+const SHIPIT_STATE = { bundleIdentifier: BUNDLE_ID, launchAfterInstallation: true, targetBundleURL: "file:///Applications/Uncut.app/", updateBundleURL: "file:///x/update.abc/Uncut.app/", useUpdateBundleName: true };
+
+test("pendingInstall: a live ShipIt for this bundle makes the launching app step aside, a few times at most", () => {
+  const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, stepAsides: [] as number[], now: 1_000_000_000 };
+  assert.deepEqual(pendingInstall(base), { action: "step-aside", shipItPid: 73220 });
+  const recent = Array.from({ length: MAX_STEP_ASIDES - 1 }, (_, i) => base.now - 1000 * (i + 1));
+  assert.equal(pendingInstall({ ...base, stepAsides: recent }).action, "step-aside");
+  const many = Array.from({ length: MAX_STEP_ASIDES }, (_, i) => base.now - 1000 * (i + 1));
+  assert.deepEqual(pendingInstall({ ...base, stepAsides: many }), { action: "hold-updates", shipItPid: 73220 });
+  const old = many.map((t) => t - STEP_ASIDE_WINDOW_MS);
+  assert.equal(pendingInstall({ ...base, stepAsides: old }).action, "step-aside", "old step-asides don't count");
+});
+
+test("pendingInstall: nothing to do without a ShipIt, without a request, or for another copy of the app", () => {
+  const base = { state: SHIPIT_STATE, bundlePath: "/Applications/Uncut.app", shipItPid: 73220, stepAsides: [], now: 1 };
+  assert.equal(pendingInstall({ ...base, shipItPid: undefined }).action, "none");
+  assert.equal(pendingInstall({ ...base, state: undefined }).action, "none");
+  assert.equal(pendingInstall({ ...base, state: { targetBundleURL: 7 } }).action, "none");
+  assert.equal(pendingInstall({ ...base, bundlePath: "/Users/me/Desktop/Uncut.app" }).action, "none");
+  const spaced = { ...SHIPIT_STATE, targetBundleURL: "file:///Users/me/My%20Apps/Uncut.app/" };
+  assert.equal(pendingInstall({ ...base, state: spaced, bundlePath: "/Users/me/My Apps/Uncut.app" }).action, "step-aside");
+});
+
+test("shipItPid finds the ShipIt serving this bundle id in pgrep -fl", () => {
+  const out = [
+    "71342 /Applications/Uncut.app/Contents/MacOS/Uncut",
+    "5000 /Applications/Other.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt com.other.app.ShipIt /x/ShipItState.plist",
+    `73220 /Applications/Uncut.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt ${BUNDLE_ID}.ShipIt /Users/me/Library/Caches/${BUNDLE_ID}.ShipIt/ShipItState.plist`,
+  ].join("\n");
+  assert.equal(shipItPid(out), 73220);
+  assert.equal(shipItPid(out.split("\n").slice(0, 2).join("\n")), undefined);
+  assert.equal(shipItPid(""), undefined);
+});
+
+test("the step-aside watcher waits for ShipIt to exit, then opens the bundle", { skip: process.platform === "win32" }, () => {
+  const w = stepAsideWatcher(4242, "/Applications/My Uncut.app");
+  assert.equal(w.file, "/bin/sh");
+  assert.deepEqual(w.args.slice(2), ["uncut-update-wait", "4242", "/Applications/My Uncut.app"]);
+  // Run the script with a gone pid and `open` swapped for echo: it opens right away, the path intact.
+  const script = w.args[1]!.replace("exec /usr/bin/open", "echo");
+  const r = spawnSync("/bin/sh", ["-c", script, "x", "999999", "/Applications/My Uncut.app"], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(r.stdout.trim(), "/Applications/My Uncut.app");
 });
