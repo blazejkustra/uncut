@@ -3,6 +3,8 @@
 // Node install and the backend doesn't become a second GUI app instance.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { appendFileSync, renameSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { Duplex, Writable } from "node:stream";
 import * as readline from "node:readline";
 
@@ -10,6 +12,40 @@ import type { ServerConnection } from "@uncut/contracts";
 
 const READY_TIMEOUT_MS = 15_000;
 const KILL_AFTER_MS = 1_500;
+/** The server's own log in the data dir: its stdout and stderr, when it started and how it ended. */
+export const SERVER_LOG = "server.log";
+// Past this the log moves to server.log.1 (the one before is dropped), so a long run can't grow it.
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Appends timestamped lines to <dataDir>/server.log. A Finder-launched app's stdout and stderr go
+ * nowhere, so this is the only record of why the server stopped answering or died. Never throws.
+ */
+export function serverLog(dataDir: string, maxBytes = LOG_MAX_BYTES): (text: string) => void {
+  const file = join(dataDir, SERVER_LOG);
+  let size = -1;
+  return (text) => {
+    try {
+      if (size < 0) {
+        try {
+          size = statSync(file).size;
+        } catch {
+          size = 0;
+        }
+      }
+      if (size > maxBytes) {
+        try {
+          renameSync(file, `${file}.1`);
+        } catch {}
+        size = 0;
+      }
+      const at = new Date().toISOString();
+      const lines = text.replace(/\n$/, "").split("\n").map((line) => `${at} ${line}\n`).join("");
+      appendFileSync(file, lines, { mode: 0o600 });
+      size += Buffer.byteLength(lines);
+    } catch {}
+  };
+}
 
 export interface ServerProcess {
   readonly pid: number | undefined;
@@ -55,6 +91,7 @@ export function startServer(options: {
   keys: { readonly encrypt: (text: string) => string; readonly decrypt: (data: string) => string };
 }): ServerProcess {
   const token = randomBytes(24).toString("base64url");
+  const log = serverLog(options.dataDir);
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: "1",
@@ -76,7 +113,14 @@ export function startServer(options: {
     // stdin stays open and unused: the server exits when it closes, so it can't outlive us.
     // fd 3 carries the token, which would be visible to `ps eww` in the environment.
     // fd 4 is the keys pipe (D99): { id, op, text | data } in, { id, ok, data | text | error } out.
-    stdio: ["pipe", "pipe", "inherit", "pipe", "pipe"],
+    // stderr is ours too: it goes on to our own stderr and into server.log.
+    stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+  });
+  log(`[desktop] server started (pid ${child.pid ?? "none"})`);
+  // Always drained: a full pipe would block the server's writes.
+  child.stderr!.on("data", (chunk: Buffer) => {
+    process.stderr.write(chunk);
+    log(chunk.toString("utf8"));
   });
   const keysPipe = child.stdio[4] as Duplex;
   keysPipe.on("error", () => {});
@@ -108,25 +152,33 @@ export function startServer(options: {
 
   const connection = new Promise<ServerConnection>((resolve, reject) => {
     const fail = (message: string) => {
+      log(`[desktop] ${message}`);
       clearTimeout(timer);
       reject(new Error(message));
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     };
     const timer = setTimeout(() => fail(`server didn't start within ${READY_TIMEOUT_MS / 1000}s`), READY_TIMEOUT_MS);
     readline.createInterface({ input: child.stdout! }).on("line", (line) => {
-      if (ready) return void process.stdout.write(`[server] ${line}\n`);
+      const echo = () => {
+        process.stdout.write(`[server] ${line}\n`);
+        log(line);
+      };
+      if (ready) return echo();
       const parsed = parseReadyLine(line);
-      if (parsed === "not-json") return void process.stdout.write(`[server] ${line}\n`);
+      if (parsed === "not-json") return echo();
       if (parsed === "bad") return fail(`server sent a ready line without a valid port: ${line}`);
       ready = true;
       clearTimeout(timer);
+      log(`[desktop] server ready on port ${parsed.port}`);
       resolve({ url: `ws://127.0.0.1:${parsed.port}/ws`, token });
     });
     child.once("error", (error) => fail(`can't start server: ${error.message}`));
     child.once("exit", (code, signal) => {
       const how = signal ?? `code ${code}`;
       if (!ready) return fail(`server exited before it was ready (${how})`);
-      if (!stopping) options.onExit(`server exited unexpectedly (${how})`);
+      if (stopping) return void log(`[desktop] server stopped (${how})`);
+      log(`[desktop] server exited unexpectedly (${how})`);
+      options.onExit(`server exited unexpectedly (${how})`);
     });
   });
   // The renderer reports failures; don't crash main on an unobserved rejection.
@@ -139,8 +191,11 @@ export function startServer(options: {
     stop: async () => {
       stopping = true;
       if (child.exitCode !== null || child.signalCode !== null) return;
+      log("[desktop] stopping the server (SIGTERM)");
       child.kill("SIGTERM");
       const timer = setTimeout(() => {
+        // A server that can't even take SIGTERM is stuck in synchronous work: worth knowing.
+        log(`[desktop] server still running ${KILL_AFTER_MS} ms after SIGTERM (its event loop is blocked?); killing it`);
         console.error(`[uncut] server still running ${KILL_AFTER_MS} ms after SIGTERM; killing it`);
         child.kill("SIGKILL");
       }, KILL_AFTER_MS);

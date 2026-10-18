@@ -13,6 +13,7 @@ import { makeServerLayer, openSockets } from "./server.ts";
 import { awaitShellFrom, fallbackPathDirs, holdClaudeAuth, mergePath, resolveShellEnvironment } from "./shellEnv.ts";
 import { initTelemetry, shutdownTelemetry, trackCrash } from "../telemetry/telemetry.ts";
 import { crashOf, spoolCrash } from "../telemetry/spool.ts";
+import { watchLiveness } from "./liveness.ts";
 
 let launch: LaunchOptions;
 try {
@@ -95,6 +96,10 @@ process.on("unhandledRejection", (reason) => {
 });
 // An uncaught exception ends the process: its crash event is spooled (synchronously) for the next start.
 process.on("uncaughtExceptionMonitor", (error) => spoolCrash(config.dataDir, crashOf("server", error, true)));
+
+// Stalls always; under the desktop (its server.log) a heartbeat a minute too, so a log that stops
+// says when the server froze.
+watchLiveness({ write: (line) => console.error(line), heartbeatMs: launch.exitWithStdin ? 60_000 : 0 });
 
 const fiber = Effect.runFork(Layer.launch(makeServerLayer(config)));
 let stopping = false;

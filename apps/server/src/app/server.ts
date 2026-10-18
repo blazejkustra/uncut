@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { WS_PATH } from "@uncut/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer } from "effect/http";
@@ -68,9 +69,15 @@ const createServer = (config: Config.ServerConfigShape) => () => {
   httpServer = NodeHttp.createServer();
   // Origin, token and failed-attempt limits for every request and upgrade (D110), before the router.
   installGate(httpServer, { token: config.token, host: config.host, allowedOrigins: config.allowedOrigins ?? [] });
-  httpServer.on("upgrade", (_request, socket) => {
+  httpServer.on("upgrade", (request, socket) => {
     upgraded.add(socket);
-    socket.once("close", () => upgraded.delete(socket));
+    // The window's socket (never its query: the token is there): when it drops, and after how long.
+    const path = (request.url ?? "").split("?")[0];
+    const opened = Date.now();
+    socket.once("close", () => {
+      upgraded.delete(socket);
+      if (path === WS_PATH) console.error(`[uncut] a window's socket closed after ${Math.round((Date.now() - opened) / 1000)} s`);
+    });
   });
   return httpServer;
 };
