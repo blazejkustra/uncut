@@ -24,7 +24,9 @@ export function watchLiveness(options: {
   const tickMs = options.tickMs ?? 1000;
   const stallMs = options.stallMs ?? 2000;
   const heartbeatMs = options.heartbeatMs ?? 0;
-  const now = options.now ?? Date.now;
+  // Monotonic (stops while the Mac sleeps, like libuv's timers): wall-clock time would log every
+  // sleep or clock step as a stall.
+  const now = options.now ?? (() => performance.now());
   let last = now();
   let lastBeat = last;
   const timer = setInterval(() => {
