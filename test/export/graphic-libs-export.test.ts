@@ -10,7 +10,8 @@
 // calls (readGraphics with the bundled libraries, then graphicDocument), served by a small HTTP
 // server here with the route's CSP and sandbox headers; the page around the iframe is a stand-in
 // for the editor's (Preview.tsx: an <iframe sandbox="allow-scripts"> at canvas size, render asked
-// by postMessage, captured after the "rendered" answer), in a hidden offscreen Electron window.
+// by postMessage, captured after the "rendered" answer once a sentinel row shows that frame), in a
+// hidden offscreen Electron window.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -148,22 +149,51 @@ const { url, width, height, jobs, profile } = JSON.parse(process.env.UNCUT_PREVI
 app.setPath("userData", profile);
 app.commandLine.appendSwitch("force-device-scale-factor", "1");
 app.dock && app.dock.hide();
+// One row taller than the canvas: the graphic's sentinel row (see PREVIEW_SENTINEL).
+const nextPaint = (win) => new Promise((done) => {
+  const finish = () => { clearTimeout(timer); win.webContents.off("paint", finish); done(); };
+  const timer = setTimeout(finish, 1000);
+  win.webContents.on("paint", finish);
+  win.webContents.invalidate();
+});
+// The page as drawn once its sentinel row shows the frame's mark: on a busy machine (a CI VM, #88)
+// a capture right after "rendered" can copy an older frame, as the export's grab (render.ts) knows.
+const grab = async (win, mark) => {
+  const until = Date.now() + 10000;
+  for (;;) {
+    await nextPaint(win);
+    const image = await win.webContents.capturePage({ x: 0, y: 0, width, height: height + 1 });
+    const row = image.crop({ x: 0, y: height, width: 1, height: 1 }).toBitmap();
+    const seen = (row[2] > 127 ? 4 : 0) + (row[1] > 127 ? 2 : 0) + (row[0] > 127 ? 1 : 0);
+    if (image.getSize().height === height + 1 && seen === mark) return image.crop({ x: 0, y: 0, width, height });
+    if (Date.now() > until) throw new Error("the rendered frame never reached the capture");
+  }
+};
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ show: false, width, height, useContentSize: true, frame: false, transparent: true, backgroundColor: "#00000000", enableLargerThanScreen: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, backgroundThrottling: false } });
-  win.setContentSize(width, height);
+  const win = new BrowserWindow({ show: false, width, height: height + 1, useContentSize: true, frame: false, transparent: true, backgroundColor: "#00000000", enableLargerThanScreen: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, backgroundThrottling: false } });
+  win.setContentSize(width, height + 1);
   await win.loadURL(url);
   await win.webContents.executeJavaScript("window.ready");
   for (const job of jobs) {
     const answer = await win.webContents.executeJavaScript("window.renderAt(" + JSON.stringify(job.t) + ", " + JSON.stringify(job.info) + ")");
-    if (answer !== true) throw new Error("render failed: " + answer);
-    const image = await win.webContents.capturePage({ x: 0, y: 0, width, height });
-    writeFileSync(job.out, image.toPNG());
+    if (typeof answer !== "number") throw new Error("render failed: " + answer);
+    writeFileSync(job.out, (await grab(win, answer)).toPNG());
   }
   app.exit(0);
 }).catch((e) => { console.error(e); app.exit(1); });
 `;
 
-const hostPage = (src: string) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H}px}</style></head><body>
+/** Appended to the served document (see `served`): the sentinel row at y = H, set on request. */
+const PREVIEW_SENTINEL = `<script>addEventListener("message", (e) => {
+  if (!e.data || e.data.uncut !== "sentinel") return;
+  let s = document.getElementById("__uncut_sentinel");
+  if (!s) { s = document.createElement("div"); s.id = "__uncut_sentinel"; s.style.cssText = "position:fixed;left:0;right:0;top:${H}px;height:1px;z-index:2147483647"; document.documentElement.appendChild(s); }
+  const m = e.data.mark;
+  s.style.background = "rgb(" + (m & 4 ? 255 : 0) + "," + (m & 2 ? 255 : 0) + "," + (m & 1 ? 255 : 0) + ")";
+  parent.postMessage({ uncut: "sentinel-set", mark: m }, "*");
+});</script>`;
+
+const hostPage = (src: string) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}iframe{border:0;display:block;width:${W}px;height:${H + 1}px}</style></head><body>
 <iframe sandbox="allow-scripts" src="${src}"></iframe>
 <script>
 const frame = document.querySelector("iframe");
@@ -171,7 +201,12 @@ window.ready = new Promise((done) => frame.addEventListener("load", () => done(t
 let seq = 0;
 window.renderAt = (t, info) => new Promise((done) => {
   const mine = ++seq;
-  const on = (e) => { if (e.data && e.data.uncut === "rendered" && e.data.seq === mine) { removeEventListener("message", on); done(e.data.error || true); } };
+  const on = (e) => { if (e.data && e.data.uncut === "rendered" && e.data.seq === mine) { removeEventListener("message", on); if (e.data.error) return done(e.data.error);
+    // Rendered: the graphic's sentinel row takes this frame's mark (1–7), so the capture can tell it from an older frame.
+    const mark = (mine % 7) + 1;
+    const set = (m) => { if (m.data && m.data.uncut === "sentinel-set" && m.data.mark === mark) { removeEventListener("message", set); done(mark); } };
+    addEventListener("message", set);
+    frame.contentWindow.postMessage({ uncut: "sentinel", mark }, "*"); } };
   addEventListener("message", on);
   frame.contentWindow.postMessage({ uncut: "render", seq: mine, t, info }, "*");
 });
@@ -180,6 +215,7 @@ window.renderAt = (t, info) => new Promise((done) => {
 let root: string;
 let dir: string;
 let docs: Map<string, string>;
+let served: Map<string, string>;
 let server: Server;
 let port: number;
 let raster: Rasterizer;
@@ -199,6 +235,11 @@ before(async () => {
   // Both sides read the graphics the one way (readGraphics + the bundled libraries) and wrap them in graphicDocument.
   const graphics = await readGraphics(dir, project, await loadGraphicLibs(resolve("assets/graphic-libs")));
   docs = new Map([...graphics].map(([src, html]) => [src, graphicDocument(html, canvas)]));
+  // The preview stand-in's capture check, as the export's (render.ts SENTINEL_ID): asked after a
+  // frame is rendered, the document sets a row below the canvas to that frame's mark. It must be in
+  // the iframe's own frame: a row of the host page can reach the capture before the iframe's
+  // picture does (a busy CI VM captured the stage's bare background, or nothing).
+  served = new Map([...docs].map(([src, doc]) => [src, doc + PREVIEW_SENTINEL]));
   // The graphic route's stand-in: the document with the route's headers; and the host page.
   server = createServer((req, res) => {
     const path = new URL(req.url!, "http://x").pathname;
@@ -206,7 +247,7 @@ before(async () => {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       return res.end(hostPage(new URL(req.url!, "http://x").searchParams.get("src")!));
     }
-    const doc = docs.get(`graphics/${path.slice("/media/graphic/".length)}`);
+    const doc = served.get(`graphics/${path.slice("/media/graphic/".length)}`);
     if (!path.startsWith("/media/graphic/") || !doc) {
       res.writeHead(404);
       return res.end();
