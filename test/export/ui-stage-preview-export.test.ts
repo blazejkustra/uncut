@@ -31,7 +31,9 @@ const canvas = { width: W, height: H, fps: 30 };
 // The editor with three clips and no preview.frame; the playhead is t. The camera fits the
 // preview's frame to the canvas, so the canvas's middle is the preview's picture.
 // Clip 0: the video from 0.5 s of it, at 1 to 3 s (red for its first second, green after);
-// clip 1: an image (blue), at 3 to 4 s; then a gap to 6 s.
+// clip 1: an image (blue), at 3 to 4 s; a media id that isn't there at 4 to 4.5 s; then a gap to 6 s;
+// at 6 to 7 s a clip again, but preview.frame: false. The song, passed last, is on the music lane by
+// its index (3), a video's id though: never the preview's picture.
 const STAGE = `<div id="stage" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;background:#222;overflow:hidden"><div id="cam" style="position:absolute;left:0;top:0;transform-origin:0 0"></div></div>
 <script src="uncut:lib/ui.js"></script>
 <script>
@@ -47,9 +49,12 @@ window.render = (t) => {
     timeline: { clips: [
       { track: "Main", start: 1, duration: 2, name: "Drone", media: "clip", in: 0.5 },
       { track: "Main", start: 3, duration: 1, name: "Still", image: blue },
+      { track: "Main", start: 4, duration: 0.5, name: "Gone", media: "nope" },
+      { track: "Main", start: 6, duration: 1, name: "Off", media: "clip" },
       { track: "Audio", start: 0, duration: 6, name: "Song", media: "clip" },
+      { track: 3, start: 0, duration: 7, name: "Song", media: "clip" },
     ], playhead: t },
-    preview: { time: t, canvas: "1080×1350, 60 fps" },
+    preview: { time: t, canvas: "1080×1350, 60 fps", ...(t >= 6 ? { frame: false } : {}) },
   });
   const r = uncutUI.rectIn(uncutUI.find(ed, "frame"), cam);
   const k = Math.min(${W} / r.w, ${H} / r.h);
@@ -136,6 +141,18 @@ test("the editor stage's preview shows the clip under the playhead without previ
   const [r4, g4, b4] = middle(gap.png);
   assert.ok(r4 < 40 && g4 < 40 && b4 < 40, `a gap stays black, got ${r4},${g4},${b4}`);
   assert.ok((gap.census?.emptyPreview ?? 0) > 50, `the census reports the empty preview filling the frame, got ${gap.census?.emptyPreview}`);
+  // A media id that can't be read: black, reported, and quickly (no wait on it past the reply).
+  const began = Date.now();
+  const gone = await frame("graphics/stage.html", 4.2, join(root, "gone.png"));
+  assert.ok(Date.now() - began < 3000, `an unreadable media doesn't hold the frame, took ${Date.now() - began} ms`);
+  const [r5, g5, b5] = middle(gone.png);
+  assert.ok(r5 < 40 && g5 < 40 && b5 < 40, `an unreadable clip leaves the preview black, got ${r5},${g5},${b5}`);
+  assert.ok((gone.census?.emptyPreview ?? 0) > 50, `the census reports it empty, got ${gone.census?.emptyPreview}`);
+  // preview.frame: false right after a frame with footage: the footage goes.
+  await frame("graphics/stage.html", 2.2, join(root, "green2.png"));
+  const off = await frame("graphics/stage.html", 6.5, join(root, "off.png"));
+  const [r6, g6, b6] = middle(off.png);
+  assert.ok(r6 < 40 && g6 < 40 && b6 < 40, `preview.frame: false keeps the preview empty after footage, got ${r6},${g6},${b6}`);
   // Fresh: another graphic first, so this is the stage's first frame in a new document.
   await frame("graphics/other.html", 0, join(root, "other.png"));
   const fresh = await frame("graphics/stage.html", 1.2, join(root, "red-fresh.png"));

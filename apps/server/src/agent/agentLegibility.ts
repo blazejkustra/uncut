@@ -25,7 +25,7 @@ export function emptyPreviewNote(list: ReadonlyArray<CensusFrame>, fps?: number)
   const empty = list.filter((f) => f.emptyPreview);
   if (!empty.length) return "";
   const at = (f: CensusFrame) => `frame ${f.frame}${fps ? ` (${(f.frame / fps).toFixed(2)} s)` : ""}, ${f.emptyPreview} % of the frame`;
-  return `The editor stage's preview is empty (black) on ${empty.slice(0, 6).map(at).join("; ")}${empty.length > 6 ? `; ${empty.length - 6} more frames` : ""}: nothing is under the playhead. Put the cut's clips in timeline.clips with their media ids ({ media: id, in: s }: the stage shows the clip under the playhead itself) or pass preview: { frame: yourCanvas } from frame 0; or keep the empty preview off screen.`;
+  return `The editor stage's preview is empty (black) on ${empty.slice(0, 6).map(at).join("; ")}${empty.length > 6 ? `; ${empty.length - 6} more frames` : ""}: nothing is under the playhead, or its clip's media couldn't be read (a wrong media id, an audio file). Put the cut's clips in timeline.clips with their media ids ({ media: id, in: s }: the stage shows the clip under the playhead itself) or pass preview: { frame: yourCanvas } from frame 0; or keep the empty preview off screen.`;
 }
 
 /** What the census can't see, said wherever it would otherwise sound complete. */
