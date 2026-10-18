@@ -165,11 +165,17 @@ test("issue #28/#36: inline brief, storyboard and review cards; the critic's blo
     assert.deepEqual(await page.$$eval(`${passed} [data-testid=agent-review-fix]`, (els) => els.map((e) => e.getAttribute("data-verified"))), ["true", "true"]);
     await page.$eval(passed, (el) => el.scrollIntoView({ block: "start" }));
     await page.screenshot({ path: out("review-passed") });
-    // The second critic run saw the claims and the fresh frames, never the builder's conversation.
+    // The second critic run saw the claims and the fresh frames, and of the conversation only the
+    // user's words (8a6ccbd): the film's brief, then this turn's message, once each, inside <request>.
+    // Never the agent's replies or anything else of the builder's conversation.
     const runs = readFileSync(join(root, "critic.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     assert.equal(runs.length, 2);
     assert.match(runs[1].text, /<claimed-fixes>[\s\S]*d2 \(at 0 s\)[\s\S]*centred the claim's box/);
-    assert.ok(!runs[1].text.includes("make a 2 s promo") && !runs[1].text.includes("fix them"));
+    const request = runs[1].text.match(/<request>\n([\s\S]*?)\n<\/request>/)?.[1];
+    assert.equal(request, "make a 2 s promo for Argent Cloud\n\nThen, this turn: fix them", "the user's words, in <request>");
+    const outside = runs[1].text.replace(/<request>[\s\S]*?<\/request>/, "");
+    assert.ok(!outside.includes("make a 2 s promo") && !outside.includes("fix them"), "the user's words only inside <request>");
+    assert.ok(!runs[1].text.includes("fixing both next") && !runs[1].text.includes("Both fixes check out"), "no agent reply reaches the critic");
   } catch (error) {
     await page.screenshot({ path: out("failure") }).catch(() => {});
     throw error;
