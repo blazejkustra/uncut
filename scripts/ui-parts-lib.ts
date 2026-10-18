@@ -207,7 +207,7 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        that large: framing the agent panel's whole width leaves its 12 px steps about 2 % tall; set them as a piece)
      uncutUI.mount(host, name, props)                 // a whole part (returns its root): rarely, briefly
      uncutUI.parts()                                  // editor, topbar, agent, message, turn, review, timeline, preview,
-                                                      // composer, storyboard, export, exportProgress, inspector, effects
+                                                      // composer, storyboard, export, exportProgress, inspector, effects, menu
      uncutUI.slots(name), uncutUI.size(name)          // its slots (what a piece can be); its box in the app, CSS px
      uncutUI.find(root, slot), uncutUI.findAll(root, slot)  // a slot's element (or any CSS selector's) in a part or piece
    Pieces (part.slot): composer, composer.box, composer.send; message; turn.steps, turn.step, turn.edit,
@@ -215,11 +215,13 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
      timeline.playhead; preview.frame, preview.play; inspector.amount (a filter's slider), inspector.effect,
      inspector.filter; effects.warm (any look: natural, cool, vintage, film, bw, vivid), effects.tile, effects.filters;
      export.draft, export.standard, export.high, export.export; exportProgress.job (status and bar), exportProgress.progress, exportProgress.bar;
-     topbar.export, topbar.saved, topbar.title.
+     topbar.export, topbar.saved, topbar.title; menu (the whole menu), menu.addToChat, menu.item.
    Props (every part): text { slot: "..." }; press { slot: scale }; highlight, hide (keeps its room), remove (slot
    or [slots]); background (mount: "none" or a colour behind a part that isn't opaque). Each part's own:
-       composer: text (typed so far; empty disables Send), caret, placeholder, context ("Playhead 00:00:12:00")
-       message: text (the user's prompt bubble)
+       composer: text (typed so far; empty disables Send), caret, placeholder, context ("Playhead 00:00:12:00"),
+         chips: ["DJI 0063"] (each "@DJI 0063" in text drawn as the app's chip: right-click a clip, Add to chat, and
+         the composer holds "@<its name> " with the caret after it; a typing key's from past the chip types after it)
+       message: text (the user's prompt bubble), chips (as the composer's: the sent prompt keeps its chip)
        turn: steps: ["Read the brand kit", ...], done (rows done, the rest running), edit (the edit row's label),
          reply (the agent's answer), review (true, or the review's props: its card in the turn), status
        storyboard: summary, beats: [{ start, end, title, lines: ["..."] }], count (the first n)
@@ -237,6 +239,10 @@ export const UI_HEADER = `/* uncutUI (Uncut, MIT): Uncut's own editor UI for a f
        export: quality ("draft" | "standard" | "high"), file ("Launch film.mp4"), motionBlur, duration (s: the range)
        exportProgress: progress 0..1 ("Rendering... 42%"), eta (s left)
        topbar: exportLabel ("Exporting 42%"), title (the project's name)
+       menu: a timeline clip's right-click menu as the app builds it for a video clip on Main (Add to chat ⌘L,
+         Split S, Copy, Paste, Duplicate, Delete, Ripple delete, Speed, Rename, Replace media, Show in Media,
+         Reveal in Finder, Lock), "Add to chat" highlighted under the pointer; active: the row under the pointer
+         (an entry id: "add-to-chat", "split", "copy", ...; "": none). Its top-left corner goes at the pointer.
        agent (the side panel), editor (the window, 1920 x 900): the parts inside by name ({ composer: { text } });
          editor: media: [{ name, meta, image, duration }] (the library's tiles), side: "inspector" (that tab, its
          props: inspector), library: "effects" (that panel, props: effects), export or exportProgress (that dialog

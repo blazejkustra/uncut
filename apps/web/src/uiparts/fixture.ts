@@ -71,6 +71,10 @@ export const FIXTURE_SNAPSHOT_FX: ProjectSnapshot = {
   },
 };
 
+/** The menu scene: the clip right-clicked (DJI 0063 on Main), and its chip as Add to chat makes it (actions.addItemToChat). */
+export const FIXTURE_MENU_CLIP = "c2";
+export const FIXTURE_CHIP = { kind: "item" as const, id: FIXTURE_MENU_CLIP, label: "DJI 0063", range: { start: s(7), end: s(14) } };
+
 export const FIXTURE_PROMPT = "Make a 28 s launch film for Uncut on the Electro Dreams beat, the drone clips as the film being edited.";
 
 export const FIXTURE_STORYBOARD: Storyboard = {
@@ -139,6 +143,14 @@ export const FIXTURE_AGENT_DONE: AgentState = {
     }),
   ],
   plan: { storyboard: { ...FIXTURE_STORYBOARD, status: "approved", approvedBy: "user" }, reviews: [FIXTURE_REVIEW] },
+};
+
+/** The menu scene's thread: one sent prompt with a clip chip (its CSS; the runtime blanks the words). */
+export const FIXTURE_AGENT_CHIP: AgentState = {
+  dir: FIXTURE_DIR,
+  provider: "Claude Code",
+  running: null,
+  turns: [turn("turn-1", { prompt: `@${FIXTURE_CHIP.label} make this one slow motion`, mentions: [{ kind: FIXTURE_CHIP.kind, label: FIXTURE_CHIP.label }], finishedAt: "2026-10-16T10:01:00.000Z" })],
 };
 
 export const FIXTURE_SETUP: ReadonlyArray<SetupCheck> = [

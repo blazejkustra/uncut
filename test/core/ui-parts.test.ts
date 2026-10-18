@@ -17,7 +17,7 @@ import { librarySignatures } from "../../apps/server/src/agent/agentDocs.ts";
 
 const ROOT = resolve(".");
 const LIB = readFileSync(resolve("assets/graphic-libs/ui.js"), "utf8");
-const PARTS = ["editor", "topbar", "agent", "message", "turn", "review", "timeline", "preview", "composer", "storyboard", "export", "exportProgress", "inspector", "effects"];
+const PARTS = ["editor", "topbar", "agent", "message", "turn", "review", "timeline", "preview", "composer", "storyboard", "export", "exportProgress", "inspector", "effects", "menu"];
 
 type Ui = { parts(): Array<string>; size(n: string): { width: number; height: number }; css(): string; mount: unknown; find: unknown; findAll: unknown; cursor: unknown; timecode(s: number, fps?: number): string };
 const load = () => {
@@ -114,7 +114,24 @@ test("the data can't close its script, repeated icons are pooled, and the whole 
   assert.equal(parts.a!.html, '<i>\u00010\u0002\u00010\u0002<img src="\u00011\u0002"></i>');
   // The pieces runtime and the Effects tab's look thumbnails (JPEG) brought it near 300 KB; the whole document with every library stays under MAX_GRAPHIC_DOC_BYTES (graphic-libs.test.ts).
   // The live editor stage and fly (round 7) took it past 310 KB, frameText (legible steps) past 320 KB, the stage preview's own footage (clip under the playhead) past 325 KB.
-  assert.ok(Buffer.byteLength(LIB) < 330_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
+  // The timeline clip's menu and the chips' CSS (Add to chat, for the launch film) took it past 330 KB.
+  assert.ok(Buffer.byteLength(LIB) < 340_000, `ui.js is ${Buffer.byteLength(LIB)} bytes`);
+});
+
+test("Add to chat: the menu part is the app's item menu on a Main clip (Add to chat highlighted, placed where it's mounted), and the chips keep their CSS", () => {
+  const data = JSON.parse(/var DATA = (\{.*\});\n/.exec(LIB)![1]!) as { css: string; parts: Record<string, { html: string; width: number; height: number }> };
+  const menu = data.parts.menu!;
+  const labels = [...menu.html.matchAll(/class="ctx-label">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(labels, ["Add to chat", "Split", "Copy", "Paste", "Duplicate", "Delete", "Ripple delete", "Speed", "Rename", "Replace media", "Show in Media", "Reveal in Finder", "Lock"]);
+  assert.match(menu.html, /data-testid="menu-add-to-chat" class="ctx-item active ?"[^>]*>.*?class="ctx-key">⌘L</);
+  assert.doesNotMatch(menu.html.slice(0, menu.html.indexOf(">")), /left:|top:/, "no pointer position of its own");
+  assert.ok(menu.width >= 220 && menu.height > 200, `${menu.width} x ${menu.height}`);
+  for (const want of [".uncut-ui .ctx-menu", ".uncut-ui .ctx-item.active", ".uncut-ui .ctx-key", ".uncut-ui .composer-hl mark.chip", ".uncut-ui .msg-user mark.chip"]) assert.ok(data.css.includes(want), want);
+  // The thread's sent prompt in the menu scene is the fixture's: only the menu is lifted from there.
+  for (const [n, p] of Object.entries(data.parts)) assert.doesNotMatch(p.html, /slow motion/, n);
+  const ui = load() as Ui & { slots(n: string): Array<string> };
+  assert.deepEqual([...ui.slots("menu")], ["item", "addToChat", "label", "key", "sep"]);
+  assert.match(UI_HEADER, /chips: \["DJI 0063"\]/);
 });
 
 test("runtimeJs drops whole-line comments only: code after a leading /* */ stays, a multi-line template literal can't be cut", () => {

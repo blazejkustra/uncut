@@ -42,6 +42,7 @@ const SLOTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   exportProgress: { job: '[data-testid="export-job"]', progress: ".export-status", bar: ".export-bar", fill: ".export-bar > div", cancel: '[data-testid="export-cancel"]' },
   topbar: { export: ".export-btn", saved: ".saved", title: ".project-title" },
   agent: { tabs: ".tabs", thread: ".agent-thread", composer: ".composer", send: ".send", plan: ".plan-chip-btn" },
+  menu: { item: ".ctx-item", addToChat: '[data-testid="menu-add-to-chat"]', label: ".ctx-label", key: ".ctx-key", sep: ".ctx-sep" },
   editor: { topbar: ".topbar", export: ".export-btn", rail: ".rail", library: ".library", preview: ".stage", frame: ".frame", side: ".side", composer: ".composer", send: ".send", thread: ".agent-thread", timeline: ".bottom", playhead: ".playhead" },
 };
 
@@ -538,7 +539,10 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
       const input = find(root, "input", "composer");
       const hl = find(root, "text", "composer");
       if (input) input.textContent = value;
-      if (hl) hl.textContent = `${value}\u200b`;
+      if (hl) {
+        hl.textContent = `${value}\u200b`;
+        chipify(hl, o.chips);
+      }
       const send = find(root, "send", "composer");
       if (send) value.trim() ? send.removeAttribute("disabled") : send.setAttribute("disabled", "");
     }
@@ -557,7 +561,19 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
     if (o.context !== undefined) setText(find(root, "context", "composer")?.querySelector("span") ?? null, o.context);
   },
   message(root, o) {
-    if (typeof o.text === "string") root.textContent = o.text;
+    if (typeof o.text === "string") {
+      root.textContent = o.text;
+      chipify(root, o.chips);
+    }
+  },
+  menu(root, o) {
+    // The row under the pointer (the app's .active): an entry's id ("add-to-chat", "split", ...) or a slot.
+    if (o.active !== undefined) {
+      for (const el of findAll(root, ".ctx-item")) el.classList.remove("active");
+      const id = String(o.active);
+      const row = root.querySelector(`[data-testid="menu-${id}"]`) || (id ? find(root, id, "menu") : null);
+      row?.classList.add("active");
+    }
   },
   turn(root, o) {
     if (typeof o.reply === "string") addCaptured(root, "turn", ".reply", (el) => setText(el.querySelector("p"), o.reply));
@@ -693,6 +709,39 @@ const PART_PROPS: Readonly<Record<string, (root: HTMLElement, o: Props, name: st
     }
   },
 };
+
+/**
+ * The composer's and a message's chips (Composer.tsx's withChips): each "@label" of chips in el's
+ * text becomes the app's <mark class="chip">, as Add to chat puts a clip's name in the composer. A
+ * label shows as a chip only once all of "@label" is there (a typing key's slice short of it is text).
+ */
+function chipify(el: HTMLElement, chips: unknown) {
+  const labels = [...new Set(list(chips).filter(Boolean))].sort((a, b) => b.length - a.length);
+  if (!labels.length) return;
+  const text = el.textContent || "";
+  const doc = el.ownerDocument;
+  const out: Array<Node> = [];
+  let at = 0;
+  let last = 0;
+  while (at < text.length) {
+    const hit = text[at] === "@" ? labels.find((l) => text.startsWith(l, at + 1)) : undefined;
+    if (!hit) {
+      at++;
+      continue;
+    }
+    if (at > last) out.push(doc.createTextNode(text.slice(last, at)));
+    const mark = doc.createElement("mark");
+    mark.className = "chip";
+    mark.setAttribute("data-testid", "agent-chip");
+    mark.textContent = `@${hit}`;
+    out.push(mark);
+    at += hit.length + 1;
+    last = at;
+  }
+  if (!out.length) return;
+  if (last < text.length) out.push(doc.createTextNode(text.slice(last)));
+  el.replaceChildren(...out);
+}
 
 /** Sub-props of a part that contains others: { composer: {...}, timeline: {...} } applied inside it. */
 function nested(root: HTMLElement, o: Props, names: ReadonlyArray<string>) {

@@ -11,7 +11,8 @@ import { layout, rememberSideTab } from "../editor/layout.ts";
 import { set } from "../state/store/core.ts";
 import { setServerConnection } from "../state/store/server.ts";
 import { playback } from "../preview/playback.ts";
-import { FIXTURE_AGENT_DONE, FIXTURE_AGENT_PLAN, FIXTURE_DIR, FIXTURE_EXPORT_JOB, FIXTURE_FX_CLIP, FIXTURE_PROMPT, FIXTURE_SETUP, FIXTURE_SNAPSHOT, FIXTURE_SNAPSHOT_FX } from "./fixture.ts";
+import { closeMenu } from "../timeline/ContextMenu.tsx";
+import { FIXTURE_AGENT_CHIP, FIXTURE_AGENT_DONE, FIXTURE_AGENT_PLAN, FIXTURE_CHIP, FIXTURE_DIR, FIXTURE_EXPORT_JOB, FIXTURE_FX_CLIP, FIXTURE_MENU_CLIP, FIXTURE_PROMPT, FIXTURE_SETUP, FIXTURE_SNAPSHOT, FIXTURE_SNAPSHOT_FX } from "./fixture.ts";
 import "../styles.css";
 
 // Waveforms come from the server's peaks: a fixed, beat-like envelope here (120 BPM, a kick every
@@ -50,6 +51,7 @@ const base = {
   setupChecks: FIXTURE_SETUP,
   setupChecking: false,
   exportFolder: "/Users/you/Movies",
+  agentMentions: [],
 };
 
 const SCENES = {
@@ -65,6 +67,9 @@ const SCENES = {
   exporting: { ...base, agent: FIXTURE_AGENT_DONE, agentDraft: "", exportOpen: true, exportJobs: [FIXTURE_EXPORT_JOB], exportJobId: FIXTURE_EXPORT_JOB.id },
   // A clip selected with a look and an effect on it: the Inspector's effect rows and the Effects tab.
   effects: { ...base, snapshot: FIXTURE_SNAPSHOT_FX, agent: FIXTURE_AGENT_DONE, agentDraft: "", exportOpen: false, exportJobs: [], exportJobId: undefined },
+  // A Main clip's right-click menu open, "Add to chat" under the pointer; the composer holding that
+  // clip's chip and a sent prompt with one (only the menu is lifted from here; the chips give their CSS).
+  menu: { ...base, agent: FIXTURE_AGENT_CHIP, agentDraft: `@${FIXTURE_CHIP.label} `, agentMentions: [FIXTURE_CHIP], exportOpen: false, exportJobs: [], exportJobId: undefined },
 };
 export type SceneName = keyof typeof SCENES;
 
@@ -81,6 +86,8 @@ declare global {
 
 window.__uiparts = {
   async scene(name) {
+    // The menu lives outside the store: open only in its scene.
+    closeMenu();
     set(SCENES[name]);
     // The effects scene shows the Inspector on a selected clip and the Effects tab; the others the agent.
     const fx = name === "effects";
@@ -92,6 +99,16 @@ window.__uiparts = {
     await frames(4);
     await new Promise((r) => setTimeout(r, 300));
     await frames(2);
+    if (name === "menu") {
+      // Right-click on the clip, as the timeline gets it (its own handler builds the real menu), then
+      // the pointer's row: the first entry, Add to chat, highlighted as under the pointer.
+      const clip = document.querySelector<HTMLElement>(`[data-testid=timeline-item][data-item="${FIXTURE_MENU_CLIP}"]`)!;
+      const r = clip.getBoundingClientRect();
+      clip.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 2 }));
+      await frames(2);
+      document.querySelector(".ctx-menu")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      await frames(2);
+    }
   },
 };
 

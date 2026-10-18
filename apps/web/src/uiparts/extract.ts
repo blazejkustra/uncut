@@ -25,7 +25,11 @@ export function extract(scene: string): unknown {
     { name: "exportProgress", scene: "exporting", selector: ".modal-layer .modal" },
     { name: "inspector", scene: "effects", selector: ".side" },
     { name: "effects", scene: "effects", selector: ".library" },
+    { name: "menu", scene: "menu", selector: '[data-testid="context-menu"]' },
   ];
+  // Elements no part shows as captured but the runtime draws (the composer's and a message's chips):
+  // only their CSS is kept, from the scene that shows them.
+  const STYLED: ReadonlyArray<{ readonly scene: string; readonly selector: string }> = [{ scene: "menu", selector: ".composer-hl mark.chip, .msg-user mark.chip" }];
   const DROP_ATTRS = /^(aria-.*|title|tabindex|role|spellcheck|focusable|accept|multiple|draggable|autocomplete|data-held-by|data-gpu.*)$/;
   const HOVERISH = /:(hover|focus|focus-visible|focus-within|active)\b/;
 
@@ -83,6 +87,8 @@ export function extract(scene: string): unknown {
       if (g.previousElementSibling?.classList.contains("lib-label")) g.previousElementSibling.remove();
       g.remove();
     }
+    // The menu is placed at the pointer (position: fixed, left/top): a part sits where it's mounted.
+    if (spec.name === "menu") (clone as HTMLElement).style.removeProperty("left"), (clone as HTMLElement).style.removeProperty("top");
     // The preview's picture is the author's: the frame keeps its size and background, empty.
     for (const f of clone.querySelectorAll(".frame")) f.replaceChildren();
     const ancestors: Array<{ tag: string; cls: string; attrs: Record<string, string>; vars: string }> = [];
@@ -125,6 +131,12 @@ export function extract(scene: string): unknown {
     parts[spec.name] = { html: clone.outerHTML, width: Math.round(rect.width), height: Math.round(rect.height), ancestors, ...extra };
     live.push(el, ...el.querySelectorAll("*"));
     for (let p = el.parentElement; p && p.id !== "root"; p = p.parentElement) live.push(p);
+  }
+
+  for (const spec of STYLED.filter((s) => s.scene === scene)) {
+    const els = [...document.querySelectorAll(spec.selector)];
+    if (!els.length) throw new Error(`nothing matches ${spec.selector} in the ${scene} scene`);
+    for (const el of els) for (let p: Element | null = el; p && p.id !== "root"; p = p.parentElement) live.push(p);
   }
 
   // The rules that apply to any of those elements.
