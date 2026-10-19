@@ -1,7 +1,7 @@
 {
   "name": "@uncut/desktop",
   "productName": "Uncut",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Uncut, an AI-first video editor",
   "license": "MIT",
   "homepage": "https://github.com/blazejkustra/uncut",
