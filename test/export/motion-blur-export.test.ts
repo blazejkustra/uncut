@@ -259,11 +259,17 @@ test("D309: refining is optional: a graphic that throws between sub-frames keeps
 });
 
 test("D309: a request's deadline counts from when the rasteriser starts on it, not from when it was sent", { skip, timeout: 120000 }, async () => {
-  const slowStill = STILL.replace("window.render = () => {", "window.render = () => { const until = performance.now() + 600; while (performance.now() < until) {}");
+  const slowStill = STILL.replace("window.render = () => {", "window.render = () => { const until = performance.now() + 1200; while (performance.now() < until) {}");
   const doc = graphicDocument(slowStill, { width: W, height: H });
-  // Three sent at once, each 600 ms of render(t), each allowed 1.5 s: the third ends ~1.8 s after it was sent.
-  const jobs = [0, 1, 2].map((i) => raster.render({ kind: "graphic", width: W, height: H, doc, t: i / FPS, info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out: join(root, `queued-${i}.png`) }, { timeoutMs: 1500 }));
-  await Promise.all(jobs);
+  const job = (i: number, o?: { timeoutMs: number }) => raster.render({ kind: "graphic", width: W, height: H, doc, t: i / FPS, info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out: join(root, `queued-${i}.png`) }, o);
+  // The document loaded first (its load isn't what's measured): a loaded runner took the CI run of
+  // 2026-10-19 past a 1.5 s deadline on load, render(t) and capture alone.
+  await job(9);
+  // Three sent at once, each 1.2 s of render(t) (wall clock: load doesn't stretch it), each allowed
+  // 3 s, which leaves 1.8 s for its capture: the third ends 3.6 s or more after it was sent.
+  const sent = Date.now();
+  await Promise.all([0, 1, 2].map((i) => job(i, { timeoutMs: 3000 })));
+  assert.ok(Date.now() - sent > 3000, `the last ended ${Date.now() - sent} ms after it was sent, past its 3 s`);
 });
 
 test("end to end: 1080×1350 at 60 fps, H.264 High with sound: every frame, 60/1, A/V in sync, the graphic never held", { skip, timeout: 600000 }, async () => {

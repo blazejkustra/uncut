@@ -106,7 +106,12 @@ async function clickAt(f: number) {
   await page.mouse.click(ruler.x + 0.5 + f * ppf - scroll, ruler.y + ruler.height / 2);
 }
 
-/** Plays 5 s from `from` and measures the preview while it plays. */
+/**
+ * Plays 5 s from `from` and measures the preview while it plays. Past 5 s it keeps going (up to 30 s)
+ * until there are at least 2 animation-frame intervals: on a virtual Mac's paravirtual GPU the
+ * compositor's 21 layers have taken 1.9-3.4 s a frame (CI), so a 5 s window could hold no interval
+ * and its median would be undefined. A preview that draws no 2 frames in 30 s measures Infinity.
+ */
 async function playFrom(label: string, from: number) {
   await clickAt(from);
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")].every((v) => v.readyState >= 2 && !v.seeking), { timeout: 15000 });
@@ -114,7 +119,7 @@ async function playFrom(label: string, from: number) {
   await page.keyboard.press("Space");
   const r = await page.evaluate(
     () =>
-      new Promise<{ raf: Array<number>; presented: Array<number>; dropped: number; total: number; drawnFx: number; fxCanvases: number; gpu: number; renders: Array<number> }>((done) => {
+      new Promise<{ seconds: number; raf: Array<number>; presented: Array<number>; dropped: number; total: number; drawnFx: number; fxCanvases: number; gpu: number; renders: Array<number> }>((done) => {
         (globalThis as unknown as { __uncutPreview: { renderMs: () => Array<number> } }).__uncutPreview.renderMs();
         const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-item]")];
         const q0 = videos.map((v) => v.getVideoPlaybackQuality());
@@ -126,15 +131,26 @@ async function playFrom(label: string, from: number) {
         });
         const raf: Array<number> = [];
         let last = 0;
-        const end = performance.now() + 5000;
+        const start = performance.now();
+        // No animation frame at all for 30 s still ends the measurement.
+        const cap = setTimeout(() => finish(), 30000);
         const tick = (t: number) => {
+          if (stop) return;
           if (last) raf.push(t - last);
           last = t;
-          if (performance.now() < end) return void requestAnimationFrame(tick);
+          const elapsed = performance.now() - start;
+          if (elapsed < 5000 || (raf.length < 2 && elapsed < 30000)) return void requestAnimationFrame(tick);
+          finish();
+        };
+        const finish = () => {
+          if (stop) return;
           stop = true;
+          clearTimeout(cap);
+          const elapsed = performance.now() - start;
           const q1 = videos.map((v) => v.getVideoPlaybackQuality());
           const fxCanvases = [...document.querySelectorAll<HTMLCanvasElement>("canvas[data-fx]")];
           done({
+            seconds: elapsed / 1000,
             raf,
             presented,
             dropped: q1.reduce((n, q, i) => n + q.droppedVideoFrames - q0[i]!.droppedVideoFrames, 0),
@@ -151,22 +167,23 @@ async function playFrom(label: string, from: number) {
   await page.keyboard.press("Space");
   const raf = [...r.raf].sort((a, b) => a - b);
   const pres = [...r.presented].sort((a, b) => a - b);
+  const renders = [...r.renders].sort((a, b) => a - b);
   const result = {
-    rafMedian: raf[Math.floor(raf.length / 2)]!,
-    rafP90: raf[Math.floor(raf.length * 0.9)]!,
+    rafMedian: raf[Math.floor(raf.length / 2)] ?? Infinity,
+    rafP90: raf[Math.floor(raf.length * 0.9)] ?? Infinity,
     long: raf.filter((x) => x > 25).length,
-    fps: raf.length / 5,
-    videoFpsMin: pres[0]! / 5,
-    videoFpsMedian: pres[Math.floor(pres.length / 2)]! / 5,
+    fps: raf.length / r.seconds,
+    videoFpsMin: pres[0]! / r.seconds,
+    videoFpsMedian: pres[Math.floor(pres.length / 2)]! / r.seconds,
     dropped: r.dropped,
     total: r.total,
     drawnFx: r.drawnFx,
     fxCanvases: r.fxCanvases,
     gpuLayers: r.gpu,
-    renderMedian: [...r.renders].sort((a, b) => a - b)[Math.floor(r.renders.length / 2)]!,
-    renderP90: [...r.renders].sort((a, b) => a - b)[Math.floor(r.renders.length * 0.9)]!,
+    renderMedian: renders[Math.floor(renders.length / 2)] ?? NaN,
+    renderP90: renders[Math.floor(renders.length * 0.9)] ?? NaN,
   };
-  console.log(`# D221 ${label}: rAF median ${result.rafMedian.toFixed(1)} ms, p90 ${result.rafP90.toFixed(1)} ms, ${result.long} frames > 25 ms, ${result.fps.toFixed(1)} fps; videos presented ${result.videoFpsMin.toFixed(1)}–${result.videoFpsMedian.toFixed(1)} fps (min–median of ${r.presented.length}), dropped ${r.dropped} of ${r.total}; effects canvases drawn ${r.drawnFx} of ${r.fxCanvases}; layers on the GPU ${r.gpu}; preview render ${result.renderMedian.toFixed(2)} ms median, ${result.renderP90.toFixed(2)} ms p90`);
+  console.log(`# D221 ${label} (${r.seconds.toFixed(1)} s): rAF median ${result.rafMedian.toFixed(1)} ms, p90 ${result.rafP90.toFixed(1)} ms, ${result.long} frames > 25 ms, ${result.fps.toFixed(1)} fps; videos presented ${result.videoFpsMin.toFixed(1)}–${result.videoFpsMedian.toFixed(1)} fps (min–median of ${r.presented.length}), dropped ${r.dropped} of ${r.total}; effects canvases drawn ${r.drawnFx} of ${r.fxCanvases}; layers on the GPU ${r.gpu}; preview render ${result.renderMedian.toFixed(2)} ms median, ${result.renderP90.toFixed(2)} ms p90`);
   return result;
 }
 
