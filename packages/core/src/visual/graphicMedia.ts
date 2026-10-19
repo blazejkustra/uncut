@@ -139,9 +139,18 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   let misses = [];
   const NEAR = 1;
   const runs = new Map();
+  // An ask that never comes back frees its run after PACE_BOUND ms (it's still answered if it comes).
+  const PACE_BOUND = 5000;
   const issue = (r, job) => {
     r.busy = true;
-    load(job.id, job.s, job.w, job.h).then(job.done, job.fail).finally(() => {
+    const p = load(job.id, job.s, job.w, job.h);
+    p.then(job.done, job.fail);
+    let freed = false;
+    const timer = setTimeout(() => free(), PACE_BOUND);
+    const free = () => {
+      if (freed) return;
+      freed = true;
+      clearTimeout(timer);
       r.busy = false;
       const n = r.next;
       r.next = undefined;
@@ -149,7 +158,8 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
         n.entry.job = undefined;
         issue(r, n);
       }
-    });
+    };
+    p.then(free, free);
   };
   const size = (v) => (typeof v === "number" && v >= 1 ? Math.min(8192, Math.round(v)) : 0);
   const entry = (id, t, opts, paced) => {

@@ -186,6 +186,13 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
   // While one runs only the newest ask waits; the ones it replaced are answered as skipped.
   let busy = false;
   let next;
+  // Bounded: a render(t) (or the exact pictures a stopped one waits for) that never settles frees
+  // the preview after BOUND ms, answered as an error, so the asks after it still draw.
+  const BOUND = 5000;
+  const bounded = (p) => new Promise((done, fail) => {
+    const timer = setTimeout(() => fail(new Error("render(t) took over " + BOUND / 1000 + " s")), BOUND);
+    p.then(done, fail).finally(() => clearTimeout(timer));
+  });
   const pump = async () => {
     busy = true;
     while (next) {
@@ -193,16 +200,16 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
       next = undefined;
       const playing = d.playing === true;
       window.__uncutMedia.begin({ playing, warm: !playing });
-      await window.__uncutRender(d.t, d.info)
+      await bounded(window.__uncutRender(d.t, d.info))
         .then(async () => {
           // Stopped: drawn with the nearest pictures while the exact ones came; now with them.
           const missed = window.__uncutMedia.missed();
           if (!missed) return;
-          await missed;
+          await bounded(missed);
           // A newer ask (a scrub on) draws next instead.
           if (next) return;
           window.__uncutMedia.begin({ playing: false });
-          await window.__uncutRender(d.t, d.info);
+          await bounded(window.__uncutRender(d.t, d.info));
         })
         .then(() => parent.postMessage({ uncut: "rendered", seq: d.seq }, "*"), (error) => parent.postMessage({ uncut: "rendered", seq: d.seq, error: String(error) }, "*"));
     }
