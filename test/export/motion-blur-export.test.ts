@@ -49,13 +49,13 @@ window.render = (t, info) => {
 };
 </script>`;
 
-const graphicProject = (src: string, extra: Partial<Project> = {}): Project =>
+const graphicProject = (src: string, extra: Partial<Project> = {}, duration = FRAMES): Project =>
   ({
     format: "uncut/0",
     name: "Blur",
     canvas: { width: W, height: H, fps: FPS },
     media: [],
-    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src, duration: FRAMES }] }],
+    tracks: [{ id: "main", kind: "video", role: "main", name: "Main", items: [{ id: "g", type: "graphic", src, duration }] }],
     ...extra,
   }) as Project;
 
@@ -78,8 +78,8 @@ after(async () => {
 });
 
 /** The graphic layer of a plan streamed by the export's rasterise, as raw RGBA frames. */
-async function streamed(html: string, name: string, motionBlur = false): Promise<{ plan: ExportPlan; layer: VisualLayer; frames: Buffer }> {
-  const project = graphicProject(`graphics/${name}.html`);
+async function streamed(html: string, name: string, motionBlur = false, duration = FRAMES): Promise<{ plan: ExportPlan; layer: VisualLayer; frames: Buffer }> {
+  const project = graphicProject(`graphics/${name}.html`, {}, duration);
   const plan = planExport(project, { mediaPath: () => "", width: W, height: H, graphic: () => html, motionBlur });
   if ("problem" in plan) throw new Error(plan.problem);
   const dir = join(root, `${name}-${motionBlur ? "blur" : "sharp"}-${Math.random().toString(36).slice(2, 8)}`);
@@ -188,6 +188,46 @@ test("a graphic request with ts (the critic's blurred frames) is the export's bl
     }
     assert.ok(worst <= 3, `frame ${i}: within 3 of the export's blurred frame (worst ${worst})`);
   }
+});
+
+/** A 4 px white bar on black (opaque) sweeping 400 px a frame: 100 px over the 90° shutter, 25 px between 4 sub-frames. */
+const STREAK = `<canvas id="c" width="${W}" height="${H}"></canvas><script>
+const ctx = document.getElementById("c").getContext("2d");
+window.render = (t, info) => {
+  const f = t * info.fps - Math.floor(t * info.fps + 1e-9);
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ${W}, ${H});
+  ctx.fillStyle = "#fff"; ctx.fillRect(20 + 400 * f, 0, 4, ${H});
+};
+</script>`;
+/** A still picture: a white square and a line of text on black. */
+const STILL = `<canvas id="c" width="${W}" height="${H}"></canvas><script>
+const ctx = document.getElementById("c").getContext("2d");
+window.render = () => { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ${W}, ${H}); ctx.fillStyle = "#fff"; ctx.fillRect(30, 30, 50, 50); ctx.font = "20px sans-serif"; ctx.fillText("Still", 30, 140); };
+</script>`;
+
+test("D309: a fast sharp bar blurs into one smooth smear (more sub-frames), a still frame keeps the base 4", { skip, timeout: 240000 }, async () => {
+  const draw = async (html: string, i: number, name: string) => {
+    const out = join(root, `${name}-${i}.png`);
+    const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, { width: W, height: H }), t: i / FPS, ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS), info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out });
+    return { samples: reply?.samples, png: rgbaOf(out) };
+  };
+  const still = await draw(STILL, 5, "still");
+  assert.equal(still.samples, MOTION_BLUR_DEFAULTS.samples, "a still frame: the project's sub-frames, none added");
+  const streak = await draw(STREAK, 5, "streak");
+  assert.ok((streak.samples ?? 0) >= 16, `the fast bar: sub-frames added (${streak.samples})`);
+  // Its row: the smear from x 20 to 120 (the bar's left edge over the shutter, plus its 4 px), with
+  // 4 sub-frames 4 lit bars 25 px apart and black between; now no gap: every column inside is lit.
+  const row = Array.from({ length: W }, (_, x) => streak.png[(100 * W + x) * 4]!);
+  const inside = row.slice(24, 116);
+  const peak = Math.max(...inside);
+  assert.ok(Math.min(...inside) >= peak * 0.5, `one smooth smear, no stepped copies: ${inside.join(",")}`);
+  assert.ok(row[10]! < 8 && row[150]! < 8, "dark outside the smear");
+  // The streamed export draws the same frame.
+  const blurred = await streamed(STREAK, "streak", true, 10);
+  const frame = frameOf(blurred.frames, 5);
+  let worst = 0;
+  for (let p = 0; p < W * H * 4; p++) if (p % 4 !== 3) worst = Math.max(worst, Math.abs(frame[p]! - streak.png[p]!));
+  assert.ok(worst <= 3, `the export's frame is the critic's (worst ${worst})`);
 });
 
 test("end to end: 1080×1350 at 60 fps, H.264 High with sound: every frame, 60/1, A/V in sync, the graphic never held", { skip, timeout: 600000 }, async () => {

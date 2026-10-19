@@ -51,6 +51,7 @@ import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaActive
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import { GRAPHIC_CENSUS } from "../../../packages/core/src/visual/census.ts";
+import { BLUR_REFINE, blurFarPairs, blurMoving, blurMidpoints, blurRefinable, blurSignature, blurStep, type BlurSignature } from "../../../packages/core/src/visual/motionBlur.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
 import dmMonoRegular from "../../../assets/fonts/DMMono-Regular.woff2";
 import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";
@@ -703,17 +704,62 @@ async function main() {
       return seqWrite(frame!);
     }
     const sum = (s.sum ??= new Uint16Array(s.width * s.height * 4));
+    const { frame, samples } = await blurred({ width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts, sum);
+    unpremultiply(frame);
+    await seqWrite(frame);
+    return { samples };
+  };
+
+  // Motion blur's frame (D291, D309): the mean of its sub-frames' pictures on premultiplied colour.
+  // The sub-frames asked for are drawn first; while consecutive ones are still far apart (core
+  // blurFarPairs: a fast move that would average into stacked copies), every gap gets one more
+  // halfway (the grid stays even, so the mean stays plain), up to BLUR_REFINE.max. A calm frame is
+  // drawn with exactly the sub-frames asked for. `sum` is reused (Uint16: 64 × 255 fits).
+  const blurred = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, sum: Uint16Array) => {
+    const s = { width: r.width, height: r.height };
     sum.fill(0);
-    await renderGraphic({ width: s.width, height: s.height, doc: r.doc, info: r.info, ...(r.name !== undefined ? { name: r.name } : {}) }, r.ts, (image) => {
+    let drawn: Array<number> = [...ts];
+    const refine = blurRefinable(ts);
+    // The asked-for sub-frames' pictures until it's known whether the frame moves (their signatures
+    // are needed only when the first and last are far apart: a calm frame pays for two); the ones
+    // added after are reduced to signatures as they come.
+    const pictures = new Map<number, Buffer>();
+    let base = true;
+    const sigs = new Map<number, BlurSignature>();
+    const sig = (t: number) => {
+      let got = sigs.get(t);
+      if (!got) sigs.set(t, (got = blurSignature(pictures.get(t)!, s.width, s.height)));
+      return got;
+    };
+    const add = (t: number) => (image: Electron.NativeImage) => {
       const px = bitmapOf(image, s);
       for (let i = 0; i < px.length; i++) sum[i]! += px[i]!;
-    });
-    const n = r.ts.length;
+      if (!refine) return;
+      if (base) pictures.set(t, px);
+      else sigs.set(t, blurSignature(px, s.width, s.height));
+    };
+    let k = 0;
+    await renderGraphic(r, ts, (image) => add(ts[k++]!)(image));
+    const moves = refine && blurStep(sig(ts[0]!), sig(ts.at(-1)!)) >= BLUR_REFINE.points;
+    let far = moves ? blurFarPairs(drawn.map(sig)) : 0;
+    base = false;
+    pictures.clear();
+    if (moves) {
+      // A move spreads over every gap; a jump at one moment (something popping in, text snapping a
+      // pixel on a slow drift) stays in one gap however often it's halved. Halve while most are far.
+      while (blurMoving(far, drawn.length) && drawn.length * 2 <= Math.max(BLUR_REFINE.max, ts.length)) {
+        const mids = blurMidpoints(drawn);
+        let j = 0;
+        await renderGraphic(r, mids, (image) => add(mids[j++]!)(image));
+        drawn = drawn.flatMap((t, i) => [t, mids[i]!]);
+        far = blurFarPairs(drawn.map(sig));
+      }
+    }
+    const n = drawn.length;
     const half = n >> 1;
     const frame = Buffer.allocUnsafe(sum.length);
     for (let i = 0; i < sum.length; i++) frame[i] = (sum[i]! + half) / n;
-    unpremultiply(frame);
-    return seqWrite(frame);
+    return { frame, samples: n };
   };
 
   /** A rehearsal (see the header): every frame's render(t) in order, nothing captured; the first failure names its frame. */
@@ -733,28 +779,20 @@ async function main() {
     if (r.kind === "graphic-run") return runGraphic(r);
     if (r.kind === "graphic" && r.census !== undefined) {
       // The census reads the page as the frame left it (the last sub-frame's state with blur).
-      await drawGraphic(r);
+      const drawn = await drawGraphic(r);
       const gw = graphicWin;
       if (!gw || gw.isDestroyed()) return undefined;
       const census: unknown = await gw.webContents.executeJavaScript(`(${GRAPHIC_CENSUS})(${r.width}, ${r.height}, ${r.census})`).catch(() => undefined);
-      return { census };
+      return { census, ...(drawn ? drawn : {}) };
     }
     return drawGraphic(r);
   };
-  const drawGraphic = async (r: HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest): Promise<void> => {
+  const drawGraphic = async (r: HtmlRequest | GraphicRequest | ShaderRequest | ProbeRequest): Promise<{ readonly samples: number } | void> => {
     if (r.kind === "graphic" && r.ts && r.ts.length > 1) {
       // Motion blur's sub-frames averaged on premultiplied colour, as seq-graphic does (the export's frame).
-      const s = { width: r.width, height: r.height };
-      const sum = new Uint32Array(r.width * r.height * 4);
-      await renderGraphic(r, r.ts, (image) => {
-        const px = bitmapOf(image, s);
-        for (let i = 0; i < px.length; i++) sum[i]! += px[i]!;
-      });
-      const n = r.ts.length;
-      const half = n >> 1;
-      const frame = Buffer.allocUnsafe(sum.length);
-      for (let i = 0; i < sum.length; i++) frame[i] = (sum[i]! + half) / n;
-      return save(r.out, r)(nativeImage.createFromBitmap(frame, s));
+      const { frame, samples } = await blurred(r, r.ts, new Uint16Array(r.width * r.height * 4));
+      save(r.out, r)(nativeImage.createFromBitmap(frame, { width: r.width, height: r.height }));
+      return { samples };
     }
     if (r.kind === "graphic") return renderGraphic(r, [r.t], save(r.out, r));
     if (r.kind === "shader") return renderShader(r);
@@ -777,7 +815,7 @@ async function main() {
     if (!isRequest(request)) return void reply({ id: (request as { id?: unknown })?.id ?? null, ok: false, error: "bad request" });
     chain = chain.then(() =>
       render(request).then(
-        (done) => void reply({ id: request.id, ok: true, ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}) }),
+        (done) => void reply({ id: request.id, ok: true, ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}), ...(done && typeof done === "object" && "samples" in done ? { samples: done.samples } : {}) }),
         (error: unknown) => void reply({ id: request.id, ok: false, error: messageOf(error) }),
       ),
     );

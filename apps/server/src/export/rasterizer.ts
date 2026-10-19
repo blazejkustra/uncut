@@ -84,6 +84,8 @@ export interface RasterOutSize {
 /** What a job may give back: a graphic job's census (unchecked; censusOf reads it). */
 export interface RasterReply {
   readonly census?: unknown;
+  /** A blurred graphic frame (one with `ts`): how many sub-frames it averaged (D309: more than asked on a fast move). */
+  readonly samples?: number;
 }
 
 export interface Rasterizer {
@@ -155,7 +157,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     child.once("exit", (code, signal) => reject(new Error(`The text renderer stopped before it was ready (${signal ?? `code ${code}`}). ${stderr.trim().split("\n").at(-1) ?? ""}`.trim())));
   });
   readline.createInterface({ input: child.stdout! }).on("line", (line) => {
-    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown; census?: unknown };
+    let msg: { uncut?: unknown; ready?: unknown; id?: unknown; ok?: unknown; error?: unknown; media?: unknown; census?: unknown; samples?: unknown };
     try {
       msg = JSON.parse(line);
     } catch {
@@ -168,7 +170,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     if (!p) return;
     pending.delete(Number(msg.id));
     clearTimeout(p.timer);
-    if (msg.ok === true) p.resolve(msg.census !== undefined ? { census: msg.census } : undefined);
+    if (msg.ok === true) p.resolve(msg.census !== undefined || typeof msg.samples === "number" ? { ...(msg.census !== undefined ? { census: msg.census } : {}), ...(typeof msg.samples === "number" ? { samples: msg.samples } : {}) } : undefined);
     else p.reject(new Error(`The text renderer failed: ${typeof msg.error === "string" && msg.error ? msg.error : "it gave no reason"}`));
   });
   child.once("exit", (code, signal) => failAll(new Error(`The text renderer stopped (${signal ?? `code ${code}`}).`)));

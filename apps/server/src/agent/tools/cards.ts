@@ -80,7 +80,7 @@ export const UNMEASURED = "That's Uncut's problem, not the video's: don't mark a
  */
 export function blurStripLabel(run: { readonly start: number; readonly end: number }, fps: number, blur: { readonly samples: number; readonly shutter: number }, frames: ReadonlyArray<number>, forced: boolean): string {
   const when = forced ? "the project turns it on for every export" : "as a Standard or High export draws it; a Draft export draws it sharp";
-  return `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the project's motion blur (${blur.samples} sub-frames over a ${blur.shutter}° shutter; ${when}): frames ${frames.join(", ")} left to right`;
+  return `the fast move from f ${run.start} to f ${run.end} (${(run.start / fps).toFixed(2)} s) drawn WITH the project's motion blur (${blur.samples} sub-frames, more on a fast move, over a ${blur.shutter}° shutter; ${when}): frames ${frames.join(", ")} left to right`;
 }
 
 /** D295: storyboard_propose renders at most this many stills, this wide. */

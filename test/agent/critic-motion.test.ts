@@ -798,7 +798,7 @@ test("round 2's A1: the fast moves get a strip drawn with the export's blur, and
 
 test("the blurred strip's label says it's the project's motion blur, not a claim about the export's quality", () => {
   const label = blurStripLabel({ start: 361, end: 364 }, 60, { samples: 12, shutter: 180 }, [361, 363, 364], false);
-  assert.match(label, /drawn WITH the project's motion blur \(12 sub-frames over a 180° shutter; as a Standard or High export draws it; a Draft export draws it sharp\): frames 361, 363, 364/);
+  assert.match(label, /drawn WITH the project's motion blur \(12 sub-frames, more on a fast move, over a 180° shutter; as a Standard or High export draws it; a Draft export draws it sharp\): frames 361, 363, 364/);
   assert.doesNotMatch(label, /as the export will look|export's motion blur/);
   assert.match(blurStripLabel({ start: 1, end: 3 }, 30, { samples: 8, shutter: 90 }, [1, 3], true), /the project turns it on for every export/);
   // The critic is told to judge the strips by that label.

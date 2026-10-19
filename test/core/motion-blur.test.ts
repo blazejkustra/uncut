@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
-import { applyEdit, createSession, describeOp, itemMotionBlur, loadModules, validateOps, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
+import { applyEdit, createSession, describeOp, itemMotionBlur, BLUR_REFINE, blurSignature, blurStep, blurFarPairs, blurMoving, blurMidpoints, blurRefinable, loadModules, validateOps, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { streamsLayer } from "../../apps/server/src/export/exporter/rasterise.ts";
 
@@ -124,4 +124,44 @@ test("update_project takes motionBlur, merges it field by field and keeps the pr
   assert.deepEqual(cleared.project.motionBlur, { on: true, samples: 12 });
   assert.equal(applyEdit(cleared, { actor: "agent", ops: [{ op: "update_project", set: { motionBlur: null } }] as never }).project.motionBlur, undefined);
   assert.equal(describeOp(ops[0] as never, start.project), "Set motion blur: 12 samples");
+});
+
+// D309: adaptive sub-frames. Pictures are BGRA (premultiplied), opaque black with white shapes.
+const picture = (w: number, h: number, draw: (x: number, y: number) => boolean) => {
+  const px = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = draw(x, y) ? 255 : 0;
+    px.set([v, v, v, 255], (y * w + x) * 4);
+  }
+  return px;
+};
+const sigOf = (draw: (x: number, y: number) => boolean) => blurSignature(picture(320, 160, draw), 320, 160);
+const bar = (left: number, width = 4) => sigOf((x) => x >= left && x < left + width);
+/** A few lines of "text": 2 px strokes every 6 px in a 120 × 40 block. */
+const text = (dx: number) => sigOf((x, y) => x >= 40 + dx && x < 160 + dx && y >= 40 && y < 80 && (x - dx) % 6 < 2);
+
+test("D309 blurStep: the same picture or a few px move is near; a thin line or text jumping is far", () => {
+  assert.equal(blurStep(bar(100), bar(100)), 0);
+  assert.ok(blurStep(bar(100, 40), bar(103, 40)) < BLUR_REFINE.points, "a wide shape's edges sliding 3 px: explained");
+  assert.ok(blurStep(text(0), text(1)) < BLUR_REFINE.points, "text snapping 1 px: explained");
+  assert.ok(blurStep(bar(100), bar(125)) >= BLUR_REFINE.points, "a 4 px line 25 px on: far");
+  assert.ok(blurStep(text(0), text(15)) >= BLUR_REFINE.points, "text 15 px on: far");
+  assert.ok(blurStep(bar(100, 2), bar(112, 2)) >= BLUR_REFINE.points, "a 2 px line 12 px on: far");
+});
+
+test("D309 refinement: a move over every gap halves on, one jump (a pop) doesn't; the grid stays even", () => {
+  const moving = [0, 25, 50, 75].map((d) => bar(100 + d));
+  assert.equal(blurFarPairs(moving), 3);
+  assert.ok(blurMoving(blurFarPairs(moving), 4));
+  const pop = [bar(100), bar(100), bar(200), bar(200)];
+  assert.equal(blurFarPairs(pop), 1);
+  assert.ok(!blurMoving(1, 4) && !blurMoving(0, 4) && blurMoving(2, 4), "most gaps far, not one");
+  assert.ok(!blurMoving(3, 8) && blurMoving(4, 8));
+  const ts = subFrameTimes(10, 60, MOTION_BLUR_DEFAULTS);
+  assert.ok(blurRefinable(ts));
+  assert.ok(!blurRefinable(subFrameTimes(10, 60, MOTION_BLUR_DEFAULTS, true)), "a held frame isn't refined");
+  assert.ok(!blurRefinable([0.1]));
+  const both = ts.flatMap((t, i) => [t, blurMidpoints(ts)[i]!]);
+  const eight = subFrameTimes(10, 60, { samples: 8, shutter: MOTION_BLUR_DEFAULTS.shutter });
+  assert.ok(close(both, eight), "4 sub-frames and their midpoints are the 8-sub-frame grid over the same shutter");
 });
