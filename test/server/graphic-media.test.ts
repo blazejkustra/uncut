@@ -13,7 +13,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -199,5 +199,28 @@ test("while the preview plays, a video's picture comes from its proxy (the same 
     assert.equal(asked.length, n, "the proxy isn't even looked for");
   } finally {
     own.close();
+  }
+});
+
+test("a proxy not made yet, gone or unreadable: the playing preview's picture comes from the original", { skip, timeout: 60000 }, async () => {
+  const garbage = join(dir, "garbage-proxy.mp4");
+  writeFileSync(garbage, Buffer.alloc(4096, 7));
+  const cases: Array<[string, () => Promise<string | undefined>]> = [
+    ["not made yet", async () => undefined],
+    ["the lookup failed", async () => Promise.reject(new Error("no proxies"))],
+    ["its file is gone", async () => join(dir, "no-such-proxy.mp4")],
+    ["its file isn't a video", async () => garbage],
+  ];
+  for (const [why, proxyPath] of cases) {
+    const own = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path, proxyPath });
+    try {
+      for (const t of [0.5, 0.5 + 1 / 30]) {
+        const p = await own.picture({ id: "clip", t, preview: true });
+        assert.deepEqual([p.width, p.height, p.full, p.frame], [320, 180, undefined, graphicMediaFrame(t, 30)], why);
+        assert.ok(meanDiff(pixelsOf(p.bytes).raw, exportFrame(t, 320, 180)) < 0.5, `${why}: the original's exact frame`);
+      }
+    } finally {
+      own.close();
+    }
   }
 });

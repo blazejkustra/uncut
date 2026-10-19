@@ -100,7 +100,8 @@ addEventListener("message", (e) => {
   if (!d || d.uncut !== "media" || e.source !== f.contentWindow) return;
   const target = e.source;
   if (d.p) log.proxied++; else log.exact++;
-  fetch("/fast/media/" + d.id + "?t=" + d.t + "&w=" + (d.p ? ${W / 2} : d.w)).then(async (r) => {
+  // The proxy's picture 0.1 s early (3 frames): a stop frame left on it shows the wrong frame.
+  fetch("/fast/media/" + d.id + "?t=" + (d.p ? Math.max(0, d.t - 0.1) : d.t) + "&w=" + (d.p ? ${W / 2} : d.w)).then(async (r) => {
     const blob = await r.blob();
     target.postMessage({ uncut: "media-reply", seq: d.seq, blob, ...(d.p ? { full: { width: ${W}, height: ${H} } } : {}) }, "*");
   });
