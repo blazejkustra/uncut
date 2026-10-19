@@ -3,6 +3,8 @@
 // export or the agent's frame renders and talks to it in JSON lines:
 //   stdin  ← { id, width, height, css, html, out }   one request at a time (out: .png, or .jpg for
 //                                                    an opaque JPEG such as the agent's contact sheet)
+//   stdout → { uncut: "render-started", id }          when it starts on a request (they queue; a server
+//                                                    that doesn't know it skips it: not "render")
 //   stdout → { uncut: "render", id, ok: true } | { uncut: "render", id, ok: false, error }
 //   stdout → { uncut: "render", ready: true }          once, when the page is loaded
 //   stdin  ← { id, kind: "graphic", width, height, doc, t, info, out }   a graphic item's frame (D78):
@@ -51,7 +53,7 @@ import { handleMedia, isMediaUrl, MEDIA_MS, MEDIA_SCHEME_PRIVILEGES, mediaActive
 
 import { fontFaceCss, type FontFile } from "../../../packages/core/src/visual/render.ts";
 import { GRAPHIC_CENSUS } from "../../../packages/core/src/visual/census.ts";
-import { BLUR_REFINE, blurFarPairs, blurMoving, blurMidpoints, blurRefinable, blurSignature, blurStep, type BlurSignature } from "../../../packages/core/src/visual/motionBlur.ts";
+import { BLUR_REFINE, blurFarPairs, blurLevels, blurMoving, blurRefinable, blurSignature, blurStep, type BlurSignature } from "../../../packages/core/src/visual/motionBlur.ts";
 import dmSans from "../../../assets/fonts/DMSans-Variable.woff2";
 import dmMonoRegular from "../../../assets/fonts/DMMono-Regular.woff2";
 import dmMonoMedium from "../../../assets/fonts/DMMono-Medium.woff2";
@@ -69,6 +71,13 @@ const MEDIA_IDLE_MS = 1500;
 const GRAPHIC_CAP_MS = 27_000;
 /** How long the page gets to answer "what are you doing?" once a frame is late: no answer is a script that never yields. */
 const PROBE_MS = 400;
+/**
+ * Motion blur's refinement (D309, see `blurred`): a finer grid starts only if it would end by
+ * REFINE_MS from the request's start at the first grid's cost per sub-frame, and is cut off at
+ * REFINE_LIMIT_MS; both well under GRAPHIC_CAP_MS and the server's 30 s.
+ */
+const REFINE_MS = 12_000;
+const REFINE_LIMIT_MS = 18_000;
 /** How many times a capture is tried when Chromium has no frame to copy yet (see capturePage). */
 const CAPTURE_ATTEMPTS = 6;
 /** How long a capture waits for the frame it asked for (see nextPaint). */
@@ -125,7 +134,7 @@ interface GraphicRequest {
   readonly height: number;
   readonly doc: string;
   readonly t: number;
-  /** Motion blur's sub-frames (the first is t): their pictures averaged into the one saved, as the export's. */
+  /** Motion blur's sub-frames (over the shutter from t; D309: refined on a fast move as the export's): their pictures averaged into the one saved, as the export's. */
   readonly ts?: ReadonlyArray<number>;
   readonly info: unknown;
   readonly out: string;
@@ -413,7 +422,8 @@ async function main() {
   // time equal to the one before it is not drawn again. The deadline grows with them.
   // Without `take` (a rehearsal) nothing is captured: render(t) runs as the export calls it, without
   // the frames a capture waits for.
-  const renderGraphic = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, take?: (image: Electron.NativeImage) => void | Promise<void>) => {
+  // `limitMs` (a motion-blur refinement, D309): the whole call ends by then, whatever it's doing.
+  const renderGraphic = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, take?: (image: Electron.NativeImage) => void | Promise<void>, limitMs?: number) => {
     if (!graphicWin || graphicWin.isDestroyed()) {
       graphicWin = newGraphicWindow();
       graphicDoc = "";
@@ -424,6 +434,7 @@ async function main() {
     // runs the graphic's own setup (fonts, libraries, thumbnails fetched), the usual slow one.
     let phase: "load" | "first" | "render" | "capture" = "render";
     let fresh = false;
+    let current: number | undefined;
     // Time spent capturing (ours, not the graphic's): the GRAPHIC_FRAME_MS budget is the graphic's
     // load and render(t), so a busy machine slow to hand back the painted frame doesn't use it up.
     // grab is bounded on its own (SENTINEL_WAIT_MS, then its own error); GRAPHIC_CAP_MS caps it all.
@@ -443,6 +454,7 @@ async function main() {
       if (!take) {
         for (const [i, t] of ts.entries()) {
           if (i > 0 && t === ts[i - 1]) continue;
+          current = t;
           phase = fresh && i === 0 ? "first" : "render";
           await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}, true).then(() => true)`);
         }
@@ -451,6 +463,7 @@ async function main() {
       let image: Electron.NativeImage | undefined;
       for (const [i, t] of ts.entries()) {
         if (!image || t !== ts[i - 1]) {
+          current = t;
           const expected = nextMark();
           phase = fresh && !image ? "first" : "render";
           await gw.webContents.executeJavaScript(`window.__uncutRender(${JSON.stringify(t)}, ${JSON.stringify(r.info ?? {})}).then(() => ${setSentinel(r.height, expected)})`);
@@ -471,8 +484,9 @@ async function main() {
     // timeline of thumbnails) keeps going while it does (see MEDIA_IDLE_MS, GRAPHIC_CAP_MS). A late
     // frame asks the page what it's doing, and the error names the phase: the page loading, its
     // script never yielding, pictures still coming, or a promise that never settles.
-    const budget = GRAPHIC_FRAME_MS * ts.length;
-    const cap = Math.max(budget, Math.min(budget + MEDIA_MS, GRAPHIC_CAP_MS));
+    const limit = limitMs ?? Infinity;
+    const budget = Math.min(GRAPHIC_FRAME_MS * ts.length, limit);
+    const cap = Math.min(Math.max(budget, Math.min(budget + MEDIA_MS, GRAPHIC_CAP_MS)), limit);
     const started = Date.now();
     const answeredBefore = mediaAnswered();
     type Probe = { readonly fonts?: string; readonly doc?: string; readonly pending?: number } | undefined;
@@ -485,7 +499,7 @@ async function main() {
       return Promise.race([asked, new Promise<undefined>((done) => (wait = setTimeout(() => done(undefined), PROBE_MS)))]).finally(() => clearTimeout(wait));
     };
     let settled = false;
-    const hardCap = Math.max(cap, GRAPHIC_CAP_MS);
+    const hardCap = Math.min(Math.max(cap, GRAPHIC_CAP_MS), limit);
     const expired = async (reject: (e: Error) => void) => {
       if (settled) return;
       const now = Date.now();
@@ -504,7 +518,8 @@ async function main() {
       }
       const media = mediaWaiting();
       const got = mediaAnswered() - answeredBefore;
-      const at = ts.length ? ` at ${ts[0]!.toFixed(2)} s` : "";
+      // The sub-frame it was drawing (D309: not the frame's first).
+      const at = ts.length ? ` at ${(current ?? ts[0]!).toFixed(ts.length > 1 ? 4 : 2)} s` : "";
       const which = phase === "load" || phase === "first" ? `${at} (its first frame, the document just loaded)` : at;
       const pictures = got ? `; ${got} project picture${got === 1 ? "" : "s"} (uncut.frame) came in during it` : "";
       const pendingList = media.length ? `${media.slice(0, 3).map((x) => `${x.id} at ${x.t.toFixed(2)} s`).join(", ")}${media.length > 3 ? ` and ${media.length - 3} more` : ""}` : "";
@@ -711,55 +726,72 @@ async function main() {
   };
 
   // Motion blur's frame (D291, D309): the mean of its sub-frames' pictures on premultiplied colour.
-  // The sub-frames asked for are drawn first; while consecutive ones are still far apart (core
-  // blurFarPairs: a fast move that would average into stacked copies), every gap gets one more
-  // halfway (the grid stays even, so the mean stays plain), up to BLUR_REFINE.max. A calm frame is
-  // drawn with exactly the sub-frames asked for. `sum` is reused (Uint16: 64 × 255 fits).
+  // The sub-frames asked for are drawn first. When the first and last are far apart and most
+  // consecutive ones are (core blurFarPairs, blurMoving: a fast move that would average into
+  // stacked copies), the frame is drawn again on core blurLevels' next finer grid (the same slots
+  // split: the same span and centre; each grid in time order, as the rehearsal calls it) and so on
+  // up to BLUR_REFINE.max; the finest complete grid's mean is the frame. A calm frame is drawn with
+  // exactly the sub-frames asked for. Refining is optional quality: a grid isn't started when, at
+  // the cost per sub-frame the first grid took, it would end past REFINE_MS from the request's start,
+  // and one that fails or runs past REFINE_LIMIT_MS is dropped (said on stderr), the last complete
+  // grid kept; only the asked-for grid can fail the frame, so the request ends well inside the
+  // server's 30 s (rasterizer.ts RENDER_TIMEOUT_MS, counted from when it starts here) and
+  // GRAPHIC_CAP_MS's named errors come first. `sum` is reused (Uint16: 64 × 255 fits).
   const blurred = async (r: Pick<GraphicRequest, "width" | "height" | "doc" | "info" | "name">, ts: ReadonlyArray<number>, sum: Uint16Array) => {
+    const started = Date.now();
     const s = { width: r.width, height: r.height };
-    sum.fill(0);
-    let drawn: Array<number> = [...ts];
+    const mean = (n: number) => {
+      const half = n >> 1;
+      const frame = Buffer.allocUnsafe(sum.length);
+      for (let i = 0; i < sum.length; i++) frame[i] = (sum[i]! + half) / n;
+      return frame;
+    };
     const refine = blurRefinable(ts);
     // The asked-for sub-frames' pictures until it's known whether the frame moves (their signatures
-    // are needed only when the first and last are far apart: a calm frame pays for two); the ones
-    // added after are reduced to signatures as they come.
-    const pictures = new Map<number, Buffer>();
-    let base = true;
-    const sigs = new Map<number, BlurSignature>();
-    const sig = (t: number) => {
-      let got = sigs.get(t);
-      if (!got) sigs.set(t, (got = blurSignature(pictures.get(t)!, s.width, s.height)));
-      return got;
-    };
-    const add = (t: number) => (image: Electron.NativeImage) => {
+    // are needed only when the first and last are far apart: a calm frame pays for two).
+    const pictures: Array<Buffer> = [];
+    sum.fill(0);
+    await renderGraphic(r, ts, (image) => {
       const px = bitmapOf(image, s);
       for (let i = 0; i < px.length; i++) sum[i]! += px[i]!;
-      if (!refine) return;
-      if (base) pictures.set(t, px);
-      else sigs.set(t, blurSignature(px, s.width, s.height));
-    };
-    let k = 0;
-    await renderGraphic(r, ts, (image) => add(ts[k++]!)(image));
-    const moves = refine && blurStep(sig(ts[0]!), sig(ts.at(-1)!)) >= BLUR_REFINE.points;
-    let far = moves ? blurFarPairs(drawn.map(sig)) : 0;
-    base = false;
-    pictures.clear();
-    if (moves) {
-      // A move spreads over every gap; a jump at one moment (something popping in, text snapping a
-      // pixel on a slow drift) stays in one gap however often it's halved. Halve while most are far.
-      while (blurMoving(far, drawn.length) && drawn.length * 2 <= Math.max(BLUR_REFINE.max, ts.length)) {
-        const mids = blurMidpoints(drawn);
-        let j = 0;
-        await renderGraphic(r, mids, (image) => add(mids[j++]!)(image));
-        drawn = drawn.flatMap((t, i) => [t, mids[i]!]);
-        far = blurFarPairs(drawn.map(sig));
+      if (refine) pictures.push(px);
+    });
+    let frame = mean(ts.length);
+    let samples = ts.length;
+    if (!refine || pictures.length !== ts.length) return { frame, samples };
+    const perSub = (Date.now() - started) / ts.length;
+    const first = blurSignature(pictures[0]!, s.width, s.height);
+    const last = blurSignature(pictures.at(-1)!, s.width, s.height);
+    if (blurStep(first, last) < BLUR_REFINE.points) return { frame, samples };
+    let sigs = pictures.map((px, i) => (i === 0 ? first : i === pictures.length - 1 ? last : blurSignature(px, s.width, s.height)));
+    pictures.length = 0;
+    for (const level of blurLevels(ts, Math.max(BLUR_REFINE.max, ts.length))) {
+      if (!blurMoving(blurFarPairs(sigs), sigs.length)) break;
+      const elapsed = Date.now() - started;
+      if (elapsed + perSub * level.length > REFINE_MS) break;
+      const next: Array<BlurSignature> = [];
+      sum.fill(0);
+      try {
+        await renderGraphic(
+          r,
+          level,
+          (image) => {
+            const px = bitmapOf(image, s);
+            for (let i = 0; i < px.length; i++) sum[i]! += px[i]!;
+            next.push(blurSignature(px, s.width, s.height));
+          },
+          REFINE_LIMIT_MS - elapsed,
+        );
+      } catch (error) {
+        process.stderr.write(`[uncut-render] motion blur kept ${samples} sub-frames at ${ts[0]!.toFixed(4)} s: ${level.length} failed: ${messageOf(error)}\n`);
+        break;
       }
+      if (next.length !== level.length) break;
+      frame = mean(level.length);
+      samples = level.length;
+      sigs = next;
     }
-    const n = drawn.length;
-    const half = n >> 1;
-    const frame = Buffer.allocUnsafe(sum.length);
-    for (let i = 0; i < sum.length; i++) frame[i] = (sum[i]! + half) / n;
-    return { frame, samples: n };
+    return { frame, samples };
   };
 
   /** A rehearsal (see the header): every frame's render(t) in order, nothing captured; the first failure names its frame. */
@@ -813,8 +845,10 @@ async function main() {
     }
     if (takeMediaReply(request)) return;
     if (!isRequest(request)) return void reply({ id: (request as { id?: unknown })?.id ?? null, ok: false, error: "bad request" });
+    // "render-started" first: the server's deadline for a request counts from here, not from when it was
+    // sent (the export sends a few ahead, D309).
     chain = chain.then(() =>
-      render(request).then(
+      (process.stdout.write(`${JSON.stringify({ uncut: "render-started", id: request.id })}\n`), render(request)).then(
         (done) => void reply({ id: request.id, ok: true, ...(done && typeof done === "object" && "census" in done && done.census ? { census: done.census } : {}), ...(done && typeof done === "object" && "samples" in done ? { samples: done.samples } : {}) }),
         (error: unknown) => void reply({ id: request.id, ok: false, error: messageOf(error) }),
       ),

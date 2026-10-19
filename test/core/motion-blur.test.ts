@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
-import { applyEdit, createSession, describeOp, itemMotionBlur, BLUR_REFINE, blurSignature, blurStep, blurFarPairs, blurMoving, blurMidpoints, blurRefinable, loadModules, validateOps, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
+import { applyEdit, createSession, describeOp, itemMotionBlur, BLUR_REFINE, blurSignature, blurStep, blurFarPairs, blurMoving, blurLevels, blurRefinable, loadModules, validateOps, MOTION_BLUR_DEFAULTS, motionBlurDefault, projectMotionBlur, subFrameTimes, validateProject, type Project } from "../../packages/core/src/index.ts";
 import { planExport } from "../../apps/server/src/export/exportPlan.ts";
 import { streamsLayer } from "../../apps/server/src/export/exporter/rasterise.ts";
 
@@ -11,17 +11,17 @@ const modules = await loadModules(join(import.meta.dirname, "../../spec/modules/
 const close = (a: ReadonlyArray<number>, b: ReadonlyArray<number>) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]!) < 1e-12);
 
 test("subFrameTimes: n sub-frames from the frame's own moment over shutter/360 of the frame interval", () => {
-  // 4 sub-frames, 180°: 0, 1/8, 2/8, 3/8 of a frame after it.
-  assert.ok(close(subFrameTimes(10, 60, { samples: 4, shutter: 180 }), [10 / 60, 10.125 / 60, 10.25 / 60, 10.375 / 60]));
+  // 4 sub-frames, 180°: the middles of 4 slots of the half frame after it (D309).
+  assert.ok(close(subFrameTimes(10, 60, { samples: 4, shutter: 180 }), [10.0625 / 60, 10.1875 / 60, 10.3125 / 60, 10.4375 / 60]));
   // 360°: spread over the whole interval, never reaching the next frame.
-  assert.ok(close(subFrameTimes(0, 30, { samples: 2, shutter: 360 }), [0, 0.5 / 30]));
+  assert.ok(close(subFrameTimes(0, 30, { samples: 2, shutter: 360 }), [0.25 / 30, 0.75 / 30]));
   // No blur, or one sample: the frame's moment alone.
   assert.deepEqual(subFrameTimes(7, 60), [7 / 60]);
   assert.deepEqual(subFrameTimes(7, 60, { samples: 1, shutter: 180 }), [7 / 60]);
   // A held frame stays sharp: its moment n times.
   assert.deepEqual(subFrameTimes(5, 60, { samples: 4, shutter: 180 }, true), [5 / 60, 5 / 60, 5 / 60, 5 / 60]);
-  // The first sub-frame is the sharp frame.
-  for (const f of [0, 1, 59, 1679]) assert.equal(subFrameTimes(f, 60, MOTION_BLUR_DEFAULTS)[0], f / 60);
+  // The shutter opens at the frame's own moment: the first sub-frame half a slot after it (D309).
+  for (const f of [0, 1, 59, 1679]) assert.ok(Math.abs(subFrameTimes(f, 60, MOTION_BLUR_DEFAULTS)[0]! - (f + 0.25 / 8) / 60) < 1e-12);
 });
 
 test("motion blur settings: defaults by quality, the project's own, clamped, an item opting out", () => {
@@ -149,7 +149,7 @@ test("D309 blurStep: the same picture or a few px move is near; a thin line or t
   assert.ok(blurStep(bar(100, 2), bar(112, 2)) >= BLUR_REFINE.points, "a 2 px line 12 px on: far");
 });
 
-test("D309 refinement: a move over every gap halves on, one jump (a pop) doesn't; the grid stays even", () => {
+test("D309 refinement: a move over every gap refines on, one jump (a pop) doesn't; every grid covers the same shutter", () => {
   const moving = [0, 25, 50, 75].map((d) => bar(100 + d));
   assert.equal(blurFarPairs(moving), 3);
   assert.ok(blurMoving(blurFarPairs(moving), 4));
@@ -161,7 +161,19 @@ test("D309 refinement: a move over every gap halves on, one jump (a pop) doesn't
   assert.ok(blurRefinable(ts));
   assert.ok(!blurRefinable(subFrameTimes(10, 60, MOTION_BLUR_DEFAULTS, true)), "a held frame isn't refined");
   assert.ok(!blurRefinable([0.1]));
-  const both = ts.flatMap((t, i) => [t, blurMidpoints(ts)[i]!]);
-  const eight = subFrameTimes(10, 60, { samples: 8, shutter: MOTION_BLUR_DEFAULTS.shutter });
-  assert.ok(close(both, eight), "4 sub-frames and their midpoints are the 8-sub-frame grid over the same shutter");
+  // Every grid is the middles of the same slots split finer: the same span and centre (the smear
+  // doesn't grow or shift where refining starts), each in time order.
+  const levels = blurLevels(ts);
+  assert.deepEqual(levels.map((l) => l.length), [16, 32]);
+  const open = MOTION_BLUR_DEFAULTS.shutter / 360 / 60;
+  for (const grid of [ts, ...levels]) {
+    const slot = open / grid.length;
+    assert.ok(Math.abs(grid[0]! - slot / 2 - 10 / 60) < 1e-12 && Math.abs(grid.at(-1)! + slot / 2 - (10 / 60 + open)) < 1e-12, `${grid.length}: spans the open shutter`);
+    const centre = grid.reduce((a, t) => a + t, 0) / grid.length;
+    assert.ok(Math.abs(centre - (10 / 60 + open / 2)) < 1e-12, `${grid.length}: centred on it`);
+    assert.ok(grid.every((t, j) => j === 0 || t > grid[j - 1]!), "in time order");
+  }
+  assert.deepEqual(blurLevels(subFrameTimes(0, 60, { samples: 16, shutter: 90 })).map((l) => l.length), [32]);
+  assert.deepEqual(blurLevels(subFrameTimes(0, 60, { samples: 2, shutter: 90 })).map((l) => l.length), [8, 16, 32]);
+  assert.deepEqual(blurLevels([0.5]), []);
 });

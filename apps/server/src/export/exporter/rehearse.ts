@@ -7,6 +7,8 @@
 // Bounded by a time budget: it covers the film from its start as far as the budget goes and says so.
 import { createHash } from "node:crypto";
 
+import { BLUR_REFINE, blurLevels, blurRefinable } from "@uncut/core";
+
 import type { ExportPlan, VisualLayer } from "../exportPlan.ts";
 import { type Rasterizer, RENDER_TIMEOUT_MS } from "../rasterizer.ts";
 
@@ -36,6 +38,14 @@ export interface Rehearsal {
 
 type GraphicLayer = Extract<VisualLayer, { kind: "graphic" }>;
 
+/**
+ * D309: every this many-th frame drawn with motion blur is rehearsed as the export draws a fast
+ * move's frame: its sub-frames, then each finer grid motion blur may refine it through (core
+ * blurLevels), each in time order. Which frames the export refines depends on their pictures, which
+ * a rehearsal doesn't capture: these samples catch a graphic that throws between sub-frames.
+ */
+export const REHEARSE_REFINED_EVERY = 30;
+
 /** A graphic layer's calls as the export makes them: each frame's moments, a frame equal to the one before it held (not drawn). */
 export function rehearsalCalls(layer: GraphicLayer, fps: number): Array<{ readonly i: number; readonly local: number; readonly ts: ReadonlyArray<number> }> {
   const out: Array<{ i: number; local: number; ts: ReadonlyArray<number> }> = [];
@@ -44,7 +54,8 @@ export function rehearsalCalls(layer: GraphicLayer, fps: number): Array<{ readon
     const ts = layer.motion?.ts[i] ?? [local / fps];
     if (prev && prev.length === ts.length && prev.every((t, j) => t === ts[j])) continue;
     prev = ts;
-    out.push({ i, local, ts });
+    const refined = layer.motion && out.length % REHEARSE_REFINED_EVERY === 0 && blurRefinable(ts) ? [ts, ...blurLevels(ts, Math.max(BLUR_REFINE.max, ts.length))].flat() : ts;
+    out.push({ i, local, ts: refined });
   }
   return out;
 }

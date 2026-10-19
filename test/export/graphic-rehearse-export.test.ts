@@ -132,6 +132,35 @@ test("a graphic that doesn't break is covered whole, then not run again; the bud
   assert.ok(Date.now() - t0 < 200, "a rehearsal that passed isn't run again");
 });
 
+// D309: STREAK-like, throwing at any moment off the 4 slot middles of the 90° shutter (the export
+// draws finer grids there on a fast move).
+const OFFGRID = `<canvas id="c" width="${W}" height="${H}"></canvas><script>
+const ctx = document.getElementById("c").getContext("2d");
+window.render = (t, info) => {
+  const fr = t * info.fps - Math.floor(t * info.fps + 1e-9), k = fr / 0.0625 - 0.5;
+  if (fr > 1e-6 && Math.abs(k - Math.round(k)) > 1e-3) throw new Error("between sub-frames");
+  ctx.clearRect(0, 0, ${W}, ${H}); ctx.fillStyle = "#fff"; ctx.fillRect(Math.round(t * 60) % 40, 10, 8, 8);
+};
+</script>`;
+
+test("D309: every 30th blurred frame is rehearsed with motion blur's finer grids, each in time order, so a graphic that throws between sub-frames fails it", { skip, timeout: 120_000 }, async () => {
+  const p = plan(FINE, true, "graphics/fine.html");
+  const layer = p.visuals.find((l) => l.kind === "graphic");
+  assert.ok(layer && layer.kind === "graphic");
+  const calls = rehearsalCalls(layer, FPS);
+  assert.equal(calls[0]!.ts.length, 4 + 16 + 32, "the first: its 4, then 16, then 32");
+  assert.equal(calls[30]!.ts.length, 52);
+  assert.equal(calls[1]!.ts.length, 4);
+  const grids = [calls[0]!.ts.slice(0, 4), calls[0]!.ts.slice(4, 20), calls[0]!.ts.slice(20)];
+  for (const g of grids) assert.ok(g.every((t, j) => j === 0 || t > g[j - 1]!), "each grid in time order");
+  const off = await rehearseGraphics(raster, plan(OFFGRID, true, "graphics/offgrid.html"), { budgetMs: 60_000 });
+  assert.match(off.failure ?? "", /between sub-frames/);
+  assert.equal(off.frame, 20);
+  // Without blur nothing is drawn between frames: it passes.
+  const sharp = await rehearseGraphics(raster, plan(OFFGRID.replace("#fff", "#eee"), false, "graphics/offgrid.html"), { budgetMs: 60_000 });
+  assert.equal(sharp.failure, undefined);
+});
+
 test("a frame session (render_frames, review_submit) rehearses with the export's blur and finds it too", { skip, timeout: 120_000 }, async () => {
   process.env.UNCUT_RENDER_ENTRY ??= DESKTOP;
   const project = { ...projectOf("graphics/film.html"), motionBlur: { on: true, samples: 6 } } as Project;

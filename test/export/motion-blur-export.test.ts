@@ -230,6 +230,42 @@ test("D309: a fast sharp bar blurs into one smooth smear (more sub-frames), a st
   assert.ok(worst <= 3, `the export's frame is the critic's (worst ${worst})`);
 });
 
+/** STREAK's bar, throwing at any moment off the asked-for grid (4 slot middles of the 90° shutter): a graphic that breaks between sub-frames. */
+const OFFGRID = STREAK.replace("window.render = (t, info) => {", `window.render = (t, info) => {
+  const fr = t * info.fps - Math.floor(t * info.fps + 1e-9), k = fr / 0.0625 - 0.5;
+  if (fr > 1e-6 && Math.abs(k - Math.round(k)) > 1e-3) throw new Error("between sub-frames at " + t);`);
+/** STREAK, each render(t) taking 700 ms. */
+const SLOW = STREAK.replace("window.render = (t, info) => {", "window.render = (t, info) => { const until = performance.now() + 700; while (performance.now() < until) {}");
+
+test("D309: refining is optional: a graphic that throws between sub-frames keeps the asked-for ones; a slow one isn't refined past its budget", { skip, timeout: 240000 }, async () => {
+  const draw = async (html: string, i: number, name: string) => {
+    const out = join(root, `${name}-${i}.png`);
+    const reply = await raster.render({ kind: "graphic", width: W, height: H, doc: graphicDocument(html, { width: W, height: H }), t: i / FPS, ts: subFrameTimes(i, FPS, MOTION_BLUR_DEFAULTS), info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out });
+    return { samples: reply?.samples, png: rgbaOf(out) };
+  };
+  const broken = await draw(OFFGRID, 5, "offgrid");
+  assert.equal(broken.samples, 4, "the finer grid failed: the 4 asked for kept, the frame not failed");
+  const plain = await draw(STREAK.replace("#fff", "#fffffe"), 5, "plain-ref");
+  assert.ok((plain.samples ?? 0) > 4);
+  // Its 4 bars, 25 px apart (the asked-for grid's mean), not a smear.
+  const row = Array.from({ length: W }, (_, x) => broken.png[(100 * W + x) * 4]!);
+  assert.ok(row.slice(24, 116).some((v) => v < 8), `the asked-for grid's mean: ${row.join(",")}`);
+  // The next frame draws (the failed grid's window was replaced).
+  assert.equal((await draw(OFFGRID, 6, "offgrid")).samples, 4);
+  // 700 ms a render(t): 16 more would end past the refinement budget, so the 4 asked for.
+  const t0 = Date.now();
+  assert.equal((await draw(SLOW, 5, "slow")).samples, 4);
+  assert.ok(Date.now() - t0 < 10_000);
+});
+
+test("D309: a request's deadline counts from when the rasteriser starts on it, not from when it was sent", { skip, timeout: 120000 }, async () => {
+  const slowStill = STILL.replace("window.render = () => {", "window.render = () => { const until = performance.now() + 600; while (performance.now() < until) {}");
+  const doc = graphicDocument(slowStill, { width: W, height: H });
+  // Three sent at once, each 600 ms of render(t), each allowed 1.5 s: the third ends ~1.8 s after it was sent.
+  const jobs = [0, 1, 2].map((i) => raster.render({ kind: "graphic", width: W, height: H, doc, t: i / FPS, info: graphicInfo({ duration: FRAMES, props: {} }, { width: W, height: H, fps: FPS }, i), out: join(root, `queued-${i}.png`) }, { timeoutMs: 1500 }));
+  await Promise.all(jobs);
+});
+
 test("end to end: 1080×1350 at 60 fps, H.264 High with sound: every frame, 60/1, A/V in sync, the graphic never held", { skip, timeout: 600000 }, async () => {
   const BW = 1080;
   const BH = 1350;

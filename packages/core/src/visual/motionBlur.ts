@@ -1,7 +1,8 @@
 // Motion blur in the export (D291): a frame is the average of `samples` pictures drawn at moments
 // spread over the open shutter, `shutter` degrees of the frame interval (180°: half of it, a film
-// camera's; 90° by default, see MOTION_BLUR_DEFAULTS), starting at the frame's own time, so the first sub-frame is the sharp frame and one
-// sample is no blur. The export draws graphics this way (the rasteriser streams each sub-frame,
+// camera's; 90° by default, see MOTION_BLUR_DEFAULTS), opening at the frame's own time, each at the
+// middle of its equal slot of the shutter (D309: so a finer grid covers the same span, see
+// blurLevels); one sample is no blur. The export draws graphics this way (the rasteriser streams each sub-frame,
 // ffmpeg averages them on premultiplied colour). The preview draws no blur.
 import type { Item, Project } from "../timeline/types.ts";
 
@@ -40,26 +41,29 @@ export const itemMotionBlur = (item: Pick<Item, "motionBlur">, project: Pick<Pro
 
 /**
  * The moments (seconds) drawn for frame `frame` (a number of frames from the item's start, at
- * `fps`): sub-frame j of n at (frame + j·(shutter/360)/n) / fps, j = 0…n−1. Without blur, the frame's
+ * `fps`): sub-frame j of n at (frame + (j + ½)·(shutter/360)/n) / fps, j = 0…n−1 (the middle of
+ * each of n equal slots of the open shutter, D309). Without blur, the frame's
  * own moment. `still` (a held frame: before the item starts or after it ends) gives the frame's own
  * moment n times, so a held frame stays sharp.
  */
 export function subFrameTimes(frame: number, fps: number, blur?: MotionBlur, still = false): Array<number> {
   if (!blur || blur.samples <= 1) return [frame / fps];
   const open = blur.shutter / 360;
-  return Array.from({ length: blur.samples }, (_, j) => (still ? frame : frame + (j * open) / blur.samples) / fps);
+  return Array.from({ length: blur.samples }, (_, j) => (still ? frame : frame + ((j + 0.5) * open) / blur.samples) / fps);
 }
 
 /**
  * Adaptive sub-frames (D309): a frame whose sub-frames are far apart (a fast move: text or UI tens
  * of px from one sub-frame to the next) averages into N stacked copies, not a smear. The rasteriser
- * compares each pair of consecutive sub-frames (blurStep on blurSignature) and, while some pair
- * still has a change no small move explains, doubles the frame's sub-frames (each new one halfway
- * between two, so the grid stays even over the same shutter and the frame is still a plain mean),
- * up to BLUR_REFINE.max, while most pairs are (blurMoving). A calm frame keeps the project's samples.
+ * compares each pair of consecutive sub-frames (blurStep on blurSignature) and, while most pairs
+ * still have a change no small move explains (blurMoving), draws the frame again on the next finer
+ * grid (blurLevels: the same slots split, so the same span and centre; each grid in time order) up
+ * to BLUR_REFINE.max, and averages the finest grid it completed. A calm frame keeps the project's
+ * samples. Refining is optional: a grid that fails or would run past the frame's time budget is
+ * dropped and the last complete one kept.
  */
 export const BLUR_REFINE = {
-  /** The most sub-frames a frame gets by doubling (a project's own samples above it stay as they are). */
+  /** The most sub-frames a frame gets by refining (a project's own samples above it stay as they are). */
   max: 32,
   /** A signature point stands for a block this many px square. */
   block: 4,
@@ -186,10 +190,21 @@ export function blurFarPairs(sigs: ReadonlyArray<BlurSignature>): number {
  */
 export const blurMoving = (far: number, n: number) => far * 2 > n - 1;
 
-/** The sub-frames halfway between each of `ts` and the next (an even grid, `ts` ascending; the last one's next is a step past it). */
-export function blurMidpoints(ts: ReadonlyArray<number>): Array<number> {
-  const step = ts.length > 1 ? ts[1]! - ts[0]! : 0;
-  return ts.map((t) => t + step / 2);
+/**
+ * The finer grids a frame drawn at `ts` (subFrameTimes: n slot middles, an even grid) is refined
+ * through, each in time order: n slots split into 4n, then 2× more each time, up to `max` (a grid
+ * of n ≥ max has none). Every grid is the middles of equal slots of the same span, so the mean of
+ * any of them covers the same shutter with the same centre.
+ */
+export function blurLevels(ts: ReadonlyArray<number>, max: number = BLUR_REFINE.max): Array<Array<number>> {
+  const n = ts.length;
+  if (n < 2) return [];
+  const w = ts[1]! - ts[0]!;
+  const start = ts[0]! - w / 2;
+  const span = w * n;
+  const out: Array<Array<number>> = [];
+  for (let N = Math.min(max, 4 * n); N > (out.at(-1)?.length ?? n); N = Math.min(max, N * 2)) out.push(Array.from({ length: N }, (_, j) => start + ((j + 0.5) * span) / N));
+  return out;
 }
 
 /** Whether `ts` is an even grid of distinct times (what doubling assumes): a held frame's repeated moment isn't. */

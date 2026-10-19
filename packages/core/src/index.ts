@@ -10,7 +10,7 @@ export type { ComponentBlock, ComponentInfo, Device, DeviceFrameRequest, Termina
 export { GRAPHIC_CENSUS, SMALL_TEXT, LETTER_SHARE, censusOf, censusList, softCause, softList, type Census, type CensusRun, type SoftRun } from "./visual/census.ts";
 export { GRAPHIC_CSP, GRAPHIC_FRAME_MS, GRAPHIC_LIBS, GRAPHIC_LIBS_DOC, GRAPHIC_SRC, graphicDocument, graphicInfo, graphicLocal, graphicLibsUsed, graphicLogosUsed, MAX_GRAPHIC_BYTES, MAX_GRAPHIC_DOC_BYTES, resolveGraphicBrand, resolveGraphicLibs } from "./visual/graphics.ts";
 export type { GraphicInfo, GraphicLib } from "./visual/graphics.ts";
-export { itemMotionBlur, MOTION_BLUR_DEFAULTS, MOTION_BLUR_SAMPLES, motionBlurDefault, projectMotionBlur, subFrameTimes, BLUR_REFINE, blurSignature, blurStep, blurFarPairs, blurMoving, blurMidpoints, blurRefinable } from "./visual/motionBlur.ts";
+export { itemMotionBlur, MOTION_BLUR_DEFAULTS, MOTION_BLUR_SAMPLES, motionBlurDefault, projectMotionBlur, subFrameTimes, BLUR_REFINE, blurSignature, blurStep, blurFarPairs, blurMoving, blurLevels, blurRefinable } from "./visual/motionBlur.ts";
 export type { BlurSignature } from "./visual/motionBlur.ts";
 export type { MotionBlur } from "./visual/motionBlur.ts";
 export { GRAPHIC_MEDIA_MAX_EDGE, GRAPHIC_MEDIA_SCHEME, graphicMediaFrame, graphicMediaSize, graphicMediaUsed, parseGraphicMediaRequest } from "./visual/graphicMedia.ts";

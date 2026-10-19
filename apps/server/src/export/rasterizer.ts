@@ -50,7 +50,7 @@ export function rasterizerCommand(
  */
 export type RasterJob =
   | ({ readonly kind?: undefined; readonly width: number; readonly height: number; readonly css: string; readonly html: string; readonly out: string } & RasterOutSize)
-  /** `ts`: motion blur's sub-frames (the first is t), their pictures averaged as the export's seq-graphic. */
+  /** `ts`: motion blur's sub-frames (over the shutter from t), their pictures averaged as the export's seq-graphic (refined the same way on a fast move, D309). */
   /** `census`: also measure the frame's words (packages/core census.ts), those under that share of the height coming back. */
   | ({ readonly kind: "graphic"; readonly width: number; readonly height: number; readonly doc: string; readonly t: number; readonly ts?: ReadonlyArray<number>; readonly info: unknown; readonly out: string; readonly name?: string; readonly census?: number } & RasterOutSize)
   /**
@@ -91,7 +91,9 @@ export interface RasterReply {
 export interface Rasterizer {
   /**
    * Draw a job (see RasterJob) and save it to `out` as a PNG (or a JPEG for .jpg). `timeoutMs`: a
-   * shorter wait than the usual deadline (RENDER_TIMEOUT_MS), never a longer one.
+   * shorter wait than the usual deadline (RENDER_TIMEOUT_MS), never a longer one; either counts from
+   * when the rasteriser starts on the job (D309: jobs sent ahead queue there), or from sending it
+   * until it says so.
    */
   readonly render: (job: RasterJob, o?: { readonly timeoutMs?: number }) => Promise<RasterReply | void>;
   /** Stop it (SIGKILL if it doesn't go within a second). Resolves once it's gone. */
@@ -138,7 +140,13 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
   let stderr = "";
   child.stderr!.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
   child.stdin!.on("error", () => {});
-  const pending = new Map<number, { resolve: (reply?: RasterReply) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  const pending = new Map<number, { resolve: (reply?: RasterReply) => void; reject: (e: Error) => void; timer: NodeJS.Timeout; wait: number }>();
+  const tooLong = (id: number, wait: number) =>
+    setTimeout(() => {
+      const p = pending.get(id);
+      pending.delete(id);
+      p?.reject(new Error("The text renderer took too long."));
+    }, wait);
   let failed: Error | undefined;
   const failAll = (error: Error) => {
     failed ??= error;
@@ -161,6 +169,14 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
     try {
       msg = JSON.parse(line);
     } catch {
+      return;
+    }
+    // D309: a request's deadline counts from when the rasteriser starts on it (requests queue there).
+    if (msg?.uncut === "render-started") {
+      const p = pending.get(Number(msg.id));
+      if (!p) return;
+      clearTimeout(p.timer);
+      p.timer = tooLong(Number(msg.id), p.wait);
       return;
     }
     if (msg?.uncut !== "render") return;
@@ -202,11 +218,7 @@ export async function startRasterizer(command: RasterizerCommand, env: NodeJS.Pr
         if (failed) return reject(failed);
         const id = ++next;
         const wait = o?.timeoutMs !== undefined && Number.isFinite(o.timeoutMs) ? Math.max(0, Math.min(RENDER_TIMEOUT_MS, o.timeoutMs)) : RENDER_TIMEOUT_MS;
-        const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error("The text renderer took too long."));
-        }, wait);
-        pending.set(id, { resolve, reject, timer });
+        pending.set(id, { resolve, reject, timer: tooLong(id, wait), wait });
         child.stdin!.write(`${JSON.stringify({ id, ...job })}\n`);
       }),
   };
