@@ -279,11 +279,13 @@ export class Compositor extends CompositorBase {
       if (g.loaded) {
         const local = graphicLocal(v.item, whole - starts.get(v.item.id)!);
         const info = graphicInfo(v.item, project.canvas, local);
-        // Anything render(t, info) is given: a new length or canvas draws again too.
-        const sent = JSON.stringify([local, info]);
+        // Anything render(t, info) is given: a new length or canvas draws again too. And whether it
+        // plays: a graphic's footage (uncut.frame) is its nearest decoded frame while playing, the
+        // exact one when stopped, so the frame playback stops on is drawn again exactly.
+        const sent = JSON.stringify([local, info, running]);
         if (g.sent !== sent) {
           g.sent = sent;
-          g.frame.contentWindow?.postMessage({ uncut: "render", seq: ++this.graphicSeq, t: local / fps, info }, "*");
+          g.frame.contentWindow?.postMessage({ uncut: "render", seq: ++this.graphicSeq, t: local / fps, info, playing: running }, "*");
         }
       }
     }

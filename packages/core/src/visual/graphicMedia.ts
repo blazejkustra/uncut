@@ -11,7 +11,8 @@
 // - the preview (a sandboxed iframe, no network) asks its parent by postMessage ({ uncut: "media",
 //   seq, id, t, w, h }), which fetches them from the server's GRAPHIC_MEDIA_PATH route and answers
 //   { uncut: "media-reply", seq, blob } (or error).
-// So preview == export as for the rest of a graphic. The CSP allows only that scheme for fetches
+// So preview == export as for the rest of a graphic; only while the preview plays is a picture not
+// come yet drawn as the nearest one already there (asks paced, one in flight per media and size). The CSP allows only that scheme for fetches
 // and blob: images (the markers' pictures), still nothing from the network.
 
 /** The rasteriser's scheme for a graphic's media (export and render_frames): uncut-media://media/<id>?t=&w=&h=. */
@@ -77,7 +78,7 @@ export function graphicMediaUsed(html: string): Array<string> {
 
 /**
  * The script graphicDocument puts in a graphic's <head> (before its own bootstrap): window.uncut
- * (frame, image, url) and window.__uncutMedia (ready: the markers' pictures in place and decoded,
+ * (frame, image, url) and window.__uncutMedia (begin({ playing }): before each preview render; ready: the markers' pictures in place and decoded,
  * awaited before the first frame; hold(promise) / held(): work a library started in render(t) that the
  * frame must show, awaited after it; sweep(fps): called after each frame and each motion-blur
  * sub-frame, keeps the cache bounded by forgetting pictures not asked for lately; stats(): the
@@ -123,34 +124,98 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   // Bounded: at most KEEP pictures beyond the ones asked for in the last frame. Never closed.
   const cache = new Map();
   let gen = 0;
+  // The preview while it plays (its parent says so with each render): a picture not here yet is
+  // drawn as the nearest one of the same media and size already here (within NEAR seconds), and
+  // asked for paced: one ask in flight per media and size, only the newest waiting behind it. The
+  // preview asks 60 frames a second and footage takes longer than a frame to come (a 1920-px frame
+  // is 6 MB), so waiting for each exact frame left render(t) running for hundreds of ms with the
+  // canvas half drawn on screen (a black card where the footage goes) and the asks piling up.
+  // Stopped (and always in the export) every picture is the exact one, awaited.
+  let playing = false;
+  const NEAR = 1;
+  const runs = new Map();
+  const issue = (r, job) => {
+    r.busy = true;
+    load(job.id, job.s, job.w, job.h).then(job.done, job.fail).finally(() => {
+      r.busy = false;
+      const n = r.next;
+      r.next = undefined;
+      if (n) {
+        n.entry.job = undefined;
+        issue(r, n);
+      }
+    });
+  };
   const size = (v) => (typeof v === "number" && v >= 1 ? Math.min(8192, Math.round(v)) : 0);
-  const entry = (id, t, opts) => {
+  const entry = (id, t, opts, paced) => {
     if (typeof id !== "string") throw new TypeError("uncut.frame(mediaId, seconds): mediaId is the media's id (project_read lists them)");
     const s = Math.max(0, Number(t) || 0);
     const w = size(opts && opts.width);
     const h = size(opts && opts.height);
-    const k = id + "|" + s + "|" + w + "|" + h;
+    const run = id + "|" + w + "|" + h;
+    const k = run + "|" + s;
     let e = cache.get(k);
+    if (e && e.job && !paced) {
+      // Waiting behind a paced ask and now wanted exactly: asked at once.
+      const r = runs.get(run);
+      if (r && r.next === e.job) r.next = undefined;
+      const job = e.job;
+      e.job = undefined;
+      load(id, s, w, h).then(job.done, job.fail);
+    }
     if (!e) {
-      e = { blob: load(id, s, w, h) };
+      if (paced) {
+        let r = runs.get(run);
+        if (!r) runs.set(run, (r = { busy: false }));
+        let done, fail;
+        e = { blob: new Promise((a, b) => ((done = a), (fail = b))), s, run };
+        const job = { id, s, w, h, k, done, fail, entry: e };
+        if (!r.busy) issue(r, job);
+        else {
+          // Only the newest waits: the one it replaces is never asked (whoever awaits it gets this one's picture).
+          const old = r.next;
+          if (old) {
+            old.entry.job = undefined;
+            if (cache.get(old.k) === old.entry) cache.delete(old.k);
+            e.blob.then(old.done, old.fail);
+          }
+          e.job = r.next = job;
+        }
+      } else e = { blob: load(id, s, w, h), s, run };
       cache.set(k, e);
-      e.blob.catch(() => cache.delete(k));
+      e.blob.catch(() => cache.get(k) === e && cache.delete(k));
     }
     e.gen = gen;
     return e;
   };
+  // The picture of the same media and size already here nearest to e (the latest at or before it first).
+  const nearest = (e) => {
+    let before, after;
+    for (const c of cache.values()) {
+      if (c === e || c.run !== e.run || !c.value || !c.value.width || Math.abs(c.s - e.s) > NEAR) continue;
+      if (c.s <= e.s) { if (!before || c.s > before.s) before = c; }
+      else if (!after || c.s < after.s) after = c;
+    }
+    return before || after;
+  };
   const uncut = {
     /** The media's picture at \`t\` seconds of it (a still: any t), as an ImageBitmap fitting { width, height } (at most ${GRAPHIC_MEDIA_MAX_EDGE} px long). */
     frame(id, t, opts) {
-      const e = entry(id, t, opts);
-      return (e.bitmap ??= e.blob.then((b) => createImageBitmap(b)));
+      const paced = playing && parent !== window;
+      const e = entry(id, t, opts, paced);
+      const bitmap = (e.bitmap ??= e.blob.then((b) => createImageBitmap(b)).then((v) => (e.value = v)));
+      if (!paced || e.value) return bitmap;
+      const near = nearest(e);
+      if (!near) return bitmap;
+      near.gen = gen;
+      return Promise.resolve(near.value);
     },
     image(id, opts) {
       return uncut.frame(id, 0, opts);
     },
     /** The same picture as a blob: URL, for an <img> or a CSS url() set from script (kept for the page's life). */
     url(id, t, opts) {
-      const e = entry(id, t, opts);
+      const e = entry(id, t, opts, false);
       e.keep = true;
       return (e.url ??= e.blob.then((b) => URL.createObjectURL(b)));
     },
@@ -172,6 +237,8 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   let holds = [];
   window.__uncutMedia = {
     stats: () => ({ pending }),
+    /** Before a render: whether the preview is playing (nearest pictures, paced asks) or not (exact ones). */
+    begin: (o) => { playing = !!(o && o.playing); },
     hold: (p) => { holds.push(Promise.resolve(p).catch(() => {})); },
     held: async () => {
       while (holds.length) {

@@ -144,7 +144,7 @@ export const GRAPHIC_LIBS_DOC = [
   "uncutRandom(seed) returns a seeded generator (rnd() in [0, 1), rnd.range(a, b), rnd.int(a, b), rnd.pick(list), rnd.normal()); uncutRandom.noise(seed, x) is smooth noise.",
   'Fonts: name a family in CSS font-family or in ctx.font (for example ctx.font = "600 64px \'DM Sans\', sans-serif") and Uncut declares it inside the graphic when it is DM Sans, DM Mono, a font file of the brand kit or one in the project\'s fonts folder (media_download a WOFF2/TTF/OTF of an OFL font such as Geist or Archivo puts it there), loaded before the first frame; fonts installed on this Mac work by name, and so does a family the graphic declares itself (@font-face with a data: URL). Any other family is a project_check error (it would fall back to another font), so never ask for one that isn\'t there.',
   'Brand logos: src="uncut:brand/logo-light" (also logo-dark, logo-mark) in an <img> or a CSS url() is the kit\'s logo file as it is (an SVG stays vector), inlined by Uncut. The kit\'s other SVGs (such as claude-mark.svg, the Claude mark the app\'s composer shows in its model picker) have no marker: read the file from the kit (brand_read lists its path) and paste its <svg> into the graphic as it is, never redrawn.',
-  'Project media (ids from project_read): const f = await uncut.frame(mediaId, seconds, { width, height }) is that video\'s frame at that moment of it (a still: any seconds) as an ImageBitmap for ctx.drawImage or a three.js texture, exact in the preview and the export; for footage that plays inside the graphic, await uncut.frame(id, start + t) inside an async render (return its promise). In markup, src="uncut:media/<id>" (a still or a video\'s first frame) or "uncut:media/<id>#t=2.5" in an <img> or a CSS url(). Pictures come at most 1920 px on their long edge (smaller when you ask for a smaller width or height), never inlined, so the 256 KB limit is about your code only.',
+  'Project media (ids from project_read): const f = await uncut.frame(mediaId, seconds, { width, height }) is that video\'s frame at that moment of it (a still: any seconds) as an ImageBitmap for ctx.drawImage or a three.js texture, exact in the export and the paused preview (while the preview plays, a frame not decoded yet is the nearest one that is); for footage that plays inside the graphic, await uncut.frame(id, start + t) inside an async render (return its promise). In markup, src="uncut:media/<id>" (a still or a video\'s first frame) or "uncut:media/<id>#t=2.5" in an <img> or a CSS url(). Pictures come at most 1920 px on their long edge (smaller when you ask for a smaller width or height), never inlined, so the 256 KB limit is about your code only.',
 ].join(" ");
 
 export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "height">): string {
@@ -179,10 +179,29 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
     window.__uncutMedia.sweep();
     return true;
   };
+  // The preview asks once per frame while it plays and never waits. One render(t) at a time: a
+  // graphic awaiting footage (uncut.frame) for longer than a frame would otherwise have many
+  // render(t) calls interleaved on one canvas (their transforms and save/restore stacks mixed, an
+  // older t finishing after a newer one and staying on screen, the media source asked out of order).
+  // While one runs only the newest ask waits; the ones it replaced are answered as skipped.
+  let busy = false;
+  let next;
+  const pump = async () => {
+    busy = true;
+    while (next) {
+      const d = next;
+      next = undefined;
+      window.__uncutMedia.begin({ playing: d.playing === true });
+      await window.__uncutRender(d.t, d.info).then(() => parent.postMessage({ uncut: "rendered", seq: d.seq }, "*"), (error) => parent.postMessage({ uncut: "rendered", seq: d.seq, error: String(error) }, "*"));
+    }
+    busy = false;
+  };
   addEventListener("message", (e) => {
     const d = e.data;
     if (!d || d.uncut !== "render") return;
-    window.__uncutRender(d.t, d.info).then(() => parent.postMessage({ uncut: "rendered", seq: d.seq }, "*"), (error) => parent.postMessage({ uncut: "rendered", seq: d.seq, error: String(error) }, "*"));
+    if (next) parent.postMessage({ uncut: "rendered", seq: next.seq, skipped: true }, "*");
+    next = d;
+    if (!busy) void pump();
   });
 })();</script></head><body>
 ${html}
