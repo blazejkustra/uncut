@@ -921,3 +921,50 @@ test("T4: a cd into the kit's quoted path with reads passes; joined to which, on
     assert.ok(d.message.includes("`which ffmpeg") && !d.message.includes("`cd ") && !d.message.includes("`ls -la`"), d.message);
   }
 });
+
+test("D310 the agent's scratch folder: .cache/work/ in the project runs without a card in Auto (Ask first too, for files); /tmp still asks; a link out of it is outside; secrets stay refused", async () => {
+  const { SYSTEM_PROMPT } = await import("../../apps/server/src/agent/agentTools.ts");
+  assert.match(SYSTEM_PROMPT, /scratch files \(scripts, renders, contact sheets\) go in \.cache\/work\/, never \/tmp/);
+  const W = `${PROJECT}/.cache/work`;
+  // D4's turn, done in the project's scratch folder: Write film.html, Read it and the contact sheets back, no card.
+  for (const access of ["auto", "ask"] as const) {
+    assert.equal(kind("Write", { file_path: `${W}/h/film.html` }, access), "allow", access);
+    assert.equal(kind("Edit", { file_path: `${W}/h/film.html` }, access), "allow", access);
+    for (const file of [`${W}/h/film.html`, `${W}/h/out/a7_sheet.png`, `${W}/h/out/probe/t0.500.png`, ".cache/work/h/out/a1_sheet.png"]) assert.equal(kind("Read", { file_path: file }, access), "allow", `${access}: ${file}`);
+    assert.equal(kind("Glob", { pattern: "*.png", path: `${W}/h/out` }, access), "allow");
+  }
+  for (const command of ["mkdir -p .cache/work/h/out", "ls .cache/work/h/out", "head -n 5 .cache/work/h/film.html"]) assert.equal(kind("Bash", { command }, "auto"), "allow", command);
+  assert.equal(kind("Write", { file_path: `${W}/x` }, "look"), "deny", "Look only still writes nothing");
+  // The same files in /tmp (what D4 did) still ask, every time: nothing outside the project widened.
+  for (const access of ["auto", "ask"] as const) {
+    const read = d("Read", { file_path: "/private/tmp/uncutwork/h/out/a7_sheet.png" }, access);
+    assert.ok(read.kind === "ask" && /outside the project/.test(read.why ?? ""), access);
+    const write = d("Write", { file_path: "/private/tmp/uncutwork/h/film.html" }, access);
+    assert.ok(write.kind === "ask" && write.grant === undefined, access);
+  }
+  // Secrets, Claude Code's folder and Uncut's own files stay as they were.
+  assert.equal(kind("Read", { file_path: "~/.claude/settings.json" }, "auto"), "deny");
+  assert.equal(kind("Read", { file_path: "~/.ssh/id_ed25519" }, "auto"), "ask");
+  assert.equal(kind("Write", { file_path: `${PROJECT}/project.json` }, "auto"), "deny");
+  // A link in the scratch folder to a folder outside is judged by where it points.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "uncut-work-")));
+  try {
+    const project = join(dir, "Promo");
+    const outside = join(dir, "Secrets");
+    mkdirSync(join(project, ".cache", "work"), { recursive: true });
+    mkdirSync(outside);
+    writeFileSync(join(outside, "key.txt"), "x");
+    writeFileSync(join(project, "project.json"), "{}");
+    symlinkSync(outside, join(project, ".cache", "work", "evil"));
+    symlinkSync(join(project, "project.json"), join(project, ".cache", "work", "p.json"));
+    const c = (access: Access): PermissionContext => ({ access, project, roots: [], grants: new Set(), home: dir });
+    const work = join(project, ".cache", "work");
+    assert.equal(decide("Read", { file_path: join(work, "evil", "key.txt") }, c("auto")).kind, "ask");
+    assert.equal(decide("Write", { file_path: join(work, "evil", "new.txt") }, c("auto")).kind, "ask");
+    assert.equal(decide("Bash", { command: "cat .cache/work/evil/key.txt" }, c("auto")).kind, "ask");
+    assert.equal(decide("Write", { file_path: join(work, "p.json") }, c("auto")).kind, "deny", "a link to project.json");
+    assert.equal(decide("Write", { file_path: join(work, "sheet.png") }, c("auto")).kind, "allow");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

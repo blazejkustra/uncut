@@ -242,7 +242,7 @@ export function decide(tool: string, rawInput: unknown, ctx: PermissionContext):
     // they are read; when every path there is this project's saved output, say how they can be used.
     if (CLAUDE_NAMED.test(command) || configNamed(command)) {
       const named = claudePaths(command, (w) => CLAUDE_NAMED.test(w) || configNamed(w));
-      if (named.length && named.every((p) => toolOutput(real(p)))) return { kind: "deny", message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .work/…) and run other programs on the copies.` };
+      if (named.length && named.every((p) => toolOutput(real(p)))) return { kind: "deny", message: `Not done: this project's saved tool output (its tool-results folder) is used only by plain reads (${PLAIN}); ${offending}. Copy the files into the project first (cp <files> .cache/work/…) and run other programs on the copies.` };
       return { kind: "deny", message: `${claudeRefusal.message} Commands there run only as plain reads (${PLAIN}); ${offending}.` };
     }
     // D219: anything else naming apps' data (Uncut's settings, plugins, the server token; browsers'
