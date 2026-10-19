@@ -191,8 +191,20 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
     while (next) {
       const d = next;
       next = undefined;
-      window.__uncutMedia.begin({ playing: d.playing === true });
-      await window.__uncutRender(d.t, d.info).then(() => parent.postMessage({ uncut: "rendered", seq: d.seq }, "*"), (error) => parent.postMessage({ uncut: "rendered", seq: d.seq, error: String(error) }, "*"));
+      const playing = d.playing === true;
+      window.__uncutMedia.begin({ playing, warm: !playing });
+      await window.__uncutRender(d.t, d.info)
+        .then(async () => {
+          // Stopped: drawn with the nearest pictures while the exact ones came; now with them.
+          const missed = window.__uncutMedia.missed();
+          if (!missed) return;
+          await missed;
+          // A newer ask (a scrub on) draws next instead.
+          if (next) return;
+          window.__uncutMedia.begin({ playing: false });
+          await window.__uncutRender(d.t, d.info);
+        })
+        .then(() => parent.postMessage({ uncut: "rendered", seq: d.seq }, "*"), (error) => parent.postMessage({ uncut: "rendered", seq: d.seq, error: String(error) }, "*"));
     }
     busy = false;
   };

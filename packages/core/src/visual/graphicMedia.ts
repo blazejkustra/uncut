@@ -132,6 +132,11 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   // canvas half drawn on screen (a black card where the footage goes) and the asks piling up.
   // Stopped (and always in the export) every picture is the exact one, awaited.
   let playing = false;
+  // Stopped in the preview, a render is drawn twice when it must: first with the nearest pictures
+  // while the exact ones are asked for (warming), then, once they're here, again with them; so the
+  // frame it stops or scrubs to never shows half drawn either.
+  let warming = false;
+  let misses = [];
   const NEAR = 1;
   const runs = new Map();
   const issue = (r, job) => {
@@ -201,12 +206,14 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   const uncut = {
     /** The media's picture at \`t\` seconds of it (a still: any t), as an ImageBitmap fitting { width, height } (at most ${GRAPHIC_MEDIA_MAX_EDGE} px long). */
     frame(id, t, opts) {
-      const paced = playing && parent !== window;
+      const preview = parent !== window;
+      const paced = playing && preview;
       const e = entry(id, t, opts, paced);
       const bitmap = (e.bitmap ??= e.blob.then((b) => createImageBitmap(b)).then((v) => (e.value = v)));
-      if (!paced || e.value) return bitmap;
+      if (!(paced || (warming && preview)) || e.value) return bitmap;
       const near = nearest(e);
       if (!near) return bitmap;
+      if (!paced) misses.push(bitmap.catch(() => {}));
       near.gen = gen;
       return Promise.resolve(near.value);
     },
@@ -238,7 +245,13 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   window.__uncutMedia = {
     stats: () => ({ pending }),
     /** Before a render: whether the preview is playing (nearest pictures, paced asks) or not (exact ones). */
-    begin: (o) => { playing = !!(o && o.playing); },
+    begin: (o) => {
+      playing = !!(o && o.playing);
+      warming = !playing && !!(o && o.warm);
+      misses = [];
+    },
+    /** After a warming render: a promise for the exact pictures it drew the nearest ones for, else undefined. */
+    missed: () => (misses.length ? Promise.all(misses.splice(0)) : undefined),
     hold: (p) => { holds.push(Promise.resolve(p).catch(() => {})); },
     held: async () => {
       while (holds.length) {

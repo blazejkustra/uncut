@@ -10,7 +10,7 @@
 // - what's on screen (sampled every animation frame inside the graphic) is never the black box once
 //   the footage has come, and the footage's frame advances;
 // - at most one picture of the clip is asked for at a time;
-// - stopped, the frame drawn is the exact frame asked for.
+// - stopped, the frame drawn is the exact frame asked for, never the black box on the way.
 // Skipped without Chrome or ffmpeg.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -172,10 +172,15 @@ test("a graphic drawing footage plays in the preview: time never goes back, no b
 
   // Stopped: the exact frame.
   const stopAt = last;
-  const before = played.probes.length;
+  const exact = Math.floor((0.1 + stopAt / FPS) * CLIP_FPS + 1e-6);
+  const from = played.samples.length;
   await page.evaluate((f) => (window as unknown as { stop: (f: number) => void }).stop(f), stopAt);
-  await page.waitForFunction((n) => (window as unknown as { log: Log }).log.probes.length > n, { timeout: 10_000 }, before);
+  // Drawn when the last sample on screen is the exact frame (or after 5 s, which fails below).
+  await page.waitForFunction((n) => Math.round((((window as unknown as { log: Log }).log.samples.at(-1)?.[0] ?? 0) - 16) / 2) === n, { timeout: 5_000 }, exact).catch(() => {});
   await new Promise((r) => setTimeout(r, 100));
-  const [r] = (await page.evaluate(() => (window as unknown as { log: Log }).log.samples.at(-1)))!;
-  assert.equal(decode(r), Math.floor((0.1 + stopAt / FPS) * CLIP_FPS + 1e-6), "the frame playback stopped on isn't the exact one");
+  const stopped = (await page.evaluate(() => (window as unknown as { log: Log }).log.samples)).slice(from);
+  // Never half drawn on the way: the nearest frame stays until the exact one is drawn over it.
+  assert.equal(stopped.filter(([v]) => v < 12).length, 0, "the black box showed while the stop frame's picture came");
+  const [r] = stopped.at(-1)!;
+  assert.equal(decode(r), exact, "the frame playback stopped on isn't the exact one");
 });
