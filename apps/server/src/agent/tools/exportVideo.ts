@@ -4,7 +4,7 @@
 // the folder is resolved and checked here (never Uncut's data, inside the project package, ~/Library,
 // hidden or system folders), a taken name gets " 2" like Finder, and a card asks first unless the
 // chat is Auto and the user named that folder in this message.
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
@@ -37,10 +37,37 @@ const real = (p: string) => {
   }
 };
 
-/** A file name the Finder accepts, ending in .mp4 (the dialog's fileName). */
+/** Exports one turn may start: a loop can't fill the disk. */
+export const EXPORTS_PER_TURN = 3;
+const startedIn = new WeakMap<Running, number>();
+
+/** Whether anything is at `p`, a dangling symlink included (existsSync follows links). */
+const lexists = (p: string) => {
+  try {
+    lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * A file name the Finder accepts, ending in .mp4 (the dialog's fileName): no slashes, colons or
+ * control characters, not hidden (no leading dot), short enough for " 999.mp4" to fit in 255 bytes.
+ */
 export const exportFileName = (name: string) => {
-  const clean = name.replace(/[/:\\]/g, "-").trim() || "Untitled";
-  return /\.mp4$/i.test(clean) ? clean : `${clean}.mp4`;
+  const clean = name.replace(/[\u0000-\u001f\u007f]/g, "").replace(/[/:\\]/g, "-").trim().replace(/^\.+/, "").trim();
+  let stem = clean.replace(/\.mp4$/i, "").trim() || "Untitled";
+  const ext = /\.mp4$/i.test(clean) ? clean.slice(-4) : ".mp4";
+  if (Buffer.byteLength(stem) > 200) {
+    let out = "";
+    for (const ch of stem) {
+      if (Buffer.byteLength(out + ch) > 200) break;
+      out += ch;
+    }
+    stem = out.trim();
+  }
+  return `${stem}${ext}`;
 };
 
 /**
@@ -89,8 +116,9 @@ export function exportFolderProblem(dir: string, o: { readonly project: string; 
 }
 
 /** Whether the user's message names the (real) folder `dir`: a folder word or a pasted path. */
+// A folder word counts only as a place ("to Desktop", "in my Movies folder"), not "a desktop app" or "add music".
 export function messageNamesFolder(text: string, dir: string, project: string, home = homedir()): boolean {
-  for (const [word, folder] of Object.entries(FOLDER_WORDS)) if (new RegExp(`\\b${word}\\b`, "i").test(text) && real(join(home, folder)) === dir) return true;
+  for (const [word, folder] of Object.entries(FOLDER_WORDS)) if (new RegExp(`\\b(?:to|in|into|on|onto)\\s+(?:(?:my|the)\\s+)?(?:~\\/)?${word}\\b`, "i").test(text) && real(join(home, folder)) === dir) return true;
   const exists = (p: string) => {
     try {
       const s = statSync(p);
@@ -144,6 +172,8 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
       const running = jobs.find((j) => ACTIVE.has(j.phase));
       if (exporter.busy() || running) return textResult({ refused: `An export is already running${running ? ` (${basename(running.output)}, ${running.phase === "rendering" ? `${Math.round(running.progress * 100)}%` : running.phase})` : ""}: one at a time. Tell the user, and export once it's done.` }, true);
 
+      if ((startedIn.get(r) ?? 0) >= EXPORTS_PER_TURN) return textResult({ refused: `This turn already exported ${EXPORTS_PER_TURN} videos; no more in this turn. Tell the user where they are.` }, true);
+
       // Where: the folder asked for, else the dialog's (the last export's folder, else ~/Movies).
       const last = [...jobs].reverse().find((j) => j.phase === "done" || ACTIVE.has(j.phase));
       const lastDir = last && existsSync(dirname(last.output)) ? dirname(last.output) : undefined;
@@ -151,7 +181,7 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
       if ("problem" in where) return textResult({ refused: where.problem }, true);
       const file = exportFileName(typeof args.name === "string" ? basename(args.name.trim()) : project.name);
       const busyOutputs = new Set(jobs.filter((j) => ACTIVE.has(j.phase)).map((j) => j.output));
-      const output = freeOutput(where.dir, file, (p) => existsSync(p) || busyOutputs.has(p));
+      const output = freeOutput(where.dir, file, (p) => lexists(p) || busyOutputs.has(p));
 
       // A write to the user's disk: asked on a card unless the chat is Auto and the user named this
       // folder in this message.
@@ -170,6 +200,7 @@ export const makeExportVideo = (ctx: LibraryCtx) => {
           Effect.catch((error) => Effect.succeed({ ok: false as const, message: error.message })),
         );
       if (!started.ok) return textResult({ failed: started.message }, true);
+      startedIn.set(r, (startedIn.get(r) ?? 0) + 1);
 
       // Wait for it (the user sees its progress in the editor and can cancel it there).
       const until = Date.now() + exportWaitMs();

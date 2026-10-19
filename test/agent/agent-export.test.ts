@@ -87,6 +87,38 @@ test("export_video: the message names the folder, a free name, the file name", (
   rmSync(join(desktop, "Clip 2.mp4"));
 });
 
+test("export_video's tricks: symlinked and case-varied folders, `..`, odd file names, a dangling link at the target, loose folder words", () => {
+  // A folder that is a symlink into ~/Library or Uncut's data is that folder.
+  symlinkSync(join(home, "Library", "Caches"), join(home, "Desktop", "innocent"));
+  symlinkSync(dataDir, join(home, "Desktop", "data-link"));
+  for (const [folder, re] of [["~/Desktop/innocent", /~\/Library/], ["~/Desktop/data-link/", /Uncut's own data/], ["~/Desktop/../Library/Caches", /~\/Library/], [`${home}/Desktop/../.secret`, /hidden/]] as const) {
+    const out = resolveExportFolder(folder, o);
+    assert.ok("problem" in out && re.test(out.problem), folder);
+  }
+  rmSync(join(home, "Desktop", "innocent"));
+  rmSync(join(home, "Desktop", "data-link"));
+  // APFS isn't case-sensitive: ~/LIBRARY is ~/Library (realpath gives the real case).
+  if (existsSync(join(home, "LIBRARY"))) assert.match((resolveExportFolder("~/LIBRARY/caches", o) as { problem: string }).problem, /~\/Library/);
+  // File names: never hidden, no path, no control characters, short enough.
+  assert.equal(exportFileName(".."), "Untitled.mp4");
+  assert.equal(exportFileName(".hidden"), "hidden.mp4");
+  assert.equal(exportFileName("../../Library/x"), "-..-Library-x.mp4");
+  assert.equal(exportFileName("a\nb\u0000c"), "abc.mp4");
+  assert.equal(exportFileName("Clip.app"), "Clip.app.mp4");
+  assert.equal(exportFileName("Clip.mov"), "Clip.mov.mp4");
+  const long = exportFileName("é".repeat(300));
+  assert.ok(Buffer.byteLength(long) <= 204 && long.endsWith(".mp4"), "clamped on a character, not a byte");
+  // A dangling symlink at the target counts as taken: the export never goes through it.
+  const desktop = join(home, "Desktop");
+  symlinkSync(join(home, "Library", "Caches", "nothing.mp4"), join(desktop, "Clip.mp4"));
+  assert.equal(freeOutput(desktop, "Clip.mp4", (p) => existsSync(p)), join(desktop, "Clip.mp4"), "existsSync misses it");
+  rmSync(join(desktop, "Clip.mp4"));
+  // A folder word is a place, not any use of the word.
+  assert.equal(messageNamesFolder("make a promo for our desktop app and export it", desktop, project, home), false);
+  assert.equal(messageNamesFolder("export these videos", join(home, "Movies"), project, home), false);
+  assert.equal(messageNamesFolder("save it to my Desktop folder", desktop, project, home), true);
+});
+
 // ---- the tool with a stand-in exporter and card ----
 type Job = { id: string; output: string; phase: string; progress: number; seconds: number; width: number; height: number; fps: number; quality: string; elapsedSeconds?: number; error?: string; warnings?: Array<string> };
 function harness(opts: { access?: "auto" | "ask" | "look"; prompt?: string; answer?: "allow" | "deny"; jobs?: Array<Job>; busy?: boolean; fail?: string; ranges?: unknown } = {}) {
@@ -204,6 +236,47 @@ test("export_video: refusals (forbidden folders, busy, bad args, no marks), the 
   const failed = await failing.call({ folder: "Desktop" });
   assert.equal(failed.isError, true);
   assert.equal(failed.json.failed, "The disk is full. Free some space or choose another disk, then export again.");
+});
+
+test("export_video: a dangling link at the target gets \" 2\", at most a few exports a turn, and a stopped turn cancels the job", async () => {
+  process.env.HOME = home;
+  const desktop = join(home, "Desktop");
+  symlinkSync(join(home, "Library", "Caches", "nothing.mp4"), join(desktop, "Clip.mp4"));
+  const h = harness({ prompt: "export to desktop" });
+  assert.equal((await h.call({ folder: "Desktop" })).json.saved, join(desktop, "Clip 2.mp4"));
+  assert.ok(!existsSync(join(home, "Library", "Caches", "nothing.mp4")), "nothing written through the link");
+  await h.call({ folder: "Desktop" });
+  await h.call({ folder: "Desktop" });
+  const fourth = await h.call({ folder: "Desktop" });
+  assert.equal(fourth.isError, true);
+  assert.match(fourth.json.refused, /already exported 3 videos/);
+  assert.equal(h.started.length, 3);
+  for (const f of ["Clip.mp4", "Clip 2.mp4", "Clip 3.mp4", "Clip 4.mp4"]) rmSync(join(desktop, f), { force: true });
+  // Stopped while rendering: the job is cancelled (the exporter removes its partial file).
+  const cancelled: Array<string> = [];
+  const jobs: Array<Job> = [];
+  const r = { access: "auto", turn: { prompt: "export to desktop" }, abort: new AbortController() };
+  const run = makeExportVideo({
+    textResult: (value: unknown, isError = false) => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], ...(isError ? { isError: true } : {}) }),
+    config: { dataDir },
+    askUser: () => Effect.succeed("allow"),
+    exporter: {
+      busy: () => false,
+      jobList: Effect.sync(() => jobs),
+      cancel: (id: string) => Effect.sync(() => void cancelled.push(id)),
+      start: (input: Record<string, any>) =>
+        Effect.sync(() => {
+          jobs.push({ id: "j", output: input.output, phase: "rendering", progress: 0.1, seconds: 6, width: 1, height: 1, fps: 30, quality: "standard" });
+          setTimeout(() => r.abort.abort(), 50);
+          return { jobId: "j" };
+        }),
+    },
+  } as any);
+  const v = { dir: project, session: { project: { name: "Clip", master: { loudness: { targetLufs: -16 } }, canvas: { width: 1080, height: 1350, fps: 30 }, tracks: [], media: [] } } };
+  const out = (await Effect.runPromise(run(r as any, v as any, { folder: "Desktop" }))) as any;
+  assert.equal(out.isError, true);
+  assert.match(out.content[0].text, /stopped, so the export was cancelled/);
+  assert.deepEqual(cancelled, ["j"]);
 });
 
 test("export_video: the tool, its labels and the prompt line", () => {
