@@ -11,6 +11,8 @@ export interface MediaAsk {
   readonly t?: unknown;
   readonly w?: unknown;
   readonly h?: unknown;
+  /** Asked while the preview plays: a proxy's picture will do (D212). */
+  readonly p?: unknown;
 }
 
 /** The media request in a message event, when it's one from a graphic's iframe (`frames`: their windows), else undefined. */

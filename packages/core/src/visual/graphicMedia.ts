@@ -12,7 +12,10 @@
 //   seq, id, t, w, h }), which fetches them from the server's GRAPHIC_MEDIA_PATH route and answers
 //   { uncut: "media-reply", seq, blob } (or error).
 // So preview == export as for the rest of a graphic; only while the preview plays is a picture not
-// come yet drawn as the nearest one already there (asks paced, one in flight per media and size). The CSP allows only that scheme for fetches
+// come yet drawn as the nearest one already there (asks paced, one in flight per media and size),
+// and asked with p: a video's may come from its preview proxy, smaller, which the reply says
+// ({ full: { width, height } }) and the graphic is given scaled up to that exact size (never handed
+// to an exact ask). The CSP allows only that scheme for fetches
 // and blob: images (the markers' pictures), still nothing from the network.
 
 /** The rasteriser's scheme for a graphic's media (export and render_frames): uncut-media://media/<id>?t=&w=&h=. */
@@ -34,6 +37,8 @@ export interface GraphicMediaRequest {
   readonly t: number;
   readonly w?: number;
   readonly h?: number;
+  /** The preview asks while it plays (p=1): a video's picture may come from its preview proxy, smaller (GraphicMediaPicture.full says the exact size). Never in the export. */
+  readonly preview?: true;
 }
 
 /** A media request from a URL's path id and query (t, w, h), or why not. Sizes are whole pixels 1–8192. */
@@ -50,7 +55,7 @@ export function parseGraphicMediaRequest(id: string, query: { readonly get: (nam
   const w = size("w");
   const h = size("h");
   if (w === null || h === null) return { problem: "w and h must be whole pixels from 1 to 8192" };
-  return { id, t, ...(w !== undefined ? { w } : {}), ...(h !== undefined ? { h } : {}) };
+  return { id, t, ...(w !== undefined ? { w } : {}), ...(h !== undefined ? { h } : {}), ...(query.get("p") === "1" ? { preview: true as const } : {}) };
 }
 
 /**
@@ -94,6 +99,7 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
   const KEEP = 24;
   const waiting = new Map();
+  const fulls = new WeakMap();
   let seq = 0;
   // Pictures asked of the host and not answered yet (the rasteriser asks when a frame is late).
   let pending = 0;
@@ -103,20 +109,25 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     if (e.source !== parent || !d || d.uncut !== "media-reply" || !waiting.has(d.seq)) return;
     const w = waiting.get(d.seq);
     waiting.delete(d.seq);
-    if (d.blob instanceof Blob) w.done(d.blob);
+    if (d.blob instanceof Blob) {
+      // A proxy's picture (asked while playing): given at the exact one's size.
+      const f = d.full;
+      if (f && f.width >= 1 && f.height >= 1 && f.width <= 8192 && f.height <= 8192) fulls.set(d.blob, { width: Math.round(f.width), height: Math.round(f.height) });
+      w.done(d.blob);
+    }
     else w.fail(new Error(String(d.error || "the media couldn't be loaded")));
   });
-  const load = (id, t, w, h) => {
+  const load = (id, t, w, h, preview) => {
     pending++;
-    const p = ask(id, t, w, h);
+    const p = ask(id, t, w, h, preview);
     p.then(() => pending--, () => pending--);
     return p;
   };
-  const ask = (id, t, w, h) => {
+  const ask = (id, t, w, h, preview) => {
     if (parent !== window) return new Promise((done, fail) => {
       const s = ++seq;
       waiting.set(s, { done, fail });
-      parent.postMessage({ uncut: "media", seq: s, id, t, w, h }, "*");
+      parent.postMessage({ uncut: "media", seq: s, id, t, w, h, ...(preview ? { p: true } : {}) }, "*");
     });
     const q = "t=" + t + (w ? "&w=" + w : "") + (h ? "&h=" + h : "");
     return fetch("${GRAPHIC_MEDIA_SCHEME}://media/" + encodeURIComponent(id) + "?" + q).then((r) => (r.ok ? r.blob() : r.text().then((m) => Promise.reject(new Error(m || "the media couldn't be loaded")))));
@@ -143,7 +154,7 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
   const PACE_BOUND = 5000;
   const issue = (r, job) => {
     r.busy = true;
-    const p = load(job.id, job.s, job.w, job.h);
+    const p = load(job.id, job.s, job.w, job.h, true);
     p.then(job.done, job.fail);
     let freed = false;
     const timer = setTimeout(() => free(), PACE_BOUND);
@@ -162,22 +173,29 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
     p.then(free, free);
   };
   const size = (v) => (typeof v === "number" && v >= 1 ? Math.min(8192, Math.round(v)) : 0);
+  // A blob's ImageBitmap; a proxy's picture scaled up to the exact one's size on the GPU (an
+  // OffscreenCanvas: createImageBitmap's own resize runs on the CPU and halved the preview's frame rate).
+  const picture = async (b) => {
+    const v = await createImageBitmap(b);
+    const f = fulls.get(b);
+    if (!f || typeof OffscreenCanvas === "undefined" || (v.width === f.width && v.height === f.height)) return v;
+    const c = new OffscreenCanvas(f.width, f.height);
+    const g = c.getContext("2d");
+    if (!g) return v;
+    g.drawImage(v, 0, 0, f.width, f.height);
+    v.close();
+    return c.transferToImageBitmap();
+  };
   const entry = (id, t, opts, paced) => {
     if (typeof id !== "string") throw new TypeError("uncut.frame(mediaId, seconds): mediaId is the media's id (project_read lists them)");
     const s = Math.max(0, Number(t) || 0);
     const w = size(opts && opts.width);
     const h = size(opts && opts.height);
     const run = id + "|" + w + "|" + h;
-    const k = run + "|" + s;
+    // A paced ask's picture may be its proxy's (smaller, then given at the exact size): never
+    // handed to an exact ask (stopped, a blob: URL), only drawn as the nearest one while it comes.
+    const k = run + "|" + s + (paced ? "|p" : "");
     let e = cache.get(k);
-    if (e && e.job && !paced) {
-      // Waiting behind a paced ask and now wanted exactly: asked at once.
-      const r = runs.get(run);
-      if (r && r.next === e.job) r.next = undefined;
-      const job = e.job;
-      e.job = undefined;
-      load(id, s, w, h).then(job.done, job.fail);
-    }
     if (!e) {
       if (paced) {
         let r = runs.get(run);
@@ -219,7 +237,7 @@ export const GRAPHIC_MEDIA_BOOT = `(() => {
       const preview = parent !== window;
       const paced = playing && preview;
       const e = entry(id, t, opts, paced);
-      const bitmap = (e.bitmap ??= e.blob.then((b) => createImageBitmap(b)).then((v) => (e.value = v)));
+      const bitmap = (e.bitmap ??= e.blob.then(picture).then((v) => (e.value = v)));
       if (!(paced || (warming && preview)) || e.value) return bitmap;
       const near = nearest(e);
       if (!near) return bitmap;

@@ -17,9 +17,10 @@ import { ServerConfig } from "../app/config.ts";
 import { which } from "../app/setup.ts";
 import { capsOf } from "./exporter/ffmpeg.ts";
 import { graphicMediaSource, type GraphicMediaSource } from "./graphicMedia.ts";
+import { Proxies } from "../media/proxies.ts";
 import { Projects } from "../project/projects.ts";
 
-const headers = { "access-control-allow-origin": "*", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+const headers = { "access-control-allow-origin": "*", "access-control-expose-headers": "x-uncut-full", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const failed = (status: number, message: string) => HttpServerResponse.text(message, { status, headers });
 
 /** How long the preview's source stays open with nothing asked of it (its decoders and cache go with it). */
@@ -75,10 +76,13 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const projects = yield* Projects;
+    const proxies = yield* Proxies;
     const preview = previewSource(async (dir, bin, media) => {
       const caps = await capsOf(bin);
       const mediaPath = (m: Media) => (isAbsolute(m.path) ? m.path : resolve(dir, m.path));
-      return graphicMediaSource({ bin, media, mediaPath, videotoolbox: caps.videotoolboxDecode });
+      // While the preview plays (p=1), a video's pictures come from its proxy (D212) once made.
+      const proxyPath = (m: Media) => Effect.runPromise(proxies.proxyFor(m.id));
+      return graphicMediaSource({ bin, media, mediaPath, videotoolbox: caps.videotoolboxDecode, proxyPath });
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => preview.close()));
     const ffmpeg = async () => {
@@ -109,7 +113,9 @@ export const layer = Layer.unwrap(
         if (!bin) return failed(503, "ffmpeg isn't installed, so project media can't be drawn in graphics");
         const got = yield* Effect.promise(() => preview.use(open.dir, bin, (open.project as Project).media, (src) => src.picture(ask)).then((p) => ({ p }), (error: Error) => ({ error: error.message })));
         if ("error" in got) return failed(404, got.error);
-        return HttpServerResponse.uint8Array(new Uint8Array(got.p.bytes), { contentType: got.p.type, headers });
+        // A proxy's picture: the size the graphic is shown it at (the exact one's), x-uncut-full: <w>x<h>.
+        const full = got.p.full ? { "x-uncut-full": `${got.p.full.width}x${got.p.full.height}` } : {};
+        return HttpServerResponse.uint8Array(new Uint8Array(got.p.bytes), { contentType: got.p.type, headers: { ...headers, ...full } });
       }),
     );
   }),

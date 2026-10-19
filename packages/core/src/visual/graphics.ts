@@ -200,7 +200,9 @@ export function graphicDocument(html: string, canvas: Pick<Canvas, "width" | "he
       next = undefined;
       const playing = d.playing === true;
       window.__uncutMedia.begin({ playing, warm: !playing });
-      await bounded(window.__uncutRender(d.t, d.info))
+      // Playing: nothing waits for frames after render(t) (that's the rasteriser's capture), the
+      // next ask comes with the next frame; two animation frames a render capped the graphic at 30 fps.
+      await bounded(window.__uncutRender(d.t, d.info, playing))
         .then(async () => {
           // Stopped: drawn with the nearest pictures while the exact ones came; now with them.
           const missed = window.__uncutMedia.missed();

@@ -61,12 +61,13 @@ export const graphicUrl = (src: string) => {
   return u.href;
 };
 /** D290: a picture of a media item for a graphic in the preview (its frame at t seconds, fitting w × h); fetched by this page, never shown to the graphic. */
-export const graphicMediaUrl = (id: string, t: number, w?: number, h?: number) => {
+export const graphicMediaUrl = (id: string, t: number, w?: number, h?: number, preview?: boolean) => {
   const url = serverUrl(GRAPHIC_MEDIA_PATH, id);
   if (!url) return undefined;
   const u = new URL(url);
   u.searchParams.set("t", String(t));
   if (w) u.searchParams.set("w", String(Math.round(w)));
   if (h) u.searchParams.set("h", String(Math.round(h)));
+  if (preview) u.searchParams.set("p", "1");
   return u.href;
 };

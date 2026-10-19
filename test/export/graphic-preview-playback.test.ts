@@ -11,6 +11,10 @@
 //   the footage has come, and the footage's frame advances;
 // - at most one picture of the clip is asked for at a time;
 // - stopped, the frame drawn is the exact frame asked for, never the black box on the way.
+// And smooth (the footage answered at once, as from a proxy): while playing, a render for about
+// every frame posted (it no longer waits two animation frames after each, which capped it at 30 a
+// second), the footage asked with p (a proxy's picture will do) and a smaller picture given to the
+// graphic at the exact one's size; stopped, the exact picture asked for and drawn.
 // Skipped without Chrome or ffmpeg.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -72,6 +76,51 @@ window.render = async (t) => {
 };
 </script>`;
 
+// Draws the picture at its own size (no width given to drawImage): a proxy's smaller picture must
+// come at the exact one's size or half the frame would be empty.
+const NATURAL = `<canvas id="c" width="${W}" height="${H}"></canvas>
+<script>
+const ctx = document.getElementById("c").getContext("2d");
+window.render = async (t) => {
+  ctx.clearRect(0, 0, ${W}, ${H});
+  const f = await uncut.frame("clip", 0.1 + t, { width: ${W} });
+  ctx.drawImage(f, 0, 0);
+  const [r] = ctx.getImageData(${(W * 3) / 4}, ${H / 2}, 1, 1).data;
+  parent.postMessage({ uncut: "probe", t, w: f.width, h: f.height, r }, "*");
+};
+</script>`;
+
+// As apps/web answers: asked with p (playing), a half-size picture and the exact size (x-uncut-full); else the exact one. At once.
+const proxyHost = `<!doctype html><body style="margin:0"><iframe id="f" sandbox="allow-scripts" style="border:0;width:${W}px;height:${H}px" src="/natural"></iframe><script>
+const f = document.getElementById("f");
+window.log = { probes: [], proxied: 0, exact: 0 };
+addEventListener("message", (e) => {
+  const d = e.data;
+  if (d && d.uncut === "probe") return log.probes.push(d);
+  if (!d || d.uncut !== "media" || e.source !== f.contentWindow) return;
+  const target = e.source;
+  if (d.p) log.proxied++; else log.exact++;
+  fetch("/fast/media/" + d.id + "?t=" + d.t + "&w=" + (d.p ? ${W / 2} : d.w)).then(async (r) => {
+    const blob = await r.blob();
+    target.postMessage({ uncut: "media-reply", seq: d.seq, blob, ...(d.p ? { full: { width: ${W}, height: ${H} } } : {}) }, "*");
+  });
+});
+const post = (frame, playing) => f.contentWindow.postMessage({ uncut: "render", seq: frame, t: frame / ${FPS}, playing, info: { frame, fps: ${FPS}, duration: 600, width: ${W}, height: ${H}, props: {} } }, "*");
+window.play = (secs) => new Promise((done) => {
+  let sent = -1, posts = 0;
+  const t0 = performance.now();
+  const tick = () => {
+    const el = (performance.now() - t0) / 1000;
+    const frame = Math.floor(el * ${FPS});
+    if (frame !== sent) { post((sent = frame), true); posts++; }
+    if (el < secs) requestAnimationFrame(tick);
+    else done({ last: sent, posts });
+  };
+  requestAnimationFrame(tick);
+});
+window.stop = (frame) => post(frame, false);
+</script></body>`;
+
 const host = (src: string) => `<!doctype html><body style="margin:0"><iframe id="f" sandbox="allow-scripts" style="border:0;width:${W}px;height:${H}px" src="${src}"></iframe><script>
 const f = document.getElementById("f");
 window.log = { probes: [], samples: [], rendered: [], asks: 0, open: 0, maxOpen: 0 };
@@ -124,17 +173,21 @@ before(async () => {
   source = graphicMediaSource({ bin, media: () => media, mediaPath: (m) => m.path });
   const doc = graphicDocument(GRAPHIC, { width: W, height: H });
   const hang = graphicDocument(HANG, { width: W, height: H });
+  const natural = graphicDocument(NATURAL, { width: W, height: H });
   server = createServer(async (req, res) => {
     const u = new URL(req.url!, "http://x");
     if (u.pathname === "/") return void res.writeHead(200, { "content-type": "text/html" }).end(host("/doc"));
     if (u.pathname === "/hang-host") return void res.writeHead(200, { "content-type": "text/html" }).end(host("/hang"));
     if (u.pathname === "/doc") return void res.writeHead(200, { "content-type": "text/html" }).end(doc);
     if (u.pathname === "/hang") return void res.writeHead(200, { "content-type": "text/html" }).end(hang);
-    const ask = parseGraphicMediaRequest(u.pathname.slice("/media/".length), u.searchParams);
+    if (u.pathname === "/proxy-host") return void res.writeHead(200, { "content-type": "text/html" }).end(proxyHost);
+    if (u.pathname === "/natural") return void res.writeHead(200, { "content-type": "text/html" }).end(natural);
+    const fast = u.pathname.startsWith("/fast/");
+    const ask = parseGraphicMediaRequest(u.pathname.slice((fast ? "/fast/media/" : "/media/").length), u.searchParams);
     if ("problem" in ask) return void res.writeHead(400).end(ask.problem);
     const p = await source.picture(ask);
-    // A 4K clip's frame: longer than a preview frame to come.
-    await new Promise((r) => setTimeout(r, LATE_MS));
+    // A 4K clip's frame: longer than a preview frame to come (a proxy's: at once).
+    if (!fast) await new Promise((r) => setTimeout(r, LATE_MS));
     res.writeHead(200, { "content-type": p.type }).end(p.bytes);
   }).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -248,6 +301,40 @@ test("a render(t) that never settles doesn't freeze the preview: the asks after 
     await post(1);
     await post(2);
     await p.waitForFunction(() => (window as unknown as { log: Log }).log.probes.includes(2), { timeout: 15_000 });
+  } finally {
+    await p.close();
+  }
+});
+
+test("smooth: footage answered at once plays a render about every frame, a proxy's picture at the exact size, the stop frame exact", { skip, timeout: 60_000 }, async () => {
+  type ProxyLog = { probes: Array<{ t: number; w: number; h: number; r: number }>; proxied: number; exact: number };
+  const p = await browser.newPage();
+  await p.goto(`http://127.0.0.1:${port}/proxy-host`);
+  try {
+    await p.waitForFunction(() => (window as unknown as { log?: ProxyLog }).log !== undefined);
+    await new Promise((r) => setTimeout(r, 300));
+    await p.evaluate(() => (window as unknown as { stop: (f: number) => void }).stop(0));
+    await p.waitForFunction(() => (window as unknown as { log: ProxyLog }).log.probes.length > 0, { timeout: 10_000 });
+    const before = await p.evaluate(() => (window as unknown as { log: ProxyLog }).log.probes.length);
+    const { last, posts } = await p.evaluate(() => (window as unknown as { play: (s: number) => Promise<{ last: number; posts: number }> }).play(2));
+    const played = await p.evaluate(() => (window as unknown as { log: ProxyLog }).log);
+    const renders = played.probes.slice(before);
+    // About one render per frame posted (a ratio, not a rate: a slow machine posts fewer). Waiting
+    // two animation frames after each render held it to at most half.
+    assert.ok(renders.length >= 0.65 * posts, `${renders.length} renders for ${posts} frames posted`);
+    assert.ok(played.proxied > 0, "no picture was asked with p while playing");
+    // The proxy's half-size picture is given at the exact size: the frame's right half is footage.
+    for (const r of renders) assert.deepEqual([r.w, r.h], [W, H], `a ${r.w}×${r.h} picture at t ${r.t}`);
+    const empty = renders.filter((r) => r.r < 12).length;
+    assert.equal(empty, 0, `${empty} renders left the frame's right half empty`);
+    // Stopped: the exact picture asked for (never the proxy's from the cache) and drawn.
+    const exactBefore = played.exact;
+    await p.evaluate((f) => (window as unknown as { stop: (f: number) => void }).stop(f), last);
+    const n = Math.floor((0.1 + last / FPS) * CLIP_FPS + 1e-6);
+    await p.waitForFunction((m) => { const l = (window as unknown as { log: ProxyLog }).log; const q = l.probes.at(-1)!; return Math.round((q.r - 16) / 2) === m && l.exact > 0; }, { timeout: 5_000 }, n).catch(() => {});
+    const stopped = await p.evaluate(() => (window as unknown as { log: ProxyLog }).log);
+    assert.ok(stopped.exact > exactBefore, "the stop frame's exact picture wasn't asked for");
+    assert.equal(decode(stopped.probes.at(-1)!.r), n, "the frame playback stopped on isn't the exact one");
   } finally {
     await p.close();
   }

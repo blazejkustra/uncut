@@ -10,6 +10,12 @@
 //   frame that starts at or before t): on a constant-rate file that's frame floor(t × fps); a
 //   variable-rate one (its r_frame_rate and avg_frame_rate differ) has its frames' times read once
 //   with ffprobe, and the frame is found among them, so a fresh seek and a run read on agree.
+//   A decoder keeps the frames it read lately (RECENT_BYTES), so an ask just behind it (the
+//   preview's paced asks come at uneven strides, and a read-ahead may pass the next one) is
+//   answered from them instead of a new decoder's seek (250-400 ms on 4K HEVC).
+//   Asked while the preview plays (req.preview), a video with a preview proxy (D212) is read from
+//   the proxy instead: the same frame, at most its size (it decodes in software, a seek in 35 ms),
+//   saying the exact picture's size (full) for the graphic to be given it at. Never the export.
 //   Requests for one file and size take turns (one queue each); at most DECODERS decoders are open,
 //   and only an idle one is ever stopped for another (a busy one is waited for), so many graphics
 //   or sizes at once queue rather than evict each other. Nothing starts once the source is closed.
@@ -35,6 +41,8 @@ export interface GraphicMediaPicture {
   readonly height: number;
   /** A video's frame index (for tests and the cache). */
   readonly frame?: number;
+  /** A preview picture from the media's proxy (smaller than the exact one): the exact one's size, which the graphic is shown it at. */
+  readonly full?: { readonly width: number; readonly height: number };
 }
 
 export interface GraphicMediaSource {
@@ -155,6 +163,8 @@ interface Decoder {
   readonly child: ChildProcess;
   next: number;
   last?: { readonly n: number; readonly raw: Buffer };
+  /** The frames it read lately (by index, oldest first), at most RECENT_BYTES: an ask just behind it (a read-ahead overshot) is answered from here, not by a new decoder. */
+  readonly recent: Map<number, Buffer>;
   readonly read: () => Promise<Buffer | undefined>;
   idle?: NodeJS.Timeout;
 }
@@ -200,14 +210,20 @@ const READ_AHEAD_S = 3;
 const DECODERS = 4;
 const IDLE_MS = 20_000;
 const CACHE_BYTES = 192 * 1024 * 1024;
+/** How many bytes of the frames a decoder read lately it keeps (about 5 frames at 1920 × 1080, 11 at 1280 × 720). */
+const RECENT_BYTES = 32 * 1024 * 1024;
+/** How many frames of width × height a decoder keeps behind it (at least 1). */
+const recentFrames = (width: number, height: number) => Math.max(1, Math.floor(RECENT_BYTES / (width * height * 3)));
 
 /**
  * The source of media pictures for graphics. `media` gives the project's media as they are now
  * (the preview's project changes), `mediaPath` where each one's file is; `videotoolbox` decodes on
  * the Mac's media engine (ffmpeg caps.videotoolboxDecode).
  */
-export function graphicMediaSource(opts: { readonly bin: string; readonly media: () => ReadonlyArray<Media>; readonly mediaPath: (m: Media) => string; readonly videotoolbox?: boolean }): GraphicMediaSource {
+export function graphicMediaSource(opts: { readonly bin: string; readonly media: () => ReadonlyArray<Media>; readonly mediaPath: (m: Media) => string; readonly videotoolbox?: boolean; readonly proxyPath?: (m: Media) => Promise<string | undefined> }): GraphicMediaSource {
   const infos = new Map<string, Promise<VideoInfo>>();
+  // Proxy files read for preview pictures (decoded in software).
+  const soft = new Set<string>();
   const decoders = new Map<string, Decoder>();
   // One queue per file and size: its requests take turns, so only one ever reads or restarts its decoder.
   const queues = new Map<string, { tail: Promise<void>; users: number }>();
@@ -289,12 +305,14 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
   const startDecoder = (key: string, path: string, info: VideoInfo, width: number, height: number, from: number): Decoder => {
     // Seek half a frame early: ffmpeg's exact seek gives the first frame at or after it, frame `from`.
     const seek = from > 0 ? ["-ss", seekTo(info, from).toFixed(6)] : [];
+    // A proxy (720p H.264, short GOP) decodes faster in software: no media-engine start-up at each seek (35 ms, not 110).
+    const hardware = opts.videotoolbox && !soft.has(path);
     const args = [
       "-hide_banner",
       "-nostdin",
       "-v",
       "error",
-      ...(opts.videotoolbox ? ["-hwaccel", "videotoolbox"] : []),
+      ...(hardware ? ["-hwaccel", "videotoolbox"] : []),
       ...seek,
       "-i",
       path,
@@ -316,7 +334,7 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
     const child = spawn(opts.bin, localInputs(opts.bin, args), { env: withoutApiKey(process.env), stdio: ["ignore", "pipe", "ignore"] });
     child.on("error", () => {});
     started++;
-    const d: Decoder = { child, next: from, read: frameReader(child.stdout!, width * height * 3) };
+    const d: Decoder = { child, next: from, recent: new Map(), read: frameReader(child.stdout!, width * height * 3) };
     decoders.set(key, d);
     return d;
   };
@@ -331,6 +349,9 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
       if (closed) throw closedError();
       let d = decoders.get(key);
       if (d && d.last?.n === n) return { raw: d.last.raw, n };
+      // Just read on the way to a later frame (a read-ahead went past it while this ask waited its turn).
+      const kept = d?.recent.get(n);
+      if (kept) return { raw: kept, n };
       const ahead = Math.max(30, Math.ceil(READ_AHEAD_S * info.fps));
       if (!d || n < d.next || n - d.next > ahead) {
         if (readAhead) throw new Error("superseded");
@@ -348,7 +369,13 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
       while (decoder.next <= n) {
         const raw = await decoder.read();
         if (!raw) break;
-        decoder.last = { n: decoder.next, raw: Buffer.from(raw) };
+        const copy = Buffer.from(raw);
+        decoder.last = { n: decoder.next, raw: copy };
+        decoder.recent.set(decoder.next, copy);
+        for (const k of decoder.recent.keys()) {
+          if (decoder.recent.size * copy.length <= RECENT_BYTES) break;
+          decoder.recent.delete(k);
+        }
         decoder.next++;
       }
       // Only close() stops a decoder while its queue is busy.
@@ -398,45 +425,64 @@ export function graphicMediaSource(opts: { readonly bin: string; readonly media:
       const key = `${path}|${req.w ?? 0}x${req.h ?? 0}`;
       return named(cache.get(key) ?? remember(key, imagePicture(path, req)));
     }
+    const probe = (file: string) => {
+      let info = infos.get(file);
+      if (!info) {
+        info = probeVideo(opts.bin, file);
+        infos.set(file, info);
+        info.catch(() => infos.delete(file));
+      }
+      return info;
+    };
     return named(
       (async () => {
-        let info = infos.get(path);
-        if (!info) {
-          info = probeVideo(opts.bin, path);
-          infos.set(path, info);
-          info.catch(() => infos.delete(path));
-        }
-        const v = await info;
-        const { width, height } = graphicMediaSize(v.width, v.height, req);
-        const n = frameAt(v, req.t);
-        const decode = (k: number, ahead = false) => videoFrame(path, v, width, height, k, ahead).then(({ raw, n: shown }) => ({ bytes: bmpOf(raw, width, height), type: "image/bmp" as const, width, height, frame: shown }));
-        const frameKey = (k: number) => `${path}|${width}x${height}|${k}`;
-        const key = frameKey(n);
-        let got = cache.get(key);
-        if (got) {
-          cache.delete(key);
-          cache.set(key, got);
-        } else got = remember(key, decode(n));
-        // The next frame the graphic will likely ask for (the stride of its last two asks: the
-        // export steps through its frames), decoded while this one is drawn.
-        const run = `${path}|${width}x${height}`;
-        const stride = n - (lastAsked.get(run) ?? n - 1);
-        lastAsked.set(run, n);
-        const ahead = n + (stride >= 1 && stride <= Math.ceil(v.fps) ? stride : 1);
-        if (!v.frames || ahead < v.frames)
-          got.then(
-            () => {
-              // Only by reading on: a read-ahead never starts a decoder (a cache hit far back would).
-              const d = decoders.get(run);
-              const reads = !!d && ahead >= d.next && ahead - d.next <= Math.max(30, Math.ceil(READ_AHEAD_S * v.fps));
-              // Not while a request waits for a decoder to go idle (this one would keep it busy).
-              if (!closed && reads && !waiting.length && !cache.has(frameKey(ahead))) remember(frameKey(ahead), decode(ahead, true)).catch(() => {});
-            },
-            () => {},
-          );
-        return got;
+        const exact = await probe(path);
+        const full = graphicMediaSize(exact.width, exact.height, req);
+        // The preview while it plays (req.preview): from the media's proxy when it has one (the
+        // same frames, frame for frame, at most PROXY_SIZE long), no bigger than the exact picture.
+        // Stopped, the export and render_frames: always the original.
+        const proxy = req.preview && opts.proxyPath ? await opts.proxyPath(media).catch(() => undefined) : undefined;
+        const v = proxy ? await probe(proxy).catch(() => undefined) : undefined;
+        if (proxy && v) soft.add(proxy);
+        // A proxy that can't be read (cut short, replaced meanwhile): the original's.
+        return v && proxy ? videoPicture(proxy, v, graphicMediaSize(v.width, v.height, { w: full.width, h: full.height }), req, full).catch(() => videoPicture(path, exact, full, req)) : videoPicture(path, exact, full, req);
       })(),
     );
+  };
+
+  /** Video `path`'s frame at req.t at `size` (decoded by the decoder of that file and size); `full`: the exact picture's size, when this one's from a proxy. */
+  const videoPicture = (path: string, v: VideoInfo, size: { readonly width: number; readonly height: number }, req: GraphicMediaRequest, full?: { readonly width: number; readonly height: number }): Promise<GraphicMediaPicture> => {
+    const { width, height } = size;
+    const n = frameAt(v, req.t);
+    const shownAs = full && (full.width !== width || full.height !== height) ? { full } : {};
+    const decode = (k: number, ahead = false) => videoFrame(path, v, width, height, k, ahead).then(({ raw, n: shown }): GraphicMediaPicture => ({ bytes: bmpOf(raw, width, height), type: "image/bmp" as const, width, height, frame: shown, ...shownAs }));
+    const frameKey = (k: number) => `${path}|${width}x${height}|${k}`;
+    const key = frameKey(n);
+    let got = cache.get(key);
+    if (got) {
+      cache.delete(key);
+      cache.set(key, got);
+    } else got = remember(key, decode(n));
+    // The next frame the graphic will likely ask for (the stride of its last two asks: the
+    // export steps through its frames), decoded while this one is drawn.
+    const run = `${path}|${width}x${height}`;
+    const stride = n - (lastAsked.get(run) ?? n - 1);
+    lastAsked.set(run, n);
+    // No further than the decoder keeps behind it: the preview's paced asks come at uneven
+    // strides, and one landing short of a far read-ahead is answered from its recent frames.
+    const ahead = n + (stride >= 1 && stride <= Math.ceil(v.fps) ? Math.min(stride, recentFrames(width, height)) : 1);
+    if (!v.frames || ahead < v.frames)
+      got.then(
+        () => {
+          // Only by reading on: a read-ahead never starts a decoder (a cache hit far back would).
+          const d = decoders.get(run);
+          const reads = !!d && ahead >= d.next && ahead - d.next <= Math.max(30, Math.ceil(READ_AHEAD_S * v.fps));
+          // Not while a request waits for a decoder to go idle (this one would keep it busy).
+          if (!closed && reads && !waiting.length && !cache.has(frameKey(ahead))) remember(frameKey(ahead), decode(ahead, true)).catch(() => {});
+        },
+        () => {},
+      );
+    return got;
   };
 
   return {

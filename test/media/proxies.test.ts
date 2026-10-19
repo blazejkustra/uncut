@@ -45,9 +45,17 @@ test("D212: 4K, HEVC and heavy long-GOP footage gets a proxy; light or intra foo
 });
 
 test("D212: only the preview reads proxies: export, render_frames and analysis use the original", () => {
-  for (const dir of ["apps/server/src/export", "apps/server/src/agent", "apps/server/src/analysis"]) {
-    for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts"))) assert.doesNotMatch(readFileSync(join(dir, f), "utf8"), /proxies\.ts|proxyDir|\.cache\/proxies|PROXY_PATH/, `${dir}/${f}`);
+  // graphicMediaRoute.ts is the preview's route for graphics' footage (a playing preview's asks may
+  // be answered from a proxy, which graphicMedia.ts reads when given a proxyPath); the export's and
+  // render_frames' media sources are never given one.
+  const preview = new Set(["apps/server/src/export/graphicMediaRoute.ts", "apps/server/src/export/graphicMedia.ts"]);
+  for (const dir of ["apps/server/src/export", "apps/server/src/export/exporter", "apps/server/src/agent", "apps/server/src/analysis"]) {
+    for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
+      const text = readFileSync(join(dir, f), "utf8");
+      if (!preview.has(`${dir}/${f}`)) assert.doesNotMatch(text, /proxies\.ts|proxyDir|\.cache\/proxies|PROXY_PATH|proxyPath/, `${dir}/${f}`);
+    }
   }
+  for (const f of ["apps/server/src/export/exporter/runJob.ts", "apps/server/src/export/exporter/frames.ts"]) assert.match(readFileSync(f, "utf8"), /graphicMediaSource\(\{ bin, media: \(\) => project\.media, mediaPath, videotoolbox: caps\.videotoolboxDecode \}\)/, `${f}: its graphics' media from the originals`);
 });
 
 const until = async (check: () => boolean, ms = 60000) => {
