@@ -7,6 +7,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   BUNDLE_ID,
@@ -253,13 +256,25 @@ test("the step-aside watcher shows the installing dialog, waits for ShipIt to ex
   const w = stepAsideWatcher(4242, "/Applications/My Uncut.app", message);
   assert.equal(w.file, "/bin/sh");
   assert.deepEqual(w.args.slice(2), ["uncut-update-wait", "4242", "/Applications/My Uncut.app", message]);
-  assert.match(w.args[1]!, /osascript .*display dialog \(item 1 of argv\).*giving up after 90' -e 'end run' "\$3"/, "the message goes in as an argument, never spliced into the script");
+  assert.match(w.args[1]!, /osascript' .*display dialog \(item 1 of argv\).*giving up after 90' -e 'end run' "\$3"/, "the message goes in as an argument, never spliced into the script");
   assert.match(w.args[1]!, /kill "\$d"/, "the dialog closes once ShipIt is done");
-  // Run the script with a gone pid, the dialog swapped for one that prints its message and `open`
-  // swapped for echo: it shows the message and opens right away, the path intact.
-  const script = w.args[1]!.replace(/\/usr\/bin\/osascript .*? "\$3" >\/dev\/null 2>&1/, 'printf "%s|" "$3"').replace("exec /usr/bin/open", "echo");
-  const r = spawnSync("/bin/sh", ["-c", script, "x", "999999", "/Applications/My Uncut.app", "Installing it's \"quoted\""], { encoding: "utf8", timeout: 10_000 });
-  assert.equal(r.stdout.trim(), "Installing it's \"quoted\"|/Applications/My Uncut.app");
+  assert.match(w.args[1]!, /^'\/usr\/bin\/osascript' /, "the real dialog by absolute path");
+  // Run it with a fake osascript that logs its message, a fake ShipIt that exits only once the
+  // dialog is up (the watcher kills the dialog right after ShipIt goes, so a fake that never waited
+  // could be killed before it wrote anything), and `open` swapped for echo: the path stays intact.
+  const dir = mkdtempSync(join(tmpdir(), "uncut-watcher-"));
+  try {
+    const log = join(dir, "dialog's.log");
+    const fake = join(dir, "osa script");
+    writeFileSync(fake, `#!/bin/sh\nfor a; do m="$a"; done\nprintf '%s|' "$m" > "$UNCUT_TEST_LOG"\n`);
+    chmodSync(fake, 0o755);
+    const watcher = stepAsideWatcher(0, "/Applications/My Uncut.app", "x", fake).args[1]!.replace("exec /usr/bin/open", "echo");
+    const shipIt = 'n=0; while [ ! -s "$UNCUT_TEST_LOG" ] && [ "$n" -lt 400 ]; do sleep 0.05; n=$((n+1)); done';
+    const r = spawnSync("/bin/sh", ["-c", `/bin/sh -c '${shipIt}' & /bin/sh -c "$0" x $! "$1" "$2"`, watcher, "/Applications/My Uncut.app", "Installing it's \"quoted\""], { encoding: "utf8", timeout: 30_000, env: { ...process.env, UNCUT_TEST_LOG: log } });
+    assert.equal(readFileSync(log, "utf8") + r.stdout.trim(), "Installing it's \"quoted\"|/Applications/My Uncut.app");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the step-aside dialog names the version ShipIt installs (from the staged bundle) and says Uncut reopens by itself", () => {

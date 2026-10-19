@@ -272,10 +272,10 @@ export function installingMessage(version: string | undefined): string {
 /**
  * The detached watcher: shows `message` in a small dialog (osascript, no permission needed; it
  * gives up on its own after the wait), waits (bounded) for ShipIt to exit, closes the dialog and
- * opens the bundle (a no-op focus if ShipIt relaunched it).
+ * opens the bundle (a no-op focus if ShipIt relaunched it). `osascript` is swappable for tests.
  */
-export function stepAsideWatcher(pid: number, bundlePath: string, message: string = installingMessage(undefined)): { readonly file: string; readonly args: readonly string[] } {
-  const dialog = `/usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "Uncut" buttons {"OK"} default button 1 giving up after ${STEP_ASIDE_WAIT_S}' -e 'end run' "$3" >/dev/null 2>&1 & d=$!`;
+export function stepAsideWatcher(pid: number, bundlePath: string, message: string = installingMessage(undefined), osascript = "/usr/bin/osascript"): { readonly file: string; readonly args: readonly string[] } {
+  const dialog = `'${osascript.replace(/'/g, `'\\''`)}' -e 'on run argv' -e 'display dialog (item 1 of argv) with title "Uncut" buttons {"OK"} default button 1 giving up after ${STEP_ASIDE_WAIT_S}' -e 'end run' "$3" >/dev/null 2>&1 & d=$!`;
   const script = `${dialog}; n=0; while kill -0 "$1" 2>/dev/null && [ "$n" -lt ${STEP_ASIDE_WAIT_S} ]; do sleep 1; n=$((n+1)); done; kill "$d" 2>/dev/null; sleep 1; exec /usr/bin/open "$2"`;
   return { file: "/bin/sh", args: ["-c", script, "uncut-update-wait", String(pid), bundlePath, message] };
 }
