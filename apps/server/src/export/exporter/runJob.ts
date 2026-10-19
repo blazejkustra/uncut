@@ -16,6 +16,26 @@ import { graphicMediaSource, type GraphicMediaSource } from "../graphicMedia.ts"
 import { track } from "../../telemetry/telemetry.ts";
 import type { EXPORT_FAIL_CODES } from "../../telemetry/events.ts";
 
+/** How often a step's frame count goes to the dialog, at most (ms). */
+export const STEP_MS = 500;
+
+type ExportStep = NonNullable<ExportJob["step"]>;
+
+/**
+ * What the preparing job is doing (the dialog's line): a step without a count said at once, a
+ * step's frames at most every STEP_MS (its first and last always), so a graphic drawn for minutes
+ * shows it's moving without flooding the socket.
+ */
+export const stepReporter = (report: (step: ExportStep) => void, now: () => number = Date.now) => {
+  let at = -Infinity;
+  return (kind: ExportStep["kind"], done?: number, total?: number) => {
+    const t = now();
+    if (done !== undefined && done !== total && done !== 1 && t - at < STEP_MS) return;
+    at = t;
+    report({ kind, ...(done !== undefined ? { done } : {}), ...(total !== undefined ? { total } : {}) });
+  };
+};
+
 export interface RunJobCtx {
   readonly patch: (id: string, change: Partial<ExportJob>) => void;
   readonly ffmpegBin: () => Promise<string | undefined>;
@@ -36,6 +56,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
     let stage: (typeof EXPORT_FAIL_CODES)[number] = "no-ffmpeg";
     let usedEncoder: "hardware" | "software" | undefined;
     const keepTemp = process.env.UNCUT_KEEP_EXPORT_TEMP === "1";
+    const step = stepReporter((s) => patch(job.id, { step: s }));
     try {
       const bin = await ffmpegBin();
       stage = "measure";
@@ -44,6 +65,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       // the job (export.start answers at once; the analysis queue waits for exports), then planned again.
       const needed = [...new Set([...duckMediaIds(project), ...denoiseMediaIds(project)])];
       if (needed.some((id) => !cachedEnvelopes.has(id))) {
+        step("sound");
         const envelopes = await duckEnvelopes(bin, job.projectDir, project, true, signal);
         const again = replan(envelopes);
         if (!("problem" in again)) {
@@ -66,11 +88,11 @@ export const makeRunJob = (ctx: RunJobCtx) => {
       rasterizer = await startRasterizer(command, undefined, { media: graphicMedia.file });
       const onAbort = () => void rasterizer?.close();
       signal.addEventListener("abort", onAbort, { once: true });
-      const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css, { bin, major: caps.major });
+      const { background, rasters } = await rasterise(rasterizer, plan, project, mediaPath, temp, signal, css, { bin, major: caps.major }, (done, total) => step("graphics", done, total));
       // Shader effects (D213): their frames drawn with the rasteriser's WebGPU, kept for the encode.
       const untagged = await untaggedFiles(bin, plan, signal);
       stage = "shader";
-      const shaded = await shadeLayers(rasterizer, bin, plan, { caps, untagged }, temp, signal);
+      const shaded = await shadeLayers(rasterizer, bin, plan, { caps, untagged }, temp, signal, (done, total) => step("shaders", done, total));
       signal.removeEventListener("abort", onAbort);
       await rasterizer.close();
       rasterizer = undefined;
@@ -78,6 +100,7 @@ export const makeRunJob = (ctx: RunJobCtx) => {
 
       // Loudness (D87): one gain to the target before the master limiter (D86), checked through it
       // when it will work; with the limiter bypassed, two-pass loudnorm (exportPlan planLoudness).
+      if (job.targetLufs !== undefined) step("loudness");
       const { loudness, loudnorm } =
         job.targetLufs === undefined
           ? {}

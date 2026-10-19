@@ -80,7 +80,11 @@ const fresh = (name: string) => {
 test("a streamed layer is one lossless video: every frame, each the PNG path's frame, alpha exact", { skip, timeout: 180000 }, async () => {
   const plan = planOf();
   const dir = fresh("one-video");
-  const { rasters } = await rasterise(raster!, plan, project, () => "", dir, new AbortController().signal, undefined, { bin: FFMPEG });
+  const heard: Array<[number, number]> = [];
+  const { rasters } = await rasterise(raster!, plan, project, () => "", dir, new AbortController().signal, undefined, { bin: FFMPEG }, (done, total) => heard.push([done, total]));
+  // Each streamed frame heard as done of total (the export dialog's "frame 312 of 1680").
+  assert.equal(heard.length, FRAMES);
+  assert.deepEqual(heard.at(-1), [FRAMES, FRAMES]);
   const layer = plan.visuals.find((l) => l.kind === "graphic")!;
   const out = rasters.get(layer);
   assert.ok(out?.kind === "video", `streamed into one video, not ${out?.kind}`);

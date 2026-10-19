@@ -48,6 +48,12 @@ export const ExportJob = Schema.Struct({
   targetLufs: Schema.optional(Schema.Number),
   phase: Schema.Literals(["queued", "preparing", "rendering", "done", "failed", "cancelled"]),
   progress: Schema.Number,
+  /**
+   * What a preparing job is doing now, for the dialog: measuring the sound, drawing the graphics
+   * (frame `done` of `total`, which can take minutes: a heavy graphic with motion blur), drawing the
+   * shader effects (the same), or measuring the loudness. Absent before the first step.
+   */
+  step: Schema.optional(Schema.Struct({ kind: Schema.Literals(["sound", "graphics", "shaders", "loudness"]), done: Schema.optional(Schema.Number), total: Schema.optional(Schema.Number) })),
   etaSeconds: Schema.optional(Schema.Number),
   width: Schema.Number,
   height: Schema.Number,

@@ -25,7 +25,7 @@ import { usePlayback } from "../preview/playback.ts";
 import { findItem } from "../timeline/edit.ts";
 import { NumberField } from "../inspector/fields.tsx";
 import { effectiveRange, type RangeKind } from "./exportRange.ts";
-import { loudnessCards, fileName, baseName, dirName, folderName, fpsText, eta, ACTIVE, QUALITIES, ENCODER_NAMES, RANGE_KINDS } from "./exportDialog/format.ts";
+import { loudnessCards, fileName, baseName, dirName, folderName, fpsText, eta, preparingStatus, ACTIVE, QUALITIES, ENCODER_NAMES, RANGE_KINDS } from "./exportDialog/format.ts";
 import { DownloadButton } from "./exportDialog/DownloadButton.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
 export { exportRunning, folderName } from "./exportDialog/format.ts";
@@ -155,11 +155,12 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
     );
   } else if (job) {
     const pct = Math.round(job.progress * 100);
+    const preparing = preparingStatus(job, hasGraphics);
     const status =
       job.phase === "queued"
         ? "Waiting for another export to finish…"
         : job.phase === "preparing"
-          ? "Getting ready: drawing the text and measuring the sound…"
+          ? preparing.text
           : job.phase === "rendering"
             ? `Rendering… ${pct}%`
             : job.phase === "done"
@@ -168,7 +169,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
                 : `Saved in ${job.elapsedSeconds ?? 0} s, and shown in Finder.`
               : "The export didn't finish.";
     body = (
-      <div data-testid="export-job" data-phase={job.phase} data-progress={job.progress} data-output={job.output}>
+      <div data-testid="export-job" data-phase={job.phase} data-progress={job.progress} data-step={job.phase === "preparing" ? job.step?.kind : undefined} data-output={job.output}>
         <p className="wiz-lead" data-testid="export-job-where" title={job.output}>
           <b className="mono">{baseName(job.output)}</b> in{" "}
           <b data-testid="export-job-folder" title={dirName(job.output)}>
@@ -188,9 +189,10 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
         <div className="export-status" data-testid="export-status">
           {status}
           {job.phase === "rendering" && <span className="muted">{eta(job.etaSeconds)}</span>}
+          {job.phase === "preparing" && preparing.fraction !== undefined && <span className="muted">{Math.round(preparing.fraction * 100)}%</span>}
         </div>
         <div className="export-bar" data-testid="export-progress">
-          <div style={{ width: `${job.phase === "done" ? 100 : job.phase === "rendering" ? pct : 0}%` }} className={job.phase === "preparing" || job.phase === "queued" ? "indeterminate" : ""} />
+          <div style={{ width: `${job.phase === "done" ? 100 : job.phase === "rendering" ? pct : job.phase === "preparing" && preparing.fraction !== undefined ? Math.round(preparing.fraction * 100) : 0}%` }} className={(job.phase === "preparing" && preparing.fraction === undefined) || job.phase === "queued" ? "indeterminate" : ""} />
         </div>
         {job.warnings && job.warnings.length > 0 && job.phase !== "failed" && (
           <div className="export-warnings muted small" data-testid="export-warnings">

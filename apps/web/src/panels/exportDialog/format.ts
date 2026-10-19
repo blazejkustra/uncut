@@ -49,3 +49,17 @@ export const folderName = (path: string) => baseName(dirName(path)) || "/";
 export const fpsText = (fps: number) => `${Number(fps.toFixed(3))} fps`;
 
 export const eta = (s: number | undefined) => (s === undefined ? "" : s < 60 ? `About ${Math.max(1, Math.round(s))} s left` : `About ${Math.round(s / 60)} min left`);
+
+/**
+ * A preparing export's line and how far its step is (0–1, undefined when it can't be counted): the
+ * graphics and shader effects are drawn before the encode, frame by frame, and a heavy graphic takes
+ * minutes there, so it says which frame it's on rather than looking stuck. Without graphics
+ * (`graphics` false) the frames drawn are the text's.
+ */
+export function preparingStatus(job: Pick<ExportJob, "step">, graphics = true): { readonly text: string; readonly fraction: number | undefined } {
+  const s = job.step;
+  const counted = s && s.done !== undefined && s.total ? { done: Math.min(s.done, s.total), total: s.total } : undefined;
+  const frames = counted ? `: frame ${counted.done} of ${counted.total}` : "…";
+  const text = !s ? "Getting ready…" : s.kind === "sound" ? "Measuring the sound…" : s.kind === "loudness" ? "Measuring the loudness…" : s.kind === "graphics" ? `Drawing the ${graphics ? "graphics" : "text"}${frames}` : `Drawing the shader effects${frames}`;
+  return { text, fraction: counted && (s!.kind === "graphics" || s!.kind === "shaders") ? counted.done / counted.total : undefined };
+}

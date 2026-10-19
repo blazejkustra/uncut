@@ -71,8 +71,12 @@ export const streamsLayer = (layer: VisualLayer) => {
   return layer.states.length > 1 && layer.states.length * 8 >= layer.frames.length;
 };
 
-/** Draw every raster layer (and the canvas colour) with the rasteriser, into `dir`. */
-export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal, css: string = RASTER_CSS, ff?: SequenceFfmpeg) => {
+/**
+ * Draw every raster layer (and the canvas colour) with the rasteriser, into `dir`. `onFrame` hears
+ * each frame sent to be drawn (a look, a streamed frame, a graphic's PNG) as done of total: a heavy
+ * graphic takes minutes here, before the encode starts, and the dialog says how far it is.
+ */
+export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Project, mediaPath: (m: Media) => string, dir: string, signal: AbortSignal, css: string = RASTER_CSS, ff?: SequenceFfmpeg, onFrame?: (done: number, total: number) => void) => {
   const { width, height } = plan.canvas;
   // Without an ffmpeg to stream into (render_frames' few frames), every layer is drawn as PNGs.
   const streamed = (layer: VisualLayer) => !!ff && streamsLayer(layer);
@@ -89,11 +93,15 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
   // Every distinct look of the layers not streamed drawn once (D79 review: slices and layers share looks), then linked per layer.
   const drawnLooks = new Map<string, string>();
   const looks = [...new Set(plan.visuals.flatMap((l) => (l.kind === "raster" && !streamed(l) ? l.states : [])))];
+  const total = looks.length + plan.visuals.reduce((n, l) => (l.kind === "graphic" ? n + (streamed(l) ? l.frames.length : new Set(l.frames).size) : l.kind === "raster" && streamed(l) ? n + l.frames.length : n), 0);
+  let done = 0;
+  const tick = () => onFrame?.(++done, total);
   for (const [j, html] of looks.entries()) {
     if (signal.aborted) throw new Cancelled();
     const out = join(dir, `look-${j}.png`);
     await r.render({ width, height, css, html: await withMedia(html, project, mediaPath, urls), out });
     drawnLooks.set(html, out);
+    tick();
   }
   const graphicName = (layer: VisualLayer) => `"${layer.item.name ?? layer.item.id}" (${layer.item.src})`;
   const graphicError = (layer: VisualLayer, local: number) => (error: unknown) => {
@@ -114,11 +122,13 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
             const prev = i > 0 ? (layer.motion?.ts[i - 1] ?? [layer.frames[i - 1]! / plan.fps]) : undefined;
             if (prev && prev.length === ts.length && prev.every((t, j) => t === ts[j])) await send({ kind: "seq-hold", count: 1 });
             else await send({ kind: "seq-graphic", doc: layer.doc, ts, info: graphicInfo(layer.item, { ...plan.canvas, fps: plan.fps }, local), name: graphicName(layer) }, graphicError(layer, local));
+            tick();
           }
         } else {
           for (const [i, s] of layer.frames.entries()) {
             if (i > 0 && s === layer.frames[i - 1]) await send({ kind: "seq-hold", count: 1 });
             else await send({ kind: "seq-html", css, html: await withMedia(layer.states[s]!, project, mediaPath, urls) });
+            tick();
           }
         }
       }));
@@ -137,6 +147,7 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
         if (seen) {
           drawn.set(local, states.length);
           states.push(seen);
+          tick();
           continue;
         }
         const out = join(dir, `l${k}-g${local}.png`);
@@ -144,6 +155,7 @@ export const rasterise = async (r: Rasterizer, plan: ExportPlan, project: Projec
         drawn.set(local, states.length);
         states.push(out);
         drawnLooks.set(`graphic:${local}:${layer.doc}`, out);
+        tick();
       }
       frames = layer.frames.map((local) => drawn.get(local)!);
     } else {
