@@ -4,6 +4,7 @@ import { RPC_METHODS, ServerHello, MediaCoreError, Canvas, ProjectSnapshot, Proj
 import { LibrarySearchResult, LibraryError, LibraryState, SoundFolderSchema } from "../library.ts";
 import { ImportJob, ProxyState, SetupCheck, MediaRecentEntry } from "../media.ts";
 import { AgentState, AgentMention, AgentEffort, AgentAccess, AgentImage, AgentError, AgentAnswer, StoryboardBeat, Brief, Storyboard, IntendedFinding, AgentPlan } from "../agent.ts";
+import { ExportRange } from "../export.ts";
 import { BrandState, BrandError, BrandKit, BrandScope, BrandSkill, BrandActive, BrandImported } from "../brand.ts";
 
 export const Empty = Schema.Struct({});
@@ -147,6 +148,8 @@ export const AgentSendRpc = Rpc.make(RPC_METHODS.agentSend, {
     images: Schema.optional(Schema.Array(AgentImage)),
     // D188: Settings › App › Agent "Auto skips the storyboard approval".
     skipStoryboard: Schema.optional(Schema.Boolean),
+    // export_video's range: the In/Out marks and the selected clips' span now, as the Export dialog reads them.
+    ranges: Schema.optional(Schema.Struct({ marks: Schema.optional(ExportRange), selection: Schema.optional(ExportRange) })),
   }),
   success: Schema.Struct({ turnId: Schema.String }),
   error: AgentError,

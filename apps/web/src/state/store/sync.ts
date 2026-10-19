@@ -89,8 +89,17 @@ export function onJobs(jobs: ReadonlyArray<ImportJob>) {
 
 // Exports this window started: each is shown in Finder once it's done ("Opens in Finder when it's done").
 export const revealWhenDone = new Set<string>();
+// The agent's exports (export_video) this window took up as its own, once each.
+const agentExportsSeen = new Set<string>();
 export function onExportJobs(jobs: ReadonlyArray<ExportJob>) {
   for (const job of jobs) {
+    // An export the agent started for the open project shows like one started here: the top bar's
+    // progress, the dialog's Cancel and Saved, and Finder once it's done.
+    if (job.agent && !agentExportsSeen.has(job.id) && job.projectDir === state.snapshot?.dir && ["queued", "preparing", "rendering"].includes(job.phase)) {
+      agentExportsSeen.add(job.id);
+      revealWhenDone.add(job.id);
+      set({ exportJobId: job.id, exportFolder: job.output.slice(0, job.output.lastIndexOf("/")) || "/" });
+    }
     if (!revealWhenDone.has(job.id) || (job.phase !== "done" && job.phase !== "failed" && job.phase !== "cancelled")) continue;
     revealWhenDone.delete(job.id);
     // A remote export stays on its server (D109): Download brings it here.

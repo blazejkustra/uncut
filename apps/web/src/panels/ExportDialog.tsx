@@ -22,9 +22,9 @@ import { actions, useApp, type Project } from "../state/store.ts";
 import { frameTimecode } from "../state/format.ts";
 import { layoutOf } from "../state/project.ts";
 import { usePlayback } from "../preview/playback.ts";
-import { findItem } from "../timeline/edit.ts";
 import { NumberField } from "../inspector/fields.tsx";
 import { effectiveRange, type RangeKind } from "./exportRange.ts";
+import { exportSpans } from "./exportSpans.ts";
 import { loudnessCards, fileName, baseName, dirName, folderName, fpsText, eta, preparingStatus, ACTIVE, QUALITIES, ENCODER_NAMES, RANGE_KINDS } from "./exportDialog/format.ts";
 import { DownloadButton } from "./exportDialog/DownloadButton.tsx";
 import { Tooltip } from "../ui/Tooltip.tsx";
@@ -92,9 +92,7 @@ export function ExportDialog({ project, dir }: { project: Project; dir: string }
   const markOut = usePlayback((x) => x.markOut);
   const selectedId = usePlayback((x) => x.selected);
   const also = usePlayback((x) => x.also);
-  const marks = markIn !== undefined || markOut !== undefined ? { from: markIn ?? 0, to: markOut ?? end } : undefined;
-  const picked = (selectedId === undefined ? [] : [selectedId, ...also]).map((id) => findItem(project, id)).filter((p) => p !== undefined && p.item.type !== "captions");
-  const selection = picked.length ? { from: Math.min(...picked.map((p) => p!.start)), to: Math.max(...picked.map((p) => p!.start + p!.item.duration)) } : undefined;
+  const { marks, selection } = exportSpans(project, { markIn, markOut, selected: selectedId, also });
   const [rangeKind, setRangeKind] = useState<RangeKind>("all");
   const [custom, setCustom] = useState<{ from: number; to: number }>(() => marks ?? { from: 0, to: end });
   // Marks or a selection that went away (an undo, the agent) fall back to the whole timeline, visibly.

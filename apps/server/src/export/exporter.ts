@@ -64,6 +64,8 @@ export interface ExportInput {
   readonly video?: ExportVideo | undefined;
   /** D291: motion blur on graphics; absent = the project's default (core motionBlurDefault: on unless Draft). */
   readonly motionBlur?: boolean | undefined;
+  /** The agent's export_video started it (ExportJob.agent): the editor shows it like its own. */
+  readonly agent?: boolean | undefined;
 }
 
 /** D292: a frame session's renders (exporter/frames.ts openFrameSession), as effects. */
@@ -238,6 +240,7 @@ export const layer = Layer.effect(
           ...(burnCaptions ? {} : { burnCaptions: false }),
           ...(range ? { range } : {}),
           motionBlur,
+          ...(input.agent ? { agent: true } : {}),
         };
         const controller = new AbortController();
         controllers.set(id, controller);

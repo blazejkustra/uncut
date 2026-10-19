@@ -460,3 +460,46 @@ test("without Claude Code the Agent tab says how to install it instead of failin
   await page.screenshot({ path: "test-output/agent-missing.png" });
   assert.deepEqual(app.errors, []);
 });
+
+test("export_video: the agent's export shows in the editor like one started there (the dialog's job, Saved, shown in Finder)", { skip, timeout: 180000 }, async () => {
+  mkdirSync(join(root, "projects-export"), { recursive: true });
+  const exportPlan = join(root, "plan-export.json");
+  // The app's home is the test's, so "Desktop" is a folder of its own (no login shell: that home has
+  // no shell profile, and this PATH already has node and ffmpeg).
+  const home = join(root, "home-export");
+  const out = join(home, "Desktop");
+  mkdirSync(out, { recursive: true });
+  const app = await launchApp({ command: APP, env: { HOME: home, UNCUT_SHELL_ENV: "off", UNCUT_DATA_DIR: join(root, "data-export"), UNCUT_TEST_DIALOG: JSON.stringify([join(root, "projects-export")]), UNCUT_CLAUDE: FAKE, FAKE_PLAN: exportPlan, FAKE_PROMPT_LOG: promptLog() } });
+  apps.add(app);
+  const { page } = app;
+  await newProject(app);
+  writeFileSync(
+    exportPlan,
+    JSON.stringify([
+      [
+        { tool: "project_read" },
+        { tool: "timeline_edit", args: { baseRevision: "$rev", summary: "Add a title", ops: [{ op: "insert_item", track: "text", item: { id: "title-1", type: "text", start: 0, duration: 45, text: "Ship it", style: { preset: "text.title" } } }] } },
+        { tool: "export_video", args: { folder: "Desktop", preset: "draft", name: "Ship" } },
+        { text: "Saved Ship.mp4 on your Desktop." },
+      ],
+    ]),
+  );
+  await page.click("[data-testid=tab-agent]");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=agent-input]")!.hasAttribute("disabled"), { timeout: 30000 });
+  await page.click("[data-testid=agent-input]");
+  // The chat is Auto and the message names the Desktop: no card.
+  await page.keyboard.type("add a title and export it to my Desktop");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector<HTMLElement>("[data-testid=agent-turn]")?.dataset.status === "done", { timeout: 120000 });
+  const saved = join(out, "Ship.mp4");
+  assert.ok(existsSync(saved), `the file is there: ${await text(page, "[data-testid=agent-turn]")}`);
+  // The editor took the job up as its own: shown in Finder when done, and the Export dialog shows it saved.
+  for (let i = 0; i < 50 && !app.output().includes(`[test] showItemInFolder ${saved}`); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(app.output().includes(`[test] showItemInFolder ${saved}`), "shown in Finder when done");
+  await page.click("[data-testid=export-button]");
+  await waitFor(page, "[data-testid=export-job][data-phase=done]");
+  assert.equal(await page.$eval("[data-testid=export-job]", (el) => (el as HTMLElement).dataset.output), saved);
+  assert.equal(await text(page, "[data-testid=export-job-folder]"), "Desktop");
+  await waitFor(page, "[data-testid=export-reveal]");
+  assert.deepEqual(app.errors, []);
+});

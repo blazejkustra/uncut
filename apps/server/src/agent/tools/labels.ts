@@ -90,6 +90,8 @@ export function stepLabel(tool: string, input: unknown, plugin?: string, project
       const format = typeof args.path === "string" && /\.vtt$/i.test(args.path) ? "WebVTT" : typeof args.path === "string" && /\.srt$/i.test(args.path) ? "SRT" : args.format === "vtt" ? "WebVTT" : "SRT";
       return typeof args.path === "string" ? `Saved the subtitles as ${shortName(args.path)}` : `Saved the subtitles as ${format}`;
     }
+    case "export_video":
+      return typeof args.folder === "string" && args.folder.trim() ? `Exported the video to ${shortName(args.folder.trim().replace(/\/+$/, ""))}` : "Exported the video";
     case "graphic_write":
       if (typeof args.from === "string") return `Edited the graphic ${args.from.replace(/^graphics\//, "")}`;
       return typeof args.name === "string" ? `Wrote the graphic ${args.name}` : "Wrote a graphic";
@@ -230,6 +232,7 @@ const PRESENT: ReadonlyArray<[string, string]> = [
   ["Asked: ", "Asking: "],
   ["Asked ", "Asking "],
   ["Wrote ", "Writing "],
+  ["Exported ", "Exporting "],
   ["Proposed ", "Proposing "],
   ["Reviewed ", "Reviewing "],
   ["Put ", "Putting "],

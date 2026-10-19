@@ -2,6 +2,7 @@ import { type AgentMention, type AgentImage, type AgentAccess, type AgentAnswer,
 import { type Result } from "../../connection.ts";
 import { playback, getPlayback } from "../../../preview/playback.ts";
 import { findItem } from "../../../timeline/edit.ts";
+import { exportSpans } from "../../../panels/exportSpans.ts";
 import { momentLabel, itemName, mentionCandidates, effectMentionId, type MentionKind } from "@uncut/core/mentions";
 import { agentPrefs, DEFAULT_AGENT_PREFS, skipStoryboardSetting } from "../../agentPrefs.ts";
 import { set, state, online, projectOf } from "../core.ts";
@@ -17,7 +18,9 @@ export const agentActions = {
     set({ agentError: undefined });
     // The agent works on what's on screen: stop playback so the frame it's told about stays put.
     playback.pause();
-    const { frame, selected } = getPlayback();
+    const { frame, selected, markIn, markOut, also } = getPlayback();
+    // export_video's range choices, as the Export dialog would read them now.
+    const ranges = state.snapshot ? exportSpans(projectOf(state.snapshot), { markIn, markOut, selected, also }) : {};
     // Only the chips whose @label is still in the prompt.
     const kept = mentions.filter((m, i) => prompt.includes(`@${m.label}`) && mentions.findIndex((x) => x.kind === m.kind && x.id === m.id && x.label === m.label) === i);
     // The composer's choices for this project (D184): model, effort, access.
@@ -34,6 +37,7 @@ export const agentActions = {
         ...(images.length ? { images: [...images] } : {}),
         // D188: Settings › App › Agent, remembered on this Mac.
         ...(skipStoryboardSetting() ? { skipStoryboard: true } : {}),
+        ...(ranges.marks || ranges.selection ? { ranges } : {}),
       }),
     );
     if (result.ok) return true;

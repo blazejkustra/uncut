@@ -75,6 +75,8 @@ export const ExportJob = Schema.Struct({
   range: Schema.optional(Schema.Struct({ from: Schema.Number, to: Schema.Number })),
   /** D291: graphics drawn with motion blur (sub-frames averaged); absent on jobs from before (none). */
   motionBlur: Schema.optional(Schema.Boolean),
+  /** Started by the agent's export_video: the editor shows it as its own export (progress, Cancel, Open in Finder). */
+  agent: Schema.optional(Schema.Boolean),
 });
 export type ExportJob = typeof ExportJob.Type;
 

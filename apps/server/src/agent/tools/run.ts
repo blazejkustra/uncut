@@ -18,6 +18,7 @@ import { shapeHint, unknownOp } from "./opShapes.ts";
 import { PHONE_WIDTH } from "./common.ts";
 import { rehearsalLine } from "../../export/exporter/rehearse.ts";
 import { legibilityNote } from "../agentLegibility.ts";
+import { makeExportVideo } from "./exportVideo.ts";
 
 /** How long render_frames may spend rehearsing the export's graphics (ms; a rehearsal that passed isn't run again). */
 export const REHEARSE_RENDER_MS = 15_000;
@@ -29,6 +30,8 @@ const DRY_LINE = 200;
 
 export const makeRunTool = (ctx: LibraryCtx) => {
   const { view, textResult, shaderDefsOf, format, plugins, exporter, stampOf, askUserTool, briefWrite, storyboardPropose, reviewSubmit, brandRead, brandWrite, skillRead, referenceFrames, beatGridTool, mediaImport, mediaDownload, contactSheet, uiShow, brandDirs, fontsRule, rubricOf, librarySearch, libraryAdd, graphicWrite, generateMedia, screenRecord, argentBoot, mediaSearch, mediaAnalyze, mediaRank, transcriptRead, transcriptEdit, captionsMake, subtitlesExport, projects, persist, duckAnalysis, media, analysis, publish, askUser, config } = ctx;
+
+  const exportVideo = makeExportVideo(ctx);
 
   const runTool = (r: Running, name: string, args: Record<string, unknown>): Effect.Effect<McpResult> =>
     Effect.gen(function* () {
@@ -201,6 +204,8 @@ export const makeRunTool = (ctx: LibraryCtx) => {
           return yield* captionsMake(r, v, args);
         case "subtitles_export":
           return yield* subtitlesExport(v, args);
+        case "export_video":
+          return yield* exportVideo(r, v, args);
         case "timeline_edit": {
           // D188, D237: in a turn that wrote the brief or proposed the storyboard, the build waits for its approval.
           // D206: a dry run checks the edit and changes nothing, so the storyboard gate doesn't apply.

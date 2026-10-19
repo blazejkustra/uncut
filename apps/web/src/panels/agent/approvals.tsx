@@ -142,7 +142,7 @@ export function ApprovalCard({ approval, online }: { approval: AgentApproval; on
 }
 
 /** Claude Code's tools in people's words, for the permission card (D194). */
-const TOOL_NAMES: Record<string, string> = { Bash: "Terminal", Write: "Write file", Edit: "Edit file", MultiEdit: "Edit file", NotebookEdit: "Edit notebook", Read: "Read file", WebFetch: "Web page", WebSearch: "Web search" };
+const TOOL_NAMES: Record<string, string> = { Bash: "Terminal", Write: "Write file", Edit: "Edit file", MultiEdit: "Edit file", NotebookEdit: "Edit notebook", Read: "Read file", WebFetch: "Web page", WebSearch: "Web search", export: "Export" };
 
 /**
  * D194: a Claude Code tool (a command, a file write outside the project, ...) waits for the user:

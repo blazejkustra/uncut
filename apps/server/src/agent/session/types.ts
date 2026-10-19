@@ -133,6 +133,8 @@ export interface Running {
   session: ClaudeSession;
   // The message as claude gets it (prompt, <context>, <editor-context>).
   readonly message: string;
+  // export_video's range choices: the In/Out marks and the selected clips' span when the message was sent.
+  readonly ranges?: { readonly marks?: { readonly from: number; readonly to: number } | undefined; readonly selection?: { readonly from: number; readonly to: number } | undefined } | undefined;
   // Claude answered something for this message: its note was delivered.
   delivered: boolean;
   // Aborted when the turn stops or ends: a plugin call still running is cancelled (D97).

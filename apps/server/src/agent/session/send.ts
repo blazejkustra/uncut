@@ -65,7 +65,7 @@ export const makeSend = (ctx: SpawnCtx) => {
   // D232: and the installed skills' names (the system prompt lists them), so installing one starts a new session.
   const toolsKeyNow = Effect.andThen(plugins.refresh, Effect.map(plugins.tools, (extra) => `${extra.map((t) => t.name).sort().join(",")}|skills:${plugins.skillsNow().map((x) => x.name).sort().join(",")}`));
 
-  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "auto", images = [], skipStoryboard = false }) =>
+  const send: AgentShape["send"] = ({ prompt, frame, selected, mentions, model: askedModel, effort, access = "auto", images = [], skipStoryboard = false, ranges }) =>
     Effect.gen(function* () {
       const owner = yield* ensureLoaded;
       if (!owner) return yield* new AgentError({ reason: "no-project", message: "Open a project first." });
@@ -255,6 +255,7 @@ export const makeSend = (ctx: SpawnCtx) => {
         permissionQueue: Promise.resolve(),
         toolNames: new Map(),
         downloads: { bytes: 0, count: 0 },
+        ...(ranges ? { ranges } : {}),
       };
       if (planBlock) blocks.pending = { sent: lean.sent, r };
       st.running = r;

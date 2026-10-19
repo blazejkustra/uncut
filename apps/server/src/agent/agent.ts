@@ -43,7 +43,7 @@ import { Library } from "../library/library.ts";
 import { isTestRun } from "../generate/providers.ts";
 import { Projects } from "../project/projects.ts";
 import { agentEnv } from "../app/shellEnv.ts";
-import { type ClaudeSession } from "./session/types.ts";
+import { type ClaudeSession, type Running } from "./session/types.ts";
 import { APPROVAL_MS, canonical } from "./session/config.ts";
 import { undoState } from "./turns/notes.ts";
 import { cleanStaleTurns } from "./session/stale.ts";
@@ -100,6 +100,7 @@ export interface AgentShape {
     access?: AgentAccess | undefined;
     images?: ReadonlyArray<AgentImage> | undefined;
     skipStoryboard?: boolean | undefined;
+    ranges?: Running["ranges"] | undefined;
   }) => Effect.Effect<{ turnId: string }, AgentError>;
   readonly cancel: Effect.Effect<void>;
   /** The user's answer to the running turn's approval card (D99). */
