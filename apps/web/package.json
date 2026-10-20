@@ -11,7 +11,7 @@
   "dependencies": {
     "@uncut/contracts": "workspace:*",
     "@uncut/core": "workspace:*",
-    "effect": "4.0.2",
+    "effect": "4.0.5",
     "lucide-react": "0.460.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
