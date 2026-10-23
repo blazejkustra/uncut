@@ -199,7 +199,16 @@ export const playback = {
     set({ selected: ids[0], also: ids.slice(1), cut: undefined, gainKey: undefined });
   },
 
-  toggle: () => (state.playing ? playback.pause() : playback.play()),
+  /** Issue #118: play from the skimmed frame (Space while the pointer is on the timeline) or the playhead. */
+  toggle: () => (state.playing ? playback.pause() : state.hover !== undefined ? playback.playFrom(state.hover) : playback.play()),
+
+  /** Issue #118: the playhead to `frame`, then play from there ("Play from here", Space while skimming). */
+  playFrom(frame: number) {
+    playback.pause();
+    playback.seek(frame);
+    // At the very end there's nothing left to play: from the start, as Play does.
+    playback.play();
+  },
 
   /** Move the playhead (whole frames). While playing, playback carries on from there. */
   seek(frame: number) {

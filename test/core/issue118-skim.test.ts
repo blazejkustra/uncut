@@ -1,5 +1,6 @@
 // Issue #118, without the app: skimming (the frame under the pointer shown instead of the
-// playhead's while paused) and a media tile's skim, in the playback state the preview draws from.
+// playhead's while paused), a media tile's skim, and playing from the cursor (Space while skimming,
+// "Play from here"), in the playback state the preview draws from.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -50,4 +51,25 @@ test("skimming: off while playing, and with the switch off", () => {
   playback.toggleSkimming();
   playback.hover(80);
   assert.equal(getPlayback().hover, 80);
+});
+
+test("play from the cursor: Space while skimming plays from the skimmed frame; otherwise from the playhead", () => {
+  playback.reset();
+  playback.setProject(301, 30, 300);
+  playback.seek(40);
+  playback.hover(200);
+  playback.toggle();
+  assert.equal(getPlayback().playing, true);
+  assert.equal(getPlayback().frame, 200, "playback starts where the pointer is");
+  assert.equal(getPlayback().hover, undefined);
+  playback.toggle();
+  assert.equal(getPlayback().playing, false);
+  playback.seek(10);
+  playback.toggle();
+  assert.equal(getPlayback().frame, 10, "with nothing skimmed, from the playhead");
+  playback.pause();
+  playback.playFrom(120);
+  assert.equal(getPlayback().frame, 120);
+  assert.equal(getPlayback().playing, true);
+  playback.pause();
 });

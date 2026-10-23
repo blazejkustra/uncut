@@ -160,6 +160,9 @@ export function rulerMenu(frame: number, marks: { readonly markIn?: number | und
   const start = marks.markIn ?? 0;
   const end = marks.markOut ?? marks.end;
   return [
+    // Issue #118: start playback where the user pointed, not where the playhead was.
+    { id: "play-from-here", label: "Play from here", run: () => playback.playFrom(frame) },
+    "-",
     { id: "add-moment-to-chat", label: "Add this moment to chat", run: () => actions.addMomentToChat(frame) },
     ...(hasRange ? [{ id: "add-range-to-chat", label: "Add range to chat", disabled: end <= start, run: () => actions.addRangeToChat(start, end) }] : []),
   ];
@@ -169,6 +172,8 @@ export function emptyMenu(project: ProjectModel, frame: number, track: Track | u
   const off = !online;
   const label = track ? itemsLabel(project, track) : undefined;
   return [
+    { id: "play-from-here", label: "Play from here", run: () => playback.playFrom(frame) },
+    "-",
     { id: "paste-here", label: "Paste here", shortcut: "⌘V", disabled: off || !clipboardItems().length, run: () => void paste(frame) },
     { id: "split-playhead", label: "Split at the playhead", shortcut: "S", disabled: off, run: () => void actions.split() },
     "-",

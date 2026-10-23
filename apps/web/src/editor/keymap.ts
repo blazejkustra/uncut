@@ -79,7 +79,7 @@ export interface ActionDef {
 
 /** Every row, in the order Settings and the sheet list them. */
 export const ACTIONS: ReadonlyArray<ActionDef> = [
-  { id: "play", group: "Playback", keys: ["Space"], does: "Play or pause" },
+  { id: "play", group: "Playback", keys: ["Space"], does: "Play or pause (from the pointer while skimming the timeline)" },
   { id: "shuttleBack", group: "Playback", keys: ["J"], does: "Play backwards (press again to go faster)" },
   { id: "pause", group: "Playback", keys: ["K"], does: "Pause" },
   { id: "shuttleForward", group: "Playback", keys: ["L"], does: "Play forwards (press again to go faster)" },
