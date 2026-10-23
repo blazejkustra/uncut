@@ -209,7 +209,7 @@ export const AgentTurnStatus = Schema.Literals(["running", "done", "error", "can
  * Something the user pointed at in the composer (D140): an @mention or an "Add to chat" chip. The
  * prompt holds "@label"; the agent gets the label with the real id in a <context> block.
  */
-export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker", "moment", "range", "effect", "transition"]);
+export const AgentMentionKind = Schema.Literals(["media", "item", "track", "marker", "moment", "range", "effect", "transition", "region"]);
 export const AgentMention = Schema.Struct({
   kind: AgentMentionKind,
   id: Schema.String,
@@ -217,6 +217,8 @@ export const AgentMention = Schema.Struct({
   // Add to chat (D141): the stretch of the timeline it covers, in project frames, or the frame it was picked at.
   range: Schema.optional(Schema.Struct({ start: Schema.Int, end: Schema.Int })),
   frame: Schema.optional(Schema.Int),
+  // Issue #118: a region of the picture (dragged over the preview), in canvas pixels, at `frame` or over `range`.
+  area: Schema.optional(Schema.Struct({ x: Schema.Int, y: Schema.Int, w: Schema.Int, h: Schema.Int })),
 });
 export type AgentMention = typeof AgentMention.Type;
 

@@ -3,7 +3,7 @@
 // Issue #62 (D233): the bar is always 40px tall and never clips. As the preview gets narrow the
 // less important parts go first (styles.css, @container stage): the canvas label, the end time,
 // the jumps to start and end, the zoom and the frame steps, then the hand and the time itself.
-import { Hand, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
+import { Hand, Maximize, SquareDashedMousePointer, Minimize, Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
 
 import { canvasLabel, frameTimecode } from "../state/format.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
@@ -11,7 +11,7 @@ import { layoutOf, type ProjectModel } from "../state/project.ts";
 import { playback, usePlayback } from "./playback.ts";
 import { ZOOM_STEPS, type useViewport } from "./viewport.ts";
 
-export function Transport({ project, view, full, onFull }: { project: ProjectModel; view: ReturnType<typeof useViewport>; full: boolean; onFull: () => void }) {
+export function Transport({ project, view, full, onFull, region, onRegion }: { project: ProjectModel; view: ReturnType<typeof useViewport>; full: boolean; onFull: () => void; region: boolean; onRegion: () => void }) {
   const fps = project.canvas.fps;
   const frame = usePlayback((s) => Math.floor(s.frame));
   const playing = usePlayback((s) => s.playing);
@@ -69,6 +69,12 @@ export function Transport({ project, view, full, onFull }: { project: ProjectMod
         ))}
         {custom && <option value="custom">{Math.round(view.scale * 100)}%</option>}
       </select>
+      {/* Issue #118: point the agent at part of the picture. */}
+      <Tooltip label="Area: drag over the picture to point the agent at it (at this frame, or In to Out)">
+        <button className={`icon-btn ${region ? "on" : ""}`} data-testid="preview-region" aria-pressed={region} disabled={frames <= 1} onClick={onRegion}>
+          <SquareDashedMousePointer />
+        </button>
+      </Tooltip>
       <Tooltip label="Hand: drag to pan the preview">
         <button className={`icon-btn tp-hand ${view.hand ? "on" : ""}`} data-testid="preview-hand" aria-pressed={view.hand} onClick={() => view.setHand(!view.hand)}>
           <Hand />
